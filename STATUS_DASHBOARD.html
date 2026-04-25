@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZapScript — Status Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #10b981;
+      --primary-light: #34d399;
+      --dark-bg: #040b09;
+      --dark-card: #0d1c19;
+      --dark-border: rgba(16, 185, 129, 0.15);
+      --text-primary: #ffffff;
+      --text-secondary: #6ee7b7;
+      --text-muted: rgba(16, 185, 129, 0.4);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: linear-gradient(135deg, var(--dark-bg) 0%, #0a1410 100%);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 40px;
+      animation: slideDown 0.5s ease;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      font-weight: 300;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 30px;
+      border-bottom: 1px solid var(--dark-border);
+      padding-bottom: 15px;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      padding: 10px 20px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-primary);
+    }
+
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin: 40px 0;
+    }
+
+    .stat-card {
+      background: var(--dark-card);
+      border: 1px solid var(--dark-border);
+      border-radius: 12px;
+      padding: 24px;
+      transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+
+    .stat-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .stat-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .stat-value.done { color: #34d399; }
+    .stat-value.pending { color: #60a5fa; }
+    .stat-value.total { color: var(--primary); }
+
+    .progress-section {
+      background: var(--dark-card);
+      border: 1px solid var(--dark-border);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 40px;
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .progress-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .progress-percent {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 12px;
+      background: #1a2e2a;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 30px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+      transition: width 0.6s ease;
+      border-radius: 10px;
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 30px;
+    }
+
+    .filter-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      padding: 10px 16px;
+      border: 1px solid var(--dark-border);
+      background: var(--dark-card);
+      color: var(--text-secondary);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+    }
+
+    .filter-btn:hover {
+      border-color: var(--primary);
+      color: var(--text-primary);
+    }
+
+    .filter-btn.active {
+      background: var(--primary);
+      color: var(--dark-bg);
+      border-color: var(--primary);
+    }
+
+    .tasks-container {
+      display: grid;
+      gap: 16px;
+    }
+
+    .task-card {
+      background: var(--dark-card);
+      border: 1px solid var(--dark-border);
+      border-radius: 12px;
+      padding: 24px;
+      transition: all 0.3s ease;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .task-card:hover {
+      border-color: var(--primary);
+      box-shadow: 0 8px 24px rgba(16, 185, 129, 0.1);
+    }
+
+    .task-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 12px;
+      align-items: center;
+    }
+
+    .badge {
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .badge.done {
+      background: rgba(52, 211, 153, 0.15);
+      color: #34d399;
+    }
+
+    .badge.pending {
+      background: rgba(96, 165, 250, 0.15);
+      color: #60a5fa;
+    }
+
+    .badge.in-progress {
+      background: rgba(59, 130, 246, 0.15);
+      color: #3b82f6;
+    }
+
+    .badge.category {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--text-secondary);
+    }
+
+    .badge.priority {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--text-muted);
+      font-size: 0.7rem;
+    }
+
+    .task-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .task-description {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .task-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state-icon {
+      font-size: 4rem;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 1.8rem;
+      }
+
+      .progress-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .progress-percent {
+        font-size: 2rem;
+      }
+
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .filters {
+        flex-direction: column;
+      }
+
+      .filter-btn {
+        flex: 1;
+        min-width: 120px;
+      }
+
+      .task-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .task-meta {
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .tabs {
+        gap: 5px;
+      }
+
+      .tab-btn {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+      }
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-top: 30px;
+      padding-top: 30px;
+      border-top: 1px solid var(--dark-border);
+      font-size: 0.85rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+    }
+
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .legend-dot.done { background: #34d399; }
+    .legend-dot.pending { background: #60a5fa; }
+    .legend-dot.in-progress { background: #3b82f6; }
+
+    footer {
+      text-align: center;
+      color: var(--text-muted);
+      margin-top: 60px;
+      padding-top: 30px;
+      border-top: 1px solid var(--dark-border);
+      font-size: 0.85rem;
+    }
+
+    .urgent-banner {
+      background: rgba(249, 115, 22, 0.1);
+      border: 1px solid rgba(249, 115, 22, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+      color: #fb923c;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🚀 ZapScript</h1>
+      <p class="subtitle">Status Dashboard — Desenvolvimento & Operações</p>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('tecnico')">🔧 Desenvolvimento Técnico</button>
+      <button class="tab-btn" onclick="switchTab('negocio')">💼 Gestão & Setup</button>
+    </div>
+
+    <!-- TAB 1: TÉCNICO -->
+    <div id="tecnico" class="tab-content active">
+      <!-- Progress Section -->
+      <div class="progress-section">
+        <div class="progress-header">
+          <div class="progress-title">Progresso — Desenvolvimento Técnico</div>
+          <div class="progress-percent"><span id="progressPercent">79</span>%</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill" style="width: 79%"></div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total de Tarefas</div>
+            <div class="stat-value total" id="statTotal">38</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">✅ Prontas</div>
+            <div class="stat-value done" id="statDone">30</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">🔄 Em Progresso</div>
+            <div class="stat-value" style="color: #3b82f6;" id="statProgress">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">⏳ Pendentes</div>
+            <div class="stat-value pending" id="statPending">8</div>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div style="margin-top: 30px;">
+          <h3 style="margin-bottom: 15px; font-size: 0.95rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Filtrar por Status</h3>
+          <div class="filter-group">
+            <button class="filter-btn active" onclick="filterStatus('all')">Todos (38)</button>
+            <button class="filter-btn" onclick="filterStatus('done')">✅ Pronto (30)</button>
+            <button class="filter-btn" onclick="filterStatus('pending')">⏳ Pendente (8)</button>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <h3 style="margin-bottom: 15px; font-size: 0.95rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Filtrar por Categoria</h3>
+          <div class="filter-group">
+            <button class="filter-btn active" onclick="filterCategory('all')">Todas</button>
+            <button class="filter-btn" onclick="filterCategory('auth')">🔐 Autenticação</button>
+            <button class="filter-btn" onclick="filterCategory('security')">🔒 Segurança</button>
+            <button class="filter-btn" onclick="filterCategory('api')">⚙️ API</button>
+            <button class="filter-btn" onclick="filterCategory('frontend')">🎨 Frontend</button>
+            <button class="filter-btn" onclick="filterCategory('infrastructure')">🏗️ Infraestrutura</button>
+            <button class="filter-btn" onclick="filterCategory('monitoring')">📊 Monitoramento</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tasks List -->
+      <div class="tasks-container" id="tasksContainer"></div>
+
+      <!-- Legend -->
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-dot done"></div>
+          <span>✅ Pronto</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot pending"></div>
+          <span>⏳ Pendente</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot in-progress"></div>
+          <span>🔄 Em Progresso</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: NEGÓCIO -->
+    <div id="negocio" class="tab-content">
+      <!-- Progress Section -->
+      <div class="progress-section">
+        <div class="progress-header">
+          <div class="progress-title">Progresso — Gestão & Setup</div>
+          <div class="progress-percent"><span id="progressPercentBiz">9</span>%</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFillBiz" style="width: 9%"></div>
+        </div>
+
+        <div class="urgent-banner">
+          ⚠️ <strong>Tarefas Críticas para Operação</strong> — Precisam ser concluídas antes do launch em produção
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total de Tarefas</div>
+            <div class="stat-value total">11</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">✅ Prontas</div>
+            <div class="stat-value done">1</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">🔄 Em Progresso</div>
+            <div class="stat-value" style="color: #3b82f6;">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">⏳ Pendentes</div>
+            <div class="stat-value pending">10</div>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div style="margin-top: 30px;">
+          <h3 style="margin-bottom: 15px; font-size: 0.95rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Filtrar por Status</h3>
+          <div class="filter-group">
+            <button class="filter-btn active" onclick="filterStatusBiz('all')">Todos (11)</button>
+            <button class="filter-btn" onclick="filterStatusBiz('done')">✅ Pronto (1)</button>
+            <button class="filter-btn" onclick="filterStatusBiz('pending')">⏳ Pendente (10)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tasks List -->
+      <div class="tasks-container" id="tasksContainerBiz"></div>
+    </div>
+
+    <footer>
+      <p>📊 Dashboard dinâmico & interativo • 🔗 Compartilhável & Offline • 📱 Responsivo para todos os dispositivos</p>
+    </footer>
+  </div>
+
+  <script>
+    // TAREFAS TÉCNICAS
+    const technicalTasks = [
+      { id: 'auth-register', title: 'Cadastro com verificação de e-mail', description: 'Fluxo completo: registro → envio de e-mail → confirmação → dashboard', status: 'done', category: 'auth', owner: 'Claude', priority: 'critical', completedAt: '2026-04-24' },
+      { id: 'auth-email-verification', title: 'E-mail de verificação funcional', description: 'Supabase generateLink + nodemailer + template HTML', status: 'done', category: 'auth', owner: 'Claude', priority: 'critical', completedAt: '2026-04-24' },
+      { id: 'auth-login-rate-limit', title: 'Rate limit no login (5 req/min)', description: 'Proteção contra brute-force via @fastify/rate-limit', status: 'done', category: 'auth', owner: 'Claude', priority: 'high', completedAt: '2026-04-24' },
+      { id: 'auth-forgot-password', title: 'Fluxo "Esqueci minha senha"', description: 'Endpoint + e-mail de recuperação + página de reset', status: 'done', category: 'auth', owner: 'Claude', priority: 'high', completedAt: '2026-04-24' },
+      { id: 'auth-duplicate-prevention', title: 'Prevenção de duplicidade (e-mail + CPF/CNPJ)', description: 'Validação em ambos os lados (frontend + Prisma @unique)', status: 'done', category: 'auth', owner: 'Claude', priority: 'high', completedAt: '2026-03-15' },
+      { id: 'auth-email-field-sync', title: 'Campo emailVerified sincronizado com Supabase', description: 'Atualiza para true no primeiro login pós-confirmação', status: 'done', category: 'auth', owner: 'Claude', priority: 'medium', completedAt: '2026-04-24' },
+      { id: 'sec-timing-attack', title: 'Proteção contra timing attacks', description: 'crypto.timingSafeEqual em admin/internal/monitor tokens', status: 'done', category: 'security', owner: 'Claude', priority: 'critical', completedAt: '2026-04-23' },
+      { id: 'sec-encryption-validation', title: 'Validação de ENCRYPTION_KEY no startup', description: 'Deve ser 64 hex chars; decrypt valida formato iv:tag:data', status: 'done', category: 'security', owner: 'Claude', priority: 'critical', completedAt: '2026-04-23' },
+      { id: 'sec-xss-escape', title: 'Escape HTML em inputs do usuário', description: 'Previne XSS antes de injtar em templates de e-mail', status: 'done', category: 'security', owner: 'Claude', priority: 'critical', completedAt: '2026-04-23' },
+      { id: 'sec-cors-restriction', title: 'CORS restrito a APP_URL (sem * ou true)', description: 'Fallback para localhost:3000 em dev, false em prod', status: 'done', category: 'security', owner: 'Claude', priority: 'high', completedAt: '2026-04-23' },
+      { id: 'sec-idempotency', title: 'Idempotência de webhook Asaas (24h via Map)', description: 'In-memory deduplication; cleanup a cada 1000 entries', status: 'done', category: 'security', owner: 'Claude', priority: 'high', completedAt: '2026-04-23' },
+      { id: 'sec-input-clamping', title: 'Input clamping (limit/offset)', description: 'limit 1-100, offset ≥0 em transcriptions + admin', status: 'done', category: 'security', owner: 'Claude', priority: 'medium', completedAt: '2026-04-23' },
+      { id: 'api-admin-stats', title: 'Dashboard admin com estatísticas completas', description: 'MRR, conversion, users, transcriptions, whatsapp, tickets', status: 'done', category: 'api', owner: 'Claude', priority: 'high', completedAt: '2026-04-23' },
+      { id: 'api-admin-users', title: 'Endpoint GET /admin/users com busca + paginação', description: 'Busca por e-mail/nome, retorna subscription + balance', status: 'done', category: 'api', owner: 'Claude', priority: 'high', completedAt: '2026-04-23' },
+      { id: 'api-admin-tickets', title: 'Endpoint GET /admin/tickets com filtro por status', description: 'Paginação, ordenação por createdAt desc', status: 'done', category: 'api', owner: 'Claude', priority: 'high', completedAt: '2026-04-23' },
+      { id: 'api-transcription-atomicity', title: 'Débito atômico de minutos via $transaction interativa', description: 'Previne race condition; updateMany com count check', status: 'done', category: 'api', owner: 'Claude', priority: 'critical', completedAt: '2026-04-23' },
+      { id: 'api-whatsapp-reconnection', title: 'Exponential backoff na reconexão WhatsApp', description: '5s→5min; log de erro em catch de creds.update', status: 'done', category: 'api', owner: 'Claude', priority: 'medium', completedAt: '2026-04-23' },
+      { id: 'api-ffmpeg-timeout', title: 'FFmpeg timeout 120s com kill SIGKILL', description: 'Previne travamentos em áudio corrompido', status: 'done', category: 'api', owner: 'Claude', priority: 'high', completedAt: '2026-04-23' },
+      { id: 'fe-registration-page', title: 'Página de cadastro com documento masking', description: 'Valida senhas, mascara CPF/CNPJ, exibe tela pós-registro', status: 'done', category: 'frontend', owner: 'Claude', priority: 'high', completedAt: '2026-04-24' },
+      { id: 'fe-email-confirm-page', title: 'Página /email-confirmado (pós-clique no link)', description: 'Detecta erros no hash, exibe sucesso ou expirado', status: 'done', category: 'frontend', owner: 'Claude', priority: 'high', completedAt: '2026-04-24' },
+      { id: 'fe-forgot-password', title: 'Fluxo frontend "Esqueci a senha"', description: 'Página /esqueci-senha + /redefinir-senha com token do hash', status: 'done', category: 'frontend', owner: 'Claude', priority: 'high', completedAt: '2026-04-24' },
+      { id: 'fe-login-error-handling', title: 'Login com mensagem clara para e-mail não verificado', description: 'Se needsVerification, mostra dica para check spam', status: 'done', category: 'frontend', owner: 'Claude', priority: 'medium', completedAt: '2026-04-24' },
+      { id: 'fe-dashboard', title: 'Dashboard completo do usuário', description: '6 páginas: Home, Transcrições, Números, Plano, Configurações, Admin', status: 'done', category: 'frontend', owner: 'Claude', priority: 'high', completedAt: '2026-02-01' },
+      { id: 'fe-admin-dashboard', title: 'Painel admin com 4 abas (Overview, Users, Tickets, Errors)', description: 'Componentes reutilizáveis, KPIs, tabelas paginadas', status: 'done', category: 'frontend', owner: 'Claude', priority: 'high', completedAt: '2026-04-23' },
+      { id: 'infra-graceful-shutdown', title: 'Graceful shutdown com timeout 30s', description: 'API aguarda conexões antes de forçar saída', status: 'done', category: 'infrastructure', owner: 'Claude', priority: 'high', completedAt: '2026-04-23' },
+      { id: 'infra-redis-health', title: '/health endpoint com check Redis', description: 'Retorna 503 se Redis indisponível', status: 'done', category: 'infrastructure', owner: 'Claude', priority: 'high', completedAt: '2026-04-23' },
+      { id: 'infra-buffer-cleanup', title: 'Limpeza de buffers (audio.ts, worker.ts)', description: 'fill(0) em finally block, previne memory leaks', status: 'done', category: 'infrastructure', owner: 'Claude', priority: 'medium', completedAt: '2026-04-23' },
+      { id: 'infra-download-timeout', title: 'Download timeout 30s com Promise.race', description: 'Previne travamentos em download de mídia', status: 'done', category: 'infrastructure', owner: 'Claude', priority: 'high', completedAt: '2026-04-23' },
+      { id: 'infra-claude-model-update', title: 'Atualização modelo Claude (sonnet-4-6)', description: 'worker.ts + monitor.ts com modelo mais recente', status: 'done', category: 'infrastructure', owner: 'Claude', priority: 'low', completedAt: '2026-04-23' },
+      { id: 'monitor-health-checks', title: 'Monitor de saúde (3x dia: 8h, 14h, 20h BRT)', description: 'API + Landing + Dashboard; análise com Claude', status: 'done', category: 'monitoring', owner: 'Claude', priority: 'high', completedAt: '2026-04-23' },
+      { id: 'monitor-usage-alerts', title: 'Alertas de consumo de minutos via WhatsApp', description: '50%, 80%, 100% — push automático para usuários', status: 'done', category: 'monitoring', owner: 'Claude', priority: 'medium', completedAt: '2026-04-23' },
+      { id: 'monitor-webhook-logs', title: 'Log de externalReference malformado (Asaas)', description: 'Detecta webhooks com ref vazio; não processa', status: 'done', category: 'monitoring', owner: 'Claude', priority: 'low', completedAt: '2026-04-23' },
+      { id: 'todo-mfa', title: 'MFA (2FA via e-mail ou autenticador)', description: 'Segurança adicional para contas de negócios', status: 'pending', category: 'auth', owner: 'Backlog', priority: 'medium' },
+      { id: 'todo-password-strength', title: 'Validação de força de senha (>8 chars, mix)', description: 'Atualmente apenas 6+ caracteres', status: 'pending', category: 'auth', owner: 'Backlog', priority: 'low' },
+      { id: 'todo-captcha', title: 'CAPTCHA no registro (proteção contra bots)', description: 'hCaptcha ou similar', status: 'pending', category: 'security', owner: 'Backlog', priority: 'medium' },
+      { id: 'todo-audit-logs', title: 'Audit logs de ações sensíveis', description: 'Login, mudanças de senha, exclusão de conta', status: 'pending', category: 'security', owner: 'Backlog', priority: 'low' },
+      { id: 'todo-billing-webhook-retry', title: 'Retry automático de webhooks Asaas falhos', description: 'Fallback em caso de 5xx temporários', status: 'pending', category: 'api', owner: 'Backlog', priority: 'medium' },
+      { id: 'todo-analytics', title: 'Analytics integrado (conversão, churn, CAC)', description: 'Dashboard de negócios (não técnico)', status: 'pending', category: 'infrastructure', owner: 'Product', priority: 'low' },
+    ];
+
+    // TAREFAS DE NEGÓCIO
+    const businessTasks = [
+      { id: 'biz-company-docs', title: 'Documentação da empresa', description: 'Preparar documentos legais, contratos, políticas', status: 'pending', category: 'business', owner: 'Você', priority: 'critical' },
+      { id: 'biz-cnpj', title: 'Abertura de CNPJ', description: 'Registrar empresa junto à Receita Federal', status: 'pending', category: 'business', owner: 'Você', priority: 'critical' },
+      { id: 'biz-pj-account', title: 'Abertura de conta PJ', description: 'Conta bancária empresarial para operações', status: 'pending', category: 'business', owner: 'Você', priority: 'critical' },
+      { id: 'biz-asaas-account', title: 'Abertura de conta Asaas (gateway pagamentos)', description: 'Configuração do gateway de pagamentos para cobranças', status: 'pending', category: 'business', owner: 'Você', priority: 'critical' },
+      { id: 'biz-api-keys', title: 'Abertura de contas e chaves nas APIs necessárias', description: 'OpenAI Whisper, Supabase, Redis, SendGrid/SMTP, etc', status: 'pending', category: 'business', owner: 'Você', priority: 'critical' },
+      { id: 'biz-domain', title: 'Registro de Domínio', description: 'Comprar e configurar zapscript.me (ou similar)', status: 'pending', category: 'business', owner: 'Você', priority: 'critical' },
+      { id: 'biz-contact-email', title: 'E-mail de contato da empresa', description: 'Configurar suporte@zapscript.me e info@zapscript.me', status: 'done', category: 'business', owner: 'Você', priority: 'high', completedAt: '2026-04-24' },
+      { id: 'biz-company-phone', title: 'Celular da empresa', description: 'Número de telefone corporativo para atendimento', status: 'pending', category: 'business', owner: 'Você', priority: 'high' },
+      { id: 'biz-company-address', title: 'Endereço da empresa', description: 'Endereço físico para registro legal e suporte', status: 'pending', category: 'business', owner: 'Você', priority: 'high' },
+      { id: 'biz-privacy-terms', title: 'Política de Privacidade & Termos de Uso', description: 'Documentos legais para conformidade LGPD/GDPR', status: 'pending', category: 'business', owner: 'Você', priority: 'high' },
+      { id: 'biz-launch-checklist', title: 'Checklist final de launch', description: 'Verificação de todos os itens antes de produção', status: 'pending', category: 'business', owner: 'Você', priority: 'critical' },
+    ];
+
+    const categoryLabels = {
+      auth: '🔐 Autenticação',
+      api: '⚙️ API',
+      frontend: '🎨 Frontend',
+      security: '🔒 Segurança',
+      infrastructure: '🏗️ Infraestrutura',
+      monitoring: '📊 Monitoramento',
+      business: '💼 Gestão & Setup',
+    };
+
+    const priorityLabels = {
+      critical: '🔴 Crítico',
+      high: '🟠 Alto',
+      medium: '🟡 Médio',
+      low: '🟢 Baixo',
+    };
+
+    let currentStatusFilter = 'all';
+    let currentCategoryFilter = 'all';
+    let currentStatusFilterBiz = 'all';
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById(tab).classList.add('active');
+      document.querySelector(`[onclick="switchTab('${tab}')"]`).classList.add('active');
+    }
+
+    function filterStatus(status) {
+      currentStatusFilter = status;
+      updateFilters();
+      renderTasks();
+    }
+
+    function filterCategory(category) {
+      currentCategoryFilter = category;
+      updateFilters();
+      renderTasks();
+    }
+
+    function filterStatusBiz(status) {
+      currentStatusFilterBiz = status;
+      updateFiltersBiz();
+      renderTasksBiz();
+    }
+
+    function updateFilters() {
+      document.querySelectorAll('#tecnico .filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      document.querySelectorAll('#tecnico .filter-btn').forEach(btn => {
+        const text = btn.textContent;
+        if ((currentStatusFilter === 'all' && text.includes('Todos')) ||
+            (currentStatusFilter === 'done' && text.includes('Pronto')) ||
+            (currentStatusFilter === 'pending' && text.includes('Pendente')) ||
+            (currentCategoryFilter !== 'all' && text.includes(categoryLabels[currentCategoryFilter])) ||
+            (currentCategoryFilter === 'all' && text === 'Todas')) {
+          btn.classList.add('active');
+        }
+      });
+    }
+
+    function updateFiltersBiz() {
+      document.querySelectorAll('#negocio .filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      document.querySelectorAll('#negocio .filter-btn').forEach(btn => {
+        const text = btn.textContent;
+        if ((currentStatusFilterBiz === 'all' && text.includes('Todos')) ||
+            (currentStatusFilterBiz === 'done' && text.includes('Pronto')) ||
+            (currentStatusFilterBiz === 'pending' && text.includes('Pendente'))) {
+          btn.classList.add('active');
+        }
+      });
+    }
+
+    function renderTasks() {
+      const filtered = technicalTasks.filter(t => {
+        if (currentStatusFilter !== 'all' && t.status !== currentStatusFilter) return false;
+        if (currentCategoryFilter !== 'all' && t.category !== currentCategoryFilter) return false;
+        return true;
+      });
+
+      const container = document.getElementById('tasksContainer');
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><p>Nenhuma tarefa encontrada com os filtros selecionados.</p></div>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(task => `
+        <div class="task-card">
+          <div class="task-header">
+            <span class="badge ${task.status}">${
+              task.status === 'done' ? '✅ Pronto' :
+              task.status === 'pending' ? '⏳ Pendente' : '🔄 Em Progresso'
+            }</span>
+            <span class="badge category">${categoryLabels[task.category]}</span>
+            <span class="badge priority">${priorityLabels[task.priority]}</span>
+          </div>
+          <div class="task-title">${task.title}</div>
+          <div class="task-description">${task.description}</div>
+          <div class="task-meta">
+            <span>👤 ${task.owner}</span>
+            ${task.completedAt ? `<span>📅 ${task.completedAt}</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderTasksBiz() {
+      const filtered = businessTasks.filter(t => {
+        if (currentStatusFilterBiz !== 'all' && t.status !== currentStatusFilterBiz) return false;
+        return true;
+      });
+
+      const container = document.getElementById('tasksContainerBiz');
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><p>Nenhuma tarefa encontrada com os filtros selecionados.</p></div>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(task => `
+        <div class="task-card">
+          <div class="task-header">
+            <span class="badge ${task.status}">${
+              task.status === 'done' ? '✅ Pronto' :
+              task.status === 'pending' ? '⏳ Pendente' : '🔄 Em Progresso'
+            }</span>
+            <span class="badge priority">${priorityLabels[task.priority]}</span>
+          </div>
+          <div class="task-title">${task.title}</div>
+          <div class="task-description">${task.description}</div>
+          <div class="task-meta">
+            <span>👤 ${task.owner}</span>
+            ${task.completedAt ? `<span>📅 ${task.completedAt}</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Initial render
+    renderTasks();
+    renderTasksBiz();
+  </script>
+</body>
+</html>

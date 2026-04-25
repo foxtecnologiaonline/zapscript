@@ -1,0 +1,170 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens — extraídos fielmente do zapscript-audio.youware.app ── */
+:root {
+  /* Light mode */
+  --color-bg:               245 243 239;
+  --color-surface:          255 255 255;
+  --color-surface-elevated: 250 250 248;
+  --color-primary:          13 150 104;
+  --color-primary-light:    209 250 229;
+  --color-primary-dark:     6 95 70;
+  --color-accent:           232 168 56;
+  --color-accent-light:     254 243 199;
+  --color-text:             26 26 46;
+  --color-text-secondary:   100 116 139;
+  --color-text-muted:       148 163 184;
+  --color-border:           232 229 222;
+  --color-border-light:     240 237 230;
+  --shadow-sm:  0 1px 2px rgba(26,26,46,.04), 0 1px 3px rgba(26,26,46,.06);
+  --shadow-md:  0 4px 6px rgba(26,26,46,.04), 0 10px 15px rgba(26,26,46,.06);
+  --shadow-lg:  0 10px 25px rgba(26,26,46,.06), 0 20px 48px rgba(26,26,46,.08);
+  --shadow-xl:  0 20px 40px rgba(26,26,46,.08), 0 30px 64px rgba(26,26,46,.1);
+  --shadow-glow: 0 0 30px rgba(13,150,104,.15);
+  --glass-bg:   rgba(255,255,255,.72);
+  --mesh-primary: rgba(13,150,104,.08);
+  --mesh-accent:  rgba(232,168,56,.06);
+}
+
+/* Dark mode — valores EXATOS do site de referência */
+.dark, html {
+  --color-bg:               12 12 18;
+  --color-surface:          22 22 31;
+  --color-surface-elevated: 30 30 42;
+  --color-primary:          16 185 129;
+  --color-primary-light:    6 78 59;
+  --color-primary-dark:     52 211 153;
+  --color-accent:           245 158 11;
+  --color-accent-light:     120 53 15;
+  --color-text:             240 240 244;
+  --color-text-secondary:   160 174 192;
+  --color-text-muted:       107 114 128;
+  --color-border:           42 42 58;
+  --color-border-light:     31 31 46;
+  --shadow-sm:  0 1px 2px rgba(0,0,0,.2), 0 1px 3px rgba(0,0,0,.15);
+  --shadow-md:  0 4px 6px rgba(0,0,0,.2), 0 10px 15px rgba(0,0,0,.15);
+  --shadow-lg:  0 10px 25px rgba(0,0,0,.25), 0 20px 48px rgba(0,0,0,.2);
+  --shadow-xl:  0 20px 40px rgba(0,0,0,.3), 0 30px 64px rgba(0,0,0,.25);
+  --shadow-glow: 0 0 30px rgba(16,185,129,.2);
+  --glass-bg:   rgba(22,22,31,.82);
+  --mesh-primary: rgba(16,185,129,.08);
+  --mesh-accent:  rgba(245,158,11,.06);
+}
+
+html, body {
+  background-color: rgb(var(--color-bg));
+  color: rgb(var(--color-text));
+}
+
+/* ── Custom classes (exact replication) ── */
+.bg-brand-bg    { background-color: rgb(var(--color-bg)); }
+.bg-brand-surface { background-color: rgb(var(--color-surface)); }
+
+.font-display { font-family: 'Space Grotesk', system-ui, sans-serif; }
+.font-sans    { font-family: 'DM Sans', system-ui, -apple-system, sans-serif; }
+
+.bg-mesh {
+  background:
+    radial-gradient(ellipse at 20% 0%, var(--mesh-primary) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, var(--mesh-accent) 0%, transparent 50%),
+    rgb(var(--color-bg));
+}
+
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg,
+    rgb(var(--color-primary-dark)) 0%,
+    rgb(var(--color-primary)) 50%,
+    rgb(var(--color-accent)) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-brand-text           { color: rgb(var(--color-text)); }
+.text-brand-text-secondary { color: rgb(var(--color-text-secondary)); }
+.text-brand-text-muted     { color: rgb(var(--color-text-muted)); }
+.text-brand-primary        { color: rgb(var(--color-primary)); }
+.text-brand-accent         { color: rgb(var(--color-accent)); }
+
+.border-brand-border       { border-color: rgb(var(--color-border)); }
+.border-brand-border-light { border-color: rgb(var(--color-border-light)); }
+
+/* ── Dashboard theme tokens ── */
+.dashboard-bg      { background-color: rgb(var(--color-bg)); }
+.dashboard-sidebar { background-color: rgb(var(--color-surface-elevated)); }
+.dashboard-border  { border-color: rgb(var(--color-primary), 0.1); }
+.dashboard-text    { color: rgb(var(--color-text-secondary)); }
+.dashboard-primary { color: rgb(var(--color-primary)); }
+.dashboard-avatar  { background-color: rgb(6 95 70); }
+
+.bg-brand-primary          { background-color: rgb(var(--color-primary)); }
+.bg-brand-primary-light\/60 { background-color: rgba(var(--color-primary-light), .6); }
+
+.shadow-glow-green { box-shadow: var(--shadow-glow); }
+.shadow-small  { box-shadow: var(--shadow-sm); }
+.shadow-medium { box-shadow: var(--shadow-md); }
+.shadow-large  { box-shadow: var(--shadow-lg); }
+
+.btn-primary {
+  border-radius: 1rem;
+  font-weight: 600;
+  transition: all .2s cubic-bezier(.4,0,.2,1);
+  background-color: rgb(var(--color-primary));
+  color: rgb(255,255,255);
+  box-shadow: rgba(13,150,104,.25) 0 4px 14px;
+}
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: rgba(16,185,129,.4) 0 6px 20px;
+}
+
+.btn-secondary {
+  border-radius: 1rem;
+  font-weight: 600;
+  transition: all .2s cubic-bezier(.4,0,.2,1);
+  background: rgb(var(--color-text));
+  color: rgb(var(--color-bg));
+  box-shadow: rgba(26,26,46,.15) 0 4px 14px;
+}
+.btn-secondary:hover { transform: translateY(-1px); }
+
+.card {
+  background: rgb(var(--color-surface));
+  border: 1px solid rgb(var(--color-border-light));
+  box-shadow: var(--shadow-sm);
+  transition: .3s cubic-bezier(.4,0,.2,1);
+}
+
+.max-w-mobile { max-width: 430px; }
+
+/* ── Rotating text animation ── */
+@keyframes rotateWordIn {
+  from { opacity: 0; transform: translateY(100%); filter: blur(4px); }
+  to   { opacity: 1; transform: translateY(0);    filter: blur(0);   }
+}
+@keyframes rotateWordOut {
+  from { opacity: 1; transform: translateY(0);     filter: blur(0);   }
+  to   { opacity: 0; transform: translateY(-100%); filter: blur(4px); }
+}
+
+/* ── Fade up for sections ── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeInUp { animation: fadeInUp .6s ease both; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--color-border)); border-radius: 2px; }

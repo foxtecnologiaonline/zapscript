@@ -1,0 +1,77 @@
+name: CI/CD — ZapScript
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    name: Type Check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: npx prisma generate --schema=packages/database/prisma/schema.prisma
+      - run: pnpm --filter api    exec tsc --noEmit
+      - run: pnpm --filter worker exec tsc --noEmit
+
+  deploy-api:
+    needs: typecheck
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: Deploy API → Railway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm install -g @railway/cli
+      - run: railway up --service zapscript-api --detach
+        env: { RAILWAY_TOKEN: "${{ secrets.RAILWAY_TOKEN }}" }
+
+  deploy-worker:
+    needs: typecheck
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: Deploy Worker → Railway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm install -g @railway/cli
+      - run: railway up --service zapscript-worker --detach
+        env: { RAILWAY_TOKEN: "${{ secrets.RAILWAY_TOKEN }}" }
+
+  deploy-monitor:
+    needs: typecheck
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: Deploy Monitor → Railway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm install -g @railway/cli
+      - run: railway up --service zapscript-monitor --detach
+        env: { RAILWAY_TOKEN: "${{ secrets.RAILWAY_TOKEN }}" }
+
+  deploy-frontend:
+    needs: typecheck
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: Deploy Frontend → Vercel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm install -g vercel
+      - run: vercel --prod --yes --cwd apps/web
+        env:
+          VERCEL_TOKEN:      "${{ secrets.VERCEL_TOKEN }}"
+          VERCEL_ORG_ID:     "${{ secrets.VERCEL_ORG_ID }}"
+          VERCEL_PROJECT_ID: "${{ secrets.VERCEL_PROJECT_ID }}"

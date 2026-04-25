@@ -1,0 +1,23 @@
+{
+  "name": "zapscript",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n API,WORKER,WEB -c cyan,yellow,green \"pnpm --filter api dev\" \"pnpm --filter worker dev\" \"pnpm --filter web dev\"",
+    "build": "pnpm --filter api build && pnpm --filter worker build && pnpm --filter web build",
+    "db:migrate": "cd packages/database && npx prisma migrate dev",
+    "db:migrate:prod": "cd packages/database && npx prisma migrate deploy",
+    "db:seed": "cd packages/database && npx ts-node --project tsconfig.json prisma/seed.ts",
+    "db:studio": "cd packages/database && npx prisma studio",
+    "db:generate": "cd packages/database && npx prisma generate",
+    "monitor:now": "cd apps/monitor && ts-node src/index.ts --now",
+    "monitor:alerts": "cd apps/monitor && ts-node src/index.ts --alerts",
+    "setup": "bash setup.sh",
+    "secrets": "node infra/gen-secrets.js",
+    "webhook:test": "echo \"Asaas: configure webhook em app.asaas.com > Configuracoes > Notificacoes\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.4.5"
+  }
+}

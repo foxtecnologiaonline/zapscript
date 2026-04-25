@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+buildCommand = "npm install -g pnpm && pnpm install && npx prisma generate --schema=packages/database/prisma/schema.prisma && pnpm --filter worker build"
+
+[deploy]
+startCommand      = "node apps/worker/dist/index.js"
+restartPolicyType = "always"
