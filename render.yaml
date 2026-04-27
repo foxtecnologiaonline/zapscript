@@ -1,4 +1,5 @@
 services:
+  # ── API (Fastify + Socket.IO) ────────────────────────────────
   - type: web
     name: zapscript-api
     runtime: node
@@ -11,7 +12,23 @@ services:
         value: production
       - key: PORT
         value: 3001
+      # Set these in the Render dashboard (Environment tab):
+      # DATABASE_URL        — Supabase pooler connection string
+      # REDIS_URL           — Upstash Redis URL (rediss://...)
+      # JWT_SECRET          — 64+ char random string
+      # ENCRYPTION_KEY      — exactly 64 hex characters (32 bytes)
+      # SUPABASE_URL        — https://xxx.supabase.co
+      # SUPABASE_SERVICE_KEY — service_role key from Supabase
+      # APP_URL             — https://zapscript.me
+      # ASAAS_API_KEY       — Asaas API key
+      # ASAAS_WEBHOOK_TOKEN — token for Asaas webhook verification
+      # INTERNAL_TOKEN      — shared secret with worker
+      # ADMIN_TOKEN         — admin panel access token
+      # MONITOR_TOKEN       — monitor agent token
+      # SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS (optional, for emails)
+      # SUPPORT_EMAIL       — where support tickets go (optional)
 
+  # ── Worker (BullMQ + Whisper + Claude) ──────────────────────
   - type: worker
     name: zapscript-worker
     runtime: node
@@ -21,3 +38,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Set these in the Render dashboard (Environment tab):
+      # DATABASE_URL        — same Supabase pooler connection string
+      # REDIS_URL           — same Upstash Redis URL
+      # OPENAI_API_KEY      — OpenAI key (for Whisper transcription)
+      # ANTHROPIC_API_KEY   — Anthropic key (for Claude bullets)
+      # INTERNAL_TOKEN      — same as API's INTERNAL_TOKEN
+      # API_URL             — https://zapscript-api.onrender.com

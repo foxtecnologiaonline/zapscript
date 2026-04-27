@@ -20,7 +20,7 @@ export default function ConfiguracoesPage() {
     e.preventDefault();
     setLoading(true); setMsg('');
     try {
-      await api.post('/auth/profile', { name: form.name, document: form.document });
+      await api.put('/auth/profile', { name: form.name, document: form.document });
       setMsg('✅ Perfil atualizado com sucesso!');
     } catch (err: any) {
       setMsg(`❌ ${err.message}`);
