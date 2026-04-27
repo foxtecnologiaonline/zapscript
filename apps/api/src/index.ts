@@ -4,7 +4,6 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
-import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 import { reconnectAllSessions } from './services/whatsapp';
 import { redis } from './services/queue';
@@ -27,13 +26,12 @@ app.addContentTypeParser(
   }
 );
 
-const httpServer = createServer(app.server);
-
-// CORS: aceitar apenas a origin configurada; em dev fallback para localhost
+// CORS origin: use APP_URL in production, localhost in dev
 const allowedOrigin = process.env.APP_URL
   || (process.env.NODE_ENV !== 'production' ? 'http://localhost:3000' : false);
 
-export const io = new SocketServer(httpServer, {
+// Attach Socket.IO to Fastify's underlying http.Server
+export const io = new SocketServer(app.server, {
   cors: { origin: allowedOrigin, methods: ['GET', 'POST'] },
 });
 
@@ -80,17 +78,11 @@ app.get('/health', async (_, reply) => {
 
 async function start() {
   try {
-    await app.ready();
-    httpServer.listen(
-      { port: Number(process.env.PORT) || 3001, host: '0.0.0.0' },
-      (err) => {
-        if (err) { app.log.error(err); process.exit(1); }
-        app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
-        reconnectAllSessions().then(() => {
-          app.log.info('📱 Sessões WhatsApp reconectadas');
-        }).catch((e) => app.log.error(e, 'Erro ao reconectar sessões'));
-      }
-    );
+    await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' });
+    app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
+    reconnectAllSessions().then(() => {
+      app.log.info('📱 Sessões WhatsApp reconectadas');
+    }).catch((e) => app.log.error({ err: e }, 'Erro ao reconectar sessões'));
   } catch (err) {
     app.log.error(err);
     process.exit(1);
