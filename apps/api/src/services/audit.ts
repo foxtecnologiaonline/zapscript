@@ -53,18 +53,9 @@ export async function logAudit(input: AuditLogInput) {
       },
     });
 
-    logger.debug({
-      type: 'audit',
-      action: input.action,
-      adminId: input.adminId,
-      targetUserId: input.targetUserId,
-    });
+    logger.debug(`audit action=${input.action} adminId=${input.adminId} targetUserId=${input.targetUserId}`);
   } catch (error) {
-    logger.error({
-      type: 'audit_error',
-      action: input.action,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    logger.error(`audit_error action=${input.action} error=${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 

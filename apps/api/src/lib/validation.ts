@@ -72,7 +72,7 @@ export const adminUpdateUserSchema = z.object({
 });
 
 export const adminCreatePlanSchema = z.object({
-  name: z.string().min(1).max(50).unique(),
+  name: z.string().min(1).max(50),
   label: z.string().min(1).max(100),
   minutesPerMonth: z.number().min(0),
   maxNumbers: z.number().min(1),

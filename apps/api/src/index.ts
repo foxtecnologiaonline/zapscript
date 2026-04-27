@@ -83,11 +83,12 @@ async function start() {
     await app.ready();
     httpServer.listen(
       { port: Number(process.env.PORT) || 3001, host: '0.0.0.0' },
-      async (err) => {
+      (err) => {
         if (err) { app.log.error(err); process.exit(1); }
         app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
-        await reconnectAllSessions();
-        app.log.info('📱 Sessões WhatsApp reconectadas');
+        reconnectAllSessions().then(() => {
+          app.log.info('📱 Sessões WhatsApp reconectadas');
+        }).catch((e) => app.log.error(e, 'Erro ao reconectar sessões'));
       }
     );
   } catch (err) {

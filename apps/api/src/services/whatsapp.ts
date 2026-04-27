@@ -99,12 +99,12 @@ export async function createWASession(numberId: string, userId: string) {
 
       const isAudio =
         !!msg.message?.audioMessage ||
-        !!msg.message?.pttMessage;
+        !!msg.message?.ptvMessage;
 
       if (!isAudio) continue;
 
       const contactJid = msg.key.remoteJid!;
-      const audio      = msg.message?.audioMessage || msg.message?.pttMessage;
+      const audio      = msg.message?.audioMessage || msg.message?.ptvMessage;
       const duration   = audio?.seconds || 0;
 
       await transcriptionQueue.add(

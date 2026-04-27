@@ -104,7 +104,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           document: user.document,
         });
       } catch (err) {
-        app.log.error('Asaas customer error:', err);
+        app.log.error({ err }, 'Asaas customer error');
         return reply.code(503).send({ error: 'Serviço de pagamento indisponível. Tente novamente em alguns minutos.' });
       }
 
@@ -129,7 +129,7 @@ export default async function billingRoutes(app: FastifyInstance) {
       const sub = await subRes.json() as any;
 
       if (!sub?.id) {
-        app.log.error('Asaas subscription error:', sub);
+        app.log.error({ sub }, 'Asaas subscription error');
         return reply.code(500).send({ error: 'Erro ao criar assinatura. Tente novamente.' });
       }
 
