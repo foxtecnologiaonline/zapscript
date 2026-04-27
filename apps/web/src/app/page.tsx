@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { ThemeToggleButton } from '@/components/ThemeProvider';
 
 /* ══════════════════════════════════════════════════════
    Landing Page — Clone fiel do zapscript-audio.youware.app
@@ -166,10 +167,11 @@ export default function HomePage() {
               </svg>
             </div>
             <span className="font-display font-bold text-xl tracking-tight text-brand-text">ZapScript</span>
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              <ThemeToggleButton />
               <Link href="/login"
-                className="w-10 h-10 rounded-xl border border-[rgba(var(--color-border-light))] flex items-center justify-center text-brand-muted hover:bg-[rgba(var(--color-surface)/.6)] transition-all"
-                style={{ background: 'rgb(var(--color-surface))' }}
+                className="w-10 h-10 rounded-xl border border-[rgba(var(--color-border-light))] flex items-center justify-center transition-all hover:scale-105"
+                style={{ background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-text-secondary))' }}
                 title="Entrar">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/>

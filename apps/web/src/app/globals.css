@@ -31,7 +31,7 @@
 }
 
 /* Dark mode — valores EXATOS do site de referência */
-.dark, html {
+.dark {
   --color-bg:               12 12 18;
   --color-surface:          22 22 31;
   --color-surface-elevated: 30 30 42;
