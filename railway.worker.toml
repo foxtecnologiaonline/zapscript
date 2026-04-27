@@ -1,7 +1,7 @@
 [build]
-builder = "nixpacks"
-buildCommand = "npm install -g pnpm && pnpm install && npx prisma generate --schema=packages/database/prisma/schema.prisma && pnpm --filter worker build"
+builder = "dockerfile"
+dockerfilePath = "apps/worker/Dockerfile"
 
 [deploy]
-startCommand      = "node apps/worker/dist/index.js"
+startCommand = "node apps/worker/dist/index.js"
 restartPolicyType = "always"
