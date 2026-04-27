@@ -5,15 +5,17 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 
 function formatDocument(val: string): string {
-  const nums = val.replace(/\D/g, '');
-  if (nums.length <= 11) {
-    return nums.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
-               .replace(/(\d{3})(\d{3})(\d{0,3})/, '$1.$2.$3')
-               .replace(/(\d{3})(\d{0,3})/, '$1.$2');
+  const n = val.replace(/\D/g, '').slice(0, 14);
+  if (n.length <= 11) {
+    // CPF: 000.000.000-00
+    if (n.length <= 3)  return n;
+    if (n.length <= 6)  return `${n.slice(0,3)}.${n.slice(3)}`;
+    if (n.length <= 9)  return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6)}`;
+    return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
   }
-  return nums.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
-             .replace(/(\d{2})(\d{3})(\d{3})(\d{0,4})/, '$1.$2.$3/$4')
-             .slice(0, 18);
+  // CNPJ: 00.000.000/0000-00
+  if (n.length <= 12) return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8)}`;
+  return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8,12)}-${n.slice(12)}`;
 }
 
 export default function CadastroPage() {
