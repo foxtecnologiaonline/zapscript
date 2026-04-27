@@ -46,8 +46,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Link key={item.href} href={item.href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                   active
-                    ? 'bg-[rgba(16,185,129,.10)] dashboard-primary border dashboard-border'
-                    : 'dashboard-text hover:bg-[rgba(16,185,129,.07)] hover:text-white'
+                    ? 'bg-brand-primary/10 dashboard-primary border dashboard-border'
+                    : 'dashboard-text hover:bg-brand-primary/7 hover:text-brand-text'
                 }`}>
                 <span>{item.icon}</span>
                 <span>{item.label}</span>
@@ -70,7 +70,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             </div>
           )}
-          <button onClick={logout} className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs text-[rgba(16,185,129,.4)] hover:text-red-400 hover:bg-red-400/5 transition-colors">
+          <button onClick={logout} className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs text-brand-muted hover:text-red-400 hover:bg-red-400/5 transition-colors">
             ↩ Sair da conta
           </button>
         </div>

@@ -39,10 +39,8 @@ export default function NumerosPage() {
     }
   }
 
-  // ── WebSocket events ─────────────────────────────────────────
   useSocket(userId, {
     qr_code: async ({ numberId, qr: rawQr }: { numberId: string; qr: string }) => {
-      // Convert QR string to data URL using canvas
       try {
         const QRCode = (await import('qrcode')).default;
         const dataUrl = await QRCode.toDataURL(rawQr, { width: 280, margin: 2 });
@@ -51,14 +49,8 @@ export default function NumerosPage() {
         setQr({ numberId, dataUrl: '' });
       }
     },
-    wa_connected: ({ numberId }: { numberId: string }) => {
-      setQr(null);
-      setConnectingId(null);
-      loadNumbers();
-    },
-    wa_disconnected: () => {
-      loadNumbers();
-    },
+    wa_connected: () => { setQr(null); setConnectingId(null); loadNumbers(); },
+    wa_disconnected: () => { loadNumbers(); },
   });
 
   async function handleAdd(e: React.FormEvent) {
@@ -98,9 +90,9 @@ export default function NumerosPage() {
   }
 
   const statusColor = (s: string) =>
-    s === 'connected'  ? 'text-green-400 bg-green-400/10 border-green-400/20' :
-    s === 'connecting' ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20' :
-                         'text-[#3d6647] bg-[#162012] border-[rgba(34,197,94,.10)]';
+    s === 'connected'  ? 'text-green-500 bg-green-400/10 border-green-400/20' :
+    s === 'connecting' ? 'text-yellow-500 bg-yellow-400/10 border-yellow-400/20' :
+                         'text-brand-muted bg-brand-elevated border-brand-border';
 
   const statusLabel = (s: string) =>
     s === 'connected'  ? '● Online' :
@@ -109,13 +101,13 @@ export default function NumerosPage() {
   return (
     <div className="p-8 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Números WhatsApp</h1>
-        <p className="text-sm text-[#7aaa85] font-light mt-0.5">Gerencie os números conectados ao ZapScript</p>
+        <h1 className="text-2xl font-bold text-brand-text">Números WhatsApp</h1>
+        <p className="text-sm text-brand-text-secondary font-light mt-0.5">Gerencie os números conectados ao ZapScript</p>
       </div>
 
       {/* Add number form */}
       <div className="card p-5 mb-5">
-        <div className="text-sm font-bold mb-3">Adicionar número</div>
+        <div className="text-sm font-bold mb-3 text-brand-text">Adicionar número</div>
         <form onSubmit={handleAdd} className="flex gap-2">
           <input className="input flex-1" placeholder="Nome do número (ex: Comercial, Suporte...)"
             value={addName} onChange={e => setAddName(e.target.value)} />
@@ -124,27 +116,27 @@ export default function NumerosPage() {
           </button>
         </form>
         {error && <p className="text-red-400 text-xs mt-2 bg-red-400/10 px-3 py-1.5 rounded-lg">{error}</p>}
-        <p className="text-xs text-[#3d6647] mt-2">
-          Após adicionar, clique em <strong className="text-[#7aaa85]">Conectar</strong> e escaneie o QR Code no WhatsApp (Dispositivos Conectados).
+        <p className="text-xs text-brand-muted mt-2">
+          Após adicionar, clique em <strong className="text-brand-text-secondary">Conectar</strong> e escaneie o QR Code no WhatsApp (Dispositivos Conectados).
         </p>
       </div>
 
       {/* Number cards */}
       {loading ? (
-        <div className="text-center py-12 text-[#3d6647] text-sm">Carregando...</div>
+        <div className="text-center py-12 text-brand-muted text-sm">Carregando...</div>
       ) : numbers.length === 0 ? (
         <div className="card p-12 text-center">
           <div className="text-4xl mb-3">📱</div>
-          <div className="text-sm text-[#3d6647]">Nenhum número cadastrado ainda. Adicione um acima.</div>
+          <div className="text-sm text-brand-muted">Nenhum número cadastrado ainda. Adicione um acima.</div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {numbers.map(n => (
-            <div key={n.id} className="card p-5 hover:border-[rgba(34,197,94,.22)] transition-colors">
+            <div key={n.id} className="card p-5 hover:border-brand-primary/20 transition-colors">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <div className="font-bold text-sm">{n.displayName || 'Número'}</div>
-                  <div className="text-xs text-[#3d6647] font-mono mt-0.5">
+                  <div className="font-bold text-sm text-brand-text">{n.displayName || 'Número'}</div>
+                  <div className="text-xs text-brand-muted font-mono mt-0.5">
                     {n.phoneNumber !== 'pending' ? `+${n.phoneNumber}` : 'Aguardando conexão'}
                   </div>
                 </div>
@@ -154,13 +146,13 @@ export default function NumerosPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="bg-[#101a0d] rounded-lg p-2.5">
-                  <div className="text-base font-black text-green-400 leading-none">{n.messageCount}</div>
-                  <div className="text-[10px] text-[#3d6647] mt-0.5">transcrições</div>
+                <div className="bg-brand-elevated rounded-lg p-2.5">
+                  <div className="text-base font-black text-brand-primary leading-none">{n.messageCount}</div>
+                  <div className="text-[10px] text-brand-muted mt-0.5">transcrições</div>
                 </div>
-                <div className="bg-[#101a0d] rounded-lg p-2.5">
-                  <div className="text-base font-black text-green-400 leading-none">{n.minutesUsed.toFixed(1)}</div>
-                  <div className="text-[10px] text-[#3d6647] mt-0.5">minutos usados</div>
+                <div className="bg-brand-elevated rounded-lg p-2.5">
+                  <div className="text-base font-black text-brand-primary leading-none">{n.minutesUsed.toFixed(1)}</div>
+                  <div className="text-[10px] text-brand-muted mt-0.5">minutos usados</div>
                 </div>
               </div>
 
@@ -177,7 +169,7 @@ export default function NumerosPage() {
                   </button>
                 )}
                 <button onClick={() => handleDelete(n.id)}
-                  className="text-xs px-3 py-2 rounded-lg border border-red-400/15 text-[#3d6647] hover:text-red-400 hover:border-red-400/30 transition-colors">
+                  className="text-xs px-3 py-2 rounded-lg border border-red-400/15 text-brand-muted hover:text-red-400 hover:border-red-400/30 transition-colors">
                   🗑
                 </button>
               </div>
@@ -188,10 +180,10 @@ export default function NumerosPage() {
 
       {/* QR Modal */}
       {qr && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0b1209] border border-[rgba(34,197,94,.25)] rounded-2xl p-7 max-w-sm w-full text-center shadow-2xl">
-            <div className="text-lg font-bold mb-1">Escanear QR Code</div>
-            <p className="text-xs text-[#7aaa85] font-light mb-5">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="modal-panel max-w-sm w-full text-center">
+            <div className="text-lg font-bold mb-1 text-brand-text">Escanear QR Code</div>
+            <p className="text-xs text-brand-text-secondary font-light mb-5">
               Abra o <strong>WhatsApp</strong> → Menu → <strong>Dispositivos conectados</strong> → Conectar dispositivo
             </p>
             {qr.dataUrl ? (
@@ -199,11 +191,11 @@ export default function NumerosPage() {
                 <img src={qr.dataUrl} alt="QR Code" width={256} height={256} />
               </div>
             ) : (
-              <div className="w-64 h-64 bg-[#162012] rounded-xl flex items-center justify-center mx-auto mb-5 text-[#3d6647]">
+              <div className="w-64 h-64 bg-brand-elevated rounded-xl flex items-center justify-center mx-auto mb-5 text-brand-muted">
                 Gerando QR...
               </div>
             )}
-            <div className="flex items-center justify-center gap-2 text-xs text-[#7aaa85] mb-5 animate-pulse">
+            <div className="flex items-center justify-center gap-2 text-xs text-brand-text-secondary mb-5 animate-pulse">
               <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
               Aguardando escaneamento...
             </div>

@@ -168,3 +168,75 @@ html, body {
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgb(var(--color-border)); border-radius: 2px; }
+
+/* ── Form inputs (auth pages) ── */
+.field-input {
+  width: 100%;
+  background: rgb(var(--color-surface-elevated));
+  border: 1px solid rgba(var(--color-primary), .15);
+  border-radius: 0.5rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  color: rgb(var(--color-text));
+  outline: none;
+  transition: border-color 0.15s;
+}
+.field-input:focus     { border-color: rgba(var(--color-primary), .4); }
+.field-input::placeholder { color: rgb(var(--color-text-muted)); }
+.field-input:disabled  { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Dashboard / search inputs ── */
+.input {
+  width: 100%;
+  background: rgb(var(--color-surface-elevated));
+  border: 1.5px solid rgb(var(--color-border));
+  border-radius: 0.75rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  color: rgb(var(--color-text));
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus       { border-color: rgba(var(--color-primary), .4); }
+.input::placeholder { color: rgb(var(--color-text-muted)); }
+
+/* ── Ghost / outline button ── */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  transition: all .15s;
+  background: rgb(var(--color-surface-elevated));
+  border: 1px solid rgb(var(--color-border));
+  color: rgb(var(--color-text-secondary));
+}
+.btn-ghost:hover:not(:disabled) {
+  color: rgb(var(--color-text));
+  border-color: rgba(var(--color-primary), .3);
+  background: rgb(var(--color-surface));
+}
+.btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Modal / dialog panel ── */
+.modal-panel {
+  background: rgb(var(--color-surface));
+  border: 1px solid rgba(var(--color-primary), .2);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-xl);
+}
+
+/* ── Inner content block (inside cards / modals) ── */
+.inner-block {
+  background: rgb(var(--color-surface-elevated));
+  border: 1px solid rgba(var(--color-primary), .1);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+/* ── Hover row (lists, tables) ── */
+.hover-row { transition: background .12s; }
+.hover-row:hover { background: rgb(var(--color-surface-elevated)); }
