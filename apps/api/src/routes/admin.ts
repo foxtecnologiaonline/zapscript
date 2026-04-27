@@ -1,6 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
+import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!,
+);
 
 const PLAN_PRICES: Record<string, number> = { pro: 29.90, ultra: 59.90, free: 0 };
 
@@ -122,6 +128,115 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // PATCH /admin/users/:id — trocar plano do usuário ou alterar isAdmin
+  app.patch<{ Params: { id: string }; Body: { planName?: string; isAdmin?: boolean } }>(
+    '/users/:id',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { id } = req.params;
+      const { planName, isAdmin } = req.body;
+
+      if (planName === undefined && isAdmin === undefined) {
+        return reply.code(400).send({ error: 'Informe ao menos um campo: planName ou isAdmin.' });
+      }
+
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      const ops: any[] = [];
+
+      if (planName !== undefined) {
+        const plan = await prisma.plan.findUnique({ where: { name: planName } });
+        if (!plan) return reply.code(400).send({ error: `Plano "${planName}" não encontrado.` });
+
+        ops.push(
+          prisma.subscription.update({
+            where: { userId: id },
+            data: {
+              planId:              plan.id,
+              status:              planName === 'free' ? 'canceled' : 'active',
+              asaasSubscriptionId: planName === 'free' ? null : undefined,
+              currentPeriodEnd:    planName === 'free' ? null : undefined,
+            },
+          }),
+          prisma.minuteBalance.update({
+            where: { userId: id },
+            data:  { availableMinutes: plan.minutesPerMonth, lastAlertSent: null },
+          }),
+        );
+      }
+
+      if (isAdmin !== undefined) {
+        ops.push(prisma.user.update({ where: { id }, data: { isAdmin } }));
+      }
+
+      await prisma.$transaction(ops);
+
+      return prisma.user.findUnique({
+        where:   { id },
+        include: { subscription: { include: { plan: true } }, balance: true },
+      });
+    }
+  );
+
+  // DELETE /admin/users/:id — remove usuário do Supabase + Prisma (cascade)
+  app.delete<{ Params: { id: string } }>(
+    '/users/:id',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { id } = req.params;
+
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      // Remove do Supabase Auth primeiro (evita login fantasma)
+      const { error } = await supabase.auth.admin.deleteUser(id);
+      if (error) {
+        // Logar mas não bloquear — se o user não existir no Supabase, prosseguir
+        app.log.warn({ userId: id, err: error.message }, 'Supabase: erro ao deletar user');
+      }
+
+      // Cascade no Prisma elimina: Subscription, MinuteBalance, WhatsappNumber, Transcription, UsageLog, SupportTicket
+      await prisma.user.delete({ where: { id } });
+
+      return reply.code(204).send();
+    }
+  );
+
+  // PATCH /admin/plans/:id — editar detalhes de um plano (label, minutos, preço, etc.)
+  app.patch<{
+    Params: { id: string };
+    Body: { label?: string; minutesPerMonth?: number; maxNumbers?: number; priceBrl?: number; features?: unknown[] };
+  }>(
+    '/plans/:id',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { id } = req.params;
+      const { label, minutesPerMonth, maxNumbers, priceBrl, features } = req.body;
+
+      const plan = await prisma.plan.findUnique({ where: { id } });
+      if (!plan) return reply.code(404).send({ error: 'Plano não encontrado.' });
+
+      const data: Record<string, unknown> = {};
+      if (label            !== undefined) data.label            = label;
+      if (minutesPerMonth  !== undefined) data.minutesPerMonth  = minutesPerMonth;
+      if (maxNumbers       !== undefined) data.maxNumbers       = maxNumbers;
+      if (priceBrl         !== undefined) data.priceBrl         = priceBrl;
+      if (features         !== undefined) data.features         = features;
+
+      if (Object.keys(data).length === 0) {
+        return reply.code(400).send({ error: 'Nenhum campo para atualizar.' });
+      }
+
+      return prisma.plan.update({ where: { id }, data });
+    }
+  );
+
+  // GET /admin/plans — listar todos os planos
+  app.get('/plans', { preHandler: [adminAuth] }, async () => {
+    return prisma.plan.findMany({ orderBy: { priceBrl: 'asc' } });
+  });
+
   // GET /admin/tickets — tickets de suporte com filtro e paginação
   app.get<{ Querystring: { limit?: string; offset?: string; status?: string } }>(
     '/tickets',
@@ -145,6 +260,26 @@ export default async function adminRoutes(app: FastifyInstance) {
       ]);
 
       return { tickets, total, limit, offset };
+    }
+  );
+
+  // PATCH /admin/tickets/:id — atualizar status de um ticket de suporte
+  app.patch<{ Params: { id: string }; Body: { status: string } }>(
+    '/tickets/:id',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      const allowed = ['open', 'in_progress', 'closed'];
+      if (!allowed.includes(status)) {
+        return reply.code(400).send({ error: `Status inválido. Use: ${allowed.join(', ')}.` });
+      }
+
+      const ticket = await prisma.supportTicket.findUnique({ where: { id } });
+      if (!ticket) return reply.code(404).send({ error: 'Ticket não encontrado.' });
+
+      return prisma.supportTicket.update({ where: { id }, data: { status } });
     }
   );
 

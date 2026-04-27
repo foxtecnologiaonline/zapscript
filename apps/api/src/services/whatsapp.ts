@@ -6,6 +6,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import path from 'path';
+import fs from 'fs';
 import { prisma } from '../lib/prisma';
 import { encrypt, decrypt } from './encryption';
 import { transcriptionQueue } from './queue';
@@ -150,6 +151,18 @@ export async function sendTranscription(
   await sock.sendMessage(jid, { text });
 }
 
+// ── Restore encrypted creds from DB to disk ──────────────
+function restoreSessionToDisk(numberId: string, sessionEncrypted: string): void {
+  const sessionDir = path.join(process.cwd(), '.sessions', numberId);
+  const credsPath  = path.join(sessionDir, 'creds.json');
+
+  if (fs.existsSync(credsPath)) return; // já tem no disco
+
+  const creds = decrypt(sessionEncrypted);
+  fs.mkdirSync(sessionDir, { recursive: true });
+  fs.writeFileSync(credsPath, JSON.stringify(creds), 'utf8');
+}
+
 // ── Reconnect all sessions on startup ────────────────────
 export async function reconnectAllSessions() {
   const numbers = await prisma.whatsappNumber.findMany({
@@ -159,10 +172,13 @@ export async function reconnectAllSessions() {
 
   for (const n of numbers) {
     try {
+      // Restaura creds do banco para disco se o container foi reiniciado sem volume persistente
+      if (n.sessionEncrypted) {
+        restoreSessionToDisk(n.id, n.sessionEncrypted);
+      }
       await createWASession(n.id, n.userId);
-      console.log(`📱 Reconectado: ${n.displayName || n.phoneNumber}`);
     } catch (err) {
-      console.error(`❌ Falha ao reconectar ${n.phoneNumber}:`, err);
+      console.error(`[WhatsApp] Falha ao reconectar ${n.phoneNumber}:`, err);
       await prisma.whatsappNumber.update({
         where: { id: n.id },
         data:  { status: 'disconnected' },

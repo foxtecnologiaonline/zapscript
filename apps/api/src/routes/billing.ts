@@ -27,28 +27,18 @@ function asaas(path: string, options: RequestInit = {}) {
   });
 }
 
-/* ── Idempotência de webhooks em memória (24h window) ── */
-const processedPayments = new Map<string, number>();
-
-function isPaymentProcessed(paymentId: string): boolean {
-  const ts = processedPayments.get(paymentId);
-  if (!ts) return false;
-  if (Date.now() - ts > 24 * 60 * 60 * 1000) {
-    processedPayments.delete(paymentId);
-    return false;
-  }
-  return true;
+/* ── Idempotência de webhooks persistida no banco ── */
+async function isPaymentProcessed(paymentId: string): Promise<boolean> {
+  const record = await prisma.processedWebhook.findUnique({ where: { paymentId } });
+  return !!record;
 }
 
-function markPaymentProcessed(paymentId: string): void {
-  processedPayments.set(paymentId, Date.now());
-  // Evitar crescimento ilimitado
-  if (processedPayments.size > 1000) {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    for (const [id, ts] of processedPayments) {
-      if (ts < cutoff) processedPayments.delete(id);
-    }
-  }
+async function markPaymentProcessed(paymentId: string): Promise<void> {
+  await prisma.processedWebhook.upsert({
+    where:  { paymentId },
+    create: { paymentId },
+    update: {},
+  });
 }
 
 /* ── Busca ou cria cliente no Asaas ── */
@@ -166,6 +156,54 @@ export default async function billingRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── POST /billing/cancel ──────────────────────────────
+  // Cancela a assinatura no Asaas e faz downgrade para o plano free
+  app.post('/cancel', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+
+    const sub = await prisma.subscription.findUnique({
+      where:   { userId },
+      include: { plan: true },
+    });
+
+    if (!sub || sub.plan.name === 'free') {
+      return reply.code(400).send({ error: 'Nenhuma assinatura paga ativa para cancelar.' });
+    }
+
+    if (sub.asaasSubscriptionId) {
+      try {
+        const res = await asaas(`/subscriptions/${sub.asaasSubscriptionId}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json() as any;
+          app.log.warn({ err }, 'Asaas: erro ao cancelar assinatura');
+        }
+      } catch (err) {
+        app.log.warn({ err }, 'Asaas: falha na chamada de cancelamento');
+      }
+    }
+
+    const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
+    if (!freePlan) return reply.code(500).send({ error: 'Plano free não encontrado.' });
+
+    await prisma.$transaction([
+      prisma.subscription.update({
+        where: { userId },
+        data: {
+          planId:              freePlan.id,
+          status:              'canceled',
+          asaasSubscriptionId: null,
+          currentPeriodEnd:    null,
+        },
+      }),
+      prisma.minuteBalance.update({
+        where: { userId },
+        data:  { availableMinutes: freePlan.minutesPerMonth, lastAlertSent: null },
+      }),
+    ]);
+
+    return { canceled: true, message: 'Assinatura cancelada. Você foi movido para o plano gratuito.' };
+  });
+
   // ── GET /billing/portal ───────────────────────────────
   // Redireciona para a área do assinante no Asaas
   app.get('/portal', auth, async (req: any, reply) => {
@@ -213,7 +251,7 @@ export default async function billingRoutes(app: FastifyInstance) {
         }
 
         // Idempotência: ignorar webhooks duplicados
-        if (paymentId && isPaymentProcessed(paymentId)) {
+        if (paymentId && await isPaymentProcessed(paymentId)) {
           app.log.info(`Webhook duplicado ignorado: paymentId=${paymentId}`);
           break;
         }
@@ -251,7 +289,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           }),
         ]);
 
-        if (paymentId) markPaymentProcessed(paymentId);
+        if (paymentId) await markPaymentProcessed(paymentId);
         app.log.info(`Pagamento processado: userId=${userId} plano=${planName}`);
         break;
       }

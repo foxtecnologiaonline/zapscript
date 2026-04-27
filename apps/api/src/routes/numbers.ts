@@ -38,6 +38,24 @@ export default async function numberRoutes(app: FastifyInstance) {
     return reply.code(201).send(number);
   });
 
+  // ── PATCH /numbers/:id ───────────────────────────────
+  app.patch<{ Params: { id: string }; Body: { displayName: string } }>('/:id', auth, async (req: any, reply) => {
+    const { id } = req.params;
+    const { displayName } = req.body;
+
+    if (!displayName?.trim()) {
+      return reply.code(400).send({ error: 'displayName é obrigatório.' });
+    }
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId: req.user.sub } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado.' });
+
+    return prisma.whatsappNumber.update({
+      where: { id },
+      data:  { displayName: displayName.trim() },
+    });
+  });
+
   // ── POST /numbers/:id/connect ─────────────────────────
   app.post<{ Params: { id: string } }>('/:id/connect', auth, async (req: any, reply) => {
     const { id } = req.params;

@@ -7,6 +7,7 @@ import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { convertToMp3 } from './services/audio';
 import { sendMessage } from './services/whatsapp';
+import { logger } from './lib/logger';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -268,26 +269,25 @@ const worker = new Worker('transcriptions', routeJob, {
 
 worker.on('completed', (job, result) => {
   if (!result?.skipped) {
-    console.log(`✅ [Job ${job.id}] Transcrição concluída`);
+    logger.info(`Job ${job.id} concluído`);
   }
 });
 
 worker.on('failed', (job, err) => {
-  console.error(`❌ [Job ${job?.id}] Falhou:`, err.message);
+  logger.error(`Job ${job?.id} falhou`, { err: err.message });
 });
 
 worker.on('error', (err) => {
-  console.error('Worker error:', err);
+  logger.error('Worker error', { err: err.message });
 });
 
-console.log('🔄 Worker de transcrição iniciado (WhatsApp + Upload manual)');
-console.log('   Aguardando jobs na fila "transcriptions"...');
+logger.info('Worker de transcrição iniciado (WhatsApp + Upload manual)');
 
 // ── Graceful shutdown ────────────────────────────────────────────
 process.on('SIGTERM', async () => {
-  console.log('Worker encerrando...');
+  logger.info('Worker encerrando...');
   const forceExit = setTimeout(() => {
-    console.error('Worker graceful shutdown timeout — forçando saída');
+    logger.error('Worker graceful shutdown timeout — forçando saída');
     process.exit(1);
   }, 30_000);
   try {
@@ -296,7 +296,7 @@ process.on('SIGTERM', async () => {
     clearTimeout(forceExit);
     process.exit(0);
   } catch (err) {
-    console.error('Erro ao encerrar worker:', err);
+    logger.error('Erro ao encerrar worker', { err: (err as Error).message });
     clearTimeout(forceExit);
     process.exit(1);
   }
@@ -304,5 +304,5 @@ process.on('SIGTERM', async () => {
 
 // ── Helper ───────────────────────────────────────────────────────
 function log(job: Job, msg: string) {
-  console.log(`[Job ${job.id}] ${msg}`);
+  logger.info(msg, { jobId: job.id });
 }
