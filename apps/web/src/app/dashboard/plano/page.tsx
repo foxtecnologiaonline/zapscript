@@ -1,7 +1,5 @@
 'use client';
-export const dynamic = 'force-dynamic';
-
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 
@@ -48,7 +46,7 @@ const BILLING_TYPES = [
   { value: 'BOLETO',       label: '📄 Boleto bancário',     desc: 'Vence em 3 dias úteis' },
 ];
 
-export default function PlanoPage() {
+function PlanoContent() {
   const searchParams = useSearchParams();
   const [stats, setStats]             = useState<Stats | null>(null);
   const [loading, setLoading]         = useState(true);
@@ -268,5 +266,13 @@ export default function PlanoPage() {
         Pagamentos processados com segurança pelo Asaas. Cancele a qualquer momento.
       </p>
     </div>
+  );
+}
+
+export default function PlanoPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-sm pt-20">Carregando...</div>}>
+      <PlanoContent />
+    </Suspense>
   );
 }
