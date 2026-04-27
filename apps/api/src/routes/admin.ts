@@ -128,16 +128,24 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // PATCH /admin/users/:id — trocar plano do usuário ou alterar isAdmin
-  app.patch<{ Params: { id: string }; Body: { planName?: string; isAdmin?: boolean } }>(
+  // PATCH /admin/users/:id — trocar plano, ajustar minutos ou alterar isAdmin
+  app.patch<{
+    Params: { id: string };
+    Body: {
+      planName?:    string;
+      isAdmin?:     boolean;
+      minutes?:     number;
+      minutesMode?: 'set' | 'add';   // 'set' define absoluto, 'add' soma/subtrai (padrão: 'set')
+    };
+  }>(
     '/users/:id',
     { preHandler: [adminAuth] },
     async (req, reply) => {
       const { id } = req.params;
-      const { planName, isAdmin } = req.body;
+      const { planName, isAdmin, minutes, minutesMode = 'set' } = req.body;
 
-      if (planName === undefined && isAdmin === undefined) {
-        return reply.code(400).send({ error: 'Informe ao menos um campo: planName ou isAdmin.' });
+      if (planName === undefined && isAdmin === undefined && minutes === undefined) {
+        return reply.code(400).send({ error: 'Informe ao menos um campo: planName, isAdmin ou minutes.' });
       }
 
       const user = await prisma.user.findUnique({ where: { id } });
@@ -159,6 +167,8 @@ export default async function adminRoutes(app: FastifyInstance) {
               currentPeriodEnd:    planName === 'free' ? null : undefined,
             },
           }),
+          // ao trocar plano, minutos são resetados para a cota do novo plano
+          // (a menos que 'minutes' seja passado junto, que vai sobrescrever abaixo)
           prisma.minuteBalance.update({
             where: { userId: id },
             data:  { availableMinutes: plan.minutesPerMonth, lastAlertSent: null },
@@ -170,7 +180,31 @@ export default async function adminRoutes(app: FastifyInstance) {
         ops.push(prisma.user.update({ where: { id }, data: { isAdmin } }));
       }
 
-      await prisma.$transaction(ops);
+      // Executa operações acima antes de ajustar minutos
+      if (ops.length) await prisma.$transaction(ops);
+
+      // Ajuste de minutos (independente ou após troca de plano)
+      if (minutes !== undefined) {
+        if (typeof minutes !== 'number' || isNaN(minutes)) {
+          return reply.code(400).send({ error: 'minutes deve ser um número.' });
+        }
+
+        if (minutesMode === 'add') {
+          // Soma/subtrai ao saldo atual (garante mínimo 0)
+          const current = await prisma.minuteBalance.findUnique({ where: { userId: id } });
+          const newVal  = Math.max(0, (current?.availableMinutes ?? 0) + minutes);
+          await prisma.minuteBalance.update({
+            where: { userId: id },
+            data:  { availableMinutes: newVal, lastAlertSent: null },
+          });
+        } else {
+          // 'set' — define valor absoluto (mínimo 0)
+          await prisma.minuteBalance.update({
+            where: { userId: id },
+            data:  { availableMinutes: Math.max(0, minutes), lastAlertSent: null },
+          });
+        }
+      }
 
       return prisma.user.findUnique({
         where:   { id },

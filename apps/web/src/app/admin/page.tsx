@@ -77,6 +77,15 @@ function Pagination({ offset, total, loading, onPage }: {
 
 type Tab = 'overview' | 'users' | 'tickets' | 'errors';
 
+interface EditState {
+  user:         any;
+  planName:     string;
+  minutesVal:   string;
+  minutesMode:  'set' | 'add';
+  saving:       boolean;
+  msg:          string;
+}
+
 export default function AdminPage() {
   const [token, setToken]       = useState('');
   const [auth, setAuth]         = useState(false);
@@ -91,6 +100,9 @@ export default function AdminPage() {
   const [userTotal, setUserTotal]   = useState(0);
   const [userSearch, setUserSearch] = useState('');
   const [userOffset, setUserOffset] = useState(0);
+
+  // Edit modal
+  const [edit, setEdit] = useState<EditState | null>(null);
 
   // Tickets
   const [tickets, setTickets]             = useState<any[]>([]);
@@ -142,6 +154,56 @@ export default function AdminPage() {
       setTickets(d.tickets || []);
       setTicketTotal(d.total || 0);
     } finally { setSubLoading(false); }
+  }
+
+  // ── Edit user ─────────────────────────────────────────────
+  function openEdit(u: any) {
+    setEdit({
+      user:        u,
+      planName:    u.subscription?.plan?.name || 'free',
+      minutesVal:  String(u.balance?.availableMinutes ?? 0),
+      minutesMode: 'set',
+      saving:      false,
+      msg:         '',
+    });
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!edit) return;
+    setEdit(prev => prev ? { ...prev, saving: true, msg: '' } : prev);
+
+    const body: any = {};
+    const origPlan = edit.user.subscription?.plan?.name || 'free';
+    if (edit.planName !== origPlan) body.planName = edit.planName;
+
+    const minsNum = parseFloat(edit.minutesVal);
+    if (!isNaN(minsNum)) {
+      body.minutes     = minsNum;
+      body.minutesMode = edit.minutesMode;
+    }
+
+    if (Object.keys(body).length === 0) {
+      setEdit(prev => prev ? { ...prev, saving: false, msg: '⚠️ Nenhuma alteração detectada.' } : prev);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API}/admin/users/${edit.user.id}`, {
+        method:  'PATCH',
+        headers: { 'content-type': 'application/json', 'x-admin-token': token },
+        body:    JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao salvar');
+
+      // Atualizar linha na tabela
+      setUsers(prev => prev.map(u => u.id === data.id ? data : u));
+      setEdit(prev => prev ? { ...prev, saving: false, msg: '✅ Salvo com sucesso!' } : prev);
+      setTimeout(() => setEdit(null), 1200);
+    } catch (err: any) {
+      setEdit(prev => prev ? { ...prev, saving: false, msg: `❌ ${err.message}` } : prev);
+    }
   }
 
   // ── Tab navigation ────────────────────────────────────────
@@ -328,10 +390,10 @@ export default function AdminPage() {
 
             {/* Tabela */}
             <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-x-auto">
-              <table className="w-full min-w-[680px]">
+              <table className="w-full min-w-[740px]">
                 <thead>
                   <tr className="border-b border-[rgba(16,185,129,.08)]">
-                    {['Nome', 'E-mail', 'Plano', 'Saldo (min)', 'Assinatura', 'Cadastro'].map(h => (
+                    {['Nome', 'E-mail', 'Plano', 'Saldo (min)', 'Assinatura', 'Cadastro', ''].map(h => (
                       <th key={h} className="px-5 py-3 text-left text-[10px] font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide">
                         {h}
                       </th>
@@ -340,9 +402,9 @@ export default function AdminPage() {
                 </thead>
                 <tbody>
                   {subLoading ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando...</td></tr>
+                    <tr><td colSpan={7} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando...</td></tr>
                   ) : users.length === 0 ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhum usuário encontrado</td></tr>
+                    <tr><td colSpan={7} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhum usuário encontrado</td></tr>
                   ) : users.map((u: any) => {
                     const plan   = u.subscription?.plan?.name || 'free';
                     const status = u.subscription?.status || '—';
@@ -352,13 +414,20 @@ export default function AdminPage() {
                         <td className="px-5 py-3 text-sm text-[#d1fae5] font-medium max-w-[140px] truncate">{u.name || '—'}</td>
                         <td className="px-5 py-3 text-sm text-[rgba(16,185,129,.6)] max-w-[180px] truncate">{u.email}</td>
                         <td className="px-5 py-3"><Badge label={plan} cls={PLAN_CLS[plan]} /></td>
-                        <td className="px-5 py-3 text-sm text-[#d1fae5] text-right">
+                        <td className="px-5 py-3 text-sm text-[#d1fae5] text-right font-mono">
                           {typeof mins === 'number' ? mins.toFixed(1) : '—'}
                         </td>
                         <td className="px-5 py-3">
                           <Badge label={STATUS_LABEL[status] || status} cls={STATUS_CLS[status]} />
                         </td>
                         <td className="px-5 py-3 text-xs text-[rgba(16,185,129,.4)] whitespace-nowrap">{fmt(u.createdAt)}</td>
+                        <td className="px-5 py-3">
+                          <button
+                            onClick={() => openEdit(u)}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-[rgba(16,185,129,.08)] border border-[rgba(16,185,129,.15)] text-[#10b981] hover:bg-[rgba(16,185,129,.16)] transition-colors font-semibold whitespace-nowrap">
+                            ✏️ Editar
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -460,5 +529,110 @@ export default function AdminPage() {
 
       </div>
     </div>
+
+    {/* ═══════════════════════════════════════════════════
+        MODAL — EDITAR USUÁRIO
+    ═══════════════════════════════════════════════════ */}
+    {edit && (
+      <div
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        onClick={() => !edit.saving && setEdit(null)}>
+        <div
+          className="w-full max-w-md bg-[#0d1c19] border border-[rgba(16,185,129,.2)] rounded-2xl p-6 shadow-2xl"
+          onClick={e => e.stopPropagation()}>
+
+          {/* Header */}
+          <div className="flex items-start justify-between mb-5">
+            <div>
+              <div className="font-bold text-base text-[#d1fae5]">✏️ Editar usuário</div>
+              <div className="text-xs text-[rgba(16,185,129,.5)] mt-0.5 truncate max-w-[300px]">
+                {edit.user.name ? `${edit.user.name} · ` : ''}{edit.user.email}
+              </div>
+            </div>
+            <button onClick={() => setEdit(null)} disabled={edit.saving}
+              className="text-[rgba(16,185,129,.4)] hover:text-[#d1fae5] text-xl leading-none transition-colors">✕</button>
+          </div>
+
+          <form onSubmit={saveEdit} className="space-y-4">
+
+            {/* Plano */}
+            <div>
+              <label className="block text-xs font-bold text-[rgba(16,185,129,.5)] mb-1.5 uppercase tracking-wide">
+                Plano
+              </label>
+              <select
+                value={edit.planName}
+                onChange={e => setEdit(prev => prev ? { ...prev, planName: e.target.value } : prev)}
+                className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-4 py-2.5 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] cursor-pointer">
+                <option value="free">🆓  Free</option>
+                <option value="pro">⚡  Pro</option>
+                <option value="ultra">🚀  Ultra</option>
+              </select>
+              <p className="text-[10px] text-[rgba(16,185,129,.3)] mt-1">
+                Trocar o plano reseta os minutos para a cota do novo plano (a menos que você ajuste abaixo).
+              </p>
+            </div>
+
+            {/* Minutos */}
+            <div>
+              <label className="block text-xs font-bold text-[rgba(16,185,129,.5)] mb-1.5 uppercase tracking-wide">
+                Minutos disponíveis
+              </label>
+              <div className="flex gap-2 mb-2">
+                {(['set', 'add'] as const).map(m => (
+                  <button key={m} type="button"
+                    onClick={() => setEdit(prev => prev ? { ...prev, minutesMode: m } : prev)}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors border ${
+                      edit.minutesMode === m
+                        ? 'bg-[rgba(16,185,129,.15)] border-[rgba(16,185,129,.3)] text-[#10b981]'
+                        : 'bg-[#132621] border-[rgba(16,185,129,.1)] text-[rgba(16,185,129,.4)]'
+                    }`}>
+                    {m === 'set' ? '= Definir valor' : '± Adicionar / subtrair'}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                step="0.1"
+                placeholder={edit.minutesMode === 'set' ? 'Ex: 60' : 'Ex: 30  ou  -10'}
+                value={edit.minutesVal}
+                onChange={e => setEdit(prev => prev ? { ...prev, minutesVal: e.target.value } : prev)}
+                className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-4 py-2.5 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.25)] font-mono"
+              />
+              <p className="text-[10px] text-[rgba(16,185,129,.3)] mt-1">
+                Saldo atual: <span className="text-[#10b981] font-bold font-mono">
+                  {typeof edit.user.balance?.availableMinutes === 'number'
+                    ? edit.user.balance.availableMinutes.toFixed(1)
+                    : '—'} min
+                </span>
+              </p>
+            </div>
+
+            {/* Feedback */}
+            {edit.msg && (
+              <div className={`text-xs px-3 py-2 rounded-lg ${
+                edit.msg.startsWith('✅')
+                  ? 'bg-green-500/10 border border-green-500/20 text-green-400'
+                  : edit.msg.startsWith('⚠️')
+                  ? 'bg-yellow-400/10 border border-yellow-400/20 text-yellow-400'
+                  : 'bg-red-400/10 border border-red-400/20 text-red-400'
+              }`}>{edit.msg}</div>
+            )}
+
+            {/* Botões */}
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => setEdit(null)} disabled={edit.saving}
+                className="flex-1 py-2.5 rounded-lg border border-[rgba(16,185,129,.15)] text-[rgba(16,185,129,.5)] text-sm font-semibold hover:border-[rgba(16,185,129,.3)] transition-colors disabled:opacity-40">
+                Cancelar
+              </button>
+              <button type="submit" disabled={edit.saving}
+                className="flex-1 py-2.5 rounded-lg bg-[#10b981] text-[#011a12] text-sm font-bold hover:bg-[#34d399] disabled:opacity-50 transition-colors">
+                {edit.saving ? '⟳ Salvando...' : '💾 Salvar alterações'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
   );
 }
