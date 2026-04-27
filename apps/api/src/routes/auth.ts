@@ -8,7 +8,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-// ── Utilitário de e-mail (igual ao support.ts) ────────────────────────────────
+// ── Utilitário de e-mail ──────────────────────────────────────────────────────
 async function sendEmail(to: string, subject: string, html: string) {
   if (!process.env.SMTP_HOST) {
     console.log('[Auth] SMTP não configurado, e-mail não enviado');
@@ -20,10 +20,77 @@ async function sendEmail(to: string, subject: string, html: string) {
     secure: false,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   });
-  await transporter.sendMail({ from: process.env.SMTP_USER, to, subject, html });
+  // SMTP_FROM permite usar remetente diferente do login SMTP
+  // Ex: "ZapScript" <ativacao@zapscript.me>
+  const from = process.env.SMTP_FROM || `"ZapScript" <${process.env.SMTP_USER}>`;
+  await transporter.sendMail({ from, to, subject, html });
 }
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+
+// ── Template base dos e-mails ─────────────────────────────────────────────────
+function emailWrapper(iconEmoji: string, title: string, body: string): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#050a07;font-family:'Segoe UI',Arial,sans-serif">
+  <div style="padding:40px 20px">
+    <div style="max-width:520px;margin:0 auto">
+
+      <!-- Logo -->
+      <div style="text-align:center;margin-bottom:32px">
+        <table cellpadding="0" cellspacing="0" style="margin:0 auto">
+          <tr>
+            <td style="background:#10b981;border-radius:12px;width:40px;height:40px;text-align:center;vertical-align:middle">
+              <span style="font-size:20px;line-height:40px">💬</span>
+            </td>
+            <td style="padding-left:10px;vertical-align:middle">
+              <span style="font-size:22px;font-weight:700;color:#10b981;letter-spacing:-0.5px">ZapScript</span>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Card -->
+      <div style="background:#0d1c19;border:1px solid rgba(16,185,129,.2);border-radius:20px;padding:40px 36px">
+
+        <!-- Ícone -->
+        <div style="text-align:center;margin-bottom:20px">
+          <div style="display:inline-block;width:64px;height:64px;background:rgba(16,185,129,.12);border-radius:50%;font-size:28px;line-height:64px;text-align:center">
+            ${iconEmoji}
+          </div>
+        </div>
+
+        <!-- Título -->
+        <h1 style="text-align:center;color:#10b981;font-size:22px;font-weight:700;margin:0 0 6px">${title}</h1>
+        <p style="text-align:center;color:#6ee7b7;font-size:14px;font-weight:300;margin:0 0 28px">zapscript.me</p>
+
+        <!-- Linha divisória -->
+        <div style="height:1px;background:rgba(16,185,129,.12);margin-bottom:28px"></div>
+
+        ${body}
+
+        <!-- Linha divisória -->
+        <div style="height:1px;background:rgba(16,185,129,.08);margin-top:28px;margin-bottom:20px"></div>
+
+        <p style="color:#2d4a3e;font-size:12px;line-height:1.5;margin:0;text-align:center">
+          Se você não reconhece esta ação, ignore este e-mail.<br>Nenhuma senha foi alterada.
+        </p>
+      </div>
+
+      <!-- Rodapé -->
+      <div style="text-align:center;margin-top:24px">
+        <p style="color:#1e3329;font-size:12px;margin:0 0 4px">
+          ZapScript — Transcrição Inteligente de Áudios do WhatsApp
+        </p>
+        <a href="${APP_URL}" style="color:rgba(16,185,129,.4);font-size:12px;text-decoration:none">zapscript.me</a>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>`;
+}
 
 export default async function authRoutes(app: FastifyInstance) {
 
@@ -79,40 +146,38 @@ export default async function authRoutes(app: FastifyInstance) {
         } as any);
 
         if (linkData?.properties?.action_link) {
+          const confirmLink = linkData.properties.action_link;
           await sendEmail(
             email,
             'Confirme seu e-mail — ZapScript',
-            `
-              <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#f9fafb;border-radius:12px">
-                <div style="text-align:center;margin-bottom:24px">
-                  <span style="font-size:32px">🎉</span>
-                  <h2 style="color:#10b981;margin:8px 0 4px">Bem-vindo ao ZapScript!</h2>
-                  <p style="color:#6b7280;margin:0">Sua conta está quase pronta</p>
-                </div>
+            emailWrapper('✉️', 'Confirme seu e-mail', `
+              <p style="color:#a0aec0;font-size:15px;line-height:1.7;margin:0 0 10px">
+                Olá${name ? `, <strong style="color:#d1fae5">${name}</strong>` : ''}!
+              </p>
+              <p style="color:#a0aec0;font-size:15px;line-height:1.7;margin:0 0 28px">
+                Sua conta ZapScript foi criada com sucesso! Para ativá-la e começar a
+                transcrever seus áudios do WhatsApp com IA, confirme seu endereço de e-mail:
+              </p>
 
-                <div style="background:#fff;border-radius:8px;padding:24px;border:1px solid #e5e7eb">
-                  <p style="margin-top:0">Olá${name ? `, <b>${name}</b>` : ''}!</p>
-                  <p>Para ativar sua conta e começar a transcrever áudios do WhatsApp, confirme seu e-mail clicando no botão abaixo:</p>
+              <div style="text-align:center;margin:0 0 28px">
+                <a href="${confirmLink}"
+                   style="display:inline-block;background:#10b981;color:#ffffff;padding:16px 44px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:0.2px;box-shadow:0 4px 20px rgba(16,185,129,.4)">
+                  ✅ Confirmar meu e-mail
+                </a>
+              </div>
 
-                  <p style="text-align:center;margin:28px 0">
-                    <a href="${linkData.properties.action_link}"
-                       style="background:#10b981;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">
-                      ✅ Confirmar meu e-mail
-                    </a>
-                  </p>
+              <p style="color:#4a6e5a;font-size:12px;text-align:center;margin:0;line-height:1.6">
+                Ou cole este link no navegador:<br>
+                <a href="${confirmLink}" style="color:rgba(16,185,129,.6);word-break:break-all;font-size:11px">${confirmLink}</a>
+              </p>
 
-                  <p style="color:#9ca3af;font-size:13px;margin:0">
-                    Se você não criou esta conta, ignore este e-mail.<br>
-                    Este link expira em 24 horas.
-                  </p>
-                </div>
-
-                <p style="text-align:center;color:#9ca3af;font-size:12px;margin-top:20px">
-                  ZapScript — Transcrição automática de áudios do WhatsApp<br>
-                  <a href="${APP_URL}" style="color:#10b981">${APP_URL.replace('https://', '')}</a>
+              <div style="background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.1);border-radius:10px;padding:14px 18px;margin-top:24px">
+                <p style="color:#4a6e5a;font-size:12px;margin:0;line-height:1.6">
+                  ⏰ <strong style="color:#6b8a75">Este link expira em 24 horas.</strong><br>
+                  Após confirmar, você terá acesso a <strong style="color:#6b8a75">10 minutos grátis</strong> de transcrição, sem cartão de crédito.
                 </p>
               </div>
-            `
+            `)
           );
         }
       } catch (err: any) {
@@ -171,38 +236,37 @@ export default async function authRoutes(app: FastifyInstance) {
         });
 
         if (linkData?.properties?.action_link) {
+          const resetLink = linkData.properties.action_link;
           await sendEmail(
             email,
             'Redefinir sua senha — ZapScript',
-            `
-              <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#f9fafb;border-radius:12px">
-                <div style="text-align:center;margin-bottom:24px">
-                  <span style="font-size:32px">🔑</span>
-                  <h2 style="color:#10b981;margin:8px 0 4px">Redefinição de senha</h2>
-                </div>
+            emailWrapper('🔑', 'Redefinir senha', `
+              <p style="color:#a0aec0;font-size:15px;line-height:1.7;margin:0 0 10px">
+                Recebemos uma solicitação para redefinir a senha da sua conta ZapScript.
+              </p>
+              <p style="color:#a0aec0;font-size:15px;line-height:1.7;margin:0 0 28px">
+                Clique no botão abaixo para criar uma nova senha:
+              </p>
 
-                <div style="background:#fff;border-radius:8px;padding:24px;border:1px solid #e5e7eb">
-                  <p style="margin-top:0">Recebemos uma solicitação para redefinir a senha da sua conta ZapScript.</p>
-                  <p>Clique no botão abaixo para criar uma nova senha:</p>
+              <div style="text-align:center;margin:0 0 28px">
+                <a href="${resetLink}"
+                   style="display:inline-block;background:#10b981;color:#ffffff;padding:16px 44px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:0.2px;box-shadow:0 4px 20px rgba(16,185,129,.4)">
+                  🔑 Redefinir minha senha
+                </a>
+              </div>
 
-                  <p style="text-align:center;margin:28px 0">
-                    <a href="${linkData.properties.action_link}"
-                       style="background:#10b981;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">
-                      🔑 Redefinir minha senha
-                    </a>
-                  </p>
+              <p style="color:#4a6e5a;font-size:12px;text-align:center;margin:0;line-height:1.6">
+                Ou cole este link no navegador:<br>
+                <a href="${resetLink}" style="color:rgba(16,185,129,.6);word-break:break-all;font-size:11px">${resetLink}</a>
+              </p>
 
-                  <p style="color:#9ca3af;font-size:13px;margin:0">
-                    Se você não solicitou isso, ignore este e-mail. Sua senha permanece a mesma.<br>
-                    Este link expira em 1 hora.
-                  </p>
-                </div>
-
-                <p style="text-align:center;color:#9ca3af;font-size:12px;margin-top:20px">
-                  ZapScript — <a href="${APP_URL}" style="color:#10b981">${APP_URL.replace('https://', '')}</a>
+              <div style="background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.1);border-radius:10px;padding:14px 18px;margin-top:24px">
+                <p style="color:#4a6e5a;font-size:12px;margin:0;line-height:1.6">
+                  ⏰ <strong style="color:#6b8a75">Este link expira em 1 hora.</strong><br>
+                  Se você não solicitou a redefinição, sua senha permanece a mesma.
                 </p>
               </div>
-            `
+            `)
           );
         }
       } catch (err: any) {
