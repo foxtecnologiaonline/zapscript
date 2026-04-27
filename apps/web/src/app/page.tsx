@@ -144,7 +144,7 @@ export default function HomePage() {
   const ex = EXAMPLES[exTab];
 
   return (
-    <div className="dark min-h-screen bg-mesh font-sans text-brand-text overflow-x-hidden relative">
+    <div className="min-h-screen bg-mesh font-sans text-brand-text overflow-x-hidden relative">
       {/* Fixed mesh overlay */}
       <div className="fixed inset-0 bg-mesh pointer-events-none" />
 
@@ -319,7 +319,7 @@ export default function HomePage() {
             </div>
 
             {/* Resumo / Transcrição tabs */}
-            <div className="flex p-1 rounded-xl mb-4" style={{ background: 'rgba(0,0,0,.2)' }}>
+            <div className="flex p-1 rounded-xl mb-4" style={{ background: 'rgb(var(--color-surface-elevated))' }}>
               {(['resumo', 'transcricao'] as const).map(t => (
                 <button key={t} onClick={() => setContentTab(t)}
                   className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
