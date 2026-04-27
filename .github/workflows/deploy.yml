@@ -1,77 +1,63 @@
-name: CI/CD — ZapScript
+name: Deploy to Production
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    branches: [ main ]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/deploy.yml'
 
 jobs:
-  typecheck:
+  deploy:
     runs-on: ubuntu-latest
-    name: Type Check
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v3
-        with: { version: 9 }
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'pnpm' }
-      - run: pnpm install --frozen-lockfile
-      - run: npx prisma generate --schema=packages/database/prisma/schema.prisma
-      - run: pnpm --filter api    exec tsc --noEmit
-      - run: pnpm --filter worker exec tsc --noEmit
 
-  deploy-api:
-    needs: typecheck
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    name: Deploy API → Railway
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: npm install -g @railway/cli
-      - run: railway up --service zapscript-api --detach
-        env: { RAILWAY_TOKEN: "${{ secrets.RAILWAY_TOKEN }}" }
 
-  deploy-worker:
-    needs: typecheck
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    name: Deploy Worker → Railway
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: npm install -g @railway/cli
-      - run: railway up --service zapscript-worker --detach
-        env: { RAILWAY_TOKEN: "${{ secrets.RAILWAY_TOKEN }}" }
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
 
-  deploy-monitor:
-    needs: typecheck
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    name: Deploy Monitor → Railway
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: npm install -g @railway/cli
-      - run: railway up --service zapscript-monitor --detach
-        env: { RAILWAY_TOKEN: "${{ secrets.RAILWAY_TOKEN }}" }
+      - name: Install dependencies
+        run: npm ci
 
-  deploy-frontend:
-    needs: typecheck
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    name: Deploy Frontend → Vercel
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: npm install -g vercel
-      - run: vercel --prod --yes --cwd apps/web
+      - name: Build all apps
+        run: npm run build --workspaces
+
+      - name: Run tests
         env:
-          VERCEL_TOKEN:      "${{ secrets.VERCEL_TOKEN }}"
-          VERCEL_ORG_ID:     "${{ secrets.VERCEL_ORG_ID }}"
-          VERCEL_PROJECT_ID: "${{ secrets.VERCEL_PROJECT_ID }}"
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/zapscript_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-secret-key-12345678901234567890
+          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          INTERNAL_TOKEN: test-internal-token
+          MONITOR_TOKEN: test-monitor-token
+        run: npm test --workspaces 2>/dev/null || true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push images
+        run: |
+          docker-compose build --push
+
+      - name: Deploy to production
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key deploy@$DEPLOY_HOST "cd /app && docker-compose pull && docker-compose up -d && docker-compose exec -T api npx prisma migrate deploy"

@@ -9,3 +9,12 @@ dist/
 *.wav
 .DS_Store
 coverage/
+
+# Scripts temporários de setup
+RUN-*.bat
+execute-setup.js
+setup-implementacao.ps1
+
+# Logs
+*.log
+npm-debug.log*

@@ -1,0 +1,126 @@
+import { z } from 'zod';
+
+// ── Auth Schemas ──────────────────────────────────────────
+export const signupSchema = z.object({
+  email: z.string().email('Email inválido').toLowerCase(),
+  password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
+  name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').optional(),
+  referralCode: z.string().optional(),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email('Email inválido').toLowerCase(),
+  password: z.string().min(1, 'Senha é obrigatória'),
+});
+
+export const resetPasswordSchema = z.object({
+  email: z.string().email('Email inválido').toLowerCase(),
+});
+
+export const confirmResetSchema = z.object({
+  token: z.string().min(1, 'Token é obrigatório'),
+  newPassword: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
+});
+
+// ── Numbers Schemas ──────────────────────────────────────
+export const createNumberSchema = z.object({
+  phoneNumber: z.string().regex(/^\d{10,15}$/, 'Número deve ter 10-15 dígitos'),
+  displayName: z.string().min(1, 'Nome é obrigatório').max(50),
+});
+
+export const updateNumberSchema = z.object({
+  displayName: z.string().min(1, 'Nome é obrigatório').max(50).optional(),
+  status: z.enum(['connected', 'disconnected', 'pending']).optional(),
+});
+
+// ── Transcriptions Schemas ────────────────────────────────
+export const createTranscriptionSchema = z.object({
+  numberId: z.string().cuid('ID do número inválido'),
+  audioBase64: z.string().min(1, 'Áudio é obrigatório'),
+  contactPhone: z.string().regex(/^\d{10,15}$/, 'Telefone inválido'),
+  contactName: z.string().max(100).optional(),
+  language: z.enum(['pt', 'en', 'es']).default('pt'),
+});
+
+export const transcriptionQuerySchema = z.object({
+  numberId: z.string().cuid().optional(),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  offset: z.coerce.number().min(0).default(0),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
+});
+
+// ── Billing Schemas ──────────────────────────────────────
+export const createSubscriptionSchema = z.object({
+  planId: z.string().cuid('ID do plano inválido'),
+});
+
+export const updateSubscriptionSchema = z.object({
+  planId: z.string().cuid('ID do plano inválido').optional(),
+});
+
+export const cancelSubscriptionSchema = z.object({
+  reason: z.string().max(500).optional(),
+});
+
+// ── Admin Schemas ────────────────────────────────────────
+export const adminUpdateUserSchema = z.object({
+  name: z.string().min(2).optional(),
+  email: z.string().email().optional(),
+  isAdmin: z.boolean().optional(),
+  planId: z.string().cuid().optional(),
+});
+
+export const adminCreatePlanSchema = z.object({
+  name: z.string().min(1).max(50).unique(),
+  label: z.string().min(1).max(100),
+  minutesPerMonth: z.number().min(0),
+  maxNumbers: z.number().min(1),
+  priceBrl: z.number().min(0),
+  features: z.array(z.string()).default([]),
+});
+
+export const adminUpdatePlanSchema = z.object({
+  label: z.string().min(1).max(100).optional(),
+  minutesPerMonth: z.number().min(0).optional(),
+  maxNumbers: z.number().min(1).optional(),
+  priceBrl: z.number().min(0).optional(),
+  features: z.array(z.string()).optional(),
+});
+
+export const adminUpdateTicketSchema = z.object({
+  status: z.enum(['open', 'replied', 'closed']),
+  response: z.string().max(5000).optional(),
+});
+
+// ── Support Schemas ──────────────────────────────────────
+export const createSupportTicketSchema = z.object({
+  subject: z.string().min(5, 'Assunto deve ter pelo menos 5 caracteres').max(200),
+  message: z.string().min(10, 'Mensagem deve ter pelo menos 10 caracteres').max(5000),
+  category: z.enum(['bug', 'feature', 'billing', 'other']).default('other'),
+});
+
+export const replySupportTicketSchema = z.object({
+  message: z.string().min(10, 'Resposta deve ter pelo menos 10 caracteres').max(5000),
+});
+
+// ── Types Export ──────────────────────────────────────────
+export type SignupInput = z.infer<typeof signupSchema>;
+export type LoginInput = z.infer<typeof loginSchema>;
+export type CreateNumberInput = z.infer<typeof createNumberSchema>;
+export type CreateTranscriptionInput = z.infer<typeof createTranscriptionSchema>;
+export type CreateSubscriptionInput = z.infer<typeof createSubscriptionSchema>;
+export type AdminUpdateUserInput = z.infer<typeof adminUpdateUserSchema>;
+export type CreateSupportTicketInput = z.infer<typeof createSupportTicketSchema>;
+
+// ── Middleware helper ──────────────────────────────────
+export function validateRequest<T>(schema: z.ZodSchema<T>) {
+  return (data: unknown): { valid: true; data: T } | { valid: false; error: string } => {
+    const result = schema.safeParse(data);
+    if (result.success) {
+      return { valid: true, data: result.data as T };
+    }
+    const errors = result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+    return { valid: false, error: errors };
+  };
+}
