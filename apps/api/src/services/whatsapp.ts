@@ -20,7 +20,6 @@ const reconnectAttempts = new Map<string, number>();
 const MAX_RECONNECT_DELAY_MS = 300_000; // 5 minutos
 
 // ── Pending QR cache (fixes race condition: socket joins AFTER QR emitted) ──
-// Maps userId → { numberId, qr } so a late-joining socket can still receive the QR
 const pendingQRs = new Map<string, { numberId: string; qr: string }>();
 
 /** Returns a cached QR for userId if one exists (socket join handler uses this) */
@@ -28,61 +27,50 @@ export function getPendingQR(userId: string) {
   return pendingQRs.get(userId) ?? null;
 }
 
-// ── Create / restore session ──────────────────────────────
-export async function createWASession(numberId: string, userId: string) {
-  const sessionDir = path.join(process.cwd(), '.sessions', numberId);
-  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+// ─────────────────────────────────────────────────────────────────────
+//  SHARED HANDLER SETUP — used by both QR and pairing-code flows
+// ─────────────────────────────────────────────────────────────────────
 
-  const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false,
-    browser: ['ZapScript', 'Chrome', '1.0.0'],
-  });
-
-  sessions.set(numberId, sock);
-
-  // ── Save creds on update ──────────────────────────────
+function attachCommonHandlers(
+  sock: ReturnType<typeof makeWASocket>,
+  {
+    numberId,
+    userId,
+    saveCreds,
+    state,
+  }: {
+    numberId: string;
+    userId: string;
+    saveCreds: () => Promise<void>;
+    state: Awaited<ReturnType<typeof useMultiFileAuthState>>['state'];
+  }
+) {
+  // ── Persist credentials to disk + DB ──────────────────
   sock.ev.on('creds.update', async () => {
     await saveCreds();
     try {
       const encrypted = encrypt(state.creds as unknown as object);
       await prisma.whatsappNumber.update({
         where: { id: numberId },
-        data:  { sessionEncrypted: encrypted },
+        data: { sessionEncrypted: encrypted },
       });
     } catch (err) {
-      console.error(`[WhatsApp] Falha ao salvar credenciais no banco para ${numberId}:`, err);
+      console.error(`[WhatsApp] Falha ao salvar credenciais para ${numberId}:`, err);
     }
   });
 
-  // ── Connection state ──────────────────────────────────
-  sock.ev.on('connection.update', async ({ qr, connection, lastDisconnect }) => {
-    if (qr) {
-      // Cache QR so a late-joining socket can still receive it
-      pendingQRs.set(userId, { numberId, qr });
-
-      // Emit QR to dashboard via Socket.IO (polling-safe)
-      try {
-        io.to(`user:${userId}`).emit('qr_code', { numberId, qr });
-        console.log(`[WhatsApp] QR emitido para user:${userId} número:${numberId}`);
-      } catch (err) {
-        console.error('[WhatsApp] Falha ao emitir QR via Socket.IO:', err);
-      }
-      await prisma.whatsappNumber.update({
-        where: { id: numberId },
-        data:  { status: 'connecting' },
-      });
-    }
-
+  // ── Connection state ───────────────────────────────────
+  sock.ev.on('connection.update', async ({ connection, lastDisconnect }) => {
     if (connection === 'open') {
       const phone = sock.user?.id?.split(':')[0] || '';
       reconnectAttempts.delete(numberId);
-      pendingQRs.delete(userId); // clear cached QR — no longer needed
+      pendingQRs.delete(userId);
       await prisma.whatsappNumber.update({
         where: { id: numberId },
-        data:  { status: 'connected', connectedAt: new Date(), phoneNumber: phone },
+        data: { status: 'connected', connectedAt: new Date(), phoneNumber: phone },
       });
       io.to(`user:${userId}`).emit('wa_connected', { numberId, phone });
+      console.log(`[WhatsApp] Conectado: ${numberId} (${phone})`);
     }
 
     if (connection === 'close') {
@@ -99,27 +87,24 @@ export async function createWASession(numberId: string, userId: string) {
         setTimeout(() => createWASession(numberId, userId), delayMs);
       } else {
         reconnectAttempts.delete(numberId);
-        pendingQRs.delete(userId); // clear cached QR on logout
+        pendingQRs.delete(userId);
         await prisma.whatsappNumber.update({
           where: { id: numberId },
-          data:  { status: 'disconnected', sessionEncrypted: null },
+          data: { status: 'disconnected', sessionEncrypted: null },
         });
         io.to(`user:${userId}`).emit('wa_disconnected', { numberId });
       }
     }
   });
 
-  // ── Listen for incoming messages ──────────────────────
+  // ── Incoming audio messages → transcription queue ─────
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
 
     for (const msg of messages) {
       if (msg.key.fromMe) continue;
 
-      const isAudio =
-        !!msg.message?.audioMessage ||
-        !!msg.message?.ptvMessage;
-
+      const isAudio = !!msg.message?.audioMessage || !!msg.message?.ptvMessage;
       if (!isAudio) continue;
 
       const contactJid = msg.key.remoteJid!;
@@ -133,8 +118,94 @@ export async function createWASession(numberId: string, userId: string) {
       );
     }
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  CREATE SESSION — QR Code flow
+// ─────────────────────────────────────────────────────────────────────
+export async function createWASession(numberId: string, userId: string) {
+  const sessionDir = path.join(process.cwd(), '.sessions', numberId);
+  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false,
+    browser: ['ZapScript', 'Chrome', '1.0.0'],
+  });
+
+  sessions.set(numberId, sock);
+
+  // QR-specific: emit QR to frontend via Socket.IO + cache it
+  sock.ev.on('connection.update', async ({ qr }) => {
+    if (qr) {
+      pendingQRs.set(userId, { numberId, qr });
+      try {
+        io.to(`user:${userId}`).emit('qr_code', { numberId, qr });
+        console.log(`[WhatsApp] QR emitido para user:${userId} número:${numberId}`);
+      } catch (err) {
+        console.error('[WhatsApp] Falha ao emitir QR via Socket.IO:', err);
+      }
+      await prisma.whatsappNumber.update({
+        where: { id: numberId },
+        data:  { status: 'connecting' },
+      });
+    }
+  });
+
+  attachCommonHandlers(sock, { numberId, userId, saveCreds, state });
 
   return sock;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  REQUEST PAIRING CODE — Phone-number flow
+//  Returns an 8-char code (e.g. "ABCD-1234") that the user types
+//  in WhatsApp → Dispositivos Conectados → Vincular por número
+// ─────────────────────────────────────────────────────────────────────
+export async function requestWAPairingCode(
+  numberId: string,
+  userId: string,
+  phoneNumber: string
+): Promise<string> {
+  // Close any existing session first
+  const existing = sessions.get(numberId);
+  if (existing) {
+    try { existing.end(undefined as any); } catch {}
+    sessions.delete(numberId);
+  }
+
+  const sessionDir = path.join(process.cwd(), '.sessions', numberId);
+  // Remove old creds so we start fresh (avoids "already registered" error)
+  const credsPath = path.join(sessionDir, 'creds.json');
+  if (fs.existsSync(credsPath)) fs.unlinkSync(credsPath);
+
+  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false,
+    browser: ['ZapScript', 'Chrome', '1.0.0'],
+  });
+
+  sessions.set(numberId, sock);
+
+  await prisma.whatsappNumber.update({
+    where: { id: numberId },
+    data:  { status: 'connecting', phoneNumber: phoneNumber.replace(/\D/g, '') },
+  });
+
+  attachCommonHandlers(sock, { numberId, userId, saveCreds, state });
+
+  // Request pairing code — phone must be digits only, with country code
+  // e.g. "5511999999999" (Brazil: 55 + DDD + number)
+  const cleanPhone = phoneNumber.replace(/\D/g, '');
+  const code = await sock.requestPairingCode(cleanPhone);
+
+  // Emit to Socket.IO so frontend can display it immediately if already connected
+  io.to(`user:${userId}`).emit('pairing_code', { numberId, code });
+  console.log(`[WhatsApp] Pairing code gerado para ${numberId}: ${code}`);
+
+  return code;
 }
 
 // ── Get active session ────────────────────────────────────
@@ -175,7 +246,7 @@ function restoreSessionToDisk(numberId: string, sessionEncrypted: string): void 
   const sessionDir = path.join(process.cwd(), '.sessions', numberId);
   const credsPath  = path.join(sessionDir, 'creds.json');
 
-  if (fs.existsSync(credsPath)) return; // já tem no disco
+  if (fs.existsSync(credsPath)) return;
 
   const creds = decrypt(sessionEncrypted);
   fs.mkdirSync(sessionDir, { recursive: true });
@@ -191,7 +262,6 @@ export async function reconnectAllSessions() {
 
   for (const n of numbers) {
     try {
-      // Restaura creds do banco para disco se o container foi reiniciado sem volume persistente
       if (n.sessionEncrypted) {
         restoreSessionToDisk(n.id, n.sessionEncrypted);
       }

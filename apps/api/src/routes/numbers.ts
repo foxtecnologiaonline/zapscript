@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { createWASession, disconnectWASession, getPendingQR } from '../services/whatsapp';
+import { createWASession, disconnectWASession, getPendingQR, requestWAPairingCode } from '../services/whatsapp';
 
 export default async function numberRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -14,8 +14,8 @@ export default async function numberRoutes(app: FastifyInstance) {
   });
 
   // ── POST /numbers ─────────────────────────────────────
-  app.post<{ Body: { displayName: string } }>('/', auth, async (req: any, reply) => {
-    const { displayName } = req.body;
+  app.post<{ Body: { displayName: string; phoneNumber?: string } }>('/', auth, async (req: any, reply) => {
+    const { displayName, phoneNumber } = req.body;
     const userId = req.user.sub;
 
     // Check plan limit
@@ -31,49 +31,92 @@ export default async function numberRoutes(app: FastifyInstance) {
       });
     }
 
+    // Sanitize optional phone: digits only, or leave as 'pending'
+    const cleanPhone = phoneNumber ? phoneNumber.replace(/\D/g, '') : undefined;
+
     const number = await prisma.whatsappNumber.create({
-      data: { userId, displayName },
+      data: {
+        userId,
+        displayName,
+        ...(cleanPhone ? { phoneNumber: cleanPhone } : {}),
+      },
     });
 
     return reply.code(201).send(number);
   });
 
   // ── PATCH /numbers/:id ───────────────────────────────
-  app.patch<{ Params: { id: string }; Body: { displayName: string } }>('/:id', auth, async (req: any, reply) => {
-    const { id } = req.params;
-    const { displayName } = req.body;
+  app.patch<{ Params: { id: string }; Body: { displayName?: string; phoneNumber?: string } }>(
+    '/:id',
+    auth,
+    async (req: any, reply) => {
+      const { id } = req.params;
+      const { displayName, phoneNumber } = req.body;
 
-    if (!displayName?.trim()) {
-      return reply.code(400).send({ error: 'displayName é obrigatório.' });
+      const number = await prisma.whatsappNumber.findFirst({ where: { id, userId: req.user.sub } });
+      if (!number) return reply.code(404).send({ error: 'Número não encontrado.' });
+
+      const data: Record<string, string> = {};
+      if (displayName?.trim())  data.displayName = displayName.trim();
+      if (phoneNumber)          data.phoneNumber  = phoneNumber.replace(/\D/g, '');
+
+      if (Object.keys(data).length === 0) {
+        return reply.code(400).send({ error: 'Nenhum campo para atualizar.' });
+      }
+
+      return prisma.whatsappNumber.update({ where: { id }, data });
     }
+  );
 
-    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId: req.user.sub } });
-    if (!number) return reply.code(404).send({ error: 'Número não encontrado.' });
-
-    return prisma.whatsappNumber.update({
-      where: { id },
-      data:  { displayName: displayName.trim() },
-    });
-  });
-
-  // ── POST /numbers/:id/connect ─────────────────────────
+  // ── POST /numbers/:id/connect — QR Code flow ──────────
   app.post<{ Params: { id: string } }>('/:id/connect', auth, async (req: any, reply) => {
     const { id } = req.params;
     const userId = req.user.sub;
 
-    // Verify ownership
-    const number = await prisma.whatsappNumber.findFirst({
-      where: { id, userId },
-    });
+    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
     await createWASession(id, userId);
     return { status: 'connecting', message: 'QR Code será enviado via WebSocket' };
   });
 
-  // ── GET /numbers/:id/qr ───────────────────────────────
-  // REST fallback: returns the cached raw QR string so the frontend can
-  // poll for it if the Socket.IO event was missed.
+  // ── POST /numbers/:id/connect-pairing — Phone code flow ──
+  // User enters the returned 8-char code in WhatsApp → Dispositivos Conectados
+  // → Vincular por número de telefone
+  app.post<{
+    Params: { id: string };
+    Body: { phoneNumber: string };
+  }>('/:id/connect-pairing', auth, async (req: any, reply) => {
+    const { id } = req.params;
+    const { phoneNumber } = req.body;
+    const userId = req.user.sub;
+
+    if (!phoneNumber) {
+      return reply.code(400).send({ error: 'phoneNumber é obrigatório para este método de conexão.' });
+    }
+
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
+      return reply.code(400).send({ error: 'Número inválido. Use o formato: DDI+DDD+Número (ex: 5511999999999).' });
+    }
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    try {
+      const code = await requestWAPairingCode(id, userId, cleanPhone);
+      // Format as XXXX-XXXX
+      const formatted = code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+      return { code: formatted, raw: code };
+    } catch (err: any) {
+      app.log.error({ err }, 'Erro ao gerar pairing code');
+      return reply.code(500).send({
+        error: `Não foi possível gerar o código: ${err.message}. Verifique o número e tente novamente.`,
+      });
+    }
+  });
+
+  // ── GET /numbers/:id/qr — REST fallback for QR ───────
   app.get<{ Params: { id: string } }>('/:id/qr', auth, async (req: any, reply) => {
     const { id } = req.params;
     const userId = req.user.sub;
