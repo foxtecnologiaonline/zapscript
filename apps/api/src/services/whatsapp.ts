@@ -19,6 +19,15 @@ const sessions = new Map<string, ReturnType<typeof makeWASocket>>();
 const reconnectAttempts = new Map<string, number>();
 const MAX_RECONNECT_DELAY_MS = 300_000; // 5 minutos
 
+// ── Pending QR cache (fixes race condition: socket joins AFTER QR emitted) ──
+// Maps userId → { numberId, qr } so a late-joining socket can still receive the QR
+const pendingQRs = new Map<string, { numberId: string; qr: string }>();
+
+/** Returns a cached QR for userId if one exists (socket join handler uses this) */
+export function getPendingQR(userId: string) {
+  return pendingQRs.get(userId) ?? null;
+}
+
 // ── Create / restore session ──────────────────────────────
 export async function createWASession(numberId: string, userId: string) {
   const sessionDir = path.join(process.cwd(), '.sessions', numberId);
@@ -49,6 +58,9 @@ export async function createWASession(numberId: string, userId: string) {
   // ── Connection state ──────────────────────────────────
   sock.ev.on('connection.update', async ({ qr, connection, lastDisconnect }) => {
     if (qr) {
+      // Cache QR so a late-joining socket can still receive it
+      pendingQRs.set(userId, { numberId, qr });
+
       // Emit QR to dashboard via Socket.IO (polling-safe)
       try {
         io.to(`user:${userId}`).emit('qr_code', { numberId, qr });
@@ -64,7 +76,8 @@ export async function createWASession(numberId: string, userId: string) {
 
     if (connection === 'open') {
       const phone = sock.user?.id?.split(':')[0] || '';
-      reconnectAttempts.delete(numberId); // resetar backoff após conexão bem-sucedida
+      reconnectAttempts.delete(numberId);
+      pendingQRs.delete(userId); // clear cached QR — no longer needed
       await prisma.whatsappNumber.update({
         where: { id: numberId },
         data:  { status: 'connected', connectedAt: new Date(), phoneNumber: phone },
@@ -86,6 +99,7 @@ export async function createWASession(numberId: string, userId: string) {
         setTimeout(() => createWASession(numberId, userId), delayMs);
       } else {
         reconnectAttempts.delete(numberId);
+        pendingQRs.delete(userId); // clear cached QR on logout
         await prisma.whatsappNumber.update({
           where: { id: numberId },
           data:  { status: 'disconnected', sessionEncrypted: null },

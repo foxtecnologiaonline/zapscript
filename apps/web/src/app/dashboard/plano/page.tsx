@@ -93,7 +93,7 @@ function PlanoContent() {
   const currentPlan = stats?.planName?.toLowerCase() || 'free';
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="p-4 sm:p-8 max-w-3xl">
       {/* Header */}
       <div className="mb-6">
         <h1 className="font-display text-2xl font-bold">Plano & Cobrança</h1>
@@ -167,7 +167,7 @@ function PlanoContent() {
           <p className="text-xs font-semibold mb-3" style={{ color: 'rgb(var(--color-text-secondary))' }}>
             Forma de pagamento
           </p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {BILLING_TYPES.map(bt => (
               <button key={bt.value} onClick={() => setBillingType(bt.value)}
                 className="text-left p-3 rounded-xl border transition-all"

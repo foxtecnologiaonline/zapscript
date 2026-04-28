@@ -61,7 +61,7 @@ export default function DashboardPage() {
   ] : [];
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <div className="mb-7">
         <h1 className="text-2xl font-bold text-brand-text">Dashboard</h1>
         <p className="text-sm text-brand-text-secondary font-light mt-1">Visão geral da sua operação</p>

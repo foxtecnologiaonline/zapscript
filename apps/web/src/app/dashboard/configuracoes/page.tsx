@@ -29,7 +29,7 @@ export default function ConfiguracoesPage() {
   }
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-4 sm:p-8 max-w-2xl">
       <h1 className="text-2xl font-bold mb-2 text-brand-text">Configurações</h1>
       <p className="text-brand-text-secondary text-sm font-light mb-8">Gerencie seus dados e preferências</p>
 

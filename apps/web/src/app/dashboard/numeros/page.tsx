@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 
@@ -23,6 +23,7 @@ export default function NumerosPage() {
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [userId, setUserId]       = useState('');
   const [error, setError]         = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadNumbers();
@@ -39,19 +40,58 @@ export default function NumerosPage() {
     }
   }
 
+  /* ── Convert raw QR string → data URL ── */
+  async function applyQR(numberId: string, rawQr: string) {
+    try {
+      const QRCode = (await import('qrcode')).default;
+      const dataUrl = await QRCode.toDataURL(rawQr, { width: 280, margin: 2 });
+      setQr({ numberId, dataUrl });
+    } catch {
+      setQr({ numberId, dataUrl: '' });
+    }
+  }
+
+  /* ── Stop polling ── */
+  function stopPoll() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }
+
+  /* ── Start REST polling for QR (fallback if Socket.IO event was missed) ── */
+  function startQRPoll(numberId: string) {
+    stopPoll();
+    let attempts = 0;
+    pollRef.current = setInterval(async () => {
+      attempts++;
+      if (attempts > 20) { stopPoll(); return; } // max ~40s
+      try {
+        const res = await api.get<{ qr: string }>(`/numbers/${numberId}/qr`);
+        if (res.qr) {
+          await applyQR(numberId, res.qr);
+          stopPoll(); // got it — socket will handle updates from here
+        }
+      } catch { /* not ready yet */ }
+    }, 2000);
+  }
+
   useSocket(userId, {
     qr_code: async ({ numberId, qr: rawQr }: { numberId: string; qr: string }) => {
-      try {
-        const QRCode = (await import('qrcode')).default;
-        const dataUrl = await QRCode.toDataURL(rawQr, { width: 280, margin: 2 });
-        setQr({ numberId, dataUrl });
-      } catch {
-        setQr({ numberId, dataUrl: '' });
-      }
+      stopPoll(); // socket beat the poller — cancel it
+      await applyQR(numberId, rawQr);
     },
-    wa_connected: () => { setQr(null); setConnectingId(null); loadNumbers(); },
-    wa_disconnected: () => { loadNumbers(); },
+    wa_connected: () => {
+      stopPoll();
+      setQr(null);
+      setConnectingId(null);
+      loadNumbers();
+    },
+    wa_disconnected: () => {
+      stopPoll();
+      loadNumbers();
+    },
   });
+
+  // Cleanup polling on unmount
+  useEffect(() => () => stopPoll(), []);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -69,12 +109,15 @@ export default function NumerosPage() {
   }
 
   async function handleConnect(id: string) {
-    setConnectingId(id); setError('');
+    setConnectingId(id); setError(''); setQr(null);
     try {
       await api.post(`/numbers/${id}/connect`, {});
+      // Start REST polling as fallback in case Socket.IO event is delayed
+      startQRPoll(id);
     } catch (err: any) {
       setError(err.message);
       setConnectingId(null);
+      stopPoll();
     }
   }
 
@@ -99,7 +142,7 @@ export default function NumerosPage() {
     s === 'connecting' ? '◌ Conectando...' : '○ Offline';
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-4 sm:p-8 max-w-4xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-brand-text">Números WhatsApp</h1>
         <p className="text-sm text-brand-text-secondary font-light mt-0.5">Gerencie os números conectados ao ZapScript</p>
@@ -199,7 +242,7 @@ export default function NumerosPage() {
               <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
               Aguardando escaneamento...
             </div>
-            <button onClick={() => { setQr(null); setConnectingId(null); }}
+            <button onClick={() => { stopPoll(); setQr(null); setConnectingId(null); }}
               className="btn-ghost w-full justify-center text-sm py-2">
               Cancelar
             </button>

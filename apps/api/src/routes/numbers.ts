@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { createWASession, disconnectWASession } from '../services/whatsapp';
+import { createWASession, disconnectWASession, getPendingQR } from '../services/whatsapp';
 
 export default async function numberRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -69,6 +69,23 @@ export default async function numberRoutes(app: FastifyInstance) {
 
     await createWASession(id, userId);
     return { status: 'connecting', message: 'QR Code será enviado via WebSocket' };
+  });
+
+  // ── GET /numbers/:id/qr ───────────────────────────────
+  // REST fallback: returns the cached raw QR string so the frontend can
+  // poll for it if the Socket.IO event was missed.
+  app.get<{ Params: { id: string } }>('/:id/qr', auth, async (req: any, reply) => {
+    const { id } = req.params;
+    const userId = req.user.sub;
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    const pending = getPendingQR(userId);
+    if (!pending || pending.numberId !== id) {
+      return reply.code(404).send({ qr: null, message: 'Nenhum QR pendente' });
+    }
+    return { qr: pending.qr };
   });
 
   // ── POST /numbers/:id/disconnect ──────────────────────

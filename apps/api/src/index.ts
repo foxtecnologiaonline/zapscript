@@ -5,7 +5,7 @@ import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import { Server as SocketServer } from 'socket.io';
-import { reconnectAllSessions } from './services/whatsapp';
+import { reconnectAllSessions, getPendingQR } from './services/whatsapp';
 import { redis } from './services/queue';
 
 const app = Fastify({
@@ -46,6 +46,14 @@ io.on('connection', (socket) => {
     }
     socket.join(`user:${userId}`);
     console.log(`[Socket.IO] user:${userId} entrou na sala`);
+
+    // Send pending QR if any — handles race condition where QR was emitted
+    // before the socket completed the join handshake.
+    const pending = getPendingQR(userId);
+    if (pending) {
+      socket.emit('qr_code', pending);
+      console.log(`[Socket.IO] QR pendente re-enviado para user:${userId}`);
+    }
   });
 });
 
