@@ -10,7 +10,12 @@ export function useSocket(userId: string, handlers: Handlers) {
   useEffect(() => {
     if (!userId) return;
 
-    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001');
+    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001', {
+      transports:         ['polling'],   // Render.com não suporta upgrade wss:// — polling é suficiente
+      upgrade:            false,         // nunca tenta fazer upgrade para WebSocket
+      reconnectionDelay:  2000,
+      reconnectionAttempts: 10,
+    });
     socketRef.current = socket;
 
     socket.on('connect', () => {

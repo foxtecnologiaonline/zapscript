@@ -32,7 +32,10 @@ const allowedOrigin = process.env.APP_URL
 
 // Attach Socket.IO to Fastify's underlying http.Server
 export const io = new SocketServer(app.server, {
-  cors: { origin: allowedOrigin, methods: ['GET', 'POST'] },
+  cors:       { origin: allowedOrigin, methods: ['GET', 'POST'] },
+  transports: ['polling', 'websocket'],  // aceita polling e ws
+  pingTimeout:  60000,   // 60s antes de considerar desconectado
+  pingInterval: 25000,   // heartbeat a cada 25s (evita timeout do Render)
 });
 
 io.on('connection', (socket) => {
