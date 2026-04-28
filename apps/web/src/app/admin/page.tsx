@@ -242,6 +242,7 @@ export default function AdminPage() {
 
   // ── Dashboard ─────────────────────────────────────────────
   return (
+    <>
     <div className="min-h-screen bg-[#040b09] p-6">
       <div className="max-w-6xl mx-auto">
 
@@ -634,5 +635,6 @@ export default function AdminPage() {
         </div>
       </div>
     )}
+    </>
   );
 }
