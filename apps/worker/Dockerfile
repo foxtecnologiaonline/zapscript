@@ -31,9 +31,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# FFmpeg + tools needed at runtime
+# FFmpeg + build tools + git needed at runtime (git required by Baileys git-URL deps)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg python3 make g++ \
+    ffmpeg python3 make g++ git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Prisma schema
