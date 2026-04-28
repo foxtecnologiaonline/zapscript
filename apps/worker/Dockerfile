@@ -39,7 +39,7 @@ RUN npm ci --production
 # Copy built application
 COPY --from=builder /app/apps/worker/dist ./apps/worker/dist
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD node -e "require('redis').createClient(process.env.REDIS_URL || 'redis://localhost:6379').ping((err) => {if (err) throw err})" || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+  CMD node -e "const Redis=require('ioredis');const r=new Redis(process.env.REDIS_URL||'redis://localhost:6379',{maxRetriesPerRequest:1});r.ping().then(()=>r.quit()).then(()=>process.exit(0)).catch(()=>process.exit(1))" || exit 1
 
 CMD ["node", "apps/worker/dist/index.js"]

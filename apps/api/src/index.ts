@@ -40,7 +40,12 @@ export const io = new SocketServer(app.server, {
 
 io.on('connection', (socket) => {
   socket.on('join', ({ userId }: { userId: string }) => {
+    if (!userId || typeof userId !== 'string' || userId.length > 64) {
+      socket.disconnect();
+      return;
+    }
     socket.join(`user:${userId}`);
+    console.log(`[Socket.IO] user:${userId} entrou na sala`);
   });
 });
 

@@ -49,8 +49,13 @@ export async function createWASession(numberId: string, userId: string) {
   // ── Connection state ──────────────────────────────────
   sock.ev.on('connection.update', async ({ qr, connection, lastDisconnect }) => {
     if (qr) {
-      // Emit QR to dashboard via WebSocket
-      io.to(`user:${userId}`).emit('qr_code', { numberId, qr });
+      // Emit QR to dashboard via Socket.IO (polling-safe)
+      try {
+        io.to(`user:${userId}`).emit('qr_code', { numberId, qr });
+        console.log(`[WhatsApp] QR emitido para user:${userId} número:${numberId}`);
+      } catch (err) {
+        console.error('[WhatsApp] Falha ao emitir QR via Socket.IO:', err);
+      }
       await prisma.whatsappNumber.update({
         where: { id: numberId },
         data:  { status: 'connecting' },

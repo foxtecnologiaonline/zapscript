@@ -9,8 +9,18 @@ import { convertToMp3 } from './services/audio';
 import { sendMessage } from './services/whatsapp';
 import { logger } from './lib/logger';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+// Validate required API keys at startup — fail fast with clear message
+if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.startsWith('sk-proj-...')) {
+  console.error('[Worker] FATAL: OPENAI_API_KEY não configurada. Configure no Render.com e redeploy.');
+  process.exit(1);
+}
+if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.startsWith('sk-ant-...')) {
+  console.error('[Worker] FATAL: ANTHROPIC_API_KEY não configurada. Configure no Render.com e redeploy.');
+  process.exit(1);
+}
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ─────────────────────────────────────────────────────────────────
 //  SHARED HELPERS — usados em ambos os pipelines
@@ -39,24 +49,33 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<string> {
   return text;
 }
 
-/** Gera bullets com Claude */
+/** Gera bullets com Claude — com fallback se falhar */
 async function generateBullets(originalText: string): Promise<string[]> {
-  const res = await claude.messages.create({
-    model:      'claude-sonnet-4-6',
-    max_tokens: 500,
-    messages: [{
-      role:    'user',
-      content: `Gere um resumo em até 5 bullets CONCISOS em português brasileiro para o áudio transcrito abaixo.\nResponda SOMENTE com os bullets, um por linha, começando com "- ".\nSem título, sem texto extra, sem introdução.\n\nÁudio transcrito:\n${originalText}`,
-    }],
-  });
-  const raw     = (res.content[0] as any).text || '';
-  const bullets = raw
-    .split('\n')
-    .map((l: string) => l.trim())
-    .filter((l: string) => l.startsWith('- '))
-    .map((l: string) => l.replace(/^-\s*/, '').trim())
-    .filter(Boolean);
-  return bullets.length > 0 ? bullets : ['Resumo não disponível'];
+  try {
+    const res = await claude.messages.create({
+      model:      'claude-sonnet-4-5',
+      max_tokens: 500,
+      messages: [{
+        role:    'user',
+        content: `Gere um resumo em até 5 bullets CONCISOS em português brasileiro para o áudio transcrito abaixo.\nResponda SOMENTE com os bullets, um por linha, começando com "- ".\nSem título, sem texto extra, sem introdução.\n\nÁudio transcrito:\n${originalText}`,
+      }],
+    });
+    const raw     = (res.content[0] as any).text || '';
+    const bullets = raw
+      .split('\n')
+      .map((l: string) => l.trim())
+      .filter((l: string) => l.startsWith('- '))
+      .map((l: string) => l.replace(/^-\s*/, '').trim())
+      .filter(Boolean);
+    return bullets.length > 0 ? bullets : ['Resumo não disponível'];
+  } catch (err: any) {
+    logger.warn({ err: err.message }, '[Worker] Claude falhou ao gerar bullets — usando fallback');
+    // Fallback: extrair primeiras frases do texto transcrito
+    const sentences = originalText.split(/[.!?]\s+/).filter(s => s.trim().length > 10).slice(0, 3);
+    return sentences.length > 0
+      ? sentences.map(s => s.trim())
+      : ['Transcrição disponível — resumo temporariamente indisponível'];
+  }
 }
 
 /**
