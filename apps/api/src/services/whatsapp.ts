@@ -123,7 +123,10 @@ function attachCommonHandlers(
 // ─────────────────────────────────────────────────────────────────────
 //  CREATE SESSION — QR Code flow
 // ─────────────────────────────────────────────────────────────────────
-export async function createWASession(numberId: string, userId: string) {
+export async function createWASession(numberId: string, userId: string, fresh = false) {
+  // On a manual fresh connect, wipe stale session files so WA always sends a new QR
+  if (fresh) clearSessionDir(numberId);
+
   const sessionDir = path.join(process.cwd(), '.sessions', numberId);
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
 
@@ -174,38 +177,98 @@ export async function requestWAPairingCode(
     sessions.delete(numberId);
   }
 
-  const sessionDir = path.join(process.cwd(), '.sessions', numberId);
-  // Remove old creds so we start fresh (avoids "already registered" error)
-  const credsPath = path.join(sessionDir, 'creds.json');
-  if (fs.existsSync(credsPath)) fs.unlinkSync(credsPath);
+  // Clear ALL session files — stale state causes "Connection Closed"
+  clearSessionDir(numberId);
 
+  const sessionDir = path.join(process.cwd(), '.sessions', numberId);
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+  const cleanPhone = phoneNumber.replace(/\D/g, '');
 
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
     browser: ['ZapScript', 'Chrome', '1.0.0'],
   });
-
   sessions.set(numberId, sock);
 
   await prisma.whatsappNumber.update({
     where: { id: numberId },
-    data:  { status: 'connecting', phoneNumber: phoneNumber.replace(/\D/g, '') },
+    data:  { status: 'connecting', phoneNumber: cleanPhone },
   });
 
-  attachCommonHandlers(sock, { numberId, userId, saveCreds, state });
+  // ── Wait for Baileys to signal "ready" (QR event), THEN request the
+  //    pairing code — avoids "Connection Closed" race condition ──────────
+  return new Promise<string>((resolve, reject) => {
+    let settled = false;
 
-  // Request pairing code — phone must be digits only, with country code
-  // e.g. "5511999999999" (Brazil: 55 + DDD + number)
-  const cleanPhone = phoneNumber.replace(/\D/g, '');
-  const code = await sock.requestPairingCode(cleanPhone);
+    const done = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      sock.ev.off('connection.update', onUpdate);
+      fn();
+    };
 
-  // Emit to Socket.IO so frontend can display it immediately if already connected
-  io.to(`user:${userId}`).emit('pairing_code', { numberId, code });
-  console.log(`[WhatsApp] Pairing code gerado para ${numberId}: ${code}`);
+    const timer = setTimeout(() => {
+      done(() => reject(
+        new Error('Timeout: WhatsApp não respondeu em 45s. Aguarde 1 minuto e tente novamente.')
+      ));
+    }, 45_000);
 
-  return code;
+    const onUpdate = ({ qr, connection }: { qr?: string; connection?: string }) => {
+      if (qr) {
+        // QR event = WA handshake complete; intercept to request pairing code instead
+        done(() => {
+          console.log(`[WhatsApp] Socket pronto, solicitando pairing code para ${numberId}`);
+          sock.requestPairingCode(cleanPhone)
+            .then(code => {
+              // Full session handlers only after code is generated
+              attachCommonHandlers(sock, { numberId, userId, saveCreds, state });
+              io.to(`user:${userId}`).emit('pairing_code', { numberId, code });
+              console.log(`[WhatsApp] Pairing code gerado para ${numberId}: ${code}`);
+              resolve(code);
+            })
+            .catch(err => {
+              prisma.whatsappNumber.update({
+                where: { id: numberId },
+                data: { status: 'disconnected' },
+              }).catch(() => {});
+              reject(new Error(
+                `Não foi possível gerar o código: ${err.message}. ` +
+                `Confirme que o número tem conta WhatsApp ativa e tente novamente.`
+              ));
+            });
+        });
+        return;
+      }
+
+      if (connection === 'open') {
+        // Already authenticated with fresh creds — shouldn't happen, handle gracefully
+        done(() => {
+          attachCommonHandlers(sock, { numberId, userId, saveCreds, state });
+          reject(new Error('Sessão já autenticada. Use Desconectar antes de gerar um novo código.'));
+        });
+        return;
+      }
+
+      if (connection === 'close') {
+        done(() => {
+          prisma.whatsappNumber.update({
+            where: { id: numberId },
+            data: { status: 'disconnected' },
+          }).catch(() => {});
+          reject(new Error(
+            'WhatsApp recusou a conexão. ' +
+            'Verifique: (1) número com DDI, ex: 5511987654321; ' +
+            '(2) aguarde 2 minutos entre tentativas; ' +
+            '(3) o número deve ter conta WhatsApp ativa.'
+          ));
+        });
+      }
+    };
+
+    sock.ev.on('connection.update', onUpdate);
+  });
 }
 
 // ── Get active session ────────────────────────────────────
@@ -251,6 +314,20 @@ function restoreSessionToDisk(numberId: string, sessionEncrypted: string): void 
   const creds = decrypt(sessionEncrypted);
   fs.mkdirSync(sessionDir, { recursive: true });
   fs.writeFileSync(credsPath, JSON.stringify(creds), 'utf8');
+}
+
+// ── Clear all files in a session directory ───────────────
+function clearSessionDir(numberId: string): void {
+  const sessionDir = path.join(process.cwd(), '.sessions', numberId);
+  if (!fs.existsSync(sessionDir)) return;
+  try {
+    for (const file of fs.readdirSync(sessionDir)) {
+      fs.unlinkSync(path.join(sessionDir, file));
+    }
+    console.log(`[WhatsApp] Sessão limpa para ${numberId}`);
+  } catch (err) {
+    console.warn(`[WhatsApp] Não foi possível limpar sessão de ${numberId}:`, err);
+  }
 }
 
 // ── Reconnect all sessions on startup ────────────────────

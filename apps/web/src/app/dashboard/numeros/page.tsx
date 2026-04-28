@@ -171,8 +171,8 @@ export default function NumerosPage() {
   async function handleRequestPairing() {
     if (!pairingModal) return;
     const clean = pairingModal.phone.replace(/\D/g, '');
-    if (clean.length < 10) {
-      setError('Digite o número completo com DDI e DDD (ex: 5511999999999).'); return;
+    if (clean.length < 12) {
+      setError('Inclua o DDI (código do país). Ex: 5511987654321 para Brasil (55 + DDD + número).'); return;
     }
     setError('');
     setPairingModal(prev => prev ? { ...prev, loading: true, code: null } : prev);
@@ -425,23 +425,23 @@ export default function NumerosPage() {
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">
-                    Número do WhatsApp
+                    Número do WhatsApp (da conta a conectar)
                   </label>
                   <input
-                    className="input w-full"
-                    placeholder="5511999999999"
+                    className="input w-full font-mono tracking-wider"
+                    placeholder="5511987654321"
                     type="tel"
                     value={pairingModal.phone}
                     onChange={e =>
-                      setPairingModal(prev => prev ? { ...prev, phone: e.target.value } : prev)
+                      setPairingModal(prev => prev ? { ...prev, phone: e.target.value.replace(/\D/g, '') } : prev)
                     }
                     autoFocus
                   />
-                  <p className="text-[11px] text-brand-muted mt-1.5 leading-relaxed">
-                    <strong>DDI + DDD + Número</strong>, somente dígitos.<br />
-                    🇧🇷 Exemplo São Paulo:{' '}
-                    <code className="bg-brand-elevated px-1 rounded">5511999999999</code>
-                  </p>
+                  <div className="mt-2 bg-brand-elevated rounded-lg px-3 py-2 text-[11px] text-brand-muted leading-relaxed space-y-1">
+                    <p>📌 <strong>DDI + DDD + Número</strong>, somente dígitos, sem + ou espaços.</p>
+                    <p>🇧🇷 Brasil SP: <code className="bg-brand-bg px-1 rounded font-mono">55</code> + <code className="bg-brand-bg px-1 rounded font-mono">11</code> + <code className="bg-brand-bg px-1 rounded font-mono">987654321</code> = <code className="bg-brand-bg px-1 rounded font-mono text-brand-primary">5511987654321</code></p>
+                    <p className="text-amber-500">⚠️ Este deve ser o número do WhatsApp que receberá as mensagens.</p>
+                  </div>
                 </div>
 
                 {error && (
@@ -478,21 +478,25 @@ export default function NumerosPage() {
                 </div>
 
                 <div className="inner-block space-y-2.5">
-                  <p className="text-xs font-bold text-brand-text mb-1">Como usar:</p>
+                  <p className="text-xs font-bold text-brand-text mb-1">Como usar no WhatsApp:</p>
                   {[
-                    'Abra o WhatsApp no celular',
-                    'Toque em ⋮ Menu → Dispositivos conectados',
-                    'Toque em "Conectar dispositivo"',
-                    'Escolha "Vincular por número de telefone"',
-                    `Digite: ${pairingModal.code}`,
+                    { text: 'Abra o WhatsApp no celular' },
+                    { text: 'Toque em ⋮ Menu (Android) ou Ajustes (iPhone)' },
+                    { text: 'Vá em Dispositivos conectados → Conectar dispositivo' },
+                    { text: 'Uma câmera QR vai abrir — NÃO escaneie ainda', highlight: true },
+                    { text: 'Toque em "Vincular com número de telefone" (link na parte inferior da tela)' },
+                    { text: `Digite o código: ${pairingModal.code}`, highlight: true },
                   ].map((step, i) => (
-                    <div key={i} className="flex items-start gap-2.5 text-xs text-brand-text-secondary">
-                      <span className="w-4 h-4 rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">
+                    <div key={i} className={`flex items-start gap-2.5 text-xs ${step.highlight ? 'text-brand-text font-semibold' : 'text-brand-text-secondary'}`}>
+                      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5 ${step.highlight ? 'bg-brand-primary/30 text-brand-primary' : 'bg-brand-primary/15 text-brand-primary'}`}>
                         {i + 1}
                       </span>
-                      {step}
+                      {step.text}
                     </div>
                   ))}
+                </div>
+                <div className="bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2 text-[11px] text-amber-500">
+                  ⚠️ <strong>Atenção:</strong> o código expira em ~60 segundos. Se demorar, clique em "Gerar novo código" abaixo.
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-brand-text-secondary">

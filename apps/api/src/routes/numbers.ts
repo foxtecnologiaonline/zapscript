@@ -76,7 +76,8 @@ export default async function numberRoutes(app: FastifyInstance) {
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    await createWASession(id, userId);
+    // fresh=true: limpa arquivos de sessão antigos antes de gerar o QR
+    await createWASession(id, userId, true);
     return { status: 'connecting', message: 'QR Code será enviado via WebSocket' };
   });
 
@@ -96,8 +97,15 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
 
     const cleanPhone = phoneNumber.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      return reply.code(400).send({ error: 'Número inválido. Use o formato: DDI+DDD+Número (ex: 5511999999999).' });
+    // Must include country code — Brazilian mobile = 13 digits (55 + DDD 2 + 9 + 8)
+    // Minimum 12 digits: some countries have shorter numbers; max 15 (E.164 limit)
+    if (cleanPhone.length < 12 || cleanPhone.length > 15) {
+      return reply.code(400).send({
+        error:
+          'Número inválido. Inclua o DDI (código do país). ' +
+          'Exemplo Brasil: 5511987654321 (55 + DDD + número). ' +
+          `Recebido: "${cleanPhone}" (${cleanPhone.length} dígitos).`,
+      });
     }
 
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
