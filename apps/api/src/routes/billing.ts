@@ -223,9 +223,10 @@ export default async function billingRoutes(app: FastifyInstance) {
   // Asaas envia eventos via POST com token de autenticação
   app.post('/webhook', async (req: any, reply) => {
     // Verificar token apenas no header (não aceitar via query string)
-    const token = req.headers['asaas-webhook-token'];
-    if (token !== process.env.ASAAS_WEBHOOK_TOKEN) {
-      app.log.warn('Asaas webhook token inválido');
+    const token          = req.headers['asaas-webhook-token'];
+    const expectedToken  = process.env.ASAAS_WEBHOOK_TOKEN;
+    if (!expectedToken || token !== expectedToken) {
+      app.log.warn({ tokenProvided: !!token, tokenConfigured: !!expectedToken }, 'Asaas webhook token inválido');
       return reply.code(401).send({ error: 'Unauthorized' });
     }
 

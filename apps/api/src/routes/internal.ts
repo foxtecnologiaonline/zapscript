@@ -27,15 +27,22 @@ export default async function internalRoutes(app: FastifyInstance) {
   // POST /internal/send — Worker envia mensagem WhatsApp
   app.post<{ Body: { numberId: string; jid: string; text: string } }>(
     '/send',
-    { preHandler: [verifyToken] },
+    { preHandler: [verifyToken], config: { rateLimit: { max: 200, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const { numberId, jid, text } = req.body;
       if (!numberId || !jid || !text) {
         return reply.code(400).send({ error: 'numberId, jid e text são obrigatórios' });
       }
+
+      // Validate numberId exists in DB (prevents sending via arbitrary sessions)
+      const number = await prisma.whatsappNumber.findUnique({ where: { id: numberId } });
+      if (!number) {
+        return reply.code(404).send({ error: `Número ${numberId} não encontrado` });
+      }
+
       const sock = getSession(numberId);
       if (!sock) {
-        return reply.code(404).send({ error: `Sessão ${numberId} não encontrada` });
+        return reply.code(404).send({ error: `Sessão ${numberId} não encontrada ou desconectada` });
       }
       await sock.sendMessage(jid, { text });
       return { sent: true };

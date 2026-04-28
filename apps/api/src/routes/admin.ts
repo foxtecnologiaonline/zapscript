@@ -148,6 +148,11 @@ export default async function adminRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Informe ao menos um campo: planName, isAdmin ou minutes.' });
       }
 
+      const VALID_PLANS = ['free', 'pro', 'ultra'];
+      if (planName !== undefined && !VALID_PLANS.includes(planName)) {
+        return reply.code(400).send({ error: `Plano inválido. Use: ${VALID_PLANS.join(', ')}` });
+      }
+
       const user = await prisma.user.findUnique({ where: { id } });
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 

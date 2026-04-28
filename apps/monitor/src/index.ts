@@ -60,7 +60,7 @@ async function analyzeWithClaude(results: CheckResult[], score: number): Promise
   ).join('\n');
 
   const res = await claude.messages.create({
-    model: 'claude-sonnet-4-6', max_tokens: 500,
+    model: 'claude-sonnet-4-5', max_tokens: 500,
     messages: [{ role: 'user', content: `Você é um engenheiro de plantão. Analise em português, de forma concisa:
 Score: ${score}%\n${summary}
 Gere: 1.STATUS GERAL 2.PROBLEMAS (se houver) 3.CAUSA PROVÁVEL 4.AÇÃO RECOMENDADA` }],

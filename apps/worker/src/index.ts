@@ -302,6 +302,41 @@ worker.on('error', (err) => {
 
 logger.info('Worker de transcrição iniciado (WhatsApp + Upload manual)');
 
+// ─────────────────────────────────────────────────────────────────
+//  CRON — Reset automático de minutos mensais
+//  Roda a cada hora e reseta saldos cujo resetAt já passou
+// ─────────────────────────────────────────────────────────────────
+async function resetExpiredMinutes() {
+  try {
+    const expired = await prisma.minuteBalance.findMany({
+      where:   { resetAt: { lte: new Date() } },
+      include: { user: { include: { subscription: { include: { plan: true } } } } },
+    });
+
+    if (expired.length === 0) return;
+
+    logger.info(`[Cron] Resetando minutos de ${expired.length} usuário(s)...`);
+
+    for (const balance of expired) {
+      const minutesPerMonth = balance.user.subscription?.plan?.minutesPerMonth ?? 0;
+      const nextReset       = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+      await prisma.minuteBalance.update({
+        where: { id: balance.id },
+        data:  { availableMinutes: minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
+      });
+
+      logger.info(`[Cron] ${balance.user.email} → ${minutesPerMonth} min (próximo reset: ${nextReset.toISOString()})`);
+    }
+  } catch (err) {
+    logger.error(`[Cron] Erro no reset de minutos: ${(err as Error).message}`);
+  }
+}
+
+// Executa na inicialização e a cada hora
+resetExpiredMinutes();
+setInterval(resetExpiredMinutes, 60 * 60 * 1000);
+
 // ── Graceful shutdown ────────────────────────────────────────────
 process.on('SIGTERM', async () => {
   logger.info('Worker encerrando...');
