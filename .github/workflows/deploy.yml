@@ -1,63 +1,45 @@
-name: Deploy to Production
+name: Deploy to Render
 
+# Dispara a cada push no master (branch real do projeto) e manualmente
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
     paths:
       - 'apps/**'
       - 'packages/**'
-      - 'docker-compose.yml'
+      - 'render.yaml'
       - '.github/workflows/deploy.yml'
+  workflow_dispatch:   # Permite acionar manualmente pelo GitHub Actions UI
 
 jobs:
-  deploy:
+  deploy-api:
+    name: Deploy API
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build all apps
-        run: npm run build --workspaces
-
-      - name: Run tests
-        env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/zapscript_test
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: test-secret-key-12345678901234567890
-          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-          INTERNAL_TOKEN: test-internal-token
-          MONITOR_TOKEN: test-monitor-token
-        run: npm test --workspaces 2>/dev/null || true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push images
+      - name: Trigger Render deploy — API
+        # RENDER_DEPLOY_HOOK_API: GitHub → Settings → Secrets → Actions
+        # Valor: URL de deploy hook do serviço API no Render
+        # Render → zapscript-api → Settings → Deploy Hook → copiar URL
         run: |
-          docker-compose build --push
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_API }}" ]; then
+            echo "⚠️  RENDER_DEPLOY_HOOK_API não configurado. Pulando."
+          else
+            echo "🚀 Disparando deploy da API..."
+            curl --fail-with-body -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_API }}"
+            echo "✅ Deploy da API solicitado."
+          fi
 
-      - name: Deploy to production
-        env:
-          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+  deploy-worker:
+    name: Deploy Worker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy — Worker
+        # RENDER_DEPLOY_HOOK_WORKER: mesma coisa para o serviço zapscript-worker
         run: |
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
-          ssh -i ~/.ssh/deploy_key deploy@$DEPLOY_HOST "cd /app && docker-compose pull && docker-compose up -d && docker-compose exec -T api npx prisma migrate deploy"
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_WORKER }}" ]; then
+            echo "⚠️  RENDER_DEPLOY_HOOK_WORKER não configurado. Pulando."
+          else
+            echo "🚀 Disparando deploy do Worker..."
+            curl --fail-with-body -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_WORKER }}"
+            echo "✅ Deploy do Worker solicitado."
+          fi
