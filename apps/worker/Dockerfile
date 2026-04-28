@@ -4,9 +4,9 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Build tools required by @whiskeysockets/baileys and other native modules
+# Build tools required by @whiskeysockets/baileys and git deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ ffmpeg \
+    python3 make g++ git ffmpeg ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Prisma schema (needed for prisma generate during build)
