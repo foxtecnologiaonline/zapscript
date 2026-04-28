@@ -208,7 +208,7 @@ export default function HomePage() {
 
             {/* CTAs */}
             <div className="flex flex-col gap-3.5" style={{ animation: 'fadeInUp .6s ease .35s both' }}>
-              <Link href="/cadastro" className="btn-secondary w-full py-4 px-8 text-lg flex items-center justify-center gap-2.5">
+              <Link href="/cadastro" className="btn-primary w-full py-4 px-8 text-lg flex items-center justify-center gap-2.5">
                 Começar Agora
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M5 12h14M12 5l7 7-7 7"/>
