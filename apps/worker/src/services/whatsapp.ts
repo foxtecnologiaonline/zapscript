@@ -27,7 +27,7 @@ export async function sendMessage(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
+    const err = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
     throw new Error(`Failed to send WA message: ${err.error || res.statusText}`);
   }
 }

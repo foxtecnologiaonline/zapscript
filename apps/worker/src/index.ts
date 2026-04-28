@@ -69,7 +69,7 @@ async function generateBullets(originalText: string): Promise<string[]> {
       .filter(Boolean);
     return bullets.length > 0 ? bullets : ['Resumo não disponível'];
   } catch (err: any) {
-    logger.warn({ err: err.message }, '[Worker] Claude falhou ao gerar bullets — usando fallback');
+    logger.warn(`[Worker] Claude falhou ao gerar bullets — usando fallback: ${(err as Error).message}`);
     // Fallback: extrair primeiras frases do texto transcrito
     const sentences = originalText.split(/[.!?]\s+/).filter(s => s.trim().length > 10).slice(0, 3);
     return sentences.length > 0
