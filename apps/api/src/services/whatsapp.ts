@@ -275,7 +275,7 @@ export async function requestWAPairingCode(
 
     const timer = setTimeout(() => {
       done(() => reject(
-        new Error('Timeout: WhatsApp não respondeu em 45s. Aguarde 1 minuto e tente novamente.')
+        new Error('Timeout: WhatsApp não respondeu em 45s. Isso pode indicar: (1) Conexão lenta - aguarde e tente novamente; (2) WhatsApp bloqueou sua conta - aguarde 1 hora; (3) Problema de rede no servidor.')
       ));
     }, 45_000);
 
@@ -382,9 +382,16 @@ function restoreSessionToDisk(numberId: string, sessionEncrypted: string): void 
 
   if (fs.existsSync(credsPath)) return;
 
-  const creds = decrypt(sessionEncrypted);
-  fs.mkdirSync(sessionDir, { recursive: true });
-  fs.writeFileSync(credsPath, JSON.stringify(creds), 'utf8');
+  try {
+    const creds = decrypt(sessionEncrypted);
+    fs.mkdirSync(sessionDir, { recursive: true });
+    fs.writeFileSync(credsPath, JSON.stringify(creds), 'utf8');
+    console.log(`[WhatsApp] Sessão restaurada do banco para ${numberId}`);
+  } catch (err) {
+    console.error(`[WhatsApp] Falha ao restaurar sessão para ${numberId}:`, err);
+    // Re-throw so caller can decide whether to continue
+    throw err;
+  }
 }
 
 // ── Clear all files in a session directory ───────────────
@@ -408,10 +415,20 @@ export async function reconnectAllSessions() {
     include: { user: true },
   });
 
+  console.log(`[WhatsApp] Iniciando reconexão de ${numbers.length} número(s)`);
+
   for (const n of numbers) {
     try {
+      // Always clear old session files first to avoid corruption issues
+      clearSessionDir(n.id);
+
       if (n.sessionEncrypted) {
-        restoreSessionToDisk(n.id, n.sessionEncrypted);
+        try {
+          restoreSessionToDisk(n.id, n.sessionEncrypted);
+        } catch (restoreErr) {
+          console.warn(`[WhatsApp] Falha ao restaurar sessão para ${n.phoneNumber}, criando nova:`, restoreErr);
+          // Continue anyway — will trigger new QR code generation
+        }
       }
       await createWASession(n.id, n.userId);
     } catch (err) {
@@ -419,7 +436,9 @@ export async function reconnectAllSessions() {
       await prisma.whatsappNumber.update({
         where: { id: n.id },
         data:  { status: 'disconnected' },
-      });
+      }).catch(() => {});
     }
   }
+
+  console.log(`[WhatsApp] Reconexão de sessões concluída`);
 }
