@@ -78,7 +78,7 @@ export default async function supportRoutes(app: FastifyInstance) {
         attachmentData,
         attachmentFilename,
         attachmentMimeType,
-      },
+      } as any,  // Type mismatch due to Prisma client generation issue
     });
 
     const safeName        = escapeHtml(name);

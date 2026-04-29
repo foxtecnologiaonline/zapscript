@@ -155,13 +155,8 @@ function attachCommonHandlers(
     }
   });
 
-  sock.ev.on('connection.update', (update) => {
-    // Check for error field in connection update (non-standard but sometimes emitted)
-    if (update.error) {
-      const errorMsg = update.error?.message || String(update.error);
-      console.error(`[WhatsApp] Erro na connection.update para ${numberId}:`, errorMsg);
-    }
-  });
+  // Note: ConnectionState doesn't have an error field in Baileys types
+  // Errors are handled via connection.close event with lastDisconnect.error
 
   // ── Incoming audio messages → transcription queue ─────
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
