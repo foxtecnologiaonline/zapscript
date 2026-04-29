@@ -32,19 +32,23 @@ export default async function supportRoutes(app: FastifyInstance) {
     let attachmentData: string | undefined;
     let attachmentFilename: string | undefined;
     let attachmentMimeType: string | undefined;
+    const fields: Record<string, string> = {};
 
     // Parse multipart form data
-    const data = await req.file();
-    if (!data) {
-      return reply.code(400).send({ error: 'Multipart form data obrigatório' });
-    }
-
-    const fields: Record<string, string> = {};
     for await (const part of req.parts()) {
       if (part.type === 'field') {
-        fields[part.fieldname] = await part.toBuffer().then(b => b.toString('utf-8'));
+        // Field values are Buffer or string
+        if (typeof part.value === 'string') {
+          fields[part.fieldname] = part.value;
+        } else if (Buffer.isBuffer(part.value)) {
+          fields[part.fieldname] = part.value.toString('utf-8');
+        }
       } else if (part.type === 'file') {
-        const buffer = await part.toBuffer();
+        const chunks: Buffer[] = [];
+        for await (const chunk of part.file) {
+          chunks.push(chunk);
+        }
+        const buffer = Buffer.concat(chunks);
         const maxSize = 10 * 1024 * 1024; // 10MB
         if (buffer.length > maxSize) {
           return reply.code(400).send({ error: 'Arquivo muito grande (máx 10MB)' });
