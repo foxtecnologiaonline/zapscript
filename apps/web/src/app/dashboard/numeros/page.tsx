@@ -37,13 +37,14 @@ export default function NumerosPage() {
   const [userId, setUserId] = useState('');
 
   // Polling refs
-  const qrPollRef     = useRef<ReturnType<typeof setInterval> | null>(null);
-  const statusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrPollRef          = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pairingCodePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusPollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadNumbers();
     api.get<any>('/auth/me').then(u => setUserId(u.id));
-    return () => { stopQRPoll(); stopStatusPoll(); };
+    return () => { stopQRPoll(); stopPairingCodePoll(); stopStatusPoll(); };
   }, []);
 
   async function loadNumbers() {
@@ -79,6 +80,36 @@ export default function NumerosPage() {
           setQr({ numberId, dataUrl });
         }
       } catch { /* 404 = QR ainda não gerado, continua */ }
+    }, 2000);
+  }
+
+  /* ────────────────────────────────────────
+     PAIRING CODE POLLING (funciona sem Socket.IO)
+     Busca o código via REST a cada 2s por até 60s.
+     ──────────────────────────────────────── */
+  function stopPairingCodePoll() {
+    if (pairingCodePollRef.current) { clearInterval(pairingCodePollRef.current); pairingCodePollRef.current = null; }
+  }
+
+  function startPairingCodePoll(numberId: string) {
+    stopPairingCodePoll();
+    let attempts = 0;
+    pairingCodePollRef.current = setInterval(async () => {
+      if (++attempts > 30) {           // 60 segundos máximo
+        stopPairingCodePoll();
+        setError('Tempo esgotado aguardando código de vinculação. Tente novamente.');
+        setPairingModal(prev => prev ? { ...prev, loading: false } : prev);
+        return;
+      }
+      try {
+        const res = await api.get<{ code: string }>(`/numbers/${numberId}/pairing-code`);
+        if (res?.code) {
+          stopPairingCodePoll();
+          setPairingModal(prev =>
+            prev?.numberId === numberId ? { ...prev, code: res.code, loading: false } : prev
+          );
+        }
+      } catch { /* 404 = código ainda não gerado, continua */ }
     }, 2000);
   }
 
@@ -119,12 +150,13 @@ export default function NumerosPage() {
       } catch { setQr({ numberId, dataUrl: '' }); }
     },
     pairing_code: ({ numberId, code }: { numberId: string; code: string }) => {
+      stopPairingCodePoll();
       setPairingModal(prev =>
         prev?.numberId === numberId ? { ...prev, code, loading: false } : prev
       );
     },
     wa_connected: () => {
-      stopStatusPoll(); stopQRPoll();
+      stopStatusPoll(); stopQRPoll(); stopPairingCodePoll();
       setQr(null); setConnectingId(null); setPairingModal(null);
       loadNumbers();
     },
@@ -177,13 +209,13 @@ export default function NumerosPage() {
     setError('');
     setPairingModal(prev => prev ? { ...prev, loading: true, code: null } : prev);
     try {
-      const res = await api.post<{ code: string }>(
+      await api.post<{ code: string }>(
         `/numbers/${pairingModal.numberId}/connect-pairing`,
         { phoneNumber: clean }
       );
-      setPairingModal(prev => prev ? { ...prev, code: res.code, loading: false } : prev);
       setConnectingId(pairingModal.numberId);
-      startStatusPoll(pairingModal.numberId);
+      startPairingCodePoll(pairingModal.numberId);  // polling REST para código
+      startStatusPoll(pairingModal.numberId);       // polling para detectar conexão
     } catch (err: any) {
       setError(err.message);
       setPairingModal(prev => prev ? { ...prev, loading: false } : prev);
@@ -202,7 +234,7 @@ export default function NumerosPage() {
   }
 
   function cancelConnect() {
-    stopQRPoll(); stopStatusPoll();
+    stopQRPoll(); stopPairingCodePoll(); stopStatusPoll();
     setQr(null); setConnectingId(null); setPairingModal(null); setError('');
   }
 

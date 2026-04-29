@@ -5,8 +5,6 @@ import { api } from '@/lib/api';
 export default function ConfiguracoesPage() {
   const [user, setUser]     = useState<any>(null);
   const [form, setForm]     = useState({ name: '', document: '' });
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg]       = useState('');
 
   useEffect(() => {
     api.get<any>('/auth/me').then(u => {
@@ -15,19 +13,6 @@ export default function ConfiguracoesPage() {
     });
   }, []);
 
-  async function saveProfile(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true); setMsg('');
-    try {
-      await api.put('/auth/profile', { name: form.name, document: form.document });
-      setMsg('✅ Perfil atualizado com sucesso!');
-    } catch (err: any) {
-      setMsg(`❌ ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <div className="p-4 sm:p-8 max-w-2xl">
       <h1 className="text-2xl font-bold mb-2 text-brand-text">Configurações</h1>
@@ -35,36 +20,26 @@ export default function ConfiguracoesPage() {
 
       <div className="card rounded-2xl p-6 mb-5">
         <h2 className="font-bold text-sm mb-4 text-brand-text">Dados da Conta</h2>
-        <form onSubmit={saveProfile} className="space-y-4">
+        <div className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">Nome</label>
-            <input className="field-input"
-              value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} placeholder="Seu nome"/>
+            <input className="field-input" disabled readOnly
+              value={form.name} placeholder="Seu nome"/>
+            <p className="text-xs text-brand-muted mt-1">Nome não pode ser alterado após o cadastro.</p>
           </div>
           <div>
             <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">E-mail</label>
-            <input className="field-input" value={user?.email || ''} disabled readOnly/>
+            <input className="field-input" disabled readOnly value={user?.email || ''}/>
             <p className="text-xs text-brand-muted mt-1">E-mail não pode ser alterado após o cadastro.</p>
           </div>
           <div>
             <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">CPF / CNPJ</label>
-            <input className="field-input"
-              value={form.document} onChange={e => setForm(f => ({...f, document: e.target.value}))} placeholder="000.000.000-00"/>
+            <input className="field-input" disabled readOnly
+              value={form.document} placeholder="000.000.000-00"/>
+            <p className="text-xs text-brand-muted mt-1">CPF / CNPJ não pode ser alterado após o cadastro.</p>
           </div>
-          {msg && (
-            <div className={`text-xs px-3 py-2 rounded-lg ${
-              msg.startsWith('✅')
-                ? 'bg-green-500/10 border border-green-500/20 text-green-500'
-                : 'bg-red-400/10 border border-red-400/20 text-red-400'
-            }`}>
-              {msg}
-            </div>
-          )}
-          <button type="submit" disabled={loading}
-            className="btn-primary px-6 py-2.5 text-sm disabled:opacity-50">
-            {loading ? 'Salvando...' : 'Salvar Alterações'}
-          </button>
-        </form>
+          <p className="text-xs text-brand-muted italic">Estes dados não podem ser alterados após o cadastro.</p>
+        </div>
       </div>
 
       <div className="card rounded-2xl p-6" style={{ borderColor: 'rgba(248,113,113,.15)' }}>

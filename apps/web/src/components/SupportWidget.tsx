@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 
 const STEPS = [
@@ -54,10 +54,19 @@ export default function SupportWidget() {
   const [open, setOpen]     = useState(false);
   const [step, setStep]     = useState('welcome');
   const [category, setCat]  = useState('');
-  const [form, setForm]     = useState({ name: '', email: '', description: '' });
+  const [form, setForm]     = useState({ name: '', email: '', description: '', file: null as File | null });
   const [loading, setLoading] = useState(false);
   const [done, setDone]     = useState(false);
   const [error, setError]   = useState('');
+
+  useEffect(() => {
+    // Fetch user data on mount to auto-fill name and email
+    api.get<any>('/auth/me')
+      .then(user => {
+        setForm(f => ({ ...f, name: user.name || '', email: user.email || '' }));
+      })
+      .catch(() => {/* Usuário não autenticado, permite digitar manualmente */});
+  }, []);
 
   const currentStep = STEPS.find(s => s.id === step);
 
@@ -70,7 +79,15 @@ export default function SupportWidget() {
     e.preventDefault();
     setLoading(true); setError('');
     try {
-      await api.post('/support/ticket', { ...form, category });
+      const formData = new FormData();
+      formData.append('name', form.name);
+      formData.append('email', form.email);
+      formData.append('category', category);
+      formData.append('description', form.description);
+      if (form.file) {
+        formData.append('file', form.file);
+      }
+      await api.postFormData('/support/ticket', formData);
       setDone(true);
     } catch (err: any) {
       setError(err.message || 'Erro ao enviar. Tente novamente.');
@@ -79,7 +96,14 @@ export default function SupportWidget() {
     }
   }
 
-  function reset() { setOpen(false); setStep('welcome'); setCat(''); setForm({ name:'', email:'', description:'' }); setDone(false); setError(''); }
+  function reset() {
+    setOpen(false);
+    setStep('welcome');
+    setCat('');
+    setForm({ name: '', email: '', description: '', file: null });
+    setDone(false);
+    setError('');
+  }
 
   return (
     <>
@@ -126,16 +150,24 @@ export default function SupportWidget() {
                 </div>
                 <div>
                   <input className="w-full bg-[#1a342e] border border-[rgba(16,185,129,.12)] rounded-lg px-3 py-2 text-xs text-[#d1fae5] outline-none placeholder-[rgba(16,185,129,.3)]"
-                    placeholder="Seu nome" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} required/>
+                    placeholder="Seu nome" value={form.name} readOnly disabled/>
                 </div>
                 <div>
                   <input className="w-full bg-[#1a342e] border border-[rgba(16,185,129,.12)] rounded-lg px-3 py-2 text-xs text-[#d1fae5] outline-none placeholder-[rgba(16,185,129,.3)]"
-                    type="email" placeholder="Seu e-mail" value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} required/>
+                    type="email" placeholder="Seu e-mail" value={form.email} readOnly disabled/>
                 </div>
                 <div>
                   <textarea className="w-full bg-[#1a342e] border border-[rgba(16,185,129,.12)] rounded-lg px-3 py-2 text-xs text-[#d1fae5] outline-none placeholder-[rgba(16,185,129,.3)] resize-none"
                     rows={3} placeholder="Descreva sua situação..." value={form.description}
                     onChange={e => setForm(f => ({...f, description: e.target.value}))} required/>
+                </div>
+                <div>
+                  <label className="text-xs text-[#6ee7b7] font-light mb-1.5 block">Anexar arquivo (opcional)</label>
+                  <input type="file"
+                    className="w-full text-xs text-[#d1fae5] file:bg-[#10b981] file:text-[#011a12] file:border-0 file:rounded-lg file:px-2 file:py-1 file:text-xs file:font-semibold file:cursor-pointer hover:file:bg-[#34d399] transition-colors"
+                    accept=".pdf,.jpg,.jpeg,.png,.gif,.txt"
+                    onChange={e => setForm(f => ({...f, file: e.target.files?.[0] || null}))}/>
+                  <p className="text-[10px] text-[#4a6e5a] mt-1">Máx 10MB. Formatos: PDF, JPG, PNG, GIF, TXT</p>
                 </div>
                 {error && <p className="text-red-400 text-[10px]">{error}</p>}
                 <div className="flex gap-2">

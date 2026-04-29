@@ -328,15 +328,14 @@ export default async function authRoutes(app: FastifyInstance) {
       const { name, document } = req.body;
       const userId = req.user.sub;
 
-      if (document) {
-        const existing = await prisma.user.findFirst({ where: { document, NOT: { id: userId } } });
-        if (existing) return reply.code(400).send({ error: 'CPF/CNPJ já cadastrado em outra conta.' });
+      // Name and document are immutable after registration
+      if (name || document) {
+        return reply.code(400).send({
+          error: 'Nome e CPF/CNPJ não podem ser alterados após o cadastro. Entre em contato com suporte para modificações.'
+        });
       }
 
-      const user = await prisma.user.update({
-        where: { id: userId },
-        data:  { ...(name ? { name } : {}), ...(document ? { document } : {}) },
-      });
+      const user = await prisma.user.findUnique({ where: { id: userId } });
       return { updated: true, user };
     }
   );

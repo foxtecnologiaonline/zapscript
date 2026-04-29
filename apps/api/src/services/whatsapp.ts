@@ -19,12 +19,29 @@ const sessions = new Map<string, ReturnType<typeof makeWASocket>>();
 const reconnectAttempts = new Map<string, number>();
 const MAX_RECONNECT_DELAY_MS = 300_000; // 5 minutos
 
-// ── Pending QR cache (fixes race condition: socket joins AFTER QR emitted) ──
-const pendingQRs = new Map<string, { numberId: string; qr: string }>();
+// ── Pending QR cache (keyed by numberId to support multiple numbers per user) ──
+const pendingQRs = new Map<string, { qr: string; timestamp: number }>();
+const pendingPairingCodes = new Map<string, { code: string; timestamp: number }>();
 
-/** Returns a cached QR for userId if one exists (socket join handler uses this) */
-export function getPendingQR(userId: string) {
-  return pendingQRs.get(userId) ?? null;
+// Cache cleanup interval - remove entries older than 90s
+setInterval(() => {
+  const now = Date.now();
+  for (const [numberId, entry] of pendingQRs.entries()) {
+    if (now - entry.timestamp > 90_000) pendingQRs.delete(numberId);
+  }
+  for (const [numberId, entry] of pendingPairingCodes.entries()) {
+    if (now - entry.timestamp > 60_000) pendingPairingCodes.delete(numberId);
+  }
+}, 10_000); // cleanup every 10s
+
+/** Returns a cached QR for numberId if one exists */
+export function getPendingQR(numberId: string) {
+  return pendingQRs.get(numberId)?.qr ?? null;
+}
+
+/** Returns a cached pairing code for numberId if one exists */
+export function getPendingPairingCode(numberId: string) {
+  return pendingPairingCodes.get(numberId)?.code ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -64,7 +81,8 @@ function attachCommonHandlers(
     if (connection === 'open') {
       const phone = sock.user?.id?.split(':')[0] || '';
       reconnectAttempts.delete(numberId);
-      pendingQRs.delete(userId);
+      pendingQRs.delete(numberId);
+      pendingPairingCodes.delete(numberId);
       await prisma.whatsappNumber.update({
         where: { id: numberId },
         data: { status: 'connected', connectedAt: new Date(), phoneNumber: phone },
@@ -87,7 +105,8 @@ function attachCommonHandlers(
         setTimeout(() => createWASession(numberId, userId), delayMs);
       } else {
         reconnectAttempts.delete(numberId);
-        pendingQRs.delete(userId);
+        pendingQRs.delete(numberId);
+        pendingPairingCodes.delete(numberId);
         await prisma.whatsappNumber.update({
           where: { id: numberId },
           data: { status: 'disconnected', sessionEncrypted: null },
@@ -141,10 +160,10 @@ export async function createWASession(numberId: string, userId: string, fresh = 
   // QR-specific: emit QR to frontend via Socket.IO + cache it
   sock.ev.on('connection.update', async ({ qr }) => {
     if (qr) {
-      pendingQRs.set(userId, { numberId, qr });
+      pendingQRs.set(numberId, { qr, timestamp: Date.now() });
       try {
         io.to(`user:${userId}`).emit('qr_code', { numberId, qr });
-        console.log(`[WhatsApp] QR emitido para user:${userId} número:${numberId}`);
+        console.log(`[WhatsApp] QR emitido para number:${numberId} (user:${userId})`);
       } catch (err) {
         console.error('[WhatsApp] Falha ao emitir QR via Socket.IO:', err);
       }
@@ -222,6 +241,8 @@ export async function requestWAPairingCode(
           console.log(`[WhatsApp] Socket pronto, solicitando pairing code para ${numberId}`);
           sock.requestPairingCode(cleanPhone)
             .then(code => {
+              // Cache pairing code for REST fallback
+              pendingPairingCodes.set(numberId, { code, timestamp: Date.now() });
               // Full session handlers only after code is generated
               attachCommonHandlers(sock, { numberId, userId, saveCreds, state });
               io.to(`user:${userId}`).emit('pairing_code', { numberId, code });
@@ -229,6 +250,7 @@ export async function requestWAPairingCode(
               resolve(code);
             })
             .catch(err => {
+              pendingPairingCodes.delete(numberId);
               prisma.whatsappNumber.update({
                 where: { id: numberId },
                 data: { status: 'disconnected' },

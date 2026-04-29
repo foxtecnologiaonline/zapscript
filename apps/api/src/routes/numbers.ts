@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { createWASession, disconnectWASession, getPendingQR, requestWAPairingCode } from '../services/whatsapp';
+import { createWASession, disconnectWASession, getPendingQR, getPendingPairingCode, requestWAPairingCode } from '../services/whatsapp';
 
 export default async function numberRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -132,11 +132,26 @@ export default async function numberRoutes(app: FastifyInstance) {
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    const pending = getPendingQR(userId);
-    if (!pending || pending.numberId !== id) {
+    const qr = getPendingQR(id);
+    if (!qr) {
       return reply.code(404).send({ qr: null, message: 'Nenhum QR pendente' });
     }
-    return { qr: pending.qr };
+    return { qr };
+  });
+
+  // ── GET /numbers/:id/pairing-code — REST fallback for pairing code ──
+  app.get<{ Params: { id: string } }>('/:id/pairing-code', auth, async (req: any, reply) => {
+    const { id } = req.params;
+    const userId = req.user.sub;
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    const code = getPendingPairingCode(id);
+    if (!code) {
+      return reply.code(404).send({ code: null, message: 'Nenhum código pendente' });
+    }
+    return { code };
   });
 
   // ── POST /numbers/:id/disconnect ──────────────────────

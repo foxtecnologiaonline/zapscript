@@ -112,15 +112,18 @@ model UsageLog {
 }
 
 model SupportTicket {
-  id          String   @id @default(cuid())
-  userId      String?
-  name        String
-  email       String
-  category    String
-  description String
-  status      String   @default("open")
-  createdAt   DateTime @default(now())
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id                  String   @id @default(cuid())
+  userId              String?
+  name                String
+  email               String
+  category            String
+  description         String
+  status              String   @default("open")
+  attachmentData      String?  // Base64 encoded file
+  attachmentFilename  String?
+  attachmentMimeType  String?
+  createdAt           DateTime @default(now())
+  user                User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model SystemError {
