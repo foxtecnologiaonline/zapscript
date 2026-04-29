@@ -215,22 +215,8 @@ export async function createWASession(numberId: string, userId: string, fresh = 
     syncFullHistory: false,
     // Disable aggressive features that can cause timeout
     generateHighQualityLinkPreview: false,
-    // Mark as mobile Web client (more compatible with current WhatsApp)
-    mobile: false,
-    // Use a simpler logger to avoid issues on Render
-    logger: {
-      trace: () => {},
-      debug: () => {},
-      info:  (...args) => console.log('[Baileys]', ...args),
-      warn:  (...args) => console.warn('[Baileys]', ...args),
-      error: (...args) => console.error('[Baileys]', ...args),
-    } as any,
     // Extended timeout for initial handshake
     connectTimeoutMs: 60_000,
-    // Retry failed connections with backoff
-    retryRequestDelayMs: 100,
-    // Don't disconnect on receiving empty messages
-    shouldIgnoreJid: () => false,
   });
   console.log(`[WhatsApp] Socket criado para ${numberId}`);
 
