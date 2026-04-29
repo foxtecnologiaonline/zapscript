@@ -77,7 +77,12 @@ function attachCommonHandlers(
   });
 
   // ── Connection state (handles QR, connection open/close) ──
-  sock.ev.on('connection.update', async ({ qr, connection, lastDisconnect }) => {
+  sock.ev.on('connection.update', async ({ qr, connection, lastDisconnect, isOnline }) => {
+    // Debug: Log all connection state changes
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[WhatsApp] connection.update - numberId: ${numberId}, qr: ${!!qr}, connection: ${connection}, isOnline: ${isOnline}`);
+    }
+
     // QR Code event — cache it for REST polling
     if (qr) {
       pendingQRs.set(numberId, { qr, timestamp: Date.now() });
@@ -110,6 +115,9 @@ function attachCommonHandlers(
     // Connection close event
     if (connection === 'close') {
       const code = (lastDisconnect?.error as Boom)?.output?.statusCode;
+      const errorMessage = (lastDisconnect?.error as any)?.message || 'Unknown error';
+      console.error(`[WhatsApp] Conexão fechada para ${numberId}: code=${code}, error=${errorMessage}`);
+
       const shouldReconnect = code !== DisconnectReason.loggedOut;
 
       sessions.delete(numberId);
@@ -119,7 +127,7 @@ function attachCommonHandlers(
         reconnectAttempts.set(numberId, attempts);
         const delayMs = Math.min(5000 * Math.pow(2, attempts - 1), MAX_RECONNECT_DELAY_MS);
         console.log(`[WhatsApp] Reconectando ${numberId} em ${delayMs / 1000}s (tentativa ${attempts})`);
-        setTimeout(() => createWASession(numberId, userId), delayMs);
+        setTimeout(() => createWASession(numberId, userId, false), delayMs);
       } else {
         reconnectAttempts.delete(numberId);
         pendingQRs.delete(numberId);
@@ -130,6 +138,18 @@ function attachCommonHandlers(
         });
         io.to(`user:${userId}`).emit('wa_disconnected', { numberId });
       }
+    }
+  });
+
+  // ── Socket errors (catch Noise protocol failures, network issues, etc.) ──
+  sock.ws?.on('error', (err) => {
+    console.error(`[WhatsApp] WebSocket error para ${numberId}:`, err?.message || err);
+  });
+
+  sock.ev.on('connection.update', (update) => {
+    // Check for error field in connection update (non-standard but sometimes emitted)
+    if (update.error) {
+      console.error(`[WhatsApp] Erro na connection.update para ${numberId}:`, update.error);
     }
   });
 
@@ -178,6 +198,20 @@ export async function createWASession(numberId: string, userId: string, fresh = 
     auth: state,
     printQRInTerminal: false,
     browser: ['ZapScript', 'Chrome', '1.0.0'],
+    // Reduce initial sync overhead — helps with connection stability
+    syncFullHistory: false,
+    // Disable aggressive features that can cause timeout
+    generateHighQualityLinkPreview: false,
+    // Use a simpler logger to avoid issues on Render
+    logger: {
+      trace: () => {},
+      debug: () => {},
+      info:  (...args) => console.log('[Baileys]', ...args),
+      warn:  (...args) => console.warn('[Baileys]', ...args),
+      error: (...args) => console.error('[Baileys]', ...args),
+    } as any,
+    // Extended timeout for initial handshake
+    connectTimeoutMs: 60_000,
   });
   console.log(`[WhatsApp] Socket criado para ${numberId}`);
 
