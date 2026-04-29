@@ -76,8 +76,24 @@ function attachCommonHandlers(
     }
   });
 
-  // ── Connection state ───────────────────────────────────
-  sock.ev.on('connection.update', async ({ connection, lastDisconnect }) => {
+  // ── Connection state (handles QR, connection open/close) ──
+  sock.ev.on('connection.update', async ({ qr, connection, lastDisconnect }) => {
+    // QR Code event — cache it for REST polling
+    if (qr) {
+      pendingQRs.set(numberId, { qr, timestamp: Date.now() });
+      try {
+        io.to(`user:${userId}`).emit('qr_code', { numberId, qr });
+        console.log(`[WhatsApp] QR emitido para number:${numberId} (user:${userId})`);
+      } catch (err) {
+        console.error('[WhatsApp] Falha ao emitir QR via Socket.IO:', err);
+      }
+      await prisma.whatsappNumber.update({
+        where: { id: numberId },
+        data:  { status: 'connecting' },
+      }).catch(err => console.error(`[WhatsApp] Erro ao atualizar status para connecting: ${err}`));
+    }
+
+    // Connection open event
     if (connection === 'open') {
       const phone = sock.user?.id?.split(':')[0] || '';
       reconnectAttempts.delete(numberId);
@@ -91,6 +107,7 @@ function attachCommonHandlers(
       console.log(`[WhatsApp] Conectado: ${numberId} (${phone})`);
     }
 
+    // Connection close event
     if (connection === 'close') {
       const code = (lastDisconnect?.error as Boom)?.output?.statusCode;
       const shouldReconnect = code !== DisconnectReason.loggedOut;
@@ -143,37 +160,31 @@ function attachCommonHandlers(
 //  CREATE SESSION — QR Code flow
 // ─────────────────────────────────────────────────────────────────────
 export async function createWASession(numberId: string, userId: string, fresh = false) {
+  console.log(`[WhatsApp] Iniciando createWASession para ${numberId} (fresh=${fresh})`);
+
   // On a manual fresh connect, wipe stale session files so WA always sends a new QR
-  if (fresh) clearSessionDir(numberId);
+  if (fresh) {
+    console.log(`[WhatsApp] Limpando session dir para ${numberId}`);
+    clearSessionDir(numberId);
+  }
 
   const sessionDir = path.join(process.cwd(), '.sessions', numberId);
+  console.log(`[WhatsApp] Session dir: ${sessionDir}`);
+
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+  console.log(`[WhatsApp] Auth state carregado para ${numberId}`);
 
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
     browser: ['ZapScript', 'Chrome', '1.0.0'],
   });
+  console.log(`[WhatsApp] Socket criado para ${numberId}`);
 
   sessions.set(numberId, sock);
 
-  // QR-specific: emit QR to frontend via Socket.IO + cache it
-  sock.ev.on('connection.update', async ({ qr }) => {
-    if (qr) {
-      pendingQRs.set(numberId, { qr, timestamp: Date.now() });
-      try {
-        io.to(`user:${userId}`).emit('qr_code', { numberId, qr });
-        console.log(`[WhatsApp] QR emitido para number:${numberId} (user:${userId})`);
-      } catch (err) {
-        console.error('[WhatsApp] Falha ao emitir QR via Socket.IO:', err);
-      }
-      await prisma.whatsappNumber.update({
-        where: { id: numberId },
-        data:  { status: 'connecting' },
-      });
-    }
-  });
-
+  // Attach all handlers (including QR handling)
+  console.log(`[WhatsApp] Attachando handlers para ${numberId}`);
   attachCommonHandlers(sock, { numberId, userId, saveCreds, state });
 
   return sock;
@@ -238,18 +249,20 @@ export async function requestWAPairingCode(
       if (qr) {
         // QR event = WA handshake complete; intercept to request pairing code instead
         done(() => {
-          console.log(`[WhatsApp] Socket pronto, solicitando pairing code para ${numberId}`);
+          console.log(`[WhatsApp] Socket pronto para ${numberId}, iniciando requestPairingCode com: ${cleanPhone}`);
           sock.requestPairingCode(cleanPhone)
             .then(code => {
+              console.log(`[WhatsApp] requestPairingCode sucesso para ${numberId}, código: ${code}`);
               // Cache pairing code for REST fallback
               pendingPairingCodes.set(numberId, { code, timestamp: Date.now() });
               // Full session handlers only after code is generated
               attachCommonHandlers(sock, { numberId, userId, saveCreds, state });
               io.to(`user:${userId}`).emit('pairing_code', { numberId, code });
-              console.log(`[WhatsApp] Pairing code gerado para ${numberId}: ${code}`);
+              console.log(`[WhatsApp] Pairing code emitido para ${numberId}: ${code}`);
               resolve(code);
             })
             .catch(err => {
+              console.error(`[WhatsApp] requestPairingCode FALHOU para ${numberId}:`, err);
               pendingPairingCodes.delete(numberId);
               prisma.whatsappNumber.update({
                 where: { id: numberId },
@@ -267,6 +280,7 @@ export async function requestWAPairingCode(
       if (connection === 'open') {
         // Already authenticated with fresh creds — shouldn't happen, handle gracefully
         done(() => {
+          console.log(`[WhatsApp] Erro: sessão ${numberId} já aberta durante pairing code attempt`);
           attachCommonHandlers(sock, { numberId, userId, saveCreds, state });
           reject(new Error('Sessão já autenticada. Use Desconectar antes de gerar um novo código.'));
         });
@@ -274,6 +288,7 @@ export async function requestWAPairingCode(
       }
 
       if (connection === 'close') {
+        console.log(`[WhatsApp] Conexão fechada durante pairing code para ${numberId}`);
         done(() => {
           prisma.whatsappNumber.update({
             where: { id: numberId },
