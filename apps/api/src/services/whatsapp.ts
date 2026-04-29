@@ -143,13 +143,23 @@ function attachCommonHandlers(
 
   // ── Socket errors (catch Noise protocol failures, network issues, etc.) ──
   sock.ws?.on('error', (err) => {
-    console.error(`[WhatsApp] WebSocket error para ${numberId}:`, err?.message || err);
+    const errorMsg = err?.message || String(err);
+    console.error(`[WhatsApp] WebSocket error para ${numberId}:`, errorMsg);
+
+    // If it's a Noise protocol error, log extra details for debugging
+    if (errorMsg.includes('Connection Failure') || errorMsg.includes('decodeFrame')) {
+      console.error(`[WhatsApp] ⚠️ Noise protocol frame decoding error detected. This may indicate:`);
+      console.error(`  - WhatsApp server protocol version mismatch`);
+      console.error(`  - Baileys library incompatibility`);
+      console.error(`  - Network interference with encrypted frames`);
+    }
   });
 
   sock.ev.on('connection.update', (update) => {
     // Check for error field in connection update (non-standard but sometimes emitted)
     if (update.error) {
-      console.error(`[WhatsApp] Erro na connection.update para ${numberId}:`, update.error);
+      const errorMsg = update.error?.message || String(update.error);
+      console.error(`[WhatsApp] Erro na connection.update para ${numberId}:`, errorMsg);
     }
   });
 
