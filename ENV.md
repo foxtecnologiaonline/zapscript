@@ -142,6 +142,10 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_SUPABASE_URL=https://your-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ0eXAiOiJKV1QiLCJhbGc...
 NEXT_PUBLIC_APP_NAME=ZapScript
+
+# WhatsApp Baileys Configuration (opcional)
+WHATSAPP_BROWSER_ID=Chrome  # Browser identifier (Chrome, Firefox, Edge, etc)
+# Mude para Firefox ou Edge se houver problemas de conexão com Chrome
 ```
 
 ### 📊 Monitoramento (Opcional)

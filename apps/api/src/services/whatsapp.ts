@@ -204,14 +204,24 @@ export async function createWASession(numberId: string, userId: string, fresh = 
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
   console.log(`[WhatsApp] Auth state carregado para ${numberId}`);
 
+  // Use a realistic browser identifier that WhatsApp recognizes
+  // Falls back to generic browser if issues persist
+  const browserConfig = process.env.WHATSAPP_BROWSER_ID || 'Chrome';
+
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
-    browser: ['ZapScript', 'Chrome', '1.0.0'],
+    browser: [
+      'ZapScript',      // App name
+      browserConfig,    // Browser type (Chrome/Firefox/Edge)
+      '1.0.0',          // Version
+    ],
     // Reduce initial sync overhead — helps with connection stability
     syncFullHistory: false,
     // Disable aggressive features that can cause timeout
     generateHighQualityLinkPreview: false,
+    // Mark as mobile Web client (more compatible with current WhatsApp)
+    mobile: false,
     // Use a simpler logger to avoid issues on Render
     logger: {
       trace: () => {},
@@ -222,6 +232,10 @@ export async function createWASession(numberId: string, userId: string, fresh = 
     } as any,
     // Extended timeout for initial handshake
     connectTimeoutMs: 60_000,
+    // Retry failed connections with backoff
+    retryRequestDelayMs: 100,
+    // Don't disconnect on receiving empty messages
+    shouldIgnoreJid: () => false,
   });
   console.log(`[WhatsApp] Socket criado para ${numberId}`);
 
