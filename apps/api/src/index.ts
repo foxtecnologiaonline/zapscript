@@ -72,6 +72,14 @@ app.register(import('./routes/internal'),       { prefix: '/internal' });
 app.register(import('./routes/support'),        { prefix: '/support' });
 app.register(import('./routes/admin'),          { prefix: '/admin' });
 
+// ── WhatsApp Webhook (Meta Cloud API) ──────────────────────
+if (process.env.WHATSAPP_API_TOKEN) {
+  app.register(import('./routes/whatsapp-webhook'), { prefix: '/webhook/whatsapp' });
+  console.log('✅ WhatsApp Cloud API webhook registrado');
+} else {
+  console.warn('⚠️ WHATSAPP_API_TOKEN não configurado - webhook desabilitado');
+}
+
 app.get('/health', async (_, reply) => {
   try {
     await redis.ping();
@@ -90,9 +98,20 @@ async function start() {
   try {
     await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' });
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
-    reconnectAllSessions().then(() => {
-      app.log.info('📱 Sessões WhatsApp reconectadas');
-    }).catch((e) => app.log.error({ err: e }, 'Erro ao reconectar sessões'));
+
+    // ✅ Usando WhatsApp Cloud API (Meta) em vez de Baileys
+    // Baileys foi descontinuado; usando API oficial agora
+    if (process.env.WHATSAPP_API_TOKEN) {
+      app.log.info('✅ Usando WhatsApp Cloud API (Meta) oficial');
+      // Não precisa reconectar sessões - webhook recebe mensagens automaticamente
+    } else {
+      app.log.warn('⚠️ WHATSAPP_API_TOKEN não configurado');
+    }
+
+    // Comentado: reconexão de Baileys já não é necessária
+    // reconnectAllSessions().then(() => {
+    //   app.log.info('📱 Sessões WhatsApp reconectadas');
+    // }).catch((e) => app.log.error({ err: e }, 'Erro ao reconectar sessões'));
   } catch (err) {
     app.log.error(err);
     process.exit(1);

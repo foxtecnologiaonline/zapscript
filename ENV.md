@@ -69,6 +69,27 @@ SUPABASE_SERVICE_KEY=eyJ0eXAiOiJKV1QiLCJhbGc...
 # Obtém em: supabase.com → Settings → API
 ```
 
+### 🟢 WhatsApp Cloud API (Meta Official)
+
+```bash
+WHATSAPP_API_TOKEN=EAAS...           # Access token da Meta
+WHATSAPP_BUSINESS_ACCOUNT_ID=123456  # ID da conta business
+WHATSAPP_PHONE_NUMBER_ID=123456      # ID do número WhatsApp
+WHATSAPP_WEBHOOK_TOKEN=webhook-xyz   # Token para webhooks (você cria)
+```
+
+**Setup:**
+1. Vá para https://developers.facebook.com
+2. Crie um App → Selecione "Business"
+3. Adicione produto: WhatsApp
+4. Gere Access Token com scope: `whatsapp_business_messaging`
+5. Copie: App ID, App Secret, Access Token
+6. Configure webhook em: https://zapscript-api.onrender.com/webhook/whatsapp
+
+**Obs:** Meta cobra por mensagem (~R$ 0,05-0,15 cada). Grátis até 1.000/mês.
+
+---
+
 ### 🟡 AI & Integrações
 
 #### OpenAI (Transcription)

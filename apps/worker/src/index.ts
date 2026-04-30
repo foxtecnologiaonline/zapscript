@@ -7,6 +7,7 @@ import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { convertToMp3 } from './services/audio';
 import { sendMessage } from './services/whatsapp';
+import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
 import { logger } from './lib/logger';
 
 // Validate required API keys at startup — fail fast with clear message
@@ -268,12 +269,92 @@ async function processManualJob(job: Job) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  PIPELINE C — WhatsApp Cloud API (Meta official)
+// ─────────────────────────────────────────────────────────────────
+async function processOfficialWhatsAppJob(job: Job) {
+  const { userId, senderPhone, senderName, mediaId, messageId } = job.data;
+  const durationMin = 1; // Estimativa padrão
+
+  log(job, `📥 WhatsApp Cloud API: ${senderName} (${senderPhone})`);
+
+  let mp3Buffer: Buffer | null = null;
+
+  try {
+    // PASSO 1: Verificar saldo
+    const balance = await prisma.minuteBalance.findUnique({ where: { userId } });
+    if (!balance || balance.availableMinutes < durationMin) {
+      log(job, '⚠️  Saldo insuficiente — notificando usuário');
+      await sendMessageToMeta(
+        senderPhone,
+        '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.'
+      );
+      return { skipped: true, reason: 'insufficient_balance' };
+    }
+    log(job, `✅ Saldo OK: ${balance.availableMinutes.toFixed(1)} min`);
+
+    // PASSO 2: Baixar áudio da Meta API
+    log(job, '⬇️  Baixando áudio da Meta API...');
+    const audioBuffer = await downloadAudioFromMeta(mediaId);
+    log(job, `✅ Baixado: ${(audioBuffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 3: Converter para MP3
+    log(job, '🔄 Convertendo para MP3...');
+    mp3Buffer = await convertToMp3(audioBuffer);
+    log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 4: Transcrever com Whisper
+    log(job, '🎙️  Whisper API...');
+    const originalText = await transcribeBuffer(mp3Buffer);
+    log(job, `✅ "${originalText.substring(0, 60)}..."`);
+
+    // PASSO 5: Resumo com Claude
+    log(job, '🤖 Claude resumo...');
+    const bullets = await generateBullets(originalText);
+    log(job, `✅ ${bullets.length} bullet(s)`);
+
+    // PASSO 6: Enviar resposta no WhatsApp
+    log(job, '📤 Enviando resposta via Meta API...');
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const message = buildMessage(bullets, originalText, user?.refCode || '');
+    await sendMessageToMeta(senderPhone, message);
+    log(job, '✅ Mensagem enviada');
+
+    // PASSO 7: Salvar transcrição (sem débito, meta cobra por mensagem)
+    log(job, '💾 Salvando...');
+    const transcription = await saveTranscription({
+      userId,
+      numberId: 'meta-official', // Placeholder (não usa numberId com API oficial)
+      contactPhone: senderPhone,
+      durationSec: 60, // Estimativa
+      originalText,
+      bullets,
+      source: 'whatsapp-meta',
+    });
+
+    log(job, `✅ Processado via WhatsApp Cloud API`);
+    return { transcriptionId: transcription.id };
+  } catch (err) {
+    log(job, `❌ Erro: ${(err as Error).message}`);
+    // Tentar notificar usuário do erro
+    try {
+      await sendMessageToMeta(senderPhone, '❌ Erro ao processar seu áudio. Tente novamente.');
+    } catch {}
+    throw err;
+  } finally {
+    mp3Buffer?.fill(0);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  ROUTER — decide qual pipeline usar
 // ─────────────────────────────────────────────────────────────────
 async function routeJob(job: Job) {
   const source = job.data.source || 'whatsapp';
   if (source === 'manual') {
     return processManualJob(job);
+  }
+  if (source === 'transcribe-official') {
+    return processOfficialWhatsAppJob(job);
   }
   return processWhatsAppJob(job);
 }
