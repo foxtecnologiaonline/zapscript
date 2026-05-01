@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { logger } from '../lib/logger';
 
 const META_API_URL = 'https://graph.facebook.com/v18.0';
 
@@ -12,29 +13,38 @@ export async function downloadAudioFromMeta(mediaId: string): Promise<Buffer> {
     throw new Error('WHATSAPP_API_TOKEN não configurado');
   }
 
-  try {
-    // Primeiro, obter URL de download do media ID
-    console.log(`[Meta] Obtendo URL para mídia ${mediaId}`);
-    const infoResponse = await axios.get(`${META_API_URL}/${mediaId}`, {
-      headers: { Authorization: `Bearer ${apiToken}` },
-    });
+  // Primeiro, obter URL de download do media ID
+  logger.info(`[Meta] Obtendo URL para mídia ${mediaId}`);
+  const infoResponse = await axios.get(`${META_API_URL}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${apiToken}` },
+  });
 
-    const downloadUrl = infoResponse.data.url;
-    console.log(`[Meta] ✓ URL obtida`);
+  const downloadUrl = infoResponse.data.url;
+  const fileSize: number = infoResponse.data.file_size || 0;
 
-    // Depois, fazer download do arquivo
-    console.log(`[Meta] Fazendo download...`);
-    const mediaResponse = await axios.get(downloadUrl, {
-      responseType: 'arraybuffer',
-      headers: { Authorization: `Bearer ${apiToken}` },
-    });
-
-    console.log(`[Meta] ✓ Áudio baixado (${mediaResponse.data.length} bytes)`);
-    return Buffer.from(mediaResponse.data);
-  } catch (error) {
-    console.error('[Meta] Erro ao baixar áudio:', error);
-    throw error;
+  // Validar tamanho antes de baixar (Whisper aceita no máximo 25MB)
+  const MAX_BYTES = 25 * 1024 * 1024; // 25MB
+  if (fileSize > MAX_BYTES) {
+    throw new Error(`Áudio muito grande (${(fileSize / 1024 / 1024).toFixed(1)}MB). Máximo: 25MB`);
   }
+
+  logger.info(`[Meta] URL obtida, baixando...`);
+  const mediaResponse = await axios.get(downloadUrl, {
+    responseType: 'arraybuffer',
+    headers: { Authorization: `Bearer ${apiToken}` },
+    maxContentLength: MAX_BYTES,
+    maxBodyLength: MAX_BYTES,
+  });
+
+  const buffer = Buffer.from(mediaResponse.data);
+
+  // Double-check after download
+  if (buffer.length > MAX_BYTES) {
+    throw new Error(`Áudio muito grande após download (${(buffer.length / 1024 / 1024).toFixed(1)}MB). Máximo: 25MB`);
+  }
+
+  logger.info(`[Meta] Áudio baixado (${(buffer.length / 1024).toFixed(0)} KB)`);
+  return buffer;
 }
 
 /**
@@ -48,27 +58,21 @@ export async function sendMessageToMeta(phoneNumber: string, text: string): Prom
     throw new Error('WHATSAPP_API_TOKEN ou WHATSAPP_PHONE_NUMBER_ID não configurado');
   }
 
-  try {
-    const response = await axios.post(
-      `${META_API_URL}/${phoneNumberId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: phoneNumber.replace(/\D/g, ''),
-        type: 'text',
-        text: { body: text },
-      },
-      {
-        headers: { Authorization: `Bearer ${apiToken}` },
-      }
-    );
+  const response = await axios.post(
+    `${META_API_URL}/${phoneNumberId}/messages`,
+    {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phoneNumber.replace(/\D/g, ''),
+      type: 'text',
+      text: { body: text },
+    },
+    {
+      headers: { Authorization: `Bearer ${apiToken}` },
+    }
+  );
 
-    const messageId = response.data.messages?.[0]?.id;
-    console.log(`[Meta] ✓ Mensagem enviada: ${messageId}`);
-    return messageId;
-  } catch (error: any) {
-    const errorMsg = error.response?.data?.error?.message || error.message;
-    console.error('[Meta] Erro ao enviar mensagem:', errorMsg);
-    throw error;
-  }
+  const messageId = response.data.messages?.[0]?.id;
+  logger.info(`[Meta] Mensagem enviada: ${messageId}`);
+  return messageId;
 }

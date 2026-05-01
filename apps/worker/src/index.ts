@@ -140,6 +140,13 @@ async function processManualJob(job: Job) {
     const rawBuffer = Buffer.from(audioBase64, 'base64');
     log(job, `✅ Buffer: ${(rawBuffer.length / 1024).toFixed(0)} KB`);
 
+    // PASSO 2.5: Validar tamanho (Whisper aceita no máximo 25MB)
+    const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+    if (rawBuffer.length > MAX_AUDIO_BYTES) {
+      log(job, `⚠️ Arquivo muito grande: ${(rawBuffer.length / 1024 / 1024).toFixed(1)}MB > 25MB`);
+      return { skipped: true, reason: 'file_too_large' };
+    }
+
     // PASSO 3: Converter para MP3 (aceita OGG, MP3, M4A, WAV, WebM)
     log(job, '🔄 Convertendo para MP3...');
     mp3Buffer = await convertToMp3(rawBuffer);

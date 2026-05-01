@@ -8,6 +8,7 @@ import { Server as SocketServer } from 'socket.io';
 // Baileys foi descontinuado - agora usando Meta Cloud API
 // import { reconnectAllSessions, getPendingQR } from './services/whatsapp';
 import { redis } from './services/queue';
+import { prisma } from './lib/prisma';
 
 const app = Fastify({
   logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' },
@@ -46,7 +47,7 @@ io.on('connection', (socket) => {
       return;
     }
     socket.join(`user:${userId}`);
-    console.log(`[Socket.IO] user:${userId} entrou na sala`);
+    app.log.info(`[Socket.IO] user:${userId} entrou na sala`);
     // Note: WhatsApp messages now come via webhooks (Meta Cloud API)
     // Socket.IO emits 'audio_received', 'text_received', etc. when messages arrive
   });
@@ -56,6 +57,18 @@ app.register(cors, { origin: allowedOrigin, credentials: true });
 app.register(jwt, { secret: process.env.JWT_SECRET! });
 app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
 app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB max
+
+// ── Security Headers ──────────────────────────────────────────
+app.addHook('onSend', async (_req, reply) => {
+  reply.header('X-Content-Type-Options', 'nosniff');
+  reply.header('X-Frame-Options', 'DENY');
+  reply.header('X-XSS-Protection', '1; mode=block');
+  reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (process.env.NODE_ENV === 'production') {
+    reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+});
 
 app.decorate('authenticate', async function (req: any, reply: any) {
   try { await req.jwtVerify(); }
@@ -76,23 +89,42 @@ app.register(import('./routes/admin'),          { prefix: '/admin' });
 // ── WhatsApp Webhook (Meta Cloud API) ──────────────────────
 if (process.env.WHATSAPP_API_TOKEN) {
   app.register(import('./routes/whatsapp-webhook'), { prefix: '/webhook/whatsapp' });
-  console.log('✅ WhatsApp Cloud API webhook registrado');
+  app.log.info('✅ WhatsApp Cloud API webhook registrado');
 } else {
-  console.warn('⚠️ WHATSAPP_API_TOKEN não configurado - webhook desabilitado');
+  app.log.warn('⚠️ WHATSAPP_API_TOKEN não configurado - webhook desabilitado');
 }
 
 app.get('/health', async (_, reply) => {
+  const checks: Record<string, string> = {};
+  let healthy = true;
+
+  // Redis check
   try {
     await redis.ping();
-    return {
-      status: 'ok',
-      ts:     new Date().toISOString(),
-      app:    process.env.APP_NAME || 'ZapScript',
-      env:    process.env.NODE_ENV,
-    };
+    checks.redis = 'ok';
   } catch {
-    return reply.code(503).send({ status: 'error', reason: 'Redis unreachable' });
+    checks.redis = 'error';
+    healthy = false;
   }
+
+  // DB check
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    checks.db = 'ok';
+  } catch {
+    checks.db = 'error';
+    healthy = false;
+  }
+
+  const payload = {
+    status: healthy ? 'ok' : 'degraded',
+    ts:     new Date().toISOString(),
+    app:    process.env.APP_NAME || 'ZapScript',
+    env:    process.env.NODE_ENV,
+    checks,
+  };
+
+  return healthy ? payload : reply.code(503).send(payload);
 });
 
 async function start() {

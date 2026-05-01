@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import nodemailer from 'nodemailer';
+import { logger } from '../lib/logger';
 
 function escapeHtml(str: string): string {
   return str
@@ -13,7 +14,7 @@ function escapeHtml(str: string): string {
 
 async function sendEmail(to: string, subject: string, html: string) {
   if (!process.env.SMTP_HOST) {
-    console.log('[Support] SMTP não configurado, e-mail não enviado');
+    logger.info('[Support] SMTP não configurado, e-mail não enviado');
     return;
   }
   const transporter = nodemailer.createTransport({
@@ -78,7 +79,7 @@ export default async function supportRoutes(app: FastifyInstance) {
         attachmentData,
         attachmentFilename,
         attachmentMimeType,
-      } as any,  // Type mismatch due to Prisma client generation issue
+      },
     });
 
     const safeName        = escapeHtml(name);

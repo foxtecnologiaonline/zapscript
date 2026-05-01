@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios';
+import { logger } from '../lib/logger';
 
 const META_API_URL = 'https://graph.facebook.com/v18.0';
 
@@ -33,7 +34,7 @@ class WhatsAppOfficialAPI {
     this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
 
     if (!this.apiToken || !this.phoneNumberId) {
-      console.error('[WhatsApp] ⚠️ Missing WHATSAPP_API_TOKEN or WHATSAPP_PHONE_NUMBER_ID');
+      logger.warn('[WhatsApp] ⚠️ Missing WHATSAPP_API_TOKEN or WHATSAPP_PHONE_NUMBER_ID');
     }
   }
 
@@ -99,10 +100,10 @@ class WhatsAppOfficialAPI {
         }
       );
 
-      console.log(`[WhatsApp] ✓ Mensagem ${messageId} marcada como lida`);
+      logger.info(`[WhatsApp] ✓ Mensagem ${messageId} marcada como lida`);
       return response.data;
     } catch (error) {
-      console.error('[WhatsApp] Erro ao marcar como lida:', this._formatError(error));
+      logger.error(`[WhatsApp] Erro ao marcar como lida: ${this._formatError(error)}`);
       throw error;
     }
   }
@@ -126,7 +127,7 @@ class WhatsAppOfficialAPI {
 
       return Buffer.from(mediaResponse.data);
     } catch (error) {
-      console.error('[WhatsApp] Erro ao baixar mídia:', this._formatError(error));
+      logger.error(`[WhatsApp] Erro ao baixar mídia: ${this._formatError(error)}`);
       throw error;
     }
   }
@@ -144,11 +145,11 @@ class WhatsAppOfficialAPI {
         }
       );
 
-      console.log(`[WhatsApp] ✓ ${action}: ${response.data.messages?.[0]?.id}`);
+      logger.info(`[WhatsApp] ✓ ${action}: ${response.data.messages?.[0]?.id}`);
       return response.data;
     } catch (error) {
       const errorMsg = this._formatError(error);
-      console.error(`[WhatsApp] ✗ ${action} falhou:`, errorMsg);
+      logger.error(`[WhatsApp] ✗ ${action} falhou: ${errorMsg}`);
       throw new Error(`WhatsApp ${action} failed: ${errorMsg}`);
     }
   }

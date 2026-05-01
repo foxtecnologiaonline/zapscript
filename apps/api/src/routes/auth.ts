@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../lib/prisma';
 import nodemailer from 'nodemailer';
+import { logger } from '../lib/logger';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -11,7 +12,7 @@ const supabase = createClient(
 // ── Utilitário de e-mail ──────────────────────────────────────────────────────
 async function sendEmail(to: string, subject: string, html: string) {
   if (!process.env.SMTP_HOST) {
-    console.log('[Auth] SMTP não configurado, e-mail não enviado');
+    logger.info('[Auth] SMTP não configurado, e-mail não enviado');
     return;
   }
   const transporter = nodemailer.createTransport({
@@ -182,7 +183,7 @@ export default async function authRoutes(app: FastifyInstance) {
         }
       } catch (err: any) {
         // Não falhar o cadastro se o envio de e-mail falhar
-        console.error('[Auth] Erro ao enviar e-mail de confirmação:', err.message);
+        logger.error(`[Auth] Erro ao enviar e-mail de confirmação: ${err.message}`);
       }
 
       return reply.code(201).send({
@@ -270,7 +271,7 @@ export default async function authRoutes(app: FastifyInstance) {
           );
         }
       } catch (err: any) {
-        console.error('[Auth] Erro ao gerar link de recuperação:', err.message);
+        logger.error(`[Auth] Erro ao gerar link de recuperação: ${err.message}`);
       }
 
       // Sempre retornar sucesso para não vazar se o e-mail existe no sistema

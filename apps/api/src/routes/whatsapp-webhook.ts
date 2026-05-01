@@ -25,14 +25,14 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
     const token = query.hub_verify_token as string;
     const challenge = query.hub_challenge as string;
 
-    console.log(`[WhatsApp Webhook] Verificação: mode=${mode}, token=${token ? '✓' : '✗'}`);
+    app.log.info(`[WhatsApp Webhook] Verificação: mode=${mode}, token=${token ? '✓' : '✗'}`);
 
     if (mode === 'subscribe' && token === webhookToken) {
-      console.log('[WhatsApp Webhook] ✅ Webhook verificado com sucesso');
+      app.log.info('[WhatsApp Webhook] ✅ Webhook verificado com sucesso');
       return challenge; // Meta espera receber o challenge de volta
     }
 
-    console.error('[WhatsApp Webhook] ❌ Token de webhook inválido');
+    app.log.error('[WhatsApp Webhook] ❌ Token de webhook inválido');
     reply.code(403).send({ error: 'Invalid webhook token' });
   });
 
@@ -47,7 +47,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
 
     // Processar em background
     processWebhookMessage(body).catch((err) => {
-      console.error('[WhatsApp Webhook] Erro ao processar:', err);
+      app.log.error({ err: err.message }, '[WhatsApp Webhook] Erro ao processar');
     });
   });
 
@@ -73,7 +73,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
       // Processar confirmação de entrega
       // ─────────────────────────────────
       for (const status of statuses) {
-        console.log(`[WhatsApp] Status de ${status.recipient_id}: ${status.status}`);
+        app.log.info(`[WhatsApp] Status de ${status.recipient_id}: ${status.status}`);
         // Aqui você pode atualizar logs de delivery
       }
 
@@ -88,7 +88,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
         const contact = contacts.find((c: any) => c.wa_id === senderPhone);
         const senderName = contact?.profile?.name || senderPhone;
 
-        console.log(`[WhatsApp] Mensagem de ${senderName} (${senderPhone}) - tipo: ${msg.type}`);
+        app.log.info(`[WhatsApp] Mensagem de ${senderName} (${senderPhone}) - tipo: ${msg.type}`);
 
         // Encontrar usuário que possui este número
         const whatsappNumber = await prisma.whatsappNumber.findFirst({
@@ -97,7 +97,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
         });
 
         if (!whatsappNumber) {
-          console.warn(`[WhatsApp] Número ${senderPhone} não registrado no sistema`);
+          app.log.warn(`[WhatsApp] Número ${senderPhone} não registrado no sistema`);
           return;
         }
 
@@ -108,7 +108,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
         // ─────────────────────────────────
         if (msg.type === 'audio' && msg.audio) {
           const audio = msg.audio;
-          console.log(`[WhatsApp] 🔊 Áudio recebido: ${audio.id}`);
+          app.log.info(`[WhatsApp] 🔊 Áudio recebido: ${audio.id}`);
 
           // Adicionar à fila de transcrição
           await transcriptionQueue.add(
@@ -131,8 +131,8 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
           // Marcar como lido
           try {
             await whatsappAPI.markAsRead(messageId);
-          } catch (err) {
-            console.error('[WhatsApp] Erro ao marcar áudio como lido:', err);
+          } catch (err: any) {
+            app.log.error({ err: err.message }, '[WhatsApp] Erro ao marcar áudio como lido');
           }
 
           // Notificar frontend via Socket.IO
@@ -149,7 +149,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
         // ─────────────────────────────────
         if (msg.type === 'text' && msg.text) {
           const text = msg.text.body;
-          console.log(`[WhatsApp] 💬 Texto: "${text}"`);
+          app.log.info(`[WhatsApp] 💬 Texto de ${senderName}: "${text.substring(0, 50)}"`);
 
           // Responder com mensagem genérica (opcional)
           try {
@@ -157,15 +157,15 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
               senderPhone,
               'Olá! Envie um áudio para transcrição e resumo automático. 🎙️'
             );
-          } catch (err) {
-            console.error('[WhatsApp] Erro ao responder:', err);
+          } catch (err: any) {
+            app.log.error({ err: err.message }, '[WhatsApp] Erro ao responder texto');
           }
 
           // Marcar como lido
           try {
             await whatsappAPI.markAsRead(messageId);
-          } catch (err) {
-            console.error('[WhatsApp] Erro ao marcar texto como lido:', err);
+          } catch (err: any) {
+            app.log.error({ err: err.message }, '[WhatsApp] Erro ao marcar texto como lido');
           }
         }
 
@@ -174,12 +174,12 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
         // ─────────────────────────────────
         if (msg.type === 'image' && msg.image) {
           const image = msg.image;
-          console.log(`[WhatsApp] 🖼️ Imagem recebida: ${image.id}`);
+          app.log.info(`[WhatsApp] 🖼️ Imagem recebida: ${image.id}`);
 
           try {
             await whatsappAPI.markAsRead(messageId);
-          } catch (err) {
-            console.error('[WhatsApp] Erro ao marcar imagem como lida:', err);
+          } catch (err: any) {
+            app.log.error({ err: err.message }, '[WhatsApp] Erro ao marcar imagem como lida');
           }
         }
 
@@ -188,17 +188,17 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
         // ─────────────────────────────────
         if (msg.type === 'document' && msg.document) {
           const document = msg.document;
-          console.log(`[WhatsApp] 📄 Documento recebido: ${document.filename}`);
+          app.log.info(`[WhatsApp] 📄 Documento recebido: ${document.filename}`);
 
           try {
             await whatsappAPI.markAsRead(messageId);
-          } catch (err) {
-            console.error('[WhatsApp] Erro ao marcar documento como lido:', err);
+          } catch (err: any) {
+            app.log.error({ err: err.message }, '[WhatsApp] Erro ao marcar documento como lido');
           }
         }
       }
-    } catch (error) {
-      console.error('[WhatsApp Webhook] Erro ao processar webhook:', error);
+    } catch (error: any) {
+      app.log.error({ err: error.message }, '[WhatsApp Webhook] Erro ao processar webhook');
     }
   }
 }
