@@ -2,13 +2,12 @@ import 'dotenv/config';
 import { Worker, Job } from 'bullmq';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { downloadMediaMessage } from '@whiskeysockets/baileys';
 import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { convertToMp3 } from './services/audio';
-import { sendMessage } from './services/whatsapp';
 import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
 import { logger } from './lib/logger';
+// Baileys removido — agora usando Meta Cloud API exclusivamente
 
 // Validate required API keys at startup — fail fast with clear message
 if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.startsWith('sk-proj-...')) {
@@ -26,15 +25,6 @@ const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // ─────────────────────────────────────────────────────────────────
 //  SHARED HELPERS — usados em ambos os pipelines
 // ─────────────────────────────────────────────────────────────────
-
-/** Baixa mídia do WhatsApp com timeout de 30s */
-async function downloadWithTimeout(msg: any): Promise<Buffer> {
-  const download = downloadMediaMessage(msg, 'buffer', {}) as Promise<Buffer>;
-  const timeout  = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('Download de mídia excedeu 30s')), 30_000)
-  );
-  return Promise.race([download, timeout]);
-}
 
 /** Transcreve um mp3Buffer com Whisper */
 async function transcribeBuffer(mp3Buffer: Buffer): Promise<string> {
@@ -128,83 +118,10 @@ function buildMessage(bullets: string[], originalText: string, refCode: string):
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  PIPELINE A — Jobs do WhatsApp (source: 'whatsapp')
-// ─────────────────────────────────────────────────────────────────
-async function processWhatsAppJob(job: Job) {
-  const { numberId, userId, msg, contactJid, duration } = job.data;
-  const durationMin = duration / 60;
-
-  log(job, `📥 WhatsApp: ${contactJid} (${duration}s)`);
-
-  let oggBuffer: Buffer | null = null;
-  let mp3Buffer: Buffer | null = null;
-
-  try {
-    // PASSO 1: Verificar saldo
-    const balance = await prisma.minuteBalance.findUnique({ where: { userId } });
-    if (!balance || balance.availableMinutes < durationMin) {
-      log(job, '⚠️  Saldo insuficiente — notificando usuário');
-      await sendMessage(
-        numberId,
-        contactJid,
-        `⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.`
-      );
-      return { skipped: true, reason: 'insufficient_balance' };
-    }
-    log(job, `✅ Saldo OK: ${balance.availableMinutes.toFixed(1)} min`);
-
-    // PASSO 2: Baixar áudio do WhatsApp (com timeout de 30s)
-    log(job, '⬇️  Baixando áudio...');
-    oggBuffer = await downloadWithTimeout(msg);
-    log(job, `✅ Baixado: ${(oggBuffer.length / 1024).toFixed(0)} KB`);
-
-    // PASSO 3: Converter OGG → MP3
-    log(job, '🔄 Convertendo OGG → MP3...');
-    mp3Buffer = await convertToMp3(oggBuffer);
-    log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
-
-    // PASSO 4: Transcrever com Whisper
-    log(job, '🎙️  Whisper API...');
-    const originalText = await transcribeBuffer(mp3Buffer);
-    log(job, `✅ "${originalText.substring(0, 60)}..."`);
-
-    // PASSO 5: Resumo com Claude
-    log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(originalText);
-    log(job, `✅ ${bullets.length} bullet(s)`);
-
-    // PASSO 6: Enviar resposta no WhatsApp
-    log(job, '📤 Enviando no WhatsApp...');
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    await sendMessage(numberId, contactJid, buildMessage(bullets, originalText, user?.refCode || ''));
-    log(job, '✅ Mensagem enviada');
-
-    // PASSO 7: Salvar e debitar (atomicamente)
-    log(job, '💾 Salvando...');
-    const contactPhone = contactJid.replace('@s.whatsapp.net', '').replace('@g.us', '');
-    const transcription = await saveTranscription({
-      userId, numberId, contactPhone,
-      durationSec: duration, originalText, bullets, source: 'whatsapp',
-    });
-
-    log(job, `✅ Concluído — ${durationMin.toFixed(2)} min debitados`);
-    return { transcriptionId: transcription.id, durationMin };
-
-  } catch (err) {
-    log(job, `❌ Erro: ${(err as Error).message}`);
-    throw err;
-  } finally {
-    // LGPD: limpar buffers de áudio independentemente de sucesso ou erro
-    oggBuffer?.fill(0);
-    mp3Buffer?.fill(0);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────
 //  PIPELINE B — Uploads manuais do dashboard (source: 'manual')
 // ─────────────────────────────────────────────────────────────────
 async function processManualJob(job: Job) {
-  const { numberId, userId, audioBase64, filename, contactJid } = job.data;
+  const { numberId, userId, audioBase64, filename } = job.data;
 
   log(job, `📥 Upload manual: ${filename}`);
 
@@ -238,22 +155,13 @@ async function processManualJob(job: Job) {
     const bullets = await generateBullets(originalText);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
-    // PASSO 6: Enviar resultado no WhatsApp (se houver número conectado)
-    if (contactJid) {
-      log(job, '📤 Enviando no WhatsApp...');
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      await sendMessage(numberId, contactJid, buildMessage(bullets, originalText, user?.refCode || ''));
-      log(job, '✅ Mensagem enviada');
-    }
-
-    // PASSO 7: Estimar duração a partir do tamanho do buffer (~128kbps)
+    // PASSO 6: Estimar duração a partir do tamanho do buffer (~128kbps)
     const estimatedDuration = Math.max(1, (rawBuffer.length / 1024 / 16)); // segundos aprox.
 
-    // PASSO 8: Salvar e debitar (atomicamente)
+    // PASSO 7: Salvar e debitar (atomicamente)
     log(job, '💾 Salvando...');
-    const contactPhone = contactJid?.replace('@s.whatsapp.net', '') || 'manual';
     const transcription = await saveTranscription({
-      userId, numberId, contactPhone,
+      userId, numberId, contactPhone: 'manual',
       durationSec: estimatedDuration, originalText, bullets, source: 'manual',
     });
 
@@ -280,8 +188,11 @@ async function processOfficialWhatsAppJob(job: Job) {
   let mp3Buffer: Buffer | null = null;
 
   try {
-    // PASSO 1: Verificar saldo
-    const balance = await prisma.minuteBalance.findUnique({ where: { userId } });
+    // PASSO 1: Verificar saldo + buscar numberId real do usuário
+    const [balance, firstNumber] = await Promise.all([
+      prisma.minuteBalance.findUnique({ where: { userId } }),
+      prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+    ]);
     if (!balance || balance.availableMinutes < durationMin) {
       log(job, '⚠️  Saldo insuficiente — notificando usuário');
       await sendMessageToMeta(
@@ -289,6 +200,10 @@ async function processOfficialWhatsAppJob(job: Job) {
         '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.'
       );
       return { skipped: true, reason: 'insufficient_balance' };
+    }
+    if (!firstNumber) {
+      log(job, '⚠️  Usuário sem número cadastrado');
+      return { skipped: true, reason: 'no_number' };
     }
     log(job, `✅ Saldo OK: ${balance.availableMinutes.toFixed(1)} min`);
 
@@ -319,13 +234,13 @@ async function processOfficialWhatsAppJob(job: Job) {
     await sendMessageToMeta(senderPhone, message);
     log(job, '✅ Mensagem enviada');
 
-    // PASSO 7: Salvar transcrição (sem débito, meta cobra por mensagem)
+    // PASSO 7: Salvar transcrição e debitar minutos
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId,
-      numberId: 'meta-official', // Placeholder (não usa numberId com API oficial)
+      numberId: firstNumber.id, // Usa o WhatsappNumber real do usuário
       contactPhone: senderPhone,
-      durationSec: 60, // Estimativa
+      durationSec: 60, // Estimativa de 1 min por áudio via Meta
       originalText,
       bullets,
       source: 'whatsapp-meta',
@@ -349,14 +264,12 @@ async function processOfficialWhatsAppJob(job: Job) {
 //  ROUTER — decide qual pipeline usar
 // ─────────────────────────────────────────────────────────────────
 async function routeJob(job: Job) {
-  const source = job.data.source || 'whatsapp';
+  const source = job.data.source || 'transcribe-official';
   if (source === 'manual') {
     return processManualJob(job);
   }
-  if (source === 'transcribe-official') {
-    return processOfficialWhatsAppJob(job);
-  }
-  return processWhatsAppJob(job);
+  // transcribe-official = WhatsApp Cloud API (Meta) — pipeline principal
+  return processOfficialWhatsAppJob(job);
 }
 
 // ─────────────────────────────────────────────────────────────────

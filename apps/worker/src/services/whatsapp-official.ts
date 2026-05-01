@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const META_API_URL = 'https://graph.instagram.com/v18.0';
+const META_API_URL = 'https://graph.facebook.com/v18.0';
 
 /**
  * Baixar áudio da Meta API e retornar como Buffer

@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 
-const META_API_URL = 'https://graph.instagram.com/v18.0';
+const META_API_URL = 'https://graph.facebook.com/v18.0';
 
 export interface WhatsAppMessage {
   messaging_product: 'whatsapp';

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 
@@ -15,36 +15,17 @@ interface WNumber {
 }
 
 export default function NumerosPage() {
-  const [numbers, setNumbers]       = useState<WNumber[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [addName, setAddName]       = useState('');
-  const [addPhone, setAddPhone]     = useState('');
-  const [adding, setAdding]         = useState(false);
-  const [error, setError]           = useState('');
-
-  // QR code state
-  const [qr, setQr]                 = useState<{ numberId: string; dataUrl: string } | null>(null);
-  const [connectingId, setConnectingId] = useState<string | null>(null);
-
-  // Pairing code state
-  const [pairingModal, setPairingModal] = useState<{
-    numberId: string;
-    phone: string;
-    code: string | null;
-    loading: boolean;
-  } | null>(null);
-
+  const [numbers, setNumbers] = useState<WNumber[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addName, setAddName] = useState('');
+  const [addPhone, setAddPhone] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState('');
   const [userId, setUserId] = useState('');
-
-  // Polling refs
-  const qrPollRef          = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pairingCodePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const statusPollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadNumbers();
     api.get<any>('/auth/me').then(u => setUserId(u.id));
-    return () => { stopQRPoll(); stopPairingCodePoll(); stopStatusPoll(); };
   }, []);
 
   async function loadNumbers() {
@@ -54,115 +35,10 @@ export default function NumerosPage() {
   }
 
   /* ────────────────────────────────────────
-     QR CODE POLLING (funciona sem Socket.IO)
-     Busca o QR via REST a cada 2s por até 90s.
-     ──────────────────────────────────────── */
-  function stopQRPoll() {
-    if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; }
-  }
-
-  function startQRPoll(numberId: string) {
-    stopQRPoll();
-    let attempts = 0;
-    qrPollRef.current = setInterval(async () => {
-      if (++attempts > 45) {           // 90 segundos máximo
-        stopQRPoll();
-        setConnectingId(null);
-        setError('Tempo esgotado aguardando QR Code. Verifique os logs da API e tente novamente.');
-        return;
-      }
-      try {
-        const res = await api.get<{ qr: string }>(`/numbers/${numberId}/qr`);
-        if (res?.qr) {
-          stopQRPoll();
-          const QRCode = (await import('qrcode')).default;
-          const dataUrl = await QRCode.toDataURL(res.qr, { width: 300, margin: 2 });
-          setQr({ numberId, dataUrl });
-        }
-      } catch { /* 404 = QR ainda não gerado, continua */ }
-    }, 2000);
-  }
-
-  /* ────────────────────────────────────────
-     PAIRING CODE POLLING (funciona sem Socket.IO)
-     Busca o código via REST a cada 2s por até 60s.
-     ──────────────────────────────────────── */
-  function stopPairingCodePoll() {
-    if (pairingCodePollRef.current) { clearInterval(pairingCodePollRef.current); pairingCodePollRef.current = null; }
-  }
-
-  function startPairingCodePoll(numberId: string) {
-    stopPairingCodePoll();
-    let attempts = 0;
-    pairingCodePollRef.current = setInterval(async () => {
-      if (++attempts > 30) {           // 60 segundos máximo
-        stopPairingCodePoll();
-        setError('Tempo esgotado aguardando código de vinculação. Tente novamente.');
-        setPairingModal(prev => prev ? { ...prev, loading: false } : prev);
-        return;
-      }
-      try {
-        const res = await api.get<{ code: string }>(`/numbers/${numberId}/pairing-code`);
-        if (res?.code) {
-          stopPairingCodePoll();
-          setPairingModal(prev =>
-            prev?.numberId === numberId ? { ...prev, code: res.code, loading: false } : prev
-          );
-        }
-      } catch { /* 404 = código ainda não gerado, continua */ }
-    }, 2000);
-  }
-
-  /* ────────────────────────────────────────
-     STATUS POLLING (detecta conexão sem WS)
-     Checa se o número ficou "connected" a cada 4s.
-     ──────────────────────────────────────── */
-  function stopStatusPoll() {
-    if (statusPollRef.current) { clearInterval(statusPollRef.current); statusPollRef.current = null; }
-  }
-
-  function startStatusPoll(numberId: string) {
-    stopStatusPoll();
-    statusPollRef.current = setInterval(async () => {
-      try {
-        const data = await api.get<WNumber[]>('/numbers');
-        const n = data.find(x => x.id === numberId);
-        if (n?.status === 'connected') {
-          stopStatusPoll(); stopQRPoll();
-          setQr(null); setConnectingId(null); setPairingModal(null);
-          setNumbers(data);
-        }
-      } catch { /* ignora falhas pontuais */ }
-    }, 4000);
-  }
-
-  /* ────────────────────────────────────────
-     SOCKET.IO — bonus em cima do polling
-     Eventos chegam mais rápido quando o WS funciona.
+     SOCKET.IO — recebe eventos de transcrição em tempo real
      ──────────────────────────────────────── */
   const { connected: socketOk } = useSocket(userId, {
-    qr_code: async ({ numberId, qr: rawQr }: { numberId: string; qr: string }) => {
-      stopQRPoll();
-      try {
-        const QRCode = (await import('qrcode')).default;
-        const dataUrl = await QRCode.toDataURL(rawQr, { width: 300, margin: 2 });
-        setQr({ numberId, dataUrl });
-      } catch { setQr({ numberId, dataUrl: '' }); }
-    },
-    pairing_code: ({ numberId, code }: { numberId: string; code: string }) => {
-      stopPairingCodePoll();
-      setPairingModal(prev =>
-        prev?.numberId === numberId ? { ...prev, code, loading: false } : prev
-      );
-    },
-    wa_connected: () => {
-      stopStatusPoll(); stopQRPoll(); stopPairingCodePoll();
-      setQr(null); setConnectingId(null); setPairingModal(null);
-      loadNumbers();
-    },
-    wa_disconnected: () => {
-      stopStatusPoll(); loadNumbers();
-    },
+    audio_received: () => { loadNumbers(); },
   });
 
   /* ──────── Actions ──────── */
@@ -182,46 +58,6 @@ export default function NumerosPage() {
     finally { setAdding(false); }
   }
 
-  async function handleConnectQR(id: string) {
-    setConnectingId(id); setError(''); setQr(null);
-    try {
-      await api.post(`/numbers/${id}/connect`, {});
-      startQRPoll(id);     // polling REST para QR
-      startStatusPoll(id); // polling para detectar conexão
-    } catch (err: any) {
-      setError(err.message); setConnectingId(null);
-      stopQRPoll(); stopStatusPoll();
-    }
-  }
-
-  function openPairingModal(n: WNumber) {
-    const knownPhone = n.phoneNumber !== 'pending' ? n.phoneNumber : '';
-    setPairingModal({ numberId: n.id, phone: knownPhone, code: null, loading: false });
-    setError('');
-  }
-
-  async function handleRequestPairing() {
-    if (!pairingModal) return;
-    const clean = pairingModal.phone.replace(/\D/g, '');
-    if (clean.length < 12) {
-      setError('Inclua o DDI (código do país). Ex: 5511987654321 para Brasil (55 + DDD + número).'); return;
-    }
-    setError('');
-    setPairingModal(prev => prev ? { ...prev, loading: true, code: null } : prev);
-    try {
-      await api.post<{ code: string }>(
-        `/numbers/${pairingModal.numberId}/connect-pairing`,
-        { phoneNumber: clean }
-      );
-      setConnectingId(pairingModal.numberId);
-      startPairingCodePoll(pairingModal.numberId);  // polling REST para código
-      startStatusPoll(pairingModal.numberId);       // polling para detectar conexão
-    } catch (err: any) {
-      setError(err.message);
-      setPairingModal(prev => prev ? { ...prev, loading: false } : prev);
-    }
-  }
-
   async function handleDisconnect(id: string) {
     await api.post(`/numbers/${id}/disconnect`, {});
     loadNumbers();
@@ -231,11 +67,6 @@ export default function NumerosPage() {
     if (!confirm('Remover este número? Todos os dados serão perdidos.')) return;
     await api.delete(`/numbers/${id}`);
     setNumbers(n => n.filter(x => x.id !== id));
-  }
-
-  function cancelConnect() {
-    stopQRPoll(); stopPairingCodePoll(); stopStatusPoll();
-    setQr(null); setConnectingId(null); setPairingModal(null); setError('');
   }
 
   const statusColor = (s: string) =>
@@ -370,30 +201,14 @@ export default function NumerosPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {/* QR Code */}
-                  <button
-                    onClick={() => handleConnectQR(n.id)}
-                    disabled={!!connectingId}
-                    className="btn-primary w-full justify-center text-xs py-2.5 flex items-center gap-2"
-                  >
-                    <span>📷</span>
-                    {connectingId === n.id && !pairingModal
-                      ? '⟳ Aguardando QR Code...'
-                      : 'Conectar por QR Code'}
-                  </button>
-
-                  {/* Pairing Code */}
-                  <button
-                    onClick={() => openPairingModal(n)}
-                    disabled={!!connectingId}
-                    className="btn-ghost w-full justify-center text-xs py-2.5 flex items-center gap-2"
-                  >
-                    <span>🔢</span>
-                    {connectingId === n.id && pairingModal
-                      ? '⟳ Aguardando vinculação...'
-                      : 'Conectar por Número'}
-                  </button>
-
+                  {/* Meta Cloud API — instrução de configuração */}
+                  <div className="bg-amber-400/8 border border-amber-400/20 rounded-lg px-3 py-2.5 text-[11px] text-amber-400/80 leading-relaxed">
+                    <p className="font-semibold mb-1">📡 Conectar via WhatsApp Business API</p>
+                    <p>Configure o webhook no <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="underline text-amber-400">Meta for Developers</a> apontando para:</p>
+                    <code className="block mt-1 bg-brand-elevated px-2 py-1 rounded text-[10px] break-all text-brand-primary">
+                      {process.env.NEXT_PUBLIC_API_URL || 'https://zapscript-api.onrender.com'}/webhook/whatsapp
+                    </code>
+                  </div>
                   <button onClick={() => handleDelete(n.id)}
                     className="w-full text-[11px] px-3 py-1 rounded-lg border border-red-400/10 text-red-400/50 hover:text-red-400 hover:border-red-400/30 transition-colors">
                     Remover
@@ -405,156 +220,6 @@ export default function NumerosPage() {
         </div>
       )}
 
-      {/* ════════════════════════
-          QR Code Modal
-          ════════════════════════ */}
-      {(qr || (connectingId && !pairingModal)) && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="modal-panel max-w-sm w-full text-center">
-            <div className="text-lg font-bold mb-1 text-brand-text">📷 Escanear QR Code</div>
-            <p className="text-xs text-brand-text-secondary font-light mb-5">
-              Abra o <strong>WhatsApp</strong> → Menu ⋮ →{' '}
-              <strong>Dispositivos conectados</strong> → <strong>Conectar dispositivo</strong>
-            </p>
-
-            {qr?.dataUrl ? (
-              <div className="bg-white p-3 rounded-xl inline-block mb-5">
-                <img src={qr.dataUrl} alt="QR Code" width={280} height={280} />
-              </div>
-            ) : (
-              <div className="w-[280px] h-[280px] bg-brand-elevated rounded-xl flex flex-col items-center justify-center mx-auto mb-5 gap-3">
-                <div className="w-8 h-8 border-2 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" />
-                <span className="text-xs text-brand-muted">Gerando QR Code...</span>
-                <span className="text-[10px] text-brand-muted opacity-60">Pode levar até 30s na primeira vez</span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-center gap-2 text-xs text-brand-text-secondary mb-5">
-              <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-              {qr ? 'Aguardando escaneamento...' : 'Iniciando sessão WhatsApp...'}
-            </div>
-
-            <button onClick={cancelConnect} className="btn-ghost w-full justify-center text-sm py-2">
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ════════════════════════
-          Pairing Code Modal
-          ════════════════════════ */}
-      {pairingModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="modal-panel max-w-sm w-full">
-            <div className="text-lg font-bold mb-1 text-brand-text">🔢 Conectar por Número</div>
-            <p className="text-xs text-brand-text-secondary font-light mb-5">
-              Sem precisar escanear QR Code — ideal para quem está no celular.
-            </p>
-
-            {!pairingModal.code ? (
-              /* Step 1: enter phone number */
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">
-                    Número do WhatsApp (da conta a conectar)
-                  </label>
-                  <input
-                    className="input w-full font-mono tracking-wider"
-                    placeholder="5511987654321"
-                    type="tel"
-                    value={pairingModal.phone}
-                    onChange={e =>
-                      setPairingModal(prev => prev ? { ...prev, phone: e.target.value.replace(/\D/g, '') } : prev)
-                    }
-                    autoFocus
-                  />
-                  <div className="mt-2 bg-brand-elevated rounded-lg px-3 py-2 text-[11px] text-brand-muted leading-relaxed space-y-1">
-                    <p>📌 <strong>DDI + DDD + Número</strong>, somente dígitos, sem + ou espaços.</p>
-                    <p>🇧🇷 Brasil SP: <code className="bg-brand-bg px-1 rounded font-mono">55</code> + <code className="bg-brand-bg px-1 rounded font-mono">11</code> + <code className="bg-brand-bg px-1 rounded font-mono">987654321</code> = <code className="bg-brand-bg px-1 rounded font-mono text-brand-primary">5511987654321</code></p>
-                    <p className="text-amber-500">⚠️ Este deve ser o número do WhatsApp que receberá as mensagens.</p>
-                  </div>
-                </div>
-
-                {error && (
-                  <p className="text-red-400 text-xs bg-red-400/10 px-3 py-2 rounded-lg">{error}</p>
-                )}
-
-                <div className="flex gap-2 pt-1">
-                  <button
-                    onClick={handleRequestPairing}
-                    disabled={pairingModal.loading}
-                    className="btn-primary flex-1 justify-center text-sm py-2.5"
-                  >
-                    {pairingModal.loading ? (
-                      <span className="flex items-center gap-2">
-                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Gerando código...
-                      </span>
-                    ) : 'Gerar Código'}
-                  </button>
-                  <button onClick={cancelConnect} className="btn-ghost px-4">
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* Step 2: show the code */
-              <div className="space-y-4">
-                <div className="text-center py-3">
-                  <p className="text-xs text-brand-muted mb-2">Código de vinculação:</p>
-                  <div className="text-5xl font-black tracking-[.25em] font-mono text-brand-primary select-all">
-                    {pairingModal.code}
-                  </div>
-                  <p className="text-[11px] text-amber-500 mt-2">⏱ Válido por ~60 segundos</p>
-                </div>
-
-                <div className="inner-block space-y-2.5">
-                  <p className="text-xs font-bold text-brand-text mb-1">Como usar no WhatsApp:</p>
-                  {[
-                    { text: 'Abra o WhatsApp no celular' },
-                    { text: 'Toque em ⋮ Menu (Android) ou Ajustes (iPhone)' },
-                    { text: 'Vá em Dispositivos conectados → Conectar dispositivo' },
-                    { text: 'Uma câmera QR vai abrir — NÃO escaneie ainda', highlight: true },
-                    { text: 'Toque em "Vincular com número de telefone" (link na parte inferior da tela)' },
-                    { text: `Digite o código: ${pairingModal.code}`, highlight: true },
-                  ].map((step, i) => (
-                    <div key={i} className={`flex items-start gap-2.5 text-xs ${step.highlight ? 'text-brand-text font-semibold' : 'text-brand-text-secondary'}`}>
-                      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5 ${step.highlight ? 'bg-brand-primary/30 text-brand-primary' : 'bg-brand-primary/15 text-brand-primary'}`}>
-                        {i + 1}
-                      </span>
-                      {step.text}
-                    </div>
-                  ))}
-                </div>
-                <div className="bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2 text-[11px] text-amber-500">
-                  ⚠️ <strong>Atenção:</strong> o código expira em ~60 segundos. Se demorar, clique em "Gerar novo código" abaixo.
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-brand-text-secondary">
-                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-                  Aguardando vinculação... (verificando a cada 4 segundos)
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setPairingModal(prev => prev ? { ...prev, code: null } : prev);
-                      setError('');
-                    }}
-                    className="btn-ghost flex-1 justify-center text-xs py-2"
-                  >
-                    ↩ Gerar novo código
-                  </button>
-                  <button onClick={cancelConnect} className="btn-ghost flex-1 justify-center text-xs py-2">
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
