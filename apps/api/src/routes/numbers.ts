@@ -124,7 +124,7 @@ export default async function numberRoutes(app: FastifyInstance) {
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    await disconnectWASession(id);
+    // Com Meta Cloud API, não precisa desconectar sessão Baileys
     await prisma.whatsappNumber.update({
       where: { id },
       data:  { status: 'disconnected', sessionEncrypted: null },
@@ -140,7 +140,7 @@ export default async function numberRoutes(app: FastifyInstance) {
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    await disconnectWASession(id).catch(() => {});
+    // Com Meta Cloud API, não precisa desconectar sessão Baileys
     await prisma.whatsappNumber.delete({ where: { id } });
     return reply.code(204).send();
   });
