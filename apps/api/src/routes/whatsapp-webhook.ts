@@ -20,9 +20,10 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
    * Meta chama isso para confirmar que você é o dono do webhook
    */
   app.get('/webhook', async (req, reply) => {
-    const mode = req.query.hub_mode as string;
-    const token = req.query.hub_verify_token as string;
-    const challenge = req.query.hub_challenge as string;
+    const query = req.query as Record<string, any>;
+    const mode = query.hub_mode as string;
+    const token = query.hub_verify_token as string;
+    const challenge = query.hub_challenge as string;
 
     console.log(`[WhatsApp Webhook] Verificação: mode=${mode}, token=${token ? '✓' : '✗'}`);
 
