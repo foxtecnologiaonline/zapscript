@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { getSession } from '../services/whatsapp';
+import { whatsappAPI } from '../services/whatsapp-official';
 import { prisma } from '../lib/prisma';
 import crypto from 'crypto';
 
@@ -33,25 +33,14 @@ export default async function monitorRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'phone e message são obrigatórios' });
     }
 
-    // Pegar qualquer número conectado para enviar o alerta
-    const number = await prisma.whatsappNumber.findFirst({
-      where: { status: 'connected' },
-    });
-
-    if (!number) {
-      return reply.code(503).send({ error: 'Nenhum número WhatsApp conectado para enviar alerta' });
+    try {
+      await whatsappAPI.sendMessage(phone, message);
+      app.log.info(`[Monitor] 📱 Alerta enviado para ${phone}`);
+      return { sent: true };
+    } catch (err: any) {
+      app.log.error({ err: err.message }, '[Monitor] Erro ao enviar alerta via Meta API');
+      return reply.code(502).send({ error: `Erro ao enviar alerta: ${err.message}` });
     }
-
-    const sock = getSession(number.id);
-    if (!sock) {
-      return reply.code(503).send({ error: 'Sessão WhatsApp não disponível' });
-    }
-
-    const jid = `${phone}@s.whatsapp.net`;
-    await sock.sendMessage(jid, { text: message });
-
-    app.log.info(`📱 Alerta de monitor enviado para ${phone}`);
-    return { sent: true, via: number.phoneNumber };
   });
 
   // ── GET /monitor/status ───────────────────────────────────

@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { getSession } from '../services/whatsapp';
+import { whatsappAPI } from '../services/whatsapp-official';
 import { prisma } from '../lib/prisma';
 import crypto from 'crypto';
 
@@ -24,28 +24,23 @@ export default async function internalRoutes(app: FastifyInstance) {
     }
   };
 
-  // POST /internal/send — Worker envia mensagem WhatsApp
-  app.post<{ Body: { numberId: string; jid: string; text: string } }>(
+  // POST /internal/send — Worker envia mensagem WhatsApp via Meta Cloud API
+  app.post<{ Body: { numberId?: string; phone: string; text: string } }>(
     '/send',
     { preHandler: [verifyToken], config: { rateLimit: { max: 200, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const { numberId, jid, text } = req.body;
-      if (!numberId || !jid || !text) {
-        return reply.code(400).send({ error: 'numberId, jid e text são obrigatórios' });
+      const { phone, text } = req.body;
+      if (!phone || !text) {
+        return reply.code(400).send({ error: 'phone e text são obrigatórios' });
       }
 
-      // Validate numberId exists in DB (prevents sending via arbitrary sessions)
-      const number = await prisma.whatsappNumber.findUnique({ where: { id: numberId } });
-      if (!number) {
-        return reply.code(404).send({ error: `Número ${numberId} não encontrado` });
+      try {
+        const messageId = await whatsappAPI.sendMessage(phone, text);
+        return { sent: true, messageId };
+      } catch (err: any) {
+        app.log.error({ err: err.message }, '[Internal] Erro ao enviar mensagem via Meta API');
+        return reply.code(502).send({ error: `Erro ao enviar: ${err.message}` });
       }
-
-      const sock = getSession(numberId);
-      if (!sock) {
-        return reply.code(404).send({ error: `Sessão ${numberId} não encontrada ou desconectada` });
-      }
-      await sock.sendMessage(jid, { text });
-      return { sent: true };
     }
   );
 
