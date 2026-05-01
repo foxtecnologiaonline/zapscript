@@ -1,6 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { createWASession, disconnectWASession, getPendingQR, getPendingPairingCode, requestWAPairingCode } from '../services/whatsapp';
+// NOTA: Baileys foi descontinuado em favor da Meta Cloud API (webhook-based)
+// As funções abaixo não são mais usadas:
+// import { createWASession, disconnectWASession, getPendingQR, getPendingPairingCode, requestWAPairingCode } from '../services/whatsapp';
 
 export default async function numberRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -68,90 +70,50 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
   );
 
-  // ── POST /numbers/:id/connect — QR Code flow ──────────
+  // ── POST /numbers/:id/connect — DESCONTINUADO (era Baileys QR Code) ──────────
+  // Agora usando Meta Cloud API com webhook
+  // A conexão é feita via webhooks — configure em: https://developers.facebook.com
   app.post<{ Params: { id: string } }>('/:id/connect', auth, async (req: any, reply) => {
-    const { id } = req.params;
-    const userId = req.user.sub;
-
-    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
-    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
-
-    // fresh=true: limpa arquivos de sessão antigos antes de gerar o QR
-    await createWASession(id, userId, true);
-    return { status: 'connecting', message: 'QR Code será enviado via WebSocket' };
+    return reply.code(410).send({
+      error: 'Método descontinuado',
+      message: 'QR Code connection foi substituído pela Meta Cloud API',
+      instructions: 'Configure o webhook no dashboard Meta: https://developers.facebook.com',
+      docs: 'Ver ENV.md para instruções de setup',
+    });
   });
 
-  // ── POST /numbers/:id/connect-pairing — Phone code flow ──
-  // User enters the returned 8-char code in WhatsApp → Dispositivos Conectados
-  // → Vincular por número de telefone
+  // ── POST /numbers/:id/connect-pairing — DESCONTINUADO (era Baileys pairing code) ──
+  // Agora usando Meta Cloud API com webhook
   app.post<{
     Params: { id: string };
     Body: { phoneNumber: string };
   }>('/:id/connect-pairing', auth, async (req: any, reply) => {
-    const { id } = req.params;
-    const { phoneNumber } = req.body;
-    const userId = req.user.sub;
-
-    if (!phoneNumber) {
-      return reply.code(400).send({ error: 'phoneNumber é obrigatório para este método de conexão.' });
-    }
-
-    const cleanPhone = phoneNumber.replace(/\D/g, '');
-    // Must include country code — Brazilian mobile = 13 digits (55 + DDD 2 + 9 + 8)
-    // Minimum 12 digits: some countries have shorter numbers; max 15 (E.164 limit)
-    if (cleanPhone.length < 12 || cleanPhone.length > 15) {
-      return reply.code(400).send({
-        error:
-          'Número inválido. Inclua o DDI (código do país). ' +
-          'Exemplo Brasil: 5511987654321 (55 + DDD + número). ' +
-          `Recebido: "${cleanPhone}" (${cleanPhone.length} dígitos).`,
-      });
-    }
-
-    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
-    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
-
-    try {
-      const code = await requestWAPairingCode(id, userId, cleanPhone);
-      // Format as XXXX-XXXX
-      const formatted = code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
-      return { code: formatted, raw: code };
-    } catch (err: any) {
-      app.log.error({ err }, 'Erro ao gerar pairing code');
-      return reply.code(500).send({
-        error: `Não foi possível gerar o código: ${err.message}. Verifique o número e tente novamente.`,
-      });
-    }
+    return reply.code(410).send({
+      error: 'Método descontinuado',
+      message: 'Pairing code connection foi substituído pela Meta Cloud API',
+      instructions: 'Configure o webhook no dashboard Meta: https://developers.facebook.com',
+      docs: 'Ver ENV.md para instruções de setup',
+    });
   });
 
-  // ── GET /numbers/:id/qr — REST fallback for QR ───────
+  // ── GET /numbers/:id/qr — DESCONTINUADO (era Baileys) ───────
+  // Agora usando Meta Cloud API com webhook
   app.get<{ Params: { id: string } }>('/:id/qr', auth, async (req: any, reply) => {
-    const { id } = req.params;
-    const userId = req.user.sub;
-
-    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
-    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
-
-    const qr = getPendingQR(id);
-    if (!qr) {
-      return reply.code(404).send({ qr: null, message: 'Nenhum QR pendente' });
-    }
-    return { qr };
+    return reply.code(410).send({
+      error: 'Método descontinuado',
+      message: 'QR Code retrieval foi substituído pela Meta Cloud API',
+      instructions: 'Configure o webhook no dashboard Meta: https://developers.facebook.com',
+    });
   });
 
-  // ── GET /numbers/:id/pairing-code — REST fallback for pairing code ──
+  // ── GET /numbers/:id/pairing-code — DESCONTINUADO (era Baileys) ──
+  // Agora usando Meta Cloud API com webhook
   app.get<{ Params: { id: string } }>('/:id/pairing-code', auth, async (req: any, reply) => {
-    const { id } = req.params;
-    const userId = req.user.sub;
-
-    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
-    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
-
-    const code = getPendingPairingCode(id);
-    if (!code) {
-      return reply.code(404).send({ code: null, message: 'Nenhum código pendente' });
-    }
-    return { code };
+    return reply.code(410).send({
+      error: 'Método descontinuado',
+      message: 'Pairing code retrieval foi substituído pela Meta Cloud API',
+      instructions: 'Configure o webhook no dashboard Meta: https://developers.facebook.com',
+    });
   });
 
   // ── POST /numbers/:id/disconnect ──────────────────────
