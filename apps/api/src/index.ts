@@ -4,6 +4,8 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
+import swagger from '@fastify/swagger';
+import swaggerUI from '@fastify/swagger-ui';
 import { Server as SocketServer } from 'socket.io';
 // Baileys foi descontinuado - agora usando Meta Cloud API
 // import { reconnectAllSessions, getPendingQR } from './services/whatsapp';
@@ -40,12 +42,43 @@ export const io = new SocketServer(app.server, {
   pingInterval: 25000,   // heartbeat a cada 25s (evita timeout do Render)
 });
 
+// ── Socket.IO Authentication Middleware ────────────────────────────
+// Valida JWT antes de permitir qualquer operação
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token
+    || socket.handshake.headers['x-access-token'] as string;
+
+  if (!token) {
+    return next(new Error('[Socket.IO] No token provided'));
+  }
+
+  try {
+    // Verifica JWT usando a chave secreta da API
+    const decoded = app.jwt.verify(token) as any;
+    socket.data.userId = decoded.sub;
+    socket.data.email = decoded.email;
+    app.log.info(`[Socket.IO] User ${decoded.sub} autenticado`);
+    next();
+  } catch (err: any) {
+    app.log.warn(`[Socket.IO] Auth failed: ${err.message}`);
+    next(new Error('[Socket.IO] Invalid token'));
+  }
+});
+
 io.on('connection', (socket) => {
   socket.on('join', ({ userId }: { userId: string }) => {
+    // Valida que userId do socket = userId solicitado
+    if (userId !== socket.data.userId) {
+      app.log.warn(`[Socket.IO] Tentativa de acesso não autorizado: user ${socket.data.userId} → ${userId}`);
+      socket.disconnect();
+      return;
+    }
+
     if (!userId || typeof userId !== 'string' || userId.length > 64) {
       socket.disconnect();
       return;
     }
+
     socket.join(`user:${userId}`);
     app.log.info(`[Socket.IO] user:${userId} entrou na sala`);
     // Note: WhatsApp messages now come via webhooks (Meta Cloud API)
@@ -57,6 +90,44 @@ app.register(cors, { origin: allowedOrigin, credentials: true });
 app.register(jwt, { secret: process.env.JWT_SECRET! });
 app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
 app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB max
+
+// ── Swagger/OpenAPI Documentation ───────────────────────────────
+app.register(swagger, {
+  swagger: {
+    info: {
+      title: 'ZapScript API',
+      description: 'API de transcrição automática de áudios do WhatsApp',
+      version: '1.0.0',
+      contact: {
+        name: 'ZapScript Support',
+        email: 'suporte@zapscript.me',
+      },
+    },
+    host: process.env.APP_URL?.replace(/https?:\/\//, '').split(':')[0] || 'localhost:3001',
+    schemes: ['https', 'http'],
+    consumes: ['application/json'],
+    produces: ['application/json'],
+    securityDefinitions: {
+      bearerAuth: {
+        type: 'apiKey',
+        name: 'authorization',
+        in: 'header',
+        description: 'Bearer token JWT',
+      },
+    },
+  },
+});
+
+app.register(swaggerUI, {
+  routePrefix: '/documentation',
+  uiConfig: {
+    deepLinking: false,
+  },
+  logo: {
+    type: 'image/png',
+    urlResolver: () => 'https://cdn.zapscript.me/logo.png',
+  },
+});
 
 // ── Security Headers ──────────────────────────────────────────
 app.addHook('onSend', async (_req, reply) => {
@@ -85,6 +156,7 @@ app.register(import('./routes/monitor'),        { prefix: '/monitor' });
 app.register(import('./routes/internal'),       { prefix: '/internal' });
 app.register(import('./routes/support'),        { prefix: '/support' });
 app.register(import('./routes/admin'),          { prefix: '/admin' });
+app.register(import('./routes/privacy'),        { prefix: '/privacy' });
 
 // ── WhatsApp Webhook (Meta Cloud API) ──────────────────────
 if (process.env.WHATSAPP_API_TOKEN) {

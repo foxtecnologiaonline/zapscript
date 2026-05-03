@@ -9,22 +9,27 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  email          String          @unique
-  name           String?
-  document       String?         @unique   // CPF ou CNPJ
-  emailVerified  Boolean         @default(false)
-  refCode        String          @unique @default(cuid())
-  referredBy     String?
-  isAdmin        Boolean         @default(false)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  subscription   Subscription?
-  balance        MinuteBalance?
-  numbers        WhatsappNumber[]
-  transcriptions Transcription[]
-  usageLogs      UsageLog[]
-  supportTickets SupportTicket[]
+  id                          String          @id @default(cuid())
+  email                       String          @unique
+  name                        String?
+  document                    String?         @unique   // CPF ou CNPJ
+  emailVerified               Boolean         @default(false)
+  refCode                     String          @unique @default(cuid())
+  referredBy                  String?
+  isAdmin                     Boolean         @default(false)
+  // LGPD - Direitos do usuário
+  privacyPolicyAcceptedAt     DateTime?
+  termsAcceptedAt             DateTime?
+  deletedAt                   DateTime?       // Soft delete
+  pseudonymizedAt             DateTime?       // LGPD: dados anonimizados
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
+  subscription                Subscription?
+  balance                     MinuteBalance?
+  numbers                     WhatsappNumber[]
+  transcriptions              Transcription[]
+  usageLogs                   UsageLog[]
+  supportTickets              SupportTicket[]
 }
 
 model Plan {
@@ -160,4 +165,13 @@ model AuditLog {
   @@index([targetUserId])
   @@index([timestamp])
   @@index([action])
+}
+
+model PrivacyPolicy {
+  id        String   @id @default(cuid())
+  version   String   @unique  // "1.0", "1.1", etc
+  content   String   // HTML content
+  createdAt DateTime @default(now())
+
+  @@index([version])
 }
