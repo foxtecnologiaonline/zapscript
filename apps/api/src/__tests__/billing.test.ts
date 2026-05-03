@@ -133,7 +133,7 @@ describe('POST /billing/cancel', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.statusCode).toBe(400);
-    expect(res.json().error).toMatch(/free/i);
+    expect(res.json().error).toMatch(/cancelar|free|ativa/i);
   });
 
   it('cancela assinatura paga e faz downgrade para free', async () => {

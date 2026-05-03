@@ -123,10 +123,6 @@ app.register(swaggerUI, {
   uiConfig: {
     deepLinking: false,
   },
-  logo: {
-    type: 'image/png',
-    urlResolver: () => 'https://cdn.zapscript.me/logo.png',
-  },
 });
 
 // ── Security Headers ──────────────────────────────────────────

@@ -2,34 +2,60 @@
  * Testes das rotas administrativas.
  */
 import Fastify from 'fastify';
-import crypto from 'crypto';
+
+// Mock de supabase (admin.ts importa createClient no top-level)
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: jest.fn(() => ({
+    auth: {
+      admin: {
+        deleteUser: jest.fn().mockResolvedValue({ error: null }),
+      },
+    },
+  })),
+}));
 
 jest.mock('../lib/prisma', () => ({
   prisma: {
-    user: { count: jest.fn() },
+    user: {
+      count: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
     subscription: {
       findMany: jest.fn(),
+      findUnique: jest.fn(),
       groupBy: jest.fn(),
+      update: jest.fn(),
     },
     transcription: { count: jest.fn() },
-    usageLog: {
-      aggregate: jest.fn(),
-    },
-    systemError: {
-      findMany: jest.fn(),
-    },
+    usageLog: { aggregate: jest.fn() },
+    systemError: { findMany: jest.fn() },
     supportTicket: {
       count: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
     },
-    whatsappNumber: {
-      count: jest.fn(),
+    whatsappNumber: { count: jest.fn() },
+    plan: {
+      findMany: jest.fn(),
+      update: jest.fn(),
     },
+    auditLog: { create: jest.fn() },
+    $transaction: jest.fn(async (fn: any) => fn({
+      user: { update: jest.fn().mockResolvedValue({ id: 'u1' }) },
+      subscription: { update: jest.fn() },
+      minuteBalance: { update: jest.fn() },
+    })),
   },
 }));
 
 import { prisma } from '../lib/prisma';
 
+const VALID_TOKEN = 'test-admin-token';
+
 async function buildApp() {
+  process.env.ADMIN_TOKEN = VALID_TOKEN;
   const app = Fastify({ logger: false });
   await app.register(import('../routes/admin'), { prefix: '/admin' });
   await app.ready();
@@ -38,35 +64,25 @@ async function buildApp() {
 
 describe('GET /admin/stats', () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
-  const VALID_TOKEN = process.env.ADMIN_TOKEN || 'test-token';
 
-  beforeAll(async () => {
-    app = await buildApp();
-  });
-  afterAll(async () => {
-    await app.close();
-  });
+  beforeAll(async () => { app = await buildApp(); });
+  afterAll(async () => { await app.close(); });
   beforeEach(() => jest.clearAllMocks());
 
   it('retorna 401 sem token válido', async () => {
     const res = await app.inject({
-      method: 'GET',
-      url: '/admin/stats',
+      method: 'GET', url: '/admin/stats',
       headers: { 'x-admin-token': 'invalid' },
     });
     expect(res.statusCode).toBe(401);
   });
 
   it('retorna 401 sem token', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: '/admin/stats',
-    });
+    const res = await app.inject({ method: 'GET', url: '/admin/stats' });
     expect(res.statusCode).toBe(401);
   });
 
   it('retorna estatísticas com token válido', async () => {
-    // Mock todas as queries
     (prisma.user.count as jest.Mock).mockResolvedValue(10);
     (prisma.subscription.findMany as jest.Mock).mockResolvedValue([
       { plan: { name: 'free' } },
@@ -74,19 +90,15 @@ describe('GET /admin/stats', () => {
     ]);
     (prisma.subscription.groupBy as jest.Mock).mockResolvedValue([
       { status: 'active', _count: { status: 8 } },
-      { status: 'canceled', _count: { status: 2 } },
     ]);
     (prisma.transcription.count as jest.Mock).mockResolvedValue(100);
-    (prisma.usageLog.aggregate as jest.Mock).mockResolvedValue({
-      _sum: { minutesUsed: 500 },
-    });
+    (prisma.usageLog.aggregate as jest.Mock).mockResolvedValue({ _sum: { minutesUsed: 500 } });
     (prisma.systemError.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.supportTicket.count as jest.Mock).mockResolvedValue(5);
     (prisma.whatsappNumber.count as jest.Mock).mockResolvedValue(20);
 
     const res = await app.inject({
-      method: 'GET',
-      url: '/admin/stats',
+      method: 'GET', url: '/admin/stats',
       headers: { 'x-admin-token': VALID_TOKEN },
     });
 
@@ -99,11 +111,11 @@ describe('GET /admin/stats', () => {
     expect(body).toHaveProperty('conversion');
   });
 
-  it('calcula MRR corretamente', async () => {
-    (prisma.user.count as jest.Mock).mockResolvedValue(10);
+  it('calcula MRR pro + ultra corretamente', async () => {
+    (prisma.user.count as jest.Mock).mockResolvedValue(2);
     (prisma.subscription.findMany as jest.Mock).mockResolvedValue([
-      { plan: { name: 'pro' } },  // $29.90
-      { plan: { name: 'ultra' } }, // $59.90
+      { plan: { name: 'pro' } },   // R$29.90
+      { plan: { name: 'ultra' } }, // R$59.90
     ]);
     (prisma.subscription.groupBy as jest.Mock).mockResolvedValue([
       { status: 'active', _count: { status: 2 } },
@@ -115,27 +127,23 @@ describe('GET /admin/stats', () => {
     (prisma.whatsappNumber.count as jest.Mock).mockResolvedValue(0);
 
     const res = await app.inject({
-      method: 'GET',
-      url: '/admin/stats',
+      method: 'GET', url: '/admin/stats',
       headers: { 'x-admin-token': VALID_TOKEN },
     });
 
-    const body = res.json();
-    // pro: 29.90, ultra: 59.90, total = 89.80
-    expect(body.mrr).toBeCloseTo(89.80, 1);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().mrr).toBeCloseTo(89.80, 1);
   });
 
   it('calcula conversion rate corretamente', async () => {
     (prisma.user.count as jest.Mock).mockResolvedValue(100);
     (prisma.subscription.findMany as jest.Mock).mockResolvedValue([
       { plan: { name: 'free' } },
-      { plan: { name: 'free' } },
-      // ... 98 free users
       { plan: { name: 'pro' } },
       { plan: { name: 'pro' } },
     ]);
     (prisma.subscription.groupBy as jest.Mock).mockResolvedValue([
-      { status: 'active', _count: { status: 100 } },
+      { status: 'active', _count: { status: 3 } },
     ]);
     (prisma.transcription.count as jest.Mock).mockResolvedValue(0);
     (prisma.usageLog.aggregate as jest.Mock).mockResolvedValue({ _sum: { minutesUsed: 0 } });
@@ -144,13 +152,11 @@ describe('GET /admin/stats', () => {
     (prisma.whatsappNumber.count as jest.Mock).mockResolvedValue(0);
 
     const res = await app.inject({
-      method: 'GET',
-      url: '/admin/stats',
+      method: 'GET', url: '/admin/stats',
       headers: { 'x-admin-token': VALID_TOKEN },
     });
 
-    const body = res.json();
     // 2 paid / 100 users = 2%
-    expect(body.conversion.rate).toBe(2);
+    expect(res.json().conversion.rate).toBe(2);
   });
 });

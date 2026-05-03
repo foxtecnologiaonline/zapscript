@@ -6,8 +6,13 @@ module.exports = {
   moduleNameMapper: {
     '^@zapscript/database$': '<rootDir>/../../packages/database/src',
   },
-  setupFilesAfterFramework: [],
-  globals: {
-    'ts-jest': { tsconfig: { strict: false } },
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', { tsconfig: { strict: false } }],
   },
+  coverageProvider: 'v8',
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/**/__tests__/**',
+    '!src/**/*.d.ts',
+  ],
 };

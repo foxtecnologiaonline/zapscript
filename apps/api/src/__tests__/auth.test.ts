@@ -5,10 +5,10 @@
 import Fastify from 'fastify';
 import jwt from '@fastify/jwt';
 
-// ── Mocks ─────────────────────────────────────────────────────────��
+// ── Mocks ─────────────────────────────────────────────────────────
 jest.mock('../lib/prisma', () => ({
   prisma: {
-    user:         { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+    user:         { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn().mockResolvedValue({}) },
     subscription: { create: jest.fn() },
     minuteBalance:{ create: jest.fn() },
     plan:         { findUnique: jest.fn() },
@@ -20,17 +20,21 @@ jest.mock('../lib/prisma', () => ({
   },
 }));
 
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: () => ({
-    auth: {
-      admin: {
-        createUser:     jest.fn(),
-        generateLink:   jest.fn().mockResolvedValue({ data: {} }),
-      },
-      signInWithPassword: jest.fn(),
-      getUser:           jest.fn(),
+// Mock Supabase com singleton para garantir mesmo objeto
+const mockSupabaseClient = {
+  auth: {
+    admin: {
+      createUser:     jest.fn(),
+      generateLink:   jest.fn().mockResolvedValue({ data: {} }),
+      updateUserById: jest.fn().mockResolvedValue({ error: null }),
     },
-  }),
+    signInWithPassword: jest.fn(),
+    getUser:           jest.fn(),
+  },
+};
+
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: jest.fn(() => mockSupabaseClient),
 }));
 
 jest.mock('nodemailer', () => ({
@@ -39,9 +43,8 @@ jest.mock('nodemailer', () => ({
 
 // ── Setup ──────────────────────────────────────────────────────────
 import { prisma } from '../lib/prisma';
-import { createClient } from '@supabase/supabase-js';
 
-const supabaseMock = (createClient as jest.Mock)();
+const supabaseMock = mockSupabaseClient;
 
 async function buildApp() {
   const app = Fastify({ logger: false });
@@ -63,7 +66,7 @@ describe('POST /auth/register', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('retorna 400 se email estiver faltando', async () => {
-    const res = await app.inject({ method: 'POST', url: '/auth/register', payload: { password: '123456' } });
+    const res = await app.inject({ method: 'POST', url: '/auth/register', payload: { password: '12345678' } });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/email/i);
   });
@@ -77,16 +80,19 @@ describe('POST /auth/register', () => {
     (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'existing' });
     const res = await app.inject({
       method: 'POST', url: '/auth/register',
-      payload: { email: 'dup@dup.com', password: '123456' },
+      payload: { email: 'dup@dup.com', password: '12345678' },
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/cadastrado/i);
   });
 
   it('retorna 201 em cadastro bem-sucedido', async () => {
-    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(null); // email livre
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(null);
     (prisma.plan.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'plan1', minutesPerMonth: 10 });
-    supabaseMock.auth.admin.createUser.mockResolvedValueOnce({ data: { user: { id: 'u-new' } }, error: null });
+    supabaseMock.auth.admin.createUser.mockResolvedValueOnce({
+      data: { user: { id: 'u-new' } },
+      error: null,
+    });
 
     const res = await app.inject({
       method: 'POST', url: '/auth/register',
@@ -105,7 +111,10 @@ describe('POST /auth/login', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('retorna 401 se credenciais forem inválidas', async () => {
-    supabaseMock.auth.signInWithPassword.mockResolvedValueOnce({ data: null, error: { message: 'Invalid' } });
+    supabaseMock.auth.signInWithPassword.mockResolvedValueOnce({
+      data: { user: null },
+      error: { message: 'Invalid credentials' },
+    });
     const res = await app.inject({
       method: 'POST', url: '/auth/login',
       payload: { email: 'x@x.com', password: 'wrong' },
