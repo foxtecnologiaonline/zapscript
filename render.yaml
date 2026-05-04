@@ -5,8 +5,7 @@ services:
     runtime: node
     rootDir: apps/api
     buildCommand: npm install && npm run build
-    preDeployCommand: npx prisma migrate deploy --schema=../../packages/database/prisma/schema.prisma
-    startCommand: node dist/index.js
+    startCommand: npx prisma migrate deploy --schema=../../packages/database/prisma/schema.prisma && node dist/index.js
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
