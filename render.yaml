@@ -5,6 +5,7 @@ services:
     runtime: node
     rootDir: apps/api
     buildCommand: npm install && npm run build
+    preDeployCommand: npx prisma migrate deploy --schema=../../packages/database/prisma/schema.prisma
     startCommand: node dist/index.js
     healthCheckPath: /health
     envVars:
@@ -13,7 +14,8 @@ services:
       - key: PORT
         value: 3001
       # Set these in the Render dashboard (Environment tab):
-      # DATABASE_URL        — Supabase pooler connection string
+      # DATABASE_URL        — Supabase pooler URL (?pgbouncer=true&connection_limit=1)
+      # DIRECT_URL          — Supabase direct URL (port 5432, no pgbouncer) — required for prisma migrate
       # REDIS_URL           — Upstash Redis URL (rediss://...)
       # JWT_SECRET          — 64+ char random string
       # ENCRYPTION_KEY      — exactly 64 hex characters (32 bytes)
