@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -299,6 +300,68 @@ export default async function privacyRoutes(app: FastifyInstance) {
     } catch (err: any) {
       app.log.error({ err }, '[Privacy] Erro ao processar solicitação de exclusão');
       return reply.code(500).send({ message: 'Erro ao processar solicitação' });
+    }
+  });
+
+  // ── POST /data-deletion-callback ────────────────────────────────
+  // Meta Data Deletion Callback (webhook assinado)
+  // Documentação: https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback
+  app.post('/data-deletion-callback', async (req: any, reply) => {
+    const signature = req.headers['x-hub-signature-256'];
+
+    if (!signature) {
+      app.log.warn('[Data Deletion] Requisição sem assinatura');
+      return reply.code(401).send({ error: 'Missing signature' });
+    }
+
+    try {
+      const body = JSON.stringify(req.body);
+      const appSecret = process.env.FACEBOOK_APP_SECRET;
+
+      if (!appSecret) {
+        app.log.error('[Data Deletion] FACEBOOK_APP_SECRET não configurado');
+        return reply.code(500).send({ error: 'Server misconfiguration' });
+      }
+
+      // Validar assinatura HMAC-SHA256
+      const hash = crypto
+        .createHmac('sha256', appSecret)
+        .update(body)
+        .digest('hex');
+
+      const expectedSignature = `sha256=${hash}`;
+
+      if (signature !== expectedSignature) {
+        app.log.warn('[Data Deletion] Assinatura inválida recebida');
+        return reply.code(401).send({ error: 'Invalid signature' });
+      }
+
+      const { user_id, request_id } = req.body;
+
+      if (!user_id || !request_id) {
+        return reply.code(400).send({ error: 'Missing user_id or request_id' });
+      }
+
+      // Gerar código de confirmação único
+      const confirmationCode = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+
+      // TODO: Implementar lógica de exclusão real
+      // - Deletar dados do usuário conforme política de privacidade
+      // - Registrar em auditLog
+      app.log.info(`[Data Deletion] Callback Meta processado: user_id=${user_id}, request_id=${request_id}`);
+
+      // URL de status (usar domínio configurado)
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://zapscript.me';
+      const statusUrl = `${baseUrl}/deletion-status/${confirmationCode}`;
+
+      // Resposta obrigatória conforme Meta
+      return reply.code(200).send({
+        url: statusUrl,
+        confirmation_code: confirmationCode,
+      });
+    } catch (err: any) {
+      app.log.error({ err }, '[Data Deletion] Erro ao processar callback Meta');
+      return reply.code(500).send({ error: 'Internal server error' });
     }
   });
 }

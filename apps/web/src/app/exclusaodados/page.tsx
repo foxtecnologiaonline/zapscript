@@ -49,9 +49,21 @@ export default function ExclusaoDadosPage() {
           ← Voltar
         </Link>
         <h1 className="text-3xl font-bold mb-2 text-white">Instruções para Exclusão de Dados</h1>
-        <p className="text-[#6ee7b7] text-sm mb-8">LGPD Art. 18 — Direito ao esquecimento e exclusão de dados pessoais</p>
+        <p className="text-[#6ee7b7] text-sm mb-8">LGPD Art. 18 — Direito ao esquecimento e exclusão de dados pessoais | Meta & WhatsApp Compliance</p>
 
         <div className="space-y-8 text-[#a7f3d0]">
+          {/* Seção da Meta */}
+          <div className="bg-blue-900/20 border border-blue-500/30 rounded-xl p-6">
+            <h2 className="text-xl font-bold text-blue-400 mb-3">🔗 Para Desenvolvedores Meta/WhatsApp</h2>
+            <p className="mb-3">O ZapScript implementa o Data Deletion Callback conforme exigido pela Meta.</p>
+            <div className="bg-[#0a1410] p-3 rounded border border-blue-500/20 font-mono text-sm mb-3 break-all">
+              https://zapscript.me/api/data-deletion-callback
+            </div>
+            <p className="text-sm text-blue-300">
+              Use essa URL para registrar no App Dashboard da Meta em: <strong>Settings → Basic → Data Deletion Request Callback URL</strong>
+            </p>
+          </div>
+
           {/* Seção destacada de como fazer */}
           <div className="bg-green-900/20 border border-green-500/30 rounded-xl p-6">
             <h2 className="text-xl font-bold text-green-400 mb-4">📋 Como Solicitar Exclusão</h2>
