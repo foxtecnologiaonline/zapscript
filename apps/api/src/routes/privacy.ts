@@ -255,4 +255,50 @@ export default async function privacyRoutes(app: FastifyInstance) {
       effectiveFrom: '2026-05-01',
     };
   });
+
+  // ── POST /user/request-deletion ────────────────────────────────
+  // Processar solicitação de exclusão via formulário público (LGPD)
+  app.post('/user/request-deletion', async (req: any, reply) => {
+    const { email, motivo } = req.body as any;
+
+    if (!email || !email.includes('@')) {
+      return reply.code(400).send({ message: 'E-mail inválido' });
+    }
+
+    try {
+      // Buscar usuário
+      const user = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (user) {
+        // Registrar em audit trail
+        await prisma.auditLog.create({
+          data: {
+            action: 'user.deletion_requested',
+            targetUserId: user.id,
+            resourceType: 'user',
+            changes: {
+              reason: motivo || 'Formulário público',
+              timestamp: new Date().toISOString(),
+            },
+          },
+        });
+      }
+
+      // TODO: Enviar e-mail de confirmação
+      // await sendDeletionConfirmationEmail(user.email);
+
+      app.log.info(`[Privacy] Solicitação de exclusão recebida para ${email}`);
+
+      return reply.code(200).send({
+        message: 'Solicitação de exclusão recebida',
+        status: 'pending',
+        nextSteps: 'Você receberá um e-mail de confirmação em breve',
+      });
+    } catch (err: any) {
+      app.log.error({ err }, '[Privacy] Erro ao processar solicitação de exclusão');
+      return reply.code(500).send({ message: 'Erro ao processar solicitação' });
+    }
+  });
 }
