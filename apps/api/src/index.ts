@@ -8,7 +8,8 @@ import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
 import swaggerUI from '@fastify/swagger-ui';
 import helmet from '@fastify/helmet';
-import { Server as SocketServer } from 'socket.io';
+// @ts-ignore - socket.io has built-in types but TypeScript doesn't find them
+import { Server as SocketServer, Socket } from 'socket.io';
 import { redis } from './services/queue';
 import { prisma } from './lib/prisma';
 
@@ -53,7 +54,7 @@ export const io = new SocketServer(app.server, {
 
 // ── Socket.IO Authentication Middleware ────────────────────────────
 // Valida JWT antes de permitir qualquer operação
-io.use((socket, next) => {
+io.use((socket: Socket, next: (err?: Error) => void) => {
   const token = socket.handshake.auth.token
     || socket.handshake.headers['x-access-token'] as string;
 
@@ -74,7 +75,7 @@ io.use((socket, next) => {
   }
 });
 
-io.on('connection', (socket) => {
+io.on('connection', (socket: Socket) => {
   socket.on('join', ({ userId }: { userId: string }) => {
     // Valida que userId do socket = userId solicitado
     if (userId !== socket.data.userId) {

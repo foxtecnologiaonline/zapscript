@@ -39,7 +39,7 @@ export default async function privacyRoutes(app: FastifyInstance) {
                 phoneNumber: true,
                 status: true,
                 connectedAt: true,
-                disconnectedAt: true,
+                lastMessageAt: true,
                 createdAt: true,
               },
             }),
@@ -47,10 +47,10 @@ export default async function privacyRoutes(app: FastifyInstance) {
               where: { userId },
               select: {
                 id: true,
-                text: true,
+                originalText: true,
                 language: true,
-                minutesUsed: true,
-                status: true,
+                durationSec: true,
+                confidenceScore: true,
                 createdAt: true,
               },
               take: 1000,
@@ -61,7 +61,6 @@ export default async function privacyRoutes(app: FastifyInstance) {
                 id: true,
                 plan: { select: { name: true, minutesPerMonth: true } },
                 status: true,
-                currentPeriodStart: true,
                 currentPeriodEnd: true,
                 createdAt: true,
               },
@@ -72,7 +71,7 @@ export default async function privacyRoutes(app: FastifyInstance) {
                 id: true,
                 action: true,
                 timestamp: true,
-                details: true,
+                metadata: true,
               },
               take: 500,
               orderBy: { timestamp: 'desc' },
@@ -88,8 +87,8 @@ export default async function privacyRoutes(app: FastifyInstance) {
           data: {
             action: 'DATA_EXPORT_REQUESTED',
             targetUserId: userId,
-            adminId: undefined,
-            details: { exportedAt: new Date() },
+            adminId: 'system',
+            metadata: { exportedAt: new Date().toISOString() },
           },
         });
 
@@ -150,8 +149,8 @@ export default async function privacyRoutes(app: FastifyInstance) {
             data: {
               action: 'USER_DATA_DELETED_BY_REQUEST',
               targetUserId: userId,
-              adminId: undefined,
-              details: { deletedAt: new Date(), reason: 'LGPD Art. 17' },
+              adminId: 'system',
+              metadata: { deletedAt: new Date().toISOString(), reason: 'LGPD Art. 17' },
             },
           }),
           prisma.user.delete({ where: { id: userId } }),
@@ -179,7 +178,7 @@ export default async function privacyRoutes(app: FastifyInstance) {
       const [logs, total] = await Promise.all([
         prisma.auditLog.findMany({
           where: { targetUserId: userId },
-          select: { id: true, action: true, timestamp: true, details: true },
+          select: { id: true, action: true, timestamp: true, metadata: true },
           orderBy: { timestamp: 'desc' },
           skip: (page - 1) * limit,
           take: limit,
