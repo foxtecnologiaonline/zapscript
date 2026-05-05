@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import * as Sentry from '@sentry/node';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
@@ -6,11 +7,19 @@ import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
 import swaggerUI from '@fastify/swagger-ui';
+import helmet from '@fastify/helmet';
 import { Server as SocketServer } from 'socket.io';
-// Baileys foi descontinuado - agora usando Meta Cloud API
-// import { reconnectAllSessions, getPendingQR } from './services/whatsapp';
 import { redis } from './services/queue';
 import { prisma } from './lib/prisma';
+
+// ── Inicializar Sentry ────────────────────────────────────
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+  });
+}
 
 const app = Fastify({
   logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' },
@@ -87,6 +96,17 @@ io.on('connection', (socket) => {
 });
 
 app.register(cors, { origin: allowedOrigin, credentials: true });
+app.register(helmet, {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+    },
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true },
+});
 app.register(jwt, { secret: process.env.JWT_SECRET! });
 app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
 app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB max
@@ -193,6 +213,22 @@ app.get('/health', async (_, reply) => {
   };
 
   return healthy ? payload : reply.code(503).send(payload);
+});
+
+// ── Error Handlers ────────────────────────────────────────
+process.on('unhandledRejection', (reason, promise) => {
+  app.log.error({ reason, promise }, 'Unhandled Rejection');
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(reason);
+  }
+});
+
+process.on('uncaughtException', (error) => {
+  app.log.error(error, 'Uncaught Exception');
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(error);
+  }
+  process.exit(1);
 });
 
 async function start() {

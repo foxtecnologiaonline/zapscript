@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 
 /* ─────────────────────────────────────────────────────────
@@ -25,6 +26,18 @@ function asaas(path: string, options: RequestInit = {}) {
       ...(options.headers ?? {}),
     },
   });
+}
+
+/* ── Validação de assinatura HMAC-SHA256 ── */
+function verifyAsaasSignature(body: string, signature: string | undefined): boolean {
+  if (!signature || !process.env.ASAAS_WEBHOOK_TOKEN) {
+    return false;
+  }
+  const hash = crypto
+    .createHmac('sha256', process.env.ASAAS_WEBHOOK_TOKEN)
+    .update(body)
+    .digest('hex');
+  return hash === signature;
 }
 
 /* ── Idempotência de webhooks persistida no banco ── */
@@ -224,10 +237,19 @@ export default async function billingRoutes(app: FastifyInstance) {
   app.post('/webhook', async (req: any, reply) => {
     // Verificar token apenas no header (não aceitar via query string)
     const token          = req.headers['asaas-webhook-token'];
+    const signature      = req.headers['x-asaas-signature'] as string | undefined;
     const expectedToken  = process.env.ASAAS_WEBHOOK_TOKEN;
+
     if (!expectedToken || token !== expectedToken) {
       app.log.warn({ tokenProvided: !!token, tokenConfigured: !!expectedToken }, 'Asaas webhook token inválido');
       return reply.code(401).send({ error: 'Unauthorized' });
+    }
+
+    // Validação adicional: HMAC-SHA256 signature (se disponível)
+    const rawBody = req.rawBody || JSON.stringify(req.body);
+    if (signature && !verifyAsaasSignature(rawBody, signature)) {
+      app.log.error('Asaas webhook signature verification failed');
+      return reply.code(401).send({ error: 'Invalid signature' });
     }
 
     const event = req.body as any;
