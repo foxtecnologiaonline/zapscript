@@ -73,7 +73,7 @@ export default async function numberRoutes(app: FastifyInstance) {
   // ── POST /numbers/:id/connect — DESCONTINUADO (era Baileys QR Code) ──────────
   // Agora usando Meta Cloud API com webhook
   // A conexão é feita via webhooks — configure em: https://developers.facebook.com
-  app.post<{ Params: { id: string } }>('/:id/connect', auth, async (req: any, reply) => {
+  app.post<{ Params: { id: string } }>('/:id/connect', auth, async (_, reply) => {
     return reply.code(410).send({
       error: 'Método descontinuado',
       message: 'QR Code connection foi substituído pela Meta Cloud API',
@@ -87,7 +87,7 @@ export default async function numberRoutes(app: FastifyInstance) {
   app.post<{
     Params: { id: string };
     Body: { phoneNumber: string };
-  }>('/:id/connect-pairing', auth, async (req: any, reply) => {
+  }>('/:id/connect-pairing', auth, async (_, reply) => {
     return reply.code(410).send({
       error: 'Método descontinuado',
       message: 'Pairing code connection foi substituído pela Meta Cloud API',
@@ -98,7 +98,7 @@ export default async function numberRoutes(app: FastifyInstance) {
 
   // ── GET /numbers/:id/qr — DESCONTINUADO (era Baileys) ───────
   // Agora usando Meta Cloud API com webhook
-  app.get<{ Params: { id: string } }>('/:id/qr', auth, async (req: any, reply) => {
+  app.get<{ Params: { id: string } }>('/:id/qr', auth, async (_, reply) => {
     return reply.code(410).send({
       error: 'Método descontinuado',
       message: 'QR Code retrieval foi substituído pela Meta Cloud API',
@@ -108,7 +108,7 @@ export default async function numberRoutes(app: FastifyInstance) {
 
   // ── GET /numbers/:id/pairing-code — DESCONTINUADO (era Baileys) ──
   // Agora usando Meta Cloud API com webhook
-  app.get<{ Params: { id: string } }>('/:id/pairing-code', auth, async (req: any, reply) => {
+  app.get<{ Params: { id: string } }>('/:id/pairing-code', auth, async (_, reply) => {
     return reply.code(410).send({
       error: 'Método descontinuado',
       message: 'Pairing code retrieval foi substituído pela Meta Cloud API',

@@ -112,7 +112,7 @@ export default async function billingRoutes(app: FastifyInstance) {
       try {
         asaasCustomerId = await getOrCreateCustomer({
           id:       user.id,
-          name:     user.name,
+          name:     user.name ?? 'Usuário',
           email:    user.email,
           document: user.document,
         });

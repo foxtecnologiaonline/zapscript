@@ -32,7 +32,7 @@ export default async function privacyRoutes(app: FastifyInstance) {
                 updatedAt: true,
               },
             }),
-            prisma.number.findMany({
+            prisma.whatsappNumber.findMany({
               where: { userId },
               select: {
                 id: true,
@@ -88,7 +88,7 @@ export default async function privacyRoutes(app: FastifyInstance) {
           data: {
             action: 'DATA_EXPORT_REQUESTED',
             targetUserId: userId,
-            adminId: null,
+            adminId: undefined,
             details: { exportedAt: new Date() },
           },
         });
@@ -143,14 +143,14 @@ export default async function privacyRoutes(app: FastifyInstance) {
         // Transação atômica
         await prisma.$transaction([
           prisma.transcription.deleteMany({ where: { userId } }),
-          prisma.number.deleteMany({ where: { userId } }),
+          prisma.whatsappNumber.deleteMany({ where: { userId } }),
           prisma.minuteBalance.deleteMany({ where: { userId } }),
           prisma.subscription.deleteMany({ where: { userId } }),
           prisma.auditLog.create({
             data: {
               action: 'USER_DATA_DELETED_BY_REQUEST',
               targetUserId: userId,
-              adminId: null,
+              adminId: undefined,
               details: { deletedAt: new Date(), reason: 'LGPD Art. 17' },
             },
           }),

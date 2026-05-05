@@ -93,8 +93,9 @@ export default async function supportRoutes(app: FastifyInstance) {
     }
 
     // Enviar e-mail para a equipe
+    const supportEmail = (process.env.SUPPORT_EMAIL || process.env.SMTP_USER || 'support@zapscript.me') as string;
     await sendEmail(
-      process.env.SUPPORT_EMAIL || process.env.SMTP_USER || '',
+      supportEmail,
       `[ZapScript Suporte] ${safeCategory} — ${safeName}`,
       `
         <h2>Novo Ticket de Suporte</h2>

@@ -1,6 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import crypto from 'crypto';
-import { whatsappAPI, WhatsAppIncomingMessage } from '../services/whatsapp-official';
+import { whatsappAPI } from '../services/whatsapp-official';
 import { transcriptionQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
 import { io } from '../index';
@@ -29,11 +28,11 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
 
     if (mode === 'subscribe' && token === webhookToken) {
       app.log.info('[WhatsApp Webhook] ✅ Webhook verificado com sucesso');
-      return challenge; // Meta espera receber o challenge de volta
+      return reply.send(challenge); // Meta espera receber o challenge de volta
     }
 
     app.log.error('[WhatsApp Webhook] ❌ Token de webhook inválido');
-    reply.code(403).send({ error: 'Invalid webhook token' });
+    return reply.code(403).send({ error: 'Invalid webhook token' });
   });
 
   /**
@@ -83,7 +82,6 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
       for (const msg of messages) {
         const senderPhone = msg.from;
         const messageId = msg.id;
-        const timestamp = msg.timestamp;
 
         const contact = contacts.find((c: any) => c.wa_id === senderPhone);
         const senderName = contact?.profile?.name || senderPhone;

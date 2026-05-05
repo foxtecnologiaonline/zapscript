@@ -58,7 +58,7 @@ export default async function internalRoutes(app: FastifyInstance) {
   app.post<{ Body: { service: string; message: string; stack?: string; context?: any } }>(
     '/log-error',
     { preHandler: [verifyToken] },
-    async (req, reply) => {
+    async (req) => {
       const { service, message, stack, context } = req.body;
       await prisma.systemError.create({ data: { service, message, stack, context } });
       return { logged: true };
