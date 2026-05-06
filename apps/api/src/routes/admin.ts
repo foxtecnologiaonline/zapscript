@@ -218,6 +218,122 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // POST /admin/users/:id/confirm-email — confirma e-mail do usuário no Supabase
+  app.post<{ Params: { id: string } }>(
+    '/users/:id/confirm-email',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { id } = req.params;
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      const { error } = await supabase.auth.admin.updateUserById(id, {
+        email_confirm: true,
+      });
+      if (error) return reply.code(500).send({ error: error.message });
+
+      await prisma.user.update({ where: { id }, data: { emailVerified: true } }).catch(() => null);
+      return { ok: true, message: 'E-mail confirmado com sucesso.' };
+    }
+  );
+
+  // POST /admin/users/:id/reset-password — envia link de redefinição de senha
+  app.post<{ Params: { id: string } }>(
+    '/users/:id/reset-password',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { id } = req.params;
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      const { data: linkData, error } = await supabase.auth.admin.generateLink({
+        type:    'recovery',
+        email:   user.email,
+        options: { redirectTo: `${process.env.APP_URL || 'https://zapscript.me'}/redefinir-senha` },
+      });
+      if (error) return reply.code(500).send({ error: error.message });
+
+      // Importar e enviar via mailer
+      const { sendEmail } = await import('../lib/mailer');
+      const resetLink = linkData?.properties?.action_link || '';
+      if (resetLink) {
+        await sendEmail(
+          user.email,
+          'Redefina sua senha — ZapScript',
+          `<p>Olá${user.name ? `, ${user.name}` : ''}!</p>
+           <p>Um administrador solicitou a redefinição da sua senha. Clique no link abaixo:</p>
+           <p><a href="${resetLink}">${resetLink}</a></p>
+           <p>O link expira em 1 hora.</p>`
+        ).catch((err: any) => app.log.warn({ err: err.message }, '[Admin] Falha ao enviar reset e-mail'));
+      }
+
+      return { ok: true, message: `Link de redefinição enviado para ${user.email}.`, link: resetLink };
+    }
+  );
+
+  // GET /admin/users/:id/detail — detalhes completos do usuário (uso, minutos, transcrições)
+  app.get<{ Params: { id: string } }>(
+    '/users/:id/detail',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { id } = req.params;
+
+      const [user, transcriptions, numbers, usageLogs, auditLogs] = await Promise.all([
+        prisma.user.findUnique({
+          where:   { id },
+          include: {
+            subscription: { include: { plan: true } },
+            balance: true,
+          },
+        }),
+        prisma.transcription.findMany({
+          where:   { userId: id },
+          orderBy: { createdAt: 'desc' },
+          take:    20,
+          select:  { id: true, originalText: true, durationSec: true, language: true, contactName: true, contactPhone: true, createdAt: true },
+        }),
+        prisma.whatsappNumber.findMany({
+          where:  { userId: id },
+          select: { id: true, displayName: true, phoneNumber: true, status: true, createdAt: true, connectedAt: true },
+        }),
+        prisma.usageLog.findMany({
+          where:   { userId: id },
+          orderBy: { createdAt: 'desc' },
+          take:    30,
+          select:  { minutesUsed: true, createdAt: true },
+        }),
+        prisma.auditLog.findMany({
+          where:   { targetUserId: id },
+          orderBy: { timestamp: 'desc' },
+          take:    10,
+          select:  { action: true, timestamp: true, changes: true, metadata: true },
+        }),
+      ]);
+
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      const totalMinutesUsed = usageLogs.reduce((s, l) => s + (l.minutesUsed || 0), 0);
+      const planLimit        = user.subscription?.plan?.minutesPerMonth || 0;
+      const available        = user.balance?.availableMinutes || 0;
+      const usagePct         = planLimit > 0 ? Math.min(100, ((planLimit - available) / planLimit) * 100) : 0;
+
+      return {
+        user,
+        stats: {
+          totalTranscriptions: transcriptions.length,
+          totalMinutesUsed,
+          availableMinutes: available,
+          planLimit,
+          usagePct: Math.round(usagePct),
+        },
+        transcriptions,
+        numbers,
+        usageLogs,
+        auditLogs,
+      };
+    }
+  );
+
   // DELETE /admin/users/:id — remove usuário do Supabase + Prisma (cascade)
   app.delete<{ Params: { id: string } }>(
     '/users/:id',
