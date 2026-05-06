@@ -1,54 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../lib/prisma';
-import nodemailer from 'nodemailer';
+import { sendEmail } from '../lib/mailer';
 import { logger } from '../lib/logger';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
-
-// ── Utilitário de e-mail ──────────────────────────────────────────────────────
-async function sendEmail(to: string, subject: string, html: string) {
-  if (!process.env.SMTP_HOST) {
-    logger.warn('[Auth] SMTP não configurado, e-mail não enviado');
-    return;
-  }
-
-  const port = Number(process.env.SMTP_PORT) || 587;
-  // Porta 465 = SSL direto; 587 = STARTTLS (recomendado em cloud/Render)
-  const secure = port === 465 || process.env.SMTP_SECURE === 'true';
-
-  const transporter = nodemailer.createTransport({
-    host:   process.env.SMTP_HOST,
-    port,
-    secure,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    // Timeouts para falhar rápido em vez de aguardar minutos
-    connectionTimeout: 15_000,   // 15s para estabelecer conexão TCP
-    greetingTimeout:   10_000,   // 10s para o servidor responder EHLO
-    socketTimeout:     20_000,   // 20s de inatividade no socket
-    logger: false,
-    debug:  false,
-  });
-
-  // SMTP_FROM permite usar remetente diferente do login SMTP
-  // Ex: "ZapScript" <ativacao@zapscript.me>
-  const from = process.env.SMTP_FROM || `"ZapScript" <${process.env.SMTP_USER}>`;
-
-  try {
-    const info = await transporter.sendMail({ from, to, subject, html });
-    logger.info(`[Auth] E-mail enviado para ${to} (messageId: ${info.messageId})`);
-    return info;
-  } catch (err: any) {
-    logger.error(`[Auth] Falha ao enviar e-mail para ${to} — host=${process.env.SMTP_HOST} port=${port} secure=${secure} erro=${err.message}`);
-    throw err;
-  }
-}
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
 

@@ -1,7 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import nodemailer from 'nodemailer';
-import { logger } from '../lib/logger';
+import { sendEmail } from '../lib/mailer';
 
 function escapeHtml(str: string): string {
   return str
@@ -10,31 +9,6 @@ function escapeHtml(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#x27;');
-}
-
-async function sendEmail(to: string, subject: string, html: string) {
-  if (!process.env.SMTP_HOST) {
-    logger.warn('[Support] SMTP não configurado, e-mail não enviado');
-    return;
-  }
-
-  const port   = Number(process.env.SMTP_PORT) || 587;
-  const secure = port === 465 || process.env.SMTP_SECURE === 'true';
-  const from   = process.env.SMTP_FROM || `"ZapScript" <${process.env.SMTP_USER}>`;
-
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port,
-    secure,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    connectionTimeout: 15_000,
-    greetingTimeout:   10_000,
-    socketTimeout:     20_000,
-  });
-
-  const info = await transporter.sendMail({ from, to, subject, html });
-  logger.info(`[Support] E-mail enviado para ${to} (messageId: ${info.messageId})`);
-  return info;
 }
 
 export default async function supportRoutes(app: FastifyInstance) {
