@@ -12,19 +12,36 @@ const supabase = createClient(
 // ── Utilitário de e-mail ──────────────────────────────────────────────────────
 async function sendEmail(to: string, subject: string, html: string) {
   if (!process.env.SMTP_HOST) {
-    logger.info('[Auth] SMTP não configurado, e-mail não enviado');
+    logger.warn('[Auth] SMTP não configurado, e-mail não enviado');
     return;
   }
+
+  const port = Number(process.env.SMTP_PORT) || 587;
+  // Porta 465 = SSL/TLS, 587 = STARTTLS
+  const secure = port === 465 || process.env.SMTP_SECURE === 'true';
+
   const transporter = nodemailer.createTransport({
     host:   process.env.SMTP_HOST,
-    port:   Number(process.env.SMTP_PORT) || 587,
-    secure: false,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    port,
+    secure,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
   });
+
   // SMTP_FROM permite usar remetente diferente do login SMTP
   // Ex: "ZapScript" <ativacao@zapscript.me>
   const from = process.env.SMTP_FROM || `"ZapScript" <${process.env.SMTP_USER}>`;
-  await transporter.sendMail({ from, to, subject, html });
+
+  try {
+    const info = await transporter.sendMail({ from, to, subject, html });
+    logger.info(`[Auth] E-mail enviado para ${to} (messageId: ${info.messageId})`);
+    return info;
+  } catch (err: any) {
+    logger.error(`[Auth] Erro ao enviar e-mail para ${to}: ${err.message}`);
+    throw err;
+  }
 }
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
@@ -141,10 +158,11 @@ export default async function authRoutes(app: FastifyInstance) {
       // Gerar link de confirmação e enviar e-mail de boas-vindas
       try {
         const { data: linkData } = await supabase.auth.admin.generateLink({
-          type:     'magiclink',
+          type:     'signup',           // 'signup' = link de confirmação de e-mail (não magiclink)
           email,
+          password, // necessário para o tipo 'signup'
           options:  { redirectTo: `${APP_URL}/email-confirmado` },
-        } as any);
+        });
 
         if (linkData?.properties?.action_link) {
           const confirmLink = linkData.properties.action_link;
