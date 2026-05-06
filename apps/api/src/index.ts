@@ -109,7 +109,25 @@ app.register(helmet, {
   hsts: { maxAge: 31536000, includeSubDomains: true },
 });
 app.register(jwt, { secret: process.env.JWT_SECRET! });
-app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
+
+// Rate limit com store em memória (não depende de Redis)
+// Se Redis estiver indisponível, o rate limit continua funcionando
+app.register(rateLimit, {
+  max:        100,
+  timeWindow: '1 minute',
+  // Sem redis store — usa memória local para não travar quando Redis falha
+  // store: undefined,  ← padrão in-memory
+  addHeaders: {
+    'x-ratelimit-limit':     true,
+    'x-ratelimit-remaining': true,
+    'x-ratelimit-reset':     true,
+    'retry-after':           true,
+  },
+  errorResponseBuilder: (_req, context) => ({
+    error:      'Muitas requisições. Tente novamente em breve.',
+    retryAfter: context.after,
+  }),
+});
 app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB max
 
 // ── Swagger/OpenAPI Documentation ───────────────────────────────

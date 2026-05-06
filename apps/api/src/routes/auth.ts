@@ -184,13 +184,30 @@ export default async function authRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { email, password } = req.body;
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) return reply.code(401).send({ error: 'Credenciais inválidas' });
 
-      // Bloquear login se e-mail ainda não foi verificado
+      if (error) {
+        // Detectar especificamente e-mail não confirmado (mensagem do Supabase)
+        const isUnconfirmed = error.message?.toLowerCase().includes('email not confirmed')
+          || error.message?.toLowerCase().includes('email_not_confirmed');
+
+        if (isUnconfirmed) {
+          return reply.code(403).send({
+            error: 'E-mail não confirmado. Verifique sua caixa de entrada ou solicite um novo link de ativação.',
+            needsVerification: true,
+            code: 'EMAIL_NOT_CONFIRMED',
+          });
+        }
+
+        logger.warn(`[Auth] Login falhou para ${email}: ${error.message}`);
+        return reply.code(401).send({ error: 'Credenciais inválidas' });
+      }
+
+      // Bloquear login se e-mail ainda não foi verificado (verificação dupla local)
       if (!data.user.email_confirmed_at) {
         return reply.code(403).send({
-          error: 'E-mail não verificado. Verifique sua caixa de entrada e clique no link de confirmação.',
+          error: 'E-mail não confirmado. Verifique sua caixa de entrada ou solicite um novo link de ativação.',
           needsVerification: true,
+          code: 'EMAIL_NOT_CONFIRMED',
         });
       }
 
@@ -202,6 +219,53 @@ export default async function authRoutes(app: FastifyInstance) {
 
       const token = app.jwt.sign({ sub: data.user.id, email }, { expiresIn: '30d' });
       return { token, user: { id: data.user.id, email } };
+    }
+  );
+
+  // ── POST /auth/resend-confirmation ───────────────────────────────────────
+  // Reenviar link de ativação para usuários que não confirmaram o e-mail
+  app.post<{ Body: { email: string } }>(
+    '/resend-confirmation',
+    { config: { rateLimit: { max: 3, timeWindow: '10 minutes' } } },
+    async (req, reply) => {
+      const { email } = req.body;
+      if (!email) return reply.code(400).send({ error: 'E-mail obrigatório' });
+
+      try {
+        const { data: linkData } = await supabase.auth.admin.generateLink({
+          type:     'signup',
+          email,
+          password: Math.random().toString(36), // placeholder — não altera senha existente
+          options:  { redirectTo: `${APP_URL}/email-confirmado` },
+        });
+
+        if (linkData?.properties?.action_link) {
+          const confirmLink = linkData.properties.action_link;
+          await sendEmail(
+            email,
+            'Ative sua conta ZapScript',
+            emailWrapper('✉️', 'Ativar conta', `
+              <p style="color:#a0aec0;font-size:15px;line-height:1.7;margin:0 0 28px">
+                Você solicitou um novo link de ativação. Clique abaixo para confirmar seu e-mail:
+              </p>
+              <div style="text-align:center;margin:0 0 28px">
+                <a href="${confirmLink}"
+                   style="display:inline-block;background:#10b981;color:#ffffff;padding:16px 44px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:0.2px;box-shadow:0 4px 20px rgba(16,185,129,.4)">
+                  ✅ Ativar minha conta
+                </a>
+              </div>
+              <p style="color:#4a6e5a;font-size:12px;text-align:center;margin:0;line-height:1.6">
+                ⏰ <strong style="color:#6b8a75">Este link expira em 24 horas.</strong>
+              </p>
+            `)
+          ).catch((err: any) => logger.error(`[Auth] Falha ao reenviar confirmação: ${err.message}`));
+        }
+      } catch (err: any) {
+        logger.error(`[Auth] Erro ao gerar link de reconfirmação: ${err.message}`);
+      }
+
+      // Sempre retornar sucesso para não vazar se e-mail existe
+      return { message: 'Se este e-mail estiver cadastrado e não confirmado, você receberá um novo link.' };
     }
   );
 
