@@ -27,6 +27,9 @@ async function sendEmail(to: string, subject: string, html: string) {
     port,
     secure,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    connectionTimeout: 15_000,
+    greetingTimeout:   10_000,
+    socketTimeout:     20_000,
   });
 
   const info = await transporter.sendMail({ from, to, subject, html });

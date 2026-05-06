@@ -17,7 +17,7 @@ async function sendEmail(to: string, subject: string, html: string) {
   }
 
   const port = Number(process.env.SMTP_PORT) || 587;
-  // Porta 465 = SSL/TLS, 587 = STARTTLS
+  // Porta 465 = SSL direto; 587 = STARTTLS (recomendado em cloud/Render)
   const secure = port === 465 || process.env.SMTP_SECURE === 'true';
 
   const transporter = nodemailer.createTransport({
@@ -28,6 +28,12 @@ async function sendEmail(to: string, subject: string, html: string) {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    // Timeouts para falhar rápido em vez de aguardar minutos
+    connectionTimeout: 15_000,   // 15s para estabelecer conexão TCP
+    greetingTimeout:   10_000,   // 10s para o servidor responder EHLO
+    socketTimeout:     20_000,   // 20s de inatividade no socket
+    logger: false,
+    debug:  false,
   });
 
   // SMTP_FROM permite usar remetente diferente do login SMTP
@@ -39,7 +45,7 @@ async function sendEmail(to: string, subject: string, html: string) {
     logger.info(`[Auth] E-mail enviado para ${to} (messageId: ${info.messageId})`);
     return info;
   } catch (err: any) {
-    logger.error(`[Auth] Erro ao enviar e-mail para ${to}: ${err.message}`);
+    logger.error(`[Auth] Falha ao enviar e-mail para ${to} — host=${process.env.SMTP_HOST} port=${port} secure=${secure} erro=${err.message}`);
     throw err;
   }
 }
