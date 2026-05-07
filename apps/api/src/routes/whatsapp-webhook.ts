@@ -19,20 +19,28 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
    * Meta chama isso para confirmar que você é o dono do webhook
    */
   app.get('/webhook', async (req, reply) => {
-    const query = req.query as Record<string, any>;
-    const mode = query.hub_mode as string;
-    const token = query.hub_verify_token as string;
-    const challenge = query.hub_challenge as string;
+    try {
+      const query = req.query as Record<string, any>;
 
-    app.log.info(`[WhatsApp Webhook] Verificação: mode=${mode}, token=${token ? '✓' : '✗'}`);
+      // Meta pode enviar com ponto (hub.verify_token) ou underscore (hub_verify_token)
+      const mode = query.hub_mode || query['hub.mode'] as string;
+      const token = query.hub_verify_token || query['hub.verify_token'] as string;
+      const challenge = query.hub_challenge || query['hub.challenge'] as string;
 
-    if (mode === 'subscribe' && token === webhookToken) {
-      app.log.info('[WhatsApp Webhook] ✅ Webhook verificado com sucesso');
-      return reply.send(challenge); // Meta espera receber o challenge de volta
+      app.log.info(`[WhatsApp Webhook GET] mode=${mode}, token_match=${token === webhookToken}, challenge=${challenge}`);
+
+      if (mode === 'subscribe' && token === webhookToken) {
+        app.log.info('[WhatsApp Webhook] ✅ Validação bem-sucedida - respondendo com challenge');
+        reply.type('text/plain').code(200);
+        return reply.send(challenge);
+      }
+
+      app.log.warn(`[WhatsApp Webhook] ❌ Token inválido. Esperado: ${webhookToken}, Recebido: ${token}`);
+      return reply.code(403).send({ error: 'Invalid webhook token' });
+    } catch (error: any) {
+      app.log.error({ err: error.message }, '[WhatsApp Webhook GET] Erro inesperado');
+      return reply.code(500).send({ error: 'Internal server error' });
     }
-
-    app.log.error('[WhatsApp Webhook] ❌ Token de webhook inválido');
-    return reply.code(403).send({ error: 'Invalid webhook token' });
   });
 
   /**
