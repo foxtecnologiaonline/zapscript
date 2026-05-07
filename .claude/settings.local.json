@@ -6,7 +6,10 @@
       "Bash(git push *)",
       "Bash(git config *)",
       "Bash(npm install *)",
-      "Bash(npm list *)"
+      "Bash(npm list *)",
+      "WebSearch",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(start msedge *)"
     ]
   }
 }
