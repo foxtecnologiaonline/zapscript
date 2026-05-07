@@ -18,7 +18,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
    * GET /webhook - Verificação inicial do webhook
    * Meta chama isso para confirmar que você é o dono do webhook
    */
-  app.get('/webhook', async (req, reply) => {
+  app.get('/', async (req, reply) => {
     try {
       const query = req.query as Record<string, any>;
 
@@ -46,7 +46,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
   /**
    * POST /webhook - Receber mensagens
    */
-  app.post('/webhook', async (req, reply) => {
+  app.post('/', async (req, reply) => {
     const body = req.body as any;
 
     // Responder rapidamente para Meta (ela quer 200 OK em menos de 30s)
