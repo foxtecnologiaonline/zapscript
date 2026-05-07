@@ -24,6 +24,13 @@ if (process.env.SENTRY_DSN) {
 
 const app = Fastify({
   logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' },
+  disableRequestLogging: false,
+});
+
+// Ignorar ECONNRESET no servidor HTTP (clientes que fecham conexão — comportamento normal)
+app.server.on('error', (err: any) => {
+  if (err.code === 'ECONNRESET') return;
+  app.log.error(err, 'Server error');
 });
 
 // Preserve raw body for webhook verification
@@ -237,6 +244,8 @@ app.get('/health', async (_, reply) => {
 
 // ── Error Handlers ────────────────────────────────────────
 process.on('unhandledRejection', (reason, promise) => {
+  const err = reason as any;
+  if (err?.code === 'ECONNRESET') return; // conexão fechada pelo cliente, normal
   app.log.error({ reason, promise }, 'Unhandled Rejection');
   if (process.env.SENTRY_DSN) {
     Sentry.captureException(reason);
@@ -244,6 +253,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 process.on('uncaughtException', (error) => {
+  if ((error as any).code === 'ECONNRESET') return; // conexão fechada pelo cliente, normal
   app.log.error(error, 'Uncaught Exception');
   if (process.env.SENTRY_DSN) {
     Sentry.captureException(error);
