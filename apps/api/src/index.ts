@@ -194,11 +194,12 @@ app.register(import('./routes/admin'),          { prefix: '/admin' });
 app.register(import('./routes/privacy'),        { prefix: '/privacy' });
 
 // ── WhatsApp Webhook (Meta Cloud API) ──────────────────────
+// Registrar sempre — webhook precisa responder para validação mesmo sem token configurado
+app.register(import('./routes/whatsapp-webhook'), { prefix: '/webhook/whatsapp' });
 if (process.env.WHATSAPP_API_TOKEN) {
-  app.register(import('./routes/whatsapp-webhook'), { prefix: '/webhook/whatsapp' });
-  app.log.info('✅ WhatsApp Cloud API webhook registrado');
+  app.log.info('✅ WhatsApp Cloud API webhook registrado com token');
 } else {
-  app.log.warn('⚠️ WHATSAPP_API_TOKEN não configurado - webhook desabilitado');
+  app.log.warn('⚠️ WHATSAPP_API_TOKEN não configurado - envio desabilitado, recebimento ativo');
 }
 
 app.get('/health', async (_, reply) => {
