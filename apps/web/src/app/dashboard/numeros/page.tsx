@@ -22,6 +22,8 @@ export default function NumerosPage() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
   const [userId, setUserId] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadNumbers();
@@ -64,9 +66,16 @@ export default function NumerosPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Remover este número? Todos os dados serão perdidos.')) return;
-    await api.delete(`/numbers/${id}`);
-    setNumbers(n => n.filter(x => x.id !== id));
+    setDeleting(true);
+    try {
+      await api.delete(`/numbers/${id}`);
+      setNumbers(n => n.filter(x => x.id !== id));
+    } catch (err: any) {
+      setError(err.message || 'Erro ao remover número.');
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(null);
+    }
   }
 
   const statusColor = (s: string) =>
@@ -194,10 +203,23 @@ export default function NumerosPage() {
                     className="btn-ghost flex-1 justify-center text-xs py-2">
                     ⏹ Desconectar
                   </button>
-                  <button onClick={() => handleDelete(n.id)}
-                    className="text-xs px-3 py-2 rounded-lg border border-red-400/15 text-brand-muted hover:text-red-400 hover:border-red-400/30 transition-colors">
-                    🗑
-                  </button>
+                  {confirmDelete === n.id ? (
+                    <div className="flex gap-1">
+                      <button onClick={() => handleDelete(n.id)} disabled={deleting}
+                        className="text-xs px-2 py-1 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors">
+                        {deleting ? '...' : 'Confirmar'}
+                      </button>
+                      <button onClick={() => setConfirmDelete(null)}
+                        className="text-xs px-2 py-1 rounded-lg border border-brand-border text-brand-muted hover:text-brand-text transition-colors">
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setConfirmDelete(n.id)}
+                      className="text-xs px-3 py-2 rounded-lg border border-red-400/15 text-brand-muted hover:text-red-400 hover:border-red-400/30 transition-colors">
+                      🗑
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -206,13 +228,26 @@ export default function NumerosPage() {
                     <p className="font-semibold mb-1">📡 Conectar via WhatsApp Business API</p>
                     <p>Configure o webhook no <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="underline text-amber-400">Meta for Developers</a> apontando para:</p>
                     <code className="block mt-1 bg-brand-elevated px-2 py-1 rounded text-[10px] break-all text-brand-primary">
-                      {process.env.NEXT_PUBLIC_API_URL || 'https://zapscript-api.onrender.com'}/webhook/whatsapp
+                      {process.env.NEXT_PUBLIC_API_URL || 'https://zapscript.onrender.com'}/webhook/whatsapp
                     </code>
                   </div>
-                  <button onClick={() => handleDelete(n.id)}
-                    className="w-full text-[11px] px-3 py-1 rounded-lg border border-red-400/10 text-red-400/50 hover:text-red-400 hover:border-red-400/30 transition-colors">
-                    Remover
-                  </button>
+                  {confirmDelete === n.id ? (
+                    <div className="flex gap-2">
+                      <button onClick={() => handleDelete(n.id)} disabled={deleting}
+                        className="flex-1 text-[11px] px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors">
+                        {deleting ? 'Removendo...' : 'Confirmar remoção'}
+                      </button>
+                      <button onClick={() => setConfirmDelete(null)}
+                        className="text-[11px] px-3 py-1.5 rounded-lg border border-brand-border text-brand-muted hover:text-brand-text transition-colors">
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setConfirmDelete(n.id)}
+                      className="w-full text-[11px] px-3 py-1 rounded-lg border border-red-400/10 text-red-400/50 hover:text-red-400 hover:border-red-400/30 transition-colors">
+                      Remover
+                    </button>
+                  )}
                 </div>
               )}
             </div>
