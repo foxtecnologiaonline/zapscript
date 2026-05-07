@@ -103,7 +103,11 @@ io.on('connection', (socket: Socket) => {
   });
 });
 
-app.register(cors, { origin: allowedOrigin, credentials: true });
+app.register(cors, {
+  origin: allowedOrigin,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+});
 app.register(helmet, {
   contentSecurityPolicy: {
     directives: {
