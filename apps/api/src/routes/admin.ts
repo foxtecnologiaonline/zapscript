@@ -219,9 +219,9 @@ export default async function adminRoutes(app: FastifyInstance) {
   );
 
   // POST /admin/users/:id/confirm-email — confirma e-mail do usuário no Supabase
-  app.post<{ Params: { id: string } }>(
+  app.post<{ Params: { id: string }; Body: {} }>(
     '/users/:id/confirm-email',
-    { preHandler: [adminAuth] },
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
       const { id } = req.params;
       const user = await prisma.user.findUnique({ where: { id } });
@@ -238,9 +238,9 @@ export default async function adminRoutes(app: FastifyInstance) {
   );
 
   // POST /admin/users/:id/reset-password — envia link de redefinição de senha
-  app.post<{ Params: { id: string } }>(
+  app.post<{ Params: { id: string }; Body: {} }>(
     '/users/:id/reset-password',
-    { preHandler: [adminAuth] },
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
       const { id } = req.params;
       const user = await prisma.user.findUnique({ where: { id } });

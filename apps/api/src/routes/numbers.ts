@@ -73,7 +73,7 @@ export default async function numberRoutes(app: FastifyInstance) {
   // ── POST /numbers/:id/connect — DESCONTINUADO (era Baileys QR Code) ──────────
   // Agora usando Meta Cloud API com webhook
   // A conexão é feita via webhooks — configure em: https://developers.facebook.com
-  app.post<{ Params: { id: string } }>('/:id/connect', auth, async (_, reply) => {
+  app.post<{ Params: { id: string }; Body: {} }>('/:id/connect', auth, async (_, reply) => {
     return reply.code(410).send({
       error: 'Método descontinuado',
       message: 'QR Code connection foi substituído pela Meta Cloud API',
@@ -117,7 +117,7 @@ export default async function numberRoutes(app: FastifyInstance) {
   });
 
   // ── POST /numbers/:id/disconnect ──────────────────────
-  app.post<{ Params: { id: string } }>('/:id/disconnect', auth, async (req: any, reply) => {
+  app.post<{ Params: { id: string }; Body: {} }>('/:id/disconnect', auth, async (req: any, reply) => {
     const { id } = req.params;
     const userId = req.user.sub;
 
