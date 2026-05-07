@@ -7,8 +7,18 @@ declare global {
 export const prisma =
   global.__prisma ||
   new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error'],
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error', 'warn'],
+    errorFormat: 'pretty',
   });
+
+// Adicionar tratamento de desconexão
+prisma.$on('error', (e: any) => {
+  console.error('[Prisma] Connection error:', {
+    code: e.code,
+    message: e.message,
+    meta: e.meta,
+  });
+});
 
 if (process.env.NODE_ENV !== 'production') {
   global.__prisma = prisma;

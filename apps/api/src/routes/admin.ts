@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
+import { retryWithBackoff } from '../lib/db-retry';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
@@ -224,16 +225,27 @@ export default async function adminRoutes(app: FastifyInstance) {
     { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
       const { id } = req.params;
-      const user = await prisma.user.findUnique({ where: { id } });
-      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
-      const { error } = await supabase.auth.admin.updateUserById(id, {
-        email_confirm: true,
-      });
-      if (error) return reply.code(500).send({ error: error.message });
+      try {
+        const user = await retryWithBackoff(() =>
+          prisma.user.findUnique({ where: { id } })
+        );
+        if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
-      await prisma.user.update({ where: { id }, data: { emailVerified: true } }).catch(() => null);
-      return { ok: true, message: 'E-mail confirmado com sucesso.' };
+        const { error } = await supabase.auth.admin.updateUserById(id, {
+          email_confirm: true,
+        });
+        if (error) return reply.code(500).send({ error: error.message });
+
+        await retryWithBackoff(() =>
+          prisma.user.update({ where: { id }, data: { emailVerified: true } })
+        ).catch(() => null);
+
+        return { ok: true, message: 'E-mail confirmado com sucesso.' };
+      } catch (err: any) {
+        app.log.error({ userId: id, err: err.message }, '[Admin] Erro ao confirmar email');
+        return reply.code(500).send({ error: 'Erro ao confirmar email. Tente novamente.' });
+      }
     }
   );
 
@@ -341,20 +353,29 @@ export default async function adminRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params;
 
-      const user = await prisma.user.findUnique({ where: { id } });
-      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+      try {
+        const user = await retryWithBackoff(() =>
+          prisma.user.findUnique({ where: { id } })
+        );
+        if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
-      // Remove do Supabase Auth primeiro (evita login fantasma)
-      const { error } = await supabase.auth.admin.deleteUser(id);
-      if (error) {
-        // Logar mas não bloquear — se o user não existir no Supabase, prosseguir
-        app.log.warn({ userId: id, err: error.message }, 'Supabase: erro ao deletar user');
+        // Remove do Supabase Auth primeiro (evita login fantasma)
+        const { error } = await supabase.auth.admin.deleteUser(id);
+        if (error) {
+          // Logar mas não bloquear — se o user não existir no Supabase, prosseguir
+          app.log.warn({ userId: id, err: error.message }, 'Supabase: erro ao deletar user');
+        }
+
+        // Cascade no Prisma elimina: Subscription, MinuteBalance, WhatsappNumber, Transcription, UsageLog, SupportTicket
+        await retryWithBackoff(() =>
+          prisma.user.delete({ where: { id } })
+        );
+
+        return reply.code(204).send();
+      } catch (err: any) {
+        app.log.error({ userId: id, err: err.message }, '[Admin] Erro ao deletar usuário');
+        return reply.code(500).send({ error: 'Erro ao deletar usuário. Tente novamente.' });
       }
-
-      // Cascade no Prisma elimina: Subscription, MinuteBalance, WhatsappNumber, Transcription, UsageLog, SupportTicket
-      await prisma.user.delete({ where: { id } });
-
-      return reply.code(204).send();
     }
   );
 
