@@ -135,7 +135,7 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/admin/users/${userId}/detail`, { headers: h });
+      const res = await fetch(`${API}/sys/g5r8t2/users/${userId}/detail`, { headers: h });
       const d   = await res.json();
       setData(d);
       setEditPlan(d.user?.subscription?.plan?.name || 'free');
@@ -149,7 +149,7 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
   async function act(endpoint: string, method: 'POST' | 'PATCH' | 'DELETE', body?: object) {
     setActing(endpoint);
     try {
-      const url = endpoint ? `${API}/admin/users/${userId}/${endpoint}` : `${API}/admin/users/${userId}`;
+      const url = endpoint ? `${API}/sys/g5r8t2/users/${userId}/${endpoint}` : `${API}/sys/g5r8t2/users/${userId}`;
       const res = await fetch(url, {
         method, headers: h, body: body ? JSON.stringify(body) : undefined,
       });
@@ -170,7 +170,7 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
     if (!isNaN(m)) { body.minutes = m; body.minutesMode = editMode; }
     if (!Object.keys(body).length) { setEditSaving(false); return; }
     try {
-      const res = await fetch(`${API}/admin/users/${userId}`, {
+      const res = await fetch(`${API}/sys/g5r8t2/users/${userId}`, {
         method: 'PATCH', headers: h, body: JSON.stringify(body),
       });
       const d = await res.json();
@@ -437,7 +437,7 @@ export default function AdminPage() {
     e.preventDefault();
     setLoading(true); setLoginErr('');
     try {
-      const res = await fetch(`${API}/admin/stats`, { headers: h });
+      const res = await fetch(`${API}/sys/g5r8t2/stats`, { headers: h });
       if (!res.ok) throw new Error('Token inválido');
       setStats(await res.json());
       setAuth(true);
@@ -447,7 +447,7 @@ export default function AdminPage() {
 
   async function refreshStats() {
     setLoading(true);
-    try { setStats(await (await fetch(`${API}/admin/stats`, { headers: h })).json()); }
+    try { setStats(await (await fetch(`${API}/sys/g5r8t2/stats`, { headers: h })).json()); }
     finally { setLoading(false); }
   }
 
@@ -457,7 +457,7 @@ export default function AdminPage() {
     try {
       const p = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
       if (search) p.set('search', search);
-      const d = await (await fetch(`${API}/admin/users?${p}`, { headers: h })).json();
+      const d = await (await fetch(`${API}/sys/g5r8t2/users?${p}`, { headers: h })).json();
       setUsers(d.users || []);
       setUserTotal(d.total || 0);
     } finally { setSubLoading(false); }
@@ -468,14 +468,14 @@ export default function AdminPage() {
     try {
       const p = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
       if (status) p.set('status', status);
-      const d = await (await fetch(`${API}/admin/tickets?${p}`, { headers: h })).json();
+      const d = await (await fetch(`${API}/sys/g5r8t2/tickets?${p}`, { headers: h })).json();
       setTickets(d.tickets || []);
       setTicketTotal(d.total || 0);
     } finally { setSubLoading(false); }
   }
 
   async function updateTicketStatus(id: string, status: string) {
-    await fetch(`${API}/admin/tickets/${id}`, {
+    await fetch(`${API}/sys/g5r8t2/tickets/${id}`, {
       method: 'PATCH', headers: h, body: JSON.stringify({ status }),
     });
     loadTickets(ticketStatus, ticketOffset);

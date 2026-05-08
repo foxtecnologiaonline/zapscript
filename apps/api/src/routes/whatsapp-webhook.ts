@@ -117,13 +117,18 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
 
         // Encontrar conta do usuário pelo número Business que recebeu a mensagem
         const cleanBusiness = businessPhone?.replace(/\D/g, '');
+        if (!cleanBusiness) {
+          app.log.warn('[WhatsApp] display_phone_number ausente no webhook — mensagem ignorada');
+          return;
+        }
+
         const whatsappNumber = await prisma.whatsappNumber.findFirst({
-          where: cleanBusiness ? { phoneNumber: cleanBusiness } : undefined,
+          where: { phoneNumber: cleanBusiness },
           include: { user: true },
         });
 
         if (!whatsappNumber) {
-          app.log.warn(`[WhatsApp] Conta Business ${businessPhone || 'desconhecida'} não registrada no sistema`);
+          app.log.warn(`[WhatsApp] Conta Business ${businessPhone} não registrada no sistema`);
           return;
         }
 

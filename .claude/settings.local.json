@@ -10,7 +10,10 @@
       "WebSearch",
       "mcp__Claude_in_Chrome__tabs_context_mcp",
       "Bash(start msedge *)",
-      "Bash(find \"C:\\\\FOX tecnologIA\\\\ZapScript\" -type f -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.json\" | grep -v node_modules | grep -v \".next\" | grep -v \"dist\" | grep -v \".git\" | head -100)"
+      "Bash(find \"C:\\\\FOX tecnologIA\\\\ZapScript\" -type f -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.json\" | grep -v node_modules | grep -v \".next\" | grep -v \"dist\" | grep -v \".git\" | head -100)",
+      "Bash(Get-ChildItem -Path \"C:\\\\FOX tecnologIA\\\\ZapScript\\\\.claude\\\\worktrees\\\\determined-swartz-fbb83e\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(powershell -Command \"\\(Get-Content apps/web/src/app/g5r8t2/page.tsx\\) -replace '/admin/', '/sys/g5r8t2/' | Set-Content apps/web/src/app/g5r8t2/page.tsx\")"
     ]
   }
 }

@@ -83,22 +83,16 @@ function emailWrapper(
 export default async function authRoutes(app: FastifyInstance) {
 
   // ── POST /auth/register ───────────────────────────────────────────────────
-  app.post<{ Body: { email: string; password: string; name?: string; document?: string } }>(
+  app.post<{ Body: { email: string; password: string; name?: string } }>(
     '/register',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const { email, password, name, document } = req.body;
+      const { email, password, name } = req.body;
       if (!email || !password) return reply.code(400).send({ error: 'email e password obrigatórios' });
 
       // Verificar duplicata de e-mail
       const existingEmail = await prisma.user.findUnique({ where: { email } });
       if (existingEmail) return reply.code(400).send({ error: 'E-mail já cadastrado. Faça login.', redirect: '/login' });
-
-      // Verificar duplicata de CPF/CNPJ
-      if (document) {
-        const existingDoc = await prisma.user.findFirst({ where: { document } });
-        if (existingDoc) return reply.code(400).send({ error: 'CPF/CNPJ já cadastrado. Faça login.', redirect: '/login' });
-      }
 
       // Criar no Supabase Auth sem confirmar e-mail automaticamente
       const { data, error } = await supabase.auth.admin.createUser({
@@ -114,7 +108,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
       // Criar User + Subscription + MinuteBalance em transação atômica
       await prisma.$transaction(async (tx) => {
-        const u = await tx.user.create({ data: { id: data.user!.id, email, name, document } });
+        const u = await tx.user.create({ data: { id: data.user!.id, email, name } });
         await tx.subscription.create({ data: { userId: u.id, planId: freePlan.id } });
         await tx.minuteBalance.create({
           data: {

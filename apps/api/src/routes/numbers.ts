@@ -48,25 +48,21 @@ export default async function numberRoutes(app: FastifyInstance) {
   });
 
   // ── PATCH /numbers/:id ───────────────────────────────
-  app.patch<{ Params: { id: string }; Body: { displayName?: string; phoneNumber?: string } }>(
+  app.patch<{ Params: { id: string }; Body: { displayName?: string } }>(
     '/:id',
     auth,
     async (req: any, reply) => {
       const { id } = req.params;
-      const { displayName, phoneNumber } = req.body;
+      const { displayName } = req.body;
 
       const number = await prisma.whatsappNumber.findFirst({ where: { id, userId: req.user.sub } });
       if (!number) return reply.code(404).send({ error: 'Número não encontrado.' });
 
-      const data: Record<string, string> = {};
-      if (displayName?.trim())  data.displayName = displayName.trim();
-      if (phoneNumber)          data.phoneNumber  = phoneNumber.replace(/\D/g, '');
+      const trimmed = displayName?.trim();
+      if (!trimmed) return reply.code(400).send({ error: 'Nenhum campo para atualizar.' });
+      if (trimmed.length > 50) return reply.code(400).send({ error: 'Nome deve ter no máximo 50 caracteres.' });
 
-      if (Object.keys(data).length === 0) {
-        return reply.code(400).send({ error: 'Nenhum campo para atualizar.' });
-      }
-
-      return prisma.whatsappNumber.update({ where: { id }, data });
+      return prisma.whatsappNumber.update({ where: { id }, data: { displayName: trimmed } });
     }
   );
 
