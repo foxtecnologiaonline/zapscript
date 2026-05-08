@@ -12,61 +12,66 @@ const supabase = createClient(
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
 
 // ── Template base dos e-mails ─────────────────────────────────────────────────
-function emailWrapper(iconEmoji: string, title: string, body: string): string {
+function emailWrapper(
+  iconEmoji: string,
+  title: string,
+  body: string,
+  securityNote = 'Se você não reconhece esta ação, ignore este e-mail.'
+): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#050a07;font-family:'Segoe UI',Arial,sans-serif">
-  <div style="padding:40px 20px">
-    <div style="max-width:520px;margin:0 auto">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+</head>
+<body style="margin:0;padding:0;background:#050a07;font-family:'Segoe UI',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased">
+  <div style="padding:40px 16px">
+    <div style="max-width:540px;margin:0 auto">
 
       <!-- Logo -->
-      <div style="text-align:center;margin-bottom:32px">
-        <table cellpadding="0" cellspacing="0" style="margin:0 auto">
+      <div style="text-align:center;margin-bottom:28px">
+        <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto">
           <tr>
-            <td style="background:#10b981;border-radius:12px;width:40px;height:40px;text-align:center;vertical-align:middle">
-              <span style="font-size:20px;line-height:40px">💬</span>
+            <td style="background:#10b981;border-radius:10px;width:38px;height:38px;text-align:center;vertical-align:middle">
+              <span style="font-size:18px;line-height:38px">💬</span>
             </td>
             <td style="padding-left:10px;vertical-align:middle">
-              <span style="font-size:22px;font-weight:700;color:#10b981;letter-spacing:-0.5px">ZapScript</span>
+              <span style="font-size:21px;font-weight:700;color:#10b981;letter-spacing:-0.5px">ZapScript</span>
             </td>
           </tr>
         </table>
       </div>
 
       <!-- Card -->
-      <div style="background:#0d1c19;border:1px solid rgba(16,185,129,.2);border-radius:20px;padding:40px 36px">
+      <div style="background:#0d1c19;border:1px solid rgba(16,185,129,.18);border-radius:20px;padding:40px 36px">
 
         <!-- Ícone -->
-        <div style="text-align:center;margin-bottom:20px">
-          <div style="display:inline-block;width:64px;height:64px;background:rgba(16,185,129,.12);border-radius:50%;font-size:28px;line-height:64px;text-align:center">
-            ${iconEmoji}
-          </div>
+        <div style="text-align:center;margin-bottom:18px">
+          <div style="display:inline-block;width:64px;height:64px;background:rgba(16,185,129,.12);border-radius:50%;font-size:28px;line-height:64px;text-align:center">${iconEmoji}</div>
         </div>
 
         <!-- Título -->
-        <h1 style="text-align:center;color:#10b981;font-size:22px;font-weight:700;margin:0 0 6px">${title}</h1>
-        <p style="text-align:center;color:#6ee7b7;font-size:14px;font-weight:300;margin:0 0 28px">zapscript.me</p>
+        <h1 style="text-align:center;color:#10b981;font-size:22px;font-weight:700;margin:0 0 4px;letter-spacing:-0.3px">${title}</h1>
+        <p style="text-align:center;color:#4ade80;font-size:13px;font-weight:400;margin:0 0 28px;opacity:.7">zapscript.me</p>
 
-        <!-- Linha divisória -->
+        <!-- Divisória -->
         <div style="height:1px;background:rgba(16,185,129,.12);margin-bottom:28px"></div>
 
         ${body}
 
-        <!-- Linha divisória -->
-        <div style="height:1px;background:rgba(16,185,129,.08);margin-top:28px;margin-bottom:20px"></div>
+        <!-- Divisória -->
+        <div style="height:1px;background:rgba(16,185,129,.08);margin-top:32px;margin-bottom:20px"></div>
 
-        <p style="color:#2d4a3e;font-size:12px;line-height:1.5;margin:0;text-align:center">
-          Se você não reconhece esta ação, ignore este e-mail.<br>Nenhuma senha foi alterada.
+        <p style="color:#4a7060;font-size:12px;line-height:1.6;margin:0;text-align:center">
+          ${securityNote}
         </p>
       </div>
 
       <!-- Rodapé -->
       <div style="text-align:center;margin-top:24px">
-        <p style="color:#1e3329;font-size:12px;margin:0 0 4px">
-          ZapScript — Transcrição Inteligente de Áudios do WhatsApp
-        </p>
-        <a href="${APP_URL}" style="color:rgba(16,185,129,.4);font-size:12px;text-decoration:none">zapscript.me</a>
+        <p style="color:#2d5040;font-size:12px;margin:0 0 4px">ZapScript — Transcrição Inteligente de Áudios do WhatsApp</p>
+        <a href="${APP_URL}" style="color:rgba(16,185,129,.55);font-size:12px;text-decoration:none">zapscript.me</a>
       </div>
 
     </div>
@@ -135,33 +140,49 @@ export default async function authRoutes(app: FastifyInstance) {
             email,
             'Confirme seu e-mail — ZapScript',
             emailWrapper('✉️', 'Confirme seu e-mail', `
-              <p style="color:#a0aec0;font-size:15px;line-height:1.7;margin:0 0 10px">
-                Olá${name ? `, <strong style="color:#d1fae5">${name}</strong>` : ''}!
+              <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 8px">
+                Olá${name ? `, <strong style="color:#6ee7b7">${name}</strong>` : ''}!
               </p>
-              <p style="color:#a0aec0;font-size:15px;line-height:1.7;margin:0 0 28px">
-                Sua conta ZapScript foi criada com sucesso! Para ativá-la e começar a
-                transcrever seus áudios do WhatsApp com IA, confirme seu endereço de e-mail:
+              <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 6px">
+                Sua conta ZapScript foi criada. Falta apenas <strong style="color:#6ee7b7">um passo</strong>:
+                confirme seu e-mail para ativar o acesso.
+              </p>
+              <p style="color:#7aa898;font-size:14px;line-height:1.6;margin:0 0 28px">
+                Após a confirmação, você terá acesso imediato à plataforma.
               </p>
 
-              <div style="text-align:center;margin:0 0 28px">
+              <div style="text-align:center;margin:0 0 24px">
                 <a href="${confirmLink}"
-                   style="display:inline-block;background:#10b981;color:#ffffff;padding:16px 44px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:0.2px;box-shadow:0 4px 20px rgba(16,185,129,.4)">
+                   style="display:inline-block;background:#10b981;color:#ffffff;padding:16px 48px;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:0.2px;box-shadow:0 4px 24px rgba(16,185,129,.35)">
                   ✅ Confirmar meu e-mail
                 </a>
               </div>
 
-              <p style="color:#4a6e5a;font-size:12px;text-align:center;margin:0;line-height:1.6">
-                Ou cole este link no navegador:<br>
-                <a href="${confirmLink}" style="color:rgba(16,185,129,.6);word-break:break-all;font-size:11px">${confirmLink}</a>
+              <p style="color:#4a7060;font-size:12px;text-align:center;margin:0 0 24px;line-height:1.6">
+                Botão não funcionou? Cole este link no navegador:<br>
+                <a href="${confirmLink}" style="color:rgba(16,185,129,.65);word-break:break-all;font-size:11px">${confirmLink}</a>
               </p>
 
-              <div style="background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.1);border-radius:10px;padding:14px 18px;margin-top:24px">
-                <p style="color:#4a6e5a;font-size:12px;margin:0;line-height:1.6">
-                  ⏰ <strong style="color:#6b8a75">Este link expira em 24 horas.</strong><br>
-                  Após confirmar, você terá acesso a <strong style="color:#6b8a75">10 minutos grátis</strong> de transcrição, sem cartão de crédito.
+              <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:12px;padding:16px 20px">
+                <table cellpadding="0" cellspacing="0" border="0" style="width:100%">
+                  <tr>
+                    <td style="vertical-align:top;padding-right:10px;font-size:20px;line-height:1">🎁</td>
+                    <td>
+                      <p style="color:#6ee7b7;font-size:13px;font-weight:700;margin:0 0 4px">10 minutos grátis te esperam</p>
+                      <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
+                        Assim que confirmar, sua conta recebe <strong style="color:#5d8a72">10 minutos de transcrição</strong> sem cartão de crédito.
+                        Transcreva áudios do WhatsApp com IA em segundos.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+                <div style="height:1px;background:rgba(16,185,129,.08);margin:12px 0"></div>
+                <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
+                  ⏰ <strong style="color:#5d8a72">Este link expira em 24 horas.</strong>
+                  Após esse prazo, faça login e solicite um novo link de ativação.
                 </p>
               </div>
-            `)
+            `, 'Se você não criou uma conta no ZapScript, pode ignorar este e-mail com segurança.')
           );
         }
       } catch (err: any) {
@@ -244,20 +265,33 @@ export default async function authRoutes(app: FastifyInstance) {
           await sendEmail(
             email,
             'Ative sua conta ZapScript',
-            emailWrapper('✉️', 'Ativar conta', `
-              <p style="color:#a0aec0;font-size:15px;line-height:1.7;margin:0 0 28px">
-                Você solicitou um novo link de ativação. Clique abaixo para confirmar seu e-mail:
+            emailWrapper('✉️', 'Novo link de ativação', `
+              <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 6px">
+                Enviamos um novo link de ativação para este endereço de e-mail.
               </p>
-              <div style="text-align:center;margin:0 0 28px">
+              <p style="color:#7aa898;font-size:14px;line-height:1.6;margin:0 0 28px">
+                Clique no botão abaixo para confirmar seu e-mail e ativar sua conta:
+              </p>
+
+              <div style="text-align:center;margin:0 0 24px">
                 <a href="${confirmLink}"
-                   style="display:inline-block;background:#10b981;color:#ffffff;padding:16px 44px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:0.2px;box-shadow:0 4px 20px rgba(16,185,129,.4)">
+                   style="display:inline-block;background:#10b981;color:#ffffff;padding:16px 48px;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:0.2px;box-shadow:0 4px 24px rgba(16,185,129,.35)">
                   ✅ Ativar minha conta
                 </a>
               </div>
-              <p style="color:#4a6e5a;font-size:12px;text-align:center;margin:0;line-height:1.6">
-                ⏰ <strong style="color:#6b8a75">Este link expira em 24 horas.</strong>
+
+              <p style="color:#4a7060;font-size:12px;text-align:center;margin:0 0 24px;line-height:1.6">
+                Botão não funcionou? Cole este link no navegador:<br>
+                <a href="${confirmLink}" style="color:rgba(16,185,129,.65);word-break:break-all;font-size:11px">${confirmLink}</a>
               </p>
-            `)
+
+              <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:12px;padding:16px 20px">
+                <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
+                  ⏰ <strong style="color:#5d8a72">Este link expira em 24 horas.</strong>
+                  Após confirmar, sua conta estará ativa com <strong style="color:#5d8a72">10 minutos grátis</strong> de transcrição, sem cartão de crédito.
+                </p>
+              </div>
+            `, 'Se você não solicitou este link, pode ignorar este e-mail com segurança.')
           ).catch((err: any) => logger.error(`[Auth] Falha ao reenviar confirmação: ${err.message}`));
         }
       } catch (err: any) {
@@ -289,33 +323,40 @@ export default async function authRoutes(app: FastifyInstance) {
           await sendEmail(
             email,
             'Redefinir sua senha — ZapScript',
-            emailWrapper('🔑', 'Redefinir senha', `
-              <p style="color:#a0aec0;font-size:15px;line-height:1.7;margin:0 0 10px">
+            emailWrapper('🔑', 'Redefinir sua senha', `
+              <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 6px">
                 Recebemos uma solicitação para redefinir a senha da sua conta ZapScript.
               </p>
-              <p style="color:#a0aec0;font-size:15px;line-height:1.7;margin:0 0 28px">
-                Clique no botão abaixo para criar uma nova senha:
+              <p style="color:#7aa898;font-size:14px;line-height:1.6;margin:0 0 28px">
+                Clique no botão abaixo e crie uma nova senha:
               </p>
 
-              <div style="text-align:center;margin:0 0 28px">
+              <div style="text-align:center;margin:0 0 24px">
                 <a href="${resetLink}"
-                   style="display:inline-block;background:#10b981;color:#ffffff;padding:16px 44px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:0.2px;box-shadow:0 4px 20px rgba(16,185,129,.4)">
-                  🔑 Redefinir minha senha
+                   style="display:inline-block;background:#10b981;color:#ffffff;padding:16px 48px;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:0.2px;box-shadow:0 4px 24px rgba(16,185,129,.35)">
+                  🔑 Criar nova senha
                 </a>
               </div>
 
-              <p style="color:#4a6e5a;font-size:12px;text-align:center;margin:0;line-height:1.6">
-                Ou cole este link no navegador:<br>
-                <a href="${resetLink}" style="color:rgba(16,185,129,.6);word-break:break-all;font-size:11px">${resetLink}</a>
+              <p style="color:#4a7060;font-size:12px;text-align:center;margin:0 0 24px;line-height:1.6">
+                Botão não funcionou? Cole este link no navegador:<br>
+                <a href="${resetLink}" style="color:rgba(16,185,129,.65);word-break:break-all;font-size:11px">${resetLink}</a>
               </p>
 
-              <div style="background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.1);border-radius:10px;padding:14px 18px;margin-top:24px">
-                <p style="color:#4a6e5a;font-size:12px;margin:0;line-height:1.6">
-                  ⏰ <strong style="color:#6b8a75">Este link expira em 1 hora.</strong><br>
-                  Se você não solicitou a redefinição, sua senha permanece a mesma.
-                </p>
+              <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:12px;padding:16px 20px">
+                <table cellpadding="0" cellspacing="0" border="0" style="width:100%">
+                  <tr>
+                    <td style="vertical-align:top;padding-right:10px;font-size:18px;line-height:1;padding-top:2px">⚠️</td>
+                    <td>
+                      <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.6">
+                        <strong style="color:#5d8a72">Este link expira em 1 hora</strong> e só pode ser usado uma vez.<br>
+                        Após criar a nova senha, o link é invalidado automaticamente.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
               </div>
-            `)
+            `, 'Não solicitou a redefinição? Ignore este e-mail — sua senha atual permanece ativa e segura. Nenhuma alteração foi feita.')
           );
         }
       } catch (err: any) {
