@@ -143,39 +143,39 @@ app.register(rateLimit, {
 });
 app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB max
 
-// ── Swagger/OpenAPI Documentation ───────────────────────────────
-app.register(swagger, {
-  swagger: {
-    info: {
-      title: 'ZapScript API',
-      description: 'API de transcrição automática de áudios do WhatsApp',
-      version: '1.0.0',
-      contact: {
-        name: 'ZapScript Support',
-        email: 'suporte@zapscript.me',
+// ── Swagger/OpenAPI Documentation — somente em desenvolvimento ─────────────
+if (process.env.NODE_ENV !== 'production') {
+  app.register(swagger, {
+    swagger: {
+      info: {
+        title: 'ZapScript API',
+        description: 'API de transcrição automática de áudios do WhatsApp',
+        version: '1.0.0',
+        contact: {
+          name: 'ZapScript Support',
+          email: 'suporte@zapscript.me',
+        },
+      },
+      host: process.env.APP_URL?.replace(/https?:\/\//, '').split(':')[0] || 'localhost:3001',
+      schemes: ['https', 'http'],
+      consumes: ['application/json'],
+      produces: ['application/json'],
+      securityDefinitions: {
+        bearerAuth: {
+          type: 'apiKey',
+          name: 'authorization',
+          in: 'header',
+          description: 'Bearer token JWT',
+        },
       },
     },
-    host: process.env.APP_URL?.replace(/https?:\/\//, '').split(':')[0] || 'localhost:3001',
-    schemes: ['https', 'http'],
-    consumes: ['application/json'],
-    produces: ['application/json'],
-    securityDefinitions: {
-      bearerAuth: {
-        type: 'apiKey',
-        name: 'authorization',
-        in: 'header',
-        description: 'Bearer token JWT',
-      },
-    },
-  },
-});
+  });
 
-app.register(swaggerUI, {
-  routePrefix: '/documentation',
-  uiConfig: {
-    deepLinking: false,
-  },
-});
+  app.register(swaggerUI, {
+    routePrefix: '/documentation',
+    uiConfig: { deepLinking: false },
+  });
+}
 
 // ── Security Headers ──────────────────────────────────────────
 app.addHook('onSend', async (_req, reply) => {

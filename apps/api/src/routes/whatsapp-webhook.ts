@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import crypto from 'crypto';
 import { whatsappAPI } from '../services/whatsapp-official';
 import { transcriptionQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
@@ -13,6 +14,7 @@ import { io } from '../index';
  */
 export default async function whatsappWebhookRoutes(app: FastifyInstance) {
   const webhookToken = process.env.WHATSAPP_WEBHOOK_TOKEN || 'webhook-token-not-set';
+  const appSecret    = process.env.WHATSAPP_APP_SECRET;
 
   /**
    * GET /webhook - Verificação inicial do webhook
@@ -23,19 +25,19 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
       const query = req.query as Record<string, any>;
 
       // Meta pode enviar com ponto (hub.verify_token) ou underscore (hub_verify_token)
-      const mode = query.hub_mode || query['hub.mode'] as string;
-      const token = query.hub_verify_token || query['hub.verify_token'] as string;
-      const challenge = query.hub_challenge || query['hub.challenge'] as string;
+      const mode      = query.hub_mode      || query['hub.mode']         as string;
+      const token     = query.hub_verify_token || query['hub.verify_token'] as string;
+      const challenge = query.hub_challenge  || query['hub.challenge']   as string;
 
-      app.log.info(`[WhatsApp Webhook GET] mode=${mode}, token_match=${token === webhookToken}, challenge=${challenge}`);
+      app.log.info(`[WhatsApp Webhook GET] mode=${mode}, token_match=${token === webhookToken}`);
 
       if (mode === 'subscribe' && token === webhookToken) {
-        app.log.info('[WhatsApp Webhook] ✅ Validação bem-sucedida - respondendo com challenge');
+        app.log.info('[WhatsApp Webhook] ✅ Validação bem-sucedida');
         reply.type('text/plain').code(200);
         return reply.send(challenge);
       }
 
-      app.log.warn(`[WhatsApp Webhook] ❌ Token inválido. Esperado: ${webhookToken}, Recebido: ${token}`);
+      app.log.warn('[WhatsApp Webhook] ❌ Token de verificação inválido');
       return reply.code(403).send({ error: 'Invalid webhook token' });
     } catch (error: any) {
       app.log.error({ err: error.message }, '[WhatsApp Webhook GET] Erro inesperado');
@@ -45,8 +47,24 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
 
   /**
    * POST /webhook - Receber mensagens
+   * Valida assinatura x-hub-signature-256 da Meta antes de processar
    */
   app.post('/', async (req, reply) => {
+    // Validar assinatura HMAC-SHA256 se WHATSAPP_APP_SECRET configurado
+    if (appSecret) {
+      const signature = (req.headers['x-hub-signature-256'] as string | undefined)?.replace('sha256=', '');
+      if (!signature) {
+        app.log.warn('[WhatsApp Webhook] Requisição sem assinatura x-hub-signature-256 rejeitada');
+        return reply.code(401).send({ error: 'Missing signature' });
+      }
+      const rawBody = (req as any).rawBody?.toString() || JSON.stringify(req.body);
+      const expected = crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
+      if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+        app.log.warn('[WhatsApp Webhook] Assinatura inválida — possível payload forjado');
+        return reply.code(401).send({ error: 'Invalid signature' });
+      }
+    }
+
     const body = req.body as any;
 
     // Responder rapidamente para Meta (ela quer 200 OK em menos de 30s)
@@ -72,16 +90,17 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
       if (!change) return;
 
       const value = change.value;
-      const messages = value.messages || [];
-      const contacts = value.contacts || [];
-      const statuses = value.statuses || [];
+      const messages   = value.messages  || [];
+      const contacts   = value.contacts  || [];
+      const statuses   = value.statuses  || [];
+      // Número da conta Business que recebeu as mensagens (metadata do webhook Meta)
+      const businessPhone = value.metadata?.display_phone_number as string | undefined;
 
       // ─────────────────────────────────
       // Processar confirmação de entrega
       // ─────────────────────────────────
       for (const status of statuses) {
         app.log.info(`[WhatsApp] Status de ${status.recipient_id}: ${status.status}`);
-        // Aqui você pode atualizar logs de delivery
       }
 
       // ─────────────────────────────────
@@ -89,21 +108,22 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
       // ─────────────────────────────────
       for (const msg of messages) {
         const senderPhone = msg.from;
-        const messageId = msg.id;
+        const messageId   = msg.id;
 
-        const contact = contacts.find((c: any) => c.wa_id === senderPhone);
+        const contact    = contacts.find((c: any) => c.wa_id === senderPhone);
         const senderName = contact?.profile?.name || senderPhone;
 
         app.log.info(`[WhatsApp] Mensagem de ${senderName} (${senderPhone}) - tipo: ${msg.type}`);
 
-        // Encontrar usuário que possui este número
+        // Encontrar conta do usuário pelo número Business que recebeu a mensagem
+        const cleanBusiness = businessPhone?.replace(/\D/g, '');
         const whatsappNumber = await prisma.whatsappNumber.findFirst({
-          where: { phoneNumber: senderPhone },
+          where: cleanBusiness ? { phoneNumber: cleanBusiness } : undefined,
           include: { user: true },
         });
 
         if (!whatsappNumber) {
-          app.log.warn(`[WhatsApp] Número ${senderPhone} não registrado no sistema`);
+          app.log.warn(`[WhatsApp] Conta Business ${businessPhone || 'desconhecida'} não registrada no sistema`);
           return;
         }
 

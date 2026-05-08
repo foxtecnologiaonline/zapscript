@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 
@@ -32,6 +32,15 @@ export default function DashboardPage() {
   const [recent, setRecent] = useState<Transcription[]>([]);
   const [selected, setSelected] = useState<Transcription | null>(null);
   const [loading, setLoading]   = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  const closeModal = useCallback(() => setSelected(null), []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModal(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [closeModal]);
 
   useEffect(() => {
     Promise.all([
@@ -40,14 +49,28 @@ export default function DashboardPage() {
     ]).then(([s, t]) => {
       setStats(s);
       setRecent(t.items);
-    }).finally(() => setLoading(false));
+    }).catch(() => setLoadError(true))
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-brand-muted">
       <div className="text-center">
-        <div className="text-3xl mb-2 animate-spin">⟳</div>
+        <svg className="w-8 h-8 mx-auto mb-2 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" strokeLinecap="round"/>
+        </svg>
         <div className="text-sm">Carregando...</div>
+      </div>
+    </div>
+  );
+
+  if (loadError) return (
+    <div className="flex items-center justify-center h-64 text-brand-muted">
+      <div className="text-center">
+        <div className="text-3xl mb-3">⚠️</div>
+        <div className="text-sm text-brand-text mb-3">Não foi possível carregar o dashboard.</div>
+        <button onClick={() => { setLoadError(false); setLoading(true); window.location.reload(); }}
+          className="btn-ghost text-xs px-4 py-2">Tentar novamente</button>
       </div>
     </div>
   );
@@ -177,15 +200,16 @@ export default function DashboardPage() {
 
       {/* Detail modal */}
       {selected && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setSelected(null)}>
+        <div role="dialog" aria-modal="true"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={closeModal}>
           <div className="modal-panel max-w-lg w-full" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <div>
                 <div className="font-bold text-base text-brand-text">{selected.contactName || selected.contactPhone}</div>
                 <div className="text-xs text-brand-muted">{new Date(selected.createdAt).toLocaleString('pt-BR')}</div>
               </div>
-              <button onClick={() => setSelected(null)} className="text-brand-muted hover:text-brand-text text-lg transition-colors">✕</button>
+              <button onClick={closeModal} className="text-brand-muted hover:text-brand-text text-lg transition-colors" aria-label="Fechar">✕</button>
             </div>
             <div className="inner-block mb-4">
               <div className="text-xs font-bold text-brand-primary mb-2">✨ Resumo</div>
@@ -200,7 +224,7 @@ export default function DashboardPage() {
             <div className="flex gap-2 mt-4">
               <button onClick={() => navigator.clipboard.writeText(selected.originalText)}
                 className="btn-ghost text-xs py-2 flex-1 justify-center">📋 Copiar</button>
-              <button onClick={() => setSelected(null)}
+              <button onClick={closeModal}
                 className="btn-primary text-xs py-2 flex-1 justify-center">Fechar</button>
             </div>
           </div>

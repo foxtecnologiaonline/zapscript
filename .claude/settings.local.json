@@ -9,7 +9,8 @@
       "Bash(npm list *)",
       "WebSearch",
       "mcp__Claude_in_Chrome__tabs_context_mcp",
-      "Bash(start msedge *)"
+      "Bash(start msedge *)",
+      "Bash(find \"C:\\\\FOX tecnologIA\\\\ZapScript\" -type f -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.json\" | grep -v node_modules | grep -v \".next\" | grep -v \"dist\" | grep -v \".git\" | head -100)"
     ]
   }
 }

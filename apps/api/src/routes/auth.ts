@@ -338,8 +338,8 @@ export default async function authRoutes(app: FastifyInstance) {
       if (!access_token || !new_password) {
         return reply.code(400).send({ error: 'access_token e new_password são obrigatórios' });
       }
-      if (new_password.length < 6) {
-        return reply.code(400).send({ error: 'Senha deve ter ao menos 6 caracteres' });
+      if (new_password.length < 8) {
+        return reply.code(400).send({ error: 'Senha deve ter ao menos 8 caracteres' });
       }
 
       // Verificar token e identificar usuário
