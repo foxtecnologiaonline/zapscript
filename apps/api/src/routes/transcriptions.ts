@@ -75,12 +75,10 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Arquivo muito grande. Máximo: 50MB' });
     }
 
-    // Buscar qualquer número conectado do usuário (para associar a transcrição)
-    const number = await prisma.whatsappNumber.findFirst({
-      where: { userId, status: 'connected' },
-    });
+    // Buscar qualquer número do usuário (conectado ou não) para associar a transcrição
+    const number = await prisma.whatsappNumber.findFirst({ where: { userId } });
     if (!number) {
-      return reply.code(400).send({ error: 'Você precisa ter ao menos um número WhatsApp conectado para enviar áudios manualmente.' });
+      return reply.code(400).send({ error: 'Adicione ao menos um número WhatsApp no painel antes de enviar áudios manualmente.' });
     }
 
     // Enfileirar job de transcrição manual
@@ -90,7 +88,6 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       audioBase64: buffer.toString('base64'),
       filename,
       source:      'manual',
-      contactJid:  `${number.phoneNumber}@s.whatsapp.net`,
     }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } });
 
     return reply.code(202).send({ queued: true, message: 'Áudio enfileirado. A transcrição chegará em instantes.' });
