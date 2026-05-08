@@ -66,7 +66,7 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
 
     const buffer   = await data.toBuffer();
     const filename = data.filename || 'audio.ogg';
-    const allowed  = ['.ogg','.mp3','.mp4','.m4a','.wav','.webm','.mpeg'];
+    const allowed  = ['.ogg','.opus','.mp3','.mp4','.m4a','.wav','.webm','.mpeg'];
     const ext      = filename.substring(filename.lastIndexOf('.')).toLowerCase();
     if (!allowed.includes(ext)) {
       return reply.code(400).send({ error: `Formato não suportado. Use: ${allowed.join(', ')}` });

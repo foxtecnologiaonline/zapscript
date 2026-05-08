@@ -13,7 +13,7 @@ interface Transcription {
   number: { displayName: string | null; phoneNumber: string };
 }
 
-const ALLOWED_EXT = ['.ogg', '.mp3', '.mp4', '.m4a', '.wav', '.webm', '.mpeg'];
+const ALLOWED_EXT = ['.ogg', '.opus', '.mp3', '.mp4', '.m4a', '.wav', '.webm', '.mpeg'];
 const MAX_MB = 50;
 
 // ── Upload Modal ─────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
         <div className="flex items-center justify-between mb-5">
           <div>
             <h2 className="font-bold text-base text-brand-text">Enviar áudio para transcrição</h2>
-            <p className="text-xs text-brand-muted mt-0.5">Formatos aceitos: OGG, MP3, MP4, M4A, WAV, WEBM</p>
+            <p className="text-xs text-brand-muted mt-0.5">Formatos aceitos: OGG, OPUS, MP3, MP4, M4A, WAV, WEBM</p>
           </div>
           <button onClick={onClose} className="text-brand-muted hover:text-brand-text text-xl leading-none transition-colors">✕</button>
         </div>

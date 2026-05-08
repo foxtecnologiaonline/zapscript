@@ -7,10 +7,11 @@ ffmpeg.setFfmpegPath(ffmpegPath.path);
 const FFMPEG_TIMEOUT_MS = 120_000;
 
 /**
- * Converte buffer de áudio OGG/OPUS (formato WhatsApp)
- * para MP3 (aceito pela API Whisper da OpenAI).
+ * Converte buffer de áudio (OGG, OPUS, MP3, M4A, WAV, WebM, MPEG)
+ * para MP3 (aceito pela API Whisper da OpenAI/Groq).
+ * O formato de entrada é inferido pelo ffmpeg automaticamente.
  */
-export function convertToMp3(inputBuffer: Buffer): Promise<Buffer> {
+export function convertToMp3(inputBuffer: Buffer, inputFormat?: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     const inputStream  = Readable.from(inputBuffer);
@@ -34,8 +35,9 @@ export function convertToMp3(inputBuffer: Buffer): Promise<Buffer> {
     outputStream.on('end', () => done(null, Buffer.concat(chunks)));
     outputStream.on('error', (err) => done(err));
 
-    const command = ffmpeg(inputStream)
-      .inputFormat('ogg')
+    let cmd = ffmpeg(inputStream);
+    if (inputFormat) cmd = cmd.inputFormat(inputFormat);
+    const command = cmd
       .audioCodec('libmp3lame')
       .audioBitrate('64k')
       .format('mp3')
