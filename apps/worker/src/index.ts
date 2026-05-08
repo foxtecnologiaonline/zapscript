@@ -22,22 +22,61 @@ if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.startsWith('
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Groq — whisper-large-v3-turbo (mais rápido e preciso para PT-BR)
+// Compatível com API OpenAI — sem dependência extra
+const groq = process.env.GROQ_API_KEY
+  ? new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' })
+  : null;
+
+// Prompt que melhora acurácia do Whisper em PT-BR (termos comuns em áudios de WhatsApp)
+const PT_BR_PROMPT = 'Transcrição em português brasileiro. Áudio de WhatsApp com linguagem coloquial.';
+
 // ─────────────────────────────────────────────────────────────────
 //  SHARED HELPERS — usados em ambos os pipelines
 // ─────────────────────────────────────────────────────────────────
 
-/** Transcreve um mp3Buffer com Whisper */
-async function transcribeBuffer(mp3Buffer: Buffer): Promise<string> {
+/**
+ * Transcreve mp3Buffer com Whisper.
+ * Primário: Groq whisper-large-v3-turbo (PT-BR, rápido).
+ * Fallback: OpenAI whisper-1.
+ * Retorna texto e duração real extraída do response verbose_json.
+ */
+async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; durationSec: number }> {
   const audioFile = new File([mp3Buffer], 'audio.mp3', { type: 'audio/mpeg' });
+
+  // ── Primário: Groq ────────────────────────────────────────────
+  if (groq) {
+    try {
+      const result = await groq.audio.transcriptions.create({
+        file:            audioFile,
+        model:           'whisper-large-v3-turbo',
+        language:        'pt',
+        response_format: 'verbose_json',
+        prompt:          PT_BR_PROMPT,
+      } as any);
+      const text = result.text?.trim();
+      if (!text) throw new Error('Groq Whisper retornou texto vazio');
+      const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
+      logger.info(`[Whisper] Groq whisper-large-v3-turbo — ${durationSec}s`);
+      return { text, durationSec };
+    } catch (err: any) {
+      logger.warn(`[Whisper] Groq falhou, usando OpenAI como fallback: ${err.message}`);
+    }
+  }
+
+  // ── Fallback: OpenAI whisper-1 ────────────────────────────────
   const result = await openai.audio.transcriptions.create({
     file:            audioFile,
     model:           'whisper-1',
     language:        'pt',
     response_format: 'verbose_json',
-  });
+    prompt:          PT_BR_PROMPT,
+  } as any);
   const text = result.text?.trim();
   if (!text) throw new Error('Whisper retornou texto vazio');
-  return text;
+  const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
+  logger.info(`[Whisper] OpenAI whisper-1 — ${durationSec}s`);
+  return { text, durationSec };
 }
 
 /** Gera bullets com Claude — com fallback se falhar */
@@ -152,24 +191,21 @@ async function processManualJob(job: Job) {
     mp3Buffer = await convertToMp3(rawBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
 
-    // PASSO 4: Transcrever com Whisper
-    log(job, '🎙️  Whisper API...');
-    const originalText = await transcribeBuffer(mp3Buffer);
-    log(job, `✅ "${originalText.substring(0, 60)}..."`);
+    // PASSO 4: Transcrever com Whisper (Groq primary / OpenAI fallback)
+    log(job, '🎙️  Whisper API (PT-BR)...');
+    const { text: originalText, durationSec } = await transcribeBuffer(mp3Buffer);
+    log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
 
     // PASSO 5: Resumo com Claude
     log(job, '🤖 Claude resumo...');
     const bullets = await generateBullets(originalText);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
-    // PASSO 6: Estimar duração a partir do tamanho do buffer (~128kbps)
-    const estimatedDuration = Math.max(1, (rawBuffer.length / 1024 / 16)); // segundos aprox.
-
-    // PASSO 7: Salvar e debitar (atomicamente)
+    // PASSO 6: Salvar e debitar (atomicamente) — duração real do Whisper
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId, numberId, contactPhone: 'manual',
-      durationSec: estimatedDuration, originalText, bullets, source: 'manual',
+      durationSec, originalText, bullets, source: 'manual',
     });
 
     log(job, `✅ Upload manual concluído`);
@@ -224,10 +260,10 @@ async function processOfficialWhatsAppJob(job: Job) {
     mp3Buffer = await convertToMp3(audioBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
 
-    // PASSO 4: Transcrever com Whisper
-    log(job, '🎙️  Whisper API...');
-    const originalText = await transcribeBuffer(mp3Buffer);
-    log(job, `✅ "${originalText.substring(0, 60)}..."`);
+    // PASSO 4: Transcrever com Whisper (Groq primary / OpenAI fallback)
+    log(job, '🎙️  Whisper API (PT-BR)...');
+    const { text: originalText, durationSec } = await transcribeBuffer(mp3Buffer);
+    log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
 
     // PASSO 5: Resumo com Claude
     log(job, '🤖 Claude resumo...');
@@ -241,13 +277,13 @@ async function processOfficialWhatsAppJob(job: Job) {
     await sendMessageToMeta(senderPhone, message);
     log(job, '✅ Mensagem enviada');
 
-    // PASSO 7: Salvar transcrição e debitar minutos
+    // PASSO 7: Salvar transcrição e debitar minutos — duração real do Whisper
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId,
-      numberId: firstNumber.id, // Usa o WhatsappNumber real do usuário
+      numberId: firstNumber.id,
       contactPhone: senderPhone,
-      durationSec: 60, // Estimativa de 1 min por áudio via Meta
+      durationSec,
       originalText,
       bullets,
       source: 'whatsapp-meta',
