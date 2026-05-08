@@ -1,12 +1,30 @@
 # 🚀 Configurar Variáveis de Ambiente no Render
 
-**Problema:** Webhook da Meta não valida porque as variáveis não estão configuradas no Render.
+---
 
-**Solução:** Adicionar as 3 variáveis abaixo no dashboard do Render.
+## 📧 Variáveis de E-mail (RESEND) — obrigatórias para e-mails funcionarem
+
+O serviço usa **Resend** (resend.com) como provider de e-mail.
+Se `RESEND_API_KEY` não estiver configurado no Render, **nenhum e-mail será enviado** (ativação, reset de senha, etc.).
+
+```
+RESEND_API_KEY  = re_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+SMTP_FROM       = ZapScript <ativacao@zapscript.me>
+```
+
+**Como obter a RESEND_API_KEY:**
+1. Acesse https://resend.com → Login
+2. Menu lateral: **API Keys** → **Create API Key**
+3. Nome: `zapscript-prod` | Permission: `Sending access`
+4. Copie a chave gerada (começa com `re_`)
+5. Adicione no Render como `RESEND_API_KEY`
+
+**Domínio:** `zapscript.me` deve estar verificado no Resend (DNS → Resend → Domains).
+O remetente `ativacao@zapscript.me` só funciona se o domínio estiver verificado.
 
 ---
 
-## 📋 As 3 Variáveis Necessárias
+## 📋 Variáveis do WhatsApp
 
 ```
 WHATSAPP_WEBHOOK_TOKEN = aa3480e9df795e73d192ebb67b341827

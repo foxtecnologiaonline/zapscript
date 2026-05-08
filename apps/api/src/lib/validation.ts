@@ -3,7 +3,7 @@ import { z } from 'zod';
 // ── Auth Schemas ──────────────────────────────────────────
 export const signupSchema = z.object({
   email: z.string().email('Email inválido').toLowerCase(),
-  password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
+  password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
   name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').optional(),
   referralCode: z.string().optional(),
 });
@@ -19,7 +19,7 @@ export const resetPasswordSchema = z.object({
 
 export const confirmResetSchema = z.object({
   token: z.string().min(1, 'Token é obrigatório'),
-  newPassword: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
+  newPassword: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
 });
 
 // ── Numbers Schemas ──────────────────────────────────────

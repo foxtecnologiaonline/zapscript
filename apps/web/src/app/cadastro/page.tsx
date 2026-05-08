@@ -4,28 +4,16 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 
-function formatDocument(val: string): string {
-  const n = val.replace(/\D/g, '').slice(0, 14);
-  if (n.length <= 11) {
-    if (n.length <= 3)  return n;
-    if (n.length <= 6)  return `${n.slice(0,3)}.${n.slice(3)}`;
-    if (n.length <= 9)  return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6)}`;
-    return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
-  }
-  if (n.length <= 12) return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8)}`;
-  return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8,12)}-${n.slice(12)}`;
-}
-
 export default function CadastroPage() {
   const router = useRouter();
-  const [form, setForm]   = useState({ name: '', email: '', document: '', password: '', confirm: '' });
+  const [form, setForm]   = useState({ name: '', email: '', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const [done, setDone]       = useState(false);
   const [userEmail, setUserEmail] = useState('');
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm(f => ({ ...f, [k]: k === 'document' ? formatDocument(e.target.value) : e.target.value }));
+    setForm(f => ({ ...f, [k]: e.target.value }));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,7 +26,6 @@ export default function CadastroPage() {
       await api.post('/auth/register', {
         name:     form.name,
         email:    form.email,
-        document: form.document.replace(/\D/g, '') || undefined,
         password: form.password,
       });
       setUserEmail(form.email);
@@ -108,10 +95,6 @@ export default function CadastroPage() {
             <div>
               <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">E-mail</label>
               <input className="field-input" type="email" placeholder="seu@email.com" value={form.email} onChange={set('email')} required/>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">CPF / CNPJ</label>
-              <input className="field-input" placeholder="000.000.000-00" value={form.document} onChange={set('document')} maxLength={18}/>
             </div>
             <div>
               <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">Senha</label>

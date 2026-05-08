@@ -9,6 +9,13 @@ interface Stats {
   planName: string; planStatus: string;
 }
 
+interface User {
+  id: string;
+  name: string | null;
+  email: string;
+  document: string | null;
+}
+
 /* ── Planos conforme o manifesto ── */
 const PLANS = [
   {
@@ -46,19 +53,133 @@ const BILLING_TYPES = [
   { value: 'BOLETO',       label: '📄 Boleto bancário',     desc: 'Vence em 3 dias úteis' },
 ];
 
+function formatDocument(val: string): string {
+  const n = val.replace(/\D/g, '').slice(0, 14);
+  if (n.length <= 11) {
+    if (n.length <= 3)  return n;
+    if (n.length <= 6)  return `${n.slice(0,3)}.${n.slice(3)}`;
+    if (n.length <= 9)  return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6)}`;
+    return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
+  }
+  if (n.length <= 12) return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8)}`;
+  return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8,12)}-${n.slice(12)}`;
+}
+
+/* ── Modal de CPF/CNPJ ── */
+function DocumentModal({
+  planLabel,
+  onConfirm,
+  onCancel,
+}: {
+  planLabel: string;
+  onConfirm: (document: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [doc, setDoc]       = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr]       = useState('');
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const clean = doc.replace(/\D/g, '');
+    if (clean.length !== 11 && clean.length !== 14) {
+      setErr('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.');
+      return;
+    }
+    setSaving(true);
+    setErr('');
+    try {
+      await onConfirm(doc);
+    } catch (e: any) {
+      setErr(e.message || 'Erro ao salvar. Tente novamente.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-2xl p-6"
+        style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-primary)/.2)' }}
+        onClick={e => e.stopPropagation()}>
+
+        <div className="text-center mb-5">
+          <div className="w-12 h-12 rounded-full bg-brand-primary/10 flex items-center justify-center mx-auto mb-3">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ color: 'rgb(var(--color-primary))' }}>
+              <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h6M7 16h4"/>
+            </svg>
+          </div>
+          <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
+            Dados de cobrança
+          </h3>
+          <p className="text-xs mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
+            Necessário para assinar o plano <strong style={{ color: 'rgb(var(--color-primary))' }}>{planLabel}</strong>
+          </p>
+        </div>
+
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              CPF ou CNPJ
+            </label>
+            <input
+              className="field-input"
+              placeholder="000.000.000-00 ou 00.000.000/0001-00"
+              value={doc}
+              onChange={e => setDoc(formatDocument(e.target.value))}
+              maxLength={18}
+              required
+              autoFocus
+            />
+            <p className="text-[10px] mt-1.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              Usado apenas para emissão de cobranças. Não será compartilhado.
+            </p>
+          </div>
+
+          {err && (
+            <div className="text-xs px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', color: '#f87171' }}>
+              {err}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onCancel}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+              style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
+              Cancelar
+            </button>
+            <button type="submit" disabled={saving}
+              className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50">
+              {saving ? 'Salvando...' : 'Continuar →'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function PlanoContent() {
   const searchParams = useSearchParams();
   const [stats, setStats]             = useState<Stats | null>(null);
+  const [user, setUser]               = useState<User | null>(null);
   const [loading, setLoading]         = useState(true);
   const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null);
   const [billingType, setBillingType] = useState('UNDEFINED');
+  const [docModal, setDocModal]       = useState<string | null>(null); // planName awaiting document
   const justUpgraded = searchParams.get('upgrade') === 'success';
 
   useEffect(() => {
-    api.get<Stats>('/dashboard/stats').then(setStats).finally(() => setLoading(false));
+    Promise.all([
+      api.get<Stats>('/dashboard/stats'),
+      api.get<User>('/auth/me'),
+    ]).then(([s, u]) => {
+      setStats(s);
+      setUser(u);
+    }).finally(() => setLoading(false));
   }, []);
 
-  async function upgrade(planName: string) {
+  async function doCheckout(planName: string) {
     setCheckoutPlan(planName);
     try {
       const res = await api.post<{ url: string; subscriptionId: string }>(
@@ -75,6 +196,24 @@ function PlanoContent() {
     } finally {
       setCheckoutPlan(null);
     }
+  }
+
+  async function upgrade(planName: string) {
+    // Se o usuário não tem CPF/CNPJ, solicitar antes do checkout
+    if (!user?.document) {
+      setDocModal(planName);
+      return;
+    }
+    await doCheckout(planName);
+  }
+
+  async function handleDocumentConfirm(document: string) {
+    // Salvar CPF/CNPJ e prosseguir para checkout
+    await api.put('/auth/profile', { document });
+    setUser(u => u ? { ...u, document: document.replace(/\D/g, '') } : u);
+    const plan = docModal!;
+    setDocModal(null);
+    await doCheckout(plan);
   }
 
   async function openPortal() {
@@ -265,6 +404,15 @@ function PlanoContent() {
       <p className="text-xs text-center mt-5" style={{ color: 'rgb(var(--color-text-muted))' }}>
         Pagamentos processados com segurança pelo Asaas. Cancele a qualquer momento.
       </p>
+
+      {/* Modal de CPF/CNPJ */}
+      {docModal && (
+        <DocumentModal
+          planLabel={PLANS.find(p => p.name === docModal)?.label || docModal}
+          onConfirm={handleDocumentConfirm}
+          onCancel={() => setDocModal(null)}
+        />
+      )}
     </div>
   );
 }

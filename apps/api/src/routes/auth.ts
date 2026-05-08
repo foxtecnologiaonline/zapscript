@@ -338,8 +338,8 @@ export default async function authRoutes(app: FastifyInstance) {
       if (!access_token || !new_password) {
         return reply.code(400).send({ error: 'access_token e new_password são obrigatórios' });
       }
-      if (new_password.length < 8) {
-        return reply.code(400).send({ error: 'Senha deve ter ao menos 8 caracteres' });
+      if (new_password.length < 6) {
+        return reply.code(400).send({ error: 'Senha deve ter ao menos 6 caracteres' });
       }
 
       // Verificar token e identificar usuário
@@ -377,15 +377,40 @@ export default async function authRoutes(app: FastifyInstance) {
       const { name, document } = req.body;
       const userId = req.user.sub;
 
-      // Name and document are immutable after registration
-      if (name || document) {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado' });
+
+      // Nome é imutável após cadastro
+      if (name) {
         return reply.code(400).send({
-          error: 'Nome e CPF/CNPJ não podem ser alterados após o cadastro. Entre em contato com suporte para modificações.'
+          error: 'Nome não pode ser alterado após o cadastro. Entre em contato com suporte.'
         });
       }
 
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      return { updated: true, user };
+      // CPF/CNPJ só pode ser definido uma vez (quando ainda não preenchido)
+      if (document) {
+        if (user.document) {
+          return reply.code(400).send({
+            error: 'CPF/CNPJ já cadastrado e não pode ser alterado. Entre em contato com suporte.'
+          });
+        }
+
+        const clean = document.replace(/\D/g, '');
+        if (clean.length < 11 || clean.length > 14) {
+          return reply.code(400).send({ error: 'CPF deve ter 11 dígitos, CNPJ deve ter 14 dígitos.' });
+        }
+
+        // Verificar duplicata
+        const existing = await prisma.user.findFirst({ where: { document: clean, NOT: { id: userId } } });
+        if (existing) {
+          return reply.code(400).send({ error: 'CPF/CNPJ já cadastrado em outra conta.' });
+        }
+
+        const updated = await prisma.user.update({ where: { id: userId }, data: { document: clean } });
+        return { updated: true, user: updated };
+      }
+
+      return { updated: false, user };
     }
   );
 }
