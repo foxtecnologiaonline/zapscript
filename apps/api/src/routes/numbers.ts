@@ -137,11 +137,15 @@ export default async function numberRoutes(app: FastifyInstance) {
     const { id } = req.params;
     const userId = req.user.sub;
 
-    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
-    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+    try {
+      const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
+      if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    // Com Meta Cloud API, não precisa desconectar sessão Baileys
-    await prisma.whatsappNumber.delete({ where: { id } });
-    return reply.code(204).send();
+      await prisma.whatsappNumber.delete({ where: { id } });
+      return reply.code(204).send();
+    } catch (err: any) {
+      app.log.error({ err: err.message, id, userId }, '[Numbers] Erro ao deletar número');
+      return reply.code(500).send({ error: err.message || 'Erro ao deletar número.' });
+    }
   });
 }
