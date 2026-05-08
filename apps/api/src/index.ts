@@ -25,6 +25,7 @@ if (process.env.SENTRY_DSN) {
 const app = Fastify({
   logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' },
   disableRequestLogging: false,
+  ignoreTrailingSlash: true,
 });
 
 // Ignorar ECONNRESET no servidor HTTP (clientes que fecham conexão — comportamento normal)
