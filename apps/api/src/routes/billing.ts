@@ -28,6 +28,15 @@ function asaas(path: string, options: RequestInit = {}) {
   });
 }
 
+/* ── Comparação timing-safe de tokens ── */
+function safeTokenCompare(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 /* ── Validação de assinatura HMAC-SHA256 ── */
 function verifyAsaasSignature(body: string, signature: string | undefined): boolean {
   if (!signature || !process.env.ASAAS_WEBHOOK_TOKEN) {
@@ -37,7 +46,7 @@ function verifyAsaasSignature(body: string, signature: string | undefined): bool
     .createHmac('sha256', process.env.ASAAS_WEBHOOK_TOKEN)
     .update(body)
     .digest('hex');
-  return hash === signature;
+  return safeTokenCompare(hash, signature);
 }
 
 /* ── Idempotência de webhooks persistida no banco ── */
@@ -235,14 +244,12 @@ export default async function billingRoutes(app: FastifyInstance) {
   // ── POST /billing/webhook ─────────────────────────────
   // Asaas envia eventos via POST com token de autenticação
   app.post('/webhook', async (req: any, reply) => {
-    // Verificar token apenas no header (não aceitar via query string)
-    const token          = req.headers['asaas-webhook-token'] as string | undefined;
+    // Asaas envia o authToken no header 'asaas-access-token'
+    const token          = req.headers['asaas-access-token'] as string | undefined;
     const signature      = req.headers['x-asaas-signature'] as string | undefined;
     const expectedToken  = process.env.ASAAS_WEBHOOK_TOKEN;
 
-    const tokenValid = expectedToken && token
-      ? crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))
-      : false;
+    const tokenValid = safeTokenCompare(token, expectedToken);
 
     if (!tokenValid) {
       app.log.warn({ tokenProvided: !!token, tokenConfigured: !!expectedToken }, 'Asaas webhook token inválido');
@@ -267,8 +274,9 @@ export default async function billingRoutes(app: FastifyInstance) {
       case 'PAYMENT_CONFIRMED':
       case 'PAYMENT_RECEIVED': {
         const paymentId  = payment?.id as string | undefined;
-        const externalRef = payment?.subscription?.externalReference
-          || payment?.externalReference
+        // payment.subscription é string (ID), não objeto — usar payment.externalReference diretamente
+        const externalRef = payment?.externalReference
+          || payment?.subscription?.externalReference
           || '';
 
         const [userId, planName] = externalRef.split('|');
@@ -297,9 +305,17 @@ export default async function billingRoutes(app: FastifyInstance) {
         nextPeriod.setDate(nextPeriod.getDate() + 30);
 
         await prisma.$transaction([
-          prisma.subscription.update({
-            where: { userId },
-            data: {
+          prisma.subscription.upsert({
+            where:  { userId },
+            create: {
+              userId,
+              planId:              plan.id,
+              asaasSubscriptionId: asaasSubId || null,
+              asaasCustomerId:     asaasCustId || null,
+              status:              'active',
+              currentPeriodEnd:    nextPeriod,
+            },
+            update: {
               planId:              plan.id,
               asaasSubscriptionId: asaasSubId || undefined,
               asaasCustomerId:     asaasCustId || undefined,
@@ -307,12 +323,10 @@ export default async function billingRoutes(app: FastifyInstance) {
               currentPeriodEnd:    nextPeriod,
             },
           }),
-          prisma.minuteBalance.update({
-            where: { userId },
-            data:  {
-              availableMinutes: { increment: plan.minutesPerMonth },
-              lastAlertSent:    null,
-            },
+          prisma.minuteBalance.upsert({
+            where:  { userId },
+            create: { userId, availableMinutes: plan.minutesPerMonth, resetAt: nextPeriod, lastAlertSent: null },
+            update: { availableMinutes: plan.minutesPerMonth, lastAlertSent: null },
           }),
         ]);
 
@@ -323,7 +337,7 @@ export default async function billingRoutes(app: FastifyInstance) {
 
       // ── Renovação mensal atrasada ──
       case 'PAYMENT_OVERDUE': {
-        const externalRef = payment?.subscription?.externalReference || '';
+        const externalRef = payment?.externalReference || payment?.subscription?.externalReference || '';
         const [userId] = externalRef.split('|');
         if (!userId) {
           app.log.error(`Webhook PAYMENT_OVERDUE: externalReference malformado: "${externalRef}"`);
@@ -353,19 +367,17 @@ export default async function billingRoutes(app: FastifyInstance) {
         const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
         if (!freePlan) break;
 
+        const nextReset = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
         await prisma.$transaction([
-          prisma.subscription.update({
-            where: { userId },
-            data: {
-              planId:              freePlan.id,
-              status:              'canceled',
-              asaasSubscriptionId: null,
-              currentPeriodEnd:    null,
-            },
+          prisma.subscription.upsert({
+            where:  { userId },
+            create: { userId, planId: freePlan.id, status: 'canceled' },
+            update: { planId: freePlan.id, status: 'canceled', asaasSubscriptionId: null, currentPeriodEnd: null },
           }),
-          prisma.minuteBalance.update({
-            where: { userId },
-            data: { availableMinutes: freePlan.minutesPerMonth, lastAlertSent: null },
+          prisma.minuteBalance.upsert({
+            where:  { userId },
+            create: { userId, availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
+            update: { availableMinutes: freePlan.minutesPerMonth, lastAlertSent: null },
           }),
         ]);
         break;
