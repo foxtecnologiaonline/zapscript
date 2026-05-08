@@ -149,7 +149,8 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
   async function act(endpoint: string, method: 'POST' | 'PATCH' | 'DELETE', body?: object) {
     setActing(endpoint);
     try {
-      const res = await fetch(`${API}/admin/users/${userId}/${endpoint}`, {
+      const url = endpoint ? `${API}/admin/users/${userId}/${endpoint}` : `${API}/admin/users/${userId}`;
+      const res = await fetch(url, {
         method, headers: h, body: body ? JSON.stringify(body) : undefined,
       });
       const d = method !== 'DELETE' ? await res.json() : null;
