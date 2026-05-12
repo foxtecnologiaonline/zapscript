@@ -7,6 +7,7 @@ import { prisma } from './lib/prisma';
 import { convertToMp3 } from './services/audio';
 import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
 import { downloadAudioFromTwilio, sendMessageViaTwilio } from './services/twilio';
+import { downloadAudioFromZapi, sendMessageViaZapi } from './services/zapi';
 import { logger } from './lib/logger';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
@@ -389,12 +390,98 @@ async function processTwilioJob(job: Job) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  PIPELINE E — WhatsApp via Z-API (dispositivo adicional)
+// ─────────────────────────────────────────────────────────────────
+async function processZapiJob(job: Job) {
+  const { userId, senderPhone, senderName, audioUrl, durationHint } = job.data;
+
+  log(job, `📥 Z-API: ${senderName} (${senderPhone})`);
+
+  let mp3Buffer: Buffer | null = null;
+
+  try {
+    // PASSO 1: Verificar saldo
+    const [balance, firstNumber] = await Promise.all([
+      prisma.minuteBalance.findUnique({ where: { userId } }),
+      prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+    ]);
+
+    if (!balance || balance.availableMinutes < 0.1) {
+      log(job, '⚠️  Saldo insuficiente — notificando via Z-API');
+      await sendMessageViaZapi(
+        senderPhone,
+        '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.'
+      ).catch(() => null);
+      return { skipped: true, reason: 'insufficient_balance' };
+    }
+    if (!firstNumber) {
+      log(job, '⚠️  Usuário sem número cadastrado');
+      return { skipped: true, reason: 'no_number' };
+    }
+    log(job, `✅ Saldo OK: ${balance.availableMinutes.toFixed(1)} min`);
+
+    // PASSO 2: Baixar áudio da Z-API
+    log(job, '⬇️  Baixando áudio da Z-API...');
+    const audioBuffer = await downloadAudioFromZapi(audioUrl);
+    log(job, `✅ Baixado: ${(audioBuffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 3: Converter para MP3
+    log(job, '🔄 Convertendo para MP3...');
+    mp3Buffer = await convertToMp3(audioBuffer);
+    log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 4: Transcrever com Whisper (Groq primary / OpenAI fallback)
+    log(job, '🎙️  Whisper API (PT-BR)...');
+    const { text: originalText, durationSec: whisperDuration } = await transcribeBuffer(mp3Buffer);
+    const durationSec = whisperDuration > 0 ? whisperDuration : Math.max(1, durationHint || 1);
+    log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
+
+    // PASSO 5: Resumo com Claude
+    log(job, '🤖 Claude resumo...');
+    const bullets = await generateBullets(originalText);
+    log(job, `✅ ${bullets.length} bullet(s)`);
+
+    // PASSO 6: Enviar resposta de volta na mesma conversa via Z-API
+    log(job, '📤 Enviando resposta via Z-API...');
+    const user    = await prisma.user.findUnique({ where: { id: userId } });
+    const message = buildMessage(bullets, originalText, user?.refCode || '');
+    await sendMessageViaZapi(senderPhone, message);
+    log(job, '✅ Mensagem enviada na conversa');
+
+    // PASSO 7: Salvar transcrição e debitar minutos
+    log(job, '💾 Salvando...');
+    const transcription = await saveTranscription({
+      userId,
+      numberId:     firstNumber.id,
+      contactPhone: senderPhone,
+      durationSec,
+      originalText,
+      bullets,
+      source: 'whatsapp-zapi',
+    });
+
+    log(job, `✅ Concluído via Z-API`);
+    return { transcriptionId: transcription.id };
+
+  } catch (err) {
+    log(job, `❌ Erro Z-API: ${(err as Error).message}`);
+    try {
+      await sendMessageViaZapi(senderPhone, '❌ Erro ao processar seu áudio. Tente novamente em instantes.');
+    } catch {}
+    throw err;
+  } finally {
+    mp3Buffer?.fill(0);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  ROUTER — decide qual pipeline usar
 // ─────────────────────────────────────────────────────────────────
 async function routeJob(job: Job) {
   const source = job.data.source || 'transcribe-official';
   if (source === 'manual')           return processManualJob(job);
   if (source === 'whatsapp-twilio')  return processTwilioJob(job);
+  if (source === 'whatsapp-zapi')    return processZapiJob(job);
   // transcribe-official = WhatsApp Cloud API (Meta) — pipeline principal
   return processOfficialWhatsAppJob(job);
 }

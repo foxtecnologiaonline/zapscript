@@ -227,6 +227,10 @@ app.register(import('./routes/whatsapp-webhook'), { prefix: '/webhook/whatsapp' 
 // ── WhatsApp Webhook (Twilio BSP) ───────────────────────────
 // Alternativa BSP para testes sem aprovação Meta
 app.register(import('./routes/twilio-webhook'), { prefix: '/webhook/twilio' });
+
+// ── WhatsApp Webhook (Z-API — dispositivo adicional) ────────
+// Intercepta todos os áudios recebidos no número conectado
+app.register(import('./routes/zapi-webhook'), { prefix: '/webhook/zapi' });
 if (process.env.WHATSAPP_API_TOKEN) {
   app.log.info('✅ WhatsApp Cloud API webhook registrado com token');
 } else {
