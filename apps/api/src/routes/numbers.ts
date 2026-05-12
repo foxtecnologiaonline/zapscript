@@ -271,9 +271,16 @@ export default async function numberRoutes(app: FastifyInstance) {
         app.log.info(`[Z-API] phone-code response (${res.status}): ${rawText.substring(0, 200)}`);
 
         if (!res.ok) {
-          return reply.code(502).send({
-            error: data?.error || data?.message || `Z-API retornou ${res.status}: ${rawText.substring(0, 100)}`,
-          });
+          // 404 ou "Unable to find matching target resource" = instância Web (não suporta phone-code)
+          const isWebInstance =
+            res.status === 404 ||
+            rawText.includes('NOT_FOUND') ||
+            rawText.includes('Unable to find matching target resource') ||
+            rawText.includes('not found');
+          const errMsg = isWebInstance
+            ? 'NOT_FOUND: instância Web não suporta código por telefone. Use QR Code.'
+            : (data?.error || data?.message || `Z-API retornou ${res.status}: ${rawText.substring(0, 100)}`);
+          return reply.code(502).send({ error: errMsg });
         }
 
         // Z-API retorna { "value": "A1B2C3D4" }
