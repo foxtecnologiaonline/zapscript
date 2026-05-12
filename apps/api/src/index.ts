@@ -289,8 +289,24 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
+async function runAutoMigrations() {
+  // Garante que colunas novas existam mesmo sem rodar prisma migrate manualmente
+  const migrations = [
+    `ALTER TABLE "WhatsappNumber" ADD COLUMN IF NOT EXISTS "zapiInstanceId" TEXT`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "WhatsappNumber_zapiInstanceId_key" ON "WhatsappNumber"("zapiInstanceId")`,
+    `ALTER TABLE "WhatsappNumber" ADD COLUMN IF NOT EXISTS "zapiToken" TEXT`,
+  ];
+  for (const sql of migrations) {
+    await prisma.$executeRawUnsafe(sql).catch((e: any) =>
+      app.log.warn(`[AutoMigration] ${e.message}`)
+    );
+  }
+  app.log.info('[AutoMigration] ✅ Colunas Z-API verificadas');
+}
+
 async function start() {
   try {
+    await runAutoMigrations();
     await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' });
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 

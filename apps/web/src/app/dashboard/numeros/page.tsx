@@ -52,15 +52,23 @@ function QrModal({ number, onClose, onConnected }: {
   }, [number.id, onConnected, onClose]);
 
   useEffect(() => {
-    // Iniciar conexão
-    api.post(`/numbers/${number.id}/connect`, {}).catch(() => null);
-    // Buscar QR inicial
-    fetchQr();
-    // Polling de status a cada 2s
-    pollRef.current = setInterval(pollStatus, 2000);
-    // Refresh do QR a cada 30s (expira)
-    qrRefreshRef.current = setInterval(fetchQr, 30_000);
-
+    async function init() {
+      // 1. Iniciar conexão (criar instância Z-API se necessário) — AGUARDAR
+      try {
+        await api.post(`/numbers/${number.id}/connect`, {});
+      } catch (err: any) {
+        setError(err.message || 'Erro ao iniciar conexão Z-API.');
+        setStatus('error');
+        return;
+      }
+      // 2. Só busca QR depois que connect terminou com sucesso
+      fetchQr();
+      // 3. Polling de status a cada 2s
+      pollRef.current = setInterval(pollStatus, 2000);
+      // 4. Refresh do QR a cada 30s (expira)
+      qrRefreshRef.current = setInterval(fetchQr, 30_000);
+    }
+    init();
     return () => {
       clearInterval(pollRef.current!);
       clearInterval(qrRefreshRef.current!);
