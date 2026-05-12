@@ -167,6 +167,7 @@ export default function NumerosPage() {
   const [numbers, setNumbers]     = useState<WNumber[]>([]);
   const [loading, setLoading]     = useState(true);
   const [addName, setAddName]     = useState('');
+  const [addPhone, setAddPhone]   = useState('');
   const [adding, setAdding]       = useState(false);
   const [error, setError]         = useState('');
   const [userId, setUserId]       = useState('');
@@ -201,8 +202,13 @@ export default function NumerosPage() {
     if (!addName.trim()) return;
     setAdding(true); setError('');
     try {
-      await api.post('/numbers', { displayName: addName.trim() });
+      const cleanPhone = addPhone.replace(/\D/g, '');
+      await api.post('/numbers', {
+        displayName: addName.trim(),
+        ...(cleanPhone ? { phoneNumber: cleanPhone } : {}),
+      });
       setAddName('');
+      setAddPhone('');
       loadNumbers();
     } catch (err: any) { setError(err.message); }
     finally { setAdding(false); }
@@ -259,20 +265,52 @@ export default function NumerosPage() {
       {/* ── Add form ── */}
       <div className="card p-5 mb-5">
         <div className="text-sm font-bold mb-1 text-brand-text">Adicionar dispositivo</div>
-        <p className="text-xs text-brand-muted mb-3">
-          Após adicionar, escaneie o QR Code para conectar seu WhatsApp.
-        </p>
-        <form onSubmit={handleAdd} className="flex gap-2">
-          <input
-            className="input flex-1"
-            placeholder="Nome do dispositivo (ex: Comercial, Pessoal)"
-            value={addName}
-            onChange={e => setAddName(e.target.value)}
-            required
-          />
-          <button type="submit" disabled={adding} className="btn-primary px-5">
-            {adding ? '...' : '+ Adicionar'}
-          </button>
+
+        {/* Instruções */}
+        <div className="bg-brand-elevated rounded-xl p-3 mb-4 space-y-1.5">
+          <p className="text-xs font-semibold text-brand-text mb-1">Como funciona:</p>
+          {[
+            ['1', 'Preencha o nome e o número do WhatsApp abaixo'],
+            ['2', 'Clique em "+ Adicionar" — o dispositivo aparecerá na lista'],
+            ['3', 'Clique em "📱 Conectar WhatsApp" e escaneie o QR Code'],
+            ['4', 'Pronto! Todos os áudios recebidos serão transcritos automaticamente'],
+          ].map(([n, t]) => (
+            <div key={n} className="flex items-start gap-2 text-xs text-brand-text-secondary">
+              <span className="w-4 h-4 rounded-full bg-brand-primary/20 text-brand-primary flex-shrink-0 flex items-center justify-center text-[10px] font-bold mt-0.5">{n}</span>
+              {t}
+            </div>
+          ))}
+          <p className="text-[10px] text-brand-muted mt-1 pt-1 border-t border-brand-border">
+            💡 Use o número com DDD + número (ex: <span className="font-mono">11987654321</span>). Código do país não é necessário.
+          </p>
+        </div>
+
+        <form onSubmit={handleAdd} className="space-y-2">
+          <div className="flex gap-2">
+            <input
+              className="input flex-1"
+              placeholder="Nome do dispositivo (ex: Comercial, Pessoal)"
+              value={addName}
+              onChange={e => setAddName(e.target.value)}
+              required
+            />
+          </div>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted text-sm font-mono select-none">+55</span>
+              <input
+                className="input w-full pl-10"
+                placeholder="DDD + número (ex: 11987654321)"
+                value={addPhone}
+                onChange={e => setAddPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                maxLength={11}
+                inputMode="numeric"
+              />
+            </div>
+            <button type="submit" disabled={adding} className="btn-primary px-5 whitespace-nowrap">
+              {adding ? '...' : '+ Adicionar'}
+            </button>
+          </div>
         </form>
         {error && (
           <p className="text-red-400 text-xs mt-3 bg-red-400/10 px-3 py-2 rounded-lg">{error}</p>

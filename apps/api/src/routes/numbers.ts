@@ -77,8 +77,8 @@ export default async function numberRoutes(app: FastifyInstance) {
   });
 
   // ── POST /numbers ─────────────────────────────────────────────────────────
-  app.post<{ Body: { displayName: string } }>('/', auth, async (req: any, reply) => {
-    const { displayName } = req.body;
+  app.post<{ Body: { displayName: string; phoneNumber?: string } }>('/', auth, async (req: any, reply) => {
+    const { displayName, phoneNumber } = req.body;
     const userId = req.user.sub;
 
     // Admin não tem limite de números
@@ -98,8 +98,19 @@ export default async function numberRoutes(app: FastifyInstance) {
       }
     }
 
+    // Sanitizar número: só dígitos, prefixar 55 se não tiver
+    let cleanPhone: string | undefined;
+    if (phoneNumber) {
+      const digits = phoneNumber.replace(/\D/g, '');
+      cleanPhone = digits.startsWith('55') ? digits : `55${digits}`;
+    }
+
     const number = await prisma.whatsappNumber.create({
-      data: { userId, displayName },
+      data: {
+        userId,
+        displayName,
+        ...(cleanPhone ? { phoneNumber: cleanPhone } : {}),
+      },
     });
 
     return reply.code(201).send(number);
