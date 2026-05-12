@@ -6,6 +6,7 @@ import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { convertToMp3 } from './services/audio';
 import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
+import { downloadAudioFromTwilio, sendMessageViaTwilio } from './services/twilio';
 import { logger } from './lib/logger';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
@@ -304,13 +305,96 @@ async function processOfficialWhatsAppJob(job: Job) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  PIPELINE D — WhatsApp via Twilio BSP
+// ─────────────────────────────────────────────────────────────────
+async function processTwilioJob(job: Job) {
+  const { userId, senderPhone, senderName, mediaUrl, twilioFrom } = job.data;
+
+  log(job, `📥 Twilio BSP: ${senderName} (${senderPhone})`);
+
+  let mp3Buffer: Buffer | null = null;
+
+  try {
+    // PASSO 1: Verificar saldo
+    const [balance, firstNumber] = await Promise.all([
+      prisma.minuteBalance.findUnique({ where: { userId } }),
+      prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+    ]);
+
+    if (!balance || balance.availableMinutes < 1) {
+      log(job, '⚠️  Saldo insuficiente — notificando via Twilio');
+      await sendMessageViaTwilio(
+        senderPhone,
+        twilioFrom,
+        '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.'
+      ).catch(() => null);
+      return { skipped: true, reason: 'insufficient_balance' };
+    }
+    if (!firstNumber) {
+      log(job, '⚠️  Usuário sem número cadastrado');
+      return { skipped: true, reason: 'no_number' };
+    }
+
+    // PASSO 2: Baixar áudio do Twilio
+    log(job, '⬇️  Baixando áudio do Twilio...');
+    const audioBuffer = await downloadAudioFromTwilio(mediaUrl);
+    log(job, `✅ Baixado: ${(audioBuffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 3: Converter para MP3
+    log(job, '🔄 Convertendo para MP3...');
+    mp3Buffer = await convertToMp3(audioBuffer);
+    log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 4: Transcrever com Whisper (Groq primary / OpenAI fallback)
+    log(job, '🎙️  Whisper API (PT-BR)...');
+    const { text: originalText, durationSec } = await transcribeBuffer(mp3Buffer);
+    log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
+
+    // PASSO 5: Resumo com Claude
+    log(job, '🤖 Claude resumo...');
+    const bullets = await generateBullets(originalText);
+    log(job, `✅ ${bullets.length} bullet(s)`);
+
+    // PASSO 6: Enviar resposta via Twilio
+    log(job, '📤 Enviando resposta via Twilio...');
+    const user    = await prisma.user.findUnique({ where: { id: userId } });
+    const message = buildMessage(bullets, originalText, user?.refCode || '');
+    await sendMessageViaTwilio(senderPhone, twilioFrom, message);
+    log(job, '✅ Mensagem enviada');
+
+    // PASSO 7: Salvar transcrição e debitar minutos
+    log(job, '💾 Salvando...');
+    const transcription = await saveTranscription({
+      userId,
+      numberId:     firstNumber.id,
+      contactPhone: senderPhone,
+      durationSec,
+      originalText,
+      bullets,
+      source: 'whatsapp-twilio',
+    });
+
+    log(job, `✅ Processado via Twilio BSP`);
+    return { transcriptionId: transcription.id };
+
+  } catch (err) {
+    log(job, `❌ Erro Twilio: ${(err as Error).message}`);
+    try {
+      await sendMessageViaTwilio(senderPhone, twilioFrom, '❌ Erro ao processar seu áudio. Tente novamente.');
+    } catch {}
+    throw err;
+  } finally {
+    mp3Buffer?.fill(0);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  ROUTER — decide qual pipeline usar
 // ─────────────────────────────────────────────────────────────────
 async function routeJob(job: Job) {
   const source = job.data.source || 'transcribe-official';
-  if (source === 'manual') {
-    return processManualJob(job);
-  }
+  if (source === 'manual')           return processManualJob(job);
+  if (source === 'whatsapp-twilio')  return processTwilioJob(job);
   // transcribe-official = WhatsApp Cloud API (Meta) — pipeline principal
   return processOfficialWhatsAppJob(job);
 }

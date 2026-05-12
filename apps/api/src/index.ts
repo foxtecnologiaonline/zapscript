@@ -34,7 +34,7 @@ app.server.on('error', (err: any) => {
   app.log.error(err, 'Server error');
 });
 
-// Preserve raw body for webhook verification
+// Preserve raw body for webhook verification (JSON)
 app.addContentTypeParser(
   'application/json',
   { parseAs: 'buffer' },
@@ -43,6 +43,20 @@ app.addContentTypeParser(
       (req as any).rawBody = body;
       const str = body.toString().trim();
       done(null, str ? JSON.parse(str) : {});
+    } catch (err: any) {
+      done(err);
+    }
+  }
+);
+
+// Parser para webhooks Twilio (application/x-www-form-urlencoded)
+app.addContentTypeParser(
+  'application/x-www-form-urlencoded',
+  { parseAs: 'buffer' },
+  (_req, body, done) => {
+    try {
+      const parsed = Object.fromEntries(new URLSearchParams(body.toString()));
+      done(null, parsed);
     } catch (err: any) {
       done(err);
     }
@@ -209,6 +223,10 @@ app.register(import('./routes/privacy'),        { prefix: '/privacy' });
 // ── WhatsApp Webhook (Meta Cloud API) ──────────────────────
 // Registrar sempre — webhook precisa responder para validação mesmo sem token configurado
 app.register(import('./routes/whatsapp-webhook'), { prefix: '/webhook/whatsapp' });
+
+// ── WhatsApp Webhook (Twilio BSP) ───────────────────────────
+// Alternativa BSP para testes sem aprovação Meta
+app.register(import('./routes/twilio-webhook'), { prefix: '/webhook/twilio' });
 if (process.env.WHATSAPP_API_TOKEN) {
   app.log.info('✅ WhatsApp Cloud API webhook registrado com token');
 } else {
