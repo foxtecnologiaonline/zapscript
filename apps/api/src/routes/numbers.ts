@@ -1,8 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-// NOTA: Baileys foi descontinuado em favor da Meta Cloud API (webhook-based)
-// As funções abaixo não são mais usadas:
-// import { createWASession, disconnectWASession, getPendingQR, getPendingPairingCode, requestWAPairingCode } from '../services/whatsapp';
+
+// ── Z-API helper ──────────────────────────────────────────────
+function zapiUrl(path: string): string {
+  const id    = process.env.ZAPI_INSTANCE_ID;
+  const token = process.env.ZAPI_TOKEN;
+  if (!id || !token) throw new Error('ZAPI_INSTANCE_ID ou ZAPI_TOKEN não configurados');
+  return `https://api.z-api.io/instances/${id}/token/${token}${path}`;
+}
 
 export default async function numberRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -66,64 +71,105 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
   );
 
-  // ── POST /numbers/:id/connect — DESCONTINUADO (era Baileys QR Code) ──────────
-  // Agora usando Meta Cloud API com webhook
-  // A conexão é feita via webhooks — configure em: https://developers.facebook.com
-  app.post<{ Params: { id: string }; Body: {} }>('/:id/connect', auth, async (_, reply) => {
-    return reply.code(410).send({
-      error: 'Método descontinuado',
-      message: 'QR Code connection foi substituído pela Meta Cloud API',
-      instructions: 'Configure o webhook no dashboard Meta: https://developers.facebook.com',
-      docs: 'Ver ENV.md para instruções de setup',
-    });
-  });
-
-  // ── POST /numbers/:id/connect-pairing — DESCONTINUADO (era Baileys pairing code) ──
-  // Agora usando Meta Cloud API com webhook
-  app.post<{
-    Params: { id: string };
-    Body: { phoneNumber: string };
-  }>('/:id/connect-pairing', auth, async (_, reply) => {
-    return reply.code(410).send({
-      error: 'Método descontinuado',
-      message: 'Pairing code connection foi substituído pela Meta Cloud API',
-      instructions: 'Configure o webhook no dashboard Meta: https://developers.facebook.com',
-      docs: 'Ver ENV.md para instruções de setup',
-    });
-  });
-
-  // ── GET /numbers/:id/qr — DESCONTINUADO (era Baileys) ───────
-  // Agora usando Meta Cloud API com webhook
-  app.get<{ Params: { id: string } }>('/:id/qr', auth, async (_, reply) => {
-    return reply.code(410).send({
-      error: 'Método descontinuado',
-      message: 'QR Code retrieval foi substituído pela Meta Cloud API',
-      instructions: 'Configure o webhook no dashboard Meta: https://developers.facebook.com',
-    });
-  });
-
-  // ── GET /numbers/:id/pairing-code — DESCONTINUADO (era Baileys) ──
-  // Agora usando Meta Cloud API com webhook
-  app.get<{ Params: { id: string } }>('/:id/pairing-code', auth, async (_, reply) => {
-    return reply.code(410).send({
-      error: 'Método descontinuado',
-      message: 'Pairing code retrieval foi substituído pela Meta Cloud API',
-      instructions: 'Configure o webhook no dashboard Meta: https://developers.facebook.com',
-    });
-  });
-
-  // ── POST /numbers/:id/disconnect ──────────────────────
-  app.post<{ Params: { id: string }; Body: {} }>('/:id/disconnect', auth, async (req: any, reply) => {
+  // ── POST /numbers/:id/connect — Inicia conexão Z-API (QR Code) ──
+  app.post<{ Params: { id: string } }>('/:id/connect', auth, async (req: any, reply) => {
     const { id } = req.params;
     const userId = req.user.sub;
 
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    // Com Meta Cloud API, não precisa desconectar sessão Baileys
+    if (!process.env.ZAPI_INSTANCE_ID || !process.env.ZAPI_TOKEN) {
+      return reply.code(503).send({ error: 'Z-API não configurada no servidor.' });
+    }
+
+    // Vincular instância Z-API a este número e marcar como conectando
     await prisma.whatsappNumber.update({
       where: { id },
-      data:  { status: 'disconnected', sessionEncrypted: null },
+      data:  { zapiInstanceId: process.env.ZAPI_INSTANCE_ID, status: 'connecting' },
+    });
+
+    return { ok: true, message: 'Pronto para escanear o QR Code.' };
+  });
+
+  // ── GET /numbers/:id/qr — Retorna QR Code da Z-API como base64 ──
+  app.get<{ Params: { id: string } }>('/:id/qr', auth, async (req: any, reply) => {
+    const { id } = req.params;
+    const userId = req.user.sub;
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    try {
+      // Z-API retorna imagem PNG diretamente
+      const res = await fetch(zapiUrl('/qr-code/image'));
+      if (!res.ok) {
+        // Se já está conectado, Z-API retorna 4xx — verificar status
+        return reply.code(204).send(); // sem QR = já conectado
+      }
+      const buf    = await res.arrayBuffer();
+      const base64 = Buffer.from(buf).toString('base64');
+      return { qr: `data:image/png;base64,${base64}` };
+    } catch (err: any) {
+      app.log.error({ err: err.message }, '[Z-API] Erro ao buscar QR');
+      return reply.code(502).send({ error: 'Erro ao obter QR Code da Z-API.' });
+    }
+  });
+
+  // ── GET /numbers/:id/zapi-status — Verifica se Z-API está conectada ──
+  app.get<{ Params: { id: string } }>('/:id/zapi-status', auth, async (req: any, reply) => {
+    const { id } = req.params;
+    const userId = req.user.sub;
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    try {
+      const res  = await fetch(zapiUrl('/status'));
+      const data = await res.json() as any;
+
+      const connected = data?.connected === true;
+
+      // Sincronizar status no banco se mudou
+      if (connected && number.status !== 'connected') {
+        await prisma.whatsappNumber.update({
+          where: { id },
+          data:  { status: 'connected', connectedAt: new Date() },
+        });
+      } else if (!connected && number.status === 'connected') {
+        await prisma.whatsappNumber.update({
+          where: { id },
+          data:  { status: 'disconnected' },
+        });
+      }
+
+      return { connected, phone: data?.phone || number.phoneNumber };
+    } catch (err: any) {
+      app.log.error({ err: err.message }, '[Z-API] Erro ao verificar status');
+      return { connected: false };
+    }
+  });
+
+  // ── POST /numbers/:id/disconnect ──────────────────────
+  app.post<{ Params: { id: string } }>('/:id/disconnect', auth, async (req: any, reply) => {
+    const { id } = req.params;
+    const userId = req.user.sub;
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    // Desconectar da Z-API se vinculado
+    if (number.zapiInstanceId && process.env.ZAPI_TOKEN) {
+      try {
+        await fetch(zapiUrl('/disconnect'), { method: 'DELETE' });
+      } catch (err: any) {
+        app.log.warn({ err: err.message }, '[Z-API] Erro ao desconectar instância');
+      }
+    }
+
+    await prisma.whatsappNumber.update({
+      where: { id },
+      data:  { status: 'disconnected', zapiInstanceId: null },
     });
     return { status: 'disconnected' };
   });

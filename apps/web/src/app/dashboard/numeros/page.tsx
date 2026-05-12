@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 
@@ -14,47 +14,180 @@ interface WNumber {
   createdAt: string;
 }
 
+// ── QR Code Modal ─────────────────────────────────────────────────────────────
+function QrModal({ number, onClose, onConnected }: {
+  number: WNumber;
+  onClose: () => void;
+  onConnected: () => void;
+}) {
+  const [qr, setQr]           = useState<string | null>(null);
+  const [status, setStatus]   = useState<'loading' | 'waiting' | 'connected' | 'error'>('loading');
+  const [error, setError]     = useState('');
+  const pollRef               = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrRefreshRef          = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchQr = useCallback(async () => {
+    try {
+      const res = await api.get<{ qr: string } | null>(`/numbers/${number.id}/qr`);
+      if (res && 'qr' in res) {
+        setQr(res.qr);
+        setStatus('waiting');
+      }
+    } catch {
+      setError('Não foi possível obter o QR Code. Verifique as configurações Z-API.');
+      setStatus('error');
+    }
+  }, [number.id]);
+
+  const pollStatus = useCallback(async () => {
+    try {
+      const res = await api.get<{ connected: boolean; phone: string }>(`/numbers/${number.id}/zapi-status`);
+      if (res.connected) {
+        setStatus('connected');
+        clearInterval(pollRef.current!);
+        clearInterval(qrRefreshRef.current!);
+        setTimeout(() => { onConnected(); onClose(); }, 2000);
+      }
+    } catch { /* ignora erro de polling */ }
+  }, [number.id, onConnected, onClose]);
+
+  useEffect(() => {
+    // Iniciar conexão
+    api.post(`/numbers/${number.id}/connect`, {}).catch(() => null);
+    // Buscar QR inicial
+    fetchQr();
+    // Polling de status a cada 2s
+    pollRef.current = setInterval(pollStatus, 2000);
+    // Refresh do QR a cada 30s (expira)
+    qrRefreshRef.current = setInterval(fetchQr, 30_000);
+
+    return () => {
+      clearInterval(pollRef.current!);
+      clearInterval(qrRefreshRef.current!);
+    };
+  }, [fetchQr, pollStatus, number.id]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={onClose}>
+      <div className="modal-panel max-w-sm w-full" onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="font-bold text-base text-brand-text">Conectar WhatsApp</h2>
+            <p className="text-xs text-brand-muted mt-0.5">{number.displayName}</p>
+          </div>
+          <button onClick={onClose} className="text-brand-muted hover:text-brand-text text-xl leading-none transition-colors">✕</button>
+        </div>
+
+        {status === 'connected' ? (
+          <div className="text-center py-8">
+            <div className="text-5xl mb-3">✅</div>
+            <p className="font-bold text-brand-primary text-lg">WhatsApp conectado!</p>
+            <p className="text-xs text-brand-muted mt-1">Redirecionando...</p>
+          </div>
+
+        ) : status === 'error' ? (
+          <div className="text-center py-6">
+            <div className="text-4xl mb-3">❌</div>
+            <p className="text-red-400 text-sm font-semibold mb-1">Erro ao obter QR Code</p>
+            <p className="text-xs text-brand-muted">{error}</p>
+            <button onClick={fetchQr} className="btn-primary text-sm px-5 py-2 mt-4">
+              Tentar novamente
+            </button>
+          </div>
+
+        ) : (
+          <>
+            {/* QR Code */}
+            <div className="flex items-center justify-center bg-white rounded-2xl p-3 mb-4 min-h-[240px]">
+              {status === 'loading' || !qr ? (
+                <div className="flex flex-col items-center gap-3 text-gray-400">
+                  <svg className="animate-spin h-8 w-8" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                  </svg>
+                  <span className="text-sm">Gerando QR Code...</span>
+                </div>
+              ) : (
+                <img src={qr} alt="QR Code WhatsApp" className="w-56 h-56 object-contain" />
+              )}
+            </div>
+
+            {/* Instruções */}
+            <div className="bg-brand-elevated rounded-xl p-4 mb-4 space-y-2">
+              <p className="text-xs font-bold text-brand-text mb-2">Como conectar:</p>
+              {[
+                'Abra o WhatsApp no seu celular',
+                'Toque em ⋮ (Android) ou Configurações (iPhone)',
+                'Selecione "Dispositivos conectados"',
+                'Toque em "Conectar dispositivo"',
+                'Aponte a câmera para o QR Code acima',
+              ].map((step, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-brand-text-secondary">
+                  <span className="w-4 h-4 rounded-full bg-brand-primary/20 text-brand-primary flex-shrink-0 flex items-center justify-center text-[10px] font-bold mt-0.5">
+                    {i + 1}
+                  </span>
+                  {step}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-brand-muted">
+              <svg className="animate-spin h-3 w-3 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>
+              Aguardando escaneamento... O QR atualiza a cada 30s.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Página principal ──────────────────────────────────────────────────────────
 export default function NumerosPage() {
-  const [numbers, setNumbers] = useState<WNumber[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [addName, setAddName] = useState('');
-  const [addPhone, setAddPhone] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [error, setError] = useState('');
-  const [userId, setUserId] = useState('');
+  const [numbers, setNumbers]     = useState<WNumber[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [addName, setAddName]     = useState('');
+  const [adding, setAdding]       = useState(false);
+  const [error, setError]         = useState('');
+  const [userId, setUserId]       = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [deleting, setDeleting]   = useState(false);
+  const [qrNumber, setQrNumber]   = useState<WNumber | null>(null);
+
+  const loadNumbers = useCallback(async () => {
+    setLoading(true);
+    try { setNumbers(await api.get<WNumber[]>('/numbers')); }
+    finally { setLoading(false); }
+  }, []);
 
   useEffect(() => {
     loadNumbers();
     api.get<any>('/auth/me').then(u => setUserId(u.id));
-  }, []);
+  }, [loadNumbers]);
 
-  async function loadNumbers() {
-    setLoading(true);
-    try { setNumbers(await api.get<WNumber[]>('/numbers')); }
-    finally { setLoading(false); }
-  }
-
-  /* ────────────────────────────────────────
-     SOCKET.IO — recebe eventos de transcrição em tempo real
-     ──────────────────────────────────────── */
   const { connected: socketOk } = useSocket(userId, {
     audio_received: () => { loadNumbers(); },
   });
-
-  /* ──────── Actions ──────── */
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!addName.trim()) return;
     setAdding(true); setError('');
     try {
-      await api.post('/numbers', {
-        displayName: addName.trim(),
-        phoneNumber: addPhone.replace(/\D/g, '') || undefined,
-      });
-      setAddName(''); setAddPhone('');
+      await api.post('/numbers', { displayName: addName.trim() });
+      setAddName('');
       loadNumbers();
     } catch (err: any) { setError(err.message); }
     finally { setAdding(false); }
@@ -95,10 +228,9 @@ export default function NumerosPage() {
         <div>
           <h1 className="text-2xl font-bold text-brand-text">Números WhatsApp</h1>
           <p className="text-sm text-brand-text-secondary font-light mt-0.5">
-            Gerencie os dispositivos conectados ao ZapScript
+            Conecte seu WhatsApp como dispositivo adicional — como o WhatsApp Web
           </p>
         </div>
-        {/* Socket.IO status indicator */}
         <div className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
           socketOk
             ? 'text-green-500 bg-green-400/10 border-green-400/20'
@@ -109,61 +241,37 @@ export default function NumerosPage() {
         </div>
       </div>
 
-      {/* ── Add number form ── */}
+      {/* ── Add form ── */}
       <div className="card p-5 mb-5">
-        <div className="text-sm font-bold mb-3 text-brand-text">Adicionar dispositivo</div>
-        <form onSubmit={handleAdd} className="space-y-3">
-
+        <div className="text-sm font-bold mb-1 text-brand-text">Adicionar dispositivo</div>
+        <p className="text-xs text-brand-muted mb-3">
+          Após adicionar, escaneie o QR Code para conectar seu WhatsApp.
+        </p>
+        <form onSubmit={handleAdd} className="flex gap-2">
           <input
-            className="input w-full"
-            placeholder="Nome do dispositivo (ex: Comercial, Pessoal, Suporte)"
+            className="input flex-1"
+            placeholder="Nome do dispositivo (ex: Comercial, Pessoal)"
             value={addName}
             onChange={e => setAddName(e.target.value)}
             required
           />
-
-          <div>
-            <input
-              className="input w-full"
-              placeholder="Número do WhatsApp — opcional (ex: 5511999999999)"
-              value={addPhone}
-              onChange={e => setAddPhone(e.target.value)}
-              type="tel"
-            />
-            <p className="text-[11px] text-brand-muted mt-1.5 leading-relaxed">
-              📞 <strong>DDI + DDD + Número</strong>, somente dígitos, sem + ou espaços.
-              {' '}<span className="opacity-70">
-                Ex: Brasil SP → <code className="bg-brand-elevated px-1 rounded">55</code>
-                +<code className="bg-brand-elevated px-1 rounded">11</code>
-                +<code className="bg-brand-elevated px-1 rounded">999999999</code>
-                {' '}= <code className="bg-brand-elevated px-1 rounded">5511999999999</code>
-              </span>
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 pt-1">
-            <button type="submit" disabled={adding} className="btn-primary">
-              {adding ? 'Adicionando...' : '+ Adicionar'}
-            </button>
-            <span className="text-xs text-brand-muted">
-              Após adicionar, escolha QR Code ou Código por Número para conectar.
-            </span>
-          </div>
+          <button type="submit" disabled={adding} className="btn-primary px-5">
+            {adding ? '...' : '+ Adicionar'}
+          </button>
         </form>
-
         {error && (
           <p className="text-red-400 text-xs mt-3 bg-red-400/10 px-3 py-2 rounded-lg">{error}</p>
         )}
       </div>
 
-      {/* ── Number cards ── */}
+      {/* ── Cards ── */}
       {loading ? (
         <div className="text-center py-12 text-brand-muted text-sm">Carregando...</div>
       ) : numbers.length === 0 ? (
         <div className="card p-12 text-center">
           <div className="text-4xl mb-3">📱</div>
           <div className="text-sm text-brand-muted">
-            Nenhum dispositivo cadastrado ainda. Adicione um acima.
+            Nenhum dispositivo ainda. Adicione um acima para começar.
           </div>
         </div>
       ) : (
@@ -196,7 +304,7 @@ export default function NumerosPage() {
                 </div>
               </div>
 
-              {/* Action buttons */}
+              {/* Actions */}
               {n.status === 'connected' ? (
                 <div className="flex gap-2">
                   <button onClick={() => handleDisconnect(n.id)}
@@ -210,7 +318,7 @@ export default function NumerosPage() {
                         {deleting ? '...' : 'Confirmar'}
                       </button>
                       <button onClick={() => setConfirmDelete(null)}
-                        className="text-xs px-2 py-1 rounded-lg border border-brand-border text-brand-muted hover:text-brand-text transition-colors">
+                        className="text-xs px-2 py-1 rounded-lg border border-brand-border text-brand-muted">
                         Cancelar
                       </button>
                     </div>
@@ -223,14 +331,12 @@ export default function NumerosPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {/* Meta Cloud API — instrução de configuração */}
-                  <div className="bg-amber-400/8 border border-amber-400/20 rounded-lg px-3 py-2.5 text-[11px] text-amber-400/80 leading-relaxed">
-                    <p className="font-semibold mb-1">📡 Conectar via WhatsApp Business API</p>
-                    <p>Configure o webhook no <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="underline text-amber-400">Meta for Developers</a> apontando para:</p>
-                    <code className="block mt-1 bg-brand-elevated px-2 py-1 rounded text-[10px] break-all text-brand-primary">
-                      {process.env.NEXT_PUBLIC_API_URL || 'https://zapscript.onrender.com'}/webhook/whatsapp
-                    </code>
-                  </div>
+                  <button
+                    onClick={() => setQrNumber(n)}
+                    className="btn-primary w-full text-sm py-2.5 flex items-center justify-center gap-2">
+                    <span>📱</span>
+                    {n.status === 'connecting' ? 'Ver QR Code' : 'Conectar WhatsApp'}
+                  </button>
                   {confirmDelete === n.id ? (
                     <div className="flex gap-2">
                       <button onClick={() => handleDelete(n.id)} disabled={deleting}
@@ -238,7 +344,7 @@ export default function NumerosPage() {
                         {deleting ? 'Removendo...' : 'Confirmar remoção'}
                       </button>
                       <button onClick={() => setConfirmDelete(null)}
-                        className="text-[11px] px-3 py-1.5 rounded-lg border border-brand-border text-brand-muted hover:text-brand-text transition-colors">
+                        className="text-[11px] px-3 py-1.5 rounded-lg border border-brand-border text-brand-muted">
                         Cancelar
                       </button>
                     </div>
@@ -255,6 +361,14 @@ export default function NumerosPage() {
         </div>
       )}
 
+      {/* QR Modal */}
+      {qrNumber && (
+        <QrModal
+          number={qrNumber}
+          onClose={() => setQrNumber(null)}
+          onConnected={loadNumbers}
+        />
+      )}
     </div>
   );
 }
