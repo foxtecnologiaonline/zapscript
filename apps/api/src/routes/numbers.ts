@@ -125,7 +125,8 @@ export default async function numberRoutes(app: FastifyInstance) {
   );
 
   // ── POST /numbers/:id/connect ─────────────────────────────────────────────
-  // Cria uma instância Z-API dedicada para este número (se não existir) e inicia conexão
+  // Tenta criar instância via Partner API; se não disponível (conta Cliente/405),
+  // usa a instância configurada por env vars ZAPI_INSTANCE_ID + ZAPI_TOKEN.
   app.post<{ Params: { id: string } }>('/:id/connect', auth, async (req: any, reply) => {
     const { id } = req.params;
     const userId = req.user.sub;
@@ -133,11 +134,7 @@ export default async function numberRoutes(app: FastifyInstance) {
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    if (!process.env.ZAPI_PARTNER_TOKEN) {
-      return reply.code(503).send({ error: 'ZAPI_PARTNER_TOKEN não configurado no servidor.' });
-    }
-
-    // ── Já tem instância → só atualizar status e reconectar ──────────────
+    // ── Já tem instância vinculada → só atualizar status ─────────────────
     if (number.zapiInstanceId && number.zapiToken) {
       await prisma.whatsappNumber.update({
         where: { id },
@@ -146,28 +143,51 @@ export default async function numberRoutes(app: FastifyInstance) {
       return { ok: true, message: 'Reconectando à instância existente.' };
     }
 
-    // ── Criar nova instância Z-API ────────────────────────────────────────
-    try {
-      const instance = await createZapiInstance(
-        `ZapScript-${(number.displayName ?? id).substring(0, 40)}`
-      );
+    // ── Resolver qual instância usar ──────────────────────────────────────
+    let instanceId: string;
+    let instanceToken: string;
 
-      await prisma.whatsappNumber.update({
-        where: { id },
-        data: {
-          zapiInstanceId: instance.id,
-          zapiToken:      instance.token,
-          status:         'connecting',
-        },
+    if (process.env.ZAPI_PARTNER_TOKEN) {
+      try {
+        // Tenta criar instância dedicada via Partner API
+        const instance = await createZapiInstance(
+          `ZapScript-${(number.displayName ?? id).substring(0, 40)}`
+        );
+        instanceId    = instance.id;
+        instanceToken = instance.token;
+        app.log.info(`[Z-API] Nova instância criada: ${instanceId} para número ${id}`);
+      } catch (err: any) {
+        // Conta "Cliente" não tem acesso à Partner API (405) — usar instância única de env
+        app.log.warn(`[Z-API] Partner API indisponível (${err.message}), usando instância de env vars`);
+        if (!process.env.ZAPI_INSTANCE_ID || !process.env.ZAPI_TOKEN) {
+          return reply.code(503).send({
+            error: 'Configure ZAPI_INSTANCE_ID e ZAPI_TOKEN no servidor (conta Z-API não suporta criação automática de instâncias).',
+          });
+        }
+        instanceId    = process.env.ZAPI_INSTANCE_ID;
+        instanceToken = process.env.ZAPI_TOKEN;
+      }
+    } else if (process.env.ZAPI_INSTANCE_ID && process.env.ZAPI_TOKEN) {
+      // Sem Partner Token → usa instância única configurada
+      instanceId    = process.env.ZAPI_INSTANCE_ID;
+      instanceToken = process.env.ZAPI_TOKEN;
+    } else {
+      return reply.code(503).send({
+        error: 'Z-API não configurada. Adicione ZAPI_INSTANCE_ID e ZAPI_TOKEN no servidor.',
       });
-
-      app.log.info(`[Z-API] Nova instância criada: ${instance.id} para número ${id}`);
-      return { ok: true, message: 'Instância criada. Pronto para escanear o QR Code.' };
-
-    } catch (err: any) {
-      app.log.error({ err: err.message }, '[Z-API] Erro ao criar instância');
-      return reply.code(502).send({ error: err.message });
     }
+
+    // ── Vincular instância ao número e marcar como conectando ─────────────
+    await prisma.whatsappNumber.update({
+      where: { id },
+      data: {
+        zapiInstanceId: instanceId,
+        zapiToken:      instanceToken,
+        status:         'connecting',
+      },
+    });
+
+    return { ok: true, message: 'Pronto para escanear o QR Code.' };
   });
 
   // ── GET /numbers/:id/qr ───────────────────────────────────────────────────
