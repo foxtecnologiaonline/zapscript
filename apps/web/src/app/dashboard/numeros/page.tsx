@@ -20,19 +20,26 @@ function QrModal({ number, onClose, onConnected }: {
   onClose: () => void;
   onConnected: () => void;
 }) {
+  const [tab, setTab]         = useState<'qr' | 'phone'>('qr');
   const [qr, setQr]           = useState<string | null>(null);
   const [status, setStatus]   = useState<'loading' | 'waiting' | 'connected' | 'error'>('loading');
   const [error, setError]     = useState('');
-  const pollRef               = useRef<ReturnType<typeof setInterval> | null>(null);
-  const qrRefreshRef          = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Phone tab state
+  const [phoneInput, setPhoneInput]   = useState(
+    number.phoneNumber !== 'pending' ? number.phoneNumber.replace(/^55/, '') : ''
+  );
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [requesting, setRequesting]  = useState(false);
+  const [phoneError, setPhoneError]  = useState('');
+
+  const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchQr = useCallback(async () => {
     try {
       const res = await api.get<{ qr: string } | null>(`/numbers/${number.id}/qr`);
-      if (res && 'qr' in res) {
-        setQr(res.qr);
-        setStatus('waiting');
-      }
+      if (res && 'qr' in res) { setQr(res.qr); setStatus('waiting'); }
     } catch {
       setError('Não foi possível obter o QR Code. Verifique as configurações Z-API.');
       setStatus('error');
@@ -41,19 +48,19 @@ function QrModal({ number, onClose, onConnected }: {
 
   const pollStatus = useCallback(async () => {
     try {
-      const res = await api.get<{ connected: boolean; phone: string }>(`/numbers/${number.id}/zapi-status`);
+      const res = await api.get<{ connected: boolean }>(`/numbers/${number.id}/zapi-status`);
       if (res.connected) {
         setStatus('connected');
         clearInterval(pollRef.current!);
         clearInterval(qrRefreshRef.current!);
         setTimeout(() => { onConnected(); onClose(); }, 2000);
       }
-    } catch { /* ignora erro de polling */ }
+    } catch { /* ignora */ }
   }, [number.id, onConnected, onClose]);
 
+  // Inicializa conexão (cria instância se necessário) e inicia polling
   useEffect(() => {
     async function init() {
-      // 1. Iniciar conexão (criar instância Z-API se necessário) — AGUARDAR
       try {
         await api.post(`/numbers/${number.id}/connect`, {});
       } catch (err: any) {
@@ -61,19 +68,19 @@ function QrModal({ number, onClose, onConnected }: {
         setStatus('error');
         return;
       }
-      // 2. Só busca QR depois que connect terminou com sucesso
-      fetchQr();
-      // 3. Polling de status a cada 2s
-      pollRef.current = setInterval(pollStatus, 2000);
-      // 4. Refresh do QR a cada 30s (expira)
+      if (tab === 'qr') fetchQr();
+      pollRef.current      = setInterval(pollStatus, 2000);
       qrRefreshRef.current = setInterval(fetchQr, 30_000);
     }
     init();
-    return () => {
-      clearInterval(pollRef.current!);
-      clearInterval(qrRefreshRef.current!);
-    };
-  }, [fetchQr, pollStatus, number.id]);
+    return () => { clearInterval(pollRef.current!); clearInterval(qrRefreshRef.current!); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Ao trocar para QR, busca o QR se ainda não tiver
+  useEffect(() => {
+    if (tab === 'qr' && !qr && status === 'waiting') fetchQr();
+  }, [tab, qr, status, fetchQr]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -81,13 +88,32 @@ function QrModal({ number, onClose, onConnected }: {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  async function handleRequestPairingCode() {
+    const digits = phoneInput.replace(/\D/g, '');
+    if (digits.length < 10) { setPhoneError('Informe DDD + número (mín. 10 dígitos).'); return; }
+    setRequesting(true); setPhoneError(''); setPairingCode(null);
+    try {
+      const res = await api.post<{ code: string }>(`/numbers/${number.id}/pairing-code`, { phone: digits });
+      setPairingCode(res.code);
+    } catch (err: any) {
+      setPhoneError(err.message || 'Erro ao solicitar código.');
+    } finally {
+      setRequesting(false);
+    }
+  }
+
+  // Formata código: "A1B2C3D4" → "A1B2-C3D4"
+  function formatCode(code: string) {
+    return code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+  }
+
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={onClose}>
       <div className="modal-panel max-w-sm w-full" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="font-bold text-base text-brand-text">Conectar WhatsApp</h2>
             <p className="text-xs text-brand-muted mt-0.5">{number.displayName}</p>
@@ -95,6 +121,7 @@ function QrModal({ number, onClose, onConnected }: {
           <button onClick={onClose} className="text-brand-muted hover:text-brand-text text-xl leading-none transition-colors">✕</button>
         </div>
 
+        {/* Estado: conectado */}
         {status === 'connected' ? (
           <div className="text-center py-8">
             <div className="text-5xl mb-3">✅</div>
@@ -105,56 +132,140 @@ function QrModal({ number, onClose, onConnected }: {
         ) : status === 'error' ? (
           <div className="text-center py-6">
             <div className="text-4xl mb-3">❌</div>
-            <p className="text-red-400 text-sm font-semibold mb-1">Erro ao obter QR Code</p>
+            <p className="text-red-400 text-sm font-semibold mb-1">Erro na conexão</p>
             <p className="text-xs text-brand-muted">{error}</p>
-            <button onClick={fetchQr} className="btn-primary text-sm px-5 py-2 mt-4">
+            <button onClick={() => { setStatus('loading'); setError(''); fetchQr(); }}
+              className="btn-primary text-sm px-5 py-2 mt-4">
               Tentar novamente
             </button>
           </div>
 
         ) : (
           <>
-            {/* QR Code */}
-            <div className="flex items-center justify-center bg-white rounded-2xl p-3 mb-4 min-h-[240px]">
-              {status === 'loading' || !qr ? (
-                <div className="flex flex-col items-center gap-3 text-gray-400">
-                  <svg className="animate-spin h-8 w-8" viewBox="0 0 24 24" fill="none">
+            {/* Tabs */}
+            <div className="flex rounded-xl bg-brand-elevated p-1 mb-4 gap-1">
+              <button
+                onClick={() => setTab('qr')}
+                className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-colors ${
+                  tab === 'qr'
+                    ? 'bg-brand-primary text-white'
+                    : 'text-brand-muted hover:text-brand-text'
+                }`}>
+                📷 QR Code
+              </button>
+              <button
+                onClick={() => setTab('phone')}
+                className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-colors ${
+                  tab === 'phone'
+                    ? 'bg-brand-primary text-white'
+                    : 'text-brand-muted hover:text-brand-text'
+                }`}>
+                📱 Código por telefone
+              </button>
+            </div>
+
+            {/* ── Tab QR ── */}
+            {tab === 'qr' && (
+              <>
+                <div className="flex items-center justify-center bg-white rounded-2xl p-3 mb-4 min-h-[220px]">
+                  {!qr ? (
+                    <div className="flex flex-col items-center gap-3 text-gray-400">
+                      <svg className="animate-spin h-8 w-8" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                      </svg>
+                      <span className="text-sm">Gerando QR Code...</span>
+                    </div>
+                  ) : (
+                    <img src={qr} alt="QR Code WhatsApp" className="w-52 h-52 object-contain" />
+                  )}
+                </div>
+                <div className="bg-brand-elevated rounded-xl p-3 mb-3 space-y-1.5">
+                  <p className="text-xs font-bold text-brand-text mb-1">Como conectar:</p>
+                  {['Abra o WhatsApp no celular','Toque em ⋮ (Android) ou Configurações (iPhone)',
+                    'Selecione "Dispositivos conectados"','Toque em "Conectar dispositivo"',
+                    'Aponte a câmera para o QR Code acima'].map((s, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-brand-text-secondary">
+                      <span className="w-4 h-4 rounded-full bg-brand-primary/20 text-brand-primary flex-shrink-0 flex items-center justify-center text-[10px] font-bold mt-0.5">{i+1}</span>
+                      {s}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-brand-muted">
+                  <svg className="animate-spin h-3 w-3 flex-shrink-0" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                   </svg>
-                  <span className="text-sm">Gerando QR Code...</span>
+                  Aguardando escaneamento... O QR atualiza a cada 30s.
                 </div>
-              ) : (
-                <img src={qr} alt="QR Code WhatsApp" className="w-56 h-56 object-contain" />
-              )}
-            </div>
+              </>
+            )}
 
-            {/* Instruções */}
-            <div className="bg-brand-elevated rounded-xl p-4 mb-4 space-y-2">
-              <p className="text-xs font-bold text-brand-text mb-2">Como conectar:</p>
-              {[
-                'Abra o WhatsApp no seu celular',
-                'Toque em ⋮ (Android) ou Configurações (iPhone)',
-                'Selecione "Dispositivos conectados"',
-                'Toque em "Conectar dispositivo"',
-                'Aponte a câmera para o QR Code acima',
-              ].map((step, i) => (
-                <div key={i} className="flex items-start gap-2 text-xs text-brand-text-secondary">
-                  <span className="w-4 h-4 rounded-full bg-brand-primary/20 text-brand-primary flex-shrink-0 flex items-center justify-center text-[10px] font-bold mt-0.5">
-                    {i + 1}
-                  </span>
-                  {step}
+            {/* ── Tab Phone ── */}
+            {tab === 'phone' && (
+              <>
+                <div className="bg-brand-elevated rounded-xl p-3 mb-4 space-y-1.5">
+                  <p className="text-xs font-bold text-brand-text mb-1">Como conectar pelo número:</p>
+                  {['Informe seu número do WhatsApp abaixo','Clique em "Solicitar código"',
+                    'Abra o WhatsApp → Dispositivos conectados → Conectar dispositivo',
+                    'Escolha "Conectar pelo número do telefone"',
+                    'Digite o código de 8 caracteres exibido'].map((s, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-brand-text-secondary">
+                      <span className="w-4 h-4 rounded-full bg-brand-primary/20 text-brand-primary flex-shrink-0 flex items-center justify-center text-[10px] font-bold mt-0.5">{i+1}</span>
+                      {s}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            <div className="flex items-center gap-2 text-xs text-brand-muted">
-              <svg className="animate-spin h-3 w-3 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-              </svg>
-              Aguardando escaneamento... O QR atualiza a cada 30s.
-            </div>
+                {/* Input do número */}
+                <div className="flex gap-2 mb-3">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted text-sm font-mono select-none">+55</span>
+                    <input
+                      className="input w-full pl-10"
+                      placeholder="DDD + número (ex: 11987654321)"
+                      value={phoneInput}
+                      onChange={e => setPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <button
+                    onClick={handleRequestPairingCode}
+                    disabled={requesting}
+                    className="btn-primary px-4 text-xs whitespace-nowrap">
+                    {requesting ? (
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                      </svg>
+                    ) : 'Solicitar código'}
+                  </button>
+                </div>
+
+                {phoneError && (
+                  <p className="text-red-400 text-xs mb-3 bg-red-400/10 px-3 py-2 rounded-lg">{phoneError}</p>
+                )}
+
+                {/* Código de parelhamento */}
+                {pairingCode && (
+                  <div className="text-center bg-brand-primary/10 border border-brand-primary/20 rounded-2xl p-5 mb-3">
+                    <p className="text-xs text-brand-muted mb-2">Seu código de conexão</p>
+                    <p className="text-4xl font-black font-mono tracking-widest text-brand-primary">
+                      {formatCode(pairingCode)}
+                    </p>
+                    <p className="text-[10px] text-brand-muted mt-2">Digite esse código no WhatsApp → Conectar pelo número</p>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 text-xs text-brand-muted mt-1">
+                  <svg className="animate-spin h-3 w-3 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                  </svg>
+                  Aguardando conexão...
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

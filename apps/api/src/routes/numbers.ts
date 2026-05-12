@@ -232,6 +232,55 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
   });
 
+  // ── POST /numbers/:id/pairing-code ───────────────────────────────────────
+  // Solicita código de parelhamento por número (alternativa ao QR Code)
+  // Usuário recebe um código e insere no WhatsApp: Dispositivos → Conectar pelo número
+  app.post<{ Params: { id: string }; Body: { phone: string } }>(
+    '/:id/pairing-code', auth, async (req: any, reply) => {
+      const { id } = req.params;
+      const { phone } = req.body;
+      const userId = req.user.sub;
+
+      if (!phone) return reply.code(400).send({ error: 'Número de telefone obrigatório.' });
+
+      const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
+      if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+      if (!number.zapiInstanceId || !number.zapiToken) {
+        return reply.code(400).send({ error: 'Instância não iniciada. Chame /connect primeiro.' });
+      }
+
+      // Número limpo com DDI
+      const cleanPhone = phone.replace(/\D/g, '');
+      const fullPhone  = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+
+      try {
+        const res = await fetch(
+          zapiUrl(number.zapiInstanceId, number.zapiToken, `/phone-code?phone=${fullPhone}`)
+        );
+        const data = await res.json() as any;
+
+        if (!res.ok) {
+          return reply.code(502).send({
+            error: data?.error || `Z-API retornou ${res.status} ao solicitar código.`,
+          });
+        }
+
+        // Z-API retorna { "value": "A1B2C3D4" }
+        const code = data?.value ?? data?.code ?? data?.pairingCode;
+        if (!code) {
+          return reply.code(502).send({ error: 'Z-API não retornou o código de parelhamento.' });
+        }
+
+        app.log.info(`[Z-API] Pairing code solicitado para número ${id}: ${code}`);
+        return { code };
+
+      } catch (err: any) {
+        app.log.error({ err: err.message }, '[Z-API] Erro ao solicitar pairing code');
+        return reply.code(502).send({ error: 'Erro ao solicitar código de parelhamento.' });
+      }
+    }
+  );
+
   // ── GET /numbers/:id/zapi-status ─────────────────────────────────────────
   // Verifica se a instância deste número está conectada ao WhatsApp
   app.get<{ Params: { id: string } }>('/:id/zapi-status', auth, async (req: any, reply) => {
