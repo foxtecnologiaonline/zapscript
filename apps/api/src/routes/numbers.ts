@@ -254,29 +254,42 @@ export default async function numberRoutes(app: FastifyInstance) {
       const fullPhone  = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 
       try {
+        // Z-API: POST /phone-code com body { phone }
         const res = await fetch(
-          zapiUrl(number.zapiInstanceId, number.zapiToken, `/phone-code?phone=${fullPhone}`)
+          zapiUrl(number.zapiInstanceId, number.zapiToken, '/phone-code'),
+          {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ phone: fullPhone }),
+          }
         );
-        const data = await res.json() as any;
+
+        const rawText = await res.text();
+        let data: any = {};
+        try { data = JSON.parse(rawText); } catch { data = { raw: rawText }; }
+
+        app.log.info(`[Z-API] phone-code response (${res.status}): ${rawText.substring(0, 200)}`);
 
         if (!res.ok) {
           return reply.code(502).send({
-            error: data?.error || `Z-API retornou ${res.status} ao solicitar código.`,
+            error: data?.error || data?.message || `Z-API retornou ${res.status}: ${rawText.substring(0, 100)}`,
           });
         }
 
         // Z-API retorna { "value": "A1B2C3D4" }
         const code = data?.value ?? data?.code ?? data?.pairingCode;
         if (!code) {
-          return reply.code(502).send({ error: 'Z-API não retornou o código de parelhamento.' });
+          return reply.code(502).send({
+            error: `Z-API não retornou código. Resposta: ${rawText.substring(0, 100)}`,
+          });
         }
 
-        app.log.info(`[Z-API] Pairing code solicitado para número ${id}: ${code}`);
+        app.log.info(`[Z-API] Pairing code gerado para número ${id}`);
         return { code };
 
       } catch (err: any) {
         app.log.error({ err: err.message }, '[Z-API] Erro ao solicitar pairing code');
-        return reply.code(502).send({ error: 'Erro ao solicitar código de parelhamento.' });
+        return reply.code(502).send({ error: `Erro ao solicitar código: ${err.message}` });
       }
     }
   );

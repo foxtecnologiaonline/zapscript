@@ -68,18 +68,32 @@ function QrModal({ number, onClose, onConnected }: {
         setStatus('error');
         return;
       }
+      setStatus('waiting');
+      // Só carrega QR se estiver na aba QR
       if (tab === 'qr') fetchQr();
-      pollRef.current      = setInterval(pollStatus, 2000);
-      qrRefreshRef.current = setInterval(fetchQr, 30_000);
+      // Polling de status (funciona em ambas as abas)
+      pollRef.current = setInterval(pollStatus, 2000);
+      // Refresh QR a cada 30s — só ativo na aba QR
+      if (tab === 'qr') {
+        qrRefreshRef.current = setInterval(fetchQr, 30_000);
+      }
     }
     init();
     return () => { clearInterval(pollRef.current!); clearInterval(qrRefreshRef.current!); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Ao trocar para QR, busca o QR se ainda não tiver
+  // Ao trocar para aba QR: busca QR e ativa refresh; ao sair: para refresh
   useEffect(() => {
-    if (tab === 'qr' && !qr && status === 'waiting') fetchQr();
+    if (tab === 'qr' && status === 'waiting') {
+      if (!qr) fetchQr();
+      if (!qrRefreshRef.current) {
+        qrRefreshRef.current = setInterval(fetchQr, 30_000);
+      }
+    } else {
+      clearInterval(qrRefreshRef.current!);
+      qrRefreshRef.current = null;
+    }
   }, [tab, qr, status, fetchQr]);
 
   useEffect(() => {
