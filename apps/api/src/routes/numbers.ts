@@ -57,10 +57,22 @@ export default async function numberRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
 
   // ── GET /numbers ──────────────────────────────────────────────────────────
+  // Usa select explícito para não falhar se colunas novas (zapiToken/zapiInstanceId)
+  // ainda não existem na DB de produção (migration pendente)
   app.get('/', auth, async (req: any) => {
     return prisma.whatsappNumber.findMany({
       where:   { userId: req.user.sub },
       orderBy: { createdAt: 'asc' },
+      select: {
+        id:           true,
+        displayName:  true,
+        phoneNumber:  true,
+        status:       true,
+        messageCount: true,
+        minutesUsed:  true,
+        connectedAt:  true,
+        createdAt:    true,
+      },
     });
   });
 
@@ -69,17 +81,21 @@ export default async function numberRoutes(app: FastifyInstance) {
     const { displayName } = req.body;
     const userId = req.user.sub;
 
-    // Verificar limite do plano
-    const sub = await prisma.subscription.findUnique({
-      where:   { userId },
-      include: { plan: true },
-    });
-    const count = await prisma.whatsappNumber.count({ where: { userId } });
-
-    if (count >= sub!.plan.maxNumbers) {
-      return reply.code(403).send({
-        error: `Limite de ${sub!.plan.maxNumbers} número(s) atingido. Faça upgrade do plano.`,
+    // Admin não tem limite de números
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.isAdmin) {
+      // Verificar limite do plano
+      const sub = await prisma.subscription.findUnique({
+        where:   { userId },
+        include: { plan: true },
       });
+      const count = await prisma.whatsappNumber.count({ where: { userId } });
+
+      if (count >= sub!.plan.maxNumbers) {
+        return reply.code(403).send({
+          error: `Limite de ${sub!.plan.maxNumbers} número(s) atingido. Faça upgrade do plano.`,
+        });
+      }
     }
 
     const number = await prisma.whatsappNumber.create({

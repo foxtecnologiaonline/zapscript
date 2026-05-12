@@ -168,8 +168,15 @@ export default function NumerosPage() {
 
   const loadNumbers = useCallback(async () => {
     setLoading(true);
-    try { setNumbers(await api.get<WNumber[]>('/numbers')); }
-    finally { setLoading(false); }
+    setError('');
+    try {
+      const result = await api.get<WNumber[]>('/numbers');
+      setNumbers(result ?? []);
+    } catch (err: any) {
+      setError(`Erro ao carregar números: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -267,6 +274,13 @@ export default function NumerosPage() {
       {/* ── Cards ── */}
       {loading ? (
         <div className="text-center py-12 text-brand-muted text-sm">Carregando...</div>
+      ) : error && numbers.length === 0 ? (
+        <div className="card p-6 text-center border-red-400/20">
+          <div className="text-3xl mb-2">⚠️</div>
+          <div className="text-sm text-red-400 font-semibold mb-1">Erro ao carregar dispositivos</div>
+          <div className="text-xs text-brand-muted mb-3">{error}</div>
+          <button onClick={loadNumbers} className="btn-primary text-xs px-4 py-2">Tentar novamente</button>
+        </div>
       ) : numbers.length === 0 ? (
         <div className="card p-12 text-center">
           <div className="text-4xl mb-3">📱</div>
