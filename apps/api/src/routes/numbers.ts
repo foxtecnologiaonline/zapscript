@@ -8,6 +8,18 @@ function zapiUrl(instanceId: string, token: string, path: string): string {
   return `https://api.z-api.io/instances/${instanceId}/token/${token}${path}`;
 }
 
+/**
+ * Headers para chamadas a uma instância Z-API.
+ * O Client-Token é um token de segurança da CONTA (diferente do token de instância).
+ * Encontrado em: painel Z-API → Segurança → Token de segurança da conta.
+ * É opcional — só obrigatório se o usuário tiver ativado essa proteção.
+ */
+function zapiHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (process.env.ZAPI_CLIENT_TOKEN) headers['Client-Token'] = process.env.ZAPI_CLIENT_TOKEN;
+  return extra ? { ...headers, ...extra } : headers;
+}
+
 /** Headers para a API de parceiro (gerenciar instâncias) */
 function partnerHeaders(): Record<string, string> {
   const token = process.env.ZAPI_PARTNER_TOKEN;
@@ -18,18 +30,16 @@ function partnerHeaders(): Record<string, string> {
 /** URL base da API (usada para configurar webhooks nas instâncias criadas) */
 const API_BASE = process.env.API_URL ?? 'https://zapscript.me';
 
-/** Cria uma nova instância Z-API e já configura os webhooks */
+/**
+ * Cria uma nova instância Z-API via Partner API.
+ * Endpoint: POST https://api.z-api.io/instances/integrator/on-demand
+ * Após criar, configura os webhooks via PUT nos endpoints de webhook.
+ */
 async function createZapiInstance(name: string): Promise<{ id: string; token: string }> {
-  const res = await fetch('https://api.z-api.io/instances', {
+  const res = await fetch('https://api.z-api.io/instances/integrator/on-demand', {
     method:  'POST',
     headers: partnerHeaders(),
-    body: JSON.stringify({
-      name,
-      // Todos os eventos chegam no mesmo endpoint — o instanceId no body faz o roteamento
-      receivedCallbackUrl:    `${API_BASE}/webhook/zapi`,
-      connectedCallbackUrl:   `${API_BASE}/webhook/zapi`,
-      disconnectedCallbackUrl:`${API_BASE}/webhook/zapi`,
-    }),
+    body: JSON.stringify({ name }),
   });
 
   if (!res.ok) {
@@ -39,15 +49,40 @@ async function createZapiInstance(name: string): Promise<{ id: string; token: st
 
   const data = await res.json() as { id: string; token: string };
   if (!data.id || !data.token) throw new Error('Z-API retornou instância sem id/token');
+
+  // Configurar webhooks na instância recém criada
+  const webhookUrl = `${API_BASE}/webhook/zapi`;
+  const webhookEndpoints = [
+    '/update-webhook-received',
+    '/update-webhook-connected',
+    '/update-webhook-received-disconnected',
+  ];
+  await Promise.all(webhookEndpoints.map(path =>
+    fetch(zapiUrl(data.id, data.token, path), {
+      method:  'PUT',
+      headers: zapiHeaders(),
+      body:    JSON.stringify({ value: webhookUrl }),
+    }).catch(() => {/* ignora erros de webhook — não bloqueia a criação */})
+  ));
+
   return data;
 }
 
 /** Cancela / remove uma instância Z-API — ignora erros (pode já ter sido deletada) */
-async function deleteZapiInstance(instanceId: string): Promise<void> {
+async function deleteZapiInstance(instanceId: string, instanceToken: string): Promise<void> {
   try {
+    // Primeiro desconectar o WhatsApp da instância
+    await fetch(zapiUrl(instanceId, instanceToken, '/disconnect'), {
+      headers: zapiHeaders(),
+    }).catch(() => {});
+    // Depois cancelar via Partner API
     await fetch(
-      `https://api.z-api.io/instances/${instanceId}/subscriptions/unsubscribe`,
-      { method: 'POST', headers: partnerHeaders() }
+      'https://api.z-api.io/integrator/on-demand/cancel',
+      {
+        method:  'POST',
+        headers: partnerHeaders(),
+        body:    JSON.stringify({ instanceId }),
+      }
     );
   } catch { /* ignora */ }
 }
@@ -179,9 +214,25 @@ export default async function numberRoutes(app: FastifyInstance) {
         instanceToken = process.env.ZAPI_TOKEN;
       }
     } else if (process.env.ZAPI_INSTANCE_ID && process.env.ZAPI_TOKEN) {
-      // Sem Partner Token → usa instância única configurada
+      // Sem Partner Token → usa instância única configurada via env vars
       instanceId    = process.env.ZAPI_INSTANCE_ID;
       instanceToken = process.env.ZAPI_TOKEN;
+
+      // Configurar webhooks na instância de env (só na primeira vez por número)
+      const webhookUrl = `${API_BASE}/webhook/zapi`;
+      const webhookEndpoints = [
+        '/update-webhook-received',
+        '/update-webhook-connected',
+        '/update-webhook-received-disconnected',
+      ];
+      await Promise.all(webhookEndpoints.map(path =>
+        fetch(zapiUrl(instanceId, instanceToken, path), {
+          method:  'PUT',
+          headers: zapiHeaders(),
+          body:    JSON.stringify({ value: webhookUrl }),
+        }).catch(err => app.log.warn(`[Z-API] Webhook ${path} não configurado: ${err.message}`))
+      ));
+      app.log.info(`[Z-API] Webhooks configurados para instância ${instanceId}`);
     } else {
       return reply.code(503).send({
         error: 'Z-API não configurada. Adicione ZAPI_INSTANCE_ID e ZAPI_TOKEN no servidor.',
@@ -215,10 +266,14 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
 
     try {
-      const res = await fetch(zapiUrl(number.zapiInstanceId, number.zapiToken, '/qr-code/image'));
+      const res = await fetch(
+        zapiUrl(number.zapiInstanceId, number.zapiToken, '/qr-code/image'),
+        { headers: zapiHeaders() }
+      );
 
       if (!res.ok) {
-        // 4xx = já conectado (Z-API não retorna QR quando conectado)
+        // 4xx = já conectado ou QR ainda não disponível
+        app.log.warn(`[Z-API] QR code retornou ${res.status} para instância ${number.zapiInstanceId}`);
         return reply.code(204).send();
       }
 
@@ -254,14 +309,11 @@ export default async function numberRoutes(app: FastifyInstance) {
       const fullPhone  = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 
       try {
-        // Z-API: POST /phone-code com body { phone }
+        // Z-API: GET /phone-code/{PHONE_NUMBER} (path param, não body)
+        // Documentação: https://z-api-docs.vercel.app/en/instance/qrcode
         const res = await fetch(
-          zapiUrl(number.zapiInstanceId, number.zapiToken, '/phone-code'),
-          {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ phone: fullPhone }),
-          }
+          zapiUrl(number.zapiInstanceId, number.zapiToken, `/phone-code/${fullPhone}`),
+          { headers: zapiHeaders() }
         );
 
         const rawText = await res.text();
@@ -271,31 +323,31 @@ export default async function numberRoutes(app: FastifyInstance) {
         app.log.info(`[Z-API] phone-code response (${res.status}): ${rawText.substring(0, 200)}`);
 
         if (!res.ok) {
-          // 404 ou "Unable to find matching target resource" = instância Web (não suporta phone-code)
-          const isWebInstance =
+          // 404 = endpoint não existe nesta instância (instância tipo Web não suporta phone-code)
+          const isUnsupported =
             res.status === 404 ||
             rawText.includes('NOT_FOUND') ||
             rawText.includes('Unable to find matching target resource') ||
-            rawText.includes('not found');
-          const errMsg = isWebInstance
-            ? 'NOT_FOUND: instância Web não suporta código por telefone. Use QR Code.'
+            rawText.toLowerCase().includes('not found');
+          const errMsg = isUnsupported
+            ? 'NOT_FOUND: instância Web não suporta código por telefone. Use o QR Code.'
             : (data?.error || data?.message || `Z-API retornou ${res.status}: ${rawText.substring(0, 100)}`);
           return reply.code(502).send({ error: errMsg });
         }
 
         // Z-API retorna { "value": "A1B2C3D4" }
-        const code = data?.value ?? data?.code ?? data?.pairingCode;
+        const code = data?.value ?? data?.code ?? data?.pairingCode ?? data?.phoneCode;
         if (!code) {
           return reply.code(502).send({
             error: `Z-API não retornou código. Resposta: ${rawText.substring(0, 100)}`,
           });
         }
 
-        app.log.info(`[Z-API] Pairing code gerado para número ${id}`);
+        app.log.info(`[Z-API] Phone code gerado para número ${id}: ${code}`);
         return { code };
 
       } catch (err: any) {
-        app.log.error({ err: err.message }, '[Z-API] Erro ao solicitar pairing code');
+        app.log.error({ err: err.message }, '[Z-API] Erro ao solicitar phone code');
         return reply.code(502).send({ error: `Erro ao solicitar código: ${err.message}` });
       }
     }
@@ -315,7 +367,10 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
 
     try {
-      const res  = await fetch(zapiUrl(number.zapiInstanceId, number.zapiToken, '/status'));
+      const res  = await fetch(
+        zapiUrl(number.zapiInstanceId, number.zapiToken, '/status'),
+        { headers: zapiHeaders() }
+      );
       const data = await res.json() as any;
 
       const connected = data?.connected === true;
@@ -352,9 +407,10 @@ export default async function numberRoutes(app: FastifyInstance) {
 
     if (number.zapiInstanceId && number.zapiToken) {
       try {
+        // Z-API: GET /disconnect (não DELETE — confirmado no Postman oficial)
         await fetch(
           zapiUrl(number.zapiInstanceId, number.zapiToken, '/disconnect'),
-          { method: 'DELETE' }
+          { headers: zapiHeaders() }
         );
       } catch (err: any) {
         app.log.warn({ err: err.message }, '[Z-API] Erro ao desconectar WhatsApp');
@@ -382,7 +438,7 @@ export default async function numberRoutes(app: FastifyInstance) {
 
       // Cancelar instância Z-API (ignora erro se já não existir)
       if (number.zapiInstanceId) {
-        await deleteZapiInstance(number.zapiInstanceId);
+        await deleteZapiInstance(number.zapiInstanceId, number.zapiToken ?? '');
         app.log.info(`[Z-API] Instância ${number.zapiInstanceId} cancelada`);
       }
 

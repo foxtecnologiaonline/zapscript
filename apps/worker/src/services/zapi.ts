@@ -52,10 +52,13 @@ export async function sendMessageViaZapi(
   const base       = zapiBase(instanceId, token);
   const cleanPhone = phone.replace(/\D/g, '');
 
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (process.env.ZAPI_CLIENT_TOKEN) headers['Client-Token'] = process.env.ZAPI_CLIENT_TOKEN;
+
   await axios.post(
     `${base}/send-text`,
     { phone: cleanPhone, message },
-    { headers: { 'Content-Type': 'application/json' }, timeout: 15_000 }
+    { headers, timeout: 15_000 }
   );
 
   logger.info(`[Z-API] Mensagem enviada para ${cleanPhone} (instância ${instanceId ?? 'global'})`);
