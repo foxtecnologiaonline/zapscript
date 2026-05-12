@@ -3,16 +3,20 @@ import { logger } from '../lib/logger';
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25MB
 
-function zapiBase(): string {
-  const instanceId = process.env.ZAPI_INSTANCE_ID;
-  const token      = process.env.ZAPI_TOKEN;
-  if (!instanceId || !token) throw new Error('ZAPI_INSTANCE_ID ou ZAPI_TOKEN não configurados');
-  return `https://api.z-api.io/instances/${instanceId}/token/${token}`;
+/**
+ * Retorna a base URL da instância Z-API.
+ * Prioridade: credenciais passadas explicitamente → env vars globais.
+ */
+function zapiBase(instanceId?: string, token?: string): string {
+  const id  = instanceId || process.env.ZAPI_INSTANCE_ID;
+  const tok = token      || process.env.ZAPI_TOKEN;
+  if (!id || !tok) throw new Error('Credenciais Z-API não configuradas (ZAPI_INSTANCE_ID / ZAPI_TOKEN)');
+  return `https://api.z-api.io/instances/${id}/token/${tok}`;
 }
 
 /**
  * Baixar áudio recebido via Z-API.
- * A URL vem no payload do webhook (audioUrl) — é uma URL temporária do CDN.
+ * A URL vem no payload do webhook (audioUrl) — URL temporária do CDN Z-API.
  */
 export async function downloadAudioFromZapi(audioUrl: string): Promise<Buffer> {
   logger.info(`[Z-API] Baixando áudio: ${audioUrl}`);
@@ -35,21 +39,24 @@ export async function downloadAudioFromZapi(audioUrl: string): Promise<Buffer> {
 }
 
 /**
- * Enviar mensagem de texto para uma conversa via Z-API.
- * phone: número do destinatário no formato internacional sem + (ex: 5534999990000)
+ * Enviar mensagem de texto via Z-API.
+ * Usa as credenciais do número que recebeu o áudio (multi-tenant).
+ * Fallback para env vars globais se não fornecidas.
  */
-export async function sendMessageViaZapi(phone: string, message: string): Promise<void> {
-  const base        = zapiBase();
-  const cleanPhone  = phone.replace(/\D/g, '');
+export async function sendMessageViaZapi(
+  phone:      string,
+  instanceId: string | undefined,
+  token:      string | undefined,
+  message:    string,
+): Promise<void> {
+  const base       = zapiBase(instanceId, token);
+  const cleanPhone = phone.replace(/\D/g, '');
 
   await axios.post(
     `${base}/send-text`,
     { phone: cleanPhone, message },
-    {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 15_000,
-    }
+    { headers: { 'Content-Type': 'application/json' }, timeout: 15_000 }
   );
 
-  logger.info(`[Z-API] Mensagem enviada para ${cleanPhone}`);
+  logger.info(`[Z-API] Mensagem enviada para ${cleanPhone} (instância ${instanceId ?? 'global'})`);
 }

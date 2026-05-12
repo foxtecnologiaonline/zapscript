@@ -81,15 +81,16 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
   return { text, durationSec };
 }
 
-/** Gera bullets com Claude — com fallback se falhar */
+/** Gera bullets com Claude Haiku (rápido e econômico para tarefas simples) */
 async function generateBullets(originalText: string): Promise<string[]> {
   try {
     const res = await claude.messages.create({
-      model:      'claude-sonnet-4-5',
-      max_tokens: 500,
+      model:      'claude-haiku-4-5',   // Haiku: 10x mais barato que Sonnet para esta tarefa
+      max_tokens: 400,
+      system:     'Você é um assistente que resume áudios transcritos em bullets concisos em português brasileiro. Responda SOMENTE com os bullets, um por linha, começando com "- ". Sem título, sem texto extra.',
       messages: [{
         role:    'user',
-        content: `Gere um resumo em até 5 bullets CONCISOS em português brasileiro para o áudio transcrito abaixo.\nResponda SOMENTE com os bullets, um por linha, começando com "- ".\nSem título, sem texto extra, sem introdução.\n\nÁudio transcrito:\n${originalText}`,
+        content: `Resuma em até 5 bullets:\n\n${originalText}`,
       }],
     });
     const raw     = (res.content[0] as any).text || '';
@@ -102,7 +103,6 @@ async function generateBullets(originalText: string): Promise<string[]> {
     return bullets.length > 0 ? bullets : ['Resumo não disponível'];
   } catch (err: any) {
     logger.warn(`[Worker] Claude falhou ao gerar bullets — usando fallback: ${(err as Error).message}`);
-    // Fallback: extrair primeiras frases do texto transcrito
     const sentences = originalText.split(/[.!?]\s+/).filter(s => s.trim().length > 10).slice(0, 3);
     return sentences.length > 0
       ? sentences.map(s => s.trim())
@@ -116,10 +116,10 @@ async function generateBullets(originalText: string): Promise<string[]> {
  * se houver saldo suficiente (previne race condition).
  */
 async function saveTranscription(params: {
-  userId: string; numberId: string; contactPhone: string;
+  userId: string; numberId: string; contactPhone: string; contactName?: string;
   durationSec: number; originalText: string; bullets: string[]; source: string;
 }) {
-  const { userId, numberId, contactPhone, durationSec, originalText, bullets, source } = params;
+  const { userId, numberId, contactPhone, contactName, durationSec, originalText, bullets, source } = params;
   const durationMin = durationSec / 60;
 
   return prisma.$transaction(async (tx) => {
@@ -135,7 +135,7 @@ async function saveTranscription(params: {
 
     const [transcription] = await Promise.all([
       tx.transcription.create({
-        data: { userId, numberId, contactPhone, durationSec, originalText, summaryBullets: bullets, confidenceScore: 99.0, source },
+        data: { userId, numberId, contactPhone, contactName: contactName ?? null, durationSec, originalText, summaryBullets: bullets, confidenceScore: 99.0, source },
       }),
       tx.whatsappNumber.update({
         where: { id: numberId },
@@ -283,8 +283,9 @@ async function processOfficialWhatsAppJob(job: Job) {
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId,
-      numberId: firstNumber.id,
+      numberId:     firstNumber.id,
       contactPhone: senderPhone,
+      contactName:  senderName,
       durationSec,
       originalText,
       bullets,
@@ -369,6 +370,7 @@ async function processTwilioJob(job: Job) {
       userId,
       numberId:     firstNumber.id,
       contactPhone: senderPhone,
+      contactName:  senderName,
       durationSec,
       originalText,
       bullets,
@@ -393,29 +395,33 @@ async function processTwilioJob(job: Job) {
 //  PIPELINE E — WhatsApp via Z-API (dispositivo adicional)
 // ─────────────────────────────────────────────────────────────────
 async function processZapiJob(job: Job) {
-  const { userId, senderPhone, senderName, audioUrl, durationHint } = job.data;
+  const { userId, numberId, senderPhone, senderName, audioUrl, durationHint } = job.data;
 
   log(job, `📥 Z-API: ${senderName} (${senderPhone})`);
 
   let mp3Buffer: Buffer | null = null;
 
   try {
-    // PASSO 1: Verificar saldo
-    const [balance, firstNumber] = await Promise.all([
+    // PASSO 1: Verificar saldo e buscar o número exato que recebeu o áudio
+    const [balance, whatsappNumber] = await Promise.all([
       prisma.minuteBalance.findUnique({ where: { userId } }),
-      prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+      numberId
+        ? prisma.whatsappNumber.findUnique({ where: { id: numberId } })
+        : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
     ]);
 
     if (!balance || balance.availableMinutes < 0.1) {
       log(job, '⚠️  Saldo insuficiente — notificando via Z-API');
       await sendMessageViaZapi(
         senderPhone,
+        whatsappNumber?.zapiInstanceId ?? undefined,
+        whatsappNumber?.zapiToken ?? undefined,
         '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.'
       ).catch(() => null);
       return { skipped: true, reason: 'insufficient_balance' };
     }
-    if (!firstNumber) {
-      log(job, '⚠️  Usuário sem número cadastrado');
+    if (!whatsappNumber) {
+      log(job, '⚠️  Número não encontrado no banco');
       return { skipped: true, reason: 'no_number' };
     }
     log(job, `✅ Saldo OK: ${balance.availableMinutes.toFixed(1)} min`);
@@ -436,24 +442,30 @@ async function processZapiJob(job: Job) {
     const durationSec = whisperDuration > 0 ? whisperDuration : Math.max(1, durationHint || 1);
     log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
 
-    // PASSO 5: Resumo com Claude
-    log(job, '🤖 Claude resumo...');
+    // PASSO 5: Resumo com Claude Haiku
+    log(job, '🤖 Claude Haiku resumo...');
     const bullets = await generateBullets(originalText);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
-    // PASSO 6: Enviar resposta de volta na mesma conversa via Z-API
+    // PASSO 6: Enviar resposta usando credenciais do número que recebeu o áudio
     log(job, '📤 Enviando resposta via Z-API...');
     const user    = await prisma.user.findUnique({ where: { id: userId } });
     const message = buildMessage(bullets, originalText, user?.refCode || '');
-    await sendMessageViaZapi(senderPhone, message);
+    await sendMessageViaZapi(
+      senderPhone,
+      whatsappNumber.zapiInstanceId ?? undefined,
+      whatsappNumber.zapiToken ?? undefined,
+      message
+    );
     log(job, '✅ Mensagem enviada na conversa');
 
     // PASSO 7: Salvar transcrição e debitar minutos
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId,
-      numberId:     firstNumber.id,
+      numberId:     whatsappNumber.id,
       contactPhone: senderPhone,
+      contactName:  senderName,
       durationSec,
       originalText,
       bullets,
@@ -465,9 +477,6 @@ async function processZapiJob(job: Job) {
 
   } catch (err) {
     log(job, `❌ Erro Z-API: ${(err as Error).message}`);
-    try {
-      await sendMessageViaZapi(senderPhone, '❌ Erro ao processar seu áudio. Tente novamente em instantes.');
-    } catch {}
     throw err;
   } finally {
     mp3Buffer?.fill(0);

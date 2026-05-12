@@ -35,35 +35,19 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
   async function processZapiEvent(body: any) {
     if (!body) return;
 
-    const type      = body.type;
-    const fromMe    = body.fromMe;
-    const phone     = body.phone;       // remetente (quem enviou o áudio)
-    const senderName = body.senderName || body.chatName || phone;
+    const type       = body.type;
     const instanceId = body.instanceId || process.env.ZAPI_INSTANCE_ID;
-    const messageId  = body.messageId  || `zapi_${Date.now()}`;
 
-    // Ignorar eventos que não são mensagens recebidas
-    if (type !== 'ReceivedCallback') return;
+    app.log.info(`[Z-API] Evento: ${type} (instância ${instanceId})`);
 
-    // Ignorar mensagens enviadas pelo próprio número (fromMe = true)
-    if (fromMe) return;
-
-    // Ignorar mensagens sem remetente
-    if (!phone) return;
-
-    const cleanPhone = phone.replace(/\D/g, '');
-
-    app.log.info(`[Z-API] ${type} de ${senderName} (${cleanPhone})`);
-
-    // ── ConnectedCallback — WhatsApp conectado via QR ─────────────
+    // ── ConnectedCallback — WhatsApp conectado via QR ou código ───
     if (type === 'ConnectedCallback') {
       const connectedPhone = body.phone?.replace(/\D/g, '') || '';
-      app.log.info(`[Z-API] ✅ Dispositivo conectado: ${connectedPhone} (instância ${instanceId})`);
+      app.log.info(`[Z-API] ✅ Dispositivo conectado: ${connectedPhone}`);
 
       const number = await prisma.whatsappNumber.findFirst({
         where: { zapiInstanceId: instanceId },
       });
-
       if (number) {
         await prisma.whatsappNumber.update({
           where: { id: number.id },
@@ -74,6 +58,8 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
           },
         });
         app.log.info(`[Z-API] Número ${number.id} marcado como conectado`);
+      } else {
+        app.log.warn(`[Z-API] ConnectedCallback: instância ${instanceId} não encontrada no banco`);
       }
       return;
     }
@@ -81,7 +67,6 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
     // ── DisconnectedCallback — WhatsApp desconectado ───────────────
     if (type === 'DisconnectedCallback') {
       app.log.info(`[Z-API] ⚠️ Dispositivo desconectado (instância ${instanceId})`);
-
       await prisma.whatsappNumber.updateMany({
         where: { zapiInstanceId: instanceId },
         data:  { status: 'disconnected' },
@@ -89,26 +74,38 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
       return;
     }
 
-    // ── Encontrar usuário pelo instanceId da Z-API ─────────────────
+    // ── Somente ReceivedCallback a partir daqui ───────────────────
+    if (type !== 'ReceivedCallback') return;
+
+    const fromMe     = body.fromMe;
+    const phone      = body.phone;
+    const senderName = body.senderName || body.chatName || phone;
+    const messageId  = body.messageId || `zapi_${Date.now()}`;
+
+    // Ignorar mensagens enviadas pelo próprio número ou sem remetente
+    if (fromMe || !phone) return;
+
+    const cleanPhone = phone.replace(/\D/g, '');
+    app.log.info(`[Z-API] ReceivedCallback de ${senderName} (${cleanPhone})`);
+
+    // ── Encontrar número pelo instanceId ─────────────────────────
     let whatsappNumber = await prisma.whatsappNumber.findFirst({
       where:   { zapiInstanceId: instanceId },
       include: { user: true },
     }).catch(() => null);
 
-    // Fallback para ZAPI_DEFAULT_USER_ID (sandbox / instância única sem vínculo)
+    // Fallback: ZAPI_DEFAULT_USER_ID para instância sem vínculo explícito
     if (!whatsappNumber && process.env.ZAPI_DEFAULT_USER_ID) {
       whatsappNumber = await prisma.whatsappNumber.findFirst({
         where:   { userId: process.env.ZAPI_DEFAULT_USER_ID },
         include: { user: true },
-      });
+      }).catch(() => null);
     }
 
     if (!whatsappNumber) {
-      app.log.warn(`[Z-API] Instância ${instanceId} não mapeada para nenhum usuário.`);
+      app.log.warn(`[Z-API] Instância ${instanceId} não mapeada para nenhum usuário`);
       return;
     }
-
-    const userId = whatsappNumber.userId;
 
     // ── Áudio (mensagem de voz / PTT) ─────────────────────────────
     if (body.audio?.audioUrl) {
@@ -120,7 +117,8 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
       await transcriptionQueue.add(
         'transcribe-zapi',
         {
-          userId,
+          userId:       whatsappNumber.userId,
+          numberId:     whatsappNumber.id,          // número exato que recebeu o áudio
           senderPhone:  cleanPhone,
           senderName,
           audioUrl,
@@ -137,7 +135,7 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
       return;
     }
 
-    // ── Texto ─────────────────────────────────────────────────────
+    // ── Texto (ignorado por ora) ──────────────────────────────────
     if (body.text?.message) {
       app.log.info(`[Z-API] 💬 Texto de ${senderName}: "${body.text.message.substring(0, 60)}"`);
     }
