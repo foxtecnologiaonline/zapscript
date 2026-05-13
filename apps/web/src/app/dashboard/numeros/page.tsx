@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 
