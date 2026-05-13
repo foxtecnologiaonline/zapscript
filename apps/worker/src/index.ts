@@ -408,7 +408,7 @@ async function processZapiJob(job: Job) {
       prisma.minuteBalance.upsert({
         where:  { userId },
         update: {},
-        create: { userId, availableMinutes: 0, totalMinutesUsed: 0, resetAt: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
+        create: { userId, availableMinutes: 0, accumulatedMinutes: 0, resetAt: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
       }),
       numberId
         ? prisma.whatsappNumber.findUnique({ where: { id: numberId } })
