@@ -7,7 +7,7 @@ import { prisma } from './lib/prisma';
 import { convertToMp3 } from './services/audio';
 import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
 import { downloadAudioFromTwilio, sendMessageViaTwilio } from './services/twilio';
-import { downloadAudioFromZapi, sendMessageViaZapi } from './services/zapi';
+import { downloadAudioFromZapi, sendMessageViaZapi, markChatAsUnread } from './services/zapi';
 import { logger } from './lib/logger';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
@@ -473,6 +473,13 @@ async function processZapiJob(job: Job) {
       message
     );
     log(job, '✅ Mensagem enviada na conversa');
+
+    // PASSO 6.5: Marcar conversa como não lida (preserva notificação no WhatsApp)
+    await markChatAsUnread(
+      senderPhone,
+      whatsappNumber.zapiInstanceId ?? undefined,
+      whatsappNumber.zapiToken ?? undefined,
+    );
 
     // PASSO 7: Salvar transcrição e debitar minutos
     log(job, '💾 Salvando...');

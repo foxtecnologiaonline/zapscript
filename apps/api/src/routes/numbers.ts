@@ -229,6 +229,7 @@ export default async function numberRoutes(app: FastifyInstance) {
     // ── Configurar webhooks SEMPRE (garante que Z-API sabe para onde enviar áudios) ─
     const webhookUrl = `${API_BASE}/webhook/zapi`;
     const webhookResults = await Promise.allSettled([
+      // Webhooks de eventos
       fetch(zapiUrl(instanceId, instanceToken, '/update-webhook-received'), {
         method: 'PUT', headers: zapiHeaders(), body: JSON.stringify({ value: webhookUrl }),
       }),
@@ -238,9 +239,13 @@ export default async function numberRoutes(app: FastifyInstance) {
       fetch(zapiUrl(instanceId, instanceToken, '/update-webhook-received-disconnected'), {
         method: 'PUT', headers: zapiHeaders(), body: JSON.stringify({ value: webhookUrl }),
       }),
+      // Desabilitar leitura automática — evita marcar mensagens como "visto" ao receber
+      fetch(zapiUrl(instanceId, instanceToken, '/update-auto-read-message'), {
+        method: 'PUT', headers: zapiHeaders(), body: JSON.stringify({ value: false }),
+      }),
     ]);
     const webhookOk = webhookResults.filter(r => r.status === 'fulfilled').length;
-    app.log.info(`[Z-API] Webhooks configurados: ${webhookOk}/3 → ${webhookUrl}`);
+    app.log.info(`[Z-API] Configuração concluída: ${webhookOk}/4 (webhooks + auto-read desabilitado)`);
 
     // ── Vincular instância ao número e marcar como conectando ─────────────
     await prisma.whatsappNumber.update({

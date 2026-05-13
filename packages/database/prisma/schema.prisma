@@ -82,7 +82,7 @@ model WhatsappNumber {
   lastMessageAt    DateTime?
   messageCount     Int              @default(0)
   minutesUsed      Float            @default(0)
-  zapiInstanceId   String?          @unique
+  zapiInstanceId   String?          // sem @unique — múltiplos usuários podem compartilhar a mesma instância Z-API
   zapiToken        String?          // Token da instância Z-API criada dinamicamente
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt

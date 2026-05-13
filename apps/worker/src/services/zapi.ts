@@ -38,6 +38,12 @@ export async function downloadAudioFromZapi(audioUrl: string): Promise<Buffer> {
   return buffer;
 }
 
+function zapiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (process.env.ZAPI_CLIENT_TOKEN) headers['Client-Token'] = process.env.ZAPI_CLIENT_TOKEN;
+  return headers;
+}
+
 /**
  * Enviar mensagem de texto via Z-API.
  * Usa as credenciais do número que recebeu o áudio (multi-tenant).
@@ -52,14 +58,38 @@ export async function sendMessageViaZapi(
   const base       = zapiBase(instanceId, token);
   const cleanPhone = phone.replace(/\D/g, '');
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (process.env.ZAPI_CLIENT_TOKEN) headers['Client-Token'] = process.env.ZAPI_CLIENT_TOKEN;
-
   await axios.post(
     `${base}/send-text`,
     { phone: cleanPhone, message },
-    { headers, timeout: 15_000 }
+    { headers: zapiHeaders(), timeout: 15_000 }
   );
 
   logger.info(`[Z-API] Mensagem enviada para ${cleanPhone} (instância ${instanceId ?? 'global'})`);
+}
+
+/**
+ * Marcar conversa como não lida via Z-API.
+ * Chamado após enviar a transcrição para preservar a notificação no WhatsApp do remetente.
+ * Ignora erros — operação não-crítica.
+ */
+export async function markChatAsUnread(
+  phone:      string,
+  instanceId: string | undefined,
+  token:      string | undefined,
+): Promise<void> {
+  try {
+    const base       = zapiBase(instanceId, token);
+    const cleanPhone = phone.replace(/\D/g, '');
+
+    await axios.post(
+      `${base}/modify-chat`,
+      { phone: cleanPhone, action: 'unread' },
+      { headers: zapiHeaders(), timeout: 10_000 }
+    );
+
+    logger.info(`[Z-API] Conversa marcada como não lida: ${cleanPhone}`);
+  } catch (err: any) {
+    // Não-crítico — ignora silenciosamente
+    logger.warn(`[Z-API] Não foi possível marcar como não lido: ${err.message}`);
+  }
 }

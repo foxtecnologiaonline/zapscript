@@ -293,8 +293,9 @@ async function runAutoMigrations() {
   // Garante que colunas novas existam mesmo sem rodar prisma migrate manualmente
   const migrations = [
     `ALTER TABLE "WhatsappNumber" ADD COLUMN IF NOT EXISTS "zapiInstanceId" TEXT`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS "WhatsappNumber_zapiInstanceId_key" ON "WhatsappNumber"("zapiInstanceId")`,
     `ALTER TABLE "WhatsappNumber" ADD COLUMN IF NOT EXISTS "zapiToken" TEXT`,
+    // Remove unique constraint em zapiInstanceId — múltiplos usuários compartilham a mesma instância Z-API
+    `DROP INDEX IF EXISTS "WhatsappNumber_zapiInstanceId_key"`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
