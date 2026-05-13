@@ -31,6 +31,26 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
     );
   });
 
+  // ── Extensões e MIME types de áudio aceitos ──────────────────────
+  const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.ogg', '.opus', '.wav', '.aac', '.flac', '.wma', '.amr'];
+  const AUDIO_MIME_PREFIX = 'audio/';
+
+  function isAudioDocument(doc: any): boolean {
+    if (!doc) return false;
+    // Verificar pelo MIME type
+    if (typeof doc.mimeType === 'string' && doc.mimeType.startsWith(AUDIO_MIME_PREFIX)) return true;
+    // Verificar pela extensão do arquivo (cobre casos com mimeType genérico)
+    if (typeof doc.fileName === 'string') {
+      const lower = doc.fileName.toLowerCase();
+      if (AUDIO_EXTENSIONS.some(ext => lower.endsWith(ext))) return true;
+    }
+    if (typeof doc.title === 'string') {
+      const lower = doc.title.toLowerCase();
+      if (AUDIO_EXTENSIONS.some(ext => lower.endsWith(ext))) return true;
+    }
+    return false;
+  }
+
   // ── Processamento assíncrono ─────────────────────────────────────
   async function processZapiEvent(body: any) {
     if (!body) { app.log.warn('[Z-API] Webhook com body vazio'); return; }
@@ -130,13 +150,9 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
       audioUrl     = body.audio.audioUrl;
       durationHint = body.audio.seconds || 0;
       audioKind    = body.forwarded ? 'voz encaminhada' : 'voz gravada';
-    } else if (
-      body.document?.documentUrl &&
-      typeof body.document.mimeType === 'string' &&
-      body.document.mimeType.startsWith('audio/')
-    ) {
+    } else if (body.document?.documentUrl && isAudioDocument(body.document)) {
       audioUrl  = body.document.documentUrl;
-      audioKind = `arquivo encaminhado (${body.document.mimeType})`;
+      audioKind = `arquivo encaminhado (${body.document.mimeType ?? body.document.fileName})`;
     }
 
     if (audioUrl) {
