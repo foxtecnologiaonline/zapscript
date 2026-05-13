@@ -185,10 +185,18 @@ export default async function numberRoutes(app: FastifyInstance) {
     let instanceToken: string;
 
     if (number.zapiInstanceId && number.zapiToken) {
-      // Já tem instância vinculada → reusar, mas reconfigurar webhooks
-      instanceId    = number.zapiInstanceId;
-      instanceToken = number.zapiToken;
-      app.log.info(`[Z-API] Reusando instância existente: ${instanceId}`);
+      // Já tem instância vinculada — mas se env var mudou, migra para nova instância
+      const envInstanceId = process.env.ZAPI_INSTANCE_ID;
+      const envToken      = process.env.ZAPI_TOKEN;
+      if (envInstanceId && envToken && envInstanceId !== number.zapiInstanceId) {
+        app.log.info(`[Z-API] Instância mudou em env vars: ${number.zapiInstanceId} → ${envInstanceId}, migrando`);
+        instanceId    = envInstanceId;
+        instanceToken = envToken;
+      } else {
+        instanceId    = number.zapiInstanceId;
+        instanceToken = number.zapiToken;
+        app.log.info(`[Z-API] Reusando instância existente: ${instanceId}`);
+      }
     } else if (process.env.ZAPI_PARTNER_TOKEN) {
       try {
         // Tenta criar instância dedicada via Partner API
