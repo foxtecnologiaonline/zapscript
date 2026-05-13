@@ -90,7 +90,7 @@ async function generateBullets(originalText: string): Promise<string[]> {
       system:     'Você é um assistente que resume áudios transcritos em bullets concisos em português brasileiro. Responda SOMENTE com os bullets, um por linha, começando com "- ". Sem título, sem texto extra.',
       messages: [{
         role:    'user',
-        content: `Resuma em até 5 bullets:\n\n${originalText}`,
+        content: `Resuma nos 3 pontos principais ou chave:\n\n${originalText}`,
       }],
     });
     const raw     = (res.content[0] as any).text || '';
@@ -99,7 +99,8 @@ async function generateBullets(originalText: string): Promise<string[]> {
       .map((l: string) => l.trim())
       .filter((l: string) => l.startsWith('- '))
       .map((l: string) => l.replace(/^-\s*/, '').trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .slice(0, 3);
     return bullets.length > 0 ? bullets : ['Resumo não disponível'];
   } catch (err: any) {
     logger.warn(`[Worker] Claude falhou ao gerar bullets — usando fallback: ${(err as Error).message}`);
