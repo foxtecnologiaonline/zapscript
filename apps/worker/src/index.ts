@@ -147,14 +147,22 @@ async function saveTranscription(params: {
   });
 }
 
-/** Formata mensagem de resposta para o WhatsApp */
+/** Formata mensagem de resposta para o WhatsApp.
+ *
+ * Formatação WhatsApp:
+ *   *texto*   → negrito
+ *   _texto_   → itálico
+ *   ~texto~   → tachado
+ *   `texto`   → monoespaçado
+ *   \n        → nova linha
+ */
 function buildMessage(bullets: string[], originalText: string, refCode: string): string {
-  const bulletLines = bullets.map((b: string) => `- ${b}`).join('\n');
+  const bulletLines = bullets.map((b: string) => `• ${b}`).join('\n');
   return (
-    `*_✨ Transcrição automática do seu áudio:_*\n\n` +
-    `*Resumo:*\n${bulletLines}\n\n` +
-    `*Original:*\n_${originalText}_\n\n` +
-    `⚡ Transcreva seus áudios com o _zapscript.me/?ref=${refCode}_`
+    `✨ *Transcrição do áudio*\n\n` +
+    `📋 *Resumo:*\n${bulletLines}\n\n` +
+    `🎙️ *Texto completo:*\n${originalText}\n\n` +
+    `_Transcrição automática por zapscript.me/?ref=${refCode}_`
   );
 }
 
