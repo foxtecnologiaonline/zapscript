@@ -455,6 +455,25 @@ export default async function numberRoutes(app: FastifyInstance) {
     return { status: 'disconnected' };
   });
 
+  // ── POST /numbers/:id/reset-instance ─────────────────────────────────────
+  // Limpa zapiInstanceId/zapiToken do banco → próximo /connect usa env vars
+  // Usar quando trocar de instância Z-API (ex: Trial → Pago)
+  app.post<{ Params: { id: string } }>('/:id/reset-instance', auth, async (req: any, reply) => {
+    const { id } = req.params;
+    const userId = req.user.sub;
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    await prisma.whatsappNumber.update({
+      where: { id },
+      data:  { zapiInstanceId: null, zapiToken: null, status: 'disconnected' },
+    });
+
+    app.log.info(`[Z-API] Instância resetada para número ${id} — próximo /connect usa env vars`);
+    return { ok: true, message: 'Instância resetada. Clique em "Conectar WhatsApp" para vincular a nova instância.' };
+  });
+
   // ── DELETE /numbers/:id ───────────────────────────────────────────────────
   // Remove o número do banco E cancela a instância Z-API
   app.delete<{ Params: { id: string } }>('/:id', auth, async (req: any, reply) => {
