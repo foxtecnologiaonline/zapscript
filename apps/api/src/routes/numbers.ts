@@ -253,7 +253,9 @@ export default async function numberRoutes(app: FastifyInstance) {
   });
 
   // ── GET /numbers/:id/qr ───────────────────────────────────────────────────
-  // Retorna o QR Code da instância deste número como base64
+  // Retorna o QR Code da instância deste número como data URI base64.
+  // Usa /qr-code (bytes PNG raw) — mais confiável que /qr-code/image que pode
+  // retornar JSON, string ou data URI dependendo da versão da Z-API.
   app.get<{ Params: { id: string } }>('/:id/qr', auth, async (req: any, reply) => {
     const { id } = req.params;
     const userId = req.user.sub;
@@ -267,16 +269,40 @@ export default async function numberRoutes(app: FastifyInstance) {
 
     try {
       const res = await fetch(
-        zapiUrl(number.zapiInstanceId, number.zapiToken, '/qr-code/image'),
+        zapiUrl(number.zapiInstanceId, number.zapiToken, '/qr-code'),
         { headers: zapiHeaders() }
       );
 
+      app.log.info(`[Z-API] QR code status=${res.status} content-type=${res.headers.get('content-type')}`);
+
       if (!res.ok) {
-        // 4xx = já conectado ou QR ainda não disponível
+        // 4xx = já conectado, QR não disponível ou instância aguardando
         app.log.warn(`[Z-API] QR code retornou ${res.status} para instância ${number.zapiInstanceId}`);
         return reply.code(204).send();
       }
 
+      const contentType = res.headers.get('content-type') ?? '';
+
+      // Caso 1: resposta é JSON com campo value/qr/image (alguns planos Z-API)
+      if (contentType.includes('application/json')) {
+        const data = await res.json() as any;
+        const b64  = data?.value ?? data?.qr ?? data?.image ?? data?.base64;
+        if (b64) {
+          const qr = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+          return { qr };
+        }
+        return reply.code(204).send();
+      }
+
+      // Caso 2: resposta é string base64 pura (text/plain)
+      if (contentType.includes('text/')) {
+        const text = (await res.text()).trim();
+        if (text.startsWith('data:')) return { qr: text };
+        if (text.length > 100) return { qr: `data:image/png;base64,${text}` };
+        return reply.code(204).send();
+      }
+
+      // Caso 3 (padrão): bytes PNG binários — converter para base64
       const buf    = await res.arrayBuffer();
       const base64 = Buffer.from(buf).toString('base64');
       return { qr: `data:image/png;base64,${base64}` };
