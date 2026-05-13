@@ -41,7 +41,11 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
     // Log completo para diagnóstico (truncado para não poluir)
     app.log.info({
       type, instanceId, fromMe: body.fromMe, phone: body.phone,
-      hasAudio: !!body.audio?.audioUrl, hasText: !!body.text?.message,
+      hasAudio:    !!body.audio?.audioUrl,
+      hasDocument: !!body.document?.documentUrl,
+      docMime:     body.document?.mimeType ?? null,
+      forwarded:   !!body.forwarded,
+      hasText:     !!body.text?.message,
     }, `[Z-API] Evento recebido`);
 
     // ── ConnectedCallback — WhatsApp conectado via QR ou código ───
@@ -114,18 +118,35 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
 
     app.log.info(`[Z-API] ✅ Número encontrado: ${whatsappNumber.id} (user: ${whatsappNumber.userId})`);
 
-    // ── Áudio (mensagem de voz / PTT) ─────────────────────────────
-    if (body.audio?.audioUrl) {
-      const audioUrl     = body.audio.audioUrl;
-      const durationHint = body.audio.seconds || 0;
+    // ── Resolver URL e duração do áudio (voz, encaminhado ou arquivo) ───────
+    // Caso 1: PTT / voz gravada no momento — body.audio.audioUrl
+    // Caso 2: Áudio encaminhado (PTT) — mesmo campo, body.forwarded = true
+    // Caso 3: Arquivo de áudio encaminhado (mp3, m4a, ogg, wav) — body.document com mimeType audio/*
+    let audioUrl:     string | null = null;
+    let durationHint: number        = 0;
+    let audioKind:    string        = '';
 
-      app.log.info(`[Z-API] 🔊 Áudio de ${senderName} (${durationHint}s) → enfileirando job`);
+    if (body.audio?.audioUrl) {
+      audioUrl     = body.audio.audioUrl;
+      durationHint = body.audio.seconds || 0;
+      audioKind    = body.forwarded ? 'voz encaminhada' : 'voz gravada';
+    } else if (
+      body.document?.documentUrl &&
+      typeof body.document.mimeType === 'string' &&
+      body.document.mimeType.startsWith('audio/')
+    ) {
+      audioUrl  = body.document.documentUrl;
+      audioKind = `arquivo encaminhado (${body.document.mimeType})`;
+    }
+
+    if (audioUrl) {
+      app.log.info(`[Z-API] 🔊 ${audioKind} de ${senderName} (${durationHint}s) → enfileirando job`);
 
       await transcriptionQueue.add(
         'transcribe-zapi',
         {
           userId:       whatsappNumber.userId,
-          numberId:     whatsappNumber.id,          // número exato que recebeu o áudio
+          numberId:     whatsappNumber.id,
           senderPhone:  cleanPhone,
           senderName,
           audioUrl,
