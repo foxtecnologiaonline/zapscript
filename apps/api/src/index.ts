@@ -12,6 +12,7 @@ import helmet from '@fastify/helmet';
 import { Server as SocketServer, Socket } from 'socket.io';
 import { redis } from './services/queue';
 import { prisma } from './lib/prisma';
+import { syncAllZapiConfigs } from './services/zapi-sync';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -309,6 +310,13 @@ async function start() {
   try {
     await runAutoMigrations();
     await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' });
+
+    // ── Sync automático Z-API — aplica webhooks/auto-read em todos números conectados ──
+    // Roda em background para não atrasar o startup. Detecta mudanças de instância
+    // (ex: Trial → Pago) sem precisar que usuários reconectem.
+    syncAllZapiConfigs(app.log).catch(err =>
+      app.log.error({ err: err.message }, '[Z-API Sync] Erro no sync de startup')
+    );
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 
     // ✅ Usando WhatsApp Cloud API (Meta) em vez de Baileys

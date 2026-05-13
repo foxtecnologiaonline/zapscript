@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { retryWithBackoff } from '../lib/db-retry';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { syncAllZapiConfigs } from '../services/zapi-sync';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -469,6 +470,18 @@ export default async function adminRoutes(app: FastifyInstance) {
         orderBy: { createdAt: 'desc' },
         take: limit,
       });
+    }
+  );
+
+  // POST /admin/sync-zapi — re-aplica webhooks e configurações Z-API em todos os números conectados.
+  // Útil quando: instância foi migrada, URL mudou, auto-read travou, etc.
+  // Não requer que usuários reconectem o WhatsApp.
+  app.post(
+    '/sync-zapi',
+    { preHandler: [adminAuth] },
+    async (_req, reply) => {
+      const result = await syncAllZapiConfigs(app.log);
+      return reply.send({ ok: true, ...result });
     }
   );
 }
