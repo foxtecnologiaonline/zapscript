@@ -160,10 +160,10 @@ function buildMessage(bullets: string[], originalText: string, _refCode: string)
   const bulletLines = bullets.map((b: string) => `- ${b}`).join('\n');
   return (
     `✨ Transcrição do seu áudio ✨\n\n` +
-    `🎯 *Destaques*\n${bulletLines}\n\n` +
-    `📄 *Transcrição completa*\n${originalText}\n\n` +
+    `🎯 Destaques\n${bulletLines}\n\n` +
+    `📄 Transcrição completa\n${originalText}\n\n` +
     `---\n` +
-    `⚡ Isso é apenas o começo. Pronto em segundos!\n` +
+    `⚡ Pronto em segundos!\n` +
     `👉 https://ZapScript.me — Ative agora`
   );
 }
