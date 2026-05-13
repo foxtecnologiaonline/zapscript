@@ -180,20 +180,16 @@ export default async function numberRoutes(app: FastifyInstance) {
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    // ── Já tem instância vinculada → só atualizar status ─────────────────
-    if (number.zapiInstanceId && number.zapiToken) {
-      await prisma.whatsappNumber.update({
-        where: { id },
-        data:  { status: 'connecting' },
-      });
-      return { ok: true, message: 'Reconectando à instância existente.' };
-    }
-
     // ── Resolver qual instância usar ──────────────────────────────────────
     let instanceId: string;
     let instanceToken: string;
 
-    if (process.env.ZAPI_PARTNER_TOKEN) {
+    if (number.zapiInstanceId && number.zapiToken) {
+      // Já tem instância vinculada → reusar, mas reconfigurar webhooks
+      instanceId    = number.zapiInstanceId;
+      instanceToken = number.zapiToken;
+      app.log.info(`[Z-API] Reusando instância existente: ${instanceId}`);
+    } else if (process.env.ZAPI_PARTNER_TOKEN) {
       try {
         // Tenta criar instância dedicada via Partner API
         const instance = await createZapiInstance(
@@ -203,41 +199,40 @@ export default async function numberRoutes(app: FastifyInstance) {
         instanceToken = instance.token;
         app.log.info(`[Z-API] Nova instância criada: ${instanceId} para número ${id}`);
       } catch (err: any) {
-        // Conta "Cliente" não tem acesso à Partner API (405) — usar instância única de env
+        // Conta "Cliente" não tem acesso à Partner API — usar instância única de env
         app.log.warn(`[Z-API] Partner API indisponível (${err.message}), usando instância de env vars`);
         if (!process.env.ZAPI_INSTANCE_ID || !process.env.ZAPI_TOKEN) {
           return reply.code(503).send({
-            error: 'Configure ZAPI_INSTANCE_ID e ZAPI_TOKEN no servidor (conta Z-API não suporta criação automática de instâncias).',
+            error: 'Configure ZAPI_INSTANCE_ID e ZAPI_TOKEN no servidor.',
           });
         }
         instanceId    = process.env.ZAPI_INSTANCE_ID;
         instanceToken = process.env.ZAPI_TOKEN;
       }
     } else if (process.env.ZAPI_INSTANCE_ID && process.env.ZAPI_TOKEN) {
-      // Sem Partner Token → usa instância única configurada via env vars
       instanceId    = process.env.ZAPI_INSTANCE_ID;
       instanceToken = process.env.ZAPI_TOKEN;
-
-      // Configurar webhooks na instância de env (só na primeira vez por número)
-      const webhookUrl = `${API_BASE}/webhook/zapi`;
-      const webhookEndpoints = [
-        '/update-webhook-received',
-        '/update-webhook-connected',
-        '/update-webhook-received-disconnected',
-      ];
-      await Promise.all(webhookEndpoints.map(path =>
-        fetch(zapiUrl(instanceId, instanceToken, path), {
-          method:  'PUT',
-          headers: zapiHeaders(),
-          body:    JSON.stringify({ value: webhookUrl }),
-        }).catch(err => app.log.warn(`[Z-API] Webhook ${path} não configurado: ${err.message}`))
-      ));
-      app.log.info(`[Z-API] Webhooks configurados para instância ${instanceId}`);
     } else {
       return reply.code(503).send({
         error: 'Z-API não configurada. Adicione ZAPI_INSTANCE_ID e ZAPI_TOKEN no servidor.',
       });
     }
+
+    // ── Configurar webhooks SEMPRE (garante que Z-API sabe para onde enviar áudios) ─
+    const webhookUrl = `${API_BASE}/webhook/zapi`;
+    const webhookResults = await Promise.allSettled([
+      fetch(zapiUrl(instanceId, instanceToken, '/update-webhook-received'), {
+        method: 'PUT', headers: zapiHeaders(), body: JSON.stringify({ value: webhookUrl }),
+      }),
+      fetch(zapiUrl(instanceId, instanceToken, '/update-webhook-connected'), {
+        method: 'PUT', headers: zapiHeaders(), body: JSON.stringify({ value: webhookUrl }),
+      }),
+      fetch(zapiUrl(instanceId, instanceToken, '/update-webhook-received-disconnected'), {
+        method: 'PUT', headers: zapiHeaders(), body: JSON.stringify({ value: webhookUrl }),
+      }),
+    ]);
+    const webhookOk = webhookResults.filter(r => r.status === 'fulfilled').length;
+    app.log.info(`[Z-API] Webhooks configurados: ${webhookOk}/3 → ${webhookUrl}`);
 
     // ── Vincular instância ao número e marcar como conectando ─────────────
     await prisma.whatsappNumber.update({

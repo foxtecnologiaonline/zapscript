@@ -404,14 +404,19 @@ async function processZapiJob(job: Job) {
   try {
     // PASSO 1: Verificar saldo e buscar o número exato que recebeu o áudio
     const [balance, whatsappNumber] = await Promise.all([
-      prisma.minuteBalance.findUnique({ where: { userId } }),
+      // upsert garante que registro existe (evita skipped silencioso em novas contas)
+      prisma.minuteBalance.upsert({
+        where:  { userId },
+        update: {},
+        create: { userId, availableMinutes: 0, totalMinutesUsed: 0, resetAt: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
+      }),
       numberId
         ? prisma.whatsappNumber.findUnique({ where: { id: numberId } })
         : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
     ]);
 
-    if (!balance || balance.availableMinutes < 0.1) {
-      log(job, '⚠️  Saldo insuficiente — notificando via Z-API');
+    if (balance.availableMinutes < 0.1) {
+      log(job, `⚠️  Saldo insuficiente: ${balance.availableMinutes.toFixed(2)} min — notificando via Z-API`);
       await sendMessageViaZapi(
         senderPhone,
         whatsappNumber?.zapiInstanceId ?? undefined,
@@ -504,8 +509,10 @@ const worker = new Worker('transcriptions', routeJob, {
 });
 
 worker.on('completed', (job, result) => {
-  if (!result?.skipped) {
-    logger.info(`Job ${job.id} concluído`);
+  if (result?.skipped) {
+    logger.warn(`Job ${job.id} [${job.name}] ignorado — motivo: ${result.reason}`);
+  } else {
+    logger.info(`Job ${job.id} [${job.name}] concluído`);
   }
 });
 

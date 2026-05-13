@@ -33,12 +33,16 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
 
   // ── Processamento assíncrono ─────────────────────────────────────
   async function processZapiEvent(body: any) {
-    if (!body) return;
+    if (!body) { app.log.warn('[Z-API] Webhook com body vazio'); return; }
 
     const type       = body.type;
     const instanceId = body.instanceId || process.env.ZAPI_INSTANCE_ID;
 
-    app.log.info(`[Z-API] Evento: ${type} (instância ${instanceId})`);
+    // Log completo para diagnóstico (truncado para não poluir)
+    app.log.info({
+      type, instanceId, fromMe: body.fromMe, phone: body.phone,
+      hasAudio: !!body.audio?.audioUrl, hasText: !!body.text?.message,
+    }, `[Z-API] Evento recebido`);
 
     // ── ConnectedCallback — WhatsApp conectado via QR ou código ───
     if (type === 'ConnectedCallback') {
@@ -103,16 +107,19 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
     }
 
     if (!whatsappNumber) {
-      app.log.warn(`[Z-API] Instância ${instanceId} não mapeada para nenhum usuário`);
+      app.log.warn(`[Z-API] ❌ Instância ${instanceId} não mapeada para nenhum usuário. ` +
+        `Configure ZAPI_DEFAULT_USER_ID ou reconecte o número no painel.`);
       return;
     }
+
+    app.log.info(`[Z-API] ✅ Número encontrado: ${whatsappNumber.id} (user: ${whatsappNumber.userId})`);
 
     // ── Áudio (mensagem de voz / PTT) ─────────────────────────────
     if (body.audio?.audioUrl) {
       const audioUrl     = body.audio.audioUrl;
       const durationHint = body.audio.seconds || 0;
 
-      app.log.info(`[Z-API] 🔊 Áudio de ${senderName} (${durationHint}s)`);
+      app.log.info(`[Z-API] 🔊 Áudio de ${senderName} (${durationHint}s) → enfileirando job`);
 
       await transcriptionQueue.add(
         'transcribe-zapi',
