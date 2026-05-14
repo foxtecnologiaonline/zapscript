@@ -621,6 +621,78 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // POST /admin/diagnose-whatsapp — diagnóstico completo do canal WhatsApp
+  app.post<{ Body: { phone?: string } }>(
+    '/diagnose-whatsapp',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const testPhone = req.body?.phone;
+      const result: any = { envVars: {}, zapiNumbers: [], testSend: null };
+
+      // Checar env vars
+      result.envVars = {
+        WHATSAPP_API_TOKEN:      !!process.env.WHATSAPP_API_TOKEN,
+        WHATSAPP_PHONE_NUMBER_ID:!!process.env.WHATSAPP_PHONE_NUMBER_ID,
+        ZAPI_INSTANCE_ID:        process.env.ZAPI_INSTANCE_ID || null,
+        ZAPI_TOKEN:              !!process.env.ZAPI_TOKEN,
+        ZAPI_CLIENT_TOKEN:       !!process.env.ZAPI_CLIENT_TOKEN,
+        ZAPI_PARTNER_TOKEN:      !!process.env.ZAPI_PARTNER_TOKEN,
+      };
+
+      // Buscar todos os números com Z-API e checar status real
+      const numbers = await prisma.whatsappNumber.findMany({
+        where:  { zapiInstanceId: { not: null } },
+        select: { id: true, displayName: true, phoneNumber: true, status: true, zapiInstanceId: true, zapiToken: true },
+      });
+
+      for (const n of numbers) {
+        const entry: any = { id: n.id, displayName: n.displayName, phoneNumber: n.phoneNumber, statusDB: n.status, instanceId: n.zapiInstanceId };
+        try {
+          const clientToken = process.env.ZAPI_CLIENT_TOKEN;
+          const headers: Record<string, string> = {};
+          if (clientToken) headers['Client-Token'] = clientToken;
+          const statusRes = await axios.get(
+            `https://api.z-api.io/instances/${n.zapiInstanceId}/token/${n.zapiToken}/status`,
+            { headers, timeout: 5000 }
+          );
+          entry.zapiStatus    = statusRes.data;
+          entry.zapiConnected = statusRes.data?.connected === true;
+        } catch (e: any) {
+          entry.zapiError = e.message;
+          entry.zapiConnected = false;
+        }
+        result.zapiNumbers.push(entry);
+      }
+
+      // Teste de envio real se phone fornecido
+      if (testPhone) {
+        const digits   = testPhone.replace(/\D/g, '');
+        const fullPhone = digits.startsWith('55') ? digits : `55${digits}`;
+        const connected = result.zapiNumbers.find((n: any) => n.zapiConnected);
+        if (connected) {
+          try {
+            const clientToken = process.env.ZAPI_CLIENT_TOKEN;
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (clientToken) headers['Client-Token'] = clientToken;
+            const num = numbers.find(n => n.id === connected.id)!;
+            const sendRes = await axios.post(
+              `https://api.z-api.io/instances/${num.zapiInstanceId}/token/${num.zapiToken}/send-text`,
+              { phone: fullPhone, message: '🧪 Teste de diagnóstico ZapScript — pode ignorar.' },
+              { headers, timeout: 10000 }
+            );
+            result.testSend = { ok: true, phone: fullPhone, status: sendRes.status, data: sendRes.data, instanceUsed: connected.instanceId };
+          } catch (e: any) {
+            result.testSend = { ok: false, phone: fullPhone, error: e.message, response: e.response?.data };
+          }
+        } else {
+          result.testSend = { ok: false, error: 'Nenhum número Z-API conectado encontrado.' };
+        }
+      }
+
+      return reply.send(result);
+    }
+  );
+
   // POST /admin/sync-zapi — re-aplica webhooks e configurações Z-API em todos os números conectados.
   // Útil quando: instância foi migrada, URL mudou, auto-read travou, etc.
   // Não requer que usuários reconectem o WhatsApp.

@@ -73,6 +73,62 @@ function Btn({ children, onClick, disabled, variant = 'ghost', cls = '' }: {
   );
 }
 
+function DiagnoseWhatsApp({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]     = useState(false);
+  const [phone, setPhone]   = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<any>(null);
+
+  async function run() {
+    setLoading(true);
+    setResult(null);
+    try {
+      const body: any = {};
+      if (phone.trim()) body.phone = phone.trim();
+      const res = await fetch(`${apiBase}/sys/g5r8t2/diagnose-whatsapp`, {
+        method: 'POST',
+        headers: { 'x-admin-token': token, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      setResult(await res.json());
+    } catch (e: any) {
+      setResult({ error: e.message });
+    } finally { setLoading(false); }
+  }
+
+  return (
+    <div className="mt-3 border border-[rgba(16,185,129,.1)] rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); if (!open && !result) run(); }}
+        className="w-full text-left px-4 py-2.5 text-xs text-[rgba(16,185,129,.5)] hover:text-[rgba(16,185,129,.8)] flex items-center gap-2 transition-colors">
+        🔬 {open ? '▲' : '▼'} Diagnóstico do canal WhatsApp
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <div className="flex gap-2 mb-3">
+            <input
+              className="flex-1 bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-1.5 text-xs text-[#d1fae5] outline-none placeholder-[rgba(16,185,129,.3)]"
+              placeholder="Telefone para teste de envio (opcional, ex: 34991790254)"
+              value={phone} onChange={e => setPhone(e.target.value)}
+            />
+            <button
+              type="button" onClick={run} disabled={loading}
+              className="text-xs bg-[rgba(16,185,129,.1)] border border-[rgba(16,185,129,.2)] text-[#10b981] px-3 py-1.5 rounded-lg hover:bg-[rgba(16,185,129,.2)] disabled:opacity-40 transition-colors">
+              {loading ? '⟳' : '▶ Rodar'}
+            </button>
+          </div>
+          {result && (
+            <pre className="text-[10px] text-[rgba(16,185,129,.7)] bg-[#040b09] rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Pagination({ offset, total, loading, onPage }: {
   offset: number; total: number; loading: boolean; onPage: (o: number) => void;
 }) {
@@ -794,6 +850,7 @@ export default function AdminPage() {
                 Ao aceitar o convite, o usuário recebe <strong className="text-[#10b981]">Plano PRO grátis por 1 ano</strong> + Selo Tester Oficial.
                 {' '}Se o telefone for informado, a mensagem é enviada automaticamente via WhatsApp.
               </p>
+              <DiagnoseWhatsApp apiBase={API} token={token} />
             </div>
 
             {/* Resultado do último convite */}
