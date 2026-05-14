@@ -17,6 +17,8 @@ model User {
   refCode                     String          @unique @default(cuid())
   referredBy                  String?
   isAdmin                     Boolean         @default(false)
+  isTester                    Boolean         @default(false)
+  testerSince                 DateTime?
   // LGPD - Direitos do usuário
   privacyPolicyAcceptedAt     DateTime?
   termsAcceptedAt             DateTime?
@@ -167,6 +169,17 @@ model AuditLog {
   @@index([targetUserId])
   @@index([timestamp])
   @@index([action])
+}
+
+model TesterInvite {
+  id        String    @id @default(cuid())
+  name      String
+  code      String    @unique
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+  usedBy    String?   // userId of the user who used this invite
+
+  @@index([code])
 }
 
 model PrivacyPolicy {

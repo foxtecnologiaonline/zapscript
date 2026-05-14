@@ -1,16 +1,35 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 
 export default function CadastroPage() {
-  const router = useRouter();
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+  const inviteCode   = searchParams.get('invite') || '';
+  const [isTesterInvite, setIsTesterInvite] = useState(false);
+  const [inviteName, setInviteName]         = useState('');
+
   const [form, setForm]   = useState({ name: '', email: '', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const [done, setDone]       = useState(false);
   const [userEmail, setUserEmail] = useState('');
+
+  useEffect(() => {
+    if (!inviteCode) return;
+    const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
+    fetch(`${apiUrl}/invites/validate/${inviteCode}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.valid) {
+          setIsTesterInvite(true);
+          setInviteName(d.invite?.name || '');
+        }
+      })
+      .catch(() => {});
+  }, [inviteCode]);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -24,9 +43,10 @@ export default function CadastroPage() {
     setLoading(true);
     try {
       await api.post('/auth/register', {
-        name:     form.name,
-        email:    form.email,
-        password: form.password,
+        name:       form.name,
+        email:      form.email,
+        password:   form.password,
+        ...(inviteCode ? { inviteCode } : {}),
       });
       setUserEmail(form.email);
       setDone(true);
@@ -82,7 +102,17 @@ export default function CadastroPage() {
           <Link href="/" className="inline-flex items-center gap-2 text-xl font-bold text-brand-primary">
             <span className="w-2.5 h-2.5 rounded-full bg-brand-primary animate-pulse"/>ZapScript
           </Link>
-          <p className="text-brand-text-secondary text-sm mt-2 font-light">10 minutos grátis, sem cartão de crédito</p>
+          {isTesterInvite ? (
+            <div className="mt-3 inline-flex items-center gap-2 bg-amber-400/10 border border-amber-400/30 rounded-xl px-4 py-2">
+              <span>🧪</span>
+              <div className="text-left">
+                <div className="text-xs font-black text-amber-400 uppercase tracking-wider">Tester Oficial</div>
+                <div className="text-[10px] text-amber-400/70">Plano PRO grátis por 1 ano</div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-brand-text-secondary text-sm mt-2 font-light">10 minutos grátis, sem cartão de crédito</p>
+          )}
         </div>
 
         <div className="bg-brand-surface rounded-2xl p-7"

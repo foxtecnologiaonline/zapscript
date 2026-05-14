@@ -219,6 +219,8 @@ app.register(import('./routes/monitor'),        { prefix: '/monitor' });
 app.register(import('./routes/internal'),       { prefix: '/internal' });
 app.register(import('./routes/support'),        { prefix: '/support' });
 app.register(import('./routes/admin'),          { prefix: '/sys/g5r8t2' });
+app.register(import('./routes/admin-master'),   { prefix: '/sys/g5r8t2/master' });
+app.register(import('./routes/invites'),        { prefix: '/invites' });
 app.register(import('./routes/privacy'),        { prefix: '/privacy' });
 
 // ── WhatsApp Webhook (Meta Cloud API) ──────────────────────
@@ -304,13 +306,26 @@ async function runAutoMigrations() {
     `ALTER TABLE "WhatsappNumber" ADD COLUMN IF NOT EXISTS "zapiToken" TEXT`,
     // Remove unique constraint em zapiInstanceId — múltiplos usuários compartilham a mesma instância Z-API
     `DROP INDEX IF EXISTS "WhatsappNumber_zapiInstanceId_key"`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isTester" BOOLEAN DEFAULT false`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "testerSince" TIMESTAMP(3)`,
+    `CREATE TABLE IF NOT EXISTS "TesterInvite" (
+      "id" TEXT NOT NULL,
+      "name" TEXT NOT NULL,
+      "code" TEXT NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "usedAt" TIMESTAMP(3),
+      "usedBy" TEXT,
+      CONSTRAINT "TesterInvite_pkey" PRIMARY KEY ("id"),
+      CONSTRAINT "TesterInvite_code_key" UNIQUE ("code")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "TesterInvite_code_idx" ON "TesterInvite"("code")`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
       app.log.warn(`[AutoMigration] ${e.message}`)
     );
   }
-  app.log.info('[AutoMigration] ✅ Colunas Z-API verificadas');
+  app.log.info('[AutoMigration] ✅ Schema verificado (Z-API + Testers)');
 }
 
 async function start() {

@@ -111,7 +111,7 @@ function Toast({ msg, onClose }: { msg: { text: string; type: 'ok' | 'err' | 'wa
   );
 }
 
-type Tab = 'overview' | 'users' | 'tickets' | 'errors';
+type Tab = 'overview' | 'users' | 'tickets' | 'errors' | 'testers';
 
 /* ══════════════════════════════════════════════════════════
    PAINEL INDIVIDUAL DO USUÁRIO
@@ -202,8 +202,8 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
         {/* Header */}
         <div className="sticky top-0 bg-[#050d0a] border-b border-[rgba(16,185,129,.10)] px-6 py-4 flex items-center justify-between z-10">
           <div>
-            <div className="font-bold text-[#d1fae5] text-base">{user.name || 'Sem nome'}</div>
-            <div className="text-xs text-[rgba(16,185,129,.5)] mt-0.5">{user.email}</div>
+            <div className="font-bold text-[#d1fae5] text-base">{user.email}</div>
+            <div className="text-xs text-[rgba(16,185,129,.5)] font-mono mt-0.5">{user.id}</div>
           </div>
           <div className="flex items-center gap-2">
             <Badge label={plan} cls={PLAN_CLS[plan]} />
@@ -313,8 +313,8 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
                 {numbers.map((n: any) => (
                   <div key={n.id} className="flex items-center justify-between bg-[#132621] rounded-lg px-3 py-2.5">
                     <div>
-                      <div className="text-sm text-[#d1fae5] font-medium">{n.displayName || n.phoneNumber || '—'}</div>
-                      <div className="text-xs text-[rgba(16,185,129,.4)]">{n.phoneNumber}</div>
+                      <div className="text-sm text-[#d1fae5] font-medium">{n.displayName || '—'}</div>
+                      <div className="text-xs text-[rgba(16,185,129,.4)] font-mono">{n.id.slice(0, 16)}…</div>
                     </div>
                     <Badge label={STATUS_LABEL[n.status] || n.status} cls={STATUS_CLS[n.status]} />
                   </div>
@@ -334,18 +334,15 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
               <div className="space-y-2">
                 {transcriptions.map((t: any) => (
                   <div key={t.id} className="bg-[#132621] rounded-lg px-3 py-2.5">
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Badge label="ok" cls={STATUS_CLS.active} />
                         <span className="text-[10px] text-[rgba(16,185,129,.4)] font-mono">{fmtMin(t.durationSec ? t.durationSec / 60 : 0)}</span>
                         {t.language && <span className="text-[10px] text-[rgba(16,185,129,.3)]">{t.language}</span>}
-                        {t.contactName && <span className="text-[10px] text-[rgba(16,185,129,.4)]">{t.contactName}</span>}
+                        {t.source && <span className="text-[10px] text-[rgba(16,185,129,.3)]">{t.source}</span>}
                       </div>
                       <span className="text-[10px] text-[rgba(16,185,129,.3)]">{fmt(t.createdAt)}</span>
                     </div>
-                    {t.originalText && (
-                      <p className="text-xs text-[rgba(16,185,129,.5)] line-clamp-2 leading-relaxed">{t.originalText}</p>
-                    )}
                   </div>
                 ))}
               </div>
@@ -425,6 +422,13 @@ export default function AdminPage() {
   const [ticketStatus, setTicketStatus] = useState('');
   const [ticketOffset, setTicketOffset] = useState(0);
 
+  // Testers / Invites
+  const [invites, setInvites]         = useState<any[]>([]);
+  const [inviteTotal, setInviteTotal] = useState(0);
+  const [inviteName, setInviteName]   = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [newInviteLink, setNewInviteLink] = useState<string | null>(null);
+
   const h = { 'x-admin-token': token, 'content-type': 'application/json' };
 
   const notify = (text: string, type: 'ok' | 'err' | 'warn' = 'ok') => {
@@ -481,10 +485,39 @@ export default function AdminPage() {
     loadTickets(ticketStatus, ticketOffset);
   }
 
+  async function loadInvites() {
+    setInviteLoading(true);
+    try {
+      const d = await (await fetch(`${API}/sys/g5r8t2/invites?limit=100`, { headers: h })).json();
+      setInvites(d.invites || []);
+      setInviteTotal(d.total || 0);
+    } finally { setInviteLoading(false); }
+  }
+
+  async function createInvite(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inviteName.trim()) return;
+    setInviteLoading(true);
+    try {
+      const res = await fetch(`${API}/sys/g5r8t2/invites`, {
+        method: 'POST', headers: h, body: JSON.stringify({ name: inviteName.trim() }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro');
+      setNewInviteLink(d.link);
+      setInviteName('');
+      loadInvites();
+      notify('✅ Convite criado!', 'ok');
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally { setInviteLoading(false); }
+  }
+
   function goTab(t: Tab) {
     setTab(t);
     if (t === 'users'   && users.length === 0)   loadUsers('', 0);
     if (t === 'tickets' && tickets.length === 0) loadTickets('', 0);
+    if (t === 'testers') loadInvites();
   }
 
   /* ── Login ── */
@@ -536,6 +569,7 @@ export default function AdminPage() {
             ['overview', '📊', 'Visão Geral'],
             ['users',    '👥', 'Usuários'],
             ['tickets',  '🎫', 'Tickets'],
+            ['testers',  '🧪', 'Testers'],
             ['errors',   '🐛', 'Erros'],
           ] as [Tab, string, string][]).map(([t, icon, label]) => (
             <button key={t} onClick={() => goTab(t)}
@@ -621,7 +655,7 @@ export default function AdminPage() {
               <table className="w-full min-w-[820px]">
                 <thead>
                   <tr className="border-b border-[rgba(16,185,129,.08)]">
-                    {['Nome', 'E-mail', 'Plano', 'Minutos', 'Assinatura', 'E-mail ✓', 'Cadastro', 'Ações'].map(col => (
+                    {['ID', 'E-mail', 'Plano', 'Minutos', 'Assinatura', 'E-mail ✓', 'Cadastro', 'Ações'].map(col => (
                       <th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide whitespace-nowrap">
                         {col}
                       </th>
@@ -639,7 +673,7 @@ export default function AdminPage() {
                     const mins   = u.balance?.availableMinutes;
                     return (
                       <tr key={u.id} className="border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.025)] transition-colors group">
-                        <td className="px-4 py-3 text-sm text-[#d1fae5] font-medium max-w-[130px] truncate">{u.name || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)] font-mono max-w-[100px] truncate">{u.id.slice(0,10)}…</td>
                         <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)] max-w-[170px] truncate">{u.email}</td>
                         <td className="px-4 py-3"><Badge label={plan} cls={PLAN_CLS[plan]} /></td>
                         <td className="px-4 py-3 text-xs font-mono text-right text-[#d1fae5]">
@@ -720,6 +754,80 @@ export default function AdminPage() {
 
             <Pagination offset={ticketOffset} total={ticketTotal} loading={subLoading}
               onPage={o => { setTicketOffset(o); loadTickets(ticketStatus, o); }} />
+          </div>
+        )}
+
+        {/* ═══ TESTERS ═══ */}
+        {tab === 'testers' && (
+          <div className="space-y-5">
+            {/* Gerador de convite */}
+            <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.12)] rounded-xl p-6">
+              <div className="text-sm font-bold text-[#d1fae5] mb-4">🧪 Gerar Convite Tester</div>
+              <form onSubmit={createInvite} className="flex gap-2">
+                <input
+                  className="flex-1 bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-4 py-2.5 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
+                  placeholder="Nome do convidado (ex: João Silva)"
+                  value={inviteName} onChange={e => setInviteName(e.target.value)} required
+                />
+                <Btn variant="primary" cls="px-6">
+                  {inviteLoading ? '⟳' : '+ Gerar convite'}
+                </Btn>
+              </form>
+              <p className="text-xs text-[rgba(16,185,129,.4)] mt-3">
+                Ao aceitar o convite, o usuário recebe <strong className="text-[#10b981]">Plano PRO grátis por 1 ano</strong> + Selo Tester Oficial.
+              </p>
+            </div>
+
+            {/* Link recém-gerado */}
+            {newInviteLink && (
+              <div className="bg-[rgba(16,185,129,.06)] border border-[rgba(16,185,129,.2)] rounded-xl p-5">
+                <div className="text-xs font-bold text-[#10b981] mb-2">✅ Convite gerado! Compartilhe o link:</div>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs text-[#6ee7b7] bg-[#132621] rounded-lg px-3 py-2 font-mono break-all">{newInviteLink}</code>
+                  <Btn variant="ghost" onClick={() => { navigator.clipboard.writeText(newInviteLink); notify('✅ Link copiado!', 'ok'); }}>
+                    Copiar
+                  </Btn>
+                </div>
+                <p className="text-xs text-[rgba(16,185,129,.4)] mt-2">
+                  Mensagem sugerida: &quot;Olá! Você foi convidado para ser Tester Oficial do ZapScript — 1 ano de Plano PRO grátis. Acesse: {newInviteLink}&quot;
+                </p>
+                <button onClick={() => setNewInviteLink(null)} className="text-xs text-[rgba(16,185,129,.3)] hover:text-[rgba(16,185,129,.6)] mt-1 transition-colors">
+                  Fechar
+                </button>
+              </div>
+            )}
+
+            {/* Lista de convites */}
+            <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-[rgba(16,185,129,.08)] flex items-center justify-between">
+                <span className="text-xs font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide">{inviteTotal} convite(s)</span>
+                <Btn onClick={loadInvites} disabled={inviteLoading}>🔄 Atualizar</Btn>
+              </div>
+              {inviteLoading ? (
+                <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando...</div>
+              ) : invites.length === 0 ? (
+                <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhum convite gerado ainda</div>
+              ) : invites.map((inv: any) => (
+                <div key={inv.id} className="px-5 py-3 border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.02)] flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-[#d1fae5]">{inv.name}</div>
+                    <div className="text-xs text-[rgba(16,185,129,.4)] font-mono mt-0.5">{inv.code}</div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    {inv.usedAt
+                      ? <Badge label="Usado" cls="text-gray-400 bg-gray-400/10 border-gray-400/20" />
+                      : <Badge label="Disponível" cls={STATUS_CLS.active} />
+                    }
+                    <span className="text-[10px] text-[rgba(16,185,129,.3)]">{fmt(inv.createdAt)}</span>
+                    {!inv.usedAt && (
+                      <Btn variant="ghost" onClick={() => { navigator.clipboard.writeText(inv.link); notify('✅ Link copiado!', 'ok'); }}>
+                        Copiar link
+                      </Btn>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

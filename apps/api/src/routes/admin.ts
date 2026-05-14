@@ -120,7 +120,19 @@ export default async function adminRoutes(app: FastifyInstance) {
       const [users, total] = await Promise.all([
         prisma.user.findMany({
           where, take: limit, skip: offset,
-          include: { subscription: { include: { plan: true } }, balance: true },
+          select: {
+            id: true,
+            email: true,
+            emailVerified: true,
+            isAdmin: true,
+            isTester: true,
+            testerSince: true,
+            createdAt: true,
+            updatedAt: true,
+            deletedAt: true,
+            subscription: { include: { plan: true } },
+            balance: true,
+          },
           orderBy: { createdAt: 'desc' },
         }),
         prisma.user.count({ where }),
@@ -294,7 +306,16 @@ export default async function adminRoutes(app: FastifyInstance) {
       const [user, transcriptions, numbers, usageLogs, auditLogs] = await Promise.all([
         prisma.user.findUnique({
           where:   { id },
-          include: {
+          select: {
+            id: true,
+            email: true,
+            emailVerified: true,
+            isAdmin: true,
+            isTester: true,
+            testerSince: true,
+            createdAt: true,
+            updatedAt: true,
+            deletedAt: true,
             subscription: { include: { plan: true } },
             balance: true,
           },
@@ -303,11 +324,11 @@ export default async function adminRoutes(app: FastifyInstance) {
           where:   { userId: id },
           orderBy: { createdAt: 'desc' },
           take:    20,
-          select:  { id: true, originalText: true, durationSec: true, language: true, contactName: true, contactPhone: true, createdAt: true },
+          select:  { id: true, durationSec: true, language: true, source: true, createdAt: true },
         }),
         prisma.whatsappNumber.findMany({
           where:  { userId: id },
-          select: { id: true, displayName: true, phoneNumber: true, status: true, createdAt: true, connectedAt: true },
+          select: { id: true, displayName: true, status: true, createdAt: true, connectedAt: true },
         }),
         prisma.usageLog.findMany({
           where:   { userId: id },
@@ -470,6 +491,46 @@ export default async function adminRoutes(app: FastifyInstance) {
         orderBy: { createdAt: 'desc' },
         take: limit,
       });
+    }
+  );
+
+  // POST /admin/invites — criar convite para Tester
+  app.post<{ Body: { name: string } }>(
+    '/invites',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { name } = req.body;
+      if (!name || typeof name !== 'string' || name.trim().length < 2) {
+        return reply.code(400).send({ error: 'Nome inválido (mínimo 2 caracteres).' });
+      }
+      const trimmedName = name.trim().substring(0, 100);
+      const code = crypto.randomBytes(8).toString('hex'); // 16-char hex unique code
+      const invite = await prisma.testerInvite.create({
+        data: { name: trimmedName, code },
+      });
+      const link = `${process.env.APP_URL || 'https://zapscript.me'}/convite/${invite.code}`;
+      return { invite, link };
+    }
+  );
+
+  // GET /admin/invites — listar convites de Tester
+  app.get<{ Querystring: { limit?: string; offset?: string } }>(
+    '/invites',
+    { preHandler: [adminAuth] },
+    async (req) => {
+      const limit  = Math.min(Math.max(parseInt(req.query.limit  || '50') || 50, 1), 200);
+      const offset = Math.max(parseInt(req.query.offset || '0') || 0, 0);
+      const [invites, total] = await Promise.all([
+        prisma.testerInvite.findMany({ orderBy: { createdAt: 'desc' }, take: limit, skip: offset }),
+        prisma.testerInvite.count(),
+      ]);
+      const appUrl = process.env.APP_URL || 'https://zapscript.me';
+      return {
+        invites: invites.map(i => ({ ...i, link: `${appUrl}/convite/${i.code}` })),
+        total,
+        limit,
+        offset,
+      };
     }
   );
 

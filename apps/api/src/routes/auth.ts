@@ -83,16 +83,25 @@ function emailWrapper(
 export default async function authRoutes(app: FastifyInstance) {
 
   // ── POST /auth/register ───────────────────────────────────────────────────
-  app.post<{ Body: { email: string; password: string; name?: string } }>(
+  app.post<{ Body: { email: string; password: string; name?: string; inviteCode?: string } }>(
     '/register',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const { email, password, name } = req.body;
+      const { email, password, name, inviteCode } = req.body;
       if (!email || !password) return reply.code(400).send({ error: 'email e password obrigatórios' });
 
       // Verificar duplicata de e-mail
       const existingEmail = await prisma.user.findUnique({ where: { email } });
       if (existingEmail) return reply.code(400).send({ error: 'E-mail já cadastrado. Faça login.', redirect: '/login' });
+
+      // Validar convite de Tester se fornecido
+      let testerInvite: any = null;
+      if (inviteCode) {
+        testerInvite = await prisma.testerInvite.findUnique({ where: { code: inviteCode } });
+        if (!testerInvite || testerInvite.usedAt) {
+          return reply.code(400).send({ error: 'Código de convite inválido ou já utilizado.' });
+        }
+      }
 
       // Criar no Supabase Auth sem confirmar e-mail automaticamente
       const { data, error } = await supabase.auth.admin.createUser({
@@ -102,21 +111,47 @@ export default async function authRoutes(app: FastifyInstance) {
       });
       if (error) return reply.code(400).send({ error: error.message });
 
-      // Buscar plano Free
-      const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
-      if (!freePlan) return reply.code(500).send({ error: 'Planos não configurados. Rode o seed.' });
+      // Buscar plano adequado
+      const planName = testerInvite ? 'pro' : 'free';
+      const plan = await prisma.plan.findUnique({ where: { name: planName } });
+      if (!plan) return reply.code(500).send({ error: 'Planos não configurados. Rode o seed.' });
+
+      const now = new Date();
+      const oneYearFromNow = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
 
       // Criar User + Subscription + MinuteBalance em transação atômica
       await prisma.$transaction(async (tx) => {
-        const u = await tx.user.create({ data: { id: data.user!.id, email, name } });
-        await tx.subscription.create({ data: { userId: u.id, planId: freePlan.id } });
+        const u = await tx.user.create({
+          data: {
+            id: data.user!.id,
+            email,
+            name,
+            isTester:    !!testerInvite,
+            testerSince: testerInvite ? now : undefined,
+          },
+        });
+        await tx.subscription.create({
+          data: {
+            userId:          u.id,
+            planId:          plan.id,
+            status:          'active',
+            currentPeriodEnd: testerInvite ? oneYearFromNow : undefined,
+          },
+        });
         await tx.minuteBalance.create({
           data: {
             userId:           u.id,
-            availableMinutes: freePlan.minutesPerMonth,
-            resetAt:          new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            availableMinutes: plan.minutesPerMonth,
+            resetAt:          testerInvite ? oneYearFromNow : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           },
         });
+        // Marcar convite como usado
+        if (testerInvite) {
+          await tx.testerInvite.update({
+            where: { id: testerInvite.id },
+            data:  { usedAt: now, usedBy: u.id },
+          });
+        }
       });
 
       // Gerar link de confirmação e enviar e-mail de boas-vindas
@@ -186,7 +221,10 @@ export default async function authRoutes(app: FastifyInstance) {
 
       return reply.code(201).send({
         needsVerification: true,
-        message: 'Conta criada! Verifique seu e-mail para ativar o acesso.',
+        isTester: !!testerInvite,
+        message: testerInvite
+          ? 'Conta Tester criada com Plano PRO por 1 ano! Verifique seu e-mail para ativar.'
+          : 'Conta criada! Verifique seu e-mail para ativar o acesso.',
       });
     }
   );

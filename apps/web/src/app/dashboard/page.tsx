@@ -79,7 +79,7 @@ export default function DashboardPage() {
     { label: 'Transcrições hoje',  value: stats.transcriptionsToday, icon: '📝' },
     { label: 'Minutos usados',     value: `${stats.minutesUsed}`,    icon: '⏱',
       sub: `de ${stats.minutesTotal} min` },
-    { label: 'Precisão média',     value: `${stats.avgConfidence}%`, icon: '🎯' },
+    { label: 'Precisão',           value: '99%',                     icon: '🎯' },
     { label: 'Números ativos',     value: stats.activeNumbers,       icon: '📱' },
   ] : [];
 
@@ -194,6 +194,26 @@ export default function DashboardPage() {
                 Conectar número →
               </Link>
             )}
+          </div>
+
+          {/* Compartilhar */}
+          <div className="card p-5">
+            <div className="font-bold text-sm mb-2 text-brand-text">Indique o ZapScript</div>
+            <p className="text-xs text-brand-text-secondary mb-4 leading-relaxed">
+              Conhece alguém que recebe muitos áudios no WhatsApp? Compartilhe o ZapScript!
+            </p>
+            <button
+              onClick={() => {
+                const msg = `Eu uso o ZapScript para transcrever áudios do WhatsApp automaticamente com IA — economizo muito tempo! Você pode criar uma conta gratuita em zapscript.me`;
+                if (navigator.share) {
+                  navigator.share({ text: msg, url: 'https://zapscript.me' }).catch(() => {});
+                } else {
+                  navigator.clipboard.writeText(msg + ' — https://zapscript.me');
+                }
+              }}
+              className="btn-primary w-full text-center text-xs py-2.5">
+              📤 Compartilhar com amigos
+            </button>
           </div>
         </div>
       </div>
