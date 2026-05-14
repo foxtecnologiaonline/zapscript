@@ -584,7 +584,8 @@ export default async function adminRoutes(app: FastifyInstance) {
       let whatsappError: string | undefined;
 
       if (phone) {
-        const cleanPhone = phone.replace(/\D/g, '');
+        const digits    = phone.replace(/\D/g, '');
+        const cleanPhone = digits.startsWith('55') ? digits : `55${digits}`;
         try {
           await sendTesterWhatsApp(cleanPhone, message, app.log);
           whatsappSent = true;

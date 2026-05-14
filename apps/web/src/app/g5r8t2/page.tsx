@@ -770,18 +770,21 @@ export default function AdminPage() {
             <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.12)] rounded-xl p-6">
               <div className="text-sm font-bold text-[#d1fae5] mb-4">🧪 Gerar Convite Tester</div>
               <form onSubmit={createInvite} className="space-y-2">
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <input
-                    className="flex-1 bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-4 py-2.5 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
+                    className="bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-4 py-2.5 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
                     placeholder="Nome do convidado (ex: João Silva)"
                     value={inviteName} onChange={e => setInviteName(e.target.value)} required
                   />
-                  <input
-                    className="w-44 bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-4 py-2.5 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
-                    placeholder="Telefone (opcional)"
-                    value={invitePhone} onChange={e => setInvitePhone(e.target.value)}
-                    type="tel"
-                  />
+                  <div className="flex flex-col gap-1">
+                    <input
+                      className="bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-4 py-2.5 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
+                      placeholder="Ex: 34991790254"
+                      value={invitePhone} onChange={e => setInvitePhone(e.target.value)}
+                      type="tel"
+                    />
+                    <span className="text-[10px] text-[rgba(16,185,129,.35)] px-1">DDD + número, sem espaços (55 é adicionado automaticamente)</span>
+                  </div>
                 </div>
                 <Btn variant="primary" cls="w-full justify-center py-2.5" disabled={inviteLoading}>
                   {inviteLoading ? '⟳ Gerando e enviando...' : '📲 Gerar convite + enviar WhatsApp'}
