@@ -1,15 +1,30 @@
 /**
  * zapi-heartbeat.ts
  *
- * Verifica a cada 1 hora o status real de todos os números "connected" via Z-API.
- * Se um número estiver desconectado (WhatsApp saiu, bateria, etc.), atualiza o DB
- * para "disconnected" — evitando que o painel do usuário mostre verde quando
- * a conexão está morta.
+ * Sincronização automática e bidirecional entre Z-API e banco de dados.
+ *
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │  A cada 5 minutos — Status Sync                                        │
+ * │  • Verifica TODOS os números com zapiInstanceId (qualquer status no DB) │
+ * │  • Z-API connected  + DB disconnected → atualiza para connected ✅     │
+ * │  • Z-API connected  + DB connecting  → confirma connected ✅           │
+ * │  • Z-API disconnected + DB connected  → atualiza para disconnected ⚠️  │
+ * │  Resultado: DB sempre espelha o estado real sem ação do usuário        │
+ * ├─────────────────────────────────────────────────────────────────────────┤
+ * │  A cada 1 hora — Webhook Sync                                           │
+ * │  • Re-aplica URLs de webhook e auto-read em todos os conectados        │
+ * │  • Garante que eventos continuem chegando após mudanças de URL         │
+ * └─────────────────────────────────────────────────────────────────────────┘
  */
 
 import { prisma } from '../lib/prisma';
 
-const HEARTBEAT_INTERVAL_MS = 60 * 60 * 1000; // 1 hora
+const STATUS_INTERVAL_MS  =  5 * 60 * 1000;  // status sync a cada 5 minutos
+const WEBHOOK_INTERVAL_MS = 60 * 60 * 1000;  // webhook sync a cada 1 hora
+const FIRST_STATUS_MS     =  1 * 60 * 1000;  // primeiro status check em 1 min (após estabilizar)
+const FIRST_WEBHOOK_MS    = 10 * 60 * 1000;  // primeiro webhook sync em 10 min
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function zapiUrl(instanceId: string, token: string, path: string): string {
   return `https://api.z-api.io/instances/${instanceId}/token/${token}${path}`;
@@ -21,108 +36,216 @@ function zapiHeaders(): Record<string, string> {
   return headers;
 }
 
-async function checkNumber(
-  number: { id: string; zapiInstanceId: string; zapiToken: string },
-  log: any,
-): Promise<'ok' | 'disconnected' | 'error'> {
+function webhookUrl(): string | null {
+  const base = process.env.APP_URL || process.env.API_URL;
+  return base ? `${base}/webhook/zapi` : null;
+}
+
+// ── Status de um número via Z-API API ──────────────────────────────────────
+
+async function fetchZapiStatus(
+  instanceId: string,
+  token: string,
+): Promise<{ connected: boolean; phone?: string } | null> {
   try {
     const res = await fetch(
-      zapiUrl(number.zapiInstanceId, number.zapiToken, '/status'),
-      { headers: zapiHeaders(), signal: AbortSignal.timeout(10_000) }, // 10s timeout por número
+      zapiUrl(instanceId, token, '/status'),
+      { headers: zapiHeaders(), signal: AbortSignal.timeout(10_000) },
     );
-
-    if (!res.ok) {
-      log.warn(`[Heartbeat] Número ${number.id} — Z-API retornou ${res.status}`);
-      return 'error';
-    }
-
+    if (!res.ok) return null;
     const data = await res.json() as any;
-    const connected = data?.connected === true;
-
-    if (!connected) {
-      await prisma.whatsappNumber.update({
-        where: { id: number.id },
-        data:  { status: 'disconnected' },
-      });
-      log.warn(`[Heartbeat] ⚠️  Número ${number.id} estava marcado "connected" mas Z-API reportou desconectado — status atualizado`);
-      return 'disconnected';
-    }
-
-    return 'ok';
-  } catch (err: any) {
-    log.error(`[Heartbeat] Erro ao verificar número ${number.id}: ${err.message}`);
-    return 'error';
+    return {
+      connected: data?.connected === true,
+      phone:     data?.phone ?? data?.smartphoneConnected?.phone ?? undefined,
+    };
+  } catch {
+    return null; // timeout ou erro de rede — não alterar status
   }
 }
 
-export async function runHeartbeat(log: any): Promise<void> {
-  log.info('[Heartbeat] 🔍 Verificando status de conexão Z-API de todos os números...');
+// ── Status Sync — verifica todos os números e corrige DB ───────────────────
 
-  // Cast para any: Prisma types não incluem zapiInstanceId/zapiToken
-  // pois essas colunas foram adicionadas via auto-migration (não no schema.prisma gerado)
+export async function runStatusSync(log: any): Promise<void> {
+  // Busca TODOS os números com credenciais Z-API (qualquer status)
   const numbers = await (prisma as any).whatsappNumber.findMany({
-    where: {
-      status:         'connected',
-      zapiInstanceId: { not: null },
-      zapiToken:      { not: null },
-    },
-    select: { id: true, zapiInstanceId: true, zapiToken: true },
+    where:  { zapiInstanceId: { not: null }, zapiToken: { not: null } },
+    select: { id: true, userId: true, zapiInstanceId: true, zapiToken: true, status: true, phoneNumber: true },
   }).catch((err: any) => {
     log.error(`[Heartbeat] Erro ao buscar números: ${err.message}`);
-    return [] as { id: string; zapiInstanceId: string; zapiToken: string }[];
+    return [];
   });
 
-  if (numbers.length === 0) {
-    log.info('[Heartbeat] Nenhum número conectado para verificar.');
+  if (numbers.length === 0) return;
+
+  // Agrupar por instância — só verificar uma vez por instância (evita chamadas duplicadas)
+  const byInstance = new Map<string, typeof numbers[number][]>();
+  for (const n of numbers) {
+    const key = n.zapiInstanceId as string;
+    if (!byInstance.has(key)) byInstance.set(key, []);
+    byInstance.get(key)!.push(n);
+  }
+
+  let reconnected = 0, disconnected = 0, stable = 0;
+
+  for (const [instanceId, group] of byInstance) {
+    // Usar credenciais do primeiro número do grupo para checar status da instância
+    const repr  = group[0];
+    const status = await fetchZapiStatus(instanceId, repr.zapiToken as string);
+
+    if (status === null) {
+      // Timeout / erro de rede — não alterar nada, tentar na próxima rodada
+      continue;
+    }
+
+    if (status.connected) {
+      // Z-API está conectado — garantir que EXATAMENTE UM número esteja "connected"
+      // Estratégia: pegar o mais recentemente atualizado do grupo e marcar como connected.
+      // Desconectar os demais (isolamento).
+      const sorted = [...group].sort((a: any, b: any) =>
+        new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime()
+      );
+      const [winner, ...losers] = sorted;
+
+      if (winner.status !== 'connected') {
+        await prisma.whatsappNumber.update({
+          where: { id: winner.id },
+          data:  {
+            status:      'connected',
+            connectedAt: new Date(),
+            ...(status.phone ? { phoneNumber: status.phone.replace(/\D/g, '') } : {}),
+          },
+        }).catch(() => null);
+        log.info(
+          `[Heartbeat] ✅ Auto-reconectado: número ${winner.id} (user ${winner.userId}) ` +
+          `— estava '${winner.status}', Z-API está online`
+        );
+        reconnected++;
+      } else {
+        stable++;
+      }
+
+      // Desconectar os demais do grupo (isolamento multi-tenant)
+      if (losers.length > 0) {
+        const loserIds = losers.map((l: any) => l.id);
+        await prisma.whatsappNumber.updateMany({
+          where: { id: { in: loserIds }, status: { in: ['connected', 'connecting'] } },
+          data:  { status: 'disconnected' },
+        }).catch(() => null);
+      }
+    } else {
+      // Z-API desconectado — garantir que todos do grupo estejam disconnected
+      const activeInGroup = group.filter((n: any) => n.status === 'connected' || n.status === 'connecting');
+      if (activeInGroup.length > 0) {
+        await prisma.whatsappNumber.updateMany({
+          where: { id: { in: activeInGroup.map((n: any) => n.id) } },
+          data:  { status: 'disconnected' },
+        }).catch(() => null);
+        for (const n of activeInGroup) {
+          log.warn(
+            `[Heartbeat] ⚠️  Auto-desconectado: número ${n.id} (user ${n.userId}) ` +
+            `— estava '${n.status}', Z-API está offline`
+          );
+          disconnected++;
+        }
+      } else {
+        stable++;
+      }
+    }
+
+    // Pausa entre instâncias para não sobrecarregar Z-API
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  if (reconnected > 0 || disconnected > 0) {
+    log.info(
+      `[Heartbeat] Status Sync: ${reconnected} auto-reconectados, ${disconnected} desconectados, ${stable} estáveis`
+    );
+  }
+}
+
+// ── Webhook Sync — re-aplica webhooks em todos os conectados ───────────────
+
+export async function runWebhookSync(log: any): Promise<void> {
+  const url = webhookUrl();
+  if (!url) {
+    log.warn('[Heartbeat] APP_URL/API_URL não configurado — webhook sync ignorado');
     return;
   }
 
-  let ok = 0, disconnected = 0, errors = 0;
+  const numbers = await (prisma as any).whatsappNumber.findMany({
+    where:  { status: 'connected', zapiInstanceId: { not: null }, zapiToken: { not: null } },
+    select: { id: true, zapiInstanceId: true, zapiToken: true },
+  }).catch(() => []);
+
+  if (numbers.length === 0) return;
+
+  let ok = 0, fail = 0;
 
   for (const n of numbers) {
-    // zapiInstanceId/zapiToken são garantidamente não-nulos pelo filtro acima
-    const result = await checkNumber(
-      { id: n.id, zapiInstanceId: n.zapiInstanceId as string, zapiToken: n.zapiToken as string },
-      log,
-    );
-    if (result === 'ok')           ok++;
-    else if (result === 'disconnected') disconnected++;
-    else                           errors++;
+    const instanceId = n.zapiInstanceId as string;
+    const token      = n.zapiToken as string;
 
-    // Pequena pausa entre chamadas para não sobrecarregar Z-API
-    await new Promise(r => setTimeout(r, 500));
+    const endpoints = [
+      { path: '/update-webhook-received',             body: { value: url } },
+      { path: '/update-webhook-connected',            body: { value: url } },
+      { path: '/update-webhook-received-disconnected',body: { value: url } },
+      { path: '/update-auto-read-message',            body: { value: false } },
+    ];
+
+    const results = await Promise.allSettled(
+      endpoints.map(({ path, body }) =>
+        fetch(zapiUrl(instanceId, token, path), {
+          method:  'PUT',
+          headers: zapiHeaders(),
+          body:    JSON.stringify(body),
+          signal:  AbortSignal.timeout(8_000),
+        })
+      )
+    );
+
+    const numOk   = results.filter(r => r.status === 'fulfilled').length;
+    const numFail = results.filter(r => r.status === 'rejected').length;
+    if (numOk > 0) ok++;
+    if (numFail > 0) fail++;
+
+    await new Promise(r => setTimeout(r, 300));
   }
 
+  log.info(`[Heartbeat] Webhook Sync: ${ok} número(s) sincronizados, ${fail} com erro`);
+}
+
+// ── Inicialização ──────────────────────────────────────────────────────────
+
+export function startHeartbeat(log: any): void {
+  // ── Status Sync (a cada 5 min) ──────────────────────────────────────────
+  const firstStatus = setTimeout(
+    () => runStatusSync(log).catch((e: any) => log.error(`[Heartbeat] Erro status sync: ${e.message}`)),
+    FIRST_STATUS_MS
+  );
+  const statusInterval = setInterval(
+    () => runStatusSync(log).catch((e: any) => log.error(`[Heartbeat] Erro status sync: ${e.message}`)),
+    STATUS_INTERVAL_MS
+  );
+
+  // ── Webhook Sync (a cada 1 hora) ────────────────────────────────────────
+  const firstWebhook = setTimeout(
+    () => runWebhookSync(log).catch((e: any) => log.error(`[Heartbeat] Erro webhook sync: ${e.message}`)),
+    FIRST_WEBHOOK_MS
+  );
+  const webhookInterval = setInterval(
+    () => runWebhookSync(log).catch((e: any) => log.error(`[Heartbeat] Erro webhook sync: ${e.message}`)),
+    WEBHOOK_INTERVAL_MS
+  );
+
+  firstStatus.unref();
+  statusInterval.unref();
+  firstWebhook.unref();
+  webhookInterval.unref();
+
   log.info(
-    `[Heartbeat] ✅ Concluído — ${ok} OK` +
-    (disconnected ? `, ${disconnected} desconectados (DB atualizado)` : '') +
-    (errors       ? `, ${errors} erro(s) de verificação`             : ''),
+    '[Heartbeat] ✅ Iniciado — Status Sync a cada 5min (1ª em 1min) | Webhook Sync a cada 1h (1ª em 10min)'
   );
 }
 
-/**
- * Inicia o heartbeat periódico.
- * Chama runHeartbeat imediatamente após 5min do startup (deixa o servidor estabilizar)
- * e depois repete a cada 1 hora.
- */
-export function startHeartbeat(log: any): void {
-  // Primeira execução 5 minutos após o startup (não travar o boot)
-  const firstRun = setTimeout(() => {
-    runHeartbeat(log).catch(err =>
-      log.error({ err: err.message }, '[Heartbeat] Erro na primeira execução'),
-    );
-  }, 5 * 60 * 1000);
-
-  // Execuções periódicas a cada 1 hora
-  const interval = setInterval(() => {
-    runHeartbeat(log).catch(err =>
-      log.error({ err: err.message }, '[Heartbeat] Erro na execução periódica'),
-    );
-  }, HEARTBEAT_INTERVAL_MS);
-
-  // Marcar como não-bloqueante para o Node não manter o processo vivo por causa deles
-  firstRun.unref();
-  interval.unref();
-
-  log.info('[Heartbeat] ⏱️  Agendado — primeira verificação em 5min, depois a cada 1h');
-}
+// ── Exportar runHeartbeat como alias para compatibilidade ──────────────────
+export const runHeartbeat = runStatusSync;

@@ -116,6 +116,42 @@ export async function syncAllZapiConfigs(log: any): Promise<SyncResult> {
     }
   }
 
+  // ── Auto-reconectar: checar Z-API e corrigir status antes de sincronizar ────
+  // Garante que números fisicamente conectados na Z-API estejam como 'connected'
+  // no banco, mesmo que o servidor tenha reiniciado sem receber o ConnectedCallback.
+  const allWithCredentials = await (prisma as any).whatsappNumber.findMany({
+    where:  { zapiInstanceId: { not: null }, zapiToken: { not: null } },
+    select: { id: true, userId: true, zapiInstanceId: true, zapiToken: true, status: true },
+  }).catch(() => []);
+
+  const checkedInstances = new Set<string>();
+  for (const n of allWithCredentials) {
+    const iid = n.zapiInstanceId as string;
+    if (checkedInstances.has(iid)) continue;
+    checkedInstances.add(iid);
+
+    try {
+      const headers: Record<string, string> = {};
+      if (process.env.ZAPI_CLIENT_TOKEN) headers['Client-Token'] = process.env.ZAPI_CLIENT_TOKEN;
+      const res = await fetch(
+        `https://api.z-api.io/instances/${iid}/token/${n.zapiToken}/status`,
+        { headers, signal: AbortSignal.timeout(8_000) }
+      );
+      if (!res.ok) continue;
+      const data = await res.json() as any;
+
+      if (data?.connected === true && n.status !== 'connected') {
+        await prisma.whatsappNumber.update({
+          where: { id: n.id },
+          data:  { status: 'connected', connectedAt: new Date() },
+        }).catch(() => null);
+        log.info(
+          `[Z-API Sync] ✅ Auto-reconectado no startup: número ${n.id} (user: ${n.userId}) — Z-API online`
+        );
+      }
+    } catch { /* ignorar erros de rede — heartbeat cobre em 1 min */ }
+  }
+
   // Busca todos os números conectados (ou conectando — pode ter travado em connecting)
   const numbers = await (prisma as any).whatsappNumber.findMany({
     where: { status: { in: ['connected', 'connecting'] } },
