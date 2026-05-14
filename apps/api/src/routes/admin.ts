@@ -953,4 +953,40 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
     }
   );
+
+  // ── DELETE /admin/numbers/all — apaga TODOS os números cadastrados ────────────
+  // Útil para resetar o estado antes de um novo ciclo de testes.
+  // Requer confirmação via query param: ?confirm=APAGAR_TUDO
+  app.delete(
+    '/numbers/all',
+    { preHandler: [adminAuth] },
+    async (req: any, reply) => {
+      if ((req.query as any).confirm !== 'APAGAR_TUDO') {
+        return reply.code(400).send({
+          error: 'Passe ?confirm=APAGAR_TUDO na URL para confirmar a exclusão.',
+        });
+      }
+
+      const all = await (prisma as any).whatsappNumber.findMany({
+        select: { id: true, userId: true, phoneNumber: true, status: true },
+      });
+
+      const deleted = await prisma.whatsappNumber.deleteMany({});
+
+      app.log.warn(
+        `[Admin] ⚠️ RESET: ${deleted.count} número(s) apagados por ${req.headers['x-forwarded-for'] || 'admin'}`
+      );
+
+      return reply.send({
+        ok:      true,
+        deleted: deleted.count,
+        numbers: all.map((n: any) => ({
+          id:          n.id,
+          phoneNumber: n.phoneNumber,
+          userId:      n.userId,
+          status:      n.status,
+        })),
+      });
+    }
+  );
 }

@@ -284,6 +284,22 @@ function AuditNumbers({ apiBase, token }: { apiBase: string; token: string }) {
     finally { setFixing(false); }
   }
 
+  async function deleteAllNumbers() {
+    const confirmText = prompt('⛔ ATENÇÃO: isso apaga TODOS os números de TODOS os usuários.\n\nDigite APAGAR_TUDO para confirmar:');
+    if (confirmText !== 'APAGAR_TUDO') { alert('Cancelado.'); return; }
+    setFixing(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/numbers/all?confirm=APAGAR_TUDO`, {
+        method: 'DELETE',
+        headers: { 'x-admin-token': token },
+      });
+      const r = await res.json();
+      alert(`✅ ${r.deleted} número(s) excluído(s). Tabela zerada.`);
+      load();
+    } catch (e: any) { alert('Erro: ' + e.message); }
+    finally { setFixing(false); }
+  }
+
   const summary  = data?.summary;
   const hasViolations = summary?.violations > 0;
 
@@ -310,6 +326,10 @@ function AuditNumbers({ apiBase, token }: { apiBase: string; token: string }) {
                 {fixing ? '⟳ Corrigindo...' : '🔧 Corrigir violações agora'}
               </button>
             )}
+            <button type="button" onClick={deleteAllNumbers} disabled={fixing}
+              className="text-xs bg-red-900/20 border border-red-600/30 text-red-400 px-3 py-1.5 rounded-lg hover:bg-red-900/40 disabled:opacity-40 transition-colors">
+              {fixing ? '⟳' : '⛔ Apagar todos os números'}
+            </button>
           </div>
 
           {summary && (
