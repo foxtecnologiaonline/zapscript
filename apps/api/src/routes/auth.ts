@@ -230,10 +230,10 @@ export default async function authRoutes(app: FastifyInstance) {
   );
 
   // ── POST /auth/login ──────────────────────────────────────────────────────
-  // Rate limit: 5 tentativas a cada 15 minutos (proteção contra bruteforce)
+  // Rate limit: 15 tentativas a cada 15 minutos (proteção contra bruteforce, tolerante a erros humanos)
   app.post<{ Body: { email: string; password: string } }>(
     '/login',
-    { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } },
+    { config: { rateLimit: { max: 15, timeWindow: '15 minutes' } } },
     async (req, reply) => {
       const { email, password } = req.body;
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
