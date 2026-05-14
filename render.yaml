@@ -45,4 +45,4 @@ services:
       # OPENAI_API_KEY      — OpenAI key (for Whisper transcription)
       # ANTHROPIC_API_KEY   — Anthropic key (for Claude bullets)
       # INTERNAL_TOKEN      — same as API's INTERNAL_TOKEN
-      # API_URL             — https://zapscript-api.onrender.com
+      # API_URL             — https://zapscript.onrender.com
