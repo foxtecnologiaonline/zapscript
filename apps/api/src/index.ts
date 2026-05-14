@@ -13,6 +13,7 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import { redis } from './services/queue';
 import { prisma } from './lib/prisma';
 import { syncAllZapiConfigs } from './services/zapi-sync';
+import { startHeartbeat }    from './services/zapi-heartbeat';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -347,6 +348,10 @@ async function start() {
     syncAllZapiConfigs(app.log).catch(err =>
       app.log.error({ err: err.message }, '[Z-API Sync] Erro no sync de startup')
     );
+
+    // ── Heartbeat Z-API — verifica a cada 1h se números "connected" continuam vivos ──
+    startHeartbeat(app.log);
+
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 
     // ✅ Usando WhatsApp Cloud API (Meta) em vez de Baileys
