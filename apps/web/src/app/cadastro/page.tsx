@@ -1,15 +1,14 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 
-export default function CadastroPage() {
+function CadastroForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const inviteCode   = searchParams.get('invite') || '';
   const [isTesterInvite, setIsTesterInvite] = useState(false);
-  const [inviteName, setInviteName]         = useState('');
 
   const [form, setForm]   = useState({ name: '', email: '', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
@@ -22,12 +21,7 @@ export default function CadastroPage() {
     const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
     fetch(`${apiUrl}/invites/validate/${inviteCode}`)
       .then(r => r.json())
-      .then(d => {
-        if (d.valid) {
-          setIsTesterInvite(true);
-          setInviteName(d.invite?.name || '');
-        }
-      })
+      .then(d => { if (d.valid) setIsTesterInvite(true); })
       .catch(() => {});
   }, [inviteCode]);
 
@@ -43,9 +37,9 @@ export default function CadastroPage() {
     setLoading(true);
     try {
       await api.post('/auth/register', {
-        name:       form.name,
-        email:      form.email,
-        password:   form.password,
+        name:     form.name,
+        email:    form.email,
+        password: form.password,
         ...(inviteCode ? { inviteCode } : {}),
       });
       setUserEmail(form.email);
@@ -77,8 +71,7 @@ export default function CadastroPage() {
               para ativar sua conta.<br />O link expira em 24 horas.
             </p>
             <div className="space-y-2">
-              <Link href="/login"
-                className="btn-primary block w-full py-3 text-center text-sm">
+              <Link href="/login" className="btn-primary block w-full py-3 text-center text-sm">
                 Já confirmei — Fazer login
               </Link>
               <button
@@ -160,5 +153,17 @@ export default function CadastroPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CadastroPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-brand-bg flex items-center justify-center">
+        <div className="text-brand-primary text-sm animate-pulse">Carregando...</div>
+      </div>
+    }>
+      <CadastroForm />
+    </Suspense>
   );
 }
