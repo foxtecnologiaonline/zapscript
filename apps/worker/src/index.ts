@@ -529,24 +529,37 @@ async function routeJob(job: Job) {
 //  WORKER SETUP
 // ─────────────────────────────────────────────────────────────────
 const worker = new Worker('transcriptions', routeJob, {
-  connection:  redis,
-  concurrency: 5,
+  connection:   redis,
+  concurrency:  2,            // era 5 — Render free (512MB) não aguenta 5 Whisper simultâneos
+  lockDuration: 5 * 60_000,   // 5 min — Whisper pode demorar em áudios longos (era default 30s → stalled!)
+  lockRenewTime: 2 * 60_000,  // renovar lock a cada 2 min enquanto processa
+  stalledInterval: 30_000,    // checar stalled jobs a cada 30s
+  maxStalledCount: 1,         // max 1 stall antes de marcar como falha
 });
 
 worker.on('completed', (job, result) => {
   if (result?.skipped) {
-    logger.warn(`Job ${job.id} [${job.name}] ignorado — motivo: ${result.reason}`);
+    logger.warn(`[Worker] Job ${job.id} ignorado — motivo: ${result.reason}`);
   } else {
-    logger.info(`Job ${job.id} [${job.name}] concluído`);
+    logger.info(`[Worker] ✅ Job ${job.id} [${job.name}] concluído`);
   }
 });
 
 worker.on('failed', (job, err) => {
-  logger.error(`Job ${job?.id} falhou`, { err: err.message });
+  const attempts = job?.attemptsMade ?? 0;
+  const maxAttempts = job?.opts?.attempts ?? 4;
+  logger.error(
+    `[Worker] ❌ Job ${job?.id} [${job?.name}] falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`,
+    { stack: err.stack?.split('\n').slice(0, 5).join(' | ') }
+  );
+});
+
+worker.on('stalled', (jobId) => {
+  logger.warn(`[Worker] ⚠️ Job ${jobId} ficou stalled (processamento demorou demais)`);
 });
 
 worker.on('error', (err) => {
-  logger.error('Worker error', { err: err.message });
+  logger.error('[Worker] Erro interno', { err: err.message });
 });
 
 logger.info('Worker de transcrição iniciado (WhatsApp + Upload manual)');

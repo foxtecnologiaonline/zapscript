@@ -5,6 +5,8 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import axios from 'axios';
 import { syncAllZapiConfigs } from '../services/zapi-sync';
+import { Queue } from 'bullmq';
+import { redis } from '../services/queue';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -708,6 +710,88 @@ export default async function adminRoutes(app: FastifyInstance) {
     async (_req, reply) => {
       const result = await syncAllZapiConfigs(app.log);
       return reply.send({ ok: true, ...result });
+    }
+  );
+
+  // ── GET /admin/queue — status da fila de transcrições ──────────────────────
+  // Mostra: jobs aguardando, ativos, falhos, concluídos e jobs falhos recentes.
+  app.get(
+    '/queue',
+    { preHandler: [adminAuth] },
+    async (_req, reply) => {
+      try {
+        const q = new Queue('transcriptions', { connection: redis });
+
+        const [waiting, active, failed, completed, delayed, paused] = await Promise.all([
+          q.getWaitingCount(),
+          q.getActiveCount(),
+          q.getFailedCount(),
+          q.getCompletedCount(),
+          q.getDelayedCount(),
+          q.isPaused(),
+        ]);
+
+        // Últimos 20 jobs falhos com detalhes
+        const failedJobs = await q.getFailed(0, 19);
+        const failedDetails = failedJobs.map(j => ({
+          id:          j.id,
+          name:        j.name,
+          source:      j.data?.source,
+          userId:      j.data?.userId,
+          senderPhone: j.data?.senderPhone,
+          attempts:    j.attemptsMade,
+          failedReason: j.failedReason,
+          processedOn: j.processedOn ? new Date(j.processedOn).toISOString() : null,
+          finishedOn:  j.finishedOn  ? new Date(j.finishedOn).toISOString()  : null,
+        }));
+
+        // Últimos 5 jobs ativos
+        const activeJobs = await q.getActive(0, 4);
+        const activeDetails = activeJobs.map(j => ({
+          id:         j.id,
+          name:       j.name,
+          source:     j.data?.source,
+          userId:     j.data?.userId,
+          processedOn: j.processedOn ? new Date(j.processedOn).toISOString() : null,
+        }));
+
+        await q.close();
+
+        return reply.send({
+          ok: true,
+          queue: {
+            paused,
+            counts: { waiting, active, failed, completed, delayed },
+          },
+          active:  activeDetails,
+          failed:  failedDetails,
+        });
+      } catch (err: any) {
+        app.log.error({ err: err.message }, '[Admin] Erro ao buscar status da fila');
+        return reply.code(500).send({ error: err.message });
+      }
+    }
+  );
+
+  // ── POST /admin/queue/retry-failed — retentar todos os jobs falhos ──────────
+  app.post(
+    '/queue/retry-failed',
+    { preHandler: [adminAuth] },
+    async (_req, reply) => {
+      try {
+        const q = new Queue('transcriptions', { connection: redis });
+        const failedJobs = await q.getFailed(0, 99);
+        let retried = 0;
+        for (const job of failedJobs) {
+          await job.retry('failed').catch(() => null);
+          retried++;
+        }
+        await q.close();
+        app.log.info(`[Admin] ${retried} jobs falhos re-enfileirados`);
+        return reply.send({ ok: true, retried });
+      } catch (err: any) {
+        return reply.code(500).send({ error: err.message });
+      }
     }
   );
 }

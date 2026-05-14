@@ -129,6 +129,126 @@ function DiagnoseWhatsApp({ apiBase, token }: { apiBase: string; token: string }
   );
 }
 
+// ── Painel de monitoramento da fila de transcrições ───────────────────────────
+function QueuePanel({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]       = useState<any>(null);
+  const [retrying, setRetrying] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/queue`, {
+        headers: { 'x-admin-token': token },
+      });
+      setData(await res.json());
+    } catch (e: any) {
+      setData({ error: e.message });
+    } finally { setLoading(false); }
+  }
+
+  async function retryFailed() {
+    setRetrying(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/queue/retry-failed`, {
+        method: 'POST',
+        headers: { 'x-admin-token': token },
+      });
+      const r = await res.json();
+      alert(`✅ ${r.retried} jobs re-enfileirados`);
+      load();
+    } catch (e: any) { alert('Erro: ' + e.message); }
+    finally { setRetrying(false); }
+  }
+
+  const counts = data?.queue?.counts;
+  const hasFailed = counts?.failed > 0;
+
+  return (
+    <div className="mt-3 border border-[rgba(16,185,129,.1)] rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
+        className="w-full text-left px-4 py-2.5 text-xs text-[rgba(16,185,129,.5)] hover:text-[rgba(16,185,129,.8)] flex items-center justify-between transition-colors">
+        <span>📊 {open ? '▲' : '▼'} Monitor de Fila (Transcrições)</span>
+        {hasFailed && <span className="text-red-400 font-bold">{counts.failed} falhos ⚠️</span>}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          <div className="flex gap-2">
+            <button type="button" onClick={load} disabled={loading}
+              className="text-xs bg-[rgba(16,185,129,.1)] border border-[rgba(16,185,129,.2)] text-[#10b981] px-3 py-1.5 rounded-lg hover:bg-[rgba(16,185,129,.2)] disabled:opacity-40 transition-colors">
+              {loading ? '⟳ Carregando...' : '↻ Atualizar'}
+            </button>
+            {hasFailed && (
+              <button type="button" onClick={retryFailed} disabled={retrying}
+                className="text-xs bg-amber-400/10 border border-amber-400/20 text-amber-400 px-3 py-1.5 rounded-lg hover:bg-amber-400/20 disabled:opacity-40 transition-colors">
+                {retrying ? '⟳' : '🔁 Re-tentar todos os falhos'}
+              </button>
+            )}
+          </div>
+
+          {data?.queue && (
+            <>
+              {/* Contadores */}
+              <div className="grid grid-cols-5 gap-2">
+                {[
+                  { label: 'Aguardando', key: 'waiting',   color: '#60a5fa' },
+                  { label: 'Ativos',     key: 'active',    color: '#34d399' },
+                  { label: 'Falhos',     key: 'failed',    color: '#f87171' },
+                  { label: 'Concluídos', key: 'completed', color: '#4ade80' },
+                  { label: 'Agendados',  key: 'delayed',   color: '#fbbf24' },
+                ].map(({ label, key, color }) => (
+                  <div key={key} className="bg-[#040b09] rounded-lg p-2.5 text-center">
+                    <div className="text-xl font-black" style={{ color }}>{counts?.[key] ?? '—'}</div>
+                    <div className="text-[9px] text-[rgba(16,185,129,.4)] mt-0.5">{label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Jobs ativos */}
+              {data.active?.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-[rgba(16,185,129,.6)] mb-1">Jobs ativos:</p>
+                  {data.active.map((j: any) => (
+                    <div key={j.id} className="text-[10px] text-[rgba(16,185,129,.5)] bg-[#040b09] rounded px-2 py-1 mb-1 font-mono">
+                      [{j.source}] {j.userId} — iniciado {j.processedOn ? new Date(j.processedOn).toLocaleTimeString('pt-BR') : '?'}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Jobs falhos */}
+              {data.failed?.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-red-400 mb-1">Últimos falhos:</p>
+                  <div className="max-h-48 overflow-auto space-y-1">
+                    {data.failed.map((j: any) => (
+                      <div key={j.id} className="text-[10px] bg-[#1a0505] border border-red-900/30 rounded px-2 py-1.5">
+                        <div className="flex justify-between">
+                          <span className="text-red-400 font-bold">[{j.source ?? j.name}]</span>
+                          <span className="text-[rgba(255,100,100,.5)]">{j.attempts} tentativa(s)</span>
+                        </div>
+                        <div className="text-red-300/60 truncate mt-0.5">{j.failedReason}</div>
+                        {j.finishedOn && <div className="text-red-400/30 mt-0.5">{new Date(j.finishedOn).toLocaleString('pt-BR')}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {data?.error && (
+            <p className="text-xs text-red-400">Erro: {data.error}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Pagination({ offset, total, loading, onPage }: {
   offset: number; total: number; loading: boolean; onPage: (o: number) => void;
 }) {
@@ -859,6 +979,7 @@ export default function AdminPage() {
                 {' '}Se o telefone for informado, a mensagem é enviada automaticamente via WhatsApp.
               </p>
               <DiagnoseWhatsApp apiBase={API} token={token} />
+              <QueuePanel apiBase={API} token={token} />
             </div>
 
             {/* Resultado do último convite */}

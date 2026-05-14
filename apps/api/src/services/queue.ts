@@ -8,33 +8,37 @@ if (!redisUrl) {
   logger.warn('[Redis] ⚠️ REDIS_URL não configurado — fila de transcrição desabilitada');
 }
 
+// ── Redis com reconexão resiliente ────────────────────────────────────────────
+// NUNCA dar return null — BullMQ precisa de conexão persistente.
+// Exponential backoff até 30s, retry infinito (Upstash pode blitar por rate limit).
 export const redis = new Redis(redisUrl || 'redis://localhost:6379', {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-  lazyConnect: true,
+  maxRetriesPerRequest: null,  // obrigatório para BullMQ
+  enableReadyCheck:     false,
+  lazyConnect:          true,
   retryStrategy: (times) => {
-    if (times > 3) {
-      logger.error('[Redis] ❌ Falha ao conectar após 3 tentativas — desistindo');
-      return null; // para de tentar reconectar
-    }
-    return Math.min(times * 1000, 5000);
+    const delay = Math.min(times * 1500, 30_000); // 1.5s → 3s → ... → 30s
+    logger.warn(`[Redis] Reconectando (tentativa ${times}) em ${delay}ms`);
+    return delay; // nunca retorna null — reconecta indefinidamente
+  },
+  reconnectOnError: (err) => {
+    // Reconectar em erros de rede (ECONNRESET, ETIMEDOUT, EPIPE)
+    const reconnectable = ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND'];
+    return reconnectable.some(code => err.message.includes(code));
   },
 });
 
-redis.on('error', (err) => {
-  logger.error({ err: err.message }, '[Redis] Erro de conexão');
-});
+redis.on('error',        (err) => logger.error({ err: err.message }, '[Redis] Erro de conexão'));
+redis.on('connect',      ()    => logger.info('[Redis] ✅ Conectado'));
+redis.on('reconnecting', (ms:number) => logger.warn(`[Redis] Reconectando em ${ms}ms...`));
+redis.on('ready',        ()    => logger.info('[Redis] ✅ Pronto'));
 
-redis.on('connect', () => {
-  logger.info('[Redis] ✅ Conectado');
-});
-
+// ── Fila de transcrições ───────────────────────────────────────────────────────
 export const transcriptionQueue = new Queue('transcriptions', {
   connection: redis,
   defaultJobOptions: {
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 3000 },
-    removeOnComplete: 200,
-    removeOnFail: 100,
+    attempts: 4,                              // 4 tentativas (era 3)
+    backoff:  { type: 'exponential', delay: 5_000 }, // 5s → 10s → 20s → 40s
+    removeOnComplete: { count: 500, age: 24 * 60 * 60 },     // últimas 500 ou 24h
+    removeOnFail:     { count: 1000, age: 7 * 24 * 60 * 60 }, // últimas 1000 ou 7 dias
   },
 });
