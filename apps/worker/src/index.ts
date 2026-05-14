@@ -169,7 +169,7 @@ function buildMessage(bullets: string[], originalText: string, _refCode: string)
   return (
     `✨ Transcrição do seu áudio ✨\n\n` +
     `🎯 Destaques\n${bulletLines}\n\n` +
-    `📄 Transcrição completa\n${originalText}\n\n` +
+    `📄 Transcrição completa\n_${originalText}_\n\n` +
     `---\n` +
     `⚡ Pronto em segundos!\n` +
     `👉 https://ZapScript.me — Ative agora`
