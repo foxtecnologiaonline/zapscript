@@ -96,11 +96,11 @@ function CadastroForm() {
             <span className="w-2.5 h-2.5 rounded-full bg-brand-primary animate-pulse"/>ZapScript
           </Link>
           {isTesterInvite ? (
-            <div className="mt-3 inline-flex items-center gap-2 bg-amber-400/10 border border-amber-400/30 rounded-xl px-4 py-2">
-              <span>🧪</span>
+            <div className="mt-4 inline-flex items-center gap-2.5 bg-amber-400/15 border-2 border-amber-400/50 rounded-xl px-5 py-2.5">
+              <span className="text-lg">🧪</span>
               <div className="text-left">
-                <div className="text-xs font-black text-amber-400 uppercase tracking-wider">Tester Oficial</div>
-                <div className="text-[10px] text-amber-400/70">Plano PRO grátis por 1 ano</div>
+                <div className="text-xs font-black text-amber-300 uppercase tracking-widest">Tester Oficial</div>
+                <div className="text-[11px] font-semibold text-amber-400">Plano PRO grátis por 1 ano</div>
               </div>
             </div>
           ) : (
