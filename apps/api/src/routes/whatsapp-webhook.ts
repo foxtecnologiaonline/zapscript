@@ -182,14 +182,16 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
           const text = msg.text.body;
           app.log.info(`[WhatsApp] 💬 Texto de ${senderName}: "${text.substring(0, 50)}"`);
 
-          // Responder com mensagem genérica (opcional)
-          try {
-            await whatsappAPI.sendMessage(
-              senderPhone,
-              'Olá! Envie um áudio para transcrição e resumo automático. 🎙️'
-            );
-          } catch (err: any) {
-            app.log.error({ err: err.message }, '[WhatsApp] Erro ao responder texto');
+          // Resposta automática apenas se WHATSAPP_AUTO_REPLY=true
+          if (process.env.WHATSAPP_AUTO_REPLY === 'true') {
+            try {
+              await whatsappAPI.sendMessage(
+                senderPhone,
+                'Olá! Envie um áudio para transcrição e resumo automático. 🎙️'
+              );
+            } catch (err: any) {
+              app.log.error({ err: err.message }, '[WhatsApp] Erro ao responder texto');
+            }
           }
 
           // Marcar como lido

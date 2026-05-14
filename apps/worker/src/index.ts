@@ -85,7 +85,7 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
 async function generateBullets(originalText: string): Promise<string[]> {
   try {
     const res = await claude.messages.create({
-      model:      'claude-haiku-4-5',   // Haiku: 10x mais barato que Sonnet para esta tarefa
+      model:      'claude-haiku-4-5-20251001',   // Haiku: 10x mais barato que Sonnet para esta tarefa
       max_tokens: 400,
       system:     'Você é um assistente que resume áudios transcritos em bullets concisos em português brasileiro. Responda SOMENTE com os bullets, um por linha, começando com "- ". Sem título, sem texto extra.',
       messages: [{

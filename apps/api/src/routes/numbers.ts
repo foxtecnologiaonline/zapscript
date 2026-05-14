@@ -116,6 +116,14 @@ export default async function numberRoutes(app: FastifyInstance) {
     const { displayName, phoneNumber } = req.body;
     const userId = req.user.sub;
 
+    const trimmedName = displayName?.trim();
+    if (!trimmedName || trimmedName.length < 2) {
+      return reply.code(400).send({ error: 'Nome deve ter ao menos 2 caracteres.' });
+    }
+    if (trimmedName.length > 50) {
+      return reply.code(400).send({ error: 'Nome deve ter no máximo 50 caracteres.' });
+    }
+
     // Admin não tem limite de números
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user?.isAdmin) {
@@ -143,7 +151,7 @@ export default async function numberRoutes(app: FastifyInstance) {
     const number = await prisma.whatsappNumber.create({
       data: {
         userId,
-        displayName,
+        displayName: trimmedName,
         ...(cleanPhone ? { phoneNumber: cleanPhone } : {}),
       },
     });

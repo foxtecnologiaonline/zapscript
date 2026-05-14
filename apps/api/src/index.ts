@@ -238,7 +238,7 @@ if (process.env.WHATSAPP_API_TOKEN) {
   app.log.warn('⚠️ WHATSAPP_API_TOKEN não configurado - envio desabilitado, recebimento ativo');
 }
 
-app.get('/health', async (_, reply) => {
+app.get('/health', async (req, reply) => {
   const checks: Record<string, string> = {};
   let healthy = true;
 
@@ -260,12 +260,19 @@ app.get('/health', async (_, reply) => {
     healthy = false;
   }
 
+  // Em produção, detalhes internos só com token de monitor
+  const monitorToken = process.env.MONITOR_TOKEN;
+  const reqToken     = (req.headers['x-monitor-token'] as string | undefined);
+  const isAuthorized = !monitorToken || (reqToken && reqToken === monitorToken);
+
   const payload = {
     status: healthy ? 'ok' : 'degraded',
     ts:     new Date().toISOString(),
-    app:    process.env.APP_NAME || 'ZapScript',
-    env:    process.env.NODE_ENV,
-    checks,
+    ...(isAuthorized ? {
+      app:    process.env.APP_NAME || 'ZapScript',
+      env:    process.env.NODE_ENV,
+      checks,
+    } : {}),
   };
 
   return healthy ? payload : reply.code(503).send(payload);

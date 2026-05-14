@@ -248,10 +248,9 @@ export default async function authRoutes(app: FastifyInstance) {
 
       try {
         const { data: linkData } = await supabase.auth.admin.generateLink({
-          type:     'signup',
+          type:    'magiclink',
           email,
-          password: Math.random().toString(36), // placeholder — não altera senha existente
-          options:  { redirectTo: `${APP_URL}/email-confirmado` },
+          options: { redirectTo: `${APP_URL}/email-confirmado` },
         });
 
         if (linkData?.properties?.action_link) {
@@ -373,8 +372,8 @@ export default async function authRoutes(app: FastifyInstance) {
       if (!access_token || !new_password) {
         return reply.code(400).send({ error: 'access_token e new_password são obrigatórios' });
       }
-      if (new_password.length < 6) {
-        return reply.code(400).send({ error: 'Senha deve ter ao menos 6 caracteres' });
+      if (new_password.length < 8) {
+        return reply.code(400).send({ error: 'Senha deve ter ao menos 8 caracteres' });
       }
 
       // Verificar token e identificar usuário

@@ -15,8 +15,9 @@ function validateTwilioSignature(
 ): boolean {
   const sortedKeys = Object.keys(params).sort();
   const str        = url + sortedKeys.map(k => k + params[k]).join('');
-  const expected   = crypto.createHmac('sha1', authToken).update(str).digest('base64');
-  return expected === signature;
+  const expected = crypto.createHmac('sha1', authToken).update(str).digest('base64');
+  if (expected.length !== signature.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 }
 
 export default async function twilioWebhookRoutes(app: FastifyInstance) {

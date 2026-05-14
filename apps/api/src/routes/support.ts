@@ -14,7 +14,7 @@ function escapeHtml(str: string): string {
 export default async function supportRoutes(app: FastifyInstance) {
 
   // POST /support/ticket — criar ticket de suporte com suporte a anexo
-  app.post('/ticket', async (req, reply) => {
+  app.post('/ticket', { config: { rateLimit: { max: 3, timeWindow: '10 minutes' } } }, async (req, reply) => {
     let attachmentData: string | undefined;
     let attachmentFilename: string | undefined;
     let attachmentMimeType: string | undefined;
@@ -53,6 +53,26 @@ export default async function supportRoutes(app: FastifyInstance) {
     const { name, email, category, description } = fields;
     if (!name || !email || !category || !description) {
       return reply.code(400).send({ error: 'name, email, category, description obrigatórios' });
+    }
+
+    // Validações de formato
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return reply.code(400).send({ error: 'E-mail inválido.' });
+    }
+    if (name.length > 100) {
+      return reply.code(400).send({ error: 'Nome muito longo (máx 100 caracteres).' });
+    }
+    if (description.length > 5000) {
+      return reply.code(400).send({ error: 'Descrição muito longa (máx 5000 caracteres).' });
+    }
+    const allowedCategories = ['técnico', 'cobrança', 'conta', 'outro', 'sugestão'];
+    const categoryLower = category.toLowerCase();
+    if (!allowedCategories.some(c => categoryLower.includes(c))) {
+      // Aceita qualquer categoria mas limita o tamanho
+      if (category.length > 50) {
+        return reply.code(400).send({ error: 'Categoria muito longa (máx 50 caracteres).' });
+      }
     }
 
     const ticket = await prisma.supportTicket.create({

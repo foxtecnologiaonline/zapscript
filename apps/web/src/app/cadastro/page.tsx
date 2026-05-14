@@ -19,7 +19,7 @@ export default function CadastroPage() {
     e.preventDefault();
     setError('');
     if (form.password !== form.confirm) { setError('As senhas não coincidem.'); return; }
-    if (form.password.length < 6)       { setError('Senha deve ter ao menos 6 caracteres.'); return; }
+    if (form.password.length < 8)       { setError('Senha deve ter ao menos 8 caracteres.'); return; }
 
     setLoading(true);
     try {
@@ -98,7 +98,7 @@ export default function CadastroPage() {
             </div>
             <div>
               <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">Senha</label>
-              <input className="field-input" type="password" placeholder="Mínimo 6 caracteres" value={form.password} onChange={set('password')} required minLength={6}/>
+              <input className="field-input" type="password" placeholder="Mínimo 8 caracteres" value={form.password} onChange={set('password')} required minLength={8}/>
             </div>
             <div>
               <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">Confirmar senha</label>
