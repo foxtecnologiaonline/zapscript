@@ -553,6 +553,14 @@ export default function AdminPage() {
     } finally { setInviteLoading(false); }
   }
 
+  async function deleteInvite(id: string, name: string) {
+    if (!confirm(`Excluir convite de "${name}"?`)) return;
+    await fetch(`${API}/sys/g5r8t2/invites/${id}`, { method: 'DELETE', headers: h });
+    setInvites((prev: any[]) => prev.filter((i: any) => i.id !== id));
+    setInviteTotal((t: number) => t - 1);
+    notify('🗑 Convite excluído', 'ok');
+  }
+
   async function createInvite(e: React.FormEvent) {
     e.preventDefault();
     if (!inviteName.trim()) return;
@@ -924,6 +932,9 @@ export default function AdminPage() {
                         Copiar link
                       </Btn>
                     )}
+                    <Btn variant="danger" onClick={() => deleteInvite(inv.id, inv.name)}>
+                      🗑
+                    </Btn>
                   </div>
                 </div>
               ))}

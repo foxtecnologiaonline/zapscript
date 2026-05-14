@@ -592,6 +592,20 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // DELETE /admin/invites/:id — excluir convite de Tester
+  app.delete<{ Params: { id: string } }>(
+    '/invites/:id',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { id } = req.params;
+      const invite = await prisma.testerInvite.findUnique({ where: { id } });
+      if (!invite) return reply.code(404).send({ error: 'Convite não encontrado.' });
+      await prisma.testerInvite.delete({ where: { id } });
+      app.log.info(`[Admin] Convite ${invite.code} (${invite.name}) excluído`);
+      return reply.code(204).send();
+    }
+  );
+
   // GET /admin/invites — listar convites de Tester
   app.get<{ Querystring: { limit?: string; offset?: string } }>(
     '/invites',
