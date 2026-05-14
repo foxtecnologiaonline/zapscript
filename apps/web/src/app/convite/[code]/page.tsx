@@ -57,76 +57,70 @@ export default function ConvitePage() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4 py-12 overflow-x-hidden">
-      <div className="w-full max-w-md min-w-0">
+    <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4 py-4 sm:py-12">
+      <div className="w-full max-w-md">
 
         {/* Logo */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-3 sm:mb-6">
           <Link href="/" className="inline-flex items-center gap-2 text-xl font-bold text-brand-primary">
             <span className="w-2.5 h-2.5 rounded-full bg-brand-primary animate-pulse"/>ZapScript
           </Link>
         </div>
 
         {/* Card principal */}
-        <div className="bg-brand-surface rounded-2xl p-5 sm:p-8" style={{ border: '1px solid rgba(var(--color-primary), .15)' }}>
+        <div className="bg-brand-surface rounded-2xl p-4 sm:p-8" style={{ border: '1px solid rgba(var(--color-primary), .15)' }}>
 
           {/* Selo Tester */}
-          <div className="flex justify-center mb-6">
-            <div className="inline-flex flex-col items-center gap-2 bg-amber-400/15 border-2 border-amber-400/50 rounded-2xl px-6 py-4">
-              <span className="text-4xl">🏅</span>
-              <span className="text-xs font-black text-amber-300 uppercase tracking-widest">Tester Oficial</span>
-              <span className="text-[11px] font-semibold text-amber-400">ZapScript Beta</span>
+          <div className="flex justify-center mb-3 sm:mb-5">
+            <div className="inline-flex items-center gap-3 bg-amber-400/15 border-2 border-amber-400/50 rounded-2xl px-5 py-2.5">
+              <span className="text-3xl">🏅</span>
+              <div>
+                <div className="text-xs font-black text-amber-300 uppercase tracking-widest">Tester Oficial</div>
+                <div className="text-[11px] font-semibold text-amber-400">ZapScript Beta</div>
+              </div>
             </div>
           </div>
 
-          <h1 className="text-2xl font-black text-center text-brand-primary mb-2">
+          <h1 className="text-xl sm:text-2xl font-black text-center text-brand-primary mb-1">
             Você foi convidado!
           </h1>
-          <p className="text-brand-text-secondary text-center text-sm mb-6 leading-relaxed">
+          <p className="text-brand-text-secondary text-center text-sm mb-3 sm:mb-5">
             {invite?.name ? (
-              <>Este convite foi preparado especialmente para <strong className="text-brand-text">{invite.name}</strong>.</>
+              <>Convite exclusivo para <strong className="text-brand-text">{invite.name}</strong>.</>
             ) : (
               'Um convite exclusivo para se tornar Tester Oficial.'
             )}
           </p>
 
           {/* Benefícios */}
-          <div className="space-y-3 mb-8">
-            <div className="flex items-center gap-3 bg-brand-bg rounded-xl px-4 py-3">
-              <span className="text-2xl flex-shrink-0">⚡</span>
-              <div>
-                <div className="text-sm font-bold text-brand-primary">Plano PRO grátis por 1 ano</div>
-                <div className="text-xs text-brand-text-secondary">Transcrição ilimitada, sem cartão de crédito</div>
+          <div className="space-y-2 mb-4 sm:mb-6">
+            {[
+              { icon: '⚡', title: 'Plano PRO grátis por 1 ano', sub: 'Transcrição ilimitada, sem cartão' },
+              { icon: '🏅', title: 'Selo Tester Oficial',        sub: 'Acesso antecipado a novos recursos' },
+              { icon: '🎙️', title: 'Transcrição via WhatsApp',   sub: 'IA — Groq Whisper + resumo em tópicos' },
+            ].map(b => (
+              <div key={b.title} className="flex items-center gap-3 bg-brand-bg rounded-xl px-3 py-2.5">
+                <span className="text-xl flex-shrink-0">{b.icon}</span>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-brand-primary leading-tight">{b.title}</div>
+                  <div className="text-xs text-brand-text-secondary truncate">{b.sub}</div>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-3 bg-brand-bg rounded-xl px-4 py-3">
-              <span className="text-2xl flex-shrink-0">🏅</span>
-              <div>
-                <div className="text-sm font-bold text-brand-primary">Selo Tester Oficial</div>
-                <div className="text-xs text-brand-text-secondary">Acesso antecipado a novos recursos</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 bg-brand-bg rounded-xl px-4 py-3">
-              <span className="text-2xl flex-shrink-0">🎙️</span>
-              <div>
-                <div className="text-sm font-bold text-brand-primary">Transcrição de áudios do WhatsApp</div>
-                <div className="text-xs text-brand-text-secondary">Com IA — Groq Whisper + resumo em tópicos</div>
-              </div>
-            </div>
+            ))}
           </div>
 
           <Link
             href={`/cadastro?invite=${code}`}
-            className="btn-primary block w-full py-4 text-center font-bold text-sm rounded-xl">
+            className="btn-primary block w-full py-3 text-center font-bold text-sm rounded-xl">
             Criar minha conta Tester →
           </Link>
 
-          <p className="text-center text-xs text-brand-muted mt-4 leading-relaxed">
+          <p className="text-center text-[10px] text-brand-muted mt-3 leading-relaxed">
             Ao criar sua conta você concorda com os{' '}
             <Link href="/termos" className="underline">Termos de Uso</Link>
             {' '}e{' '}
             <Link href="/privacidade" className="underline">Política de Privacidade</Link>.
-            <br/>O código de convite é de uso único.
+            {' '}Convite de uso único.
           </p>
         </div>
 

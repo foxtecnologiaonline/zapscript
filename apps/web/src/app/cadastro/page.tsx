@@ -89,18 +89,18 @@ function CadastroForm() {
 
   // ── Formulário de cadastro ────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4 py-4 sm:py-12">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
+        <div className="text-center mb-4 sm:mb-8">
           <div>
             <Link href="/" className="inline-flex items-center gap-2 text-xl font-bold text-brand-primary">
               <span className="w-2.5 h-2.5 rounded-full bg-brand-primary animate-pulse"/>ZapScript
             </Link>
           </div>
           {isTesterInvite ? (
-            <div className="mt-4 flex justify-center px-2">
-              <div className="inline-flex items-center gap-3 bg-amber-400/15 border-2 border-amber-400/50 rounded-xl px-5 py-2.5 max-w-full">
-                <span className="text-2xl flex-shrink-0">🏅</span>
+            <div className="mt-3 flex justify-center">
+              <div className="inline-flex items-center gap-3 bg-amber-400/15 border-2 border-amber-400/50 rounded-xl px-5 py-2 max-w-full">
+                <span className="text-xl flex-shrink-0">🏅</span>
                 <div className="text-left min-w-0">
                   <div className="text-xs font-black text-amber-300 uppercase tracking-widest">Tester Oficial</div>
                   <div className="text-[11px] font-semibold text-amber-400">Plano PRO grátis por 1 ano</div>
@@ -112,23 +112,23 @@ function CadastroForm() {
           )}
         </div>
 
-        <div className="bg-brand-surface rounded-2xl p-7"
+        <div className="bg-brand-surface rounded-2xl p-5 sm:p-7"
           style={{ border: '1px solid rgba(var(--color-primary), .10)' }}>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">Nome completo</label>
+              <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Nome completo</label>
               <input className="field-input" placeholder="Seu nome" value={form.name} onChange={set('name')} required/>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">E-mail</label>
+              <label className="block text-xs font-semibold text-brand-text-secondary mb-1">E-mail</label>
               <input className="field-input" type="email" placeholder="seu@email.com" value={form.email} onChange={set('email')} required/>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">Senha</label>
+              <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Senha</label>
               <input className="field-input" type="password" placeholder="Mínimo 8 caracteres" value={form.password} onChange={set('password')} required minLength={8}/>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">Confirmar senha</label>
+              <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Confirmar senha</label>
               <input className="field-input" type="password" placeholder="Repita a senha" value={form.confirm} onChange={set('confirm')} required/>
             </div>
 
@@ -139,16 +139,16 @@ function CadastroForm() {
             )}
 
             <button type="submit" disabled={loading}
-              className="btn-primary w-full py-3 text-sm disabled:opacity-50 mt-2">
+              className="btn-primary w-full py-3 text-sm disabled:opacity-50">
               {loading ? 'Criando conta...' : 'Criar conta grátis'}
             </button>
           </form>
 
-          <p className="text-center text-xs text-brand-muted mt-5">
+          <p className="text-center text-xs text-brand-muted mt-4">
             Já tem conta?{' '}
             <Link href="/login" className="text-brand-primary font-semibold hover:underline">Entrar</Link>
           </p>
-          <p className="text-center text-[10px] text-brand-muted mt-3 leading-relaxed">
+          <p className="text-center text-[10px] text-brand-muted mt-2 leading-relaxed">
             Ao criar sua conta você concorda com os{' '}
             <Link href="/termos" className="underline">Termos de Uso</Link>
             {' '}e{' '}
