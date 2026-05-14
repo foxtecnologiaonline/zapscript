@@ -794,4 +794,163 @@ export default async function adminRoutes(app: FastifyInstance) {
       }
     }
   );
+
+  // ── GET /admin/audit-numbers — auditoria de isolamento de números WhatsApp ──
+  // Verifica se há números misturados entre usuários (mesmo zapiInstanceId em múltiplos usuários)
+  // e retorna o estado completo de todos os números para diagnóstico.
+  app.get(
+    '/audit-numbers',
+    { preHandler: [adminAuth] },
+    async (_req, reply) => {
+      // 1. Todos os números com dados do usuário dono
+      const allNumbers = await (prisma as any).whatsappNumber.findMany({
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          id:             true,
+          phoneNumber:    true,
+          displayName:    true,
+          status:         true,
+          zapiInstanceId: true,
+          createdAt:      true,
+          updatedAt:      true,
+          connectedAt:    true,
+          userId:         true,
+          user: {
+            select: { id: true, email: true, name: true },
+          },
+        },
+      });
+
+      // 2. Detectar violações de isolamento: mesmo zapiInstanceId em múltiplos registros ativos
+      const byInstance: Record<string, typeof allNumbers> = {};
+      for (const n of allNumbers) {
+        if (!n.zapiInstanceId) continue;
+        if (!byInstance[n.zapiInstanceId]) byInstance[n.zapiInstanceId] = [];
+        byInstance[n.zapiInstanceId].push(n);
+      }
+
+      const violations: any[] = [];
+      for (const [instanceId, nums] of Object.entries(byInstance)) {
+        const active = (nums as any[]).filter((n: any) => n.status === 'connected' || n.status === 'connecting');
+        if (active.length > 1) {
+          violations.push({
+            instanceId,
+            activeCount: active.length,
+            numbers: active.map((n: any) => ({
+              id:          n.id,
+              phoneNumber: n.phoneNumber,
+              status:      n.status,
+              userId:      n.userId,
+              userEmail:   n.user?.email,
+              connectedAt: n.connectedAt,
+              updatedAt:   n.updatedAt,
+            })),
+          });
+        }
+      }
+
+      // 3. Números sem zapiInstanceId (órfãos)
+      const orphans = allNumbers.filter((n: any) => !n.zapiInstanceId);
+
+      // 4. Resumo por usuário
+      const byUser: Record<string, any> = {};
+      for (const n of allNumbers) {
+        const uid = n.userId;
+        if (!byUser[uid]) {
+          byUser[uid] = {
+            userId:    uid,
+            userEmail: n.user?.email,
+            userName:  n.user?.name,
+            numbers:   [],
+          };
+        }
+        byUser[uid].numbers.push({
+          id:             n.id,
+          phoneNumber:    n.phoneNumber,
+          displayName:    n.displayName,
+          status:         n.status,
+          zapiInstanceId: n.zapiInstanceId,
+          connectedAt:    n.connectedAt,
+          updatedAt:      n.updatedAt,
+        });
+      }
+
+      const summary = {
+        totalNumbers:    allNumbers.length,
+        connected:       allNumbers.filter((n: any) => n.status === 'connected').length,
+        connecting:      allNumbers.filter((n: any) => n.status === 'connecting').length,
+        disconnected:    allNumbers.filter((n: any) => n.status === 'disconnected').length,
+        orphans:         orphans.length,
+        violations:      violations.length,
+        isolationOk:     violations.length === 0,
+      };
+
+      app.log.info(
+        `[Admin Audit] Números: ${summary.totalNumbers} total, ${summary.connected} conectados, ` +
+        `${violations.length} violações de isolamento`
+      );
+
+      return reply.send({
+        ok: true,
+        summary,
+        violations,
+        byUser: Object.values(byUser),
+        orphans: orphans.map((n: any) => ({
+          id:          n.id,
+          phoneNumber: n.phoneNumber,
+          displayName: n.displayName,
+          status:      n.status,
+          userId:      n.userId,
+          userEmail:   n.user?.email,
+        })),
+      });
+    }
+  );
+
+  // ── POST /admin/fix-number-isolation — corrige violações de isolamento ────────
+  // Para cada zapiInstanceId com múltiplos números ativos, mantém o mais recente
+  // e desconecta os demais. USE COM CUIDADO — altera status no banco.
+  app.post(
+    '/fix-number-isolation',
+    { preHandler: [adminAuth] },
+    async (_req, reply) => {
+      const allNumbers = await (prisma as any).whatsappNumber.findMany({
+        where:  { status: { in: ['connected', 'connecting'] }, zapiInstanceId: { not: null } },
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true, userId: true, zapiInstanceId: true, status: true, updatedAt: true },
+      });
+
+      const byInstance: Record<string, any[]> = {};
+      for (const n of allNumbers) {
+        if (!byInstance[n.zapiInstanceId]) byInstance[n.zapiInstanceId] = [];
+        byInstance[n.zapiInstanceId].push(n);
+      }
+
+      const fixed: any[] = [];
+      for (const [instanceId, nums] of Object.entries(byInstance)) {
+        if (nums.length <= 1) continue;
+        const [keep, ...evict] = nums; // já ordenado por updatedAt desc — manter o mais recente
+        const evictIds = evict.map((n: any) => n.id);
+        await prisma.whatsappNumber.updateMany({
+          where: { id: { in: evictIds } },
+          data:  { status: 'disconnected' },
+        });
+        fixed.push({
+          instanceId,
+          kept:    { id: keep.id, userId: keep.userId, updatedAt: keep.updatedAt },
+          evicted: evict.map((n: any) => ({ id: n.id, userId: n.userId, updatedAt: n.updatedAt })),
+        });
+        app.log.warn(
+          `[Admin Fix] Instância ${instanceId}: mantido ${keep.id} (user ${keep.userId}), ` +
+          `desconectados: ${evictIds.join(', ')}`
+        );
+      }
+
+      return reply.send({
+        ok:    true,
+        fixed: fixed.length,
+        details: fixed,
+      });
+    }
+  );
 }

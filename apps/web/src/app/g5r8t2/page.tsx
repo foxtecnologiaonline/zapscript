@@ -249,6 +249,123 @@ function QueuePanel({ apiBase, token }: { apiBase: string; token: string }) {
   );
 }
 
+// ── Auditoria de isolamento de números WhatsApp ──────────────────────────────
+function AuditNumbers({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [fixing, setFixing]   = useState(false);
+  const [data, setData]       = useState<any>(null);
+
+  async function load() {
+    setLoading(true);
+    setData(null);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/audit-numbers`, {
+        headers: { 'x-admin-token': token },
+      });
+      setData(await res.json());
+    } catch (e: any) {
+      setData({ error: e.message });
+    } finally { setLoading(false); }
+  }
+
+  async function fixIsolation() {
+    if (!confirm('⚠️ Isso irá desconectar números duplicados (mantendo o mais recente por instância). Continuar?')) return;
+    setFixing(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/fix-number-isolation`, {
+        method: 'POST',
+        headers: { 'x-admin-token': token },
+      });
+      const r = await res.json();
+      alert(`✅ ${r.fixed} violação(ões) corrigida(s). Atualizando...`);
+      load();
+    } catch (e: any) { alert('Erro: ' + e.message); }
+    finally { setFixing(false); }
+  }
+
+  const summary  = data?.summary;
+  const hasViolations = summary?.violations > 0;
+
+  return (
+    <div className="mt-3 border border-[rgba(16,185,129,.1)] rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
+        className="w-full text-left px-4 py-2.5 text-xs text-[rgba(16,185,129,.5)] hover:text-[rgba(16,185,129,.8)] flex items-center justify-between transition-colors">
+        <span>🔒 {open ? '▲' : '▼'} Auditoria de Isolamento (Números WhatsApp)</span>
+        {hasViolations && <span className="text-red-400 font-bold animate-pulse">{summary.violations} violação(ões) ⚠️</span>}
+        {data && !hasViolations && summary && <span className="text-green-400 text-[10px]">✅ OK</span>}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          <div className="flex gap-2 flex-wrap">
+            <button type="button" onClick={load} disabled={loading}
+              className="text-xs bg-[rgba(16,185,129,.1)] border border-[rgba(16,185,129,.2)] text-[#10b981] px-3 py-1.5 rounded-lg hover:bg-[rgba(16,185,129,.2)] disabled:opacity-40 transition-colors">
+              {loading ? '⟳ Verificando...' : '↻ Re-verificar'}
+            </button>
+            {hasViolations && (
+              <button type="button" onClick={fixIsolation} disabled={fixing}
+                className="text-xs bg-red-500/10 border border-red-500/30 text-red-400 px-3 py-1.5 rounded-lg hover:bg-red-500/20 disabled:opacity-40 transition-colors">
+                {fixing ? '⟳ Corrigindo...' : '🔧 Corrigir violações agora'}
+              </button>
+            )}
+          </div>
+
+          {summary && (
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label: 'Total números', value: summary.totalNumbers,  color: '#60a5fa' },
+                { label: 'Conectados',    value: summary.connected,     color: '#34d399' },
+                { label: 'Órfãos',        value: summary.orphans,       color: '#fbbf24' },
+                { label: 'Violações',     value: summary.violations,    color: hasViolations ? '#f87171' : '#34d399' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="bg-[#040b09] rounded-lg p-2.5 text-center">
+                  <div className="text-xl font-black" style={{ color }}>{value}</div>
+                  <div className="text-[9px] text-[rgba(16,185,129,.4)] mt-0.5">{label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Violações detalhadas */}
+          {hasViolations && data.violations.map((v: any, i: number) => (
+            <div key={i} className="bg-red-900/10 border border-red-500/20 rounded-lg p-3">
+              <p className="text-xs font-bold text-red-400 mb-2">⚠️ Instância {v.instanceId} — {v.activeCount} número(s) ativos</p>
+              {v.numbers.map((n: any) => (
+                <div key={n.id} className="text-[10px] text-red-300/70 font-mono bg-[#0a0000] rounded px-2 py-1 mb-1">
+                  [{n.status}] {n.phoneNumber || 'sem número'} — user: {n.userEmail || n.userId} — atualizado: {n.updatedAt ? new Date(n.updatedAt).toLocaleString('pt-BR') : '?'}
+                </div>
+              ))}
+            </div>
+          ))}
+
+          {/* Números por usuário */}
+          {!hasViolations && data?.byUser && (
+            <div className="max-h-64 overflow-auto space-y-2">
+              {data.byUser.map((u: any) => (
+                <div key={u.userId} className="bg-[#040b09] rounded-lg px-3 py-2">
+                  <p className="text-[10px] font-bold text-[rgba(16,185,129,.7)] mb-1">
+                    {u.userEmail || u.userId} ({u.numbers.length} número(s))
+                  </p>
+                  {u.numbers.map((n: any) => (
+                    <div key={n.id} className="text-[10px] text-[rgba(16,185,129,.5)] font-mono ml-2">
+                      • {n.phoneNumber || n.displayName || n.id} — <span className={n.status === 'connected' ? 'text-green-400' : 'text-red-400/60'}>{n.status}</span>
+                      {n.zapiInstanceId ? ` (inst: ${n.zapiInstanceId.substring(0, 8)}…)` : ' (sem instância)'}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {data?.error && <p className="text-xs text-red-400">Erro: {data.error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Pagination({ offset, total, loading, onPage }: {
   offset: number; total: number; loading: boolean; onPage: (o: number) => void;
 }) {
@@ -980,6 +1097,7 @@ export default function AdminPage() {
               </p>
               <DiagnoseWhatsApp apiBase={API} token={token} />
               <QueuePanel apiBase={API} token={token} />
+              <AuditNumbers apiBase={API} token={token} />
             </div>
 
             {/* Resultado do último convite */}
