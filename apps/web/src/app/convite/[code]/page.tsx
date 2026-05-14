@@ -39,9 +39,9 @@ export default function ConvitePage() {
 
   if (state === 'invalid') {
     return (
-      <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4">
-        <div className="w-full max-w-sm text-center">
-          <div className="bg-brand-surface rounded-2xl p-8" style={{ border: '1px solid rgba(239,68,68,.2)' }}>
+      <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4 overflow-x-hidden">
+        <div className="w-full max-w-sm min-w-0 text-center">
+          <div className="bg-brand-surface rounded-2xl p-5 sm:p-8" style={{ border: '1px solid rgba(239,68,68,.2)' }}>
             <span className="text-4xl block mb-4">❌</span>
             <h2 className="text-xl font-bold text-red-400 mb-2">Convite inválido</h2>
             <p className="text-sm text-brand-text-secondary mb-6 leading-relaxed">
@@ -57,8 +57,8 @@ export default function ConvitePage() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4 py-12 overflow-x-hidden">
+      <div className="w-full max-w-md min-w-0">
 
         {/* Logo */}
         <div className="text-center mb-8">
@@ -68,7 +68,7 @@ export default function ConvitePage() {
         </div>
 
         {/* Card principal */}
-        <div className="bg-brand-surface rounded-2xl p-8" style={{ border: '1px solid rgba(var(--color-primary), .15)' }}>
+        <div className="bg-brand-surface rounded-2xl p-5 sm:p-8" style={{ border: '1px solid rgba(var(--color-primary), .15)' }}>
 
           {/* Selo Tester */}
           <div className="flex justify-center mb-6">
