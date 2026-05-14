@@ -329,6 +329,9 @@ export async function runHealthCheck(log: any): Promise<HealthReport> {
     ...workerRes.suggestions,
   ];
 
+  // Extrair só os campos de contagem da fila (descartar alertMsgs/suggestions internos)
+  const { alertMsgs: _qa, suggestions: _qs, ...queueCounts } = queueRes;
+
   const report: Omit<HealthReport, 'suggestions'> = {
     ts:     new Date().toISOString(),
     status: alerts.some(a => a.startsWith('🔴')) ? 'critical'
@@ -336,7 +339,7 @@ export async function runHealthCheck(log: any): Promise<HealthReport> {
     checks: {
       db:     { ok: dbRes.ok,    latencyMs: dbRes.latencyMs,    error: dbRes.error },
       redis:  { ok: redisRes.ok, latencyMs: redisRes.latencyMs, error: redisRes.error },
-      queue:  { ok: queueRes.ok, ...queueRes },
+      queue:  queueCounts,
       zapi:   { ok: zapiRes.ok,  connected: zapiRes.connected, mismatches: zapiRes.mismatches, error: zapiRes.error },
       worker: { ok: workerRes.ok, recentProcessed: workerRes.recentProcessed, note: workerRes.note },
     },
