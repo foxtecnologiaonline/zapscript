@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { retryWithBackoff } from '../lib/db-retry';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import axios from 'axios';
 import { syncAllZapiConfigs } from '../services/zapi-sync';
 
 const supabase = createClient(
@@ -18,6 +19,70 @@ function safeCompare(a: string | undefined, b: string | undefined): boolean {
   const bufB = Buffer.from(b);
   if (bufA.length !== bufB.length) return false;
   return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function buildTesterMessage(name: string, link: string): string {
+  return `Oi, ${name}! 👋
+
+Tenho algo especial pra te contar — e esse convite é só seu. 🔒
+
+🫵Você foi selecionado(a) para ser Tester Oficial do ZapScript.me, antes do lançamento oficial.
+🎙️ O que é o ZapScript.me?
+Sabe aquela pilha de áudios no WhatsApp que você deixa pra depois... e nunca ouve? 😅
+O ZapScript resolve isso de forma automática — transcreve e resume os áudios que você recebe, pra você ler em segundos, sem perder nada importante.
+Mais produtividade. Mais organização. Mais controle do seu tempo. 🚀
+
+🎁 O que você ganha sendo Tester:
+✅ 1 ano grátis no Plano Pro
+✅ Acesso antecipado — antes de todo mundo
+✅ Selo exclusivo de Tester Oficial no seu perfil
+
+Você ajuda a construir, a gente te dá 1 ano Pro de presente. 💚
+
+👇 Seu link exclusivo — expira em 48h ⏳
+${link}
+Qualquer dúvida é só responder aqui. Te espero lá! 🙌`;
+}
+
+async function sendTesterWhatsApp(phone: string, message: string, log: any): Promise<void> {
+  // 1. Tentar Meta Cloud API
+  const apiToken      = process.env.WHATSAPP_API_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (apiToken && phoneNumberId) {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        recipient_type:    'individual',
+        to:                phone,
+        type:              'text',
+        text:              { body: message },
+      },
+      { headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'application/json' } }
+    );
+    log.info(`[Invites] ✅ WhatsApp enviado via Meta Cloud API para ${phone}`);
+    return;
+  }
+
+  // 2. Fallback: Z-API — usa primeiro número conectado com instância Z-API
+  const number = await prisma.whatsappNumber.findFirst({
+    where: { status: 'connected', zapiInstanceId: { not: null }, zapiToken: { not: null } },
+    select: { zapiInstanceId: true, zapiToken: true },
+  });
+  if (number?.zapiInstanceId && number?.zapiToken) {
+    const clientToken = process.env.ZAPI_CLIENT_TOKEN;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (clientToken) headers['Client-Token'] = clientToken;
+    await axios.post(
+      `https://api.z-api.io/instances/${number.zapiInstanceId}/token/${number.zapiToken}/send-text`,
+      { phone, message },
+      { headers }
+    );
+    log.info(`[Invites] ✅ WhatsApp enviado via Z-API para ${phone}`);
+    return;
+  }
+
+  throw new Error('Nenhum canal WhatsApp configurado (Meta Cloud API ou Z-API conectado).');
 }
 
 const adminAuth = async (req: any, reply: any) => {
@@ -494,22 +559,39 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // POST /admin/invites — criar convite para Tester
-  app.post<{ Body: { name: string } }>(
+  // POST /admin/invites — criar convite para Tester e enviar via WhatsApp
+  app.post<{ Body: { name: string; phone?: string } }>(
     '/invites',
     { preHandler: [adminAuth] },
     async (req, reply) => {
-      const { name } = req.body;
+      const { name, phone } = req.body;
       if (!name || typeof name !== 'string' || name.trim().length < 2) {
         return reply.code(400).send({ error: 'Nome inválido (mínimo 2 caracteres).' });
       }
       const trimmedName = name.trim().substring(0, 100);
-      const code = crypto.randomBytes(8).toString('hex'); // 16-char hex unique code
+      const code = crypto.randomBytes(8).toString('hex');
       const invite = await prisma.testerInvite.create({
         data: { name: trimmedName, code },
       });
-      const link = `${process.env.APP_URL || 'https://zapscript.me'}/convite/${invite.code}`;
-      return { invite, link };
+      const appUrl  = process.env.APP_URL || 'https://zapscript.me';
+      const link    = `${appUrl}/convite/${invite.code}`;
+      const message = buildTesterMessage(trimmedName, link);
+
+      let whatsappSent = false;
+      let whatsappError: string | undefined;
+
+      if (phone) {
+        const cleanPhone = phone.replace(/\D/g, '');
+        try {
+          await sendTesterWhatsApp(cleanPhone, message, app.log);
+          whatsappSent = true;
+        } catch (err: any) {
+          whatsappError = err.message;
+          app.log.warn({ phone: cleanPhone, err: err.message }, '[Invites] Falha ao enviar WhatsApp');
+        }
+      }
+
+      return { invite, link, message, whatsappSent, whatsappError };
     }
   );
 

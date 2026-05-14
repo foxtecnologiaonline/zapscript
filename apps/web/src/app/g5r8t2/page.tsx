@@ -426,8 +426,11 @@ export default function AdminPage() {
   const [invites, setInvites]         = useState<any[]>([]);
   const [inviteTotal, setInviteTotal] = useState(0);
   const [inviteName, setInviteName]   = useState('');
+  const [invitePhone, setInvitePhone] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
-  const [newInviteLink, setNewInviteLink] = useState<string | null>(null);
+  const [lastInviteResult, setLastInviteResult] = useState<{
+    link: string; message: string; whatsappSent: boolean; whatsappError?: string;
+  } | null>(null);
 
   const h = { 'x-admin-token': token, 'content-type': 'application/json' };
 
@@ -499,15 +502,18 @@ export default function AdminPage() {
     if (!inviteName.trim()) return;
     setInviteLoading(true);
     try {
+      const body: any = { name: inviteName.trim() };
+      if (invitePhone.trim()) body.phone = invitePhone.trim();
       const res = await fetch(`${API}/sys/g5r8t2/invites`, {
-        method: 'POST', headers: h, body: JSON.stringify({ name: inviteName.trim() }),
+        method: 'POST', headers: h, body: JSON.stringify(body),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Erro');
-      setNewInviteLink(d.link);
+      setLastInviteResult({ link: d.link, message: d.message, whatsappSent: d.whatsappSent, whatsappError: d.whatsappError });
       setInviteName('');
+      setInvitePhone('');
       loadInvites();
-      notify('✅ Convite criado!', 'ok');
+      notify(d.whatsappSent ? '✅ Convite gerado e WhatsApp enviado!' : '✅ Convite gerado!', 'ok');
     } catch (e: any) {
       notify(`❌ ${e.message}`, 'err');
     } finally { setInviteLoading(false); }
@@ -763,35 +769,62 @@ export default function AdminPage() {
             {/* Gerador de convite */}
             <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.12)] rounded-xl p-6">
               <div className="text-sm font-bold text-[#d1fae5] mb-4">🧪 Gerar Convite Tester</div>
-              <form onSubmit={createInvite} className="flex gap-2">
-                <input
-                  className="flex-1 bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-4 py-2.5 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
-                  placeholder="Nome do convidado (ex: João Silva)"
-                  value={inviteName} onChange={e => setInviteName(e.target.value)} required
-                />
-                <Btn variant="primary" cls="px-6">
-                  {inviteLoading ? '⟳' : '+ Gerar convite'}
+              <form onSubmit={createInvite} className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-4 py-2.5 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
+                    placeholder="Nome do convidado (ex: João Silva)"
+                    value={inviteName} onChange={e => setInviteName(e.target.value)} required
+                  />
+                  <input
+                    className="w-44 bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-4 py-2.5 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
+                    placeholder="Telefone (opcional)"
+                    value={invitePhone} onChange={e => setInvitePhone(e.target.value)}
+                    type="tel"
+                  />
+                </div>
+                <Btn variant="primary" cls="w-full justify-center py-2.5" disabled={inviteLoading}>
+                  {inviteLoading ? '⟳ Gerando e enviando...' : '📲 Gerar convite + enviar WhatsApp'}
                 </Btn>
               </form>
               <p className="text-xs text-[rgba(16,185,129,.4)] mt-3">
                 Ao aceitar o convite, o usuário recebe <strong className="text-[#10b981]">Plano PRO grátis por 1 ano</strong> + Selo Tester Oficial.
+                {' '}Se o telefone for informado, a mensagem é enviada automaticamente via WhatsApp.
               </p>
             </div>
 
-            {/* Link recém-gerado */}
-            {newInviteLink && (
-              <div className="bg-[rgba(16,185,129,.06)] border border-[rgba(16,185,129,.2)] rounded-xl p-5">
-                <div className="text-xs font-bold text-[#10b981] mb-2">✅ Convite gerado! Compartilhe o link:</div>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs text-[#6ee7b7] bg-[#132621] rounded-lg px-3 py-2 font-mono break-all">{newInviteLink}</code>
-                  <Btn variant="ghost" onClick={() => { navigator.clipboard.writeText(newInviteLink); notify('✅ Link copiado!', 'ok'); }}>
-                    Copiar
+            {/* Resultado do último convite */}
+            {lastInviteResult && (
+              <div className={`border rounded-xl p-5 ${lastInviteResult.whatsappSent ? 'bg-[rgba(16,185,129,.06)] border-[rgba(16,185,129,.2)]' : 'bg-[rgba(251,191,36,.04)] border-[rgba(251,191,36,.15)]'}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-xs font-bold text-[#10b981]">
+                    {lastInviteResult.whatsappSent ? '✅ Convite gerado e WhatsApp enviado!' : '✅ Convite gerado'}
+                  </div>
+                  {!lastInviteResult.whatsappSent && lastInviteResult.whatsappError && (
+                    <span className="text-[10px] text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded-full px-2 py-0.5">
+                      ⚠️ {lastInviteResult.whatsappError}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 mb-3">
+                  <code className="flex-1 text-xs text-[#6ee7b7] bg-[#132621] rounded-lg px-3 py-2 font-mono break-all">{lastInviteResult.link}</code>
+                  <Btn variant="ghost" onClick={() => { navigator.clipboard.writeText(lastInviteResult.link); notify('✅ Link copiado!', 'ok'); }}>
+                    Copiar link
                   </Btn>
                 </div>
-                <p className="text-xs text-[rgba(16,185,129,.4)] mt-2">
-                  Mensagem sugerida: &quot;Olá! Você foi convidado para ser Tester Oficial do ZapScript — 1 ano de Plano PRO grátis. Acesse: {newInviteLink}&quot;
-                </p>
-                <button onClick={() => setNewInviteLink(null)} className="text-xs text-[rgba(16,185,129,.3)] hover:text-[rgba(16,185,129,.6)] mt-1 transition-colors">
+                <details className="mt-1">
+                  <summary className="text-[10px] text-[rgba(16,185,129,.5)] cursor-pointer hover:text-[rgba(16,185,129,.8)] transition-colors">
+                    Ver mensagem completa ↓
+                  </summary>
+                  <div className="mt-2 relative">
+                    <pre className="text-xs text-[rgba(16,185,129,.7)] bg-[#132621] rounded-lg p-3 whitespace-pre-wrap leading-relaxed font-sans">{lastInviteResult.message}</pre>
+                    <Btn variant="ghost" cls="absolute top-2 right-2 text-[10px]"
+                      onClick={() => { navigator.clipboard.writeText(lastInviteResult.message); notify('✅ Mensagem copiada!', 'ok'); }}>
+                      Copiar
+                    </Btn>
+                  </div>
+                </details>
+                <button onClick={() => setLastInviteResult(null)} className="text-xs text-[rgba(16,185,129,.3)] hover:text-[rgba(16,185,129,.6)] mt-3 transition-colors">
                   Fechar
                 </button>
               </div>
