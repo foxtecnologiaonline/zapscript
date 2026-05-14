@@ -249,6 +249,154 @@ function QueuePanel({ apiBase, token }: { apiBase: string; token: string }) {
   );
 }
 
+// ── Monitor de Saúde dos Serviços ────────────────────────────────────────────
+function HealthMonitorPanel({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [data, setData]       = useState<any>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/health`, { headers: { 'x-admin-token': token } });
+      setData(await res.json());
+    } catch (e: any) { setData({ error: e.message }); }
+    finally { setLoading(false); }
+  }
+
+  async function runNow() {
+    setRunning(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/health/run`, {
+        method: 'POST', headers: { 'x-admin-token': token },
+      });
+      const r = await res.json();
+      setData((prev: any) => ({ ...prev, lastReport: r.report }));
+    } catch (e: any) { alert('Erro: ' + e.message); }
+    finally { setRunning(false); }
+  }
+
+  const report = data?.lastReport;
+  const statusColor = report?.status === 'critical' ? '#f87171'
+    : report?.status === 'warn' ? '#fbbf24' : '#34d399';
+  const statusIcon  = report?.status === 'critical' ? '🔴'
+    : report?.status === 'warn' ? '⚠️' : '✅';
+
+  return (
+    <div className="mt-3 border border-[rgba(16,185,129,.1)] rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
+        className="w-full text-left px-4 py-2.5 text-xs text-[rgba(16,185,129,.5)] hover:text-[rgba(16,185,129,.8)] flex items-center justify-between transition-colors">
+        <span>🩺 {open ? '▲' : '▼'} Monitor de Saúde dos Serviços (horário)</span>
+        {report && (
+          <span style={{ color: statusColor }} className="font-bold text-[10px]">
+            {statusIcon} {report.status.toUpperCase()} — {report.alerts.length} alerta(s)
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="px-4 pb-5 space-y-4">
+          {/* Ações */}
+          <div className="flex gap-2 flex-wrap">
+            <button type="button" onClick={load} disabled={loading}
+              className="text-xs bg-[rgba(16,185,129,.1)] border border-[rgba(16,185,129,.2)] text-[#10b981] px-3 py-1.5 rounded-lg hover:bg-[rgba(16,185,129,.2)] disabled:opacity-40 transition-colors">
+              {loading ? '⟳ Carregando...' : '↻ Atualizar'}
+            </button>
+            <button type="button" onClick={runNow} disabled={running}
+              className="text-xs bg-blue-400/10 border border-blue-400/20 text-blue-400 px-3 py-1.5 rounded-lg hover:bg-blue-400/20 disabled:opacity-40 transition-colors">
+              {running ? '⟳ Verificando...' : '▶ Rodar agora'}
+            </button>
+          </div>
+
+          {data?.error && <p className="text-xs text-red-400">Erro: {data.error}</p>}
+
+          {/* Sem dados ainda */}
+          {!report && !loading && !data?.error && (
+            <p className="text-xs text-[rgba(16,185,129,.35)]">Nenhuma verificação realizada ainda — clique em "Rodar agora"</p>
+          )}
+
+          {report && (
+            <>
+              {/* Status geral + timestamp */}
+              <div className="flex items-center gap-3">
+                <span className="text-2xl font-black" style={{ color: statusColor }}>{statusIcon} {report.status.toUpperCase()}</span>
+                <span className="text-[10px] text-[rgba(16,185,129,.35)]">{new Date(report.ts).toLocaleString('pt-BR')}</span>
+              </div>
+
+              {/* Checks grid */}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  { label: 'Banco',   ok: report.checks.db.ok,     detail: report.checks.db.latencyMs     ? `${report.checks.db.latencyMs}ms`     : report.checks.db.error     || '—' },
+                  { label: 'Redis',   ok: report.checks.redis.ok,  detail: report.checks.redis.latencyMs  ? `${report.checks.redis.latencyMs}ms`  : report.checks.redis.error  || '—' },
+                  { label: 'Fila',    ok: report.checks.queue.ok,  detail: `⏳${report.checks.queue.waiting} ▶️${report.checks.queue.active} ❌${report.checks.queue.failed}` },
+                  { label: 'Z-API',   ok: report.checks.zapi.ok,   detail: `${report.checks.zapi.connected} conectado(s)` },
+                ].map(({ label, ok, detail }) => (
+                  <div key={label} className={`rounded-lg p-3 border ${ok ? 'bg-green-900/10 border-green-500/20' : 'bg-red-900/10 border-red-500/20'}`}>
+                    <div className="text-sm font-black mb-0.5" style={{ color: ok ? '#34d399' : '#f87171' }}>
+                      {ok ? '✅' : '❌'} {label}
+                    </div>
+                    <div className="text-[10px] text-[rgba(255,255,255,.4)] font-mono">{detail}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Worker */}
+              <div className={`rounded-lg px-3 py-2 border text-xs ${report.checks.worker.ok ? 'bg-green-900/10 border-green-500/20 text-green-400' : 'bg-red-900/10 border-red-500/20 text-red-400'}`}>
+                {report.checks.worker.ok ? '✅' : '❌'} Worker: {report.checks.worker.note}
+              </div>
+
+              {/* Alertas */}
+              {report.alerts.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide">Alertas</p>
+                  {report.alerts.map((a: string, i: number) => (
+                    <div key={i} className={`text-xs px-3 py-2 rounded-lg ${a.startsWith('🔴') ? 'bg-red-900/15 text-red-300' : 'bg-yellow-900/15 text-yellow-300'}`}>
+                      {a}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Sugestões */}
+              {report.suggestions.filter((s: string) => !s.startsWith('✅')).length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide">Sugestões de Otimização</p>
+                  {report.suggestions.filter((s: string) => !s.startsWith('✅')).map((s: string, i: number) => (
+                    <div key={i} className="text-xs px-3 py-2 rounded-lg bg-blue-900/10 text-blue-300 border border-blue-500/15">
+                      💡 {s}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Histórico de tendência */}
+              {data?.recentHistory?.length > 1 && (
+                <div>
+                  <p className="text-[10px] font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide mb-1">Tendência (últimas verificações)</p>
+                  <div className="flex gap-1 flex-wrap">
+                    {[...data.recentHistory].reverse().map((h: any, i: number) => (
+                      <div key={i} className="text-[9px] text-center bg-[#040b09] rounded px-2 py-1 border border-[rgba(16,185,129,.08)]">
+                        <div style={{ color: h.status === 'critical' ? '#f87171' : h.status === 'warn' ? '#fbbf24' : '#34d399' }}>
+                          {h.status === 'critical' ? '🔴' : h.status === 'warn' ? '⚠️' : '✅'}
+                        </div>
+                        <div className="text-[rgba(16,185,129,.35)] mt-0.5 font-mono">{new Date(h.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+                        {h.queue.failed > 0 && <div className="text-red-400">❌{h.queue.failed}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Auditoria de isolamento de números WhatsApp ──────────────────────────────
 function AuditNumbers({ apiBase, token }: { apiBase: string; token: string }) {
   const [open, setOpen]       = useState(false);
@@ -1115,6 +1263,7 @@ export default function AdminPage() {
                 Ao aceitar o convite, o usuário recebe <strong className="text-[#10b981]">Plano PRO grátis por 1 ano</strong> + Selo Tester Oficial.
                 {' '}Se o telefone for informado, a mensagem é enviada automaticamente via WhatsApp.
               </p>
+              <HealthMonitorPanel apiBase={API} token={token} />
               <DiagnoseWhatsApp apiBase={API} token={token} />
               <QueuePanel apiBase={API} token={token} />
               <AuditNumbers apiBase={API} token={token} />

@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import axios from 'axios';
 import { syncAllZapiConfigs } from '../services/zapi-sync';
+import { runHealthCheck, lastReport, history } from '../services/health-monitor';
 import { Queue } from 'bullmq';
 import { redis } from '../services/queue';
 
@@ -951,6 +952,42 @@ export default async function adminRoutes(app: FastifyInstance) {
         fixed: fixed.length,
         details: fixed,
       });
+    }
+  );
+
+  // ── GET /admin/health — último relatório do monitor de saúde ─────────────────
+  app.get(
+    '/health',
+    { preHandler: [adminAuth] },
+    async (_req, reply) => {
+      return reply.send({
+        ok:         true,
+        lastReport: lastReport ?? null,
+        historyLen: history.length,
+        // Últimas 6 verificações para mostrar tendência
+        recentHistory: history.slice(-6).map(r => ({
+          ts:      r.ts,
+          status:  r.status,
+          alerts:  r.alerts.length,
+          queue:   { waiting: r.checks.queue.waiting, active: r.checks.queue.active, failed: r.checks.queue.failed },
+          dbMs:    r.checks.db.latencyMs,
+          redisMs: r.checks.redis.latencyMs,
+        })),
+      });
+    }
+  );
+
+  // ── POST /admin/health/run — dispara verificação manual ──────────────────────
+  app.post(
+    '/health/run',
+    { preHandler: [adminAuth] },
+    async (_req, reply) => {
+      try {
+        const report = await runHealthCheck(app.log);
+        return reply.send({ ok: true, report });
+      } catch (err: any) {
+        return reply.code(500).send({ ok: false, error: err.message });
+      }
     }
   );
 

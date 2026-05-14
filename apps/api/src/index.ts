@@ -12,8 +12,9 @@ import helmet from '@fastify/helmet';
 import { Server as SocketServer, Socket } from 'socket.io';
 import { redis } from './services/queue';
 import { prisma } from './lib/prisma';
-import { syncAllZapiConfigs } from './services/zapi-sync';
-import { startHeartbeat }    from './services/zapi-heartbeat';
+import { syncAllZapiConfigs }  from './services/zapi-sync';
+import { startHeartbeat }     from './services/zapi-heartbeat';
+import { startHealthMonitor } from './services/health-monitor';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -351,6 +352,9 @@ async function start() {
 
     // ── Heartbeat Z-API — verifica a cada 1h se números "connected" continuam vivos ──
     startHeartbeat(app.log);
+
+    // ── Health Monitor — verifica todos os serviços a cada 1h, alerta e sugere otimizações ──
+    startHealthMonitor(app.log);
 
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 
