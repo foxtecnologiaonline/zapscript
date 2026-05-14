@@ -24,7 +24,7 @@ interface Transcription {
   originalText: string;
   summaryBullets: string[];
   createdAt: string;
-  number: { displayName: string | null; phoneNumber: string };
+  number: { displayName: string | null; phoneNumber: string } | null;
 }
 
 export default function DashboardPage() {
@@ -35,6 +35,14 @@ export default function DashboardPage() {
   const [loadError, setLoadError] = useState(false);
 
   const closeModal = useCallback(() => setSelected(null), []);
+
+  async function handleDelete(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirm('Excluir esta transcrição? Os minutos usados serão mantidos.')) return;
+    await api.delete(`/transcriptions/${id}`);
+    setRecent(r => r.filter(t => t.id !== id));
+    if (selected?.id === id) setSelected(null);
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModal(); };
@@ -119,7 +127,7 @@ export default function DashboardPage() {
           ) : (
             recent.map(t => (
               <div key={t.id} onClick={() => setSelected(t)}
-                className="hover-row flex items-start gap-3 px-5 py-3.5 cursor-pointer last:border-0"
+                className="hover-row flex items-start gap-3 px-5 py-3.5 cursor-pointer last:border-0 group"
                 style={{ borderBottom: '1px solid rgb(var(--color-border) / .5)' }}>
                 <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5"
                   style={{ background: 'rgba(var(--color-primary), .35)' }}>
@@ -135,8 +143,19 @@ export default function DashboardPage() {
                     <span className="text-[10px] font-bold bg-brand-primary/10 border border-brand-primary/15 text-brand-primary px-2 py-0.5 rounded">
                       🎙 {t.durationSec}s
                     </span>
+                    {!t.number && (
+                      <span className="text-[10px] text-brand-muted bg-brand-elevated px-2 py-0.5 rounded">
+                        Número removido
+                      </span>
+                    )}
                   </div>
                 </div>
+                <button
+                  onClick={(e) => handleDelete(t.id, e)}
+                  className="opacity-0 group-hover:opacity-100 text-brand-muted hover:text-red-400 text-sm transition-all flex-shrink-0 mt-1"
+                  title="Excluir transcrição">
+                  🗑
+                </button>
               </div>
             ))
           )}
@@ -227,7 +246,9 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <div className="font-bold text-base text-brand-text">{selected.contactName || selected.contactPhone}</div>
-                <div className="text-xs text-brand-muted">{new Date(selected.createdAt).toLocaleString('pt-BR')}</div>
+                <div className="text-xs text-brand-muted">
+                  {selected.number ? (selected.number.displayName || selected.number.phoneNumber) : 'Número removido'} · {new Date(selected.createdAt).toLocaleString('pt-BR')}
+                </div>
               </div>
               <button onClick={closeModal} className="text-brand-muted hover:text-brand-text text-lg transition-colors" aria-label="Fechar">✕</button>
             </div>
@@ -244,6 +265,10 @@ export default function DashboardPage() {
             <div className="flex gap-2 mt-4">
               <button onClick={() => navigator.clipboard.writeText(selected.originalText)}
                 className="btn-ghost text-xs py-2 flex-1 justify-center">📋 Copiar</button>
+              <button onClick={(e) => handleDelete(selected.id, e)}
+                className="text-xs py-2 px-3 rounded-lg border border-red-400/20 text-red-400 hover:bg-red-400/5 transition-colors">
+                🗑
+              </button>
               <button onClick={closeModal}
                 className="btn-primary text-xs py-2 flex-1 justify-center">Fechar</button>
             </div>

@@ -319,6 +319,14 @@ async function runAutoMigrations() {
       CONSTRAINT "TesterInvite_code_key" UNIQUE ("code")
     )`,
     `CREATE INDEX IF NOT EXISTS "TesterInvite_code_idx" ON "TesterInvite"("code")`,
+    // Transcrições sobrevivem à remoção do número (SET NULL em vez de CASCADE)
+    `ALTER TABLE "Transcription" ALTER COLUMN "numberId" DROP NOT NULL`,
+    `ALTER TABLE "Transcription" DROP CONSTRAINT IF EXISTS "Transcription_numberId_fkey"`,
+    `ALTER TABLE "Transcription" ADD CONSTRAINT "Transcription_numberId_fkey" FOREIGN KEY ("numberId") REFERENCES "WhatsappNumber"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+    // UsageLogs sobrevivem à exclusão da transcrição (minutos continuam contados)
+    `ALTER TABLE "UsageLog" ALTER COLUMN "transcriptionId" DROP NOT NULL`,
+    `ALTER TABLE "UsageLog" DROP CONSTRAINT IF EXISTS "UsageLog_transcriptionId_fkey"`,
+    `ALTER TABLE "UsageLog" ADD CONSTRAINT "UsageLog_transcriptionId_fkey" FOREIGN KEY ("transcriptionId") REFERENCES "Transcription"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>

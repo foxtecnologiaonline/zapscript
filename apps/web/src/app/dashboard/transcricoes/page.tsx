@@ -10,7 +10,7 @@ interface Transcription {
   originalText: string;
   summaryBullets: string[];
   createdAt: string;
-  number: { displayName: string | null; phoneNumber: string };
+  number: { displayName: string | null; phoneNumber: string } | null;
 }
 
 const ALLOWED_EXT = ['.ogg', '.opus', '.mp3', '.mp4', '.m4a', '.wav', '.webm', '.mpeg'];
@@ -261,7 +261,7 @@ export default function TranscricoesPage() {
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="text-sm font-semibold text-brand-text">{t.contactName || t.contactPhone}</span>
                   <span className="text-[10px] text-brand-muted bg-brand-elevated px-2 py-0.5 rounded font-mono">
-                    {t.number.displayName || t.number.phoneNumber}
+                    {t.number ? (t.number.displayName || t.number.phoneNumber) : 'Número removido'}
                   </span>
                   <span className="text-xs text-brand-muted ml-auto">{new Date(t.createdAt).toLocaleString('pt-BR')}</span>
                 </div>
@@ -318,7 +318,7 @@ export default function TranscricoesPage() {
               <div>
                 <div className="font-bold text-base text-brand-text">{selected.contactName || selected.contactPhone}</div>
                 <div className="text-xs text-brand-muted">
-                  {selected.number.displayName} · {new Date(selected.createdAt).toLocaleString('pt-BR')}
+                  {selected.number ? (selected.number.displayName || selected.number.phoneNumber) : 'Número removido'} · {new Date(selected.createdAt).toLocaleString('pt-BR')}
                 </div>
               </div>
               <button onClick={() => setSelected(null)}

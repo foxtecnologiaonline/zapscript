@@ -93,31 +93,31 @@ model WhatsappNumber {
 }
 
 model Transcription {
-  id              String         @id @default(cuid())
+  id              String          @id @default(cuid())
   userId          String
-  numberId        String
+  numberId        String?
   contactPhone    String
   contactName     String?
   durationSec     Float
   originalText    String
   summaryBullets  Json
   confidenceScore Float?
-  language        String         @default("pt")
-  source          String         @default("whatsapp")  // "whatsapp" | "manual"
-  createdAt       DateTime       @default(now())
-  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  number          WhatsappNumber @relation(fields: [numberId], references: [id], onDelete: Cascade)
+  language        String          @default("pt")
+  source          String          @default("whatsapp")  // "whatsapp" | "manual"
+  createdAt       DateTime        @default(now())
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number          WhatsappNumber? @relation(fields: [numberId], references: [id], onDelete: SetNull)
   usageLog        UsageLog?
 }
 
 model UsageLog {
-  id              String        @id @default(cuid())
+  id              String         @id @default(cuid())
   userId          String
-  transcriptionId String        @unique
+  transcriptionId String?        @unique
   minutesUsed     Float
-  createdAt       DateTime      @default(now())
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcription   Transcription @relation(fields: [transcriptionId], references: [id], onDelete: Cascade)
+  createdAt       DateTime       @default(now())
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcription   Transcription? @relation(fields: [transcriptionId], references: [id], onDelete: SetNull)
 }
 
 model SupportTicket {

@@ -16,7 +16,7 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     const search   = req.query.search;
 
     const where: any = { userId };
-    if (numberId) where.numberId = numberId;
+    if (numberId) where.numberId = numberId === 'none' ? null : numberId;
     if (search)   where.originalText = { contains: search, mode: 'insensitive' };
 
     const [items, total] = await Promise.all([
