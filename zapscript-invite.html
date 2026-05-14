@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZapScript — Convite Tester</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green: #25D366;
+    --green-dark: #128C5E;
+    --green-glow: rgba(37, 211, 102, 0.18);
+    --green-faint: rgba(37, 211, 102, 0.07);
+    --bg: #0a0f0d;
+    --card: #111915;
+    --card2: #141f18;
+    --border: rgba(37, 211, 102, 0.12);
+    --text: #e8f5ec;
+    --muted: #7a9986;
+    --white: #ffffff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    font-family: 'DM Sans', sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    overflow-x: hidden;
+  }
+
+  /* Background atmosphere */
+  body::before {
+    content: '';
+    position: fixed;
+    top: -200px; left: -200px;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(37,211,102,0.06) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    bottom: -150px; right: -150px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(18,140,94,0.07) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .phone-frame {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 400px;
+  }
+
+  /* WhatsApp top bar */
+  .wa-bar {
+    background: #1a2e22;
+    border-radius: 20px 20px 0 0;
+    padding: 14px 18px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .wa-avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--green), var(--green-dark));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 2px rgba(37,211,102,0.25);
+  }
+
+  .wa-info { flex: 1; }
+  .wa-name { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 600; color: var(--white); }
+  .wa-status { font-size: 11px; color: var(--green); display: flex; align-items: center; gap: 4px; }
+  .wa-status::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  /* Message bubble */
+  .bubble-wrap {
+    background: #0e1a12;
+    padding: 16px 12px 20px;
+    border-radius: 0 0 20px 20px;
+    border: 1px solid var(--border);
+    border-top: none;
+  }
+
+  .bubble {
+    background: var(--card);
+    border-radius: 4px 18px 18px 18px;
+    padding: 18px 20px;
+    position: relative;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4), 0 0 0 1px var(--border);
+    animation: slideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(16px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* Bubble tail */
+  .bubble::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -8px;
+    width: 0; height: 0;
+    border-top: 10px solid var(--card);
+    border-left: 10px solid transparent;
+  }
+
+  /* BADGE TESTER */
+  .tester-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, rgba(37,211,102,0.15), rgba(18,140,94,0.1));
+    border: 1px solid rgba(37,211,102,0.35);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--green);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    animation: slideIn 0.5s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .tester-badge .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 1.8s infinite;
+  }
+
+  /* HEADER */
+  .greeting {
+    font-size: 15px;
+    color: var(--text);
+    margin-bottom: 6px;
+    animation: slideIn 0.5s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+
+  .headline {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--white);
+    line-height: 1.25;
+    margin-bottom: 4px;
+    animation: slideIn 0.5s 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+  .headline span { color: var(--green); }
+
+  .subline {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 18px;
+    animation: slideIn 0.5s 0.25s both;
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+
+  /* TIMER */
+  .timer-strip {
+    background: linear-gradient(135deg, rgba(255,180,0,0.08), rgba(255,120,0,0.06));
+    border: 1px solid rgba(255,160,0,0.2);
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    animation: slideIn 0.5s 0.3s both;
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+  .timer-icon { font-size: 18px; }
+  .timer-text { font-size: 13px; color: #ffb347; font-weight: 500; }
+  .timer-text strong { color: #ffcc66; }
+
+  /* DIVIDER */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 18px 0;
+  }
+
+  /* PRODUCT SECTION */
+  .section-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 6px;
+    animation: slideIn 0.5s 0.35s both;
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .product-card {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 18px;
+    animation: slideIn 0.5s 0.4s both;
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+
+  .product-hook {
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+  .product-hook em { color: var(--muted); font-style: normal; }
+
+  .product-tagline {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .tag-pill {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--text); font-weight: 500;
+  }
+  .tag-pill .icon { font-size: 15px; }
+
+  /* GAINS */
+  .gains-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 18px;
+    animation: slideIn 0.5s 0.45s both;
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+
+  .gain-item {
+    display: flex; align-items: flex-start; gap: 12px;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .gain-item:hover {
+    border-color: rgba(37,211,102,0.3);
+    background: rgba(37,211,102,0.04);
+  }
+  .gain-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+  .gain-text { font-size: 13.5px; line-height: 1.5; color: var(--text); }
+  .gain-text strong { color: var(--white); display: block; font-weight: 600; margin-bottom: 1px; }
+
+  /* DEAL */
+  .deal-card {
+    background: var(--card2);
+    border: 1px solid rgba(37,211,102,0.2);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 18px;
+    animation: slideIn 0.5s 0.5s both;
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+  .deal-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .deal-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .deal-row .emoji { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  /* CLOSING LINE */
+  .closing {
+    text-align: center;
+    font-size: 13.5px;
+    color: var(--muted);
+    margin-bottom: 20px;
+    line-height: 1.6;
+    animation: slideIn 0.5s 0.55s both;
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+  .closing strong { color: var(--green); }
+
+  /* CTA BUTTON */
+  .cta-wrap {
+    animation: slideIn 0.5s 0.6s both;
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+
+  .cta-btn {
+    display: block;
+    width: 100%;
+    background: linear-gradient(135deg, var(--green), var(--green-dark));
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    padding: 15px 20px;
+    border-radius: 14px;
+    text-decoration: none;
+    letter-spacing: 0.02em;
+    box-shadow: 0 4px 24px rgba(37,211,102,0.3), 0 0 0 1px rgba(37,211,102,0.2);
+    transition: transform 0.15s, box-shadow 0.15s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .cta-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.08), transparent);
+    border-radius: 14px;
+  }
+  .cta-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(37,211,102,0.4), 0 0 0 1px rgba(37,211,102,0.3);
+  }
+  .cta-sub {
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+
+  /* FOOTER */
+  .bubble-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 4px;
+    margin-top: 14px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .bubble-footer .checks { color: var(--green); font-size: 13px; }
+
+  /* Timestamp */
+  .timestamp {
+    text-align: center;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    background: rgba(255,255,255,0.03);
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    width: 100%;
+  }
+
+</style>
+</head>
+<body>
+
+<div class="phone-frame">
+  <div class="timestamp">Hoje · Agora</div>
+
+  <div class="wa-bar">
+    <div class="wa-avatar">⚡</div>
+    <div class="wa-info">
+      <div class="wa-name">ZapScript.me</div>
+      <div class="wa-status">online</div>
+    </div>
+    <span style="color: var(--muted); font-size: 20px; cursor:pointer;">⋮</span>
+  </div>
+
+  <div class="bubble-wrap">
+    <div class="bubble">
+
+      <div class="tester-badge">
+        <span class="dot"></span>
+        Convite Exclusivo · Tester Oficial
+      </div>
+
+      <div class="greeting">Oi, [Nome]! 👋</div>
+      <div class="headline">Você foi escolhido(a)<br>para algo <span>especial.</span></div>
+      <div class="subline">Esse convite é só seu — intransferível.</div>
+
+      <div class="timer-strip">
+        <div class="timer-icon">⏳</div>
+        <div class="timer-text">Atenção: esse link <strong>expira em 48 horas.</strong> Não deixa passar.</div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-label">🎙️ O que é o ZapScript.me</div>
+
+      <div class="product-card">
+        <div class="product-hook">
+          Sabe aquela pilha de áudios no WhatsApp que você deixa pra depois... <em>e nunca ouve?</em> 😅
+          <br><br>
+          O ZapScript resolve isso de forma <strong style="color:var(--green)">automática</strong> — transcreve e resume os áudios que você recebe, pra você ler em segundos, sem perder nada importante.
+        </div>
+        <div class="product-tagline">
+          <div class="tag-pill"><span class="icon">🚀</span> Mais produtividade</div>
+          <div class="tag-pill"><span class="icon">🗂️</span> Mais organização</div>
+          <div class="tag-pill"><span class="icon">⏱️</span> Mais controle do seu tempo</div>
+        </div>
+      </div>
+
+      <div class="section-label">🎁 O que você ganha</div>
+
+      <div class="gains-list">
+        <div class="gain-item">
+          <span class="gain-icon">💚</span>
+          <div class="gain-text">
+            <strong>1 ano grátis no Plano Pro</strong>
+            Acesso completo, sem pagar nada desde o início.
+          </div>
+        </div>
+        <div class="gain-item">
+          <span class="gain-icon">🥇</span>
+          <div class="gain-text">
+            <strong>Acesso antecipado</strong>
+            Antes de qualquer lançamento público.
+          </div>
+        </div>
+        <div class="gain-item">
+          <span class="gain-icon">🏅</span>
+          <div class="gain-text">
+            <strong>Selo Tester Oficial no perfil</strong>
+            Você faz parte do time que construiu isso.
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label">🤝 O que a gente pede em troca</div>
+
+      <div class="deal-card">
+        <div class="deal-row">
+          <span class="emoji">🐛</span>
+          <span>Reportar bugs, falhas ou comportamentos estranhos que encontrar</span>
+        </div>
+        <div class="deal-row">
+          <span class="emoji">📣</span>
+          <span>No lançamento oficial, indicar o ZapScript.me para <span style="color:var(--green);font-weight:600;">5 pessoas</span> da sua escolha</span>
+        </div>
+      </div>
+
+      <div class="closing">
+        Simples assim.<br>
+        Você ajuda a construir —<br>a gente te dá <strong>1 ano Pro de presente.</strong> 💚
+      </div>
+
+      <div class="cta-wrap">
+        <a href="#" class="cta-btn">👇 Acessar meu convite exclusivo</a>
+        <div class="cta-sub">🔒 Link único · Expira em 48h · Só para você</div>
+      </div>
+
+      <div class="divider"></div>
+      <div style="font-size:13px; color:var(--muted); text-align:center; margin-bottom: 4px;">
+        Qualquer dúvida é só responder aqui. Te espero lá! 🙌
+      </div>
+
+      <div class="bubble-footer">
+        <span>09:41</span>
+        <span class="checks">✓✓</span>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
