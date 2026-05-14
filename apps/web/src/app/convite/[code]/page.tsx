@@ -72,10 +72,10 @@ export default function ConvitePage() {
 
           {/* Selo Tester */}
           <div className="flex justify-center mb-6">
-            <div className="inline-flex flex-col items-center gap-2 bg-amber-400/10 border-2 border-amber-400/30 rounded-2xl px-6 py-4">
-              <span className="text-3xl">🧪</span>
-              <span className="text-xs font-black text-amber-400 uppercase tracking-widest">Tester Oficial</span>
-              <span className="text-[10px] text-amber-400/70">ZapScript Beta</span>
+            <div className="inline-flex flex-col items-center gap-2 bg-amber-400/15 border-2 border-amber-400/50 rounded-2xl px-6 py-4">
+              <span className="text-4xl">🏅</span>
+              <span className="text-xs font-black text-amber-300 uppercase tracking-widest">Tester Oficial</span>
+              <span className="text-[11px] font-semibold text-amber-400">ZapScript Beta</span>
             </div>
           </div>
 
@@ -100,7 +100,7 @@ export default function ConvitePage() {
               </div>
             </div>
             <div className="flex items-center gap-3 bg-brand-bg rounded-xl px-4 py-3">
-              <span className="text-2xl flex-shrink-0">🧪</span>
+              <span className="text-2xl flex-shrink-0">🏅</span>
               <div>
                 <div className="text-sm font-bold text-brand-primary">Selo Tester Oficial</div>
                 <div className="text-xs text-brand-text-secondary">Acesso antecipado a novos recursos</div>

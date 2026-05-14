@@ -93,7 +93,7 @@ function MasterDetailPanel({ userId, token, onClose }: {
             <div className="text-xs text-[rgba(16,185,129,.5)]">{user.email}</div>
             {user.isTester && (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-full px-2 py-0.5 mt-1">
-                🧪 Tester Oficial
+                🏅 Tester Oficial
               </span>
             )}
           </div>
