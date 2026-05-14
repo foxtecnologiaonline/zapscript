@@ -255,6 +255,23 @@ export default async function numberRoutes(app: FastifyInstance) {
     const webhookOk = webhookResults.filter(r => r.status === 'fulfilled').length;
     app.log.info(`[Z-API] Configuração concluída: ${webhookOk}/4 (webhooks + auto-read desabilitado)`);
 
+    // ── ISOLAMENTO MULTI-TENANT — desconectar TODOS os outros números que usam
+    // esta mesma instância Z-API. Garante que apenas UM número por vez pode
+    // estar ativo na instância (física: uma instância = uma conta WhatsApp).
+    const displaced = await (prisma as any).whatsappNumber.updateMany({
+      where: {
+        zapiInstanceId: instanceId,
+        id:             { not: id },  // todos menos este
+      },
+      data: { status: 'disconnected' },
+    });
+    if (displaced.count > 0) {
+      app.log.warn(
+        `[Z-API] ⚠️  Isolamento: ${displaced.count} número(s) desconectados da instância ${instanceId} ` +
+        `para garantir uso exclusivo do número ${id}`
+      );
+    }
+
     // ── Vincular instância ao número e marcar como conectando ─────────────
     await prisma.whatsappNumber.update({
       where: { id },

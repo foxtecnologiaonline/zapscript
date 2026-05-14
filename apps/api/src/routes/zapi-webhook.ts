@@ -71,12 +71,30 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
     // ── ConnectedCallback — WhatsApp conectado via QR ou código ───
     if (type === 'ConnectedCallback') {
       const connectedPhone = body.phone?.replace(/\D/g, '') || '';
-      app.log.info(`[Z-API] ✅ Dispositivo conectado: ${connectedPhone}`);
+      app.log.info(`[Z-API] ✅ Dispositivo conectado: ${connectedPhone} (instância ${instanceId})`);
 
-      const number = await prisma.whatsappNumber.findFirst({
-        where: { zapiInstanceId: instanceId },
+      // ISOLAMENTO: prioridade para quem está 'connecting' (usuário que iniciou agora),
+      // senão pega o 'connected' mais recente. Ordena por updatedAt desc para garantir
+      // que o mais recente vence — evita retornar número de outro usuário.
+      const number = await (prisma as any).whatsappNumber.findFirst({
+        where: {
+          zapiInstanceId: instanceId,
+          status: { in: ['connecting', 'connected'] },
+        },
+        orderBy: { updatedAt: 'desc' }, // quem iniciou a conexão mais recentemente
       });
+
       if (number) {
+        // Antes de conectar: desconectar TODOS os outros números desta instância
+        const displaced = await (prisma as any).whatsappNumber.updateMany({
+          where: { zapiInstanceId: instanceId, id: { not: number.id } },
+          data:  { status: 'disconnected' },
+        });
+        if (displaced.count > 0) {
+          app.log.warn(`[Z-API] ⚠️  ConnectedCallback: ${displaced.count} número(s) de outros usuários desconectados da instância ${instanceId}`);
+        }
+
+        // Agora confirmar conexão do número correto
         await prisma.whatsappNumber.update({
           where: { id: number.id },
           data: {
@@ -85,9 +103,9 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
             ...(connectedPhone ? { phoneNumber: connectedPhone } : {}),
           },
         });
-        app.log.info(`[Z-API] Número ${number.id} marcado como conectado`);
+        app.log.info(`[Z-API] ✅ Número ${number.id} (user: ${number.userId}) marcado como conectado com telefone ${connectedPhone}`);
       } else {
-        app.log.warn(`[Z-API] ConnectedCallback: instância ${instanceId} não encontrada no banco`);
+        app.log.warn(`[Z-API] ConnectedCallback: nenhum número em 'connecting'/'connected' para instância ${instanceId}`);
       }
       return;
     }
@@ -116,27 +134,32 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
     const cleanPhone = phone.replace(/\D/g, '');
     app.log.info(`[Z-API] ReceivedCallback de ${senderName} (${cleanPhone})`);
 
-    // ── Encontrar número pelo instanceId ─────────────────────────
-    let whatsappNumber = await prisma.whatsappNumber.findFirst({
-      where:   { zapiInstanceId: instanceId },
+    // ── Encontrar número pelo instanceId + status 'connected' ─────
+    // ISOLAMENTO CRÍTICO: filtrar por status: 'connected' garante que apenas
+    // o número ativamente conectado receba as mensagens — nunca o de outro usuário.
+    let whatsappNumber = await (prisma as any).whatsappNumber.findFirst({
+      where:   { zapiInstanceId: instanceId, status: 'connected' },
       include: { user: true },
+      orderBy: { connectedAt: 'desc' }, // mais recentemente conectado = dono atual
     }).catch(() => null);
 
-    // Fallback: ZAPI_DEFAULT_USER_ID para instância sem vínculo explícito
+    // Fallback: ZAPI_DEFAULT_USER_ID (apenas para instâncias sem vínculo explícito)
     if (!whatsappNumber && process.env.ZAPI_DEFAULT_USER_ID) {
       whatsappNumber = await prisma.whatsappNumber.findFirst({
-        where:   { userId: process.env.ZAPI_DEFAULT_USER_ID },
+        where:   { userId: process.env.ZAPI_DEFAULT_USER_ID, status: 'connected' },
         include: { user: true },
       }).catch(() => null);
     }
 
     if (!whatsappNumber) {
-      app.log.warn(`[Z-API] ❌ Instância ${instanceId} não mapeada para nenhum usuário. ` +
-        `Configure ZAPI_DEFAULT_USER_ID ou reconecte o número no painel.`);
+      app.log.warn(
+        `[Z-API] ❌ Nenhum número CONECTADO encontrado para instância ${instanceId}. ` +
+        `O número pode ter sido desconectado ou não pertence a esta instância.`
+      );
       return;
     }
 
-    app.log.info(`[Z-API] ✅ Número encontrado: ${whatsappNumber.id} (user: ${whatsappNumber.userId})`);
+    app.log.info(`[Z-API] ✅ Número identificado: ${whatsappNumber.id} (user: ${whatsappNumber.userId}, phone: ${whatsappNumber.phoneNumber})`);
 
     // ── Resolver URL e duração do áudio (voz, encaminhado ou arquivo) ───────
     // Caso 1: PTT / voz gravada no momento — body.audio.audioUrl

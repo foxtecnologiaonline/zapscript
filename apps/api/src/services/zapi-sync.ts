@@ -91,8 +91,33 @@ export async function syncAllZapiConfigs(log: any): Promise<SyncResult> {
     return { total: 0, synced: 0, skipped: 0, migrated: 0, errors: 0 };
   }
 
+  // ── ISOLAMENTO: antes de sincronizar, garantir que por instância só há 1 conectado ──
+  // Se houver múltiplos números com o mesmo zapiInstanceId marcados como connected/connecting,
+  // mantém apenas o mais recentemente atualizado e desconecta os demais.
+  const envInstanceId = process.env.ZAPI_INSTANCE_ID;
+  if (envInstanceId) {
+    const allOnInstance = await (prisma as any).whatsappNumber.findMany({
+      where:   { zapiInstanceId: envInstanceId, status: { in: ['connected', 'connecting'] } },
+      orderBy: { updatedAt: 'desc' },
+      select:  { id: true, userId: true, status: true, updatedAt: true },
+    }).catch(() => []);
+
+    if (allOnInstance.length > 1) {
+      const [keep, ...evict] = allOnInstance; // manter o mais recente
+      const evictIds = evict.map((n: any) => n.id);
+      await prisma.whatsappNumber.updateMany({
+        where: { id: { in: evictIds } },
+        data:  { status: 'disconnected' },
+      }).catch(() => null);
+      log.warn(
+        `[Z-API Sync] ⚠️  Isolamento: ${evictIds.length} número(s) com zapiInstanceId duplicado ` +
+        `foram desconectados. Mantido: ${keep.id} (user: ${keep.userId})`
+      );
+    }
+  }
+
   // Busca todos os números conectados (ou conectando — pode ter travado em connecting)
-  const numbers = await prisma.whatsappNumber.findMany({
+  const numbers = await (prisma as any).whatsappNumber.findMany({
     where: { status: { in: ['connected', 'connecting'] } },
     select: { id: true, zapiInstanceId: true, zapiToken: true },
   });
