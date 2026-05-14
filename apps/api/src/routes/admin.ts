@@ -23,24 +23,16 @@ function safeCompare(a: string | undefined, b: string | undefined): boolean {
 
 function buildTesterMessage(name: string, link: string): string {
   return `Oi, ${name}! 👋
-
 Tenho algo especial pra te contar — e esse convite é só seu. 🔒
 
 🫵Você foi selecionado(a) para ser Tester Oficial do ZapScript.me, antes do lançamento oficial.
 
-
-🎙️ O que é o ZapScript.me?
+🎙️ O que é o *ZapScript.me?*
 Sabe aquela pilha de áudios no WhatsApp que você deixa pra depois... e nunca ouve? 😅
-
 O ZapScript resolve isso de forma automática — transcreve e resume os áudios que você recebe, pra você ler em segundos, sem perder nada importante.
 Mais produtividade. Mais organização. Mais controle do seu tempo. 🚀
 
-🎁 O que você ganha sendo Tester:
-✅ 1 ano grátis no Plano Pro
-✅ Acesso antecipado — antes de todo mundo
-✅ Selo exclusivo de Tester Oficial no seu perfil
-
-Você ajuda a construir, a gente te dá 1 ano Pro de presente. 💚
+🎁 Você ajuda a construir, ganha 1 ano grátis no Plano Pro de presente. 💚
 
 👇 Seu link exclusivo — expira em 48h ⏳
 ${link}
