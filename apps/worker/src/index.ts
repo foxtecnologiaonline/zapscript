@@ -81,16 +81,23 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
   return { text, durationSec };
 }
 
+/** Calcula quantos bullets gerar com base nas linhas do texto (máx 5) */
+function bulletCount(text: string): number {
+  const lines = text.split('\n').filter(l => l.trim().length > 0).length;
+  return Math.min(5, Math.max(1, lines));
+}
+
 /** Gera bullets com Claude Haiku (rápido e econômico para tarefas simples) */
 async function generateBullets(originalText: string): Promise<string[]> {
+  const count = bulletCount(originalText);
   try {
     const res = await claude.messages.create({
-      model:      'claude-haiku-4-5-20251001',   // Haiku: 10x mais barato que Sonnet para esta tarefa
+      model:      'claude-haiku-4-5-20251001',
       max_tokens: 400,
       system:     'Você é um assistente que resume áudios transcritos em bullets concisos em português brasileiro. Responda SOMENTE com os bullets, um por linha, começando com "- ". Sem título, sem texto extra.',
       messages: [{
         role:    'user',
-        content: `Resuma nos 3 pontos principais ou chave:\n\n${originalText}`,
+        content: `Resuma em exatamente ${count} ponto${count > 1 ? 's' : ''} principal${count > 1 ? 'is' : ''} ou chave:\n\n${originalText}`,
       }],
     });
     const raw     = (res.content[0] as any).text || '';
@@ -100,11 +107,11 @@ async function generateBullets(originalText: string): Promise<string[]> {
       .filter((l: string) => l.startsWith('- '))
       .map((l: string) => l.replace(/^-\s*/, '').trim())
       .filter(Boolean)
-      .slice(0, 3);
+      .slice(0, count);
     return bullets.length > 0 ? bullets : ['Resumo não disponível'];
   } catch (err: any) {
     logger.warn(`[Worker] Claude falhou ao gerar bullets — usando fallback: ${(err as Error).message}`);
-    const sentences = originalText.split(/[.!?]\s+/).filter(s => s.trim().length > 10).slice(0, 3);
+    const sentences = originalText.split(/[.!?]\s+/).filter(s => s.trim().length > 10).slice(0, count);
     return sentences.length > 0
       ? sentences.map(s => s.trim())
       : ['Transcrição disponível — resumo temporariamente indisponível'];
