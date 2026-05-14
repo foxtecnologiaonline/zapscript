@@ -216,7 +216,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     };
   }>(
     '/users/:id',
-    { preHandler: [adminAuth] },
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
       const { id } = req.params;
       const { planName, isAdmin, minutes, minutesMode = 'set' } = req.body;
@@ -470,7 +470,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     Body: { label?: string; minutesPerMonth?: number; maxNumbers?: number; priceBrl?: number; features?: unknown[] };
   }>(
     '/plans/:id',
-    { preHandler: [adminAuth] },
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
       const { id } = req.params;
       const { label, minutesPerMonth, maxNumbers, priceBrl, features } = req.body;
@@ -527,7 +527,7 @@ export default async function adminRoutes(app: FastifyInstance) {
   // PATCH /admin/tickets/:id — atualizar status de um ticket de suporte
   app.patch<{ Params: { id: string }; Body: { status: string } }>(
     '/tickets/:id',
-    { preHandler: [adminAuth] },
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
       const { id } = req.params;
       const { status } = req.body;
@@ -560,7 +560,7 @@ export default async function adminRoutes(app: FastifyInstance) {
   // POST /admin/invites — criar convite para Tester e enviar via WhatsApp
   app.post<{ Body: { name: string; phone?: string } }>(
     '/invites',
-    { preHandler: [adminAuth] },
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
       const { name, phone } = req.body;
       if (!name || typeof name !== 'string' || name.trim().length < 2) {
@@ -633,7 +633,7 @@ export default async function adminRoutes(app: FastifyInstance) {
   // POST /admin/diagnose-whatsapp — diagnóstico completo do canal WhatsApp
   app.post<{ Body: { phone?: string } }>(
     '/diagnose-whatsapp',
-    { preHandler: [adminAuth] },
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
       const testPhone = req.body?.phone;
       const result: any = { envVars: {}, zapiNumbers: [], testSend: null };
