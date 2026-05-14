@@ -140,7 +140,7 @@ export async function syncAllZapiConfigs(log: any): Promise<SyncResult> {
       if (!res.ok) continue;
       const data = await res.json() as any;
 
-      if (data?.connected === true && n.status !== 'connected') {
+      if ((data?.connected === true || data?.smartphoneConnected === true) && n.status !== 'connected') {
         await prisma.whatsappNumber.update({
           where: { id: n.id },
           data:  { status: 'connected', connectedAt: new Date() },

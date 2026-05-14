@@ -1,28 +1,35 @@
 /**
  * zapi-heartbeat.ts
  *
- * Sincronização automática e bidirecional entre Z-API e banco de dados.
+ * Sincronização automática entre Z-API e banco de dados.
  *
  * ┌─────────────────────────────────────────────────────────────────────────┐
- * │  A cada 5 minutos — Status Sync                                        │
- * │  • Verifica TODOS os números com zapiInstanceId (qualquer status no DB) │
- * │  • Z-API connected  + DB disconnected → atualiza para connected ✅     │
- * │  • Z-API connected  + DB connecting  → confirma connected ✅           │
- * │  • Z-API disconnected + DB connected  → atualiza para disconnected ⚠️  │
- * │  Resultado: DB sempre espelha o estado real sem ação do usuário        │
+ * │  PRINCÍPIO FUNDAMENTAL DE SEGURANÇA                                    │
+ * │                                                                         │
+ * │  Auto-RECONECTAR  ✅  DB disconnected + Z-API online  → connected      │
+ * │  Auto-DESCONECTAR ❌  NUNCA feito aqui automaticamente                  │
+ * │                                                                         │
+ * │  Desconexão real é sinalizada pela Z-API via DisconnectedCallback       │
+ * │  (webhook confiável). Timeouts e respostas negativas pontuais da        │
+ * │  API de status NÃO são evidência suficiente para desconectar.           │
+ * │  Falsos positivos causam perda de mensagens e experiência ruim.         │
+ * ├─────────────────────────────────────────────────────────────────────────┤
+ * │  A cada 5 minutos — Status Sync (apenas reconecta)                     │
+ * │  • Busca TODOS os números com zapiInstanceId (qualquer status)          │
+ * │  • Z-API online + DB não-connected → auto-reconecta                    │
+ * │  • Z-API offline ou timeout → ignora, tenta na próxima rodada          │
  * ├─────────────────────────────────────────────────────────────────────────┤
  * │  A cada 1 hora — Webhook Sync                                           │
- * │  • Re-aplica URLs de webhook e auto-read em todos os conectados        │
- * │  • Garante que eventos continuem chegando após mudanças de URL         │
+ * │  • Re-aplica URLs de webhook e auto-read em todos os conectados         │
  * └─────────────────────────────────────────────────────────────────────────┘
  */
 
 import { prisma } from '../lib/prisma';
 
-const STATUS_INTERVAL_MS  =  5 * 60 * 1000;  // status sync a cada 5 minutos
-const WEBHOOK_INTERVAL_MS = 60 * 60 * 1000;  // webhook sync a cada 1 hora
-const FIRST_STATUS_MS     =  1 * 60 * 1000;  // primeiro status check em 1 min (após estabilizar)
-const FIRST_WEBHOOK_MS    = 10 * 60 * 1000;  // primeiro webhook sync em 10 min
+const STATUS_INTERVAL_MS  =  5 * 60 * 1000;   // sync de status a cada 5 min
+const WEBHOOK_INTERVAL_MS = 60 * 60 * 1000;   // webhook sync a cada 1 hora
+const FIRST_STATUS_MS     =  1 * 60 * 1000;   // primeiro status check em 1 min
+const FIRST_WEBHOOK_MS    = 10 * 60 * 1000;   // primeiro webhook sync em 10 min
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -36,40 +43,57 @@ function zapiHeaders(): Record<string, string> {
   return headers;
 }
 
-function webhookUrl(): string | null {
+function webhookBaseUrl(): string | null {
   const base = process.env.APP_URL || process.env.API_URL;
   return base ? `${base}/webhook/zapi` : null;
 }
 
-// ── Status de um número via Z-API API ──────────────────────────────────────
+// ── Verificar status real na Z-API ─────────────────────────────────────────
+// Retorna:
+//   true  → Z-API confirma online (connected ou smartphoneConnected)
+//   false → Z-API confirma offline (resposta clara de desconexão)
+//   null  → inconclusivo (timeout, erro de rede, formato inesperado)
+//           → NÃO usar para desconectar — ignorar e tentar mais tarde
 
-async function fetchZapiStatus(
-  instanceId: string,
-  token: string,
-): Promise<{ connected: boolean; phone?: string } | null> {
+async function fetchZapiConnected(instanceId: string, token: string): Promise<boolean | null> {
   try {
     const res = await fetch(
       zapiUrl(instanceId, token, '/status'),
-      { headers: zapiHeaders(), signal: AbortSignal.timeout(10_000) },
+      { headers: zapiHeaders(), signal: AbortSignal.timeout(10_000) }
     );
-    if (!res.ok) return null;
+
+    if (!res.ok) return null; // erro HTTP — inconclusivo
+
     const data = await res.json() as any;
-    return {
-      connected: data?.connected === true,
-      phone:     data?.phone ?? data?.smartphoneConnected?.phone ?? undefined,
-    };
+
+    // Suportar instâncias Web (connected) e Mobile (smartphoneConnected)
+    if (data?.connected === true || data?.smartphoneConnected === true) return true;
+
+    // Só retornar false se a resposta for explicitamente negativa em ambos os campos
+    if (data && 'connected' in data) return false;
+
+    // Formato desconhecido → inconclusivo
+    return null;
   } catch {
-    return null; // timeout ou erro de rede — não alterar status
+    // Timeout ou erro de rede → inconclusivo, NÃO desconectar
+    return null;
   }
 }
 
-// ── Status Sync — verifica todos os números e corrige DB ───────────────────
+// ── Status Sync — apenas auto-reconecta ────────────────────────────────────
 
 export async function runStatusSync(log: any): Promise<void> {
-  // Busca TODOS os números com credenciais Z-API (qualquer status)
   const numbers = await (prisma as any).whatsappNumber.findMany({
     where:  { zapiInstanceId: { not: null }, zapiToken: { not: null } },
-    select: { id: true, userId: true, zapiInstanceId: true, zapiToken: true, status: true, phoneNumber: true },
+    select: {
+      id:             true,
+      userId:         true,
+      zapiInstanceId: true,
+      zapiToken:      true,
+      status:         true,
+      phoneNumber:    true,
+      updatedAt:      true,
+    },
   }).catch((err: any) => {
     log.error(`[Heartbeat] Erro ao buscar números: ${err.message}`);
     return [];
@@ -77,96 +101,73 @@ export async function runStatusSync(log: any): Promise<void> {
 
   if (numbers.length === 0) return;
 
-  // Agrupar por instância — só verificar uma vez por instância (evita chamadas duplicadas)
-  const byInstance = new Map<string, typeof numbers[number][]>();
+  // Agrupar por instância — uma chamada Z-API por instância (evita duplicatas)
+  const byInstance = new Map<string, any[]>();
   for (const n of numbers) {
     const key = n.zapiInstanceId as string;
     if (!byInstance.has(key)) byInstance.set(key, []);
     byInstance.get(key)!.push(n);
   }
 
-  let reconnected = 0, disconnected = 0, stable = 0;
+  let reconnected = 0;
 
   for (const [instanceId, group] of byInstance) {
-    // Usar credenciais do primeiro número do grupo para checar status da instância
-    const repr  = group[0];
-    const status = await fetchZapiStatus(instanceId, repr.zapiToken as string);
+    const repr = group[0]; // qualquer número do grupo para checar a instância
 
-    if (status === null) {
-      // Timeout / erro de rede — não alterar nada, tentar na próxima rodada
+    const isConnected = await fetchZapiConnected(instanceId, repr.zapiToken as string);
+
+    if (isConnected === null) {
+      // Inconclusivo (timeout, rede) → não alterar nada
       continue;
     }
 
-    if (status.connected) {
-      // Z-API está conectado — garantir que EXATAMENTE UM número esteja "connected"
-      // Estratégia: pegar o mais recentemente atualizado do grupo e marcar como connected.
-      // Desconectar os demais (isolamento).
-      const sorted = [...group].sort((a: any, b: any) =>
-        new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime()
-      );
-      const [winner, ...losers] = sorted;
+    if (isConnected) {
+      // Z-API está online — garantir que exatamente um número esteja 'connected'.
+      // Prioridade: connected > connecting > disconnected, depois mais recente.
+      const sorted = [...group].sort((a: any, b: any) => {
+        const priority: Record<string, number> = { connected: 0, connecting: 1, disconnected: 2 };
+        const pa = priority[a.status] ?? 3;
+        const pb = priority[b.status] ?? 3;
+        if (pa !== pb) return pa - pb;
+        return new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime();
+      });
+
+      const winner = sorted[0];
 
       if (winner.status !== 'connected') {
         await prisma.whatsappNumber.update({
           where: { id: winner.id },
-          data:  {
-            status:      'connected',
-            connectedAt: new Date(),
-            ...(status.phone ? { phoneNumber: status.phone.replace(/\D/g, '') } : {}),
-          },
+          data:  { status: 'connected', connectedAt: new Date() },
         }).catch(() => null);
         log.info(
-          `[Heartbeat] ✅ Auto-reconectado: número ${winner.id} (user ${winner.userId}) ` +
-          `— estava '${winner.status}', Z-API está online`
+          `[Heartbeat] ✅ Auto-reconectado: ${winner.id} (user ${winner.userId}) ` +
+          `era '${winner.status}', Z-API está online`
         );
         reconnected++;
-      } else {
-        stable++;
       }
 
-      // Desconectar os demais do grupo (isolamento multi-tenant)
-      if (losers.length > 0) {
-        const loserIds = losers.map((l: any) => l.id);
-        await prisma.whatsappNumber.updateMany({
-          where: { id: { in: loserIds }, status: { in: ['connected', 'connecting'] } },
-          data:  { status: 'disconnected' },
-        }).catch(() => null);
-      }
-    } else {
-      // Z-API desconectado — garantir que todos do grupo estejam disconnected
-      const activeInGroup = group.filter((n: any) => n.status === 'connected' || n.status === 'connecting');
-      if (activeInGroup.length > 0) {
-        await prisma.whatsappNumber.updateMany({
-          where: { id: { in: activeInGroup.map((n: any) => n.id) } },
-          data:  { status: 'disconnected' },
-        }).catch(() => null);
-        for (const n of activeInGroup) {
-          log.warn(
-            `[Heartbeat] ⚠️  Auto-desconectado: número ${n.id} (user ${n.userId}) ` +
-            `— estava '${n.status}', Z-API está offline`
-          );
-          disconnected++;
-        }
-      } else {
-        stable++;
-      }
+      // NÃO desconectar os outros números do grupo.
+      // Isolamento multi-tenant é responsabilidade do ConnectedCallback.
     }
 
-    // Pausa entre instâncias para não sobrecarregar Z-API
+    // isConnected === false → Z-API confirma offline.
+    // Não alterar o banco aqui — o DisconnectedCallback da Z-API
+    // (webhook confiável e em tempo real) cuidará disso quando ocorrer.
+    // Desconectar via polling seria arriscado: instabilidade momentânea
+    // do telefone ou da rede causaria falsos positivos a cada 5 minutos.
+
     await new Promise(r => setTimeout(r, 300));
   }
 
-  if (reconnected > 0 || disconnected > 0) {
-    log.info(
-      `[Heartbeat] Status Sync: ${reconnected} auto-reconectados, ${disconnected} desconectados, ${stable} estáveis`
-    );
+  if (reconnected > 0) {
+    log.info(`[Heartbeat] Status Sync: ${reconnected} número(s) auto-reconectados`);
   }
 }
 
-// ── Webhook Sync — re-aplica webhooks em todos os conectados ───────────────
+// ── Webhook Sync — re-aplica webhooks em conectados ────────────────────────
 
 export async function runWebhookSync(log: any): Promise<void> {
-  const url = webhookUrl();
+  const url = webhookBaseUrl();
   if (!url) {
     log.warn('[Heartbeat] APP_URL/API_URL não configurado — webhook sync ignorado');
     return;
@@ -182,19 +183,19 @@ export async function runWebhookSync(log: any): Promise<void> {
   let ok = 0, fail = 0;
 
   for (const n of numbers) {
-    const instanceId = n.zapiInstanceId as string;
-    const token      = n.zapiToken as string;
+    const iid   = n.zapiInstanceId as string;
+    const token = n.zapiToken as string;
 
     const endpoints = [
-      { path: '/update-webhook-received',             body: { value: url } },
-      { path: '/update-webhook-connected',            body: { value: url } },
-      { path: '/update-webhook-received-disconnected',body: { value: url } },
-      { path: '/update-auto-read-message',            body: { value: false } },
+      { path: '/update-webhook-received',              body: { value: url } },
+      { path: '/update-webhook-connected',             body: { value: url } },
+      { path: '/update-webhook-received-disconnected', body: { value: url } },
+      { path: '/update-auto-read-message',             body: { value: false } },
     ];
 
     const results = await Promise.allSettled(
       endpoints.map(({ path, body }) =>
-        fetch(zapiUrl(instanceId, token, path), {
+        fetch(zapiUrl(iid, token, path), {
           method:  'PUT',
           headers: zapiHeaders(),
           body:    JSON.stringify(body),
@@ -203,49 +204,39 @@ export async function runWebhookSync(log: any): Promise<void> {
       )
     );
 
-    const numOk   = results.filter(r => r.status === 'fulfilled').length;
-    const numFail = results.filter(r => r.status === 'rejected').length;
-    if (numOk > 0) ok++;
-    if (numFail > 0) fail++;
+    if (results.some(r => r.status === 'fulfilled')) ok++;
+    if (results.some(r => r.status === 'rejected'))  fail++;
 
     await new Promise(r => setTimeout(r, 300));
   }
 
-  log.info(`[Heartbeat] Webhook Sync: ${ok} número(s) sincronizados, ${fail} com erro`);
+  log.info(`[Heartbeat] Webhook Sync: ${ok} sincronizado(s)${fail ? `, ${fail} com erro` : ''}`);
 }
 
 // ── Inicialização ──────────────────────────────────────────────────────────
 
 export function startHeartbeat(log: any): void {
-  // ── Status Sync (a cada 5 min) ──────────────────────────────────────────
-  const firstStatus = setTimeout(
-    () => runStatusSync(log).catch((e: any) => log.error(`[Heartbeat] Erro status sync: ${e.message}`)),
+  const t1 = setTimeout(
+    () => runStatusSync(log).catch((e: any) => log.error(`[Heartbeat] ${e.message}`)),
     FIRST_STATUS_MS
   );
-  const statusInterval = setInterval(
-    () => runStatusSync(log).catch((e: any) => log.error(`[Heartbeat] Erro status sync: ${e.message}`)),
+  const i1 = setInterval(
+    () => runStatusSync(log).catch((e: any) => log.error(`[Heartbeat] ${e.message}`)),
     STATUS_INTERVAL_MS
   );
-
-  // ── Webhook Sync (a cada 1 hora) ────────────────────────────────────────
-  const firstWebhook = setTimeout(
-    () => runWebhookSync(log).catch((e: any) => log.error(`[Heartbeat] Erro webhook sync: ${e.message}`)),
+  const t2 = setTimeout(
+    () => runWebhookSync(log).catch((e: any) => log.error(`[Heartbeat] ${e.message}`)),
     FIRST_WEBHOOK_MS
   );
-  const webhookInterval = setInterval(
-    () => runWebhookSync(log).catch((e: any) => log.error(`[Heartbeat] Erro webhook sync: ${e.message}`)),
+  const i2 = setInterval(
+    () => runWebhookSync(log).catch((e: any) => log.error(`[Heartbeat] ${e.message}`)),
     WEBHOOK_INTERVAL_MS
   );
 
-  firstStatus.unref();
-  statusInterval.unref();
-  firstWebhook.unref();
-  webhookInterval.unref();
+  t1.unref(); i1.unref(); t2.unref(); i2.unref();
 
-  log.info(
-    '[Heartbeat] ✅ Iniciado — Status Sync a cada 5min (1ª em 1min) | Webhook Sync a cada 1h (1ª em 10min)'
-  );
+  log.info('[Heartbeat] ✅ Status Sync a cada 5min (1ª em 1min) | Webhook Sync a cada 1h (1ª em 10min)');
 }
 
-// ── Exportar runHeartbeat como alias para compatibilidade ──────────────────
+// Alias para compatibilidade
 export const runHeartbeat = runStatusSync;

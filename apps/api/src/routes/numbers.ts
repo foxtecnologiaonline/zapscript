@@ -428,30 +428,30 @@ export default async function numberRoutes(app: FastifyInstance) {
     try {
       const res  = await fetch(
         zapiUrl(number.zapiInstanceId, number.zapiToken, '/status'),
-        { headers: zapiHeaders() }
+        { headers: zapiHeaders(), signal: AbortSignal.timeout(8_000) }
       );
       const data = await res.json() as any;
 
-      const connected = data?.connected === true;
+      // Aceitar tanto Web (connected) quanto Mobile (smartphoneConnected)
+      const connected = data?.connected === true || data?.smartphoneConnected === true;
 
-      // Sincronizar status no banco se mudou
+      // Apenas auto-RECONECTAR no banco (disconnected → connected).
+      // NUNCA desconectar aqui: timeout ou resposta negativa pontual não
+      // significa desconexão real. Desconexão real vem apenas via
+      // DisconnectedCallback da Z-API ou ação explícita do usuário.
       if (connected && number.status !== 'connected') {
         await prisma.whatsappNumber.update({
           where: { id },
           data:  { status: 'connected', connectedAt: new Date() },
-        });
-      } else if (!connected && number.status === 'connected') {
-        await prisma.whatsappNumber.update({
-          where: { id },
-          data:  { status: 'disconnected' },
-        });
+        }).catch(() => null);
       }
 
       return { connected, phone: data?.phone || number.phoneNumber };
 
     } catch (err: any) {
-      app.log.error({ err: err.message }, '[Z-API] Erro ao verificar status');
-      return { connected: false };
+      // Erro de rede/timeout — retorna o status atual do banco sem modificar nada
+      app.log.warn({ err: err.message }, '[Z-API] Timeout ao verificar status — mantendo status atual');
+      return { connected: number.status === 'connected', phone: number.phoneNumber };
     }
   });
 

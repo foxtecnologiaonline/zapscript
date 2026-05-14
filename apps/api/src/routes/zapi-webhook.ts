@@ -117,8 +117,29 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
     }
 
     // ── DisconnectedCallback — WhatsApp desconectado ───────────────
+    // Aguarda 8s antes de confirmar desconexão — evita falso positivo quando
+    // o telefone perde sinal por instantes e reconecta sozinho. Se um
+    // ConnectedCallback chegar nesse intervalo, a desconexão é ignorada.
     if (type === 'DisconnectedCallback') {
-      app.log.info(`[Z-API] ⚠️ Dispositivo desconectado (instância ${instanceId})`);
+      app.log.info(`[Z-API] ⚠️ DisconnectedCallback recebido (instância ${instanceId}) — aguardando 8s para confirmar...`);
+      await new Promise(r => setTimeout(r, 8_000));
+
+      // Verificar status real na Z-API antes de confirmar desconexão
+      try {
+        const checkRes = await fetch(
+          `https://api.z-api.io/instances/${instanceId}/token/${process.env.ZAPI_TOKEN || ''}/status`,
+          { headers: { ...(process.env.ZAPI_CLIENT_TOKEN ? { 'Client-Token': process.env.ZAPI_CLIENT_TOKEN } : {}) }, signal: AbortSignal.timeout(5_000) }
+        );
+        if (checkRes.ok) {
+          const checkData = await checkRes.json() as any;
+          if (checkData?.connected === true || checkData?.smartphoneConnected === true) {
+            app.log.info(`[Z-API] ✅ DisconnectedCallback ignorado — Z-API confirmou que ainda está online (instância ${instanceId})`);
+            return; // Reconectou sozinho — não marcar como desconectado
+          }
+        }
+      } catch { /* se verificação falhar, prosseguir com desconexão */ }
+
+      app.log.warn(`[Z-API] ⚠️ Desconexão confirmada (instância ${instanceId}) — atualizando banco`);
       await prisma.whatsappNumber.updateMany({
         where: { zapiInstanceId: instanceId },
         data:  { status: 'disconnected' },

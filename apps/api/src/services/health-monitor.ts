@@ -169,17 +169,17 @@ async function checkZapi(): Promise<
           `https://api.z-api.io/instances/${n.zapiInstanceId}/token/${n.zapiToken}/status`,
           { headers, timeout: 8_000 }
         );
-        const zapiOk = res.data?.connected === true;
+        // Aceitar Web (connected) e Mobile (smartphoneConnected)
+        const zapiOk = res.data?.connected === true || res.data?.smartphoneConnected === true;
         if (!zapiOk) {
           mismatches.push({ id: n.id, phoneNumber: n.phoneNumber, zapiStatus: res.data });
           alertMsgs.push(
-            `⚠️ Número ${n.phoneNumber || n.id} está CONECTADO no banco mas DESCONECTADO na Z-API — reconexão necessária`
+            `⚠️ Número ${n.phoneNumber || n.id} — banco diz CONNECTED mas Z-API reportou offline. ` +
+            `Pode ser instabilidade momentânea. Será resolvido automaticamente se persistir.`
           );
-          // Corrigir status automaticamente
-          await prisma.whatsappNumber.update({
-            where: { id: n.id },
-            data:  { status: 'disconnected' },
-          }).catch(() => null);
+          // NÃO desconectar automaticamente aqui — desconexão real vem via
+          // DisconnectedCallback (webhook confiável). Alterar status por polling
+          // da API de status causa falsos positivos e desconexões desnecessárias.
         }
       } catch (e: any) {
         mismatches.push({ id: n.id, phoneNumber: n.phoneNumber, error: e.message });
@@ -187,7 +187,7 @@ async function checkZapi(): Promise<
     }
 
     if (mismatches.length > 0) {
-      suggestions.push('Status dos números foi corrigido automaticamente — o usuário precisará reconectar o WhatsApp');
+      suggestions.push('Se o mismatch persistir nas próximas verificações, o número pode precisar ser reconectado manualmente');
     }
 
     return { ok: mismatches.length === 0, connected, mismatches, alertMsgs, suggestions };
