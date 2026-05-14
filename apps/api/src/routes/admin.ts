@@ -27,8 +27,11 @@ function buildTesterMessage(name: string, link: string): string {
 Tenho algo especial pra te contar — e esse convite é só seu. 🔒
 
 🫵Você foi selecionado(a) para ser Tester Oficial do ZapScript.me, antes do lançamento oficial.
+
+
 🎙️ O que é o ZapScript.me?
 Sabe aquela pilha de áudios no WhatsApp que você deixa pra depois... e nunca ouve? 😅
+
 O ZapScript resolve isso de forma automática — transcreve e resume os áudios que você recebe, pra você ler em segundos, sem perder nada importante.
 Mais produtividade. Mais organização. Mais controle do seu tempo. 🚀
 
