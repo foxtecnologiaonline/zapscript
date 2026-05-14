@@ -429,7 +429,7 @@ export default function AdminPage() {
   const [invitePhone, setInvitePhone] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
   const [lastInviteResult, setLastInviteResult] = useState<{
-    link: string; message: string; whatsappSent: boolean; whatsappError?: string;
+    link: string; message: string; whatsappSent: boolean; whatsappChannel?: string; whatsappError?: string;
   } | null>(null);
 
   const h = { 'x-admin-token': token, 'content-type': 'application/json' };
@@ -509,7 +509,7 @@ export default function AdminPage() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Erro');
-      setLastInviteResult({ link: d.link, message: d.message, whatsappSent: d.whatsappSent, whatsappError: d.whatsappError });
+      setLastInviteResult({ link: d.link, message: d.message, whatsappSent: d.whatsappSent, whatsappChannel: d.whatsappChannel, whatsappError: d.whatsappError });
       setInviteName('');
       setInvitePhone('');
       loadInvites();
@@ -801,7 +801,9 @@ export default function AdminPage() {
               <div className={`border rounded-xl p-5 ${lastInviteResult.whatsappSent ? 'bg-[rgba(16,185,129,.06)] border-[rgba(16,185,129,.2)]' : 'bg-[rgba(251,191,36,.04)] border-[rgba(251,191,36,.15)]'}`}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs font-bold text-[#10b981]">
-                    {lastInviteResult.whatsappSent ? '✅ Convite gerado e WhatsApp enviado!' : '✅ Convite gerado'}
+                    {lastInviteResult.whatsappSent
+                      ? `✅ Convite gerado e enviado via ${lastInviteResult.whatsappChannel === 'z-api' ? 'Z-API (WhatsApp pessoal)' : lastInviteResult.whatsappChannel === 'meta' ? 'Meta Cloud API' : 'WhatsApp'}`
+                      : '✅ Convite gerado (sem envio automático)'}
                   </div>
                   {!lastInviteResult.whatsappSent && lastInviteResult.whatsappError && (
                     <span className="text-[10px] text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded-full px-2 py-0.5">
@@ -809,6 +811,11 @@ export default function AdminPage() {
                     </span>
                   )}
                 </div>
+                {lastInviteResult.whatsappSent && lastInviteResult.whatsappChannel === 'meta' && (
+                  <div className="text-[10px] text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-3 py-2 mb-3">
+                    ⚠️ <strong>Atenção:</strong> Meta Cloud API só entrega mensagens para contatos que já conversaram com o número nas últimas 24h. Se não chegou, conecte um número Z-API.
+                  </div>
+                )}
                 <div className="flex items-center gap-2 mb-3">
                   <code className="flex-1 text-xs text-[#6ee7b7] bg-[#132621] rounded-lg px-3 py-2 font-mono break-all">{lastInviteResult.link}</code>
                   <Btn variant="ghost" onClick={() => { navigator.clipboard.writeText(lastInviteResult.link); notify('✅ Link copiado!', 'ok'); }}>

@@ -47,12 +47,30 @@ ${link}
 Qualquer dúvida é só responder aqui. Te espero lá! 🙌`;
 }
 
-async function sendTesterWhatsApp(phone: string, message: string, log: any): Promise<void> {
-  // 1. Tentar Meta Cloud API
+async function sendTesterWhatsApp(phone: string, message: string, log: any): Promise<string> {
+  // 1. Z-API primeiro — funciona com contatos frios (envia do WhatsApp pessoal conectado)
+  const number = await prisma.whatsappNumber.findFirst({
+    where: { status: 'connected', zapiInstanceId: { not: null }, zapiToken: { not: null } },
+    select: { zapiInstanceId: true, zapiToken: true },
+  });
+  if (number?.zapiInstanceId && number?.zapiToken) {
+    const clientToken = process.env.ZAPI_CLIENT_TOKEN;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (clientToken) headers['Client-Token'] = clientToken;
+    const res = await axios.post(
+      `https://api.z-api.io/instances/${number.zapiInstanceId}/token/${number.zapiToken}/send-text`,
+      { phone, message },
+      { headers }
+    );
+    log.info({ phone, status: res.status, data: res.data }, '[Invites] ✅ WhatsApp enviado via Z-API');
+    return 'z-api';
+  }
+
+  // 2. Fallback: Meta Cloud API — requer opt-in do contato (não funciona para contatos frios)
   const apiToken      = process.env.WHATSAPP_API_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   if (apiToken && phoneNumberId) {
-    await axios.post(
+    const res = await axios.post(
       `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         messaging_product: 'whatsapp',
@@ -63,29 +81,11 @@ async function sendTesterWhatsApp(phone: string, message: string, log: any): Pro
       },
       { headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'application/json' } }
     );
-    log.info(`[Invites] ✅ WhatsApp enviado via Meta Cloud API para ${phone}`);
-    return;
+    log.warn({ phone, status: res.status, data: res.data }, '[Invites] ⚠️ WhatsApp enviado via Meta (contatos frios podem não receber)');
+    return 'meta';
   }
 
-  // 2. Fallback: Z-API — usa primeiro número conectado com instância Z-API
-  const number = await prisma.whatsappNumber.findFirst({
-    where: { status: 'connected', zapiInstanceId: { not: null }, zapiToken: { not: null } },
-    select: { zapiInstanceId: true, zapiToken: true },
-  });
-  if (number?.zapiInstanceId && number?.zapiToken) {
-    const clientToken = process.env.ZAPI_CLIENT_TOKEN;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (clientToken) headers['Client-Token'] = clientToken;
-    await axios.post(
-      `https://api.z-api.io/instances/${number.zapiInstanceId}/token/${number.zapiToken}/send-text`,
-      { phone, message },
-      { headers }
-    );
-    log.info(`[Invites] ✅ WhatsApp enviado via Z-API para ${phone}`);
-    return;
-  }
-
-  throw new Error('Nenhum canal WhatsApp configurado (Meta Cloud API ou Z-API conectado).');
+  throw new Error('Nenhum canal WhatsApp disponível: sem número Z-API conectado e sem WHATSAPP_API_TOKEN.');
 }
 
 const adminAuth = async (req: any, reply: any) => {
@@ -580,22 +580,23 @@ export default async function adminRoutes(app: FastifyInstance) {
       const link    = `${appUrl}/convite/${invite.code}`;
       const message = buildTesterMessage(trimmedName, link);
 
-      let whatsappSent = false;
+      let whatsappSent    = false;
       let whatsappError: string | undefined;
+      let whatsappChannel: string | undefined;
 
       if (phone) {
-        const digits    = phone.replace(/\D/g, '');
+        const digits     = phone.replace(/\D/g, '');
         const cleanPhone = digits.startsWith('55') ? digits : `55${digits}`;
         try {
-          await sendTesterWhatsApp(cleanPhone, message, app.log);
-          whatsappSent = true;
+          whatsappChannel = await sendTesterWhatsApp(cleanPhone, message, app.log);
+          whatsappSent    = true;
         } catch (err: any) {
           whatsappError = err.message;
           app.log.warn({ phone: cleanPhone, err: err.message }, '[Invites] Falha ao enviar WhatsApp');
         }
       }
 
-      return { invite, link, message, whatsappSent, whatsappError };
+      return { invite, link, message, whatsappSent, whatsappChannel, whatsappError };
     }
   );
 
