@@ -1,15 +1,23 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [form, setForm]   = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+  const [info, setInfo]        = useState('');
   const [needsVerification, setNeedsVerification] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get('sessao') === 'expirada') {
+      setInfo('Sua sessão expirou. Por favor, faça login novamente.');
+    }
+  }, [searchParams]);
   const [showPass, setShowPass] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendOk, setResendOk]   = useState(false);
@@ -60,6 +68,12 @@ export default function LoginPage() {
           </div>
           <p className="text-sm font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>Bem-vindo de volta</p>
         </div>
+
+        {info && (
+          <div className="mb-4 text-xs px-3 py-2.5 rounded-xl text-amber-300 bg-amber-400/10 border border-amber-400/20">
+            {info}
+          </div>
+        )}
 
         <div className="card rounded-2xl p-7">
           <form onSubmit={submit} className="flex flex-col gap-4">
@@ -132,5 +146,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-brand-bg flex items-center justify-center">
+        <div className="text-brand-primary text-sm animate-pulse">Carregando...</div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

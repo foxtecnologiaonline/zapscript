@@ -106,6 +106,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .catch(() => router.push('/login'));
   }, []);
 
+  // ── Keepalive: ping /health a cada 4 min para evitar cold start do Render ──
+  // O Render free tier dorme após 15 min de inatividade → primeiro request leva 30-60s.
+  // Usuários autenticados no dashboard mantêm o servidor acordado.
+  useEffect(() => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const ping = () => fetch(`${API_URL}/health`, { method: 'GET', cache: 'no-store' }).catch(() => null);
+    ping(); // ping imediato ao entrar no dashboard
+    const id = setInterval(ping, 4 * 60 * 1000); // a cada 4 min
+    return () => clearInterval(id);
+  }, []);
+
   // Close drawer automatically on navigation
   useEffect(() => { setMenuOpen(false); }, [pathname]);
 

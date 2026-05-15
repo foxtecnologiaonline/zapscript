@@ -5,6 +5,20 @@ function getToken(): string | null {
   return localStorage.getItem('zs_token');
 }
 
+// ── Auto-redirect ao expirar JWT ────────────────────────────────────────────
+// Quando o servidor retornar 401 (token expirado ou inválido), limpa o token
+// local e redireciona o usuário para /login com um parâmetro de mensagem.
+function handleUnauthorized() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('zs_token');
+  // Não redirecionar em rotas públicas (login, cadastro, etc.)
+  const publicPaths = ['/login', '/cadastro', '/esqueci-senha', '/redefinir-senha', '/convite', '/email-confirmado'];
+  const isPublic = publicPaths.some(p => window.location.pathname.startsWith(p));
+  if (!isPublic && window.location.pathname !== '/') {
+    window.location.href = '/login?sessao=expirada';
+  }
+}
+
 async function request<T>(path: string, opts: RequestInit = {}, isFormData = false): Promise<T> {
   const token = getToken();
   const headers: HeadersInit = {
@@ -20,6 +34,16 @@ async function request<T>(path: string, opts: RequestInit = {}, isFormData = fal
     ...opts,
     headers,
   });
+
+  // Sessão expirada → redirecionar para login automaticamente
+  if (res.status === 401) {
+    handleUnauthorized();
+    const body = await res.json().catch(() => ({ error: 'Sessão expirada. Faça login novamente.' }));
+    const err  = new Error(body.error || 'Sessão expirada. Faça login novamente.') as any;
+    Object.assign(err, body);
+    throw err;
+  }
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     const err  = new Error(body.error || 'Request failed') as any;
