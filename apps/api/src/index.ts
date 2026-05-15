@@ -66,13 +66,40 @@ app.addContentTypeParser(
   }
 );
 
-// CORS origin: use APP_URL in production, localhost in dev
-const allowedOrigin = process.env.APP_URL
-  || (process.env.NODE_ENV !== 'production' ? 'http://localhost:3000' : false);
+// CORS origins: aceitar APP_URL + variante www/sem-www automaticamente
+// Ex: APP_URL=https://www.zapscript.me → permite também https://zapscript.me
+function buildAllowedOrigins(): string | string[] | false {
+  const base = process.env.APP_URL;
+  if (!base) return process.env.NODE_ENV !== 'production' ? 'http://localhost:3000' : false;
+
+  const origins = new Set<string>([base.replace(/\/$/, '')]);
+
+  // Adicionar variante com/sem www automaticamente
+  if (base.includes('://www.')) {
+    origins.add(base.replace('://www.', '://').replace(/\/$/, ''));
+  } else if (!base.includes('://www.')) {
+    origins.add(base.replace('://', '://www.').replace(/\/$/, ''));
+  }
+
+  // EXTRA_ORIGINS permite adicionar origens adicionais via env (separadas por vírgula)
+  if (process.env.EXTRA_ORIGINS) {
+    process.env.EXTRA_ORIGINS.split(',').forEach(o => origins.add(o.trim()));
+  }
+
+  // Em dev, incluir localhost
+  if (process.env.NODE_ENV !== 'production') {
+    origins.add('http://localhost:3000');
+  }
+
+  const list = [...origins];
+  return list.length === 1 ? list[0] : list;
+}
+
+const allowedOrigins = buildAllowedOrigins();
 
 // Attach Socket.IO to Fastify's underlying http.Server
 export const io = new SocketServer(app.server, {
-  cors:       { origin: allowedOrigin, methods: ['GET', 'POST'] },
+  cors:       { origin: allowedOrigins, methods: ['GET', 'POST'] },
   transports: ['polling', 'websocket'],  // aceita polling e ws
   pingTimeout:  60000,   // 60s antes de considerar desconectado
   pingInterval: 25000,   // heartbeat a cada 25s (evita timeout do Render)
@@ -123,7 +150,7 @@ io.on('connection', (socket: Socket) => {
 });
 
 app.register(cors, {
-  origin: allowedOrigin,
+  origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 });
