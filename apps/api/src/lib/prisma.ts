@@ -4,23 +4,35 @@ declare global {
   var __prisma: PrismaClient | undefined;
 }
 
-// ── Connection pool hint ────────────────────────────────────────────────────────
-// Para Supabase em produção, use o URL do PgBouncer (porta 6543) com:
-//   DATABASE_URL="postgres://...@aws-0-xxx.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=10"
-// Isso evita esgotamento de conexões com 500 usuários simultâneos.
-if (process.env.NODE_ENV === 'production') {
-  const dbUrl = process.env.DATABASE_URL || '';
-  if (dbUrl && !dbUrl.includes('pgbouncer') && !dbUrl.includes('connection_limit')) {
+// ── PgBouncer compatibility ─────────────────────────────────────────────────────
+// Supabase usa PgBouncer em modo transação (porta 6543). Prisma usa prepared
+// statements por padrão, o que causa "prepared statement does not exist" (PG-26000)
+// quando conexões são reutilizadas pelo pool. A flag ?pgbouncer=true desativa isso.
+//
+// Garantimos aqui em código: se o DATABASE_URL não incluir a flag, adicionamos.
+// Isso evita que um env var mal configurado derrube o dashboard em produção.
+function buildDatasourceUrl(): string | undefined {
+  const url = process.env.DATABASE_URL;
+  if (!url) return undefined;
+  if (url.includes('pgbouncer=true')) return url; // já OK
+
+  const separator = url.includes('?') ? '&' : '?';
+  const patched = `${url}${separator}pgbouncer=true`;
+  if (process.env.NODE_ENV === 'production') {
     console.warn(
-      '[Prisma] ⚠️  DATABASE_URL não usa PgBouncer. ' +
-      'Para escala, use a URL do pooler Supabase (porta 6543) com ?pgbouncer=true&connection_limit=10'
+      '[Prisma] ⚠️  DATABASE_URL sem ?pgbouncer=true — adicionado automaticamente. ' +
+      'Adicione ?pgbouncer=true à URL do pooler Supabase (porta 6543) no Render para remover este aviso.'
     );
   }
+  return patched;
 }
+
+const datasourceUrl = buildDatasourceUrl();
 
 export const prisma =
   global.__prisma ||
   new PrismaClient({
+    datasourceUrl,
     log: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error', 'warn'],
     errorFormat: 'pretty',
   });
