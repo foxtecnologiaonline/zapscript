@@ -44,8 +44,10 @@ function zapiHeaders(): Record<string, string> {
 }
 
 function webhookBaseUrl(): string | null {
-  const base = process.env.APP_URL || process.env.API_URL;
-  return base ? `${base}/webhook/zapi` : null;
+  // API_URL = URL da API no Render (ex: https://zapscript.onrender.com)
+  // APP_URL = URL do frontend Vercel — NÃO usar para webhooks Z-API
+  const base = process.env.API_URL || process.env.APP_URL;
+  return base ? `${base.replace(/\/$/, '')}/webhook/zapi` : null;
 }
 
 // ── Verificar status real na Z-API ─────────────────────────────────────────

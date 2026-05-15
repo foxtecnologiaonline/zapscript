@@ -140,7 +140,7 @@ export default async function zapiWebhookRoutes(app: FastifyInstance) {
       } catch { /* se verificação falhar, prosseguir com desconexão */ }
 
       app.log.warn(`[Z-API] ⚠️ Desconexão confirmada (instância ${instanceId}) — atualizando banco`);
-      await prisma.whatsappNumber.updateMany({
+      await (prisma as any).whatsappNumber.updateMany({
         where: { zapiInstanceId: instanceId },
         data:  { status: 'disconnected' },
       });

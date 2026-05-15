@@ -36,7 +36,7 @@ async function syncNumber(
     token      = envToken;
     migrated   = true;
 
-    await prisma.whatsappNumber.update({
+    await (prisma as any).whatsappNumber.update({
       where: { id: number.id },
       data:  { zapiInstanceId: envInstanceId, zapiToken: envToken },
     }).catch((e: any) =>
@@ -80,14 +80,14 @@ export interface SyncResult {
 }
 
 export async function syncAllZapiConfigs(log: any): Promise<SyncResult> {
-  const webhookUrl = process.env.APP_URL
-    ? `${process.env.APP_URL}/webhook/zapi`
-    : process.env.API_URL
-    ? `${process.env.API_URL}/webhook/zapi`
-    : null;
+  // API_URL = URL do próprio servidor Render (ex: https://zapscript.onrender.com)
+  // APP_URL = URL do frontend Vercel (ex: https://www.zapscript.me) — NÃO usar para webhooks
+  // O webhook DEVE apontar para a API, não para o Vercel
+  const apiBase = process.env.API_URL || process.env.APP_URL;
+  const webhookUrl = apiBase ? `${apiBase.replace(/\/$/, '')}/webhook/zapi` : null;
 
   if (!webhookUrl) {
-    log.warn('[Z-API Sync] APP_URL/API_URL não configurado — sync de webhooks ignorado');
+    log.warn('[Z-API Sync] API_URL não configurado — sync de webhooks ignorado. Configure API_URL=https://zapscript.onrender.com no Render.');
     return { total: 0, synced: 0, skipped: 0, migrated: 0, errors: 0 };
   }
 
