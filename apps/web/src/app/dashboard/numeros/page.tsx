@@ -59,6 +59,7 @@ function ConnectModal({ number, onClose, onConnected }: {
   const [requesting, setRequesting]   = useState(false);
   const [qrImage, setQrImage]         = useState<string | null>(null);
   const [qrLoading, setQrLoading]     = useState(false);
+  const [copied, setCopied]           = useState(false);
 
   const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -235,7 +236,13 @@ function ConnectModal({ number, onClose, onConnected }: {
                       <p className="text-5xl font-black font-mono tracking-[0.15em] text-brand-primary my-3">
                         {formatCode(pairingCode)}
                       </p>
-                      <div className="flex items-center justify-center gap-1.5 text-xs text-brand-muted">
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(pairingCode!); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                        className="mt-3 flex items-center gap-2 mx-auto px-4 py-2 rounded-xl bg-brand-primary/15 border border-brand-primary/30 text-brand-primary text-sm font-semibold hover:bg-brand-primary/25 transition-all active:scale-95"
+                      >
+                        {copied ? '✅ Copiado!' : '📋 Copiar código'}
+                      </button>
+                      <div className="flex items-center justify-center gap-1.5 text-xs text-brand-muted mt-3">
                         <Spinner size={3} />
                         Aguardando você digitar no WhatsApp...
                       </div>

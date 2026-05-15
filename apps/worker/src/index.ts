@@ -165,10 +165,24 @@ async function saveTranscription(params: {
  *   \n        → nova linha
  */
 function buildMessage(bullets: string[], originalText: string, _refCode: string): string {
-  const bulletLines = bullets.map((b: string) => `- ${b}`).join('\n');
+  // Detectar bullets genéricos/fallback que não agregam valor ao usuário
+  const FALLBACK_PHRASES = [
+    'Transcrição disponível',
+    'resumo temporariamente indisponível',
+    'Resumo não disponível',
+    'Não foi possível gerar',
+  ];
+  const hasRealBullets =
+    bullets.length > 0 &&
+    !bullets.some(b => FALLBACK_PHRASES.some(f => b.includes(f)));
+
+  const highlightsSection = hasRealBullets
+    ? `🎯 Destaques\n${bullets.map(b => `- ${b}`).join('\n')}\n\n`
+    : '';
+
   return (
     `✨ Transcrição do seu áudio ✨\n\n` +
-    `🎯 Destaques\n${bulletLines}\n\n` +
+    highlightsSection +
     `📄 Transcrição completa\n_${originalText}_\n\n` +
     `---\n` +
     `⚡ Pronto em segundos!\n` +

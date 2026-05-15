@@ -28,23 +28,25 @@ function buildTesterMessage(name: string, link: string): string {
   return `Oi, ${name}! 👋
 Tenho algo especial pra te contar — e esse convite é só seu. 🔒
 
-🫵Você foi selecionado(a) para ser Tester Oficial do ZapScript.me, antes do lançamento oficial.
+🫵Você pode ser Tester Oficial do ZapScript, antes do lançamento oficial.
 
 🎙️ O que é o *ZapScript.me?*
 Sabe aquela pilha de áudios no WhatsApp que você deixa pra depois... e nunca ouve? 😅
-O ZapScript resolve isso de forma automática — transcreve e resume os áudios que você recebe, pra você ler em segundos, sem perder nada importante.
-Mais produtividade. Mais organização. Mais controle do seu tempo. 🚀
+Você vai ler em segundos, pois a transcrição e o resumo são feitos de forma automática, isso é organização sem perder nada importante! 👍
 
-🎁 Você ajuda a construir, ganha 1 ano grátis no Plano Pro de presente. 💚
+🎁 Você ajuda a construir, e ganha 1 ano grátis no Plano Pro de presente. 💚
 
-👇 Seu link exclusivo — expira em 48h ⏳
+👇 Seu link exclusivo — expira em 24h ⏳
 ${link}
-Qualquer dúvida é só responder aqui. Te espero lá! 🙌`;
+Te espero lá! 🙌`;
 }
 
 async function sendTesterWhatsApp(phone: string, message: string, log: any): Promise<string> {
-  // 1. Z-API primeiro — funciona com contatos frios (envia do WhatsApp pessoal conectado)
+  // 1. Z-API — priorizar número 5534991790254 como remetente, senão qualquer conectado
   const number = await prisma.whatsappNumber.findFirst({
+    where: { status: 'connected', phoneNumber: '5534991790254', zapiInstanceId: { not: null }, zapiToken: { not: null } },
+    select: { zapiInstanceId: true, zapiToken: true },
+  }) ?? await prisma.whatsappNumber.findFirst({
     where: { status: 'connected', zapiInstanceId: { not: null }, zapiToken: { not: null } },
     select: { zapiInstanceId: true, zapiToken: true },
   });
@@ -356,6 +358,92 @@ export default async function adminRoutes(app: FastifyInstance) {
       }
 
       return { ok: true, message: `Link de redefinição enviado para ${user.email}.`, link: resetLink };
+    }
+  );
+
+  // POST /admin/users/:id/resend-activation — reenvia e-mail de ativação
+  app.post<{ Params: { id: string }; Body: {} }>(
+    '/users/:id/resend-activation',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { id } = req.params;
+      try {
+        const user = await retryWithBackoff(() =>
+          prisma.user.findUnique({ where: { id } })
+        );
+        if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+        if (user.emailVerified) return reply.code(400).send({ error: 'E-mail já verificado.' });
+
+        const { data: linkData, error } = await supabase.auth.admin.generateLink({
+          type:    'signup',
+          email:   user.email,
+          options: { redirectTo: `${process.env.APP_URL || 'https://zapscript.me'}/dashboard` },
+        });
+        if (error) return reply.code(500).send({ error: error.message });
+
+        const { sendEmail } = await import('../lib/mailer');
+        const activationLink = linkData?.properties?.action_link || '';
+        if (activationLink) {
+          await sendEmail(
+            user.email,
+            'Ative sua conta — ZapScript',
+            `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+              <h2 style="color:#10b981">Bem-vindo ao ZapScript! 🎙️</h2>
+              <p>Olá${user.name ? `, <strong>${user.name}</strong>` : ''}!</p>
+              <p>Clique no botão abaixo para ativar sua conta:</p>
+              <a href="${activationLink}" style="display:inline-block;background:#10b981;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin:16px 0">
+                ✅ Ativar minha conta
+              </a>
+              <p style="font-size:12px;color:#888">O link expira em 24 horas. Se não solicitou isso, ignore este e-mail.</p>
+            </div>`
+          );
+        }
+
+        app.log.info(`[Admin] E-mail de ativação reenviado para ${user.email}`);
+        return { ok: true, message: `E-mail de ativação reenviado para ${user.email}.`, link: activationLink };
+      } catch (err: any) {
+        app.log.error({ userId: id, err: err.message }, '[Admin] Erro ao reenviar ativação');
+        return reply.code(500).send({ error: 'Erro ao reenviar ativação. Tente novamente.' });
+      }
+    }
+  );
+
+  // GET /admin/email-health — verifica se sistema de e-mail está funcionando
+  app.get(
+    '/email-health',
+    { preHandler: [adminAuth] },
+    async (_req, reply) => {
+      const result: any = {
+        provider:    null,
+        configured:  false,
+        testResult:  null,
+        recentSent:  null,
+      };
+
+      if (process.env.RESEND_API_KEY) {
+        result.provider   = 'resend';
+        result.configured = true;
+        // Verificar via API Resend se a chave é válida
+        try {
+          const res = await axios.get('https://api.resend.com/emails', {
+            headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+            timeout: 8000,
+          });
+          result.testResult = { ok: true, status: res.status };
+        } catch (e: any) {
+          result.testResult = { ok: false, error: e.response?.data || e.message };
+        }
+      } else if (process.env.SMTP_HOST) {
+        result.provider   = 'smtp';
+        result.configured = true;
+        result.testResult = { ok: true, note: 'SMTP configurado — verificação via conexão real não implementada' };
+      } else {
+        result.provider   = null;
+        result.configured = false;
+        result.testResult = { ok: false, error: 'Nenhum provider configurado (RESEND_API_KEY ou SMTP_HOST)' };
+      }
+
+      return reply.send(result);
     }
   );
 

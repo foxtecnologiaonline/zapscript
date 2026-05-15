@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
+import { notifyWelcome, notifyDisconnected } from '../services/whatsapp-notify';
 
 // ── Z-API helpers ──────────────────────────────────────────────────────────────
 
@@ -97,7 +98,7 @@ export default async function numberRoutes(app: FastifyInstance) {
   app.get('/', auth, async (req: any) => {
     return prisma.whatsappNumber.findMany({
       where:   { userId: req.user.sub },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       select: {
         id:           true,
         displayName:  true,
@@ -155,6 +156,9 @@ export default async function numberRoutes(app: FastifyInstance) {
         ...(cleanPhone ? { phoneNumber: cleanPhone } : {}),
       },
     });
+
+    // Notificar boas-vindas (em background, não bloqueia)
+    notifyWelcome(number.id).catch(() => null);
 
     return reply.code(201).send(number);
   });
@@ -463,6 +467,9 @@ export default async function numberRoutes(app: FastifyInstance) {
 
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    // Notificar desconexão (em background, antes do update)
+    notifyDisconnected(id).catch(() => null);
 
     if (number.zapiInstanceId && number.zapiToken) {
       try {

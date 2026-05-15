@@ -33,6 +33,19 @@ const STATUS_LABEL: Record<string, string> = {
   connected: 'Conectado', disconnected: 'Desconectado',
 };
 
+function maskEmail(email: string): string {
+  if (!email) return '—';
+  const [local, domain] = email.split('@');
+  if (!domain) return email;
+  const masked = local.length > 2 ? local[0] + '•'.repeat(Math.min(local.length - 2, 4)) + local[local.length - 1] : local[0] + '•';
+  return `${masked}@${domain}`;
+}
+
+function maskTesterName(name: string, code: string): string {
+  if (!name) return code?.slice(0, 8) || '—';
+  return `${name[0].toUpperCase()}. ···${code?.slice(-6) || ''}`;
+}
+
 /* ── Componentes base ──────────────────────────────────── */
 function Badge({ label, cls }: { label: string; cls?: string }) {
   return (
@@ -242,6 +255,72 @@ function QueuePanel({ apiBase, token }: { apiBase: string; token: string }) {
 
           {data?.error && (
             <p className="text-xs text-red-400">Erro: {data.error}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Painel de Saúde dos Serviços Externos ─────────────────────────────────
+function ServicesHealth({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]       = useState<any>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const [health, emailH] = await Promise.all([
+        fetch(`${apiBase}/sys/g5r8t2/health/run`, { method: 'POST', headers: { 'x-admin-token': token } }).then(r => r.json()),
+        fetch(`${apiBase}/sys/g5r8t2/email-health`, { headers: { 'x-admin-token': token } }).then(r => r.json()),
+      ]);
+      setData({ health: health.report, email: emailH });
+    } catch (e: any) { setData({ error: e.message }); }
+    finally { setLoading(false); }
+  }
+
+  const services = data?.health ? [
+    { name: 'API / Render',  ok: true,                          detail: 'Online — respondendo' },
+    { name: 'Banco (DB)',    ok: data.health.checks.db.ok,      detail: data.health.checks.db.ok ? `${data.health.checks.db.latencyMs}ms` : data.health.checks.db.error },
+    { name: 'Redis',         ok: data.health.checks.redis.ok,   detail: data.health.checks.redis.ok ? `${data.health.checks.redis.latencyMs}ms` : data.health.checks.redis.error },
+    { name: 'Fila (BullMQ)', ok: data.health.checks.queue.ok,   detail: `⏳${data.health.checks.queue.waiting} | ▶️${data.health.checks.queue.active} | ❌${data.health.checks.queue.failed}` },
+    { name: 'Z-API',         ok: data.health.checks.zapi.ok,    detail: `${data.health.checks.zapi.connected} conectado(s)` },
+    { name: 'Worker',        ok: data.health.checks.worker.ok,  detail: data.health.checks.worker.note },
+    { name: 'E-mail',        ok: data.email?.testResult?.ok,    detail: data.email?.provider ? `${data.email.provider}${data.email.testResult?.ok ? ' ✅' : ' ❌ ' + (data.email.testResult?.error || '')}` : 'Não configurado' },
+  ] : [];
+
+  const allOk = services.length > 0 && services.every(s => s.ok);
+
+  return (
+    <div className="mt-3 border border-[rgba(16,185,129,.1)] rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
+        className="w-full text-left px-4 py-2.5 text-xs text-[rgba(16,185,129,.5)] hover:text-[rgba(16,185,129,.8)] flex items-center justify-between transition-colors">
+        <span>🌐 {open ? '▲' : '▼'} Saúde dos Serviços</span>
+        {data && !loading && (
+          <span className={`font-bold text-[10px] ${allOk ? 'text-green-400' : 'text-red-400'}`}>
+            {allOk ? '✅ Todos online' : '⚠️ Verificar'}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          <button type="button" onClick={load} disabled={loading}
+            className="text-xs bg-[rgba(16,185,129,.1)] border border-[rgba(16,185,129,.2)] text-[#10b981] px-3 py-1.5 rounded-lg hover:bg-[rgba(16,185,129,.2)] disabled:opacity-40 transition-colors">
+            {loading ? '⟳ Verificando...' : '↻ Verificar agora'}
+          </button>
+          {data?.error && <p className="text-xs text-red-400">Erro: {data.error}</p>}
+          {services.length > 0 && (
+            <div className="space-y-1.5">
+              {services.map((s, i) => (
+                <div key={i} className={`flex items-center justify-between rounded-lg px-3 py-2 border text-xs ${s.ok ? 'bg-green-900/10 border-green-500/15 text-green-300' : s.ok === false ? 'bg-red-900/10 border-red-500/15 text-red-300' : 'bg-yellow-900/10 border-yellow-500/15 text-yellow-300'}`}>
+                  <span className="font-semibold">{s.ok ? '✅' : s.ok === false ? '❌' : '⚠️'} {s.name}</span>
+                  <span className="text-[10px] opacity-70 font-mono">{s.detail ?? '—'}</span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -687,6 +766,11 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
                 onClick={() => act('reset-password', 'POST')}>
                 {acting === 'reset-password' ? '⟳' : '🔑'} Enviar reset de senha
               </Btn>
+              {!data.user.emailVerified && (
+                <Btn variant="ghost" disabled={!!acting} onClick={() => act('resend-activation', 'POST')}>
+                  📧 Reenviar ativação
+                </Btn>
+              )}
               <Btn variant="ghost" disabled={!!acting} onClick={load}>
                 🔄 Atualizar dados
               </Btn>
@@ -1149,7 +1233,7 @@ export default function AdminPage() {
                     return (
                       <tr key={u.id} className="border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.025)] transition-colors group">
                         <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)] font-mono max-w-[100px] truncate">{u.id.slice(0,10)}…</td>
-                        <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)] max-w-[170px] truncate">{u.email}</td>
+                        <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)] max-w-[170px] truncate">{maskEmail(u.email)}</td>
                         <td className="px-4 py-3"><Badge label={plan} cls={PLAN_CLS[plan]} /></td>
                         <td className="px-4 py-3 text-xs font-mono text-right text-[#d1fae5]">
                           {typeof mins === 'number' ? mins.toFixed(1) : '—'}
@@ -1263,6 +1347,7 @@ export default function AdminPage() {
                 Ao aceitar o convite, o usuário recebe <strong className="text-[#10b981]">Plano PRO grátis por 1 ano</strong> + Selo Tester Oficial.
                 {' '}Se o telefone for informado, a mensagem é enviada automaticamente via WhatsApp.
               </p>
+              <ServicesHealth apiBase={API} token={token} />
               <HealthMonitorPanel apiBase={API} token={token} />
               <DiagnoseWhatsApp apiBase={API} token={token} />
               <QueuePanel apiBase={API} token={token} />
@@ -1326,7 +1411,7 @@ export default function AdminPage() {
               ) : invites.map((inv: any) => (
                 <div key={inv.id} className="px-5 py-3 border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.02)] flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-sm font-semibold text-[#d1fae5]">{inv.name}</div>
+                    <div className="text-sm font-semibold text-[#d1fae5]">{maskTesterName(inv.name, inv.code)}</div>
                     <div className="text-xs text-[rgba(16,185,129,.4)] font-mono mt-0.5">{inv.code}</div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
