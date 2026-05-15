@@ -134,9 +134,9 @@ export default function DashboardPage() {
                   {(t.contactName || t.contactPhone)[0]?.toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-sm font-semibold text-brand-text">{t.contactName || t.contactPhone}</span>
-                    <span className="text-xs text-brand-muted ml-auto">{new Date(t.createdAt).toLocaleDateString('pt-BR')}</span>
+                  <div className="flex items-center gap-2 mb-0.5 min-w-0">
+                    <span className="text-sm font-semibold text-brand-text truncate">{t.contactName || t.contactPhone}</span>
+                    <span className="text-xs text-brand-muted ml-auto flex-shrink-0">{new Date(t.createdAt).toLocaleDateString('pt-BR')}</span>
                   </div>
                   <p className="text-xs text-brand-text-secondary line-clamp-2 font-light">{t.originalText}</p>
                   <div className="flex gap-2 mt-1.5">
@@ -237,40 +237,45 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Detail modal */}
+      {/* Detail modal — bottom-sheet em mobile, centrado no desktop */}
       {selected && (
         <div role="dialog" aria-modal="true"
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={closeModal}>
-          <div className="modal-panel max-w-lg w-full" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-5">
+          <div className="modal-panel w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[88vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between p-5 pb-4">
               <div>
                 <div className="font-bold text-base text-brand-text">{selected.contactName || selected.contactPhone}</div>
-                <div className="text-xs text-brand-muted">
+                <div className="text-xs text-brand-muted mt-0.5">
                   {selected.number ? (selected.number.displayName || selected.number.phoneNumber) : 'Número removido'} · {new Date(selected.createdAt).toLocaleString('pt-BR')}
                 </div>
               </div>
-              <button onClick={closeModal} className="text-brand-muted hover:text-brand-text text-lg transition-colors" aria-label="Fechar">✕</button>
+              <button onClick={closeModal} className="text-brand-muted hover:text-brand-text text-lg transition-colors p-1" aria-label="Fechar">✕</button>
             </div>
-            <div className="inner-block mb-4">
-              <div className="text-xs font-bold text-brand-primary mb-2">✨ Resumo</div>
-              {(selected.summaryBullets as string[]).map((b, i) => (
-                <div key={i} className="text-sm text-brand-text mb-1">• {b}</div>
-              ))}
-            </div>
-            <div className="inner-block">
-              <div className="text-xs font-bold text-brand-text-secondary mb-2">Original</div>
-              <p className="text-sm text-brand-text-secondary font-light leading-relaxed italic">"{selected.originalText}"</p>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button onClick={() => navigator.clipboard.writeText(selected.originalText)}
-                className="btn-ghost text-xs py-2 flex-1 justify-center">📋 Copiar</button>
-              <button onClick={(e) => handleDelete(selected.id, e)}
-                className="text-xs py-2 px-3 rounded-lg border border-red-400/20 text-red-400 hover:bg-red-400/5 transition-colors">
-                🗑
-              </button>
-              <button onClick={closeModal}
-                className="btn-primary text-xs py-2 flex-1 justify-center">Fechar</button>
+            <div className="px-5 pb-5 space-y-3">
+              {(selected.summaryBullets as string[]).length > 0 && (
+                <div className="inner-block">
+                  <div className="text-xs font-bold text-brand-primary mb-2">✨ Resumo</div>
+                  {(selected.summaryBullets as string[]).map((b, i) => (
+                    <div key={i} className="text-sm text-brand-text mb-1">• {b}</div>
+                  ))}
+                </div>
+              )}
+              <div className="inner-block">
+                <div className="text-xs font-bold text-brand-text-secondary mb-2">Original</div>
+                <p className="text-sm text-brand-text-secondary font-light leading-relaxed italic">"{selected.originalText}"</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => navigator.clipboard.writeText(selected.originalText)}
+                  className="btn-ghost text-xs py-2.5 flex-1 justify-center">📋 Copiar</button>
+                <button onClick={(e) => handleDelete(selected.id, e)}
+                  className="text-xs py-2.5 px-3 rounded-lg border border-red-400/20 text-red-400 hover:bg-red-400/5 transition-colors">
+                  🗑
+                </button>
+                <button onClick={closeModal}
+                  className="btn-primary text-xs py-2.5 flex-1 justify-center">Fechar</button>
+              </div>
             </div>
           </div>
         </div>
