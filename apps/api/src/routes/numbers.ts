@@ -28,8 +28,19 @@ function partnerHeaders(): Record<string, string> {
   return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
 
-/** URL base da API (usada para configurar webhooks nas instâncias criadas) */
-const API_BASE = process.env.API_URL ?? 'https://zapscript.me';
+/** URL base da API (usada para configurar webhooks nas instâncias criadas).
+ *  DEVE apontar para o servidor Render (API), nunca para o Vercel (frontend).
+ *  Configure API_URL=https://zapscript.onrender.com nas env vars do Render. */
+function getApiBase(): string {
+  const url = process.env.API_URL || process.env.RENDER_EXTERNAL_URL;
+  if (url) return url.replace(/\/$/, '');
+  // Fallback: se nenhuma env var disponível, loga erro crítico
+  console.error(
+    '[numbers] ⛔ API_URL não configurado! Configure API_URL=https://seu-app.onrender.com no Render. ' +
+    'Sem isso, a Z-API não consegue entregar eventos de WhatsApp.'
+  );
+  return '';
+}
 
 /**
  * Cria uma nova instância Z-API via Partner API.
@@ -52,7 +63,7 @@ async function createZapiInstance(name: string): Promise<{ id: string; token: st
   if (!data.id || !data.token) throw new Error('Z-API retornou instância sem id/token');
 
   // Configurar webhooks na instância recém criada
-  const webhookUrl = `${API_BASE}/webhook/zapi`;
+  const webhookUrl = `${getApiBase()}/webhook/zapi`;
   const webhookEndpoints = [
     '/update-webhook-received',
     '/update-webhook-connected',
@@ -239,7 +250,7 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
 
     // ── Configurar webhooks SEMPRE (garante que Z-API sabe para onde enviar áudios) ─
-    const webhookUrl = `${API_BASE}/webhook/zapi`;
+    const webhookUrl = `${getApiBase()}/webhook/zapi`;
     const webhookResults = await Promise.allSettled([
       // Webhooks de eventos
       fetch(zapiUrl(instanceId, instanceToken, '/update-webhook-received'), {
@@ -277,7 +288,9 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
 
     // ── Vincular instância ao número e marcar como conectando ─────────────
-    await prisma.whatsappNumber.update({
+    // Usar (prisma as any) pois zapiInstanceId/zapiToken são campos adicionados
+    // via auto-migration SQL e podem não estar no tipo gerado do Prisma client.
+    await (prisma as any).whatsappNumber.update({
       where: { id },
       data: {
         zapiInstanceId: instanceId,
@@ -502,7 +515,7 @@ export default async function numberRoutes(app: FastifyInstance) {
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    await prisma.whatsappNumber.update({
+    await (prisma as any).whatsappNumber.update({
       where: { id },
       data:  { zapiInstanceId: null, zapiToken: null, status: 'disconnected' },
     });
