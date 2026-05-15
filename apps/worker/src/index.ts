@@ -130,7 +130,7 @@ async function saveTranscription(params: {
   const { userId, numberId, contactPhone, contactName, durationSec, originalText, bullets, source } = params;
   const durationMin = durationSec / 60;
 
-  return prisma.$transaction(async (tx) => {
+  const transcription = await prisma.$transaction(async (tx) => {
     // Débito atômico: só desconta se tiver saldo suficiente
     const balanceUpdate = await tx.minuteBalance.updateMany({
       where: { userId, availableMinutes: { gte: durationMin } },
@@ -141,7 +141,7 @@ async function saveTranscription(params: {
       throw new Error(`Saldo insuficiente no momento do débito (${durationMin.toFixed(2)} min)`);
     }
 
-    const [transcription] = await Promise.all([
+    const [t] = await Promise.all([
       tx.transcription.create({
         data: { userId, numberId, contactPhone, contactName: contactName ?? null, durationSec, originalText, summaryBullets: bullets, confidenceScore: 99.0, source },
       }),
@@ -151,8 +151,69 @@ async function saveTranscription(params: {
       }),
     ]);
 
-    return transcription;
+    return t;
   });
+
+  // ── Alertas de consumo (fire-and-forget, nunca bloqueia o pipeline) ──────
+  // Dispara fora da transação para não aumentar o tempo de lock no DB.
+  triggerMinuteAlertIfNeeded(userId).catch(() => null);
+
+  return transcription;
+}
+
+/**
+ * Verifica se o usuário ultrapassou 50/80/100% dos minutos mensais.
+ * Envia WhatsApp ao próprio número conectado. Cada threshold é enviado no máximo 1x/mês
+ * (controlado pelo campo lastAlertSent e alertThreshold no banco).
+ */
+async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
+  try {
+    const balance = await (prisma as any).minuteBalance.findUnique({
+      where:   { userId },
+      include: { user: { include: { subscription: { include: { plan: true } } } } },
+    });
+    if (!balance) return;
+
+    const total     = balance.user?.subscription?.plan?.minutesPerMonth ?? 0;
+    if (total <= 0) return;
+
+    const used      = total - balance.availableMinutes;
+    const pct       = Math.floor((used / total) * 100);
+    const lastAlert = parseInt(balance.lastAlertSent || '0', 10); // string "50"|"80"|"100"|null → number
+
+    // Determinar threshold que deve ser enviado (50 → 80 → 100, um por vez)
+    let threshold: 50 | 80 | 100 | null = null;
+    if (pct >= 100 && lastAlert < 100)      threshold = 100;
+    else if (pct >= 80 && lastAlert < 80)   threshold = 80;
+    else if (pct >= 50 && lastAlert < 50)   threshold = 50;
+
+    if (!threshold) return;
+
+    // Buscar número conectado para enviar o alerta
+    const n = await (prisma as any).whatsappNumber.findFirst({
+      where: { userId, status: 'connected', zapiInstanceId: { not: null }, zapiToken: { not: null }, phoneNumber: { not: null } },
+      orderBy: { connectedAt: 'desc' },
+    });
+    if (!n?.zapiInstanceId || !n?.zapiToken || !n?.phoneNumber) return;
+
+    const msgs: Record<number, string> = {
+      50:  `📊 *ZapScript* — 50% dos minutos usados\n\nVocê já usou *metade dos seus minutos* do mês.\n\n💡 Considere fazer upgrade para não perder nenhum áudio:\n👉 https://ZapScript.me/dashboard/plano`,
+      80:  `⚠️ *ZapScript* — 80% dos minutos usados\n\nSeus minutos estão quase esgotando! Restam apenas *20%*.\n\n🚀 Faça upgrade agora:\n👉 https://ZapScript.me/dashboard/plano`,
+      100: `🔴 *ZapScript* — Minutos esgotados\n\nVocê atingiu *100% dos seus minutos* deste mês.\n\n📵 As transcrições foram *pausadas* até o próximo ciclo ou upgrade.\n\n⚡ Faça upgrade agora:\n👉 https://ZapScript.me/dashboard/plano`,
+    };
+
+    await sendMessageViaZapi(n.phoneNumber, n.zapiInstanceId, n.zapiToken, msgs[threshold]);
+
+    // Marcar alerta enviado para não repetir no mesmo ciclo
+    await (prisma as any).minuteBalance.update({
+      where: { userId },
+      data:  { lastAlertSent: String(threshold) }, // schema: String?
+    }).catch(() => null);
+
+    logger.info(`[MinuteAlert] ✅ Alerta ${threshold}% enviado ao usuário ${userId}`);
+  } catch (err: any) {
+    logger.warn(`[MinuteAlert] Falha ao verificar alerta: ${err.message}`);
+  }
 }
 
 /** Formata mensagem de resposta para o WhatsApp.
@@ -542,13 +603,19 @@ async function routeJob(job: Job) {
 // ─────────────────────────────────────────────────────────────────
 //  WORKER SETUP
 // ─────────────────────────────────────────────────────────────────
+// Concorrência configurável via env — padrão 2 para Render free (512MB).
+// No plano Starter/Standard, aumente para 4-8 conforme RAM disponível.
+// WORKER_CONCURRENCY=4 no painel Render → sem redeploy.
+const WORKER_CONCURRENCY  = parseInt(process.env.WORKER_CONCURRENCY  || '2');
+const WORKER_LOCK_MINUTES = parseInt(process.env.WORKER_LOCK_MINUTES || '5');
+
 const worker = new Worker('transcriptions', routeJob, {
-  connection:   redis,
-  concurrency:  2,            // era 5 — Render free (512MB) não aguenta 5 Whisper simultâneos
-  lockDuration: 5 * 60_000,   // 5 min — Whisper pode demorar em áudios longos (era default 30s → stalled!)
-  lockRenewTime: 2 * 60_000,  // renovar lock a cada 2 min enquanto processa
-  stalledInterval: 30_000,    // checar stalled jobs a cada 30s
-  maxStalledCount: 1,         // max 1 stall antes de marcar como falha
+  connection:      redis,
+  concurrency:     WORKER_CONCURRENCY,
+  lockDuration:    WORKER_LOCK_MINUTES * 60_000,  // Whisper pode demorar em áudios longos
+  lockRenewTime:   Math.floor(WORKER_LOCK_MINUTES * 60_000 / 2),
+  stalledInterval: 30_000,
+  maxStalledCount: 2,         // 2 stalls antes de marcar como falha (evita falso positivo em restart)
 });
 
 worker.on('completed', (job, result) => {

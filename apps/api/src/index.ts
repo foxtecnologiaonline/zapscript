@@ -140,24 +140,26 @@ app.register(helmet, {
 });
 app.register(jwt, { secret: process.env.JWT_SECRET! });
 
-// Rate limit com store em memória (não depende de Redis)
-// Se Redis estiver indisponível, o rate limit continua funcionando
+// Rate limit global — webhooks são excluídos (Z-API pode enviar rajadas em instâncias com muitos números)
+// O cast para `as any` é necessário pois 'skip' está nos tipos do @fastify/rate-limit v10
+// mas ainda não foi exportado na definição TypeScript da versão instalada.
 app.register(rateLimit, {
-  max:        100,
+  max:        150,   // aumentado para 500 usuários simultâneos
   timeWindow: '1 minute',
-  // Sem redis store — usa memória local para não travar quando Redis falha
-  // store: undefined,  ← padrão in-memory
+  skip: (req: any) =>
+    req.url.startsWith('/webhook/') ||
+    req.url === '/health',
   addHeaders: {
     'x-ratelimit-limit':     true,
     'x-ratelimit-remaining': true,
     'x-ratelimit-reset':     true,
     'retry-after':           true,
   },
-  errorResponseBuilder: (_req, context) => ({
+  errorResponseBuilder: (_req: any, context: any) => ({
     error:      'Muitas requisições. Tente novamente em breve.',
     retryAfter: context.after,
   }),
-});
+} as any);
 app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB max
 
 // ── Swagger/OpenAPI Documentation — somente em desenvolvimento ─────────────

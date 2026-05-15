@@ -374,8 +374,10 @@ export default async function adminRoutes(app: FastifyInstance) {
         if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
         if (user.emailVerified) return reply.code(400).send({ error: 'E-mail já verificado.' });
 
-        const { data: linkData, error } = await supabase.auth.admin.generateLink({
-          type:    'signup',
+        // generateLink com type 'signup' requer password no TypeScript do Supabase,
+        // mas na prática 'magiclink' gera um link de confirmação sem senha.
+        const { data: linkData, error } = await (supabase.auth.admin.generateLink as any)({
+          type:    'magiclink',
           email:   user.email,
           options: { redirectTo: `${process.env.APP_URL || 'https://zapscript.me'}/dashboard` },
         });
