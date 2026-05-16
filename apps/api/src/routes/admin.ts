@@ -4,7 +4,6 @@ import { retryWithBackoff } from '../lib/db-retry';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import axios from 'axios';
-import { syncAllZapiConfigs } from '../services/zapi-sync';
 import { runHealthCheck, lastReport, history } from '../services/health-monitor';
 import { Queue } from 'bullmq';
 import { redis } from '../services/queue';
@@ -789,18 +788,6 @@ export default async function adminRoutes(app: FastifyInstance) {
       }
 
       return reply.send(result);
-    }
-  );
-
-  // POST /admin/sync-zapi — re-aplica webhooks e configurações Z-API em todos os números conectados.
-  // Útil quando: instância foi migrada, URL mudou, auto-read travou, etc.
-  // Não requer que usuários reconectem o WhatsApp.
-  app.post(
-    '/sync-zapi',
-    { preHandler: [adminAuth] },
-    async (_req, reply) => {
-      const result = await syncAllZapiConfigs(app.log);
-      return reply.send({ ok: true, ...result });
     }
   );
 

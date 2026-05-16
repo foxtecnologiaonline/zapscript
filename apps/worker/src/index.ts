@@ -238,7 +238,7 @@ function buildMessage(bullets: string[], originalText: string, _refCode: string)
     !bullets.some(b => FALLBACK_PHRASES.some(f => b.includes(f)));
 
   const highlightsSection = hasRealBullets
-    ? `🎯 Destaques\n${bullets.map(b => `- ${b}`).join('\n')}\n\n`
+    ? `🔑 Ponto chave\n${bullets.map(b => `- ${b}`).join('\n')}\n\n`
     : '';
 
   return (
