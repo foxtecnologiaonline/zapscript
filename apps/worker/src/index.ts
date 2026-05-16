@@ -570,6 +570,22 @@ async function processEvolutionJob(job: Job) {
       source: 'whatsapp-evolution',
     });
 
+    // PASSO 8: Notificar dashboard via Socket.IO (fire-and-forget)
+    const apiUrl      = process.env.API_URL?.replace(/\/$/, '');
+    const intToken    = process.env.INTERNAL_TOKEN;
+    if (apiUrl && intToken) {
+      fetch(`${apiUrl}/internal/emit`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-token': intToken },
+        body: JSON.stringify({
+          userId,
+          event: 'transcription_ready',
+          data:  { transcriptionId: transcription.id, numberId: whatsappNumber.id, durationSec, senderName },
+        }),
+        signal: AbortSignal.timeout(5_000),
+      }).catch(() => null);  // não bloqueia o pipeline
+    }
+
     log(job, `✅ Concluído via Evolution API`);
     return { transcriptionId: transcription.id };
 

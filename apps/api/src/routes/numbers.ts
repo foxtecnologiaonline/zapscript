@@ -19,6 +19,13 @@ function getApiBase(): string {
   return '';
 }
 
+function buildWebhookUrl(): string {
+  const base   = getApiBase();
+  const url    = `${base}/webhook/evolution`;
+  const secret = process.env.EVOLUTION_WEBHOOK_SECRET;
+  return secret ? `${url}?secret=${encodeURIComponent(secret)}` : url;
+}
+
 // ── Rotas ──────────────────────────────────────────────────────────────────────
 export default async function numberRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -110,7 +117,7 @@ export default async function numberRoutes(app: FastifyInstance) {
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    const webhookUrl = `${getApiBase()}/webhook/evolution`;
+    const webhookUrl = buildWebhookUrl();
     const instName   = evoInstanceName(id);  // 'zs-{numberId}'
 
     try {

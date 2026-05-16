@@ -17,7 +17,10 @@ import { getConnectionState, setWebhook } from './evolution';
 
 function getWebhookUrl(): string | null {
   const base = process.env.API_URL || process.env.APP_URL;
-  return base ? `${base.replace(/\/$/, '')}/webhook/evolution` : null;
+  if (!base) return null;
+  const url    = `${base.replace(/\/$/, '')}/webhook/evolution`;
+  const secret = process.env.EVOLUTION_WEBHOOK_SECRET;
+  return secret ? `${url}?secret=${encodeURIComponent(secret)}` : url;
 }
 
 export interface SyncResult {

@@ -43,6 +43,29 @@ export async function notifyWelcome(numberId: string): Promise<void> {
   } catch { /* não crítico */ }
 }
 
+// ── 1b. Reconexão (número já havia sido conectado antes) ─────────────────
+export async function notifyReconnected(numberId: string): Promise<void> {
+  try {
+    const n = await (prisma as any).whatsappNumber.findUnique({
+      where:   { id: numberId },
+      include: { user: true },
+    });
+    if (!n?.zapiInstanceId || !n?.phoneNumber) return;
+
+    const msg = [
+      `✅ *ZapScript* — Número reconectado`,
+      '',
+      `Seu número *${n.phoneNumber}* voltou a ficar ativo no ZapScript.`,
+      '',
+      '🎙️ As transcrições automáticas estão *retomadas*!',
+      '',
+      '👉 https://ZapScript.me/dashboard',
+    ].join('\n');
+
+    await sendToOwnNumber(n.zapiInstanceId, n.phoneNumber, msg);
+  } catch { /* não crítico */ }
+}
+
 // ── 2. Aviso ao desconectar número ────────────────────────────────────────
 export async function notifyDisconnected(numberId: string): Promise<void> {
   try {

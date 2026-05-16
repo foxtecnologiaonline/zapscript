@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { whatsappAPI } from '../services/whatsapp-official';
 import { prisma } from '../lib/prisma';
 import crypto from 'crypto';
+import { io } from '../index';
 
 function safeCompare(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
@@ -62,6 +63,22 @@ export default async function internalRoutes(app: FastifyInstance) {
       const { service, message, stack, context } = req.body;
       await prisma.systemError.create({ data: { service, message, stack, context } });
       return { logged: true };
+    }
+  );
+
+  // POST /internal/emit — Worker emite evento Socket.IO para o frontend
+  // Permite notificar o dashboard em tempo real quando uma transcrição é concluída.
+  app.post<{ Body: { userId: string; event: string; data?: any } }>(
+    '/emit',
+    { preHandler: [verifyToken], config: { rateLimit: { max: 500, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const { userId, event, data } = req.body;
+      if (!userId || !event) {
+        return reply.code(400).send({ error: 'userId e event são obrigatórios' });
+      }
+      // Emite para a sala do usuário — apenas o socket autenticado desse usuário recebe
+      io.to(`user:${userId}`).emit(event, data ?? {});
+      return { emitted: true, room: `user:${userId}`, event };
     }
   );
 }

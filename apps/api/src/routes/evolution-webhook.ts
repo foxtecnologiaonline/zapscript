@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { transcriptionQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
-import { notifyWelcome } from '../services/whatsapp-notify';
+import { notifyWelcome, notifyReconnected } from '../services/whatsapp-notify';
 
 /**
  * Webhook para receber eventos do Evolution API.
@@ -22,7 +22,9 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
   app.post('/', async (req: any, reply) => {
 
     // ── Segurança: validar secret se configurado ─────────────────────────
-    const secret         = req.headers['x-evolution-secret'] as string | undefined;
+    // Secret pode vir como query param (?secret=...) ou header x-evolution-secret
+    const secret         = (req.query as any)?.secret as string | undefined
+                        || req.headers['x-evolution-secret'] as string | undefined;
     const expectedSecret = process.env.EVOLUTION_WEBHOOK_SECRET;
     if (expectedSecret && secret !== expectedSecret) {
       app.log.warn('[Evolution] Secret inválido — requisição rejeitada');
@@ -102,9 +104,11 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
             },
           });
           log.info(`[Evolution] ✅ Número ${number.id} (user: ${number.userId}) conectado`);
-          // Enviar boas-vindas apenas na primeira conexão (não em reconexões)
+          // Boas-vindas na primeira conexão; reconexão em conexões subsequentes
           if (!wasConnected) {
             notifyWelcome(number.id).catch(() => null);
+          } else {
+            notifyReconnected(number.id).catch(() => null);
           }
         } else {
           log.warn(`[Evolution] connection.update open: nenhum número encontrado para instância ${instName}`);
