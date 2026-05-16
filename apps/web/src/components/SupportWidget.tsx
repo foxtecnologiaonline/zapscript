@@ -60,12 +60,13 @@ export default function SupportWidget() {
   const [error, setError]   = useState('');
 
   useEffect(() => {
-    // Fetch user data on mount to auto-fill name and email
+    // Fetch user data on mount to auto-fill name and email (só em páginas autenticadas)
     api.get<any>('/auth/me')
       .then(user => {
+        if (!user) return;
         setForm(f => ({ ...f, name: user.name || '', email: user.email || '' }));
       })
-      .catch(() => {/* Usuário não autenticado, permite digitar manualmente */});
+      .catch(() => {/* Usuário não autenticado — campos ficam em branco para digitar */});
   }, []);
 
   const currentStep = STEPS.find(s => s.id === step);
