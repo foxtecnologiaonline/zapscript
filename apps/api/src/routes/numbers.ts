@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { notifyWelcome, notifyDisconnected } from '../services/whatsapp-notify';
+import { notifyDisconnected } from '../services/whatsapp-notify';
 import {
   evolutionBaseUrl,
   evolutionHeaders,
@@ -74,8 +74,8 @@ export default async function numberRoutes(app: FastifyInstance) {
       data: { userId, displayName: trimmedName, ...(cleanPhone ? { phoneNumber: cleanPhone } : {}) },
     });
 
-    // Boas-vindas em background
-    notifyWelcome(number.id).catch(() => null);
+    // Nota: notifyWelcome é disparado via connection.update no webhook Evolution
+    // (quando state='open'), não aqui — neste ponto zapiInstanceId ainda é null
     return reply.code(201).send(number);
   });
 

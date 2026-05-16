@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { transcriptionQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
+import { notifyWelcome } from '../services/whatsapp-notify';
 
 /**
  * Webhook para receber eventos do Evolution API.
@@ -92,6 +93,7 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
         // WhatsApp conectado — atualizar banco
         const number = await findNumber();
         if (number) {
+          const wasConnected = number.status === 'connected';
           await prisma.whatsappNumber.update({
             where: { id: number.id },
             data: {
@@ -100,6 +102,10 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
             },
           });
           log.info(`[Evolution] ✅ Número ${number.id} (user: ${number.userId}) conectado`);
+          // Enviar boas-vindas apenas na primeira conexão (não em reconexões)
+          if (!wasConnected) {
+            notifyWelcome(number.id).catch(() => null);
+          }
         } else {
           log.warn(`[Evolution] connection.update open: nenhum número encontrado para instância ${instName}`);
         }
