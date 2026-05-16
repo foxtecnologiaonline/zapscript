@@ -246,8 +246,14 @@ export default async function numberRoutes(app: FastifyInstance) {
         app.log.info(`[Evolution] pairing-code response (${res.status}): ${rawText.substring(0, 200)}`);
 
         if (!res.ok) {
+          const errMsg  = data?.error ?? data?.message ?? `Evolution retornou ${res.status}`;
+          const lower   = String(errMsg).toLowerCase();
+          // Pairing code indisponível: instância não está no estado correto ou não suporta
+          const unavail = res.status === 404 || lower.includes('not found') ||
+            lower.includes('not connected') || lower.includes('unavailable');
           return reply.code(502).send({
-            error: data?.error ?? data?.message ?? `Evolution retornou ${res.status}`,
+            error:       unavail ? 'Código por número indisponível neste momento.' : errMsg,
+            fallbackToQr: unavail,
           });
         }
 

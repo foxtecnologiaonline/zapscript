@@ -131,9 +131,15 @@ function ConnectModal({ number, onClose, onConnected }: {
       setPairingCode(res.code);
       setPhase('code');
     } catch (err: any) {
-      const msg: string = err.message || '';
-      // Instância Web não suporta pairing code — oferecer QR automaticamente
-      if (msg.includes('NOT_FOUND') || msg.includes('QR Code') || msg.includes('não suporta')) {
+      const msg   = (err.message || '') as string;
+      const lower = msg.toLowerCase();
+      // Fallback para QR: API sinaliza via flag OU mensagem indica indisponibilidade
+      const useQr = err.fallbackToQr === true
+        || lower.includes('not found')
+        || lower.includes('indisponível')
+        || lower.includes('não suporta')
+        || lower.includes('qr code');
+      if (useQr) {
         setPhoneError('');
         setConnectMode('qr');
       } else {
