@@ -7,7 +7,7 @@ import { prisma } from './lib/prisma';
 import { convertToMp3 } from './services/audio';
 import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
 import { downloadAudioFromTwilio, sendMessageViaTwilio } from './services/twilio';
-import { downloadAudioFromZapi, sendMessageViaZapi, markChatAsUnread } from './services/zapi';
+import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread } from './services/evolution';
 import { logger } from './lib/logger';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
@@ -191,10 +191,10 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
 
     // Buscar número conectado para enviar o alerta
     const n = await (prisma as any).whatsappNumber.findFirst({
-      where: { userId, status: 'connected', zapiInstanceId: { not: null }, zapiToken: { not: null }, phoneNumber: { not: null } },
+      where: { userId, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } },
       orderBy: { connectedAt: 'desc' },
     });
-    if (!n?.zapiInstanceId || !n?.zapiToken || !n?.phoneNumber) return;
+    if (!n?.zapiInstanceId || !n?.phoneNumber) return;
 
     const msgs: Record<number, string> = {
       50:  `📊 *ZapScript* — 50% dos minutos usados\n\nVocê já usou *metade dos seus minutos* do mês.\n\n💡 Considere fazer upgrade para não perder nenhum áudio:\n👉 https://ZapScript.me/dashboard/plano`,
@@ -202,7 +202,7 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
       100: `🔴 *ZapScript* — Minutos esgotados\n\nVocê atingiu *100% dos seus minutos* deste mês.\n\n📵 As transcrições foram *pausadas* até o próximo ciclo ou upgrade.\n\n⚡ Faça upgrade agora:\n👉 https://ZapScript.me/dashboard/plano`,
     };
 
-    await sendMessageViaZapi(n.phoneNumber, n.zapiInstanceId, n.zapiToken, msgs[threshold]);
+    await sendMessageViaEvolution(n.zapiInstanceId, n.phoneNumber, msgs[threshold]);
 
     // Marcar alerta enviado para não repetir no mesmo ciclo
     await (prisma as any).minuteBalance.update({
@@ -487,17 +487,16 @@ async function processTwilioJob(job: Job) {
 // ─────────────────────────────────────────────────────────────────
 //  PIPELINE E — WhatsApp via Z-API (dispositivo adicional)
 // ─────────────────────────────────────────────────────────────────
-async function processZapiJob(job: Job) {
-  const { userId, numberId, senderPhone, senderName, audioUrl, durationHint } = job.data;
+async function processEvolutionJob(job: Job) {
+  const { userId, numberId, instanceName, senderPhone, senderName, messageData, durationHint } = job.data;
 
-  log(job, `📥 Z-API: ${senderName} (${senderPhone})`);
+  log(job, `📥 Evolution API: ${senderName} (${senderPhone})`);
 
   let mp3Buffer: Buffer | null = null;
 
   try {
     // PASSO 1: Verificar saldo e buscar o número exato que recebeu o áudio
     const [balance, whatsappNumber] = await Promise.all([
-      // upsert garante que registro existe (evita skipped silencioso em novas contas)
       prisma.minuteBalance.upsert({
         where:  { userId },
         update: {},
@@ -509,13 +508,13 @@ async function processZapiJob(job: Job) {
     ]);
 
     if (balance.availableMinutes < 0.1) {
-      log(job, `⚠️  Saldo insuficiente: ${balance.availableMinutes.toFixed(2)} min — notificando via Z-API`);
-      await sendMessageViaZapi(
-        senderPhone,
-        whatsappNumber?.zapiInstanceId ?? undefined,
-        whatsappNumber?.zapiToken ?? undefined,
-        '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.'
-      ).catch(() => null);
+      log(job, `⚠️  Saldo insuficiente: ${balance.availableMinutes.toFixed(2)} min — notificando`);
+      if (instanceName) {
+        await sendMessageViaEvolution(
+          instanceName, senderPhone,
+          '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.'
+        ).catch(() => null);
+      }
       return { skipped: true, reason: 'insufficient_balance' };
     }
     if (!whatsappNumber) {
@@ -524,9 +523,12 @@ async function processZapiJob(job: Job) {
     }
     log(job, `✅ Saldo OK: ${balance.availableMinutes.toFixed(1)} min`);
 
-    // PASSO 2: Baixar áudio da Z-API
-    log(job, '⬇️  Baixando áudio da Z-API...');
-    const audioBuffer = await downloadAudioFromZapi(audioUrl);
+    // PASSO 2: Baixar áudio via Evolution API (getBase64FromMediaMessage)
+    const instName = instanceName ?? whatsappNumber.zapiInstanceId;
+    if (!instName) throw new Error('instanceName não disponível para download do áudio');
+
+    log(job, '⬇️  Baixando áudio via Evolution API...');
+    const audioBuffer = await downloadAudioFromEvolution(instName, messageData);
     log(job, `✅ Baixado: ${(audioBuffer.length / 1024).toFixed(0)} KB`);
 
     // PASSO 3: Converter para MP3
@@ -545,24 +547,15 @@ async function processZapiJob(job: Job) {
     const bullets = await generateBullets(originalText);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
-    // PASSO 6: Enviar resposta usando credenciais do número que recebeu o áudio
-    log(job, '📤 Enviando resposta via Z-API...');
+    // PASSO 6: Enviar resposta via Evolution API na instância do número
+    log(job, '📤 Enviando resposta via Evolution API...');
     const user    = await prisma.user.findUnique({ where: { id: userId } });
     const message = buildMessage(bullets, originalText, user?.refCode || '');
-    await sendMessageViaZapi(
-      senderPhone,
-      whatsappNumber.zapiInstanceId ?? undefined,
-      whatsappNumber.zapiToken ?? undefined,
-      message
-    );
+    await sendMessageViaEvolution(instName, senderPhone, message);
     log(job, '✅ Mensagem enviada na conversa');
 
-    // PASSO 6.5: Marcar conversa como não lida (preserva notificação no WhatsApp)
-    await markChatAsUnread(
-      senderPhone,
-      whatsappNumber.zapiInstanceId ?? undefined,
-      whatsappNumber.zapiToken ?? undefined,
-    );
+    // PASSO 6.5: Marcar conversa como não lida
+    await markChatAsUnread(instName, senderPhone);
 
     // PASSO 7: Salvar transcrição e debitar minutos
     log(job, '💾 Salvando...');
@@ -574,14 +567,14 @@ async function processZapiJob(job: Job) {
       durationSec,
       originalText,
       bullets,
-      source: 'whatsapp-zapi',
+      source: 'whatsapp-evolution',
     });
 
-    log(job, `✅ Concluído via Z-API`);
+    log(job, `✅ Concluído via Evolution API`);
     return { transcriptionId: transcription.id };
 
   } catch (err) {
-    log(job, `❌ Erro Z-API: ${(err as Error).message}`);
+    log(job, `❌ Erro Evolution: ${(err as Error).message}`);
     throw err;
   } finally {
     mp3Buffer?.fill(0);
@@ -595,7 +588,7 @@ async function routeJob(job: Job) {
   const source = job.data.source || 'transcribe-official';
   if (source === 'manual')           return processManualJob(job);
   if (source === 'whatsapp-twilio')  return processTwilioJob(job);
-  if (source === 'whatsapp-zapi')    return processZapiJob(job);
+  if (source === 'whatsapp-evolution') return processEvolutionJob(job);
   // transcribe-official = WhatsApp Cloud API (Meta) — pipeline principal
   return processOfficialWhatsAppJob(job);
 }

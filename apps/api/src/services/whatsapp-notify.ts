@@ -9,28 +9,13 @@
  * 5. Alerta de 100% dos minutos (saldo esgotado)
  */
 
-import axios from 'axios';
 import { prisma } from '../lib/prisma';
+import { sendText } from './evolution';
 
-function zapiHeaders(): Record<string, string> {
-  const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (process.env.ZAPI_CLIENT_TOKEN) h['Client-Token'] = process.env.ZAPI_CLIENT_TOKEN;
-  return h;
-}
-
-async function sendToOwnNumber(
-  zapiInstanceId: string,
-  zapiToken: string,
-  ownPhone: string,
-  message: string,
-): Promise<void> {
-  const clean = ownPhone.replace(/\D/g, '');
+async function sendToOwnNumber(instanceName: string, phone: string, message: string): Promise<void> {
+  const clean = phone.replace(/\D/g, '');
   if (!clean || clean.length < 10) return;
-  await axios.post(
-    `https://api.z-api.io/instances/${zapiInstanceId}/token/${zapiToken}/send-text`,
-    { phone: clean, message },
-    { headers: zapiHeaders(), timeout: 15_000 },
-  );
+  await sendText(instanceName, clean, message);
 }
 
 // ── 1. Boas-vindas ao adicionar número ────────────────────────────────────
@@ -40,7 +25,7 @@ export async function notifyWelcome(numberId: string): Promise<void> {
       where:   { id: numberId },
       include: { user: true },
     });
-    if (!n?.zapiInstanceId || !n?.zapiToken || !n?.phoneNumber) return;
+    if (!n?.zapiInstanceId || !n?.phoneNumber) return;
 
     const msg = [
       `👋 Olá${n.user?.name ? `, *${n.user.name}*` : ''}!`,
@@ -54,7 +39,7 @@ export async function notifyWelcome(numberId: string): Promise<void> {
       '👉 Acesse seu painel: https://ZapScript.me/dashboard',
     ].join('\n');
 
-    await sendToOwnNumber(n.zapiInstanceId, n.zapiToken, n.phoneNumber, msg);
+    await sendToOwnNumber(n.zapiInstanceId, n.phoneNumber, msg);
   } catch { /* não crítico */ }
 }
 
@@ -65,7 +50,7 @@ export async function notifyDisconnected(numberId: string): Promise<void> {
       where:   { id: numberId },
       include: { user: true },
     });
-    if (!n?.zapiInstanceId || !n?.zapiToken || !n?.phoneNumber) return;
+    if (!n?.zapiInstanceId || !n?.phoneNumber) return;
 
     const msg = [
       `⚠️ *ZapScript* — Número desconectado`,
@@ -78,7 +63,7 @@ export async function notifyDisconnected(numberId: string): Promise<void> {
       '👉 https://ZapScript.me/dashboard/numeros',
     ].join('\n');
 
-    await sendToOwnNumber(n.zapiInstanceId, n.zapiToken, n.phoneNumber, msg);
+    await sendToOwnNumber(n.zapiInstanceId, n.phoneNumber, msg);
   } catch { /* não crítico */ }
 }
 
@@ -89,10 +74,10 @@ export async function notifyMinuteAlert(
 ): Promise<void> {
   try {
     const n = await (prisma as any).whatsappNumber.findFirst({
-      where:   { userId, status: 'connected', zapiInstanceId: { not: null }, zapiToken: { not: null } },
+      where:   { userId, status: 'connected', zapiInstanceId: { not: null } },
       include: { user: true },
     });
-    if (!n?.zapiInstanceId || !n?.zapiToken || !n?.phoneNumber) return;
+    if (!n?.zapiInstanceId || !n?.phoneNumber) return;
 
     const msgs: Record<number, string> = {
       50: [
@@ -123,6 +108,6 @@ export async function notifyMinuteAlert(
       ].join('\n'),
     };
 
-    await sendToOwnNumber(n.zapiInstanceId, n.zapiToken, n.phoneNumber, msgs[pct]);
+    await sendToOwnNumber(n.zapiInstanceId, n.phoneNumber, msgs[pct]);
   } catch { /* não crítico */ }
 }

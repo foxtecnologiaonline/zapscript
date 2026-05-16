@@ -12,9 +12,9 @@ import helmet from '@fastify/helmet';
 import { Server as SocketServer, Socket } from 'socket.io';
 import { redis } from './services/queue';
 import { prisma } from './lib/prisma';
-import { syncAllZapiConfigs }  from './services/zapi-sync';
-import { startHeartbeat }     from './services/zapi-heartbeat';
-import { startHealthMonitor } from './services/health-monitor';
+import { syncAllEvolutionConfigs } from './services/evolution-sync';
+import { startHeartbeat }         from './services/evolution-heartbeat';
+import { startHealthMonitor }     from './services/health-monitor';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -262,9 +262,9 @@ app.register(import('./routes/whatsapp-webhook'), { prefix: '/webhook/whatsapp' 
 // Alternativa BSP para testes sem aprovação Meta
 app.register(import('./routes/twilio-webhook'), { prefix: '/webhook/twilio' });
 
-// ── WhatsApp Webhook (Z-API — dispositivo adicional) ────────
-// Intercepta todos os áudios recebidos no número conectado
-app.register(import('./routes/zapi-webhook'), { prefix: '/webhook/zapi' });
+// ── WhatsApp Webhook (Evolution API — dispositivo adicional) ────────────────
+// Cada usuário tem instância dedicada — sem compartilhamento entre usuários
+app.register(import('./routes/evolution-webhook'), { prefix: '/webhook/evolution' });
 if (process.env.WHATSAPP_API_TOKEN) {
   app.log.info('✅ WhatsApp Cloud API webhook registrado com token');
 } else {
@@ -335,8 +335,15 @@ async function runAutoMigrations() {
   const migrations = [
     `ALTER TABLE "WhatsappNumber" ADD COLUMN IF NOT EXISTS "zapiInstanceId" TEXT`,
     `ALTER TABLE "WhatsappNumber" ADD COLUMN IF NOT EXISTS "zapiToken" TEXT`,
-    // Remove unique constraint em zapiInstanceId — múltiplos usuários compartilham a mesma instância Z-API
+    // Remove unique constraint — zapiInstanceId agora armazena nome de instância Evolution (único por número, não forçado no DB)
     `DROP INDEX IF EXISTS "WhatsappNumber_zapiInstanceId_key"`,
+    // ── Migração Z-API → Evolution API ──────────────────────────────────────────
+    // Números com zapiInstanceId em formato Z-API (ex: UUID hexadecimal, não começa com 'zs-')
+    // estão inválidos para Evolution API. Reset forçado → usuário reconecta e ganha instância dedicada.
+    `UPDATE "WhatsappNumber"
+       SET "zapiInstanceId" = NULL, "zapiToken" = NULL, "status" = 'disconnected'
+       WHERE "zapiInstanceId" IS NOT NULL
+         AND "zapiInstanceId" NOT LIKE 'zs-%'`,
     `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isTester" BOOLEAN DEFAULT false`,
     `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "testerSince" TIMESTAMP(3)`,
     `CREATE TABLE IF NOT EXISTS "TesterInvite" (
@@ -364,7 +371,7 @@ async function runAutoMigrations() {
       app.log.warn(`[AutoMigration] ${e.message}`)
     );
   }
-  app.log.info('[AutoMigration] ✅ Schema verificado (Z-API + Testers)');
+  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers)');
 }
 
 async function start() {
@@ -372,14 +379,14 @@ async function start() {
     await runAutoMigrations();
     await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' });
 
-    // ── Sync automático Z-API — aplica webhooks/auto-read em todos números conectados ──
-    // Roda em background para não atrasar o startup. Detecta mudanças de instância
-    // (ex: Trial → Pago) sem precisar que usuários reconectem.
-    syncAllZapiConfigs(app.log).catch(err =>
-      app.log.error({ err: err.message }, '[Z-API Sync] Erro no sync de startup')
+    // ── Sync automático Evolution API — re-aplica webhooks e auto-reconecta ──
+    // Roda em background. Sem o isolamento destrutivo do Z-API — cada instância
+    // é naturalmente dedicada a um único usuário.
+    syncAllEvolutionConfigs(app.log).catch(err =>
+      app.log.error({ err: err.message }, '[Evolution Sync] Erro no sync de startup')
     );
 
-    // ── Heartbeat Z-API — verifica a cada 1h se números "connected" continuam vivos ──
+    // ── Heartbeat Evolution — verifica a cada 5min / webhook sync a cada 1h ──
     startHeartbeat(app.log);
 
     // ── Health Monitor — verifica todos os serviços a cada 1h, alerta e sugere otimizações ──
