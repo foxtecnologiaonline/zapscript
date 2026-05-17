@@ -22,7 +22,9 @@ export function useSocket(userId: string, handlers: Handlers) {
   useEffect(() => {
     if (!userId) return;
 
+    const token = typeof window !== 'undefined' ? localStorage.getItem('zs_token') : null;
     const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001', {
+      auth:                 { token },
       transports:           ['polling'],
       upgrade:              false,
       reconnectionDelay:    2000,

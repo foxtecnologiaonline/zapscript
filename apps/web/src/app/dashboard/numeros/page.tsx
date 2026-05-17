@@ -97,21 +97,25 @@ function ConnectModal({ number, onClose, onConnected }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  // Polling de QR code (atualiza a cada 20s antes do QR expirar)
+  // Polling de QR code (atualiza a cada 25s antes do QR expirar)
   useEffect(() => {
     if (connectMode !== 'qr' || phase === 'init' || phase === 'error' || phase === 'connected') return;
+    let active = true;
     async function fetchQr() {
+      if (!active) return;
       setQrLoading(true);
       try {
         const res = await api.get<{ qr?: string }>(`/numbers/${number.id}/qr`);
         if (res?.qr) setQrImage(res.qr);
-      } catch { /* ignora */ } finally { setQrLoading(false); }
+      } catch { /* ignora */ } finally { if (active) setQrLoading(false); }
     }
+    // Primeira tentativa imediata; o backend já faz retry interno com 3s de intervalo
     fetchQr();
-    qrPollRef.current = setInterval(fetchQr, 20_000);
+    // Polling periódico a cada 25s para renovar o QR antes de expirar
+    qrPollRef.current = setInterval(fetchQr, 25_000);
     // Também inicia polling de status
     setPhase((p: typeof phase) => (p === 'ready' ? 'waiting' : p));
-    return () => clearInterval(qrPollRef.current!);
+    return () => { active = false; clearInterval(qrPollRef.current!); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectMode, phase === 'ready' || phase === 'waiting' || phase === 'code']);
 
@@ -137,11 +141,22 @@ function ConnectModal({ number, onClose, onConnected }: {
       const useQr = err.fallbackToQr === true
         || lower.includes('not found')
         || lower.includes('indisponível')
-        || lower.includes('não suporta')
-        || lower.includes('qr code');
+        || lower.includes('qr code')
+        || lower.includes('use o qr');
       if (useQr) {
         setPhoneError('');
-        setConnectMode('qr');
+        setQrImage(null);
+        // Recriar instância para garantir estado limpo antes de buscar QR
+        setPhase('init');
+        api.post(`/numbers/${number.id}/connect`, {})
+          .then(() => {
+            setPhase('ready');
+            setConnectMode('qr');
+          })
+          .catch(() => {
+            setPhase('ready');
+            setConnectMode('qr');
+          });
       } else {
         setPhoneError(msg || 'Erro ao solicitar código. Tente novamente.');
       }
@@ -321,8 +336,24 @@ function ConnectModal({ number, onClose, onConnected }: {
                       </>
                     ) : (
                       <div className="flex flex-col items-center gap-3 py-6 text-brand-muted">
-                        {qrLoading ? <><Spinner size={8} /><p className="text-sm">Carregando QR Code...</p></> : (
-                          <p className="text-xs text-center">QR não disponível. Aguarde alguns segundos e tente novamente.</p>
+                        {qrLoading ? (
+                          <><Spinner size={8} /><p className="text-sm">Carregando QR Code... (pode levar até 15s)</p></>
+                        ) : (
+                          <>
+                            <p className="text-xs text-center">QR não disponível ainda.</p>
+                            <button
+                              onClick={() => {
+                                setQrLoading(true);
+                                api.get<{ qr?: string }>(`/numbers/${number.id}/qr`)
+                                  .then(r => { if (r?.qr) setQrImage(r.qr); })
+                                  .catch(() => null)
+                                  .finally(() => setQrLoading(false));
+                              }}
+                              className="text-xs px-4 py-2 rounded-xl bg-brand-primary/15 border border-brand-primary/30 text-brand-primary hover:bg-brand-primary/25 transition-all"
+                            >
+                              🔄 Tentar novamente
+                            </button>
+                          </>
                         )}
                       </div>
                     )}

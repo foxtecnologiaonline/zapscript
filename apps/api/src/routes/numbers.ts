@@ -180,26 +180,39 @@ export default async function numberRoutes(app: FastifyInstance) {
     const instName = number.zapiInstanceId ?? evoInstanceName(id);
 
     try {
-      const res = await fetch(
-        `${evolutionBaseUrl()}/instance/connect/${instName}`,
-        { headers: evolutionHeaders(), signal: AbortSignal.timeout(10_000) }
-      );
+      const base = evolutionBaseUrl();
 
-      app.log.info(`[Evolution] QR status=${res.status} instância=${instName}`);
+      // Retry até 4x com backoff — Evolution pode demorar alguns segundos
+      // para gerar o QR após a instância ser criada
+      let b64: string | null = null;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        if (attempt > 0) {
+          await new Promise(r => setTimeout(r, 3_000));  // 3s entre tentativas
+        }
 
-      if (!res.ok) {
-        app.log.warn(`[Evolution] QR retornou ${res.status} para instância ${instName}`);
-        return reply.code(204).send();
+        const res = await fetch(
+          `${base}/instance/connect/${instName}`,
+          { headers: evolutionHeaders(), signal: AbortSignal.timeout(12_000) }
+        );
+
+        app.log.info(`[Evolution] QR tentativa ${attempt + 1}/4 status=${res.status} instância=${instName}`);
+
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          app.log.warn(`[Evolution] QR retornou ${res.status}: ${errText.substring(0, 100)}`);
+          continue;
+        }
+
+        const data = await res.json() as any;
+
+        // Evolution retorna { base64: "data:image/png;base64,..." } ou { qrcode: { base64: "..." } }
+        b64 = data?.base64 ?? data?.qrcode?.base64 ?? data?.qr?.base64 ?? data?.code ?? null;
+        if (b64) break;
+
+        app.log.warn(`[Evolution] QR sem base64 na tentativa ${attempt + 1}. Resposta: ${JSON.stringify(data).substring(0, 150)}`);
       }
 
-      const data = await res.json() as any;
-
-      // Evolution retorna { base64: "data:image/png;base64,..." } ou { qrcode: { base64: "..." } }
-      const b64 = data?.base64 ?? data?.qrcode?.base64 ?? data?.qr?.base64 ?? data?.code;
-      if (!b64) {
-        app.log.warn(`[Evolution] QR sem base64. Resposta: ${JSON.stringify(data).substring(0, 100)}`);
-        return reply.code(204).send();
-      }
+      if (!b64) return reply.code(204).send();
 
       const qr = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
       return { qr };
@@ -250,13 +263,17 @@ export default async function numberRoutes(app: FastifyInstance) {
         app.log.info(`[Evolution] pairing-code response (${res.status}): ${rawText.substring(0, 200)}`);
 
         if (!res.ok) {
-          const errMsg  = data?.error ?? data?.message ?? `Evolution retornou ${res.status}`;
+          const errMsg  = data?.error ?? data?.message ?? data?.response?.message ?? `Evolution retornou ${res.status}`;
           const lower   = String(errMsg).toLowerCase();
-          // Pairing code indisponível: instância não está no estado correto ou não suporta
-          const unavail = res.status === 404 || lower.includes('not found') ||
-            lower.includes('not connected') || lower.includes('unavailable');
+          // Pairing code indisponível: instância não está no estado correto, não suporta ou não encontrada
+          const unavail = res.status === 404 || res.status === 400 ||
+            lower.includes('not found') || lower.includes('not connected') ||
+            lower.includes('unavailable') || lower.includes('instance') ||
+            lower.includes('connecting') || lower.includes('open') ||
+            lower.includes('already') || lower.includes('invalid');
+          app.log.warn(`[Evolution] pairing-code falhou (${res.status}) unavail=${unavail}: ${rawText.substring(0, 200)}`);
           return reply.code(502).send({
-            error:       unavail ? 'Código por número indisponível neste momento.' : errMsg,
+            error:       unavail ? 'Código por número indisponível. Use o QR Code.' : errMsg,
             fallbackToQr: unavail,
           });
         }
