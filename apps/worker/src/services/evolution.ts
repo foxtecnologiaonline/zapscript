@@ -100,9 +100,10 @@ export async function markChatAsUnread(
     const clean = phone.replace(/\D/g, '');
     const jid   = `${clean}@s.whatsapp.net`;
 
+    // Evolution API v2: POST /chat/markChatUnread/{instance}
     await axios.post(
-      `${base}/chat/markMessageAsRead/${instanceName}`,
-      { readMessages: [{ remoteJid: jid, fromMe: false, id: 'mark-unread' }] },
+      `${base}/chat/markChatUnread/${instanceName}`,
+      { lastMessages: [{ key: { remoteJid: jid, fromMe: false, id: '' } }] },
       { headers: headers(), timeout: 10_000 }
     );
 

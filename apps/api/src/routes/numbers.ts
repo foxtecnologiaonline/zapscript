@@ -124,20 +124,24 @@ export default async function numberRoutes(app: FastifyInstance) {
       // Verificar se instância já existe no Evolution
       const existingState = await getConnectionState(instName);
 
-      if (existingState !== null) {
-        // Instância já existe — apenas re-aplicar webhook e marcar como connecting
-        app.log.info(`[Evolution] Reutilizando instância existente: ${instName} (state: ${existingState})`);
+      if (existingState === 'open') {
+        // Já conectada — apenas re-aplicar webhook e retornar como conectada
+        app.log.info(`[Evolution] Instância ${instName} já está conectada (open)`);
+        await (prisma as any).whatsappNumber.update({
+          where: { id },
+          data: { zapiInstanceId: instName, zapiToken: null, status: 'connected', connectedAt: new Date() },
+        });
+        return { ok: true, message: 'WhatsApp já conectado.' };
 
-        // Re-aplicar webhook (pode ter sido perdido após restart do Evolution)
-        await fetch(`${evolutionBaseUrl()}/webhook/set/${instName}`, {
-          method:  'POST',
-          headers: evolutionHeaders(),
-          body: JSON.stringify({
-            url: webhookUrl, byEvents: true, base64: false,
-            events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
-          }),
-          signal: AbortSignal.timeout(8_000),
-        }).catch(() => {});
+      } else if (existingState !== null) {
+        // Instância existe mas não conectada (close/connecting) —
+        // deletar e recriar para garantir estado limpo para pairing code / QR
+        app.log.info(`[Evolution] Instância ${instName} existe em estado "${existingState}" — recriando para estado limpo`);
+        await deleteInstance(instName);
+        await new Promise(r => setTimeout(r, 1000)); // aguarda Evolution processar deleção
+        await createInstance(id, webhookUrl);
+        app.log.info(`[Evolution] ✅ Instância recriada: ${instName}`);
+
       } else {
         // Instância não existe — criar nova
         app.log.info(`[Evolution] Criando nova instância: ${instName}`);
