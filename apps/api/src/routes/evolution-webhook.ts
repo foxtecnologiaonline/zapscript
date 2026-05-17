@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { transcriptionQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected } from '../services/whatsapp-notify';
-import { storeQr, clearQr } from '../lib/qrStore'; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { storeQr } from '../lib/qrStore';
 import { io } from '../index';
 
 export default async function evolutionWebhookRoutes(app: FastifyInstance) {
