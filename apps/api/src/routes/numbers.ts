@@ -8,6 +8,7 @@ import {
   createInstance,
   deleteInstance,
   getConnectionState,
+  setWebhook,
 } from '../services/evolution';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -125,20 +126,26 @@ export default async function numberRoutes(app: FastifyInstance) {
       const existingState = await getConnectionState(instName);
 
       if (existingState === 'open') {
-        // Já conectada — apenas re-aplicar webhook e retornar como conectada
+        // Já conectada — re-aplicar webhook (garante byEvents=false) e retornar
         app.log.info(`[Evolution] Instância ${instName} já está conectada (open)`);
+        await setWebhook(instName, webhookUrl);
         await (prisma as any).whatsappNumber.update({
           where: { id },
           data: { zapiInstanceId: instName, zapiToken: null, status: 'connected', connectedAt: new Date() },
         });
         return { ok: true, message: 'WhatsApp já conectado.' };
 
-      } else if (existingState !== null) {
-        // Instância existe mas não conectada (close/connecting) —
-        // deletar e recriar para garantir estado limpo para pairing code / QR
-        app.log.info(`[Evolution] Instância ${instName} existe em estado "${existingState}" — recriando para estado limpo`);
+      } else if (existingState === 'connecting') {
+        // Instância já está gerando QR — reutilizar, apenas re-aplicar webhook
+        // (não deletar: o QR já está disponível no Evolution)
+        app.log.info(`[Evolution] Instância ${instName} em "connecting" — reutilizando, re-aplicando webhook`);
+        await setWebhook(instName, webhookUrl);
+
+      } else if (existingState === 'close') {
+        // Definitivamente desconectada — recriar para estado limpo
+        app.log.info(`[Evolution] Instância ${instName} em "close" — recriando`);
         await deleteInstance(instName);
-        await new Promise(r => setTimeout(r, 1000)); // aguarda Evolution processar deleção
+        await new Promise(r => setTimeout(r, 1000));
         await createInstance(id, webhookUrl);
         app.log.info(`[Evolution] ✅ Instância recriada: ${instName}`);
 
