@@ -2,20 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { transcriptionQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected } from '../services/whatsapp-notify';
+import { storeQr, clearQr } from '../lib/qrStore'; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { io } from '../index';
 
-/**
- * Webhook para receber eventos do Evolution API.
- *
- * Evolution API envia JSON via POST para cada evento da instância.
- * Cada instância é dedicada a UM número de WhatsApp de UM usuário.
- *
- * Eventos tratados:
- *   connection.update  → atualiza status connected/disconnected no banco
- *   messages.upsert    → enfileira job de transcrição para áudios recebidos
- *   qrcode.updated     → logado (QR é buscado on-demand pelo frontend)
- *
- * Docs: https://doc.evolution-api.com/v2/pt/webhooks
- */
 export default async function evolutionWebhookRoutes(app: FastifyInstance) {
 
   // POST /webhook/evolution
@@ -104,6 +93,8 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
             },
           });
           log.info(`[Evolution] ✅ Número ${number.id} (user: ${number.userId}) conectado`);
+          // Notificar frontend via Socket.IO → fecha modal de conexão automaticamente
+          io.to(`user:${number.userId}`).emit('number:connected', { numberId: number.id });
           // Boas-vindas na primeira conexão; reconexão em conexões subsequentes
           if (!wasConnected) {
             notifyWelcome(number.id).catch(() => null);
@@ -154,7 +145,16 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
 
     // ── qrcode.updated ───────────────────────────────────────────────────────
     if (event === 'qrcode.updated') {
-      log.info(`[Evolution] QR Code atualizado para instância ${instName}`);
+      const qrBase64 = data?.qrcode?.base64 ?? data?.base64 ?? data?.qr?.base64;
+      log.info(`[Evolution] QR atualizado instância=${instName} temBase64=${!!qrBase64}`);
+      if (qrBase64) {
+        storeQr(instName, qrBase64);
+        const num = await findNumber(false);
+        if (num) {
+          io.to(`user:${num.userId}`).emit('qr:updated', { numberId: num.id, qr: qrBase64 });
+          log.info(`[Evolution] QR emitido via Socket.IO → user:${num.userId}`);
+        }
+      }
       return;
     }
 

@@ -41,10 +41,11 @@ function Step({ n, children, done }: { n: number; children: React.ReactNode; don
 }
 
 // ── Modal de conexão (código por número + QR Code como fallback) ──────────────
-function ConnectModal({ number, onClose, onConnected }: {
+function ConnectModal({ number, onClose, onConnected, externalQr }: {
   number: WNumber;
   onClose: () => void;
   onConnected: () => void;
+  externalQr?: string | null;
 }) {
   const [phase, setPhase]             = useState<'init' | 'ready' | 'code' | 'waiting' | 'connected' | 'error'>('init');
   const [connectMode, setConnectMode] = useState<'phone' | 'qr'>('phone');
@@ -118,6 +119,16 @@ function ConnectModal({ number, onClose, onConnected }: {
     return () => { active = false; clearInterval(qrPollRef.current!); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectMode, phase === 'ready' || phase === 'waiting' || phase === 'code']);
+
+  // QR vindo do Socket.IO (evento qr:updated emitido pelo webhook Evolution)
+  useEffect(() => {
+    if (!externalQr) return;
+    const qr = externalQr.startsWith('data:') ? externalQr : `data:image/png;base64,${externalQr}`;
+    setQrImage(qr);
+    setQrLoading(false);
+    setConnectMode('qr');
+    if (phase === 'ready' || phase === 'init') setPhase('waiting');
+  }, [externalQr]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fechar com ESC
   useEffect(() => {
@@ -398,6 +409,7 @@ export default function NumerosPage() {
   const [confirmDelete, setConfirmDelete]   = useState<string | null>(null);
   const [deleting, setDeleting]             = useState(false);
   const [connectNumber, setConnectNumber]   = useState<WNumber | null>(null);
+  const [liveQr, setLiveQr]                = useState<string | null>(null);
 
   const loadNumbers = useCallback(async () => {
     setLoading(true); setError('');
@@ -413,6 +425,10 @@ export default function NumerosPage() {
 
   const { connected: socketOk } = useSocket(userId, {
     audio_received: () => { loadNumbers(); },
+    'qr:updated':   (d: { numberId: string; qr: string }) => {
+      if (connectNumber?.id === d.numberId) setLiveQr(d.qr);
+    },
+    'number:connected': () => { loadNumbers(); },
   });
 
   async function handleAdd(e: React.FormEvent) {
@@ -643,8 +659,9 @@ export default function NumerosPage() {
       {connectNumber && (
         <ConnectModal
           number={connectNumber}
-          onClose={() => setConnectNumber(null)}
-          onConnected={loadNumbers}
+          onClose={() => { setConnectNumber(null); setLiveQr(null); }}
+          onConnected={() => { loadNumbers(); setLiveQr(null); }}
+          externalQr={liveQr}
         />
       )}
     </div>

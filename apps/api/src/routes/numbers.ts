@@ -10,6 +10,7 @@ import {
   getConnectionState,
   setWebhook,
 } from '../services/evolution';
+import { getQr } from '../lib/qrStore';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -187,29 +188,34 @@ export default async function numberRoutes(app: FastifyInstance) {
     const instName = number.zapiInstanceId ?? evoInstanceName(id);
 
     try {
-      const base = evolutionBaseUrl();
+      // 1) Verificar store em memória (populado pelo webhook qrcode.updated)
+      const stored = getQr(instName);
+      if (stored) {
+        app.log.info(`[Evolution] QR servido do store (instância ${instName})`);
+        const qr = stored.startsWith('data:') ? stored : `data:image/png;base64,${stored}`;
+        return { qr };
+      }
 
-      // Uma única chamada — o frontend já faz polling a cada 25s.
-      // Retry aqui causaria timeout de 60s no Render e retornaria 500.
+      // 2) Fallback: pedir QR diretamente à Evolution (inicia conexão se necessário)
+      const base = evolutionBaseUrl();
       const res = await fetch(
         `${base}/instance/connect/${instName}`,
-        { headers: evolutionHeaders(), signal: AbortSignal.timeout(8_000) }
+        { headers: evolutionHeaders(), signal: AbortSignal.timeout(10_000) }
       );
 
-      app.log.info(`[Evolution] QR status=${res.status} instância=${instName}`);
+      const rawText = await res.text().catch(() => '');
+      app.log.info(`[Evolution] /instance/connect status=${res.status} instância=${instName} body=${rawText.substring(0, 300)}`);
 
       if (!res.ok) {
-        const errText = await res.text().catch(() => '');
-        app.log.warn(`[Evolution] QR retornou ${res.status}: ${errText.substring(0, 200)}`);
         return reply.code(204).send();
       }
 
-      const data = await res.json() as any;
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { /* não é JSON */ }
 
-      // Evolution retorna { base64: "data:image/png;base64,..." } ou { qrcode: { base64: "..." } }
       const b64 = data?.base64 ?? data?.qrcode?.base64 ?? data?.qr?.base64 ?? data?.code ?? null;
       if (!b64) {
-        app.log.warn(`[Evolution] QR sem base64. Resposta: ${JSON.stringify(data).substring(0, 200)}`);
+        app.log.warn(`[Evolution] QR sem base64 no /instance/connect. Aguardando webhook qrcode.updated...`);
         return reply.code(204).send();
       }
 
@@ -218,7 +224,7 @@ export default async function numberRoutes(app: FastifyInstance) {
 
     } catch (err: any) {
       app.log.error({ err: err.message }, '[Evolution] Erro ao buscar QR');
-      return reply.code(502).send({ error: 'Erro ao obter QR Code.' });
+      return reply.code(204).send();
     }
   });
 
