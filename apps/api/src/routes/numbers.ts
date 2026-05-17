@@ -182,37 +182,29 @@ export default async function numberRoutes(app: FastifyInstance) {
     try {
       const base = evolutionBaseUrl();
 
-      // Retry até 4x com backoff — Evolution pode demorar alguns segundos
-      // para gerar o QR após a instância ser criada
-      let b64: string | null = null;
-      for (let attempt = 0; attempt < 4; attempt++) {
-        if (attempt > 0) {
-          await new Promise(r => setTimeout(r, 3_000));  // 3s entre tentativas
-        }
+      // Uma única chamada — o frontend já faz polling a cada 25s.
+      // Retry aqui causaria timeout de 60s no Render e retornaria 500.
+      const res = await fetch(
+        `${base}/instance/connect/${instName}`,
+        { headers: evolutionHeaders(), signal: AbortSignal.timeout(8_000) }
+      );
 
-        const res = await fetch(
-          `${base}/instance/connect/${instName}`,
-          { headers: evolutionHeaders(), signal: AbortSignal.timeout(12_000) }
-        );
+      app.log.info(`[Evolution] QR status=${res.status} instância=${instName}`);
 
-        app.log.info(`[Evolution] QR tentativa ${attempt + 1}/4 status=${res.status} instância=${instName}`);
-
-        if (!res.ok) {
-          const errText = await res.text().catch(() => '');
-          app.log.warn(`[Evolution] QR retornou ${res.status}: ${errText.substring(0, 100)}`);
-          continue;
-        }
-
-        const data = await res.json() as any;
-
-        // Evolution retorna { base64: "data:image/png;base64,..." } ou { qrcode: { base64: "..." } }
-        b64 = data?.base64 ?? data?.qrcode?.base64 ?? data?.qr?.base64 ?? data?.code ?? null;
-        if (b64) break;
-
-        app.log.warn(`[Evolution] QR sem base64 na tentativa ${attempt + 1}. Resposta: ${JSON.stringify(data).substring(0, 150)}`);
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        app.log.warn(`[Evolution] QR retornou ${res.status}: ${errText.substring(0, 200)}`);
+        return reply.code(204).send();
       }
 
-      if (!b64) return reply.code(204).send();
+      const data = await res.json() as any;
+
+      // Evolution retorna { base64: "data:image/png;base64,..." } ou { qrcode: { base64: "..." } }
+      const b64 = data?.base64 ?? data?.qrcode?.base64 ?? data?.qr?.base64 ?? data?.code ?? null;
+      if (!b64) {
+        app.log.warn(`[Evolution] QR sem base64. Resposta: ${JSON.stringify(data).substring(0, 200)}`);
+        return reply.code(204).send();
+      }
 
       const qr = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
       return { qr };
@@ -251,10 +243,9 @@ export default async function numberRoutes(app: FastifyInstance) {
         let lastData: any = {};
         let lastStatus = 0;
 
-        // Retry até 3x com 2s entre tentativas — Evolution pode demorar
-        // alguns segundos para inicializar a instância recém-criada
-        for (let attempt = 0; attempt < 3; attempt++) {
-          if (attempt > 0) await new Promise(r => setTimeout(r, 2_000));
+        // Retry até 2x com 1.5s entre tentativas (total max ~23s, dentro do limite Render 60s)
+        for (let attempt = 0; attempt < 2; attempt++) {
+          if (attempt > 0) await new Promise(r => setTimeout(r, 1_500));
 
           const res = await fetch(
             `${base}/instance/pairingCode/${instName}`,
@@ -262,7 +253,7 @@ export default async function numberRoutes(app: FastifyInstance) {
               method:  'POST',
               headers: evolutionHeaders(),
               body:    JSON.stringify({ number: fullPhone }),
-              signal:  AbortSignal.timeout(15_000),
+              signal:  AbortSignal.timeout(10_000),
             }
           );
 
