@@ -283,6 +283,9 @@ export default async function numberRoutes(app: FastifyInstance) {
             return reply.code(502).send({ error: `Evolution não retornou código: ${lastRawText.substring(0, 100)}` });
           }
 
+          // 404 routing = endpoint não existe → não adianta tentar de novo
+          if (lastStatus === 404) break;
+
           // Erros definitivos não adianta tentar novamente
           const errMsg0 = lastData?.error ?? lastData?.message ?? lastData?.response?.message ?? '';
           const lower0  = String(errMsg0).toLowerCase();
