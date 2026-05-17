@@ -246,46 +246,63 @@ export default async function numberRoutes(app: FastifyInstance) {
       const fullPhone  = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 
       try {
-        const res = await fetch(
-          `${evolutionBaseUrl()}/instance/pairingCode/${instName}`,
-          {
-            method:  'POST',
-            headers: evolutionHeaders(),
-            body:    JSON.stringify({ number: fullPhone }),
-            signal:  AbortSignal.timeout(15_000),
+        const base = evolutionBaseUrl();
+        let lastRawText = '';
+        let lastData: any = {};
+        let lastStatus = 0;
+
+        // Retry até 3x com 2s entre tentativas — Evolution pode demorar
+        // alguns segundos para inicializar a instância recém-criada
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt > 0) await new Promise(r => setTimeout(r, 2_000));
+
+          const res = await fetch(
+            `${base}/instance/pairingCode/${instName}`,
+            {
+              method:  'POST',
+              headers: evolutionHeaders(),
+              body:    JSON.stringify({ number: fullPhone }),
+              signal:  AbortSignal.timeout(15_000),
+            }
+          );
+
+          lastStatus  = res.status;
+          lastRawText = await res.text();
+          try { lastData = JSON.parse(lastRawText); } catch { lastData = { raw: lastRawText }; }
+
+          app.log.info(`[Evolution] pairing-code tentativa ${attempt + 1}/3 (${res.status}): ${lastRawText.substring(0, 200)}`);
+
+          if (res.ok) {
+            const code = lastData?.code ?? lastData?.pairingCode ?? lastData?.value;
+            if (code) {
+              app.log.info(`[Evolution] Pairing code gerado para número ${id}: ${code}`);
+              return { code };
+            }
+            // Sucesso HTTP mas sem código — não vale tentar de novo
+            return reply.code(502).send({ error: `Evolution não retornou código: ${lastRawText.substring(0, 100)}` });
           }
-        );
 
-        const rawText = await res.text();
-        let data: any = {};
-        try { data = JSON.parse(rawText); } catch { data = { raw: rawText }; }
-
-        app.log.info(`[Evolution] pairing-code response (${res.status}): ${rawText.substring(0, 200)}`);
-
-        if (!res.ok) {
-          const errMsg  = data?.error ?? data?.message ?? data?.response?.message ?? `Evolution retornou ${res.status}`;
-          const lower   = String(errMsg).toLowerCase();
-          // Pairing code indisponível: instância não está no estado correto, não suporta ou não encontrada
-          const unavail = res.status === 404 || res.status === 400 ||
-            lower.includes('not found') || lower.includes('not connected') ||
-            lower.includes('unavailable') || lower.includes('instance') ||
-            lower.includes('connecting') || lower.includes('open') ||
-            lower.includes('already') || lower.includes('invalid');
-          app.log.warn(`[Evolution] pairing-code falhou (${res.status}) unavail=${unavail}: ${rawText.substring(0, 200)}`);
-          return reply.code(502).send({
-            error:       unavail ? 'Código por número indisponível. Use o QR Code.' : errMsg,
-            fallbackToQr: unavail,
-          });
+          // Só faz retry em erros que podem ser de timing (4xx/5xx genéricos)
+          // Erros definitivos (already connected, invalid number) não adianta tentar
+          const errMsg = lastData?.error ?? lastData?.message ?? lastData?.response?.message ?? '';
+          const lower  = String(errMsg).toLowerCase();
+          const isDefinitive = lower.includes('already') || lower.includes('open') ||
+            lower.includes('number') || lower.includes('phone');
+          if (isDefinitive) break;
         }
 
-        // Evolution retorna { code: "ABCD-EFGH" } ou { pairingCode: "..." }
-        const code = data?.code ?? data?.pairingCode ?? data?.value;
-        if (!code) {
-          return reply.code(502).send({ error: `Evolution não retornou código: ${rawText.substring(0, 100)}` });
-        }
-
-        app.log.info(`[Evolution] Pairing code gerado para número ${id}: ${code}`);
-        return { code };
+        const errMsg  = lastData?.error ?? lastData?.message ?? lastData?.response?.message ?? `Evolution retornou ${lastStatus}`;
+        const lower   = String(errMsg).toLowerCase();
+        const unavail = lastStatus === 404 || lastStatus === 400 ||
+          lower.includes('not found') || lower.includes('not connected') ||
+          lower.includes('unavailable') || lower.includes('instance') ||
+          lower.includes('connecting') || lower.includes('open') ||
+          lower.includes('already') || lower.includes('invalid');
+        app.log.warn(`[Evolution] pairing-code falhou após retries (${lastStatus}) unavail=${unavail}: ${lastRawText.substring(0, 200)}`);
+        return reply.code(502).send({
+          error:        unavail ? 'Código por número indisponível. Use o QR Code.' : errMsg,
+          fallbackToQr: unavail,
+        });
 
       } catch (err: any) {
         app.log.error({ err: err.message }, '[Evolution] Erro ao solicitar pairing code');
