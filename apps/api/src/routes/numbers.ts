@@ -239,13 +239,23 @@ export default async function numberRoutes(app: FastifyInstance) {
 
       try {
         const base = evolutionBaseUrl();
+
+        // Evolution requer que a instância esteja em estado "connecting" (QR gerado)
+        // antes de aceitar o pairing code. Chamamos /instance/connect primeiro.
+        app.log.info(`[Evolution] Iniciando conexão para pairing code (instância ${instName})`);
+        await fetch(`${base}/instance/connect/${instName}`, {
+          headers: evolutionHeaders(),
+          signal:  AbortSignal.timeout(8_000),
+        }).catch(() => {}); // ignora erro — instância pode já estar connecting
+        await new Promise(r => setTimeout(r, 2_000)); // aguarda Evolution gerar QR interno
+
         let lastRawText = '';
         let lastData: any = {};
         let lastStatus = 0;
 
-        // Retry até 2x com 1.5s entre tentativas (total max ~23s, dentro do limite Render 60s)
+        // Retry até 2x com 2s entre tentativas (total max ~24s, dentro do limite Render 60s)
         for (let attempt = 0; attempt < 2; attempt++) {
-          if (attempt > 0) await new Promise(r => setTimeout(r, 1_500));
+          if (attempt > 0) await new Promise(r => setTimeout(r, 2_000));
 
           const res = await fetch(
             `${base}/instance/pairingCode/${instName}`,
@@ -261,7 +271,7 @@ export default async function numberRoutes(app: FastifyInstance) {
           lastRawText = await res.text();
           try { lastData = JSON.parse(lastRawText); } catch { lastData = { raw: lastRawText }; }
 
-          app.log.info(`[Evolution] pairing-code tentativa ${attempt + 1}/3 (${res.status}): ${lastRawText.substring(0, 200)}`);
+          app.log.info(`[Evolution] pairing-code tentativa ${attempt + 1}/2 (${res.status}): ${lastRawText.substring(0, 200)}`);
 
           if (res.ok) {
             const code = lastData?.code ?? lastData?.pairingCode ?? lastData?.value;
@@ -273,23 +283,24 @@ export default async function numberRoutes(app: FastifyInstance) {
             return reply.code(502).send({ error: `Evolution não retornou código: ${lastRawText.substring(0, 100)}` });
           }
 
-          // Só faz retry em erros que podem ser de timing (4xx/5xx genéricos)
-          // Erros definitivos (already connected, invalid number) não adianta tentar
-          const errMsg = lastData?.error ?? lastData?.message ?? lastData?.response?.message ?? '';
-          const lower  = String(errMsg).toLowerCase();
-          const isDefinitive = lower.includes('already') || lower.includes('open') ||
-            lower.includes('number') || lower.includes('phone');
+          // Erros definitivos não adianta tentar novamente
+          const errMsg0 = lastData?.error ?? lastData?.message ?? lastData?.response?.message ?? '';
+          const lower0  = String(errMsg0).toLowerCase();
+          const isDefinitive = lower0.includes('already') || lower0.includes('open') ||
+            lower0.includes('number') || lower0.includes('phone');
           if (isDefinitive) break;
         }
 
         const errMsg  = lastData?.error ?? lastData?.message ?? lastData?.response?.message ?? `Evolution retornou ${lastStatus}`;
         const lower   = String(errMsg).toLowerCase();
+        // 404 routing = endpoint não existe nesta build → fallback QR
         const unavail = lastStatus === 404 || lastStatus === 400 ||
           lower.includes('not found') || lower.includes('not connected') ||
           lower.includes('unavailable') || lower.includes('instance') ||
           lower.includes('connecting') || lower.includes('open') ||
-          lower.includes('already') || lower.includes('invalid');
-        app.log.warn(`[Evolution] pairing-code falhou após retries (${lastStatus}) unavail=${unavail}: ${lastRawText.substring(0, 200)}`);
+          lower.includes('already') || lower.includes('invalid') ||
+          lower.includes('cannot post');
+        app.log.warn(`[Evolution] pairing-code falhou (${lastStatus}) unavail=${unavail}: ${lastRawText.substring(0, 200)}`);
         return reply.code(502).send({
           error:        unavail ? 'Código por número indisponível. Use o QR Code.' : errMsg,
           fallbackToQr: unavail,

@@ -64,7 +64,7 @@ export async function createInstance(
       syncFullHistory:     false,
       webhook: {
         url:      webhookUrl,
-        byEvents: true,
+        byEvents: false,   // true appende /event-name à URL quebrando o secret no query param
         base64:   false,                   // não enviar mídia em base64 no webhook (buscar on-demand)
         events: [
           'MESSAGES_UPSERT',
@@ -144,7 +144,7 @@ export async function setWebhook(name: string, webhookUrl: string): Promise<bool
       headers: evolutionHeaders(),
       body: JSON.stringify({
         url:      webhookUrl,
-        byEvents: true,
+        byEvents: false,
         base64:   false,
         events: [
           'MESSAGES_UPSERT',
