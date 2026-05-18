@@ -1410,17 +1410,25 @@ export default function AdminPage() {
                 <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhum convite gerado ainda</div>
               ) : invites.map((inv: any) => (
                 <div key={inv.id} className="px-5 py-3 border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.02)] flex items-center justify-between gap-4">
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-sm font-semibold text-[#d1fae5]">{maskTesterName(inv.name, inv.code)}</div>
                     <div className="text-xs text-[rgba(16,185,129,.4)] font-mono mt-0.5">{inv.code}</div>
+                    {inv.phone && <div className="text-[10px] text-[rgba(16,185,129,.35)] mt-0.5">📱 {inv.phone}</div>}
+                    {inv.expiresAt && !inv.usedAt && (
+                      <div className={`text-[10px] mt-0.5 ${new Date(inv.expiresAt) < new Date() ? 'text-red-400' : 'text-yellow-400/70'}`}>
+                        {new Date(inv.expiresAt) < new Date() ? '⏰ Expirado' : `⏳ Expira ${fmtFull(inv.expiresAt)}`}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     {inv.usedAt
                       ? <Badge label="Usado" cls="text-gray-400 bg-gray-400/10 border-gray-400/20" />
-                      : <Badge label="Disponível" cls={STATUS_CLS.active} />
+                      : inv.expiresAt && new Date(inv.expiresAt) < new Date()
+                        ? <Badge label="Expirado" cls="text-red-400 bg-red-400/10 border-red-400/20" />
+                        : <Badge label="Disponível" cls={STATUS_CLS.active} />
                     }
                     <span className="text-[10px] text-[rgba(16,185,129,.3)]">{fmt(inv.createdAt)}</span>
-                    {!inv.usedAt && (
+                    {!inv.usedAt && !(inv.expiresAt && new Date(inv.expiresAt) < new Date()) && (
                       <Btn variant="ghost" onClick={() => { navigator.clipboard.writeText(inv.link); notify('✅ Link copiado!', 'ok'); }}>
                         Copiar link
                       </Btn>

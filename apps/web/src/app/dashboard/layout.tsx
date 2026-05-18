@@ -77,8 +77,15 @@ function NavContent({
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold truncate">{user.name || user.email}</div>
-              <div className={`text-[10px] capitalize font-semibold ${PLAN_COLORS[user.subscription?.plan?.name || 'free']}`}>
-                {user.subscription?.plan?.label || 'Grátis'}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className={`text-[10px] capitalize font-semibold ${PLAN_COLORS[user.subscription?.plan?.name || 'free']}`}>
+                  {user.subscription?.plan?.label || 'Grátis'}
+                </span>
+                {user.isTester && (
+                  <span className="text-[9px] font-bold px-1.5 py-px rounded-full bg-teal-400/15 border border-teal-400/30 text-teal-300 uppercase tracking-wide leading-none">
+                    🧪 Tester
+                  </span>
+                )}
               </div>
             </div>
           </div>
