@@ -328,6 +328,15 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                 </>
               )}
 
+              {/* Dica: mobile */}
+              <div className="flex items-start gap-2 bg-blue-400/5 border border-blue-400/15 rounded-xl px-3 py-2.5">
+                <span className="text-base mt-0.5">📱</span>
+                <p className="text-[11px] text-brand-muted leading-relaxed">
+                  <strong className="text-brand-text">Está no celular?</strong> Abra o ZapScript em um computador para escanear o QR com mais facilidade.
+                  No Android, você também pode usar <strong className="text-brand-text">tela dividida</strong>: browser no topo + WhatsApp embaixo.
+                </p>
+              </div>
+
               {/* Dica de segurança */}
               <div className="flex items-start gap-2 bg-amber-400/5 border border-amber-400/15 rounded-xl px-3 py-2.5">
                 <span className="text-base mt-0.5">💡</span>
