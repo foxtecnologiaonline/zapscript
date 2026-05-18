@@ -582,7 +582,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         return reply.code(409).send({ error: `Plano "${name}" já existe.`, plan: existing });
       }
       const plan = await prisma.plan.create({
-        data: { name, label, minutesPerMonth, maxNumbers, priceBrl, features },
+        data: { name, label, minutesPerMonth, maxNumbers, priceBrl, features: features as any },
       });
       app.log.info({ planId: plan.id, name }, '[Admin] Plano criado');
       return reply.code(201).send(plan);
