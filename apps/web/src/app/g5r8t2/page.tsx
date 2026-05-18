@@ -12,9 +12,10 @@ const fmtMin  = (m: number) => `${m.toFixed(1)} min`;
 
 /* ── Estilos por plano / status ─────────────────────────── */
 const PLAN_CLS: Record<string, string> = {
-  free:  'text-gray-400 bg-gray-400/10 border-gray-400/20',
-  pro:   'text-teal-400 bg-teal-400/10 border-teal-400/20',
-  ultra: 'text-purple-400 bg-purple-400/10 border-purple-400/20',
+  free:         'text-gray-400 bg-gray-400/10 border-gray-400/20',
+  pro:          'text-teal-400 bg-teal-400/10 border-teal-400/20',
+  ultra:        'text-purple-400 bg-purple-400/10 border-purple-400/20',
+  'pro-tester': 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20',
 };
 const STATUS_CLS: Record<string, string> = {
   active:      'text-green-400 bg-green-400/10 border-green-400/20',
@@ -766,11 +767,9 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
                 onClick={() => act('reset-password', 'POST')}>
                 {acting === 'reset-password' ? '⟳' : '🔑'} Enviar reset de senha
               </Btn>
-              {!data.user.emailVerified && (
-                <Btn variant="ghost" disabled={!!acting} onClick={() => act('resend-activation', 'POST')}>
-                  📧 Reenviar ativação
-                </Btn>
-              )}
+              <Btn variant="ghost" disabled={!!acting} onClick={() => act('resend-activation', 'POST')}>
+                {acting === 'resend-activation' ? '⟳' : '📧'} Reenviar ativação
+              </Btn>
               <Btn variant="ghost" disabled={!!acting} onClick={load}>
                 🔄 Atualizar dados
               </Btn>
@@ -822,6 +821,7 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
                   <option value="free">🆓 Free</option>
                   <option value="pro">⚡ Pro</option>
                   <option value="ultra">🚀 Ultra</option>
+                  <option value="pro-tester">🧪 Pro Tester</option>
                 </select>
               </div>
               <div>
@@ -967,6 +967,9 @@ export default function AdminPage() {
   const [ticketStatus, setTicketStatus] = useState('');
   const [ticketOffset, setTicketOffset] = useState(0);
 
+  // Plans
+  const [creatingPlan, setCreatingPlan] = useState(false);
+
   // Testers / Invites
   const [invites, setInvites]         = useState<any[]>([]);
   const [inviteTotal, setInviteTotal] = useState(0);
@@ -1079,6 +1082,31 @@ export default function AdminPage() {
     if (t === 'testers') loadInvites();
   }
 
+  async function createProTesterPlan() {
+    setCreatingPlan(true);
+    try {
+      const res = await fetch(`${API}/sys/g5r8t2/plans`, {
+        method: 'POST',
+        headers: h,
+        body: JSON.stringify({
+          name:           'pro-tester',
+          label:          'Pro Tester',
+          minutesPerMonth: 300,
+          maxNumbers:      3,
+          priceBrl:        0,
+          features:        ['Transcrição ilimitada até 300 min/mês', 'Até 3 números WhatsApp', 'Resumos inteligentes', 'Acesso antecipado a novidades'],
+        }),
+      });
+      const d = await res.json();
+      if (res.status === 409) { notify(`ℹ️ ${d.error}`, 'warn'); return; }
+      if (!res.ok) throw new Error(d.error || 'Erro');
+      notify('✅ Plano Pro Tester criado!', 'ok');
+      refreshStats();
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally { setCreatingPlan(false); }
+  }
+
   /* ── Login ── */
   if (!auth) return (
     <div className="min-h-screen bg-[#040b09] flex items-center justify-center px-4">
@@ -1153,7 +1181,7 @@ export default function AdminPage() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <KpiCard icon="💰" title="MRR" value={brl(stats.mrr || 0)} sub="receita mensal recorrente" color="#a78bfa" />
-              <KpiCard icon="💳" title="Pagantes ativos" value={stats.conversion?.paid || 0} sub={`${(stats.conversion?.rate || 0).toFixed(1)}% conversão`} color="#34d399" />
+              <KpiCard icon="💳" title="Pagantes ativos" value={stats.conversion?.paid || 0} sub={`${(stats.conversion?.rate || 0).toFixed(1)}% conv. · ${stats.conversion?.testers || 0} tester(s)`} color="#34d399" />
               <KpiCard icon="📈" title="Novos este mês" value={stats.users.month}
                 sub={`${growth >= 0 ? '▲' : '▼'} ${Math.abs(growth)} vs mês anterior`}
                 color={growth >= 0 ? '#10b981' : '#f87171'} />
@@ -1163,12 +1191,19 @@ export default function AdminPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Planos */}
               <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">
-                <div className="text-sm font-bold text-[#d1fae5] mb-4">Distribuição por Plano</div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="text-sm font-bold text-[#d1fae5]">Distribuição por Plano</div>
+                  {!stats.byPlan?.['pro-tester'] && (
+                    <Btn variant="ghost" onClick={createProTesterPlan} disabled={creatingPlan} cls="text-[10px]">
+                      {creatingPlan ? '⟳' : '➕'} Criar plano PRO-Tester
+                    </Btn>
+                  )}
+                </div>
                 <div className="grid grid-cols-3 gap-3">
                   {Object.entries(stats.byPlan || {}).map(([plan, count]: any) => (
                     <div key={plan} className="bg-[#132621] rounded-xl p-4 text-center">
                       <div className="text-2xl font-black text-[#10b981] mb-2">{count}</div>
-                      <Badge label={plan} cls={PLAN_CLS[plan]} />
+                      <Badge label={plan} cls={PLAN_CLS[plan] || PLAN_CLS.free} />
                     </div>
                   ))}
                 </div>

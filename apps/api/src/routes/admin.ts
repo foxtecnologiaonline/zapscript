@@ -14,7 +14,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!,
 );
 
-const PLAN_PRICES: Record<string, number> = { pro: 29.90, ultra: 59.90, free: 0 };
+const PLAN_PRICES: Record<string, number> = { pro: 29.90, ultra: 59.90, free: 0, 'pro-tester': 0 };
 
 function safeCompare(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
@@ -101,10 +101,10 @@ export default async function adminRoutes(app: FastifyInstance) {
           return acc;
         }, {})
       ),
-      // assinaturas ativas com plano (para MRR)
+      // assinaturas ativas com plano (para MRR) — inclui isTester para excluir do cálculo financeiro
       prisma.subscription.findMany({
         where:   { status: 'active' },
-        include: { plan: { select: { name: true } } },
+        include: { plan: { select: { name: true } }, user: { select: { isTester: true } } },
       }),
       // agrupamento por status
       prisma.subscription.groupBy({ by: ['status'], _count: { status: true } }),
@@ -119,8 +119,10 @@ export default async function adminRoutes(app: FastifyInstance) {
       prisma.whatsappNumber.count(),
     ]);
 
-    const mrr            = activeSubs.reduce((sum, s) => sum + (PLAN_PRICES[s.plan.name] || 0), 0);
-    const paidActive     = activeSubs.filter(s => s.plan.name !== 'free').length;
+    // Testers não contam como pagantes — têm plano pro-tester (gratuito por design)
+    const mrr            = activeSubs.reduce((sum, s) => (s.user.isTester ? sum : sum + (PLAN_PRICES[s.plan.name] || 0)), 0);
+    const paidActive     = activeSubs.filter(s => s.plan.name !== 'free' && s.plan.name !== 'pro-tester' && !s.user.isTester).length;
+    const testerCount    = activeSubs.filter(s => s.user.isTester).length;
     const conversionRate = totalUsers > 0 ? (paidActive / totalUsers) * 100 : 0;
     const subsByStatus   = subStatusGroups.reduce((acc: Record<string, number>, g) => {
       acc[g.status] = g._count.status;
@@ -135,7 +137,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       recentErrors,
       tickets:        { total: totalTickets, open: openTickets },
       mrr,
-      conversion:     { paid: paidActive, rate: conversionRate },
+      conversion:     { paid: paidActive, rate: conversionRate, testers: testerCount },
       subscriptions:  subsByStatus,
       whatsapp:       { connected: connectedNumbers, total: totalNumbers },
     };
@@ -203,7 +205,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Informe ao menos um campo: planName, isAdmin ou minutes.' });
       }
 
-      const VALID_PLANS = ['free', 'pro', 'ultra'];
+      const VALID_PLANS = ['free', 'pro', 'ultra', 'pro-tester'];
       if (planName !== undefined && !VALID_PLANS.includes(planName)) {
         return reply.code(400).send({ error: `Plano inválido. Use: ${VALID_PLANS.join(', ')}` });
       }
@@ -563,6 +565,29 @@ export default async function adminRoutes(app: FastifyInstance) {
   app.get('/plans', { preHandler: [adminAuth] }, async () => {
     return prisma.plan.findMany({ orderBy: { priceBrl: 'asc' } });
   });
+
+  // POST /admin/plans — criar novo plano (ex: pro-tester)
+  app.post<{
+    Body: { name: string; label: string; minutesPerMonth: number; maxNumbers: number; priceBrl: number; features?: unknown[] };
+  }>(
+    '/plans',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { name, label, minutesPerMonth, maxNumbers, priceBrl, features = [] } = req.body;
+      if (!name || !label || minutesPerMonth == null || maxNumbers == null || priceBrl == null) {
+        return reply.code(400).send({ error: 'Campos obrigatórios: name, label, minutesPerMonth, maxNumbers, priceBrl.' });
+      }
+      const existing = await prisma.plan.findUnique({ where: { name } });
+      if (existing) {
+        return reply.code(409).send({ error: `Plano "${name}" já existe.`, plan: existing });
+      }
+      const plan = await prisma.plan.create({
+        data: { name, label, minutesPerMonth, maxNumbers, priceBrl, features },
+      });
+      app.log.info({ planId: plan.id, name }, '[Admin] Plano criado');
+      return reply.code(201).send(plan);
+    }
+  );
 
   // GET /admin/tickets — tickets de suporte com filtro e paginação
   app.get<{ Querystring: { limit?: string; offset?: string; status?: string } }>(
