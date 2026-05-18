@@ -229,8 +229,9 @@ export default async function numberRoutes(app: FastifyInstance) {
   });
 
   // ── POST /numbers/:id/pairing-code ───────────────────────────────────────
-  // Código de parelhamento por número (alternativa ao QR).
-  // Evolution: POST /instance/pairingCode/{instanceName} body: { number: "5511999999999" }
+  // Código de pareamento por número de telefone.
+  // Evolution API: GET /instance/connect/{name}?number={phone}
+  // Com o query param ?number, retorna pairingCode em vez de QR.
   app.post<{ Params: { id: string }; Body: { phone: string } }>(
     '/:id/pairing-code', auth, async (req: any, reply) => {
       const { id } = req.params;
@@ -253,78 +254,38 @@ export default async function numberRoutes(app: FastifyInstance) {
       try {
         const base = evolutionBaseUrl();
 
-        // Evolution requer que a instância esteja em estado "connecting" (QR gerado)
-        // antes de aceitar o pairing code. Chamamos /instance/connect primeiro.
-        app.log.info(`[Evolution] Iniciando conexão para pairing code (instância ${instName})`);
-        await fetch(`${base}/instance/connect/${instName}`, {
-          headers: evolutionHeaders(),
-          signal:  AbortSignal.timeout(8_000),
-        }).catch(() => {}); // ignora erro — instância pode já estar connecting
-        await new Promise(r => setTimeout(r, 2_000)); // aguarda Evolution gerar QR interno
+        // Pairing code: mesmo endpoint do QR, mas com ?number= na query string
+        // GET /instance/connect/{name}?number=5511999999999 → { pairingCode: "ABCD1234" }
+        const res = await fetch(
+          `${base}/instance/connect/${instName}?number=${fullPhone}`,
+          { headers: evolutionHeaders(), signal: AbortSignal.timeout(15_000) }
+        );
 
-        let lastRawText = '';
-        let lastData: any = {};
-        let lastStatus = 0;
+        const rawText = await res.text();
+        app.log.info(`[Evolution] pairing-code status=${res.status}: ${rawText.substring(0, 300)}`);
 
-        // Retry até 2x com 2s entre tentativas (total max ~24s, dentro do limite Render 60s)
-        for (let attempt = 0; attempt < 2; attempt++) {
-          if (attempt > 0) await new Promise(r => setTimeout(r, 2_000));
+        let data: any = {};
+        try { data = JSON.parse(rawText); } catch { /* não é JSON */ }
 
-          const res = await fetch(
-            `${base}/instance/pairingCode/${instName}`,
-            {
-              method:  'POST',
-              headers: evolutionHeaders(),
-              body:    JSON.stringify({ number: fullPhone }),
-              signal:  AbortSignal.timeout(10_000),
-            }
-          );
-
-          lastStatus  = res.status;
-          lastRawText = await res.text();
-          try { lastData = JSON.parse(lastRawText); } catch { lastData = { raw: lastRawText }; }
-
-          app.log.info(`[Evolution] pairing-code tentativa ${attempt + 1}/2 (${res.status}): ${lastRawText.substring(0, 200)}`);
-
-          if (res.ok) {
-            const code = lastData?.code ?? lastData?.pairingCode ?? lastData?.value;
-            if (code) {
-              app.log.info(`[Evolution] Pairing code gerado para número ${id}: ${code}`);
-              return { code };
-            }
-            // Sucesso HTTP mas sem código — não vale tentar de novo
-            return reply.code(502).send({ error: `Evolution não retornou código: ${lastRawText.substring(0, 100)}` });
+        if (res.ok) {
+          const code = data?.pairingCode ?? data?.code;
+          // pairingCode é o código de 8 chars para digitar no WhatsApp
+          // code sem pairingCode = QR em modo texto, não é o que queremos
+          if (code && data?.pairingCode) {
+            app.log.info(`[Evolution] Pairing code gerado: ${code}`);
+            return { code };
           }
-
-          // 404 routing = endpoint não existe → não adianta tentar de novo
-          if (lastStatus === 404) break;
-
-          // Erros definitivos não adianta tentar novamente
-          const errMsg0 = lastData?.error ?? lastData?.message ?? lastData?.response?.message ?? '';
-          const lower0  = String(errMsg0).toLowerCase();
-          const isDefinitive = lower0.includes('already') || lower0.includes('open') ||
-            lower0.includes('number') || lower0.includes('phone');
-          if (isDefinitive) break;
+          // Retornou QR em vez de pairing code — número pode não ser suportado
+          app.log.warn(`[Evolution] Resposta sem pairingCode. Data: ${rawText.substring(0, 200)}`);
+          return reply.code(502).send({ error: 'Código por número indisponível para este número.', fallbackToQr: true });
         }
 
-        const errMsg  = lastData?.error ?? lastData?.message ?? lastData?.response?.message ?? `Evolution retornou ${lastStatus}`;
-        const lower   = String(errMsg).toLowerCase();
-        // 404 routing = endpoint não existe nesta build → fallback QR
-        const unavail = lastStatus === 404 || lastStatus === 400 ||
-          lower.includes('not found') || lower.includes('not connected') ||
-          lower.includes('unavailable') || lower.includes('instance') ||
-          lower.includes('connecting') || lower.includes('open') ||
-          lower.includes('already') || lower.includes('invalid') ||
-          lower.includes('cannot post');
-        app.log.warn(`[Evolution] pairing-code falhou (${lastStatus}) unavail=${unavail}: ${lastRawText.substring(0, 200)}`);
-        return reply.code(502).send({
-          error:        unavail ? 'Código por número indisponível. Use o QR Code.' : errMsg,
-          fallbackToQr: unavail,
-        });
+        app.log.warn(`[Evolution] pairing-code erro ${res.status}: ${rawText.substring(0, 200)}`);
+        return reply.code(502).send({ error: 'Erro ao gerar código. Tente o QR Code.', fallbackToQr: true });
 
       } catch (err: any) {
         app.log.error({ err: err.message }, '[Evolution] Erro ao solicitar pairing code');
-        return reply.code(502).send({ error: `Erro ao solicitar código: ${err.message}` });
+        return reply.code(502).send({ error: `Erro ao solicitar código: ${err.message}`, fallbackToQr: true });
       }
     }
   );

@@ -261,22 +261,71 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
 
               {/* ── Modo: Código por número ── */}
               {connectMode === 'phone' && (
-                <div className="flex flex-col items-center gap-4 py-6 px-2 text-center">
-                  <span className="text-4xl">🔜</span>
-                  <div>
-                    <p className="text-sm font-bold text-brand-text mb-1">Em breve</p>
-                    <p className="text-xs text-brand-muted leading-relaxed">
-                      Conexão por código de número está sendo implementada.<br/>
-                      Por enquanto, use o <strong className="text-brand-text">QR Code</strong> — é rápido e seguro.
+                <>
+                  {pairingCode ? (
+                    <div className="text-center bg-brand-primary/10 border-2 border-brand-primary/30 rounded-2xl p-6">
+                      <p className="text-xs text-brand-muted mb-1 font-semibold uppercase tracking-wider">Seu código de conexão</p>
+                      <p className="text-5xl font-black font-mono tracking-[0.15em] text-brand-primary my-3">
+                        {formatCode(pairingCode)}
+                      </p>
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(pairingCode!); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                        className="mt-3 flex items-center gap-2 mx-auto px-4 py-2 rounded-xl bg-brand-primary/15 border border-brand-primary/30 text-brand-primary text-sm font-semibold hover:bg-brand-primary/25 transition-all active:scale-95"
+                      >
+                        {copied ? '✅ Copiado!' : '📋 Copiar código'}
+                      </button>
+                      <div className="flex items-center justify-center gap-1.5 text-xs text-brand-muted mt-3">
+                        <Spinner size={3} />
+                        Aguardando você digitar no WhatsApp...
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs font-semibold text-brand-text block mb-1.5">
+                          Número do WhatsApp que deseja conectar
+                        </label>
+                        <div className="flex rounded-xl border border-brand-border bg-brand-elevated overflow-hidden focus-within:border-brand-primary transition-colors">
+                          <span className="flex items-center px-3 text-sm font-mono text-brand-text-secondary bg-brand-border/30 border-r border-brand-border select-none">
+                            +55
+                          </span>
+                          <input
+                            className="flex-1 bg-transparent px-3 py-3 text-sm text-brand-text placeholder:text-brand-muted outline-none"
+                            placeholder="11 9 8765-4321"
+                            value={phoneInput}
+                            onChange={e => { setPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 11)); setPhoneError(''); }}
+                            inputMode="numeric"
+                            autoFocus
+                          />
+                        </div>
+                        {phoneError && <p className="text-red-400 text-xs mt-1">{phoneError}</p>}
+                        <p className="text-[10px] text-brand-muted mt-1">DDD + número (ex: 11987654321)</p>
+                      </div>
+                      <button
+                        onClick={handleRequestCode}
+                        disabled={requesting || phoneInput.replace(/\D/g,'').length < 10}
+                        className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50 text-sm font-semibold"
+                      >
+                        {requesting ? <><Spinner size={4}/> Gerando código...</> : '📲 Solicitar código de conexão'}
+                      </button>
+                    </div>
+                  )}
+                  <div className="bg-brand-elevated rounded-2xl p-4 space-y-3">
+                    <p className="text-xs font-bold text-brand-text mb-3">
+                      {pairingCode ? '✅ Código gerado! Agora faça no celular:' : 'Como conectar:'}
                     </p>
+                    <Step n={1} done={!!pairingCode}>Digite o número e clique em <em>"Solicitar código"</em></Step>
+                    <Step n={2} done={!!pairingCode}>No celular, abra o <strong>WhatsApp</strong></Step>
+                    <Step n={3} done={!!pairingCode}>Toque nos <strong>3 pontos ⋮</strong> → <strong>Dispositivos conectados</strong></Step>
+                    <Step n={4} done={!!pairingCode}>Toque em <strong>"Conectar dispositivo"</strong></Step>
+                    <Step n={5} done={false}>Escolha <strong>"Conectar pelo número do telefone"</strong></Step>
+                    <Step n={6} done={false}>
+                      {pairingCode
+                        ? <><strong>Digite o código</strong> <span className="font-mono font-black text-brand-primary">{formatCode(pairingCode)}</span></>
+                        : <strong>Digite o código de 8 caracteres que aparecerá aqui</strong>}
+                    </Step>
                   </div>
-                  <button
-                    onClick={() => { setConnectMode('qr'); setQrImage(null); }}
-                    className="btn-primary px-6 py-2.5 text-sm font-semibold"
-                  >
-                    🔳 Usar QR Code agora
-                  </button>
-                </div>
+                </>
               )}
 
               {/* ── Modo: QR Code ── */}
