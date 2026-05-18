@@ -121,12 +121,13 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
   }, [connectMode, phase === 'ready' || phase === 'waiting' || phase === 'code']);
 
   // QR vindo do Socket.IO (evento qr:updated emitido pelo webhook Evolution)
+  // Só troca para a tab QR se o usuário NÃO estiver já em modo phone (código por número)
   useEffect(() => {
     if (!externalQr) return;
     const qr = externalQr.startsWith('data:') ? externalQr : `data:image/png;base64,${externalQr}`;
     setQrImage(qr);
     setQrLoading(false);
-    setConnectMode('qr');
+    if (connectMode !== 'phone') setConnectMode('qr');
     if (phase === 'ready' || phase === 'init') setPhase('waiting');
   }, [externalQr]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -238,16 +239,6 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
               {/* ── Tabs: Código / QR ── */}
               <div className="flex bg-brand-elevated rounded-xl p-1 gap-1">
                 <button
-                  onClick={() => { setConnectMode('qr'); setPairingCode(null); setPhoneError(''); setQrImage(null); }}
-                  className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    connectMode === 'qr'
-                      ? 'bg-brand-primary text-white shadow-sm'
-                      : 'text-brand-muted hover:text-brand-text'
-                  }`}
-                >
-                  🔳 QR Code
-                </button>
-                <button
                   onClick={() => { setConnectMode('phone'); setPairingCode(null); setPhoneError(''); }}
                   className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
                     connectMode === 'phone'
@@ -256,6 +247,16 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                   }`}
                 >
                   📲 Código por número
+                </button>
+                <button
+                  onClick={() => { setConnectMode('qr'); setPairingCode(null); setPhoneError(''); setQrImage(null); }}
+                  className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    connectMode === 'qr'
+                      ? 'bg-brand-primary text-white shadow-sm'
+                      : 'text-brand-muted hover:text-brand-text'
+                  }`}
+                >
+                  🔳 QR Code
                 </button>
               </div>
 
