@@ -28,6 +28,17 @@ services:
       # MONITOR_TOKEN       — monitor agent token
       # SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS (optional, for emails)
       # SUPPORT_EMAIL       — where support tickets go (optional)
+      # EVOLUTION_API_URL   — https://<vps-ip-ou-dominio>:8080 (Evolution API no Hostinger VPS)
+      # EVOLUTION_API_KEY   — chave da Evolution API
+      # ADMIN_WHATSAPP      — número do admin para alertas (ex: 5534991790254)
+      #
+      # ── Scaling notes ──────────────────────────────────────────────────────────
+      # Para escalar o API para N pods (numInstances: N), o Socket.IO Redis adapter
+      # já está configurado (usa REDIS_URL). Ative com:
+      #   scaling:
+      #     minInstances: 1
+      #     maxInstances: 3   # aumentar conforme demanda
+      # O Worker (BullMQ) já é multi-instância safe — pode ter múltiplos pods sem config extra.
 
   # ── Worker (BullMQ + Whisper + Claude) ──────────────────────
   - type: worker
