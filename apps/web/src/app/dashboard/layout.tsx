@@ -86,7 +86,7 @@ function NavContent({
                     className="inline-flex items-center text-[9px] font-black uppercase tracking-widest bg-[#10b981]/10 border border-[#10b981]/25 rounded-full px-2 py-0.5 text-[#10b981]"
                     title="Tester Oficial ZapScript"
                   >
-                    ZS Tester
+                    Tester
                   </span>
                 )}
               </div>
