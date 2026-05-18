@@ -10,7 +10,9 @@ import swaggerUI from '@fastify/swagger-ui';
 import helmet from '@fastify/helmet';
 // @ts-ignore - socket.io has built-in types but TypeScript doesn't find them
 import { Server as SocketServer, Socket } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
 import { redis } from './services/queue';
+import { pubClient, subClient } from './lib/redisAdapter';
 import { prisma } from './lib/prisma';
 import { syncAllEvolutionConfigs } from './services/evolution-sync';
 import { startHeartbeat }         from './services/evolution-heartbeat';
@@ -104,6 +106,16 @@ export const io = new SocketServer(app.server, {
   pingTimeout:  60000,   // 60s antes de considerar desconectado
   pingInterval: 25000,   // heartbeat a cada 25s (evita timeout do Render)
 });
+
+// Redis adapter — permite escalar para múltiplos pods sem perder eventos Socket.IO
+Promise.all([pubClient.connect(), subClient.connect()])
+  .then(() => {
+    io.adapter(createAdapter(pubClient, subClient));
+    app.log.info('[Socket.IO] Redis adapter configurado ✅');
+  })
+  .catch((err) => {
+    app.log.warn({ err: err?.message }, '[Socket.IO] Redis adapter falhou — rodando sem adapter (single-pod)');
+  });
 
 // ── Socket.IO Authentication Middleware ────────────────────────────
 // Valida JWT antes de permitir qualquer operação
