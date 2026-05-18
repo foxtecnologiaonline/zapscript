@@ -41,18 +41,19 @@ ${link}
 Te espero lá! 🙌`;
 }
 
+const INVITE_SENDER_PHONE = '5534991790254';
+
 async function sendTesterWhatsApp(phone: string, message: string, log: any): Promise<string> {
-  // Priorizar número do admin (5534991790254) como remetente, senão qualquer conectado
   const number = await prisma.whatsappNumber.findFirst({
-    where: { status: 'connected', phoneNumber: '5534991790254', zapiInstanceId: { not: null } },
-    select: { zapiInstanceId: true },
-  }) ?? await prisma.whatsappNumber.findFirst({
-    where: { status: 'connected', zapiInstanceId: { not: null } },
+    where: { status: 'connected', phoneNumber: INVITE_SENDER_PHONE, zapiInstanceId: { not: null } },
     select: { zapiInstanceId: true },
   });
 
   if (!number?.zapiInstanceId) {
-    throw new Error('Nenhum número WhatsApp conectado disponível para envio de convites.');
+    throw new Error(
+      `Número ${INVITE_SENDER_PHONE} não está conectado. ` +
+      `Conecte esse número no dashboard antes de enviar convites.`
+    );
   }
 
   await sendText(number.zapiInstanceId, phone, message);
@@ -701,72 +702,60 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // POST /admin/diagnose-whatsapp — diagnóstico completo do canal WhatsApp
+  // POST /admin/diagnose-whatsapp — diagnóstico do canal WhatsApp (Evolution API)
   app.post<{ Body: { phone?: string } }>(
     '/diagnose-whatsapp',
     { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
+      const { getConnectionState } = await import('../services/evolution');
       const testPhone = req.body?.phone;
-      const result: any = { envVars: {}, zapiNumbers: [], testSend: null };
+      const result: any = { envVars: {}, numbers: [], senderStatus: null, testSend: null };
 
-      // Checar env vars
       result.envVars = {
-        WHATSAPP_API_TOKEN:      !!process.env.WHATSAPP_API_TOKEN,
-        WHATSAPP_PHONE_NUMBER_ID:!!process.env.WHATSAPP_PHONE_NUMBER_ID,
-        ZAPI_INSTANCE_ID:        process.env.ZAPI_INSTANCE_ID || null,
-        ZAPI_TOKEN:              !!process.env.ZAPI_TOKEN,
-        ZAPI_CLIENT_TOKEN:       !!process.env.ZAPI_CLIENT_TOKEN,
-        ZAPI_PARTNER_TOKEN:      !!process.env.ZAPI_PARTNER_TOKEN,
+        EVOLUTION_API_URL: process.env.EVOLUTION_API_URL || null,
+        EVOLUTION_API_KEY: !!process.env.EVOLUTION_API_KEY,
+        EVOLUTION_WEBHOOK_SECRET: !!process.env.EVOLUTION_WEBHOOK_SECRET,
       };
 
-      // Buscar todos os números com Z-API e checar status real
-      const numbers = await prisma.whatsappNumber.findMany({
+      const numbers = await (prisma as any).whatsappNumber.findMany({
         where:  { zapiInstanceId: { not: null } },
-        select: { id: true, displayName: true, phoneNumber: true, status: true, zapiInstanceId: true, zapiToken: true },
+        select: { id: true, displayName: true, phoneNumber: true, status: true, zapiInstanceId: true },
       });
 
       for (const n of numbers) {
-        const entry: any = { id: n.id, displayName: n.displayName, phoneNumber: n.phoneNumber, statusDB: n.status, instanceId: n.zapiInstanceId };
+        const entry: any = {
+          id: n.id, displayName: n.displayName, phoneNumber: n.phoneNumber,
+          statusDB: n.status, instanceId: n.zapiInstanceId,
+          isSender: n.phoneNumber === INVITE_SENDER_PHONE,
+        };
         try {
-          const clientToken = process.env.ZAPI_CLIENT_TOKEN;
-          const headers: Record<string, string> = {};
-          if (clientToken) headers['Client-Token'] = clientToken;
-          const statusRes = await axios.get(
-            `https://api.z-api.io/instances/${n.zapiInstanceId}/token/${n.zapiToken}/status`,
-            { headers, timeout: 5000 }
-          );
-          entry.zapiStatus    = statusRes.data;
-          entry.zapiConnected = statusRes.data?.connected === true;
+          entry.evolutionState = await getConnectionState(n.zapiInstanceId);
+          entry.evolutionConnected = entry.evolutionState === 'open';
         } catch (e: any) {
-          entry.zapiError = e.message;
-          entry.zapiConnected = false;
+          entry.evolutionError = e.message;
+          entry.evolutionConnected = false;
         }
-        result.zapiNumbers.push(entry);
+        result.numbers.push(entry);
       }
 
-      // Teste de envio real se phone fornecido
-      if (testPhone) {
-        const digits   = testPhone.replace(/\D/g, '');
+      // Status específico do número remetente de convites
+      const sender = result.numbers.find((n: any) => n.isSender);
+      result.senderStatus = sender
+        ? { phone: INVITE_SENDER_PHONE, connected: sender.evolutionConnected, state: sender.evolutionState }
+        : { phone: INVITE_SENDER_PHONE, connected: false, state: 'not_registered' };
+
+      // Teste de envio real usando o número remetente
+      if (testPhone && sender?.evolutionConnected) {
+        const digits    = testPhone.replace(/\D/g, '');
         const fullPhone = digits.startsWith('55') ? digits : `55${digits}`;
-        const connected = result.zapiNumbers.find((n: any) => n.zapiConnected);
-        if (connected) {
-          try {
-            const clientToken = process.env.ZAPI_CLIENT_TOKEN;
-            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-            if (clientToken) headers['Client-Token'] = clientToken;
-            const num = numbers.find(n => n.id === connected.id)!;
-            const sendRes = await axios.post(
-              `https://api.z-api.io/instances/${num.zapiInstanceId}/token/${num.zapiToken}/send-text`,
-              { phone: fullPhone, message: '🧪 Teste de diagnóstico ZapScript — pode ignorar.' },
-              { headers, timeout: 10000 }
-            );
-            result.testSend = { ok: true, phone: fullPhone, status: sendRes.status, data: sendRes.data, instanceUsed: connected.instanceId };
-          } catch (e: any) {
-            result.testSend = { ok: false, phone: fullPhone, error: e.message, response: e.response?.data };
-          }
-        } else {
-          result.testSend = { ok: false, error: 'Nenhum número Z-API conectado encontrado.' };
+        try {
+          await sendText(sender.instanceId, fullPhone, '🧪 Teste de diagnóstico ZapScript — pode ignorar.');
+          result.testSend = { ok: true, phone: fullPhone, instanceUsed: sender.instanceId };
+        } catch (e: any) {
+          result.testSend = { ok: false, phone: fullPhone, error: e.message };
         }
+      } else if (testPhone) {
+        result.testSend = { ok: false, error: `Número remetente (${INVITE_SENDER_PHONE}) não conectado.` };
       }
 
       return reply.send(result);

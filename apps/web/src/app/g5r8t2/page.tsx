@@ -115,7 +115,7 @@ function DiagnoseWhatsApp({ apiBase, token }: { apiBase: string; token: string }
         type="button"
         onClick={() => { setOpen(o => !o); if (!open && !result) run(); }}
         className="w-full text-left px-4 py-2.5 text-xs text-[rgba(16,185,129,.5)] hover:text-[rgba(16,185,129,.8)] flex items-center gap-2 transition-colors">
-        🔬 {open ? '▲' : '▼'} Diagnóstico do canal WhatsApp
+        🔬 {open ? '▲' : '▼'} Diagnóstico WhatsApp — Evolution API
       </button>
       {open && (
         <div className="px-4 pb-4">
@@ -281,13 +281,13 @@ function ServicesHealth({ apiBase, token }: { apiBase: string; token: string }) 
   }
 
   const services = data?.health ? [
-    { name: 'API / Render',  ok: true,                          detail: 'Online — respondendo' },
-    { name: 'Banco (DB)',    ok: data.health.checks.db.ok,      detail: data.health.checks.db.ok ? `${data.health.checks.db.latencyMs}ms` : data.health.checks.db.error },
-    { name: 'Redis',         ok: data.health.checks.redis.ok,   detail: data.health.checks.redis.ok ? `${data.health.checks.redis.latencyMs}ms` : data.health.checks.redis.error },
-    { name: 'Fila (BullMQ)', ok: data.health.checks.queue.ok,   detail: `⏳${data.health.checks.queue.waiting} | ▶️${data.health.checks.queue.active} | ❌${data.health.checks.queue.failed}` },
-    { name: 'Z-API',         ok: data.health.checks.zapi.ok,    detail: `${data.health.checks.zapi.connected} conectado(s)` },
-    { name: 'Worker',        ok: data.health.checks.worker.ok,  detail: data.health.checks.worker.note },
-    { name: 'E-mail',        ok: data.email?.testResult?.ok,    detail: data.email?.provider ? `${data.email.provider}${data.email.testResult?.ok ? ' ✅' : ' ❌ ' + (data.email.testResult?.error || '')}` : 'Não configurado' },
+    { name: 'API / Render',      ok: true,                               detail: 'Online — respondendo' },
+    { name: 'Banco (DB)',        ok: data.health.checks.db.ok,           detail: data.health.checks.db.ok ? `${data.health.checks.db.latencyMs}ms` : data.health.checks.db.error },
+    { name: 'Redis',             ok: data.health.checks.redis.ok,        detail: data.health.checks.redis.ok ? `${data.health.checks.redis.latencyMs}ms` : data.health.checks.redis.error },
+    { name: 'Fila (BullMQ)',     ok: data.health.checks.queue.ok,        detail: `⏳${data.health.checks.queue.waiting} | ▶️${data.health.checks.queue.active} | ❌${data.health.checks.queue.failed}` },
+    { name: 'WhatsApp (Evol.)',  ok: data.health.checks.whatsapp?.ok,    detail: `${data.health.checks.whatsapp?.connected ?? 0} conectado(s)` },
+    { name: 'Worker',            ok: data.health.checks.worker.ok,       detail: data.health.checks.worker.note },
+    { name: 'E-mail',            ok: data.email?.testResult?.ok,         detail: data.email?.provider ? `${data.email.provider}${data.email.testResult?.ok ? ' ✅' : ' ❌ ' + (data.email.testResult?.error || '')}` : 'Não configurado' },
   ] : [];
 
   const allOk = services.length > 0 && services.every(s => s.ok);
@@ -408,10 +408,10 @@ function HealthMonitorPanel({ apiBase, token }: { apiBase: string; token: string
               {/* Checks grid */}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {[
-                  { label: 'Banco',   ok: report.checks.db.ok,     detail: report.checks.db.latencyMs     ? `${report.checks.db.latencyMs}ms`     : report.checks.db.error     || '—' },
-                  { label: 'Redis',   ok: report.checks.redis.ok,  detail: report.checks.redis.latencyMs  ? `${report.checks.redis.latencyMs}ms`  : report.checks.redis.error  || '—' },
-                  { label: 'Fila',    ok: report.checks.queue.ok,  detail: `⏳${report.checks.queue.waiting} ▶️${report.checks.queue.active} ❌${report.checks.queue.failed}` },
-                  { label: 'Z-API',   ok: report.checks.zapi.ok,   detail: `${report.checks.zapi.connected} conectado(s)` },
+                  { label: 'Banco',     ok: report.checks.db.ok,          detail: report.checks.db.latencyMs ? `${report.checks.db.latencyMs}ms` : report.checks.db.error || '—' },
+                  { label: 'Redis',     ok: report.checks.redis.ok,        detail: report.checks.redis.latencyMs ? `${report.checks.redis.latencyMs}ms` : report.checks.redis.error || '—' },
+                  { label: 'Fila',      ok: report.checks.queue.ok,        detail: `⏳${report.checks.queue.waiting} ▶️${report.checks.queue.active} ❌${report.checks.queue.failed}` },
+                  { label: 'WhatsApp',  ok: report.checks.whatsapp?.ok,    detail: `${report.checks.whatsapp?.connected ?? 0} conectado(s)` },
                 ].map(({ label, ok, detail }) => (
                   <div key={label} className={`rounded-lg p-3 border ${ok ? 'bg-green-900/10 border-green-500/20' : 'bg-red-900/10 border-red-500/20'}`}>
                     <div className="text-sm font-black mb-0.5" style={{ color: ok ? '#34d399' : '#f87171' }}>
@@ -598,7 +598,7 @@ function AuditNumbers({ apiBase, token }: { apiBase: string; token: string }) {
                   {u.numbers.map((n: any) => (
                     <div key={n.id} className="text-[10px] text-[rgba(16,185,129,.5)] font-mono ml-2">
                       • {n.phoneNumber || n.displayName || n.id} — <span className={n.status === 'connected' ? 'text-green-400' : 'text-red-400/60'}>{n.status}</span>
-                      {n.zapiInstanceId ? ` (inst: ${n.zapiInstanceId.substring(0, 8)}…)` : ' (sem instância)'}
+                      {n.zapiInstanceId ? ` (inst: ${n.zapiInstanceId})` : ' (sem instância)'}
                     </div>
                   ))}
                 </div>
@@ -1344,8 +1344,9 @@ export default function AdminPage() {
                 </Btn>
               </form>
               <p className="text-xs text-[rgba(16,185,129,.4)] mt-3">
-                Ao aceitar o convite, o usuário recebe <strong className="text-[#10b981]">Plano PRO grátis por 1 ano</strong> + Selo Tester Oficial.
-                {' '}Se o telefone for informado, a mensagem é enviada automaticamente via WhatsApp.
+                Ao aceitar o convite, o usuário recebe <strong className="text-[#10b981]">Plano PRO grátis por 1 ano</strong> + Medalha Tester Oficial.
+                {' '}O WhatsApp é enviado exclusivamente pelo número <strong className="text-[#10b981]">5534991790254</strong> via Evolution API — esse número precisa estar conectado.
+                {' '}Convite expira em <strong className="text-[#10b981]">24h</strong>.
               </p>
               <ServicesHealth apiBase={API} token={token} />
               <HealthMonitorPanel apiBase={API} token={token} />
@@ -1360,7 +1361,7 @@ export default function AdminPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs font-bold text-[#10b981]">
                     {lastInviteResult.whatsappSent
-                      ? `✅ Convite gerado e enviado via ${lastInviteResult.whatsappChannel === 'z-api' ? 'Z-API (WhatsApp pessoal)' : lastInviteResult.whatsappChannel === 'meta' ? 'Meta Cloud API' : 'WhatsApp'}`
+                      ? `✅ Convite gerado e enviado via Evolution API (53499179****)`
                       : '✅ Convite gerado (sem envio automático)'}
                   </div>
                   {!lastInviteResult.whatsappSent && lastInviteResult.whatsappError && (
@@ -1368,12 +1369,6 @@ export default function AdminPage() {
                       ⚠️ {lastInviteResult.whatsappError}
                     </span>
                   )}
-                </div>
-                {lastInviteResult.whatsappSent && lastInviteResult.whatsappChannel === 'meta' && (
-                  <div className="text-[10px] text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-3 py-2 mb-3">
-                    ⚠️ <strong>Atenção:</strong> Meta Cloud API só entrega mensagens para contatos que já conversaram com o número nas últimas 24h. Se não chegou, conecte um número Z-API.
-                  </div>
-                )}
                 <div className="flex items-center gap-2 mb-3">
                   <code className="flex-1 text-xs text-[#6ee7b7] bg-[#132621] rounded-lg px-3 py-2 font-mono break-all">{lastInviteResult.link}</code>
                   <Btn variant="ghost" onClick={() => { navigator.clipboard.writeText(lastInviteResult.link); notify('✅ Link copiado!', 'ok'); }}>
@@ -1400,8 +1395,21 @@ export default function AdminPage() {
 
             {/* Lista de convites */}
             <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-[rgba(16,185,129,.08)] flex items-center justify-between">
-                <span className="text-xs font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide">{inviteTotal} convite(s)</span>
+              <div className="px-5 py-3 border-b border-[rgba(16,185,129,.08)] flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-4">
+                  <span className="text-xs font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide">{inviteTotal} convite(s)</span>
+                  {invites.length > 0 && (() => {
+                    const converted = invites.filter((i: any) => i.usedAt).length;
+                    const clicks    = invites.reduce((s: number, i: any) => s + (i.clickCount || 0), 0);
+                    return (
+                      <div className="flex items-center gap-3 text-[10px]">
+                        <span className="text-blue-400">👁 {clicks} cliques</span>
+                        <span className="text-teal-400">✅ {converted} conversão(ões)</span>
+                        {clicks > 0 && <span className="text-[rgba(16,185,129,.4)]">{Math.round(converted/clicks*100)}% conv.</span>}
+                      </div>
+                    );
+                  })()}
+                </div>
                 <Btn onClick={loadInvites} disabled={inviteLoading}>🔄 Atualizar</Btn>
               </div>
               {inviteLoading ? (
@@ -1410,27 +1418,37 @@ export default function AdminPage() {
                 <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhum convite gerado ainda</div>
               ) : invites.map((inv: any) => (
                 <div key={inv.id} className="px-5 py-3 border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.02)] flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-[#d1fae5]">{maskTesterName(inv.name, inv.code)}</div>
-                    <div className="text-xs text-[rgba(16,185,129,.4)] font-mono mt-0.5">{inv.code}</div>
-                    {inv.phone && <div className="text-[10px] text-[rgba(16,185,129,.35)] mt-0.5">📱 {inv.phone}</div>}
-                    {inv.expiresAt && !inv.usedAt && (
-                      <div className={`text-[10px] mt-0.5 ${new Date(inv.expiresAt) < new Date() ? 'text-red-400' : 'text-yellow-400/70'}`}>
-                        {new Date(inv.expiresAt) < new Date() ? '⏰ Expirado' : `⏳ Expira ${fmtFull(inv.expiresAt)}`}
-                      </div>
-                    )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-[#d1fae5]">{inv.name}</span>
+                      {inv.phone && <span className="text-[10px] text-[rgba(16,185,129,.5)] font-mono">📱 {inv.phone}</span>}
+                    </div>
+                    <div className="text-xs text-[rgba(16,185,129,.35)] font-mono mt-0.5">{inv.code}</div>
+                    <div className="flex items-center gap-3 mt-1 flex-wrap">
+                      <span className="text-[10px] text-[rgba(16,185,129,.35)]">criado {fmt(inv.createdAt)}</span>
+                      {(inv.clickCount ?? 0) > 0 && (
+                        <span className="text-[10px] text-blue-400 font-semibold">👁 {inv.clickCount} clique(s)</span>
+                      )}
+                      {inv.usedAt && (
+                        <span className="text-[10px] text-gray-400">✅ usado {fmt(inv.usedAt)}</span>
+                      )}
+                      {inv.expiresAt && !inv.usedAt && (
+                        <span className={`text-[10px] ${new Date(inv.expiresAt) < new Date() ? 'text-red-400' : 'text-yellow-400/70'}`}>
+                          {new Date(inv.expiresAt) < new Date() ? '⏰ Expirado' : `⏳ Expira ${fmtFull(inv.expiresAt)}`}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     {inv.usedAt
-                      ? <Badge label="Usado" cls="text-gray-400 bg-gray-400/10 border-gray-400/20" />
+                      ? <Badge label="Convertido" cls="text-teal-400 bg-teal-400/10 border-teal-400/20" />
                       : inv.expiresAt && new Date(inv.expiresAt) < new Date()
                         ? <Badge label="Expirado" cls="text-red-400 bg-red-400/10 border-red-400/20" />
-                        : <Badge label="Disponível" cls={STATUS_CLS.active} />
+                        : <Badge label="Ativo" cls={STATUS_CLS.active} />
                     }
-                    <span className="text-[10px] text-[rgba(16,185,129,.3)]">{fmt(inv.createdAt)}</span>
                     {!inv.usedAt && !(inv.expiresAt && new Date(inv.expiresAt) < new Date()) && (
                       <Btn variant="ghost" onClick={() => { navigator.clipboard.writeText(inv.link); notify('✅ Link copiado!', 'ok'); }}>
-                        Copiar link
+                        Copiar
                       </Btn>
                     )}
                     <Btn variant="danger" onClick={() => deleteInvite(inv.id, inv.name)}>

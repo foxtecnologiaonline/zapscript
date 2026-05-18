@@ -1,7 +1,7 @@
 import { Queue } from 'bullmq';
-import axios from 'axios';
 import { redis } from './queue';
 import { prisma } from '../lib/prisma';
+import { getConnectionState, sendText } from './evolution';
 
 // ── Configuração ──────────────────────────────────────────────────────────────
 const INTERVAL_MS  = 60 * 60 * 1000;  // 1 hora
@@ -28,11 +28,11 @@ export interface HealthReport {
   ts:          string;
   status:      'ok' | 'warn' | 'critical';
   checks: {
-    db:     CheckResult;
-    redis:  CheckResult;
-    queue:  CheckResult & QueueCounts;
-    zapi:   CheckResult & { connected: number; mismatches: any[] };
-    worker: CheckResult & { recentProcessed: number; note: string };
+    db:        CheckResult;
+    redis:     CheckResult;
+    queue:     CheckResult & QueueCounts;
+    whatsapp:  CheckResult & { connected: number; mismatches: any[] };
+    worker:    CheckResult & { recentProcessed: number; note: string };
   };
   alerts:      string[];
   suggestions: string[];
@@ -138,8 +138,8 @@ async function checkQueue(): Promise<
   }
 }
 
-// ── Check individual: Z-API ───────────────────────────────────────────────────
-async function checkZapi(): Promise<
+// ── Check individual: WhatsApp (Evolution API) ────────────────────────────────
+async function checkWhatsApp(): Promise<
   CheckResult & { connected: number; mismatches: any[]; alertMsgs: string[]; suggestions: string[] }
 > {
   const alertMsgs: string[]  = [];
@@ -149,7 +149,7 @@ async function checkZapi(): Promise<
   try {
     const numbers = await (prisma as any).whatsappNumber.findMany({
       where:  { zapiInstanceId: { not: null } },
-      select: { id: true, userId: true, phoneNumber: true, status: true, zapiInstanceId: true, zapiToken: true },
+      select: { id: true, userId: true, phoneNumber: true, status: true, zapiInstanceId: true },
     });
 
     const connected = numbers.filter((n: any) => n.status === 'connected').length;
@@ -159,27 +159,18 @@ async function checkZapi(): Promise<
       suggestions.push('Acessar Meu Número no dashboard e conectar o WhatsApp via QR Code ou código de pareamento');
     }
 
-    // Verificar mismatch DB vs Z-API real (apenas os "connected" no banco)
+    // Verificar mismatch DB vs Evolution real (apenas os "connected" no banco)
     const connectedNumbers = numbers.filter((n: any) => n.status === 'connected');
     for (const n of connectedNumbers) {
       try {
-        const headers: Record<string, string> = {};
-        if (process.env.ZAPI_CLIENT_TOKEN) headers['Client-Token'] = process.env.ZAPI_CLIENT_TOKEN;
-        const res = await axios.get(
-          `https://api.z-api.io/instances/${n.zapiInstanceId}/token/${n.zapiToken}/status`,
-          { headers, timeout: 8_000 }
-        );
-        // Aceitar Web (connected) e Mobile (smartphoneConnected)
-        const zapiOk = res.data?.connected === true || res.data?.smartphoneConnected === true;
-        if (!zapiOk) {
-          mismatches.push({ id: n.id, phoneNumber: n.phoneNumber, zapiStatus: res.data });
+        const state = await getConnectionState(n.zapiInstanceId);
+        if (state !== 'open') {
+          mismatches.push({ id: n.id, phoneNumber: n.phoneNumber, evolutionState: state });
           alertMsgs.push(
-            `⚠️ Número ${n.phoneNumber || n.id} — banco diz CONNECTED mas Z-API reportou offline. ` +
+            `⚠️ Número ${n.phoneNumber || n.id} — banco diz CONNECTED mas Evolution reportou "${state || 'null'}". ` +
             `Pode ser instabilidade momentânea. Será resolvido automaticamente se persistir.`
           );
-          // NÃO desconectar automaticamente aqui — desconexão real vem via
-          // DisconnectedCallback (webhook confiável). Alterar status por polling
-          // da API de status causa falsos positivos e desconexões desnecessárias.
+          // NÃO desconectar automaticamente — desconexão real vem via webhook (connection.update)
         }
       } catch (e: any) {
         mismatches.push({ id: n.id, phoneNumber: n.phoneNumber, error: e.message });
@@ -192,7 +183,7 @@ async function checkZapi(): Promise<
 
     return { ok: mismatches.length === 0, connected, mismatches, alertMsgs, suggestions };
   } catch (e: any) {
-    return { ok: false, connected: 0, mismatches, error: e.message, alertMsgs: [`⚠️ Erro ao verificar Z-API: ${e.message}`], suggestions };
+    return { ok: false, connected: 0, mismatches, error: e.message, alertMsgs: [`⚠️ Erro ao verificar WhatsApp: ${e.message}`], suggestions };
   }
 }
 
@@ -250,7 +241,7 @@ function generalSuggestions(report: Omit<HealthReport, 'suggestions'>): string[]
   return s;
 }
 
-// ── Notificação WhatsApp para admin ──────────────────────────────────────────
+// ── Notificação WhatsApp para admin via Evolution API ─────────────────────────
 async function notifyAdmin(report: HealthReport, log: any): Promise<void> {
   const adminPhone = process.env.ADMIN_NOTIFY_PHONE;
   if (!adminPhone) return;
@@ -258,9 +249,9 @@ async function notifyAdmin(report: HealthReport, log: any): Promise<void> {
   try {
     const number = await (prisma as any).whatsappNumber.findFirst({
       where:  { status: 'connected', zapiInstanceId: { not: null } },
-      select: { zapiInstanceId: true, zapiToken: true },
+      select: { zapiInstanceId: true },
     });
-    if (!number) return; // sem número conectado para enviar
+    if (!number) return;
 
     const icon = report.status === 'critical' ? '🔴' : '⚠️';
     const lines = [
@@ -282,14 +273,7 @@ async function notifyAdmin(report: HealthReport, log: any): Promise<void> {
       `🔗 DB: ${report.checks.db.latencyMs ?? '—'}ms | Redis: ${report.checks.redis.latencyMs ?? '—'}ms`,
     );
 
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (process.env.ZAPI_CLIENT_TOKEN) headers['Client-Token'] = process.env.ZAPI_CLIENT_TOKEN;
-
-    await axios.post(
-      `https://api.z-api.io/instances/${number.zapiInstanceId}/token/${number.zapiToken}/send-text`,
-      { phone: adminPhone, message: lines.join('\n') },
-      { headers, timeout: 10_000 }
-    );
+    await sendText(number.zapiInstanceId, adminPhone, lines.join('\n'));
     log.info(`[Health Monitor] 📲 Notificação enviada para admin (${adminPhone})`);
   } catch (e: any) {
     log.warn(`[Health Monitor] Falha ao notificar admin via WhatsApp: ${e.message}`);
@@ -306,18 +290,16 @@ export async function runHealthCheck(log: any): Promise<HealthReport> {
     checkQueue(),
   ]);
 
-  // Z-API e worker dependem do estado da queue (evita duplo trabalho)
-  const [zapiRes, workerRes] = await Promise.all([
-    checkZapi(),
+  const [waRes, workerRes] = await Promise.all([
+    checkWhatsApp(),
     checkWorker(queueRes),
   ]);
 
-  // Consolidar alertas e sugestões
   const alerts: string[] = [
     ...(dbRes.alertMsg     ? [dbRes.alertMsg]     : []),
     ...(redisRes.alertMsg  ? [redisRes.alertMsg]  : []),
     ...queueRes.alertMsgs,
-    ...zapiRes.alertMsgs,
+    ...waRes.alertMsgs,
     ...workerRes.alertMsgs,
   ];
 
@@ -325,11 +307,10 @@ export async function runHealthCheck(log: any): Promise<HealthReport> {
     ...(dbRes.suggestion    ? [dbRes.suggestion]    : []),
     ...(redisRes.suggestion ? [redisRes.suggestion] : []),
     ...queueRes.suggestions,
-    ...zapiRes.suggestions,
+    ...waRes.suggestions,
     ...workerRes.suggestions,
   ];
 
-  // Extrair só os campos de contagem da fila (descartar alertMsgs/suggestions internos)
   const { alertMsgs: _qa, suggestions: _qs, ...queueCounts } = queueRes;
 
   const report: Omit<HealthReport, 'suggestions'> = {
@@ -337,11 +318,11 @@ export async function runHealthCheck(log: any): Promise<HealthReport> {
     status: alerts.some(a => a.startsWith('🔴')) ? 'critical'
           : alerts.some(a => a.startsWith('⚠️')) ? 'warn' : 'ok',
     checks: {
-      db:     { ok: dbRes.ok,    latencyMs: dbRes.latencyMs,    error: dbRes.error },
-      redis:  { ok: redisRes.ok, latencyMs: redisRes.latencyMs, error: redisRes.error },
-      queue:  queueCounts,
-      zapi:   { ok: zapiRes.ok,  connected: zapiRes.connected, mismatches: zapiRes.mismatches, error: zapiRes.error },
-      worker: { ok: workerRes.ok, recentProcessed: workerRes.recentProcessed, note: workerRes.note },
+      db:       { ok: dbRes.ok,    latencyMs: dbRes.latencyMs,    error: dbRes.error },
+      redis:    { ok: redisRes.ok, latencyMs: redisRes.latencyMs, error: redisRes.error },
+      queue:    queueCounts,
+      whatsapp: { ok: waRes.ok,    connected: waRes.connected,    mismatches: waRes.mismatches, error: waRes.error },
+      worker:   { ok: workerRes.ok, recentProcessed: workerRes.recentProcessed, note: workerRes.note },
     },
     alerts,
   };
@@ -380,7 +361,7 @@ export async function runHealthCheck(log: any): Promise<HealthReport> {
     `[Health Monitor] ${fullReport.status.toUpperCase()} | ` +
     `DB:${dbRes.latencyMs ?? 'ERR'}ms Redis:${redisRes.latencyMs ?? 'ERR'}ms | ` +
     `Queue(⏳${queueRes.waiting} ▶️${queueRes.active} ❌${queueRes.failed}) | ` +
-    `Z-API:${zapiRes.connected} online | Worker:${workerRes.recentProcessed}/2h | ` +
+    `WhatsApp:${waRes.connected} online | Worker:${workerRes.recentProcessed}/2h | ` +
     `Alertas:${alerts.length}`
   );
 
