@@ -97,9 +97,12 @@ export default async function authRoutes(app: FastifyInstance) {
       // Validar convite de Tester se fornecido
       let testerInvite: any = null;
       if (inviteCode) {
-        testerInvite = await prisma.testerInvite.findUnique({ where: { code: inviteCode } });
+        testerInvite = await (prisma as any).testerInvite.findUnique({ where: { code: inviteCode } });
         if (!testerInvite || testerInvite.usedAt) {
           return reply.code(400).send({ error: 'Código de convite inválido ou já utilizado.' });
+        }
+        if (testerInvite.expiresAt && new Date(testerInvite.expiresAt) < new Date()) {
+          return reply.code(400).send({ error: 'Código de convite expirado. Solicite um novo.' });
         }
       }
 

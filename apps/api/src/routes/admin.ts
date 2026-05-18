@@ -7,6 +7,7 @@ import axios from 'axios';
 import { runHealthCheck, lastReport, history } from '../services/health-monitor';
 import { Queue } from 'bullmq';
 import { redis } from '../services/queue';
+import { sendText } from '../services/evolution';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -41,47 +42,22 @@ Te espero lá! 🙌`;
 }
 
 async function sendTesterWhatsApp(phone: string, message: string, log: any): Promise<string> {
-  // 1. Z-API — priorizar número 5534991790254 como remetente, senão qualquer conectado
+  // Priorizar número do admin (5534991790254) como remetente, senão qualquer conectado
   const number = await prisma.whatsappNumber.findFirst({
-    where: { status: 'connected', phoneNumber: '5534991790254', zapiInstanceId: { not: null }, zapiToken: { not: null } },
-    select: { zapiInstanceId: true, zapiToken: true },
+    where: { status: 'connected', phoneNumber: '5534991790254', zapiInstanceId: { not: null } },
+    select: { zapiInstanceId: true },
   }) ?? await prisma.whatsappNumber.findFirst({
-    where: { status: 'connected', zapiInstanceId: { not: null }, zapiToken: { not: null } },
-    select: { zapiInstanceId: true, zapiToken: true },
+    where: { status: 'connected', zapiInstanceId: { not: null } },
+    select: { zapiInstanceId: true },
   });
-  if (number?.zapiInstanceId && number?.zapiToken) {
-    const clientToken = process.env.ZAPI_CLIENT_TOKEN;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (clientToken) headers['Client-Token'] = clientToken;
-    const res = await axios.post(
-      `https://api.z-api.io/instances/${number.zapiInstanceId}/token/${number.zapiToken}/send-text`,
-      { phone, message },
-      { headers }
-    );
-    log.info({ phone, status: res.status, data: res.data }, '[Invites] ✅ WhatsApp enviado via Z-API');
-    return 'z-api';
+
+  if (!number?.zapiInstanceId) {
+    throw new Error('Nenhum número WhatsApp conectado disponível para envio de convites.');
   }
 
-  // 2. Fallback: Meta Cloud API — requer opt-in do contato (não funciona para contatos frios)
-  const apiToken      = process.env.WHATSAPP_API_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  if (apiToken && phoneNumberId) {
-    const res = await axios.post(
-      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        recipient_type:    'individual',
-        to:                phone,
-        type:              'text',
-        text:              { body: message },
-      },
-      { headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'application/json' } }
-    );
-    log.warn({ phone, status: res.status, data: res.data }, '[Invites] ⚠️ WhatsApp enviado via Meta (contatos frios podem não receber)');
-    return 'meta';
-  }
-
-  throw new Error('Nenhum canal WhatsApp disponível: sem número Z-API conectado e sem WHATSAPP_API_TOKEN.');
+  await sendText(number.zapiInstanceId, phone, message);
+  log.info({ phone, instance: number.zapiInstanceId }, '[Invites] ✅ WhatsApp enviado via Evolution API');
+  return 'evolution';
 }
 
 const adminAuth = async (req: any, reply: any) => {
@@ -656,9 +632,15 @@ export default async function adminRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Nome inválido (mínimo 2 caracteres).' });
       }
       const trimmedName = name.trim().substring(0, 100);
-      const code = crypto.randomBytes(8).toString('hex');
-      const invite = await prisma.testerInvite.create({
-        data: { name: trimmedName, code },
+      const code      = crypto.randomBytes(8).toString('hex');
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+      const invite = await (prisma as any).testerInvite.create({
+        data: {
+          name:  trimmedName,
+          phone: phone ? (phone.replace(/\D/g, '').startsWith('55') ? phone.replace(/\D/g, '') : `55${phone.replace(/\D/g, '')}`) : null,
+          code,
+          expiresAt,
+        },
       });
       const appUrl  = process.env.APP_URL || 'https://zapscript.me';
       const link    = `${appUrl}/convite/${invite.code}`;

@@ -13,9 +13,9 @@ export default async function invitesRoutes(app: FastifyInstance) {
         return reply.code(400).send({ valid: false, error: 'Código inválido.' });
       }
 
-      const invite = await prisma.testerInvite.findUnique({
+      const invite = await (prisma as any).testerInvite.findUnique({
         where: { code },
-        select: { id: true, name: true, code: true, usedAt: true },
+        select: { id: true, name: true, code: true, usedAt: true, expiresAt: true },
       });
 
       if (!invite) {
@@ -24,6 +24,10 @@ export default async function invitesRoutes(app: FastifyInstance) {
 
       if (invite.usedAt) {
         return { valid: false, error: 'Este convite já foi utilizado.' };
+      }
+
+      if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
+        return { valid: false, error: 'Este convite expirou. Solicite um novo.' };
       }
 
       return { valid: true, invite: { name: invite.name, code: invite.code } };
