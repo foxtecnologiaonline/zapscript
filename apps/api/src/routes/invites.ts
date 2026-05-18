@@ -30,6 +30,12 @@ export default async function invitesRoutes(app: FastifyInstance) {
         return { valid: false, error: 'Este convite expirou. Solicite um novo.' };
       }
 
+      // Rastrear clique (fire-and-forget — não bloqueia resposta)
+      (prisma as any).testerInvite.update({
+        where: { id: invite.id },
+        data:  { clickCount: { increment: 1 } },
+      }).catch(() => null);
+
       return { valid: true, invite: { name: invite.name, code: invite.code } };
     }
   );

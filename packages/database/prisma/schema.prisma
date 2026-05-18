@@ -172,14 +172,15 @@ model AuditLog {
 }
 
 model TesterInvite {
-  id        String    @id @default(cuid())
-  name      String
-  phone     String?
-  code      String    @unique
-  createdAt DateTime  @default(now())
-  expiresAt DateTime?
-  usedAt    DateTime?
-  usedBy    String?   // userId of the user who used this invite
+  id         String    @id @default(cuid())
+  name       String
+  phone      String?
+  code       String    @unique
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+  clickCount Int       @default(0)
+  usedAt     DateTime?
+  usedBy     String?
 
   @@index([code])
 }

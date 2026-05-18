@@ -82,8 +82,14 @@ function NavContent({
                   {user.subscription?.plan?.label || 'Grátis'}
                 </span>
                 {user.isTester && (
-                  <span className="text-[9px] font-bold px-1.5 py-px rounded-full bg-teal-400/15 border border-teal-400/30 text-teal-300 uppercase tracking-wide leading-none">
-                    🧪 Tester
+                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest leading-none"
+                    title="Tester Oficial ZapScript">
+                    <svg width="11" height="13" viewBox="0 0 11 13" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <circle cx="5.5" cy="4.5" r="4" fill="#10b981" fillOpacity=".18" stroke="#10b981" strokeWidth="1.2"/>
+                      <text x="5.5" y="7.2" textAnchor="middle" fontSize="5" fontWeight="900" fill="#10b981">ZS</text>
+                      <path d="M3.5 8.5 L5.5 13 L7.5 8.5" fill="#10b981" fillOpacity=".7"/>
+                    </svg>
+                    <span className="text-[#10b981]">Tester</span>
                   </span>
                 )}
               </div>
