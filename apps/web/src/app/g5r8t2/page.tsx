@@ -1135,7 +1135,6 @@ export default function AdminPage() {
   const growth = stats ? (stats.users.month - stats.users.lastMonth) : 0;
 
   return (
-    <>
     <div className="min-h-screen bg-[#040b09] p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
 
@@ -1527,20 +1526,19 @@ export default function AdminPage() {
         )}
 
       </div>
+
+      {/* Painel individual do usuário */}
+      {detailId && (
+        <UserDetailPanel
+          userId={detailId}
+          token={token}
+          onClose={() => { setDetailId(null); loadUsers(userSearch, userOffset); }}
+          onAction={notify}
+        />
+      )}
+
+      {/* Toast */}
+      {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
     </div>
-
-    {/* Painel individual do usuário */}
-    {detailId && (
-      <UserDetailPanel
-        userId={detailId}
-        token={token}
-        onClose={() => { setDetailId(null); loadUsers(userSearch, userOffset); }}
-        onAction={notify}
-      />
-    )}
-
-    {/* Toast */}
-    {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
-    </>
   );
 }
