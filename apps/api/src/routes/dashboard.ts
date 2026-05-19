@@ -9,9 +9,10 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     const today  = new Date(); today.setHours(0, 0, 0, 0);
     const month  = new Date(); month.setDate(1); month.setHours(0, 0, 0, 0);
 
-    const [todayCount, monthCount, balance, activeNumbers, avgConf, sub] = await Promise.all([
+    const [todayCount, monthCount, totalCount, balance, activeNumbers, avgConf, sub] = await Promise.all([
       prisma.transcription.count({ where: { userId, createdAt: { gte: today } } }),
       prisma.transcription.count({ where: { userId, createdAt: { gte: month } } }),
+      prisma.transcription.count({ where: { userId } }),
       prisma.minuteBalance.findUnique({ where: { userId } }),
       prisma.whatsappNumber.count({ where: { userId, status: 'connected' } }),
       prisma.transcription.aggregate({
@@ -31,6 +32,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     return {
       transcriptionsToday: todayCount,
       transcriptionsMonth: monthCount,
+      transcriptionsTotal: totalCount,
       minutesUsed:         +minutesUsed.toFixed(1),
       minutesAvailable:    +minutesAvail.toFixed(1),
       minutesTotal,

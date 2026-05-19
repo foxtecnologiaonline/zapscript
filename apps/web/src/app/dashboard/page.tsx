@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 interface Stats {
   transcriptionsToday: number;
   transcriptionsMonth: number;
+  transcriptionsTotal: number;
   minutesUsed: number;
   minutesAvailable: number;
   minutesTotal: number;
@@ -16,48 +17,15 @@ interface Stats {
   planStatus: string;
 }
 
-interface Transcription {
-  id: string;
-  contactPhone: string;
-  contactName: string | null;
-  durationSec: number;
-  originalText: string;
-  summaryBullets: string[];
-  createdAt: string;
-  number: { displayName: string | null; phoneNumber: string } | null;
-}
-
 export default function DashboardPage() {
-  const [stats, setStats]   = useState<Stats | null>(null);
-  const [recent, setRecent] = useState<Transcription[]>([]);
-  const [selected, setSelected] = useState<Transcription | null>(null);
-  const [loading, setLoading]   = useState(true);
+  const [stats, setStats]     = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const closeModal = useCallback(() => setSelected(null), []);
-
-  async function handleDelete(id: string, e: React.MouseEvent) {
-    e.stopPropagation();
-    if (!confirm('Excluir esta transcrição? Os minutos usados serão mantidos.')) return;
-    await api.delete(`/transcriptions/${id}`);
-    setRecent(r => r.filter(t => t.id !== id));
-    if (selected?.id === id) setSelected(null);
-  }
-
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModal(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [closeModal]);
-
-  useEffect(() => {
-    Promise.all([
-      api.get<Stats>('/dashboard/stats'),
-      api.get<{ items: Transcription[] }>('/transcriptions?limit=6'),
-    ]).then(([s, t]) => {
-      setStats(s);
-      setRecent(t.items);
-    }).catch(() => setLoadError(true))
+    api.get<Stats>('/dashboard/stats')
+      .then(s => setStats(s))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, []);
 
@@ -84,11 +52,20 @@ export default function DashboardPage() {
   );
 
   const kpis = stats ? [
-    { label: 'Transcrições hoje',  value: stats.transcriptionsToday, icon: '📝' },
-    { label: 'Minutos usados',     value: `${stats.minutesUsed}`,    icon: '⏱',
-      sub: `de ${stats.minutesTotal} min` },
-    { label: 'Precisão',           value: '99%',                     icon: '🎯' },
-    { label: 'Números ativos',     value: stats.activeNumbers,       icon: '📱' },
+    {
+      label: 'Transcrições',
+      value: stats.transcriptionsTotal,
+      icon: '📝',
+      sub: `${stats.transcriptionsToday} hoje`,
+    },
+    {
+      label: 'Minutos usados',
+      value: `${stats.minutesUsed}`,
+      icon: '⏱',
+      sub: `de ${stats.minutesTotal} min`,
+    },
+    { label: 'Precisão',        value: '99%',                  icon: '🎯' },
+    { label: 'Números ativos',  value: stats.activeNumbers,    icon: '📱' },
   ] : [];
 
   return (
@@ -98,8 +75,8 @@ export default function DashboardPage() {
         <p className="text-sm text-brand-text-secondary font-light mt-1">Visão geral da sua operação</p>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-7">
+      {/* ── KPIs ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         {kpis.map(k => (
           <div key={k.label} className="card p-4 hover:border-brand-primary/20 transition-colors">
             <div className="flex items-center gap-1.5 text-xs text-brand-muted font-medium mb-2">
@@ -111,186 +88,97 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Recent transcriptions */}
-        <div className="lg:col-span-2 card overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3.5"
-            style={{ borderBottom: '1px solid rgb(var(--color-border))' }}>
-            <span className="font-bold text-sm text-brand-text">Transcrições Recentes</span>
-            <Link href="/dashboard/transcricoes" className="text-xs text-brand-primary hover:underline">Ver todas →</Link>
-          </div>
-          {recent.length === 0 ? (
-            <div className="p-10 text-center text-brand-muted text-sm">
-              <div className="text-3xl mb-3">🎙</div>
-              Nenhuma transcrição ainda.<br />Conecte um número para começar.
-            </div>
-          ) : (
-            recent.map(t => (
-              <div key={t.id} onClick={() => setSelected(t)}
-                className="hover-row flex items-start gap-3 px-5 py-3.5 cursor-pointer last:border-0 group"
-                style={{ borderBottom: '1px solid rgb(var(--color-border) / .5)' }}>
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5"
-                  style={{ background: 'rgba(var(--color-primary), .35)' }}>
-                  {(t.contactName || t.contactPhone)[0]?.toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5 min-w-0">
-                    <span className="text-sm font-semibold text-brand-text truncate">{t.contactName || t.contactPhone}</span>
-                    <span className="text-xs text-brand-muted ml-auto flex-shrink-0">{new Date(t.createdAt).toLocaleDateString('pt-BR')}</span>
-                  </div>
-                  <p className="text-xs text-brand-text-secondary line-clamp-2 font-light">{t.originalText}</p>
-                  <div className="flex gap-2 mt-1.5">
-                    <span className="text-[10px] font-bold bg-brand-primary/10 border border-brand-primary/15 text-brand-primary px-2 py-0.5 rounded">
-                      🎙 {t.durationSec}s
-                    </span>
-                    {!t.number && (
-                      <span className="text-[10px] text-brand-muted bg-brand-elevated px-2 py-0.5 rounded">
-                        Número removido
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={(e) => handleDelete(t.id, e)}
-                  className="opacity-0 group-hover:opacity-100 text-brand-muted hover:text-red-400 text-sm transition-all flex-shrink-0 mt-1"
-                  title="Excluir transcrição">
-                  🗑
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Plan card + quickstart */}
-        <div className="flex flex-col gap-4">
-          {stats && (
-            <div className="card p-5">
-              <div className="flex items-center justify-between mb-4">
-                <span className="font-bold text-sm text-brand-text">Plano {stats.planName}</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
-                  {stats.planStatus === 'active' ? 'Ativo' : stats.planStatus}
-                </span>
-              </div>
-              <div className="text-2xl font-black text-brand-primary leading-none">{stats.minutesUsed}</div>
-              <div className="text-xs text-brand-muted mb-3">de {stats.minutesTotal} minutos usados</div>
-              <div className="h-1.5 bg-brand-elevated rounded-full overflow-hidden mb-1">
-                <div className="h-full rounded-full transition-all"
-                  style={{
-                    width: `${stats.minutesPct}%`,
-                    background: 'linear-gradient(90deg, rgba(var(--color-primary-light),1), rgb(var(--color-primary)))',
-                  }} />
-              </div>
-              <div className="flex justify-between text-[10px] text-brand-muted mb-4">
-                <span>{stats.minutesPct}% usado</span>
-                <span>{stats.minutesAvailable.toFixed(1)} min restantes</span>
-              </div>
-              <Link href="/dashboard/plano" className="btn-primary block w-full text-center text-sm py-2">
-                {stats.planName === 'Free' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
-              </Link>
-            </div>
-          )}
-
-          <div className="card p-5">
-            <div className="font-bold text-sm mb-3 text-brand-text">Início Rápido</div>
-            {[
-              { done: true,  label: 'Conta criada' },
-              { done: stats?.activeNumbers ? true : false, label: 'Número conectado' },
-              { done: (stats?.transcriptionsMonth || 0) > 0, label: 'Primeira transcrição' },
-            ].map((s, i) => (
-              <div key={i} className="flex items-center gap-2.5 mb-2.5">
-                <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] flex-shrink-0 ${
-                  s.done ? 'bg-brand-primary text-white' : 'border border-brand-border'
-                }`}>
-                  {s.done ? '✓' : ''}
-                </span>
-                <span className={`text-xs ${s.done ? 'text-brand-muted line-through' : 'text-brand-text'}`}>
-                  {s.label}
-                </span>
-              </div>
-            ))}
-            {!stats?.activeNumbers && (
-              <Link href="/dashboard/numeros" className="btn-ghost w-full justify-center text-xs mt-2 py-2">
-                Conectar número →
-              </Link>
-            )}
-          </div>
-
-          {/* Privacidade */}
-          <div className="card p-4" style={{ borderColor: 'rgba(16,185,129,.2)' }}>
-            <div className="flex items-center gap-1.5 mb-2">
-              <span className="text-sm">🔒</span>
-              <span className="font-bold text-xs text-brand-primary">Seus dados estão protegidos</span>
-            </div>
-            <p className="text-[11px] text-brand-muted leading-relaxed">
-              Áudio nunca armazenado · Transcrições criptografadas no banco · Processamento via Whisper (OpenAI) e Claude (Anthropic).
-            </p>
-          </div>
-
-          {/* Compartilhar */}
-          <div className="card p-5">
-            <div className="font-bold text-sm mb-2 text-brand-text">Indique o ZapScript</div>
-            <p className="text-xs text-brand-text-secondary mb-4 leading-relaxed">
-              Conhece alguém que recebe muitos áudios no WhatsApp? Compartilhe o ZapScript!
-            </p>
-            <button
-              onClick={() => {
-                const msg = `Eu uso o ZapScript para transcrever áudios do WhatsApp automaticamente com IA — economizo muito tempo! Você pode criar uma conta gratuita em zapscript.me`;
-                if (navigator.share) {
-                  navigator.share({ text: msg, url: 'https://zapscript.me' }).catch(() => {});
-                } else {
-                  navigator.clipboard.writeText(msg + ' — https://zapscript.me');
-                }
-              }}
-              className="btn-primary w-full text-center text-xs py-2.5">
-              📤 Compartilhar com amigos
-            </button>
-          </div>
-        </div>
+      {/* ── Privacidade (abaixo dos KPIs) ── */}
+      <div className="flex items-center gap-3 rounded-xl px-4 py-3 mb-7"
+        style={{
+          background: 'rgba(16,185,129,.05)',
+          border: '1px solid rgba(16,185,129,.15)',
+        }}>
+        <span className="text-base flex-shrink-0">🔒</span>
+        <p className="text-[11px] text-brand-muted leading-relaxed">
+          <span className="font-semibold text-brand-primary">Seus dados estão protegidos.</span>
+          {' '}Áudio nunca armazenado · Transcrições criptografadas · Processamento via Whisper (OpenAI) e Claude (Anthropic).
+        </p>
       </div>
 
-      {/* Detail modal — bottom-sheet em mobile, centrado no desktop */}
-      {selected && (
-        <div role="dialog" aria-modal="true"
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={closeModal}>
-          <div className="modal-panel w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[88vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between p-5 pb-4">
-              <div>
-                <div className="font-bold text-base text-brand-text">{selected.contactName || selected.contactPhone}</div>
-                <div className="text-xs text-brand-muted mt-0.5">
-                  {selected.number ? (selected.number.displayName || selected.number.phoneNumber) : 'Número removido'} · {new Date(selected.createdAt).toLocaleString('pt-BR')}
-                </div>
-              </div>
-              <button onClick={closeModal} className="text-brand-muted hover:text-brand-text text-lg transition-colors p-1" aria-label="Fechar">✕</button>
+      {/* ── Cards secundários ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        {/* Plano */}
+        {stats && (
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <span className="font-bold text-sm text-brand-text">Plano {stats.planName}</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
+                {stats.planStatus === 'active' ? 'Ativo' : stats.planStatus}
+              </span>
             </div>
-            <div className="px-5 pb-5 space-y-3">
-              {(selected.summaryBullets as string[]).length > 0 && (
-                <div className="inner-block">
-                  <div className="text-xs font-bold text-brand-primary mb-2">✨ Resumo</div>
-                  {(selected.summaryBullets as string[]).map((b, i) => (
-                    <div key={i} className="text-sm text-brand-text mb-1">• {b}</div>
-                  ))}
-                </div>
-              )}
-              <div className="inner-block">
-                <div className="text-xs font-bold text-brand-text-secondary mb-2">Original</div>
-                <p className="text-sm text-brand-text-secondary font-light leading-relaxed italic">"{selected.originalText}"</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => navigator.clipboard.writeText(selected.originalText)}
-                  className="btn-ghost text-xs py-2.5 flex-1 justify-center">📋 Copiar</button>
-                <button onClick={(e) => handleDelete(selected.id, e)}
-                  className="text-xs py-2.5 px-3 rounded-lg border border-red-400/20 text-red-400 hover:bg-red-400/5 transition-colors">
-                  🗑
-                </button>
-                <button onClick={closeModal}
-                  className="btn-primary text-xs py-2.5 flex-1 justify-center">Fechar</button>
-              </div>
+            <div className="text-2xl font-black text-brand-primary leading-none">{stats.minutesUsed}</div>
+            <div className="text-xs text-brand-muted mb-3">de {stats.minutesTotal} minutos usados</div>
+            <div className="h-1.5 bg-brand-elevated rounded-full overflow-hidden mb-1">
+              <div className="h-full rounded-full transition-all"
+                style={{
+                  width: `${stats.minutesPct}%`,
+                  background: 'linear-gradient(90deg, rgba(var(--color-primary-light),1), rgb(var(--color-primary)))',
+                }} />
             </div>
+            <div className="flex justify-between text-[10px] text-brand-muted mb-4">
+              <span>{stats.minutesPct}% usado</span>
+              <span>{stats.minutesAvailable.toFixed(1)} min restantes</span>
+            </div>
+            <Link href="/dashboard/plano" className="btn-primary block w-full text-center text-sm py-2">
+              {stats.planName === 'Free' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
+            </Link>
           </div>
+        )}
+
+        {/* Início Rápido */}
+        <div className="card p-5">
+          <div className="font-bold text-sm mb-3 text-brand-text">Início Rápido</div>
+          {[
+            { done: true,                                          label: 'Conta criada' },
+            { done: (stats?.activeNumbers ?? 0) > 0,              label: 'Número conectado' },
+            { done: (stats?.transcriptionsTotal ?? 0) > 0,        label: 'Primeira transcrição' },
+          ].map((s, i) => (
+            <div key={i} className="flex items-center gap-2.5 mb-2.5">
+              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] flex-shrink-0 ${
+                s.done ? 'bg-brand-primary text-white' : 'border border-brand-border'
+              }`}>
+                {s.done ? '✓' : ''}
+              </span>
+              <span className={`text-xs ${s.done ? 'text-brand-muted line-through' : 'text-brand-text'}`}>
+                {s.label}
+              </span>
+            </div>
+          ))}
+          {!stats?.activeNumbers && (
+            <Link href="/dashboard/numeros" className="btn-ghost w-full justify-center text-xs mt-2 py-2">
+              Conectar número →
+            </Link>
+          )}
         </div>
-      )}
+
+        {/* Compartilhar */}
+        <div className="card p-5">
+          <div className="font-bold text-sm mb-2 text-brand-text">Indique o ZapScript</div>
+          <p className="text-xs text-brand-text-secondary mb-4 leading-relaxed">
+            Conhece alguém que recebe muitos áudios no WhatsApp? Compartilhe o ZapScript!
+          </p>
+          <button
+            onClick={() => {
+              const msg = `Eu uso o ZapScript para transcrever áudios do WhatsApp automaticamente com IA — economizo muito tempo! Você pode criar uma conta gratuita em zapscript.me`;
+              if (navigator.share) {
+                navigator.share({ text: msg, url: 'https://zapscript.me' }).catch(() => {});
+              } else {
+                navigator.clipboard.writeText(msg + ' — https://zapscript.me');
+              }
+            }}
+            className="btn-primary w-full text-center text-xs py-2.5">
+            📤 Compartilhar com amigos
+          </button>
+        </div>
+
+      </div>
     </div>
   );
 }
