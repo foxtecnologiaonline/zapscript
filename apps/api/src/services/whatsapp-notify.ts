@@ -30,15 +30,13 @@ export async function notifyWelcome(numberId: string): Promise<void> {
     const msg = [
       `👋 Olá${n.user?.name ? `, *${n.user.name}*` : ''}!`,
       '',
-      `✅ Seu número *${n.phoneNumber}* foi conectado com sucesso ao *ZapScript*!`,
+      '✅ *ZapScript* ativado e conectado!',
       '',
-      '🎙️ A partir de agora, todos os áudios que você receber neste número serão *transcritos e resumidos automaticamente*.',
+      'A configuração está pronta, e seus áudios do WhatsApp agora são transcritos e resumidos automaticamente.',
       '',
-      '📱 Não precisa fazer mais nada — é automático!',
+      '🔒 Privado · Criptografado · Sem armazenamento de áudio.',
       '',
-      '🔒 *Privacidade:* Áudios nunca são armazenados. Transcrições criptografadas no banco. Processamento via Whisper (OpenAI) e Claude (Anthropic).',
-      '',
-      '👉 Acesse seu painel: https://ZapScript.me/dashboard',
+      '📊 Painel: zapscript.me/dashboard',
     ].join('\n');
 
     await sendToOwnNumber(n.zapiInstanceId, n.phoneNumber, msg);
