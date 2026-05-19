@@ -36,7 +36,7 @@ function RotatingText() {
   );
 }
 
-/* ── Feature cards — ícones e textos do original ── */
+/* ── Feature cards ── */
 const FEATURES = [
   {
     icon: (
@@ -52,35 +52,22 @@ const FEATURES = [
   {
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
-        <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
-        <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+        <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
       </svg>
     ),
     iconBg: 'rgba(245,158,11,.15)', iconColor: 'rgb(245,158,11)',
-    title: 'Resumos Inteligentes',
-    desc: 'Receba os pontos principais de cada conversa de forma automática.',
+    title: 'Ponto Chave',
+    desc: 'Receba automaticamente o ponto principal de cada áudio — direto e objetivo.',
   },
   {
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
-        <circle cx="7" cy="7" r="1.5" fill="currentColor"/>
+        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
       </svg>
     ),
-    iconBg: 'rgba(139,92,246,.15)', iconColor: 'rgb(167,139,250)',
-    title: 'Etiquetas de Prioridade',
-    desc: 'Classifique seus áudios por prioridade (Alta, Média, Baixa) para focar no que importa.',
-  },
-  {
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
-      </svg>
-    ),
-    iconBg: 'rgba(96,165,250,.15)', iconColor: 'rgb(96,165,250)',
-    title: 'Exportação Direta',
-    desc: 'Envie tarefas e insights diretamente para seu calendário ou lista de afazeres.',
+    iconBg: 'rgba(16,185,129,.10)', iconColor: 'rgb(52,211,153)',
+    title: 'Privacidade',
+    desc: 'Áudio nunca armazenado. Transcrições criptografadas no banco. Processamento via Whisper (OpenAI) e Claude (Anthropic).',
   },
 ];
 
@@ -151,7 +138,7 @@ export default function HomePage() {
       <div className="relative z-10 max-w-mobile mx-auto">
 
         {/* ══ HEADER ══ */}
-        <header className="relative pt-10 px-6 pb-28 overflow-hidden">
+        <header className="relative pt-8 px-6 pb-20 overflow-hidden">
           {/* Glow orbs */}
           <div className="absolute top-0 right-0 -translate-y-1/3 translate-x-1/4 w-72 h-72 rounded-full blur-[100px]"
             style={{ background: 'rgb(var(--color-primary)/.10)' }} />
@@ -159,7 +146,7 @@ export default function HomePage() {
             style={{ background: 'rgb(var(--color-accent)/.10)' }} />
 
           {/* Nav */}
-          <div className="flex items-center gap-3 mb-12" style={{ animation: 'fadeInUp .6s ease .1s both' }}>
+          <div className="flex items-center gap-3 mb-8" style={{ animation: 'fadeInUp .6s ease .1s both' }}>
             {/* Logo box */}
             <div className="w-11 h-11 bg-brand-primary rounded-2xl flex items-center justify-center shadow-glow-green">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -169,14 +156,6 @@ export default function HomePage() {
             <span className="font-display font-bold text-xl tracking-tight text-brand-text">ZapScript</span>
             <div className="ml-auto flex items-center gap-2">
               <ThemeToggleButton />
-              <Link href="/login"
-                className="w-10 h-10 rounded-xl border border-[rgba(var(--color-border-light))] flex items-center justify-center transition-all hover:scale-105"
-                style={{ background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-text-secondary))' }}
-                title="Entrar">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/>
-                </svg>
-              </Link>
             </div>
           </div>
 
@@ -192,8 +171,8 @@ export default function HomePage() {
             </div>
 
             {/* H1 */}
-            <h1 className="font-display font-bold leading-[1.05] tracking-tight mb-6"
-              style={{ fontSize: 'clamp(38px, 10vw, 52px)', animation: 'fadeInUp .6s ease .25s both' }}>
+            <h1 className="font-display font-bold leading-[1.05] tracking-tight mb-4"
+              style={{ fontSize: 'clamp(34px, 9vw, 48px)', animation: 'fadeInUp .6s ease .25s both' }}>
               <span className="text-brand-text">Transforme seus</span>{' '}
               <span className="text-gradient">áudios</span>{' '}
               <span className="text-brand-text">em</span>{' '}
@@ -201,23 +180,46 @@ export default function HomePage() {
             </h1>
 
             {/* Subtitle */}
-            <p className="text-lg leading-relaxed mb-10 max-w-[340px]"
+            <p className="text-base leading-relaxed mb-6 max-w-[320px]"
               style={{ color: 'rgb(var(--color-text-secondary))', animation: 'fadeInUp .6s ease .3s both' }}>
-              Transcrição automática, resumos inteligentes e etiquetas de prioridade. Tudo o que você precisa para não perder nada importante.
+              Transcrição automática e ponto chave para você não perder nada importante.
             </p>
 
-            {/* CTAs */}
-            <div className="flex flex-col gap-3.5" style={{ animation: 'fadeInUp .6s ease .35s both' }}>
-              <Link href="/cadastro" className="btn-primary w-full py-4 px-8 text-lg flex items-center justify-center gap-2.5">
-                Começar Agora
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14M12 5l7 7-7 7"/>
-                </svg>
-              </Link>
-              <Link href="#planos" className="text-sm font-medium text-center py-2 transition-colors"
-                style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                Ver planos e preços →
-              </Link>
+            {/* CTAs — ambos visíveis sem scroll */}
+            <div className="flex flex-col gap-2" style={{ animation: 'fadeInUp .6s ease .35s both' }}>
+              {/* Novo por aqui? */}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5 ml-0.5"
+                  style={{ color: 'rgb(var(--color-text-muted))' }}>
+                  Novo por aqui?
+                </p>
+                <Link href="/cadastro" className="btn-primary w-full py-3.5 px-8 text-base flex items-center justify-center gap-2.5">
+                  Começar Agora
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                  </svg>
+                </Link>
+              </div>
+
+              {/* Já tem Cadastro? */}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5 ml-0.5"
+                  style={{ color: 'rgb(var(--color-text-muted))' }}>
+                  Já tem Cadastro?
+                </p>
+                <Link href="/login"
+                  className="w-full py-3 rounded-2xl text-sm font-semibold text-center flex items-center justify-center gap-2 transition-all hover:opacity-80"
+                  style={{
+                    border: '1.5px solid rgb(var(--color-border))',
+                    color: 'rgb(var(--color-text-secondary))',
+                    background: 'transparent',
+                  }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/>
+                  </svg>
+                  Entrar na minha conta
+                </Link>
+              </div>
             </div>
           </div>
         </header>
@@ -267,31 +269,6 @@ export default function HomePage() {
                 </div>
               </div>
             ))}
-          </div>
-        </section>
-
-        {/* ══ PRIVACY BANNER ══ */}
-        <section className="px-6 pb-10">
-          <div className="rounded-2xl p-5 flex flex-col gap-3"
-            style={{ background: 'rgba(16,185,129,.06)', border: '1px solid rgba(16,185,129,.18)' }}>
-            <div className="flex items-center gap-2">
-              <span className="text-[18px]">🔒</span>
-              <span className="font-display font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>
-                Sua privacidade é prioridade
-              </span>
-            </div>
-            <div className="flex flex-col gap-2">
-              {[
-                { icon: '🚫', text: 'Áudio nunca armazenado' },
-                { icon: '🔐', text: 'Transcrições criptografadas no banco' },
-                { icon: '🤖', text: 'Processamento via Whisper (OpenAI) e Claude (Anthropic)' },
-              ].map(({ icon, text }) => (
-                <div key={text} className="flex items-center gap-2.5">
-                  <span className="text-sm">{icon}</span>
-                  <span className="text-xs font-medium" style={{ color: 'rgb(var(--color-text-secondary))' }}>{text}</span>
-                </div>
-              ))}
-            </div>
           </div>
         </section>
 
