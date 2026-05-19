@@ -81,23 +81,28 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
   return { text, durationSec };
 }
 
-/** Calcula quantos bullets gerar com base nas linhas do texto (máx 5) */
+/**
+ * Decide quantos bullets gerar:
+ * - até 60s (~150 palavras) → 1 bullet
+ * - acima de 60s            → 2 bullets
+ * Máximo 2 — ponto chave deve ser curto e direto.
+ */
 function bulletCount(text: string): number {
-  const lines = text.split('\n').filter(l => l.trim().length > 0).length;
-  return Math.min(5, Math.max(1, lines));
+  const wordCount = text.trim().split(/\s+/).length;
+  return wordCount > 150 ? 2 : 1;
 }
 
-/** Gera bullets com Claude Haiku (rápido e econômico para tarefas simples) */
+/** Gera bullets ultra-concisos com Claude Haiku — máx 12 palavras cada */
 async function generateBullets(originalText: string): Promise<string[]> {
   const count = bulletCount(originalText);
   try {
     const res = await claude.messages.create({
       model:      'claude-haiku-4-5',
-      max_tokens: 400,
-      system:     'Você é um assistente que resume áudios transcritos em bullets concisos em português brasileiro. Responda SOMENTE com os bullets, um por linha, começando com "- ". Sem título, sem texto extra.',
+      max_tokens: 120,
+      system:     'Você resume áudios de WhatsApp em PT-BR. Cada ponto deve ter no máximo 12 palavras, ser direto e factual — só o essencial. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação.',
       messages: [{
         role:    'user',
-        content: `Resuma em exatamente ${count} ponto${count > 1 ? 's' : ''} principal${count > 1 ? 'is' : ''} ou chave:\n\n${originalText}`,
+        content: `Resuma em ${count === 1 ? 'exatamente 1 ponto curto' : '2 pontos curtos'}:\n\n${originalText}`,
       }],
     });
     const raw     = (res.content[0] as any).text || '';
@@ -111,10 +116,10 @@ async function generateBullets(originalText: string): Promise<string[]> {
     return bullets.length > 0 ? bullets : ['Resumo não disponível'];
   } catch (err: any) {
     logger.warn(`[Worker] Claude falhou ao gerar bullets — usando fallback: ${(err as Error).message}`);
-    const sentences = originalText.split(/[.!?]\s+/).filter(s => s.trim().length > 10).slice(0, count);
-    return sentences.length > 0
-      ? sentences.map(s => s.trim())
-      : ['Transcrição disponível — resumo temporariamente indisponível'];
+    // Fallback: primeira frase do texto, truncada
+    const first = originalText.split(/[.!?]\s+/).find(s => s.trim().length > 5) || originalText;
+    const words = first.trim().split(/\s+/).slice(0, 12).join(' ');
+    return [words || 'Transcrição disponível'];
   }
 }
 
