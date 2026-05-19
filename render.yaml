@@ -40,6 +40,16 @@ services:
       #     maxInstances: 3   # aumentar conforme demanda
       # O Worker (BullMQ) já é multi-instância safe — pode ter múltiplos pods sem config extra.
 
+  # ── Web (Next.js) ────────────────────────────────────────────
+  - type: web
+    name: zapscript-web
+    runtime: docker
+    dockerfilePath: apps/web/Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # NEXT_PUBLIC_API_URL — https://zapscript-api.onrender.com (ou domínio customizado)
+
   # ── Worker (BullMQ + Whisper + Claude) ──────────────────────
   - type: worker
     name: zapscript-worker
