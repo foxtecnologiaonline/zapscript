@@ -235,7 +235,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
               <table className="w-full min-w-[820px]">
                 <thead>
                   <tr className="border-b border-[rgba(16,185,129,.08)]">
-                    {['ID', 'E-mail', 'Plano', 'Minutos', 'Assinatura', 'E-mail ✓', 'Cadastro', 'Ações'].map(col => (
+                    {['ID', 'E-mail', 'Plano', 'Minutos', 'Assinatura', 'Números', 'E-mail ✓', 'Cadastro', 'Ações'].map(col => (
                       <th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide whitespace-nowrap">
                         {col}
                       </th>
@@ -244,13 +244,16 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                 </thead>
                 <tbody>
                   {subLoading ? (
-                    <tr><td colSpan={8} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando...</td></tr>
+                    <tr><td colSpan={9} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando...</td></tr>
                   ) : users.length === 0 ? (
-                    <tr><td colSpan={8} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhum usuário encontrado</td></tr>
+                    <tr><td colSpan={9} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhum usuário encontrado</td></tr>
                   ) : users.map((u: any) => {
-                    const plan   = u.subscription?.plan?.name || 'free';
-                    const status = u.subscription?.status || '—';
-                    const mins   = u.balance?.availableMinutes;
+                    const plan      = u.subscription?.plan?.name || 'free';
+                    const status    = u.subscription?.status || '—';
+                    const mins      = u.balance?.availableMinutes;
+                    const nums      = (u.numbers || []) as any[];
+                    const connected = nums.filter((n: any) => n.status === 'connected').length;
+                    const total     = nums.length;
                     return (
                       <tr key={u.id} className="border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.025)] transition-colors group">
                         <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)] font-mono max-w-[100px] truncate">{u.id.slice(0,10)}…</td>
@@ -260,6 +263,15 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                           {typeof mins === 'number' ? mins.toFixed(1) : '—'}
                         </td>
                         <td className="px-4 py-3"><Badge label={STATUS_LABEL[status] || status} cls={STATUS_CLS[status]} /></td>
+                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                          {total === 0 ? (
+                            <span className="text-[rgba(16,185,129,.25)] text-xs">—</span>
+                          ) : (
+                            <span className={`text-xs font-bold font-mono ${connected > 0 ? 'text-green-400' : 'text-red-400/70'}`}>
+                              {connected}/{total}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-center">
                           {u.emailVerified
                             ? <span className="text-green-400 text-sm">✅</span>
