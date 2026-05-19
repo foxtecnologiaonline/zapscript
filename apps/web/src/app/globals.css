@@ -160,6 +160,16 @@ html, body {
 
 .max-w-mobile { max-width: 430px; }
 
+/* ── Desktop: coluna central com separação visual sutil ── */
+@media (min-width: 640px) {
+  .landing-inner {
+    box-shadow: 0 0 0 1px rgba(0,0,0,.05), 0 12px 48px rgba(0,0,0,.06);
+  }
+  .dark .landing-inner {
+    box-shadow: 0 0 0 1px rgba(255,255,255,.04), 0 12px 48px rgba(0,0,0,.3);
+  }
+}
+
 /* ── Rotating text animation ── */
 @keyframes rotateWordIn {
   from { opacity: 0; transform: translateY(100%); filter: blur(4px); }

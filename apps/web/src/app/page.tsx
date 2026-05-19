@@ -131,25 +131,22 @@ export default function HomePage() {
   const ex = EXAMPLES[exTab];
 
   return (
-    <div className="min-h-screen bg-mesh font-sans text-brand-text overflow-x-hidden relative">
-      {/* Fixed mesh overlay */}
-      <div className="fixed inset-0 bg-mesh pointer-events-none" />
+    <div className="min-h-screen bg-mesh font-sans text-brand-text overflow-x-hidden">
 
-      <div className="relative z-10 max-w-mobile mx-auto">
+      <div className="landing-inner relative z-10 w-full max-w-[430px] sm:max-w-[500px] mx-auto bg-mesh min-h-screen">
 
         {/* ══ HEADER ══ */}
-        <header className="relative pt-8 px-6 pb-20 overflow-hidden">
-          {/* Glow orbs */}
-          <div className="absolute top-0 right-0 -translate-y-1/3 translate-x-1/4 w-72 h-72 rounded-full blur-[100px]"
-            style={{ background: 'rgb(var(--color-primary)/.10)' }} />
-          <div className="absolute bottom-0 left-0 translate-y-1/3 -translate-x-1/3 w-64 h-64 rounded-full blur-[80px]"
+        <header className="relative pt-7 px-5 pb-16 overflow-hidden">
+          {/* Glow orbs — contidos dentro do header */}
+          <div className="absolute -top-10 -right-10 w-60 h-60 rounded-full blur-[90px] pointer-events-none"
+            style={{ background: 'rgb(var(--color-primary)/.12)' }} />
+          <div className="absolute bottom-0 -left-10 w-52 h-52 rounded-full blur-[70px] pointer-events-none"
             style={{ background: 'rgb(var(--color-accent)/.10)' }} />
 
           {/* Nav */}
-          <div className="flex items-center gap-3 mb-8" style={{ animation: 'fadeInUp .6s ease .1s both' }}>
-            {/* Logo box */}
-            <div className="w-11 h-11 bg-brand-primary rounded-2xl flex items-center justify-center shadow-glow-green">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <div className="relative flex items-center gap-3 mb-7" style={{ animation: 'fadeInUp .6s ease .1s both' }}>
+            <div className="w-10 h-10 bg-brand-primary rounded-2xl flex items-center justify-center shadow-glow-green flex-shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.96 9.96 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/>
               </svg>
             </div>
@@ -160,10 +157,10 @@ export default function HomePage() {
           </div>
 
           {/* Hero */}
-          <div>
+          <div className="relative">
             {/* Badge */}
-            <div className="mb-5" style={{ animation: 'fadeInUp .6s ease .2s both' }}>
-              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide"
+            <div className="mb-4" style={{ animation: 'fadeInUp .6s ease .2s both' }}>
+              <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold"
                 style={{ background: 'rgba(var(--color-primary-light)/.6)', color: 'rgb(var(--color-primary))' }}>
                 <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'rgb(var(--color-primary))' }} />
                 Transcrição com IA
@@ -171,8 +168,8 @@ export default function HomePage() {
             </div>
 
             {/* H1 */}
-            <h1 className="font-display font-bold leading-[1.05] tracking-tight mb-4"
-              style={{ fontSize: 'clamp(34px, 9vw, 48px)', animation: 'fadeInUp .6s ease .25s both' }}>
+            <h1 className="font-display font-bold leading-[1.06] tracking-tight mb-3"
+              style={{ fontSize: 'clamp(30px, 8.5vw, 44px)', animation: 'fadeInUp .6s ease .25s both' }}>
               <span className="text-brand-text">Transforme seus</span>{' '}
               <span className="text-gradient">áudios</span>{' '}
               <span className="text-brand-text">em</span>{' '}
@@ -180,39 +177,48 @@ export default function HomePage() {
             </h1>
 
             {/* Subtitle */}
-            <p className="text-base leading-relaxed mb-6 max-w-[320px]"
+            <p className="text-[15px] leading-relaxed mb-5"
               style={{ color: 'rgb(var(--color-text-secondary))', animation: 'fadeInUp .6s ease .3s both' }}>
               Transcrição automática e ponto chave para você não perder nada importante.
             </p>
 
-            {/* CTAs — ambos visíveis sem scroll */}
-            <div className="flex flex-col gap-2" style={{ animation: 'fadeInUp .6s ease .35s both' }}>
-              {/* Novo por aqui? */}
+            {/* ── CTAs ── */}
+            <div className="flex flex-col gap-3" style={{ animation: 'fadeInUp .6s ease .35s both' }}>
+
+              {/* PRIMARY — Começar */}
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5 ml-0.5"
-                  style={{ color: 'rgb(var(--color-text-muted))' }}>
-                  Novo por aqui?
+                <p className="flex items-center gap-1.5 text-xs font-medium mb-2"
+                  style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                  <span>👋</span> Novo por aqui?
                 </p>
-                <Link href="/cadastro" className="btn-primary w-full py-3.5 px-8 text-base flex items-center justify-center gap-2.5">
+                <Link href="/cadastro"
+                  className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2">
                   Começar Agora
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M12 5l7 7-7 7"/>
                   </svg>
                 </Link>
               </div>
 
-              {/* Já tem Cadastro? */}
+              {/* Divisor "ou" */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px" style={{ background: 'rgb(var(--color-border))' }} />
+                <span className="text-[11px] font-medium select-none" style={{ color: 'rgb(var(--color-text-muted))' }}>ou</span>
+                <div className="flex-1 h-px" style={{ background: 'rgb(var(--color-border))' }} />
+              </div>
+
+              {/* SECONDARY — Login */}
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5 ml-0.5"
-                  style={{ color: 'rgb(var(--color-text-muted))' }}>
-                  Já tem Cadastro?
+                <p className="flex items-center gap-1.5 text-xs font-medium mb-2"
+                  style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                  <span>🔑</span> Já tem uma conta?
                 </p>
                 <Link href="/login"
-                  className="w-full py-3 rounded-2xl text-sm font-semibold text-center flex items-center justify-center gap-2 transition-all hover:opacity-80"
+                  className="w-full py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-80 active:scale-[.98]"
                   style={{
                     border: '1.5px solid rgb(var(--color-border))',
                     color: 'rgb(var(--color-text-secondary))',
-                    background: 'transparent',
+                    background: 'rgb(var(--color-surface))',
                   }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/>
@@ -220,13 +226,14 @@ export default function HomePage() {
                   Entrar na minha conta
                 </Link>
               </div>
+
             </div>
           </div>
         </header>
 
         {/* ══ STATS GLASS CARD ══ */}
-        <section className="relative z-20 -mt-14 px-6" style={{ animation: 'fadeInUp .6s ease .4s both' }}>
-          <div className="max-w-mobile mx-auto">
+        <section className="relative z-20 -mt-10 px-5" style={{ animation: 'fadeInUp .6s ease .4s both' }}>
+          <div className="w-full">
             <div className="glass rounded-3xl p-5 border shadow-medium flex justify-around items-center"
               style={{ borderColor: 'rgb(var(--color-border-light))' }}>
               {[['10x', 'Mais rápido'], ['99%', 'Precisão'], ['PT-BR', 'Otimizado']].map(([val, lbl], i) => (
@@ -243,8 +250,8 @@ export default function HomePage() {
         </section>
 
         {/* ══ FEATURES ══ */}
-        <section className="relative z-10 py-20 px-6">
-          <div className="mb-14" style={{ animation: 'fadeInUp .6s ease both' }}>
+        <section className="relative z-10 py-16 px-5">
+          <div className="mb-8" style={{ animation: 'fadeInUp .6s ease both' }}>
             <span className="text-xs font-semibold uppercase tracking-widest"
               style={{ color: 'rgb(var(--color-accent))' }}>
               Funcionalidades
@@ -273,7 +280,7 @@ export default function HomePage() {
         </section>
 
         {/* ══ EXAMPLES ══ */}
-        <section className="px-6 pb-20">
+        <section className="px-5 pb-16">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center"
               style={{ background: 'rgba(16,185,129,.15)', color: 'rgb(var(--color-primary))' }}>
@@ -358,7 +365,7 @@ export default function HomePage() {
         </section>
 
         {/* ══ PLANS ══ */}
-        <section id="planos" className="px-6 pb-20">
+        <section id="planos" className="px-5 pb-16">
           <div className="mb-10">
             <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>
               Planos
@@ -419,7 +426,7 @@ export default function HomePage() {
         </section>
 
         {/* ══ CTA FINAL ══ */}
-        <section className="px-6 pb-16">
+        <section className="px-5 pb-14">
           <div className="rounded-[1.75rem] p-8 text-center"
             style={{
               background: 'linear-gradient(135deg, rgba(16,185,129,.15) 0%, rgba(245,158,11,.08) 100%)',
@@ -445,7 +452,7 @@ export default function HomePage() {
         </section>
 
         {/* ══ FOOTER ══ */}
-        <footer className="px-6 py-6 border-t text-center" style={{ borderColor: 'rgb(var(--color-border))' }}>
+        <footer className="px-5 py-6 border-t text-center" style={{ borderColor: 'rgb(var(--color-border))' }}>
           <p className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
             © 2026 ZapScript. Todos os direitos reservados.
           </p>
