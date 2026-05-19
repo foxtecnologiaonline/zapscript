@@ -270,6 +270,31 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ══ PRIVACY BANNER ══ */}
+        <section className="px-6 pb-10">
+          <div className="rounded-2xl p-5 flex flex-col gap-3"
+            style={{ background: 'rgba(16,185,129,.06)', border: '1px solid rgba(16,185,129,.18)' }}>
+            <div className="flex items-center gap-2">
+              <span className="text-[18px]">🔒</span>
+              <span className="font-display font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>
+                Sua privacidade é prioridade
+              </span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {[
+                { icon: '🚫', text: 'Áudio nunca armazenado' },
+                { icon: '🔐', text: 'Transcrições criptografadas no banco' },
+                { icon: '🤖', text: 'Processamento via Whisper (OpenAI) e Claude (Anthropic)' },
+              ].map(({ icon, text }) => (
+                <div key={text} className="flex items-center gap-2.5">
+                  <span className="text-sm">{icon}</span>
+                  <span className="text-xs font-medium" style={{ color: 'rgb(var(--color-text-secondary))' }}>{text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ══ EXAMPLES ══ */}
         <section className="px-6 pb-20">
           <div className="flex items-center gap-3 mb-6">

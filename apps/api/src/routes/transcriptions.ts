@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { transcriptionQueue } from '../services/queue';
+import { decryptStr, decryptArr } from '../services/encryption';
 
 export default async function transcriptionRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -17,7 +18,9 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
 
     const where: any = { userId };
     if (numberId) where.numberId = numberId === 'none' ? null : numberId;
-    if (search)   where.originalText = { contains: search, mode: 'insensitive' };
+    // Nota: originalText é criptografado — busca em texto livre desabilitada.
+    // Busca por nome do contato (não criptografado) quando search é fornecido.
+    if (search)   where.contactName = { contains: search, mode: 'insensitive' };
 
     const [items, total] = await Promise.all([
       prisma.transcription.findMany({
@@ -29,7 +32,16 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       }),
       prisma.transcription.count({ where }),
     ]);
-    return { items, total, limit, offset };
+
+    // Decriptar campos sensíveis antes de retornar ao frontend
+    const decryptedItems = items.map(t => ({
+      ...t,
+      contactPhone:   decryptStr(t.contactPhone),
+      originalText:   decryptStr(t.originalText),
+      summaryBullets: decryptArr(t.summaryBullets),
+    }));
+
+    return { items: decryptedItems, total, limit, offset };
   });
 
   // ── GET /transcriptions/:id ───────────────────────────
@@ -39,7 +51,12 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       include: { number: true },
     });
     if (!t) return reply.code(404).send({ error: 'Não encontrado' });
-    return t;
+    return {
+      ...t,
+      contactPhone:   decryptStr(t.contactPhone),
+      originalText:   decryptStr(t.originalText),
+      summaryBullets: decryptArr(t.summaryBullets),
+    };
   });
 
   // ── DELETE /transcriptions/:id ────────────────────────

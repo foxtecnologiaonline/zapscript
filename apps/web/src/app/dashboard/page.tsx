@@ -215,6 +215,17 @@ export default function DashboardPage() {
             )}
           </div>
 
+          {/* Privacidade */}
+          <div className="card p-4" style={{ borderColor: 'rgba(16,185,129,.2)' }}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className="text-sm">🔒</span>
+              <span className="font-bold text-xs text-brand-primary">Seus dados estão protegidos</span>
+            </div>
+            <p className="text-[11px] text-brand-muted leading-relaxed">
+              Áudio nunca armazenado · Transcrições criptografadas no banco · Processamento via Whisper (OpenAI) e Claude (Anthropic).
+            </p>
+          </div>
+
           {/* Compartilhar */}
           <div className="card p-5">
             <div className="font-bold text-sm mb-2 text-brand-text">Indique o ZapScript</div>

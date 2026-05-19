@@ -8,6 +8,7 @@ import { convertToMp3 } from './services/audio';
 import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
 import { downloadAudioFromTwilio, sendMessageViaTwilio } from './services/twilio';
 import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread } from './services/evolution';
+import { encryptStr, encryptArr } from './services/encryption';
 import { logger } from './lib/logger';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
@@ -146,9 +147,14 @@ async function saveTranscription(params: {
       throw new Error(`Saldo insuficiente no momento do débito (${durationMin.toFixed(2)} min)`);
     }
 
+    // Criptografar campos sensíveis antes de salvar
+    const encPhone   = encryptStr(contactPhone);
+    const encText    = encryptStr(originalText);
+    const encBullets = encryptArr(bullets);
+
     const [t] = await Promise.all([
       tx.transcription.create({
-        data: { userId, numberId, contactPhone, contactName: contactName ?? null, durationSec, originalText, summaryBullets: bullets, confidenceScore: 99.0, source },
+        data: { userId, numberId, contactPhone: encPhone, contactName: contactName ?? null, durationSec, originalText: encText, summaryBullets: encBullets, confidenceScore: 99.0, source },
       }),
       tx.whatsappNumber.update({
         where: { id: numberId },

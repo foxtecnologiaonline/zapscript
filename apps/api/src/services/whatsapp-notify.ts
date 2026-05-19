@@ -36,6 +36,8 @@ export async function notifyWelcome(numberId: string): Promise<void> {
       '',
       '📱 Não precisa fazer mais nada — é automático!',
       '',
+      '🔒 *Privacidade:* Áudios nunca são armazenados. Transcrições criptografadas no banco. Processamento via Whisper (OpenAI) e Claude (Anthropic).',
+      '',
       '👉 Acesse seu painel: https://ZapScript.me/dashboard',
     ].join('\n');
 
