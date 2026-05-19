@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 
 const API  = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 const PAGE = 20;
@@ -1107,8 +1107,10 @@ export default function AdminPage() {
     } finally { setCreatingPlan(false); }
   }
 
-  /* ── Login ── */
-  if (!auth) return (
+  const growth = stats ? (stats.users.month - stats.users.lastMonth) : 0;
+
+  /* ── Login screen ── */
+  const loginScreen = (
     <div className="min-h-screen bg-[#040b09] flex items-center justify-center px-4">
       <div className="w-full max-w-sm bg-[#0d1c19] border border-[rgba(16,185,129,.12)] rounded-2xl p-8 shadow-2xl">
         <div className="text-center mb-6">
@@ -1132,7 +1134,7 @@ export default function AdminPage() {
     </div>
   );
 
-  const growth = stats ? (stats.users.month - stats.users.lastMonth) : 0;
+  if (!auth) return loginScreen;
 
   return (
     <div className="min-h-screen bg-[#040b09] p-4 md:p-6">
