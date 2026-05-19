@@ -84,23 +84,33 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
         // WhatsApp conectado — atualizar banco
         const number = await findNumber();
         if (number) {
-          const wasConnected = number.status === 'connected';
+          const prevStatus = number.status; // 'pending' | 'connecting' | 'disconnected' | 'connected'
+
+          // Só atualiza connectedAt se realmente mudou de estado
+          const changed = prevStatus !== 'connected';
           await prisma.whatsappNumber.update({
             where: { id: number.id },
             data: {
               status:      'connected',
-              connectedAt: new Date(),
+              connectedAt: changed ? new Date() : undefined,
             },
           });
-          log.info(`[Evolution] ✅ Número ${number.id} (user: ${number.userId}) conectado`);
+
+          log.info(`[Evolution] ✅ Número ${number.id} (user: ${number.userId}) — prev:${prevStatus} → connected`);
+
           // Notificar frontend via Socket.IO → fecha modal de conexão automaticamente
           io.to(`user:${number.userId}`).emit('number:connected', { numberId: number.id });
-          // Boas-vindas na primeira conexão; reconexão em conexões subsequentes
-          if (!wasConnected) {
-            notifyWelcome(number.id).catch(() => null);
-          } else {
+
+          // Notificações: apenas quando muda de estado real
+          // 'connected' → 'connected': evento redundante (keepalive/restart) — sem notificação
+          // 'disconnected' → 'connected': reconexão real → notifyReconnected
+          // qualquer outro → 'connected': primeira conexão → notifyWelcome
+          if (prevStatus === 'disconnected') {
             notifyReconnected(number.id).catch(() => null);
+          } else if (prevStatus !== 'connected') {
+            notifyWelcome(number.id).catch(() => null);
           }
+          // prevStatus === 'connected' → sem notificação (evento de keepalive/restart)
         } else {
           log.warn(`[Evolution] connection.update open: nenhum número encontrado para instância ${instName}`);
         }
