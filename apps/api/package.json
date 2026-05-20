@@ -32,6 +32,9 @@
     "socket.io": "^4.8.3",
     "zod": "^3.23.8"
   },
+  "overrides": {
+    "ws": "8.20.1"
+  },
   "devDependencies": {
     "@types/ioredis": "^4.28.10",
     "@types/jest": "^29.5.12",

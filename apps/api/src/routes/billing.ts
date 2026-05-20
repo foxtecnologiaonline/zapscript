@@ -229,7 +229,7 @@ export default async function billingRoutes(app: FastifyInstance) {
 
   // ── GET /billing/invoices ─────────────────────────────
   // Lista as últimas 12 faturas da assinatura no Asaas
-  app.get('/invoices', auth, async (req: any, reply) => {
+  app.get('/invoices', auth, async (req: any) => {
     const userId = req.user.sub;
     const sub = await prisma.subscription.findUnique({ where: { userId } });
 
