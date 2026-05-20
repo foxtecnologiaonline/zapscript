@@ -64,6 +64,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
         <meta name="theme-color" content="#0c0c12" />
+        <meta name="copyright" content="© 2026 ZapScript / FOX TecnologIA. Todos os direitos reservados." />
+        <meta name="author" content="ZapScript — zapscript.me" />
       </head>
       <body className="font-sans bg-brand-bg text-brand-text antialiased" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
         <ThemeProvider>

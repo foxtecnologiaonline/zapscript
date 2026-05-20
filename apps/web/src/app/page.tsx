@@ -452,9 +452,12 @@ export default function HomePage() {
         </section>
 
         {/* ══ FOOTER ══ */}
-        <footer className="px-5 py-6 border-t text-center" style={{ borderColor: 'rgb(var(--color-border))' }}>
-          <p className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
-            © 2026 ZapScript. Todos os direitos reservados.
+        <footer className="px-5 py-8 border-t text-center" style={{ borderColor: 'rgb(var(--color-border))' }}>
+          <p className="text-xs font-medium" style={{ color: 'rgb(var(--color-text-muted))' }}>
+            © 2026 ZapScript · FOX TecnologIA · Todos os direitos reservados.
+          </p>
+          <p className="text-[11px] mt-1" style={{ color: 'rgb(var(--color-text-muted))', opacity: 0.6 }}>
+            Código-fonte, design e marca protegidos pela Lei nº 9.610/1998. Reprodução proibida.
           </p>
           <div className="flex justify-center gap-4 mt-3">
             {['Termos', 'Privacidade'].map(l => (
