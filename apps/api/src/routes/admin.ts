@@ -336,7 +336,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         ).catch((err: any) => app.log.warn({ err: err.message }, '[Admin] Falha ao enviar reset e-mail'));
       }
 
-      return { ok: true, message: `Link de redefinição enviado para ${user.email}.`, link: resetLink };
+      return { ok: true, message: `Link de redefinição enviado para ${user.email}.` };
     }
   );
 
@@ -381,7 +381,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         }
 
         app.log.info(`[Admin] E-mail de ativação reenviado para ${user.email}`);
-        return { ok: true, message: `E-mail de ativação reenviado para ${user.email}.`, link: activationLink };
+        return { ok: true, message: `E-mail de ativação reenviado para ${user.email}.` };
       } catch (err: any) {
         app.log.error({ userId: id, err: err.message }, '[Admin] Erro ao reenviar ativação');
         return reply.code(500).send({ error: 'Erro ao reenviar ativação. Tente novamente.' });

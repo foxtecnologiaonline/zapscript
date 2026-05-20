@@ -11,9 +11,8 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
   app.post('/', async (req: any, reply) => {
 
     // ── Segurança: validar secret se configurado ─────────────────────────
-    // Secret pode vir como query param (?secret=...) ou header x-evolution-secret
-    const secret         = (req.query as any)?.secret as string | undefined
-                        || req.headers['x-evolution-secret'] as string | undefined;
+    // Secret deve vir apenas via header x-evolution-secret (nunca via query param)
+    const secret         = req.headers['x-evolution-secret'] as string | undefined;
     const expectedSecret = process.env.EVOLUTION_WEBHOOK_SECRET;
     if (expectedSecret && secret !== expectedSecret) {
       app.log.warn('[Evolution] Secret inválido — requisição rejeitada');
