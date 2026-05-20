@@ -332,6 +332,37 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
               {/* ── Modo: QR Code ── */}
               {connectMode === 'qr' && (
                 <>
+                  {/* Aviso "Suspeita de golpe" — mostrar antes do QR para o usuário não se assustar */}
+                  <div className="rounded-xl border border-amber-400/25 bg-amber-400/5 px-3 py-3">
+                    <div className="flex items-start gap-2 mb-2">
+                      <span className="text-base flex-shrink-0 mt-0.5">⚠️</span>
+                      <p className="text-[11px] font-semibold text-amber-400 leading-snug">
+                        O WhatsApp pode exibir "Suspeita de golpe" — isso é <span className="underline decoration-dotted">completamente normal</span>
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-brand-muted leading-relaxed ml-6">
+                      Nossos servidores ficam nos EUA e o WhatsApp alerta quando a conexão vem de fora do Brasil.
+                      Basta <strong className="text-brand-text">ignorar o aviso e confirmar</strong> — sua conta está 100% segura.
+                    </p>
+                    <details className="mt-2 ml-6 group">
+                      <summary className="text-[10px] text-brand-primary cursor-pointer select-none hover:underline list-none flex items-center gap-1">
+                        <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                        Por que isso acontece?
+                      </summary>
+                      <div className="mt-2 space-y-2 text-[10px] text-brand-muted leading-relaxed">
+                        <p>
+                          <strong className="text-brand-text">O que é esse aviso?</strong> O WhatsApp detecta que a conexão está vindo de um IP nos EUA (onde nossos servidores ficam) e exibe automaticamente um alerta de segurança.
+                        </p>
+                        <p>
+                          <strong className="text-brand-text">É seguro confirmar?</strong> Sim. O ZapScript funciona exatamente como o WhatsApp Web — é apenas um dispositivo adicional vinculado à sua conta. O alerta desaparece após a primeira conexão.
+                        </p>
+                        <p>
+                          <strong className="text-brand-text">Dica:</strong> Se preferir evitar o aviso, use <strong>Código por número</strong> (aba ao lado) — esse método não exibe o alerta.
+                        </p>
+                      </div>
+                    </details>
+                  </div>
+
                   <div className="flex flex-col items-center justify-center bg-brand-elevated rounded-2xl p-5 gap-3">
                     {qrImage ? (
                       <>

@@ -144,7 +144,8 @@ export default async function billingRoutes(app: FastifyInstance) {
           description:       `ZapScript ${planName === 'pro' ? 'Pro' : 'Ultra'}`,
           externalReference: `${userId}|${planName}`,
           // Redireciona após pagamento
-          successPage:       `${process.env.APP_URL}/dashboard?upgrade=success&plan=${planName}`,
+          successPage:       `${process.env.APP_URL}/payment/success?plan=${planName}`,
+          failurePage:       `${process.env.APP_URL}/payment/failed?plan=${planName}`,
         }),
       });
 
@@ -224,6 +225,37 @@ export default async function billingRoutes(app: FastifyInstance) {
     ]);
 
     return { canceled: true, message: 'Assinatura cancelada. Você foi movido para o plano gratuito.' };
+  });
+
+  // ── GET /billing/invoices ─────────────────────────────
+  // Lista as últimas 12 faturas da assinatura no Asaas
+  app.get('/invoices', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const sub = await prisma.subscription.findUnique({ where: { userId } });
+
+    if (!sub?.asaasSubscriptionId) {
+      return { invoices: [] };
+    }
+
+    try {
+      const res  = await asaas(`/subscriptions/${sub.asaasSubscriptionId}/payments?limit=12&offset=0`);
+      const data = await res.json() as any;
+      const invoices = (data?.data || []).map((p: any) => ({
+        id:          p.id,
+        value:       p.value,
+        netValue:    p.netValue,
+        status:      p.status,
+        dueDate:     p.dueDate,
+        paymentDate: p.paymentDate,
+        invoiceUrl:  p.invoiceUrl || `https://www.asaas.com/c/${p.id}`,
+        billingType: p.billingType,
+        description: p.description,
+      }));
+      return { invoices };
+    } catch (err) {
+      app.log.error({ err }, 'Erro ao buscar faturas Asaas');
+      return { invoices: [] };
+    }
   });
 
   // ── GET /billing/portal ───────────────────────────────

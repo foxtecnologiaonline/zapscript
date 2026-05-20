@@ -6,12 +6,18 @@ import { logger } from './logger';
  * Envia e-mail via Resend (API HTTP) ou SMTP como fallback.
  * Resend nunca é bloqueado por cloud providers (usa HTTPS porta 443).
  * SMTP é mantido como fallback para desenvolvimento local.
+ *
+ * Para domínio verificado no Resend:
+ *   1. Acesse resend.com/domains → Add Domain → zapscript.me
+ *   2. Adicione os registros DNS (TXT + CNAME/MX) no provedor do domínio
+ *   3. Clique em "Verify" no painel Resend
+ *   4. Configure a env var SMTP_FROM=ZapScript <nao-responda@zapscript.me> no Render
  */
 export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
   // ── Resend (primário — API HTTP, nunca bloqueado em cloud) ─────────────
   if (process.env.RESEND_API_KEY) {
     const resend = new Resend(process.env.RESEND_API_KEY);
-    const from   = process.env.SMTP_FROM || `ZapScript <ativacao@zapscript.me>`;
+    const from   = process.env.SMTP_FROM || `ZapScript <nao-responda@zapscript.me>`;
 
     const { data, error } = await resend.emails.send({ from, to, subject, html });
 

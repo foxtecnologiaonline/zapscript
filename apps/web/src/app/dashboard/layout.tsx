@@ -9,6 +9,7 @@ const NAV = [
   { href: '/dashboard/transcricoes',  icon: '📝', label: 'Transcrições' },
   { href: '/dashboard/numeros',       icon: '📱', label: 'Números' },
   { href: '/dashboard/plano',         icon: '💳', label: 'Plano' },
+  { href: '/dashboard/invoices',      icon: '🧾', label: 'Faturas' },
   { href: '/dashboard/configuracoes', icon: '⚙️', label: 'Configurações' },
 ];
 

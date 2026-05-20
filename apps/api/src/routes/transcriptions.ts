@@ -68,7 +68,10 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
   });
 
   // ── POST /transcriptions/upload — envio manual ────────
-  app.post('/upload', auth, async (req: any, reply) => {
+  app.post('/upload', {
+    ...auth,
+    config: { rateLimit: { max: 10, timeWindow: '5 minutes' } },
+  }, async (req: any, reply) => {
     const userId = req.user.sub;
 
     // Verificar saldo de minutos

@@ -93,17 +93,17 @@ function bulletCount(text: string): number {
   return wordCount > 150 ? 2 : 1;
 }
 
-/** Gera bullets ultra-concisos com Claude Haiku — máx 12 palavras cada */
+/** Gera bullets ultra-concisos com Claude Haiku — máx 10 palavras cada */
 async function generateBullets(originalText: string): Promise<string[]> {
   const count = bulletCount(originalText);
   try {
     const res = await claude.messages.create({
       model:      'claude-haiku-4-5',
       max_tokens: 120,
-      system:     'Você resume áudios de WhatsApp em PT-BR. Cada ponto deve ter no máximo 12 palavras, ser direto e factual — só o essencial. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação.',
+      system:     'Você resume áudios de WhatsApp em PT-BR. Cada ponto deve ter no máximo 10 palavras, ser curtíssimo, direto e objetivo — só o essencial do assunto. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação, sem verbosidade.',
       messages: [{
         role:    'user',
-        content: `Resuma em ${count === 1 ? 'exatamente 1 ponto curto' : '2 pontos curtos'}:\n\n${originalText}`,
+        content: `Resuma em ${count === 1 ? 'exatamente 1 ponto curto e objetivo' : '2 pontos curtos e objetivos'}:\n\n${originalText}`,
       }],
     });
     const raw     = (res.content[0] as any).text || '';
@@ -257,8 +257,7 @@ function buildMessage(bullets: string[], originalText: string, _refCode: string)
     highlightsSection +
     `📄 Transcrição completa\n_${originalText}_\n\n` +
     `---\n` +
-    `⚡ Pronto em segundos!\n` +
-    `👉 https://ZapScript.me — Ative agora`
+    `👉 https://ZapScript.me`
   );
 }
 
