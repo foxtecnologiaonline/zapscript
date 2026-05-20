@@ -175,6 +175,7 @@ export default async function adminRoutes(app: FastifyInstance) {
             deletedAt: true,
             subscription: { include: { plan: true } },
             balance: true,
+            numbers: { select: { id: true, status: true } },
           },
           orderBy: { createdAt: 'desc' },
         }),
