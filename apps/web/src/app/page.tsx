@@ -103,32 +103,82 @@ const EXAMPLES = [
   },
 ];
 
-/* ── Plans (manifesto) ── */
+/* ── Plans ── */
 const PLANS = [
   {
-    name: 'Grátis', price: 'R$0', per: '/mês',
+    name: 'free', label: 'Free', price: 'R$0', per: '/mês',
     desc: 'Para experimentar',
-    feats: ['10 min/mês', '1 número WhatsApp', 'Painel simples', 'Resumos e transcrições'],
-    cta: 'Começar Grátis', href: '/cadastro', popular: false,
+    feats: ['20 min/mês', '1 número WhatsApp', 'Transcrição automática', 'Ponto chave IA'],
+    excl: ['Agenda Automática', 'Modo privado'],
+    cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
   },
   {
-    name: 'Pro', price: 'R$29,90', per: '/mês',
+    name: 'pro', label: 'Pro', price: 'R$29,90', per: '/mês',
     desc: 'Para profissionais',
-    feats: ['200 min/mês', '2 números WhatsApp', 'Painel avançado', 'Resumos e transcrições', 'Alertas de consumo'],
-    cta: 'Assinar Pro', href: '/cadastro', popular: true,
+    feats: ['150 min/mês', '2 números WhatsApp', 'Transcrição automática', 'Ponto chave IA'],
+    excl: ['Agenda Automática', 'Modo privado'],
+    cta: 'Assinar Pro', href: '/cadastro', popular: false, accent: '#3b82f6' as string | null,
   },
   {
-    name: 'Ultra', price: 'R$59,90', per: '/mês',
-    desc: 'Para equipes',
-    feats: ['500 min/mês', '3+ números WhatsApp', 'Painel avançado', 'Marcação de prioridade', 'Resumos e transcrições', 'Suporte prioritário'],
-    cta: 'Assinar Ultra', href: '/cadastro', popular: false,
+    name: 'ultra', label: 'Ultra', price: 'R$59,90', per: '/mês',
+    desc: 'Para profissionais avançados',
+    feats: ['300 min/mês', '3 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', '✨ Agenda Automática'],
+    excl: ['Modo privado'],
+    cta: 'Assinar Ultra', href: '/cadastro', popular: true, accent: null as string | null,
+  },
+  {
+    name: 'executive', label: 'Executive', price: 'R$89,90', per: '/mês',
+    desc: 'Para líderes e executivos',
+    feats: ['500 min/mês', '5 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', 'Agenda Automática', '🔒 Modo privado'],
+    excl: [],
+    cta: 'Assinar Executive', href: '/cadastro', popular: false, accent: '#f59e0b' as string | null,
   },
 ];
+
+/* ── Tabela comparativa ── */
+type CmpVal = string | boolean;
+const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
+  { feature: 'Minutos/mês',           vals: ['20', '150', '300', '500'] },
+  { feature: 'Números WhatsApp',       vals: ['1', '2', '3', '5'] },
+  { feature: 'Transcrição automática', vals: [true, true, true, true] },
+  { feature: 'Ponto chave IA',         vals: [true, true, true, true] },
+  { feature: 'Agenda Automática',      vals: [false, false, true, true] },
+  { feature: 'Modo privado',           vals: [false, false, false, true] },
+];
+
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 
 export default function HomePage() {
   const [exTab, setExTab] = useState(0);
   const [contentTab, setContentTab] = useState<'resumo' | 'transcricao'>('resumo');
   const ex = EXAMPLES[exTab];
+
+  // Planos — tabela comparativa + Para Empresas
+  const [showTable, setShowTable] = useState(false);
+  const [empresasForm, setEmpresasForm] = useState({ whatsappNumbers: '', audiosPerMonth: '', integrations: '', email: '' });
+  const [empresasLoading, setEmpresasLoading] = useState(false);
+  const [empresasSent, setEmpresasSent] = useState(false);
+  const [empresasErr, setEmpresasErr] = useState('');
+
+  async function handleEmpresasSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setEmpresasLoading(true);
+    setEmpresasErr('');
+    try {
+      const res = await fetch(`${API_BASE}/support/enterprise-contact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(empresasForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao enviar.');
+      setEmpresasSent(true);
+    } catch (err: any) {
+      setEmpresasErr(err.message || 'Erro ao enviar. Tente novamente.');
+    } finally {
+      setEmpresasLoading(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-mesh font-sans text-brand-text overflow-x-hidden">
@@ -364,9 +414,9 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ══ PLANS ══ */}
+        {/* ══ PLANS — Opção 3 Híbrido ══ */}
         <section id="planos" className="px-5 pb-16">
-          <div className="mb-10">
+          <div className="mb-8">
             <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>
               Planos
             </span>
@@ -375,53 +425,185 @@ export default function HomePage() {
               Comece grátis. Sem cartão de crédito.
             </p>
           </div>
+
+          {/* Cards */}
           <div className="flex flex-col gap-4">
-            {PLANS.map((plan, i) => (
-              <div key={i} className="relative rounded-2xl p-6 border transition-all"
-                style={{
-                  background: plan.popular ? 'rgb(var(--color-surface-elevated))' : 'rgb(var(--color-surface))',
-                  borderColor: plan.popular ? 'rgb(var(--color-primary))' : 'rgb(var(--color-border))',
-                  boxShadow: plan.popular ? 'var(--shadow-glow), var(--shadow-md)' : 'var(--shadow-sm)',
-                }}>
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-primary text-white text-[11px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wide whitespace-nowrap">
-                    Mais popular
-                  </div>
-                )}
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <p className="font-display font-bold text-lg">{plan.name}</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.desc}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-display font-bold text-2xl" style={{ color: plan.popular ? 'rgb(var(--color-primary))' : 'rgb(var(--color-text))' }}>
-                      {plan.price}
-                    </span>
-                    <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-2 mb-5">
-                  {plan.feats.map((f, fi) => (
-                    <div key={fi} className="flex items-center gap-2">
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="rgb(var(--color-primary))" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M2 7.5l3 3 7-7"/>
-                      </svg>
-                      <span className="text-sm" style={{ color: 'rgb(var(--color-text-secondary))' }}>{f}</span>
-                    </div>
-                  ))}
-                </div>
-                <Link href={plan.href}
-                  className="block w-full py-3 rounded-2xl text-sm font-semibold text-center transition-all"
+            {PLANS.map((plan, i) => {
+              const borderCol = plan.popular
+                ? 'rgb(var(--color-primary))'
+                : plan.accent ? plan.accent + '55' : 'rgb(var(--color-border))';
+              const priceCol = plan.popular
+                ? 'rgb(var(--color-primary))'
+                : plan.accent || 'rgb(var(--color-text))';
+              return (
+                <div key={i} className="relative rounded-2xl p-6 border transition-all"
                   style={{
-                    background: plan.popular ? 'rgb(var(--color-primary))' : 'transparent',
-                    border: plan.popular ? 'none' : `1.5px solid rgb(var(--color-border))`,
-                    color: plan.popular ? '#fff' : 'rgb(var(--color-text))',
-                    boxShadow: plan.popular ? 'rgba(16,185,129,.25) 0 4px 14px' : 'none',
+                    background:  plan.popular ? 'rgb(var(--color-surface-elevated))' : 'rgb(var(--color-surface))',
+                    borderColor: borderCol,
+                    boxShadow:   plan.popular ? 'var(--shadow-glow), var(--shadow-md)' : 'var(--shadow-sm)',
                   }}>
-                  {plan.cta}
-                </Link>
+                  {plan.popular && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-white text-[11px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wide whitespace-nowrap"
+                      style={{ background: 'rgb(var(--color-primary))' }}>
+                      ⭐ Mais popular
+                    </div>
+                  )}
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <p className="font-display font-bold text-lg">{plan.label}</p>
+                      <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.desc}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-display font-bold text-2xl" style={{ color: priceCol }}>{plan.price}</span>
+                      <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 mb-5">
+                    {plan.feats.map((f, fi) => (
+                      <div key={fi} className="flex items-center gap-2">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                          stroke={plan.popular ? 'rgb(var(--color-primary))' : plan.accent || 'rgb(var(--color-primary))'}>
+                          <path d="M2 7.5l3 3 7-7"/>
+                        </svg>
+                        <span className="text-sm" style={{ color: 'rgb(var(--color-text-secondary))' }}>{f}</span>
+                      </div>
+                    ))}
+                    {plan.excl.map((f, fi) => (
+                      <div key={fi} className="flex items-center gap-2" style={{ opacity: 0.35 }}>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="rgb(var(--color-text-muted))" strokeWidth="2" strokeLinecap="round">
+                          <path d="M3 3l8 8M11 3l-8 8"/>
+                        </svg>
+                        <span className="text-sm" style={{ color: 'rgb(var(--color-text-muted))' }}>{f}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Link href={plan.href}
+                    className="block w-full py-3 rounded-2xl text-sm font-semibold text-center transition-all"
+                    style={{
+                      background:  plan.popular ? 'rgb(var(--color-primary))' : 'transparent',
+                      border:      plan.popular ? 'none' : `1.5px solid ${plan.accent || 'rgb(var(--color-border))'}`,
+                      color:       plan.popular ? '#fff' : plan.accent || 'rgb(var(--color-text))',
+                      boxShadow:   plan.popular ? 'rgba(16,185,129,.25) 0 4px 14px' : 'none',
+                    }}>
+                    {plan.cta}
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Toggle tabela comparativa */}
+          <button
+            onClick={() => setShowTable(v => !v)}
+            className="w-full mt-5 py-3 rounded-2xl text-sm font-semibold transition-all flex items-center justify-center gap-2"
+            style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-secondary))', background: 'transparent' }}>
+            {showTable ? 'Ocultar comparativo ↑' : 'Comparar todos os recursos ↓'}
+          </button>
+
+          {showTable && (
+            <div className="mt-3 rounded-2xl overflow-hidden" style={{ border: '1px solid rgb(var(--color-border))' }}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[340px]" style={{ borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'rgb(var(--color-surface-elevated))' }}>
+                      <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'rgb(var(--color-text-muted))' }}>Recurso</th>
+                      {PLANS.map(p => (
+                        <th key={p.name} className="px-3 py-3 text-[11px] font-bold text-center"
+                          style={{ color: p.popular ? 'rgb(var(--color-primary))' : p.accent || 'rgb(var(--color-text-secondary))' }}>
+                          {p.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {TABLE_ROWS.map((row, ri) => (
+                      <tr key={ri} style={{ borderTop: '1px solid rgb(var(--color-border-light))' }}>
+                        <td className="px-4 py-3 text-xs font-medium" style={{ color: 'rgb(var(--color-text-secondary))' }}>{row.feature}</td>
+                        {row.vals.map((v, vi) => (
+                          <td key={vi} className="px-3 py-3 text-center text-xs">
+                            {typeof v === 'boolean' ? (
+                              v
+                                ? <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>
+                                : <span style={{ color: 'rgb(var(--color-text-muted))', opacity: .4 }}>✗</span>
+                            ) : (
+                              <span className="font-mono font-bold" style={{ color: 'rgb(var(--color-text))' }}>{v}</span>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
+            </div>
+          )}
+
+          {/* Para Empresas */}
+          <div className="mt-10 rounded-2xl p-6" style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(245,158,11,.25)' }}>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-5"
+              style={{ background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>
+              🏢 PARA EMPRESAS
+            </div>
+            <h3 className="font-display font-bold text-xl leading-snug mb-2">
+              Precisa de mais?<br />Monte seu plano.
+            </h3>
+            <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Times maiores, volumes customizados, integrações específicas — montamos uma proposta no tamanho certo para o seu negócio.
+            </p>
+            <div className="flex flex-col gap-2 mb-6">
+              {['Múltiplos Usuários', 'Múltiplos Números', 'Volume Ajustável de Minutos', 'Integrações customizadas (CRM, ERP, Outlook, Google Calendar)'].map((f, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                  <span style={{ color: '#f59e0b' }}>✓</span> {f}
+                </div>
+              ))}
+            </div>
+
+            {empresasSent ? (
+              <div className="rounded-xl py-8 text-center" style={{ background: 'rgba(16,185,129,.05)', border: '1px solid rgba(16,185,129,.15)' }}>
+                <div className="text-3xl mb-2">✅</div>
+                <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Proposta solicitada!</div>
+                <div className="text-xs mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>Respondemos em até 24h</div>
+              </div>
+            ) : (
+              <form onSubmit={handleEmpresasSubmit} className="flex flex-col gap-3">
+                {([
+                  { key: 'whatsappNumbers', label: 'Números de WhatsApp', placeholder: 'Quantos números você precisa?', type: 'text' },
+                  { key: 'audiosPerMonth',  label: 'Recebe em média quantos áudios por mês?', placeholder: 'Ex: 500 áudios por mês', type: 'text' },
+                  { key: 'integrations',   label: 'Precisa de integração com algum sistema?', placeholder: 'Ex: Google Calendar, Salesforce, ERP...', type: 'text' },
+                  { key: 'email',          label: 'E-mail corporativo', placeholder: 'voce@empresa.com.br', type: 'email' },
+                ] as { key: keyof typeof empresasForm; label: string; placeholder: string; type: string }[]).map(field => (
+                  <div key={field.key}>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                      {field.label}
+                    </label>
+                    <input
+                      type={field.type}
+                      placeholder={field.placeholder}
+                      value={empresasForm[field.key]}
+                      onChange={e => setEmpresasForm(f => ({ ...f, [field.key]: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none transition-all"
+                      style={{
+                        background: 'rgb(var(--color-surface))',
+                        border: '1.5px solid rgb(var(--color-border))',
+                        color: 'rgb(var(--color-text))',
+                      }}
+                      required={field.key === 'email'}
+                    />
+                  </div>
+                ))}
+                {empresasErr && (
+                  <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,.1)', color: '#f87171' }}>{empresasErr}</p>
+                )}
+                <button type="submit" disabled={empresasLoading}
+                  className="w-full py-3 rounded-xl font-semibold text-sm transition-all mt-1 disabled:opacity-60"
+                  style={{ background: '#f59e0b', color: '#1c1204' }}>
+                  {empresasLoading ? 'Enviando...' : 'Receber proposta comercial →'}
+                </button>
+                <p className="text-center text-[11px]" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                  Respondemos em até 24h · Sem compromisso
+                </p>
+              </form>
+            )}
           </div>
         </section>
 

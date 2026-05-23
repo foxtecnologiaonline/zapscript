@@ -91,8 +91,9 @@ async function getOrCreateCustomer(user: { id: string; name: string; email: stri
 
 /* ── Valores dos planos ── */
 const PLAN_PRICES: Record<string, number> = {
-  pro:   29.90,
-  ultra: 59.90,
+  pro:       29.90,
+  ultra:     59.90,
+  executive: 89.90,
 };
 
 export default async function billingRoutes(app: FastifyInstance) {
@@ -100,7 +101,7 @@ export default async function billingRoutes(app: FastifyInstance) {
 
   // ── POST /billing/checkout ────────────────────────────
   // Cria assinatura no Asaas e retorna URL da fatura para redirect
-  app.post<{ Body: { planName: 'pro' | 'ultra'; billingType?: string } }>(
+  app.post<{ Body: { planName: 'pro' | 'ultra' | 'executive'; billingType?: string } }>(
     '/checkout',
     { ...auth, config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (req: any, reply) => {
@@ -141,7 +142,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           cycle:             'MONTHLY',
           value:             price,
           nextDueDate:       today,
-          description:       `ZapScript ${planName === 'pro' ? 'Pro' : 'Ultra'}`,
+          description:       `ZapScript ${planName === 'pro' ? 'Pro' : planName === 'ultra' ? 'Ultra' : 'Executive'}`,
           externalReference: `${userId}|${planName}`,
           // Redireciona após pagamento
           successPage:       `${process.env.APP_URL}/payment/success?plan=${planName}`,

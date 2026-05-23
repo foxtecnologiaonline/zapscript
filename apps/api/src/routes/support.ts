@@ -131,4 +131,51 @@ export default async function supportRoutes(app: FastifyInstance) {
 
     return { ticket: true, id: ticket.id, message: 'Ticket criado! Responderemos em até 24h.' };
   });
+
+  // ── POST /support/enterprise-contact — formulário Para Empresas (sem auth) ──
+  app.post('/enterprise-contact', {
+    config: { rateLimit: { max: 3, timeWindow: '10 minutes' } },
+  }, async (req: any, reply) => {
+    const { whatsappNumbers, audiosPerMonth, integrations, email } = req.body || {};
+
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return reply.code(400).send({ error: 'E-mail corporativo é obrigatório.' });
+    }
+
+    const clean = (v: any) => (typeof v === 'string' ? escapeHtml(v.slice(0, 400)) : '—');
+
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;padding:28px">
+        <h2 style="color:#10b981;margin:0 0 20px">📋 Nova solicitação de proposta — Para Empresas</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <tr style="border-bottom:1px solid #e5e7eb">
+            <td style="padding:10px 0;color:#6b7280;width:180px;font-weight:600">E-mail</td>
+            <td style="padding:10px 0;font-weight:700">${clean(email)}</td>
+          </tr>
+          <tr style="border-bottom:1px solid #e5e7eb">
+            <td style="padding:10px 0;color:#6b7280;font-weight:600">Números WhatsApp</td>
+            <td style="padding:10px 0">${clean(whatsappNumbers) || '—'}</td>
+          </tr>
+          <tr style="border-bottom:1px solid #e5e7eb">
+            <td style="padding:10px 0;color:#6b7280;font-weight:600">Áudios por mês</td>
+            <td style="padding:10px 0">${clean(audiosPerMonth) || '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 0;color:#6b7280;font-weight:600">Integrações</td>
+            <td style="padding:10px 0">${clean(integrations) || '—'}</td>
+          </tr>
+        </table>
+        <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb"/>
+        <p style="color:#9ca3af;font-size:12px;margin:0">Enviado via formulário Para Empresas — zapscript.me</p>
+      </div>
+    `;
+
+    try {
+      await sendEmail('contato@zapscript.me', `🏢 Proposta solicitada: ${clean(email)}`, html);
+      return reply.send({ ok: true });
+    } catch (err: any) {
+      app.log.error({ err: err.message }, '[Enterprise] Falha ao enviar e-mail de proposta');
+      return reply.code(500).send({ error: 'Falha ao enviar. Tente novamente em instantes.' });
+    }
+  });
 }

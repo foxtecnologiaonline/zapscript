@@ -16,15 +16,18 @@ interface User {
   document: string | null;
 }
 
-/* ── Planos conforme o manifesto ── */
+/* ── Planos ── */
 const PLANS = [
   {
     name:  'free',
-    label: 'Grátis',
+    label: 'Free',
     price: 'R$0',
     per:   '/mês',
     desc:  'Para experimentar',
-    feats: ['10 min/mês', '1 número WhatsApp', 'Painel simples', 'Resumos e transcrições'],
+    feats: ['20 min/mês', '1 número WhatsApp', 'Transcrição automática', 'Ponto chave IA'],
+    excl:  ['Agenda Automática', 'Modo privado'],
+    pop:   false,
+    accent: null as string | null,
   },
   {
     name:  'pro',
@@ -32,17 +35,43 @@ const PLANS = [
     price: 'R$29,90',
     per:   '/mês',
     desc:  'Para profissionais',
-    feats: ['200 min/mês', '2 números WhatsApp', 'Painel avançado', 'Resumos e transcrições', 'Alertas de consumo'],
-    pop:   true,
+    feats: ['150 min/mês', '2 números WhatsApp', 'Transcrição automática', 'Ponto chave IA'],
+    excl:  ['Agenda Automática', 'Modo privado'],
+    pop:   false,
+    accent: '#3b82f6' as string | null,
   },
   {
     name:  'ultra',
     label: 'Ultra',
     price: 'R$59,90',
     per:   '/mês',
-    desc:  'Para equipes',
-    feats: ['500 min/mês', '3+ números WhatsApp', 'Painel avançado', 'Marcação de prioridade', 'Resumos e transcrições', 'Alertas de consumo', 'Suporte prioritário'],
+    desc:  'Para profissionais avançados',
+    feats: ['300 min/mês', '3 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', '✨ Agenda Automática'],
+    excl:  ['Modo privado'],
+    pop:   true,
+    accent: null as string | null,
   },
+  {
+    name:  'executive',
+    label: 'Executive',
+    price: 'R$89,90',
+    per:   '/mês',
+    desc:  'Para líderes e executivos',
+    feats: ['500 min/mês', '5 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', 'Agenda Automática', '🔒 Modo privado'],
+    excl:  [],
+    pop:   false,
+    accent: '#f59e0b' as string | null,
+  },
+];
+
+type CmpVal = string | boolean;
+const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
+  { feature: 'Minutos/mês',           vals: ['20', '150', '300', '500'] },
+  { feature: 'Números WhatsApp',       vals: ['1', '2', '3', '5'] },
+  { feature: 'Transcrição automática', vals: [true, true, true, true] },
+  { feature: 'Ponto chave IA',         vals: [true, true, true, true] },
+  { feature: 'Agenda Automática',      vals: [false, false, true, true] },
+  { feature: 'Modo privado',           vals: [false, false, false, true] },
 ];
 
 /* ── Métodos de pagamento disponíveis no Asaas ── */
@@ -166,7 +195,12 @@ function PlanoContent() {
   const [loading, setLoading]         = useState(true);
   const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null);
   const [billingType, setBillingType] = useState('UNDEFINED');
-  const [docModal, setDocModal]       = useState<string | null>(null); // planName awaiting document
+  const [docModal, setDocModal]       = useState<string | null>(null);
+  const [showTable, setShowTable]     = useState(false);
+  const [empresasForm, setEmpresasForm] = useState({ whatsappNumbers: '', audiosPerMonth: '', integrations: '', email: '' });
+  const [empresasLoading, setEmpresasLoading] = useState(false);
+  const [empresasSent, setEmpresasSent]       = useState(false);
+  const [empresasErr, setEmpresasErr]         = useState('');
   const justUpgraded = searchParams.get('upgrade') === 'success';
 
   useEffect(() => {
@@ -222,6 +256,20 @@ function PlanoContent() {
       if (res.url) window.location.href = res.url;
     } catch (err: any) {
       alert(err.message);
+    }
+  }
+
+  async function handleEmpresasSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setEmpresasLoading(true);
+    setEmpresasErr('');
+    try {
+      const res = await api.post<{ ok: boolean }>('/support/enterprise-contact', empresasForm);
+      if (res.ok) setEmpresasSent(true);
+    } catch (err: any) {
+      setEmpresasErr(err.message || 'Erro ao enviar. Tente novamente.');
+    } finally {
+      setEmpresasLoading(false);
     }
   }
 
@@ -322,24 +370,34 @@ function PlanoContent() {
         </div>
       )}
 
-      {/* Plans */}
+      {/* ── Planos — Opção 3 Híbrido ── */}
       <h2 className="font-display font-bold text-base mb-4">
         {currentPlan === 'free' ? 'Fazer upgrade' : 'Mudar plano'}
       </h2>
+
       <div className="flex flex-col gap-4">
         {PLANS.map(plan => {
-          const isCurrent = currentPlan === plan.name;
+          const isCurrent  = currentPlan === plan.name;
+          const borderCol  = plan.pop
+            ? 'rgb(var(--color-primary))'
+            : isCurrent
+            ? 'rgba(var(--color-primary)/.4)'
+            : plan.accent ? plan.accent + '55' : 'rgb(var(--color-border))';
+          const priceCol = plan.pop
+            ? 'rgb(var(--color-primary))'
+            : plan.accent || 'rgb(var(--color-text))';
+
           return (
             <div key={plan.name} className="relative rounded-2xl p-5 border transition-all"
               style={{
-                background:   plan.pop ? 'rgb(var(--color-surface-elevated))' : 'rgb(var(--color-surface))',
-                borderColor:  plan.pop ? 'rgb(var(--color-primary))' : 'rgb(var(--color-border))',
-                boxShadow:    plan.pop ? '0 0 0 1px rgba(var(--color-primary)/.2), var(--shadow-glow)' : 'var(--shadow-sm)',
+                background:  plan.pop ? 'rgb(var(--color-surface-elevated))' : 'rgb(var(--color-surface))',
+                borderColor: borderCol,
+                boxShadow:   plan.pop ? '0 0 0 1px rgba(var(--color-primary)/.2), var(--shadow-glow)' : 'var(--shadow-sm)',
               }}>
               {plan.pop && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-white text-[10px] font-black px-3 py-0.5 rounded-full uppercase tracking-wider"
                   style={{ background: 'rgb(var(--color-primary))' }}>
-                  Mais popular
+                  ⭐ Mais popular
                 </span>
               )}
               {isCurrent && (
@@ -355,18 +413,22 @@ function PlanoContent() {
                   <div className="text-xs font-light mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.desc}</div>
                 </div>
                 <div className="text-right">
-                  <span className="font-display font-bold text-2xl tracking-tight"
-                    style={{ color: plan.pop ? 'rgb(var(--color-primary))' : 'rgb(var(--color-text))' }}>
+                  <span className="font-display font-bold text-2xl tracking-tight" style={{ color: priceCol }}>
                     {plan.price}
                   </span>
                   <span className="text-xs font-light ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
                 </div>
               </div>
 
-              <ul className="space-y-1.5 mb-4">
+              <ul className="space-y-1.5 mb-1">
                 {plan.feats.map(f => (
                   <li key={f} className="flex items-center gap-2 text-xs" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                    <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>{f}
+                    <span style={{ color: plan.pop ? 'rgb(var(--color-primary))' : plan.accent || 'rgb(var(--color-primary))' }}>✓</span>{f}
+                  </li>
+                ))}
+                {plan.excl.map(f => (
+                  <li key={f} className="flex items-center gap-2 text-xs" style={{ color: 'rgb(var(--color-text-muted))', opacity: .35 }}>
+                    <span>✗</span>{f}
                   </li>
                 ))}
               </ul>
@@ -374,25 +436,22 @@ function PlanoContent() {
               <button
                 disabled={isCurrent || plan.name === 'free' || checkoutPlan === plan.name}
                 onClick={() => upgrade(plan.name)}
-                className="w-full py-2.5 rounded-xl text-sm font-bold transition-all"
+                className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold transition-all"
                 style={{
-                  background:   isCurrent || plan.name === 'free'
+                  background: isCurrent || plan.name === 'free'
                     ? 'rgba(var(--color-surface-elevated))'
-                    : plan.pop
-                    ? 'rgb(var(--color-primary))'
-                    : 'transparent',
-                  color:        isCurrent || plan.name === 'free'
+                    : plan.pop ? 'rgb(var(--color-primary))'
+                    : plan.accent || 'transparent',
+                  color: isCurrent || plan.name === 'free'
                     ? 'rgb(var(--color-text-muted))'
-                    : plan.pop
-                    ? '#030d06'
-                    : 'rgb(var(--color-primary))',
-                  border:       plan.pop ? 'none' : '1.5px solid rgb(var(--color-border))',
-                  cursor:       isCurrent || plan.name === 'free' ? 'not-allowed' : 'pointer',
-                  boxShadow:    plan.pop && !isCurrent ? 'rgba(var(--color-primary)/.25) 0 4px 14px' : 'none',
-                }}
-              >
-                {isCurrent          ? 'Plano atual'       :
-                 plan.name === 'free' ? 'Gratuito'          :
+                    : plan.pop ? '#030d06'
+                    : plan.accent ? '#fff' : 'rgb(var(--color-primary))',
+                  border: plan.pop || plan.accent ? 'none' : '1.5px solid rgb(var(--color-border))',
+                  cursor: isCurrent || plan.name === 'free' ? 'not-allowed' : 'pointer',
+                  boxShadow: plan.pop && !isCurrent ? 'rgba(var(--color-primary)/.25) 0 4px 14px' : 'none',
+                }}>
+                {isCurrent ? 'Plano atual' :
+                 plan.name === 'free' ? 'Gratuito' :
                  checkoutPlan === plan.name ? 'Redirecionando...' :
                  'Assinar agora'}
               </button>
@@ -401,9 +460,117 @@ function PlanoContent() {
         })}
       </div>
 
-      <p className="text-xs text-center mt-5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+      {/* Toggle comparativo */}
+      <button
+        onClick={() => setShowTable(v => !v)}
+        className="w-full mt-4 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2"
+        style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))', background: 'transparent' }}>
+        {showTable ? 'Ocultar comparativo ↑' : 'Comparar todos os recursos ↓'}
+      </button>
+
+      {showTable && (
+        <div className="mt-3 rounded-2xl overflow-hidden" style={{ border: '1px solid rgb(var(--color-border))' }}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[380px]" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'rgb(var(--color-surface-elevated))' }}>
+                  <th className="text-left px-4 py-2.5 font-semibold" style={{ color: 'rgb(var(--color-text-muted))' }}>Recurso</th>
+                  {PLANS.map(p => (
+                    <th key={p.name} className="px-2 py-2.5 font-bold text-center"
+                      style={{ color: p.pop ? 'rgb(var(--color-primary))' : p.accent || 'rgb(var(--color-text-secondary))' }}>
+                      {p.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {TABLE_ROWS.map((row, ri) => (
+                  <tr key={ri} style={{ borderTop: '1px solid rgb(var(--color-border-light))' }}>
+                    <td className="px-4 py-2.5 font-medium" style={{ color: 'rgb(var(--color-text-secondary))' }}>{row.feature}</td>
+                    {row.vals.map((v, vi) => (
+                      <td key={vi} className="px-2 py-2.5 text-center">
+                        {typeof v === 'boolean' ? (
+                          v ? <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>
+                            : <span style={{ color: 'rgb(var(--color-text-muted))', opacity: .4 }}>✗</span>
+                        ) : (
+                          <span className="font-mono font-bold" style={{ color: 'rgb(var(--color-text))' }}>{v}</span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-center mt-4" style={{ color: 'rgb(var(--color-text-muted))' }}>
         Pagamentos processados com segurança pelo Asaas. Cancele a qualquer momento.
       </p>
+
+      {/* Para Empresas */}
+      <div className="mt-8 rounded-2xl p-5" style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(245,158,11,.25)' }}>
+        <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-[11px] font-bold mb-4"
+          style={{ background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>
+          🏢 PARA EMPRESAS
+        </div>
+        <h3 className="font-display font-bold text-lg leading-snug mb-1">
+          Precisa de mais? Monte seu plano.
+        </h3>
+        <p className="text-xs font-light mb-3" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+          Times maiores, volumes customizados, integrações específicas — propomos algo no tamanho certo.
+        </p>
+        <div className="flex flex-col gap-1.5 mb-5 text-xs">
+          {['Múltiplos Usuários', 'Múltiplos Números', 'Volume Ajustável de Minutos', 'Integrações customizadas (CRM, ERP, Outlook, Google Calendar)'].map((f, i) => (
+            <div key={i} className="flex items-center gap-2" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              <span style={{ color: '#f59e0b' }}>✓</span> {f}
+            </div>
+          ))}
+        </div>
+
+        {empresasSent ? (
+          <div className="rounded-xl py-6 text-center" style={{ background: 'rgba(16,185,129,.05)', border: '1px solid rgba(16,185,129,.15)' }}>
+            <div className="text-2xl mb-1">✅</div>
+            <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Proposta solicitada!</div>
+            <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Respondemos em até 24h</div>
+          </div>
+        ) : (
+          <form onSubmit={handleEmpresasSubmit} className="flex flex-col gap-3">
+            {([
+              { key: 'whatsappNumbers', label: 'Números de WhatsApp', placeholder: 'Quantos números você precisa?', type: 'text' },
+              { key: 'audiosPerMonth',  label: 'Recebe em média quantos áudios por mês?', placeholder: 'Ex: 500 áudios por mês', type: 'text' },
+              { key: 'integrations',   label: 'Precisa de integração com algum sistema?', placeholder: 'Ex: Google Calendar, Salesforce, ERP...', type: 'text' },
+              { key: 'email',          label: 'E-mail corporativo', placeholder: 'voce@empresa.com.br', type: 'email' },
+            ] as { key: keyof typeof empresasForm; label: string; placeholder: string; type: string }[]).map(field => (
+              <div key={field.key}>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                  {field.label}
+                </label>
+                <input
+                  type={field.type}
+                  placeholder={field.placeholder}
+                  value={empresasForm[field.key]}
+                  onChange={e => setEmpresasForm(f => ({ ...f, [field.key]: e.target.value }))}
+                  className="field-input text-sm"
+                  required={field.key === 'email'}
+                />
+              </div>
+            ))}
+            {empresasErr && (
+              <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,.1)', color: '#f87171' }}>{empresasErr}</p>
+            )}
+            <button type="submit" disabled={empresasLoading}
+              className="w-full py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-60 mt-1"
+              style={{ background: '#f59e0b', color: '#1c1204' }}>
+              {empresasLoading ? 'Enviando...' : 'Receber proposta comercial →'}
+            </button>
+            <p className="text-center text-[11px]" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              Respondemos em até 24h · Sem compromisso
+            </p>
+          </form>
+        )}
+      </div>
 
       {/* Modal de CPF/CNPJ */}
       {docModal && (
