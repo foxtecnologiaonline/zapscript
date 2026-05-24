@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 
 /* ── Tipos ─────────────────────────────────────────────── */
-export type Tab = 'overview' | 'users' | 'tickets' | 'testers' | 'monitoring';
+export type Tab = 'overview' | 'users' | 'tickets' | 'testers' | 'monitoring' | 'financeiro';
 
 /* ── Constantes ────────────────────────────────────────── */
 const API  = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -131,6 +131,50 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
     setInvitePhone, notify, setToast, setLastInviteResult,
   } = fn;
 
+  // ── Bulk selection state (local) ────────────────────────
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction]       = useState('add-minutes');
+  const [bulkValue,  setBulkValue]        = useState('');
+  const [bulkLoading, setBulkLoading]     = useState(false);
+
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+
+  function toggleSelect(id: string) {
+    setSelectedUsers(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
+  function toggleAll() {
+    if (selectedUsers.size === users.length) {
+      setSelectedUsers(new Set());
+    } else {
+      setSelectedUsers(new Set(users.map((u: any) => u.id)));
+    }
+  }
+
+  async function executeBulkAction() {
+    if (selectedUsers.size === 0 || !bulkAction) return;
+    if (!confirm(`Aplicar "${bulkAction}" para ${selectedUsers.size} usuário(s)?`)) return;
+    setBulkLoading(true);
+    try {
+      const res = await fetch(`${API}/sys/g5r8t2/users/bulk-action`, {
+        method: 'POST',
+        headers: h,
+        body: JSON.stringify({ userIds: Array.from(selectedUsers), action: bulkAction, value: bulkValue || undefined }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro');
+      notify(`✅ ${d.message}`, 'ok');
+      setSelectedUsers(new Set());
+      loadUsers(userSearch, userOffset);
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally { setBulkLoading(false); }
+  }
+
   return (
     <div className="min-h-screen bg-[#040b09] p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
@@ -153,7 +197,8 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
             ['users',      '👥', 'Usuários'],
             ['tickets',    '🎫', 'Tickets'],
             ['testers',    '🧪', 'Testers'],
-            ['monitoring', '🖥️', 'Monitoramento'],
+            ['monitoring',  '🖥️', 'Monitoramento'],
+            ['financeiro',  '💰', 'Financeiro'],
           ] as [Tab, string, string][]).map(([t, icon, label]) => (
             <button key={t} onClick={() => goTab(t)}
               className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
@@ -241,8 +286,38 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
 
             <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-x-auto">
               <table className="w-full min-w-[820px]">
+                {/* Barra de ações em lote */}
+                {selectedUsers.size > 0 && (
+                  <div className="px-4 py-3 bg-[rgba(16,185,129,.08)] border-b border-[rgba(16,185,129,.15)] flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-[#10b981]">{selectedUsers.size} selecionado(s)</span>
+                    <select value={bulkAction} onChange={e => setBulkAction(e.target.value)}
+                      className="text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded px-2 py-1 text-[#d1fae5] outline-none">
+                      <option value="add-minutes">± Adicionar minutos</option>
+                      <option value="set-plan">🔄 Mudar plano</option>
+                      <option value="ban">🚫 Banir</option>
+                      <option value="unban">✅ Desbanir</option>
+                    </select>
+                    {(bulkAction === 'add-minutes' || bulkAction === 'set-plan') && (
+                      <input
+                        value={bulkValue} onChange={e => setBulkValue(e.target.value)}
+                        placeholder={bulkAction === 'add-minutes' ? 'Minutos (ex: 60)' : 'Plano (ex: pro)'}
+                        className="text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded px-2 py-1 text-[#d1fae5] outline-none w-36" />
+                    )}
+                    <Btn variant="primary" disabled={bulkLoading} onClick={executeBulkAction} cls="text-xs py-1 px-3">
+                      {bulkLoading ? '⟳' : '▶ Executar'}
+                    </Btn>
+                    <Btn variant="ghost" onClick={() => setSelectedUsers(new Set())} cls="text-xs py-1 px-2">✕ Cancelar</Btn>
+                  </div>
+                )}
+
                 <thead>
                   <tr className="border-b border-[rgba(16,185,129,.08)]">
+                    <th className="px-3 py-3">
+                      <input type="checkbox"
+                        checked={users.length > 0 && selectedUsers.size === users.length}
+                        onChange={toggleAll}
+                        className="accent-[#10b981] cursor-pointer" />
+                    </th>
                     {['ID', 'E-mail', 'Plano', 'Minutos', 'Assinatura', 'Números', 'E-mail ✓', 'Cadastro', 'Ações'].map(col => (
                       <th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide whitespace-nowrap">
                         {col}
@@ -252,9 +327,9 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                 </thead>
                 <tbody>
                   {subLoading ? (
-                    <tr><td colSpan={9} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando...</td></tr>
+                    <tr><td colSpan={10} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando...</td></tr>
                   ) : users.length === 0 ? (
-                    <tr><td colSpan={9} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhum usuário encontrado</td></tr>
+                    <tr><td colSpan={10} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhum usuário encontrado</td></tr>
                   ) : users.map((u: any) => {
                     const plan      = u.subscription?.plan?.name || 'free';
                     const status    = u.subscription?.status || '—';
@@ -262,8 +337,12 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                     const nums      = (u.numbers || []) as any[];
                     const connected = nums.filter((n: any) => n.status === 'connected').length;
                     const total     = nums.length;
+                    const selected  = selectedUsers.has(u.id);
                     return (
-                      <tr key={u.id} className="border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.025)] transition-colors group">
+                      <tr key={u.id} className={`border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.025)] transition-colors group ${selected ? 'bg-[rgba(16,185,129,.05)]' : ''}`}>
+                        <td className="px-3 py-3">
+                          <input type="checkbox" checked={selected} onChange={() => toggleSelect(u.id)} className="accent-[#10b981] cursor-pointer" />
+                        </td>
                         <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)] font-mono max-w-[100px] truncate">{u.id.slice(0,10)}…</td>
                         <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)] max-w-[170px] truncate">{maskEmail(u.email)}</td>
                         <td className="px-4 py-3"><Badge label={plan} cls={PLAN_CLS[plan]} /></td>
@@ -501,6 +580,12 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
         {/* ═══ MONITORAMENTO ═══ */}
         {tab === 'monitoring' && (
           <div className="space-y-5">
+            {/* Gráfico de transcrições por hora */}
+            <HourlyChart apiBase={API} token={token} />
+
+            {/* Uptime histórico */}
+            <UptimeHistory apiBase={API} token={token} />
+
             {/* Saúde dos Serviços */}
             <ServicesHealth apiBase={API} token={token} />
 
@@ -512,6 +597,12 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
 
             {/* Diagnóstico WhatsApp */}
             <DiagnoseWhatsApp apiBase={API} token={token} />
+
+            {/* Configuração de Alertas */}
+            <AlertConfigPanel apiBase={API} token={token} />
+
+            {/* Amostrador de Transcrições */}
+            <TranscriptionSampler apiBase={API} token={token} />
 
             {/* Erros Recentes */}
             <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
@@ -539,6 +630,15 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ═══ FINANCEIRO ═══ */}
+        {tab === 'financeiro' && (
+          <div className="space-y-5">
+            <MRRCohort   apiBase={API} token={token} />
+            <ChurnRisk   apiBase={API} token={token} />
+            <NPSPanel    apiBase={API} token={token} />
           </div>
         )}
 
@@ -1025,9 +1125,12 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
   userId: string; token: string; onClose: () => void;
   onAction: (msg: string, type: 'ok' | 'err' | 'warn') => void;
 }) {
-  const [data, setData]       = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [acting, setActing]   = useState<string | null>(null);
+  const [data, setData]           = useState<any>(null);
+  const [loading, setLoading]     = useState(true);
+  const [acting, setActing]       = useState<string | null>(null);
+  const [timeline, setTimeline]   = useState<any[] | null>(null);
+  const [tlLoading, setTlLoading] = useState(false);
+  const [showTl, setShowTl]       = useState(false);
 
   const [editPlan, setEditPlan]       = useState('');
   const [editMins, setEditMins]       = useState('');
@@ -1049,6 +1152,31 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
   }, [userId, token]);
 
   useState(() => { load(); });
+
+  async function impersonate() {
+    setActing('impersonate');
+    try {
+      const res = await fetch(`${API}/sys/g5r8t2/users/${userId}/impersonate`, { method: 'POST', headers: h });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro');
+      // Abre nova aba com token de impersonação
+      const url = `${window.location.origin}/dashboard?impersonate_token=${d.token}`;
+      window.open(url, '_blank');
+      onAction('⚠️ Sessão de impersonação aberta (1h) — feche quando terminar', 'warn');
+    } catch (e: any) { onAction(`❌ ${e.message}`, 'err'); }
+    finally { setActing(null); }
+  }
+
+  async function loadTimeline() {
+    if (timeline) { setShowTl(t => !t); return; }
+    setTlLoading(true); setShowTl(true);
+    try {
+      const res = await fetch(`${API}/sys/g5r8t2/users/${userId}/timeline`, { headers: h });
+      const d = await res.json();
+      setTimeline(d.events || []);
+    } catch (e: any) { onAction(`❌ ${e.message}`, 'err'); setShowTl(false); }
+    finally { setTlLoading(false); }
+  }
 
   async function act(endpoint: string, method: 'POST' | 'PATCH' | 'DELETE', body?: object) {
     setActing(endpoint);
@@ -1142,8 +1270,44 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
                 }}>
                 🗑️ Excluir usuário
               </Btn>
+              <Btn variant="ghost" disabled={!!acting} onClick={impersonate}>
+                {acting === 'impersonate' ? '⟳' : '🎭'} Impersonar (1h)
+              </Btn>
+              <Btn variant="ghost" disabled={tlLoading} onClick={loadTimeline}>
+                {tlLoading ? '⟳' : '📅'} {showTl ? 'Ocultar timeline' : 'Ver timeline'}
+              </Btn>
             </div>
           </div>
+
+          {/* Timeline */}
+          {showTl && (
+            <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4">
+              <div className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide mb-3">📅 Timeline de Eventos</div>
+              {tlLoading ? (
+                <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4 animate-pulse">Carregando...</div>
+              ) : timeline && timeline.length === 0 ? (
+                <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhum evento encontrado</div>
+              ) : (
+                <div className="relative pl-6 space-y-3">
+                  <div className="absolute left-2 top-0 bottom-0 w-px bg-[rgba(16,185,129,.15)]" />
+                  {(timeline || []).map((ev: any, i: number) => (
+                    <div key={i} className="relative">
+                      <div className="absolute -left-4 w-4 h-4 rounded-full bg-[#0d1c19] border border-[rgba(16,185,129,.3)] flex items-center justify-center text-[8px]">
+                        {ev.icon}
+                      </div>
+                      <div className="bg-[#132621] rounded-lg px-3 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-[#d1fae5]">{ev.label}</span>
+                          <span className="text-[10px] text-[rgba(16,185,129,.3)] font-mono flex-shrink-0">{fmtFull(ev.ts)}</span>
+                        </div>
+                        {ev.detail && <div className="text-[10px] text-[rgba(16,185,129,.5)] mt-0.5">{ev.detail}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4">
             <div className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide mb-4">Uso de Minutos</div>
@@ -1293,6 +1457,495 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
     <div className="flex items-start justify-between gap-4">
       <span className="text-[rgba(16,185,129,.4)] flex-shrink-0">{label}</span>
       <span className={`text-[#d1fae5] text-right break-all ${mono ? 'font-mono text-[10px]' : ''}`}>{value}</span>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   NOVOS COMPONENTES — 10 Features Admin
+══════════════════════════════════════════════════════════ */
+
+// ── #5 Gráfico de transcrições por hora ────────────────────────────────────────
+function HourlyChart({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]       = useState<any[] | null>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/analytics/transcriptions/hourly`, { headers: { 'x-admin-token': token } });
+      setData(await res.json());
+    } catch { setData([]); }
+    finally { setLoading(false); }
+  }
+
+  const maxVal = data ? Math.max(...data.map(d => d.total), 1) : 1;
+  const total  = data ? data.reduce((a, d) => a + d.total, 0) : 0;
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+      <button type="button" onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
+        className="w-full text-left px-5 py-3 flex items-center justify-between hover:bg-[rgba(16,185,129,.02)] transition-colors">
+        <span className="text-sm font-bold text-[#d1fae5]">📈 Transcrições por Hora (24h)</span>
+        <span className="text-xs text-[rgba(16,185,129,.4)]">{open ? '▲' : '▼'} {data ? `${total} total` : ''}</span>
+      </button>
+      {open && (
+        <div className="px-5 pb-5">
+          <button type="button" onClick={load} disabled={loading}
+            className="text-xs text-[rgba(16,185,129,.5)] hover:text-[#10b981] mb-3 transition-colors">
+            {loading ? '⟳ Carregando...' : '↻ Atualizar'}
+          </button>
+          {data && data.length === 0 && (
+            <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhuma transcrição nas últimas 24h</div>
+          )}
+          {data && data.length > 0 && (
+            <div className="flex items-end gap-1 h-32 mt-2">
+              {data.map((d, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1 group" title={`${new Date(d.hour).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}: ${d.total}`}>
+                  <span className="text-[8px] text-[rgba(16,185,129,.5)] opacity-0 group-hover:opacity-100 transition-opacity">{d.total}</span>
+                  <div className="w-full bg-[#10b981] rounded-t transition-all"
+                    style={{ height: `${Math.max(4, (d.total / maxVal) * 100)}%`, opacity: 0.6 + 0.4 * (d.total / maxVal) }} />
+                  <span className="text-[7px] text-[rgba(16,185,129,.3)] rotate-90 mt-1 whitespace-nowrap">
+                    {new Date(d.hour).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── #6 Histórico de uptime ─────────────────────────────────────────────────────
+function UptimeHistory({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]       = useState<any | null>(null);
+  const [days, setDays]       = useState(7);
+
+  async function load(d = days) {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/uptime-history?days=${d}`, { headers: { 'x-admin-token': token } });
+      setData(await res.json());
+    } catch { setData(null); }
+    finally { setLoading(false); }
+  }
+
+  const uptimeColor = (pct: number) => pct >= 99 ? '#10b981' : pct >= 95 ? '#fbbf24' : '#f87171';
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+      <button type="button" onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
+        className="w-full text-left px-5 py-3 flex items-center justify-between hover:bg-[rgba(16,185,129,.02)] transition-colors">
+        <span className="text-sm font-bold text-[#d1fae5]">🕐 Histórico de Uptime</span>
+        <span className="text-xs text-[rgba(16,185,129,.4)]">{open ? '▲' : '▼'} últimos {days}d</span>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 space-y-3">
+          <div className="flex gap-1.5 items-center">
+            {[1, 3, 7, 14, 30].map(d => (
+              <button key={d} type="button" onClick={() => { setDays(d); load(d); }}
+                className={`text-xs px-2 py-1 rounded transition-colors ${days === d ? 'bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.25)]' : 'text-[rgba(16,185,129,.4)] hover:text-[#10b981]'}`}>
+                {d}d
+              </button>
+            ))}
+            <button type="button" onClick={() => load()} disabled={loading}
+              className="text-xs text-[rgba(16,185,129,.4)] hover:text-[#10b981] ml-2 transition-colors">
+              {loading ? '⟳' : '↻'}
+            </button>
+          </div>
+          {!data && !loading && <div className="text-xs text-[rgba(16,185,129,.3)]">Sem dados ainda — o checker roda a cada 5 min no worker.</div>}
+          {data?.summary && (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {data.summary.map((s: any) => (
+                <div key={s.service} className="bg-[#132621] rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-[#d1fae5] capitalize">{s.service}</span>
+                    <span className="text-xs font-black" style={{ color: uptimeColor(s.uptime) }}>{s.uptime}%</span>
+                  </div>
+                  <div className="w-full bg-[rgba(16,185,129,.1)] rounded h-1.5 mb-2">
+                    <div className="h-full rounded transition-all" style={{ width: `${s.uptime}%`, background: uptimeColor(s.uptime) }} />
+                  </div>
+                  <div className="text-[9px] text-[rgba(16,185,129,.4)]">
+                    {s.avgLatencyMs != null ? `⚡ ${s.avgLatencyMs}ms` : ''} · {s.checks} verificações
+                  </div>
+                  <div className="text-[9px] mt-0.5" style={{ color: s.latest?.status === 'up' ? '#10b981' : '#f87171' }}>
+                    {s.latest ? `Último: ${s.latest.status}` : 'Sem dados'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── #4 Configuração de Alertas ─────────────────────────────────────────────────
+function AlertConfigPanel({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]     = useState(false);
+  const [cfg, setCfg]       = useState<Record<string, any> | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/alert-config`, { headers: h });
+      setCfg(await res.json());
+    } finally { setLoading(false); }
+  }
+
+  async function save() {
+    if (!cfg) return;
+    setSaving(true);
+    try {
+      await fetch(`${apiBase}/sys/g5r8t2/alert-config`, { method: 'POST', headers: h, body: JSON.stringify(cfg) });
+      alert('✅ Configuração salva!');
+    } catch { alert('❌ Erro ao salvar'); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+      <button type="button" onClick={() => { setOpen(o => !o); if (!open && !cfg) load(); }}
+        className="w-full text-left px-5 py-3 flex items-center justify-between hover:bg-[rgba(16,185,129,.02)] transition-colors">
+        <span className="text-sm font-bold text-[#d1fae5]">🔔 Configuração de Alertas Automáticos</span>
+        <span className="text-xs text-[rgba(16,185,129,.4)]">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 space-y-3">
+          {loading && <div className="text-xs text-[rgba(16,185,129,.3)] animate-pulse">Carregando...</div>}
+          {cfg && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {[
+                  { key: 'alertPhone', label: '📱 WhatsApp para alertas', placeholder: '5511999999999' },
+                  { key: 'alertEmail', label: '📧 E-mail para alertas', placeholder: 'admin@example.com' },
+                  { key: 'queueMaxWaiting', label: '⏳ Alerta fila: máx. jobs aguardando', placeholder: '20' },
+                  { key: 'errorRatePct', label: '❌ Alerta: taxa de erro (% jobs falhos)', placeholder: '10' },
+                ].map(({ key, label, placeholder }) => (
+                  <div key={key}>
+                    <label className="block text-[10px] text-[rgba(16,185,129,.4)] mb-1.5 uppercase tracking-wide">{label}</label>
+                    <input
+                      value={cfg[key] == null || cfg[key] === 'null' ? '' : String(cfg[key])}
+                      onChange={e => setCfg(prev => ({ ...prev!, [key]: e.target.value || null }))}
+                      placeholder={placeholder}
+                      className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] font-mono outline-none focus:border-[rgba(16,185,129,.35)]"
+                    />
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={save} disabled={saving}
+                className="text-xs bg-[#10b981] text-[#011a12] font-bold px-4 py-2 rounded-lg hover:bg-[#34d399] disabled:opacity-50 transition-colors">
+                {saving ? '⟳ Salvando...' : '💾 Salvar configuração'}
+              </button>
+              <p className="text-[10px] text-[rgba(16,185,129,.3)]">Alertas via WhatsApp são enviados automaticamente quando thresholds são excedidos (checker roda a cada 5min no worker).</p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── #9 Amostrador de transcrições ─────────────────────────────────────────────
+function TranscriptionSampler({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]       = useState<any[] | null>(null);
+  const [n, setN]             = useState(5);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/transcriptions/sample?n=${n}`, { headers: { 'x-admin-token': token } });
+      setData(await res.json());
+    } catch { setData([]); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+      <button type="button" onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
+        className="w-full text-left px-5 py-3 flex items-center justify-between hover:bg-[rgba(16,185,129,.02)] transition-colors">
+        <span className="text-sm font-bold text-[#d1fae5]">🎲 Amostrador de Transcrições</span>
+        <span className="text-xs text-[rgba(16,185,129,.4)]">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <select value={n} onChange={e => setN(Number(e.target.value))}
+              className="text-xs bg-[#132621] border border-[rgba(16,185,129,.15)] rounded px-2 py-1 text-[#d1fae5] outline-none">
+              {[3, 5, 10, 20].map(v => <option key={v} value={v}>{v} amostras</option>)}
+            </select>
+            <button type="button" onClick={load} disabled={loading}
+              className="text-xs bg-[rgba(16,185,129,.1)] border border-[rgba(16,185,129,.2)] text-[#10b981] px-3 py-1.5 rounded-lg hover:bg-[rgba(16,185,129,.2)] disabled:opacity-40 transition-colors">
+              {loading ? '⟳ Amostrando...' : '🎲 Nova amostra'}
+            </button>
+          </div>
+          {data && data.length === 0 && <div className="text-xs text-[rgba(16,185,129,.3)]">Nenhuma transcrição encontrada.</div>}
+          {data && data.map((t: any, i: number) => (
+            <div key={i} className="bg-[#132621] rounded-lg px-3 py-2.5 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[rgba(16,185,129,.5)] font-mono">{t.id?.slice(0,10)}…</span>
+                  <span className="text-[10px] bg-[rgba(16,185,129,.1)] px-1.5 py-0.5 rounded text-[#10b981]">{t.language}</span>
+                  <span className="text-[10px] text-[rgba(16,185,129,.4)]">{t.source}</span>
+                </div>
+                <span className="text-[10px] text-[rgba(16,185,129,.3)]">{t.createdAt ? new Date(t.createdAt).toLocaleString('pt-BR') : '—'}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-[#d1fae5]">{t.contactName || 'Sem nome'}</span>
+                <span className="text-[10px] text-[rgba(16,185,129,.4)]">{t.durationSec ? `${(t.durationSec / 60).toFixed(1)} min` : '—'}</span>
+                <span className="text-[10px] text-[rgba(16,185,129,.4)] font-mono">{t.userEmail}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── #7 MRR por Coorte ──────────────────────────────────────────────────────────
+function MRRCohort({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]       = useState<any | null>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/analytics/mrr-cohort`, { headers: { 'x-admin-token': token } });
+      setData(await res.json());
+    } finally { setLoading(false); }
+  }
+
+  const maxMrr = data?.cohorts ? Math.max(...data.cohorts.map((c: any) => c.mrr), 1) : 1;
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+      <button type="button" onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
+        className="w-full text-left px-5 py-3 flex items-center justify-between hover:bg-[rgba(16,185,129,.02)] transition-colors">
+        <span className="text-sm font-bold text-[#d1fae5]">💰 MRR por Coorte de Cadastro</span>
+        {data && <span className="text-xs font-bold text-[#10b981]">R$ {data.totalMrr?.toFixed(2)} total</span>}
+        <span className="text-xs text-[rgba(16,185,129,.4)]">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 space-y-3">
+          <button type="button" onClick={load} disabled={loading}
+            className="text-xs text-[rgba(16,185,129,.4)] hover:text-[#10b981] transition-colors">
+            {loading ? '⟳ Carregando...' : '↻ Atualizar'}
+          </button>
+          {data?.cohorts && data.cohorts.length === 0 && (
+            <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhum assinante pago ainda.</div>
+          )}
+          {data?.cohorts && data.cohorts.length > 0 && (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-[rgba(16,185,129,.08)]">
+                  {['Coorte', 'Usuários', 'MRR', ''].map(h => (
+                    <th key={h} className="text-left py-2 px-3 text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.cohorts.map((c: any) => (
+                  <tr key={c.cohort} className="border-b border-[rgba(16,185,129,.04)] last:border-0">
+                    <td className="py-2 px-3 font-mono text-[#d1fae5]">{c.cohort}</td>
+                    <td className="py-2 px-3 text-[rgba(16,185,129,.7)]">{c.users}</td>
+                    <td className="py-2 px-3 font-bold text-[#10b981]">R$ {c.mrr.toFixed(2)}</td>
+                    <td className="py-2 px-3 w-32">
+                      <div className="bg-[rgba(16,185,129,.1)] rounded h-1.5">
+                        <div className="h-full rounded bg-[#10b981]" style={{ width: `${(c.mrr / maxMrr) * 100}%` }} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t border-[rgba(16,185,129,.15)]">
+                  <td className="py-2 px-3 font-bold text-[rgba(16,185,129,.6)]">Total</td>
+                  <td className="py-2 px-3" />
+                  <td className="py-2 px-3 font-black text-[#10b981]">R$ {data.totalMrr?.toFixed(2)}</td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── #8 Risco de Churn ──────────────────────────────────────────────────────────
+function ChurnRisk({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]       = useState<any | null>(null);
+  const [days, setDays]       = useState(14);
+
+  async function load(d = days) {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/analytics/churn-risk?days=${d}`, { headers: { 'x-admin-token': token } });
+      setData(await res.json());
+    } finally { setLoading(false); }
+  }
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+      <button type="button" onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
+        className="w-full text-left px-5 py-3 flex items-center justify-between hover:bg-[rgba(16,185,129,.02)] transition-colors">
+        <span className="text-sm font-bold text-[#d1fae5]">⚠️ Risco de Churn</span>
+        {data && <span className={`text-xs font-bold ${data.total > 0 ? 'text-red-400' : 'text-green-400'}`}>{data.total} usuário(s) em risco</span>}
+        <span className="text-xs text-[rgba(16,185,129,.4)]">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 space-y-3">
+          <div className="flex items-center gap-2">
+            {[7, 14, 30].map(d => (
+              <button key={d} type="button" onClick={() => { setDays(d); load(d); }}
+                className={`text-xs px-2 py-1 rounded transition-colors ${days === d ? 'bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.25)]' : 'text-[rgba(16,185,129,.4)] hover:text-[#10b981]'}`}>
+                {d}d sem atividade
+              </button>
+            ))}
+            <button type="button" onClick={() => load()} disabled={loading}
+              className="text-xs text-[rgba(16,185,129,.4)] hover:text-[#10b981] transition-colors">{loading ? '⟳' : '↻'}</button>
+          </div>
+          {data?.atRisk && data.atRisk.length === 0 && (
+            <div className="text-xs text-green-400 text-center py-4">✅ Nenhum usuário em risco de churn!</div>
+          )}
+          {data?.atRisk && data.atRisk.map((u: any, i: number) => (
+            <div key={i} className="bg-[#132621] border border-red-500/10 rounded-lg px-3 py-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold text-[#d1fae5]">{u.email}</div>
+                  <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-0.5">Plano: {u.plan} · R$ {u.priceBrl}/mês</div>
+                </div>
+                <div className="text-right">
+                  <div className={`text-xs font-bold ${u.neverUsed ? 'text-red-400' : 'text-yellow-400'}`}>
+                    {u.neverUsed ? '🚨 Nunca usou' : `${u.daysSinceLast}d sem atividade`}
+                  </div>
+                  {u.minutesLeft != null && (
+                    <div className="text-[10px] text-[rgba(16,185,129,.4)]">{u.minutesLeft.toFixed(0)} min restantes</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── #10 Painel NPS (admin view) ────────────────────────────────────────────────
+function NPSPanel({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]       = useState<any | null>(null);
+  const [days, setDays]       = useState(90);
+
+  async function load(d = days) {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/nps?days=${d}`, { headers: { 'x-admin-token': token } });
+      setData(await res.json());
+    } finally { setLoading(false); }
+  }
+
+  const npsColor = (s: number | null) => s == null ? '#60a5fa' : s >= 50 ? '#10b981' : s >= 0 ? '#fbbf24' : '#f87171';
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+      <button type="button" onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
+        className="w-full text-left px-5 py-3 flex items-center justify-between hover:bg-[rgba(16,185,129,.02)] transition-colors">
+        <span className="text-sm font-bold text-[#d1fae5]">⭐ NPS — Net Promoter Score</span>
+        {data && <span className="text-xs font-bold" style={{ color: npsColor(data.npsScore) }}>{data.npsScore != null ? `NPS: ${data.npsScore > 0 ? '+' : ''}${data.npsScore}` : 'Sem dados'}</span>}
+        <span className="text-xs text-[rgba(16,185,129,.4)]">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 space-y-4">
+          <div className="flex items-center gap-2">
+            {[30, 90, 180, 365].map(d => (
+              <button key={d} type="button" onClick={() => { setDays(d); load(d); }}
+                className={`text-xs px-2 py-1 rounded transition-colors ${days === d ? 'bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.25)]' : 'text-[rgba(16,185,129,.4)] hover:text-[#10b981]'}`}>
+                {d}d
+              </button>
+            ))}
+            <button type="button" onClick={() => load()} disabled={loading}
+              className="text-xs text-[rgba(16,185,129,.4)] hover:text-[#10b981] transition-colors">{loading ? '⟳' : '↻'}</button>
+          </div>
+
+          {data && data.total === 0 && (
+            <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhuma resposta NPS no período. O modal aparece para usuários com 5+ transcrições.</div>
+          )}
+
+          {data && data.total > 0 && (
+            <>
+              {/* Score principal */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'NPS Score', value: data.npsScore != null ? `${data.npsScore > 0 ? '+' : ''}${data.npsScore}` : '—', color: npsColor(data.npsScore) },
+                  { label: 'Avg Score', value: data.avgScore ?? '—', color: '#60a5fa' },
+                  { label: 'Promotores', value: `${data.promoters} (${data.total ? Math.round(data.promoters/data.total*100) : 0}%)`, color: '#10b981' },
+                  { label: 'Detratores', value: `${data.detractors} (${data.total ? Math.round(data.detractors/data.total*100) : 0}%)`, color: '#f87171' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="bg-[#132621] rounded-lg p-3 text-center">
+                    <div className="text-lg font-black" style={{ color }}>{value}</div>
+                    <div className="text-[9px] text-[rgba(16,185,129,.4)] mt-0.5">{label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Distribuição 0-10 */}
+              <div>
+                <div className="text-[10px] text-[rgba(16,185,129,.4)] mb-2 uppercase tracking-wide">Distribuição por nota</div>
+                <div className="flex items-end gap-1 h-16">
+                  {Object.entries(data.distribution).map(([score, count]: [string, any]) => {
+                    const maxC = Math.max(...Object.values(data.distribution) as number[], 1);
+                    const pct  = (count / maxC) * 100;
+                    const col  = Number(score) >= 9 ? '#10b981' : Number(score) >= 7 ? '#fbbf24' : '#f87171';
+                    return (
+                      <div key={score} className="flex-1 flex flex-col items-center gap-0.5" title={`${score}: ${count}`}>
+                        <div className="w-full rounded-t transition-all" style={{ height: `${Math.max(4, pct)}%`, background: col, opacity: 0.7 }} />
+                        <span className="text-[7px] text-[rgba(16,185,129,.4)]">{score}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Comentários recentes */}
+              {data.recent.some((r: any) => r.comment) && (
+                <div>
+                  <div className="text-[10px] text-[rgba(16,185,129,.4)] mb-2 uppercase tracking-wide">Comentários recentes</div>
+                  <div className="space-y-2">
+                    {data.recent.filter((r: any) => r.comment).slice(0, 5).map((r: any, i: number) => (
+                      <div key={i} className="bg-[#132621] rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold" style={{ color: npsColor(null) }}>{'⭐'.repeat(Math.round(r.score / 2))} {r.score}/10</span>
+                          <span className="text-[10px] text-[rgba(16,185,129,.3)]">{r.email}</span>
+                          <span className="text-[10px] text-[rgba(16,185,129,.3)] ml-auto">{r.createdAt ? new Date(r.createdAt).toLocaleDateString('pt-BR') : '—'}</span>
+                        </div>
+                        <p className="text-xs text-[#d1fae5]/80 italic">"{r.comment}"</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

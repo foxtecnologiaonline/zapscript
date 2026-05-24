@@ -142,7 +142,7 @@ export default function AdminPage() {
     if (t === 'users'   && users.length === 0)   loadUsers('', 0);
     if (t === 'tickets' && tickets.length === 0) loadTickets('', 0);
     if (t === 'testers') loadInvites();
-    // 'monitoring' tab loads its own data internally via ServicesHealth / QueuePanel etc.
+    // 'monitoring' e 'financeiro' carregam dados internamente em seus componentes
   }
 
   async function syncPlans() {

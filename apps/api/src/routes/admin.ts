@@ -14,7 +14,15 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!,
 );
 
-const PLAN_PRICES: Record<string, number> = { pro: 29.90, ultra: 59.90, free: 0, 'pro-tester': 0 };
+const PLAN_PRICES: Record<string, number> = { pro: 29.90, ultra: 59.90, executive: 89.90, free: 0, 'pro-tester': 0 };
+
+// Mascara email para LGPD: "fr***@gmail.com"
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return '***';
+  const masked = local.length > 2 ? local.slice(0, 2) + '***' : '***';
+  return `${masked}@${domain}`;
+}
 
 function safeCompare(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
@@ -1149,6 +1157,366 @@ export default async function adminRoutes(app: FastifyInstance) {
         skipped,
         message: `Sincronização concluída: ${created} balanço(s) criado(s), ${skipped} já existiam.`,
       });
+    }
+  );
+
+  // ═══════════════════════════════════════════════════════
+  //  10 Admin Features
+  // ═══════════════════════════════════════════════════════
+
+  // ── #1 Impersonação temporária (1h) ────────────────────
+  app.post<{ Params: { id: string } }>(
+    '/users/:id/impersonate',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { id } = req.params;
+      const user = await prisma.user.findUnique({
+        where:  { id },
+        select: { id: true, email: true, deletedAt: true },
+      });
+      if (!user)          return reply.code(404).send({ error: 'Usuário não encontrado.' });
+      if (user.deletedAt) return reply.code(400).send({ error: 'Usuário deletado — não é possível impersonar.' });
+
+      const token = (app as any).jwt.sign(
+        { sub: user.id, email: user.email, impersonated: true },
+        { expiresIn: '1h' }
+      );
+      app.log.warn({ userId: id, email: maskEmail(user.email) }, '[Admin] ⚠️ Impersonação iniciada');
+      return reply.send({ token, user: { id: user.id, email: maskEmail(user.email) }, expiresIn: 3600 });
+    }
+  );
+
+  // ── #2 Timeline de eventos do usuário ──────────────────
+  app.get<{ Params: { id: string } }>(
+    '/users/:id/timeline',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { id } = req.params;
+      const user = await prisma.user.findUnique({
+        where:   { id },
+        include: {
+          subscription: { include: { plan: { select: { label: true } } } },
+          numbers:      { orderBy: { createdAt: 'asc' }, select: { id: true, displayName: true, phoneNumber: true, connectedAt: true, createdAt: true } },
+          transcriptions: {
+            orderBy: { createdAt: 'asc' },
+            take:    500,
+            select:  { id: true, createdAt: true, durationSec: true, language: true, source: true },
+          },
+          supportTickets: {
+            orderBy: { createdAt: 'asc' },
+            select:  { id: true, category: true, status: true, createdAt: true },
+          },
+        },
+      });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      const auditLogs = await prisma.auditLog.findMany({
+        where:   { targetUserId: id },
+        orderBy: { timestamp: 'asc' },
+        take:    50,
+      });
+
+      type Ev = { ts: Date; type: string; icon: string; label: string; detail?: string };
+      const events: Ev[] = [];
+
+      events.push({ ts: user.createdAt, type: 'signup', icon: '👤', label: 'Cadastro realizado' });
+
+      if (user.subscription) {
+        events.push({ ts: user.subscription.createdAt, type: 'subscription', icon: '💳', label: 'Assinatura ativada', detail: user.subscription.plan.label });
+      }
+      for (const n of user.numbers) {
+        events.push({ ts: n.createdAt, type: 'number-added', icon: '📱', label: 'Número adicionado', detail: n.displayName || n.phoneNumber || n.id });
+        if (n.connectedAt) events.push({ ts: n.connectedAt, type: 'number-connected', icon: '✅', label: 'Número conectado', detail: n.displayName || n.phoneNumber || undefined });
+      }
+      if (user.transcriptions.length > 0) {
+        const first = user.transcriptions[0];
+        const last  = user.transcriptions[user.transcriptions.length - 1];
+        events.push({ ts: first.createdAt, type: 'tx-first', icon: '🎙️', label: 'Primeira transcrição', detail: `${(first.durationSec / 60).toFixed(1)} min` });
+        if (last.id !== first.id) events.push({ ts: last.createdAt, type: 'tx-last', icon: '🎙️', label: 'Transcrição mais recente', detail: `${(last.durationSec / 60).toFixed(1)} min` });
+      }
+      for (const t of user.supportTickets) {
+        events.push({ ts: t.createdAt, type: 'ticket', icon: '🎫', label: `Ticket: ${t.category}`, detail: t.status });
+      }
+      for (const a of auditLogs) {
+        events.push({ ts: a.timestamp, type: 'audit', icon: '🔍', label: a.action });
+      }
+
+      events.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+      return { events, totalTranscriptions: user.transcriptions.length };
+    }
+  );
+
+  // ── #3 Bulk actions ─────────────────────────────────────
+  app.post<{ Body: { userIds: string[]; action: string; value?: any } }>(
+    '/users/bulk-action',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { userIds, action, value } = req.body;
+      if (!Array.isArray(userIds) || userIds.length === 0) return reply.code(400).send({ error: 'userIds é obrigatório.' });
+      if (userIds.length > 100)  return reply.code(400).send({ error: 'Máximo 100 usuários por ação em lote.' });
+      const allowed = ['add-minutes', 'set-plan', 'ban', 'unban'];
+      if (!allowed.includes(action)) return reply.code(400).send({ error: `Ação inválida. Use: ${allowed.join(', ')}` });
+
+      let affected = 0;
+      const errors: string[] = [];
+
+      for (const userId of userIds) {
+        try {
+          if (action === 'add-minutes') {
+            const minutes = parseFloat(value);
+            if (isNaN(minutes)) throw new Error('value deve ser número');
+            const current = await prisma.minuteBalance.findUnique({ where: { userId } });
+            const newVal  = Math.max(0, (current?.availableMinutes ?? 0) + minutes);
+            await prisma.minuteBalance.upsert({
+              where:  { userId },
+              create: { userId, availableMinutes: newVal, resetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), lastAlertSent: null },
+              update: { availableMinutes: newVal, lastAlertSent: null },
+            });
+
+          } else if (action === 'set-plan') {
+            const plan = await prisma.plan.findUnique({ where: { name: String(value) } });
+            if (!plan) throw new Error(`Plano "${value}" não existe`);
+            const nextReset = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+            await prisma.$transaction([
+              prisma.subscription.upsert({
+                where:  { userId },
+                create: { userId, planId: plan.id, status: 'active' },
+                update: { planId: plan.id, status: 'active' },
+              }),
+              prisma.minuteBalance.upsert({
+                where:  { userId },
+                create: { userId, availableMinutes: plan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
+                update: { availableMinutes: plan.minutesPerMonth, lastAlertSent: null, resetAt: nextReset },
+              }),
+            ]);
+
+          } else if (action === 'ban') {
+            await prisma.user.update({ where: { id: userId }, data: { deletedAt: new Date() } });
+
+          } else if (action === 'unban') {
+            await prisma.user.update({ where: { id: userId }, data: { deletedAt: null } });
+          }
+          affected++;
+        } catch (e: any) {
+          errors.push(`${userId.slice(0, 8)}: ${e.message}`);
+        }
+      }
+
+      app.log.info({ action, affected, total: userIds.length }, '[Admin] bulk-action');
+      return { ok: true, affected, errors, message: `${affected}/${userIds.length} usuário(s) processado(s).` };
+    }
+  );
+
+  // ── #4 Alert Config (GET + POST) ────────────────────────
+  app.get('/alert-config', { preHandler: [adminAuth] }, async () => {
+    const rows = await (prisma as any).adminAlertConfig.findMany();
+    return Object.fromEntries(rows.map((r: any) => [r.key, r.value]));
+  });
+
+  app.post<{ Body: Record<string, any> }>(
+    '/alert-config',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const entries = Object.entries(req.body);
+      if (entries.length === 0) return reply.code(400).send({ error: 'Corpo vazio.' });
+      for (const [key, value] of entries) {
+        await (prisma as any).adminAlertConfig.upsert({
+          where:  { key },
+          create: { key, value },
+          update: { value, updatedAt: new Date() },
+        });
+      }
+      return { ok: true, updated: entries.length };
+    }
+  );
+
+  // ── #5 Gráfico de transcrições por hora (últimas 24h) ──
+  app.get('/analytics/transcriptions/hourly', { preHandler: [adminAuth] }, async () => {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const rows: any[] = await prisma.$queryRaw`
+      SELECT
+        date_trunc('hour', "createdAt" AT TIME ZONE 'America/Sao_Paulo') AS hour,
+        COUNT(*)::int AS total
+      FROM "Transcription"
+      WHERE "createdAt" >= ${since}
+      GROUP BY 1
+      ORDER BY 1
+    `;
+    return rows.map(r => ({ hour: r.hour, total: Number(r.total) }));
+  });
+
+  // ── #6 Histórico de uptime (ServiceStatusLog) ───────────
+  app.get<{ Querystring: { days?: string } }>(
+    '/uptime-history',
+    { preHandler: [adminAuth] },
+    async (req) => {
+      const days  = Math.min(Math.max(parseInt(req.query.days || '7') || 7, 1), 30);
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const logs  = await (prisma as any).serviceStatusLog.findMany({
+        where:   { checkedAt: { gte: since } },
+        orderBy: { checkedAt: 'desc' },
+        take:    5000,
+      });
+
+      const byService: Record<string, any[]> = {};
+      for (const log of logs) {
+        if (!byService[log.service]) byService[log.service] = [];
+        byService[log.service].push(log);
+      }
+
+      const summary = Object.entries(byService).map(([service, entries]) => {
+        const upCount    = entries.filter(e => e.status === 'up').length;
+        const uptime     = entries.length ? Math.round((upCount / entries.length) * 100) : 100;
+        const withLatency = entries.filter(e => e.latencyMs != null);
+        const avgLatency = withLatency.length
+          ? Math.round(withLatency.reduce((a, e) => a + e.latencyMs, 0) / withLatency.length)
+          : null;
+        return {
+          service,
+          uptime,
+          avgLatencyMs: avgLatency,
+          checks:       entries.length,
+          latest:       entries[0] ?? null,
+        };
+      });
+
+      return { summary, days, total: logs.length };
+    }
+  );
+
+  // ── #7 MRR por coorte de mês de cadastro ───────────────
+  app.get('/analytics/mrr-cohort', { preHandler: [adminAuth] }, async () => {
+    const subs = await prisma.subscription.findMany({
+      where:   { status: 'active' },
+      include: {
+        plan: { select: { name: true, priceBrl: true } },
+        user: { select: { isTester: true, createdAt: true } },
+      },
+    });
+
+    const cohorts: Record<string, { cohort: string; users: number; mrr: number }> = {};
+    for (const sub of subs) {
+      if (sub.user.isTester || sub.plan.priceBrl === 0) continue;
+      const month = sub.user.createdAt.toISOString().slice(0, 7);
+      if (!cohorts[month]) cohorts[month] = { cohort: month, users: 0, mrr: 0 };
+      cohorts[month].users++;
+      cohorts[month].mrr = Math.round((cohorts[month].mrr + sub.plan.priceBrl) * 100) / 100;
+    }
+
+    const rows    = Object.values(cohorts).sort((a, b) => a.cohort.localeCompare(b.cohort));
+    const totalMrr = Math.round(rows.reduce((acc, r) => acc + r.mrr, 0) * 100) / 100;
+    return { cohorts: rows, totalMrr };
+  });
+
+  // ── #8 Risco de churn (sem atividade em N dias) ─────────
+  app.get<{ Querystring: { days?: string } }>(
+    '/analytics/churn-risk',
+    { preHandler: [adminAuth] },
+    async (req) => {
+      const days  = Math.min(Math.max(parseInt(req.query.days || '14') || 14, 1), 90);
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const subs = await prisma.subscription.findMany({
+        where:   { status: 'active' },
+        include: {
+          plan: { select: { name: true, label: true, priceBrl: true } },
+          user: {
+            select: {
+              id: true, email: true, isTester: true, createdAt: true,
+              transcriptions: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
+              balance:        { select: { availableMinutes: true, resetAt: true } },
+            },
+          },
+        },
+      });
+
+      const atRisk = subs
+        .filter(s => s.plan.priceBrl > 0 && !s.user.isTester)
+        .map(s => {
+          const lastT = s.user.transcriptions[0]?.createdAt ?? null;
+          const daysSinceLast = lastT
+            ? Math.floor((Date.now() - new Date(lastT).getTime()) / 86_400_000)
+            : null;
+          const isAtRisk = !lastT || new Date(lastT) < since;
+          return {
+            userId:       s.user.id,
+            email:        maskEmail(s.user.email),
+            plan:         s.plan.label,
+            priceBrl:     s.plan.priceBrl,
+            createdAt:    s.user.createdAt,
+            lastActivity: lastT,
+            daysSinceLast,
+            neverUsed:    !lastT,
+            minutesLeft:  s.user.balance?.availableMinutes ?? null,
+            periodEnd:    s.currentPeriodEnd,
+            isAtRisk,
+          };
+        })
+        .filter(u => u.isAtRisk)
+        .sort((a, b) => (b.daysSinceLast ?? 9999) - (a.daysSinceLast ?? 9999));
+
+      return { atRisk, total: atRisk.length, inactiveDays: days };
+    }
+  );
+
+  // ── #9 Amostrador de transcrições aleatórias ────────────
+  app.get<{ Querystring: { n?: string } }>(
+    '/transcriptions/sample',
+    { preHandler: [adminAuth] },
+    async (req) => {
+      const n = Math.min(Math.max(parseInt(req.query.n || '5') || 5, 1), 20);
+      const rows: any[] = await prisma.$queryRaw`
+        SELECT t.id, t."userId", t."contactName", t."durationSec", t.language, t.source,
+               t."createdAt", u.email AS "userEmail"
+        FROM   "Transcription" t
+        JOIN   "User" u ON u.id = t."userId"
+        ORDER  BY RANDOM()
+        LIMIT  ${n}
+      `;
+      return rows.map(r => ({
+        ...r,
+        userEmail:   maskEmail(r.userEmail),
+        contactName: r.contactName ? String(r.contactName).substring(0, 25) : null,
+      }));
+    }
+  );
+
+  // ── #10 Painel NPS (admin view) ─────────────────────────
+  app.get<{ Querystring: { days?: string } }>(
+    '/nps',
+    { preHandler: [adminAuth] },
+    async (req) => {
+      const days  = Math.min(Math.max(parseInt(req.query.days || '90') || 90, 7), 365);
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const responses = await (prisma as any).npsResponse.findMany({
+        where:   { createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+        include: { user: { select: { email: true } } },
+        take:    1000,
+      });
+
+      const total      = responses.length;
+      const promoters  = responses.filter((r: any) => r.score >= 9).length;
+      const passives   = responses.filter((r: any) => r.score >= 7 && r.score <= 8).length;
+      const detractors = responses.filter((r: any) => r.score <= 6).length;
+      const npsScore   = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : null;
+      const avgScore   = total > 0
+        ? Math.round((responses.reduce((a: number, r: any) => a + r.score, 0) / total) * 10) / 10
+        : null;
+
+      const distribution: Record<string, number> = {};
+      for (let i = 0; i <= 10; i++) distribution[String(i)] = 0;
+      for (const r of responses) distribution[String(r.score)]++;
+
+      const recent = responses.slice(0, 20).map((r: any) => ({
+        score:     r.score,
+        comment:   r.comment,
+        createdAt: r.createdAt,
+        email:     maskEmail(r.user.email),
+      }));
+
+      return { npsScore, avgScore, total, promoters, passives, detractors, distribution, recent, days };
     }
   );
 }

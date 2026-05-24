@@ -200,9 +200,34 @@ export default function TranscricoesPage() {
   const [editTags, setEditTags]   = useState<string[]>([]);
   const [savingTags, setSavingTags] = useState(false);
 
+  // NPS Modal (#10)
+  const [npsVisible,  setNpsVisible]  = useState(false);
+  const [npsScore,    setNpsScore]    = useState<number | null>(null);
+  const [npsComment,  setNpsComment]  = useState('');
+  const [npsSubmitting, setNpsSubmitting] = useState(false);
+  const [npsDone,     setNpsDone]     = useState(false);
+
   useEffect(() => {
     api.get<any>('/auth/me').then(u => setPlanName(u.subscription?.plan?.name || 'free')).catch(() => null);
   }, []);
+
+  useEffect(() => {
+    // Checa se deve mostrar modal NPS
+    api.get<any>('/nps/status').then(s => {
+      if (s.shouldShow) setNpsVisible(true);
+    }).catch(() => null);
+  }, []);
+
+  async function submitNps() {
+    if (npsScore == null) return;
+    setNpsSubmitting(true);
+    try {
+      await api.post('/nps/submit', { score: npsScore, comment: npsComment.trim() || undefined });
+      setNpsDone(true);
+      setTimeout(() => setNpsVisible(false), 2500);
+    } catch { setNpsVisible(false); }
+    finally { setNpsSubmitting(false); }
+  }
 
   const load = useCallback(async (s = search, o = offset, tag = filterTag, lang = filterLang) => {
     setLoading(true);
@@ -536,6 +561,65 @@ export default function TranscricoesPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── NPS Modal (#10) ───────────────────────────────────────────── */}
+      {npsVisible && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#0d1c19] border border-[rgba(16,185,129,.15)] rounded-2xl p-6 shadow-2xl animate-in slide-in-from-bottom duration-300">
+            {npsDone ? (
+              <div className="text-center py-4">
+                <div className="text-4xl mb-3">🙏</div>
+                <div className="font-bold text-[#d1fae5] text-lg">Obrigado!</div>
+                <div className="text-xs text-[rgba(16,185,129,.5)] mt-1">Seu feedback é muito importante para nós.</div>
+              </div>
+            ) : (
+              <>
+                <div className="text-center mb-5">
+                  <div className="text-3xl mb-2">⭐</div>
+                  <div className="font-bold text-[#d1fae5] text-base">O quanto você recomendaria o ZapScript?</div>
+                  <div className="text-xs text-[rgba(16,185,129,.4)] mt-1">De 0 (nada) a 10 (com certeza)</div>
+                </div>
+
+                {/* Score selector */}
+                <div className="flex justify-between gap-1 mb-4">
+                  {Array.from({ length: 11 }, (_, i) => (
+                    <button key={i} type="button" onClick={() => setNpsScore(i)}
+                      className={`flex-1 aspect-square text-xs font-bold rounded-lg transition-all ${
+                        npsScore === i
+                          ? 'bg-[#10b981] text-[#011a12] scale-110'
+                          : 'bg-[#132621] border border-[rgba(16,185,129,.15)] text-[rgba(16,185,129,.6)] hover:border-[rgba(16,185,129,.4)]'
+                      }`}>
+                      {i}
+                    </button>
+                  ))}
+                </div>
+
+                {npsScore != null && (
+                  <textarea
+                    value={npsComment}
+                    onChange={e => setNpsComment(e.target.value)}
+                    placeholder="Deixe um comentário (opcional)..."
+                    rows={2}
+                    maxLength={500}
+                    className="w-full bg-[#132621] border border-[rgba(16,185,129,.12)] rounded-xl px-3 py-2 text-sm text-[#d1fae5] placeholder-[rgba(16,185,129,.3)] outline-none focus:border-[rgba(16,185,129,.3)] resize-none mb-3"
+                  />
+                )}
+
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setNpsVisible(false)}
+                    className="flex-1 py-2.5 rounded-xl text-sm border border-[rgba(16,185,129,.1)] text-[rgba(16,185,129,.4)] hover:text-[rgba(16,185,129,.7)] transition-colors">
+                    Agora não
+                  </button>
+                  <button type="button" onClick={submitNps} disabled={npsScore == null || npsSubmitting}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-[#10b981] text-[#011a12] hover:bg-[#34d399] disabled:opacity-40 transition-colors">
+                    {npsSubmitting ? '⟳' : 'Enviar'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -33,6 +33,7 @@ model User {
   usageLogs                   UsageLog[]
   supportTickets              SupportTicket[]
   webhookConfig               WebhookConfig?
+  npsResponses                NpsResponse[]
 }
 
 model Plan {
@@ -206,4 +207,38 @@ model WebhookConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ── Admin features ────────────────────────────────────────────────────────────
+
+// #6 — Histórico de uptime dos serviços (checker no worker, a cada 5 min)
+model ServiceStatusLog {
+  id        String   @id @default(cuid())
+  service   String   // "api" | "db" | "redis" | "queue" | "whatsapp" | "groq" | "email"
+  status    String   // "up" | "down" | "degraded"
+  latencyMs Int?
+  checkedAt DateTime @default(now())
+
+  @@index([service, checkedAt])
+}
+
+// #10 — Respostas NPS dos usuários
+model NpsResponse {
+  id        String   @id @default(cuid())
+  userId    String
+  score     Int      // 0–10
+  comment   String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
+// #4 — Configuração de alertas automáticos do admin
+model AdminAlertConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique  // "queueMaxWaiting" | "errorRatePct" | "alertPhone" | "alertEmail"
+  value     Json
+  updatedAt DateTime @updatedAt
 }

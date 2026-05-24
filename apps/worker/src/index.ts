@@ -775,6 +775,159 @@ async function resetExpiredMinutes() {
 resetExpiredMinutes();
 setInterval(resetExpiredMinutes, 60 * 60 * 1000);
 
+// ─────────────────────────────────────────────────────────────────
+//  CRON — Service Health Checker (#6 + #4)
+//  Verifica saúde dos serviços a cada 5 minutos e persiste no DB.
+//  Se thresholds de alerta forem excedidos, envia notificação via WhatsApp.
+// ─────────────────────────────────────────────────────────────────
+const HEALTH_SERVICES = ['db', 'redis', 'queue', 'whatsapp', 'groq'] as const;
+
+async function checkAndLogServiceHealth() {
+  const now = new Date();
+
+  // ── DB ──────────────────────────────────────────────────────────
+  async function checkDb() {
+    const t = Date.now();
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      return { status: 'up', latencyMs: Date.now() - t };
+    } catch {
+      return { status: 'down', latencyMs: null };
+    }
+  }
+
+  // ── Redis ────────────────────────────────────────────────────────
+  async function checkRedis() {
+    const t = Date.now();
+    try {
+      await redis.ping();
+      return { status: 'up', latencyMs: Date.now() - t };
+    } catch {
+      return { status: 'down', latencyMs: null };
+    }
+  }
+
+  // ── BullMQ queue ─────────────────────────────────────────────────
+  async function checkQueue() {
+    const t = Date.now();
+    try {
+      const { Queue: BQueue } = await import('bullmq');
+      const q = new BQueue('transcription', { connection: redis });
+      const [waiting, active, failed] = await Promise.all([q.getWaitingCount(), q.getActiveCount(), q.getFailedCount()]);
+      await q.close();
+      // Degraded if too many waiting or failed
+      const status = failed > 20 || waiting > 50 ? 'degraded' : 'up';
+      return { status, latencyMs: Date.now() - t, waiting, active, failed };
+    } catch {
+      return { status: 'down', latencyMs: null };
+    }
+  }
+
+  // ── Evolution API / WhatsApp ──────────────────────────────────────
+  async function checkWhatsapp() {
+    const t = Date.now();
+    try {
+      const evolutionUrl = process.env.EVOLUTION_API_URL;
+      if (!evolutionUrl) return { status: 'degraded', latencyMs: null };
+      const res = await fetch(`${evolutionUrl.replace(/\/$/, '')}/instance/fetchInstances`, {
+        headers: { apikey: process.env.EVOLUTION_API_KEY || '' },
+        signal:  AbortSignal.timeout(5000),
+      });
+      const status = res.ok ? 'up' : 'degraded';
+      return { status, latencyMs: Date.now() - t };
+    } catch {
+      return { status: 'down', latencyMs: null };
+    }
+  }
+
+  // ── Groq API ─────────────────────────────────────────────────────
+  async function checkGroq() {
+    const t = Date.now();
+    if (!process.env.GROQ_API_KEY) return { status: 'degraded', latencyMs: null };
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/models', {
+        headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+        signal:  AbortSignal.timeout(5000),
+      });
+      return { status: res.ok ? 'up' : 'degraded', latencyMs: Date.now() - t };
+    } catch {
+      return { status: 'down', latencyMs: null };
+    }
+  }
+
+  try {
+    const [db, redisR, queue, whatsapp, groq] = await Promise.allSettled([
+      checkDb(), checkRedis(), checkQueue(), checkWhatsapp(), checkGroq(),
+    ]);
+
+    const results: Record<string, { status: string; latencyMs: number | null }> = {
+      db:        db.status        === 'fulfilled' ? db.value        : { status: 'down', latencyMs: null },
+      redis:     redisR.status    === 'fulfilled' ? redisR.value    : { status: 'down', latencyMs: null },
+      queue:     queue.status     === 'fulfilled' ? queue.value     : { status: 'down', latencyMs: null },
+      whatsapp:  whatsapp.status  === 'fulfilled' ? whatsapp.value  : { status: 'down', latencyMs: null },
+      groq:      groq.status      === 'fulfilled' ? groq.value      : { status: 'down', latencyMs: null },
+    };
+
+    // Persiste logs (fire-and-forget individual inserts em lote)
+    await prisma.$transaction(
+      Object.entries(results).map(([service, r]) =>
+        (prisma as any).serviceStatusLog.create({
+          data: { service, status: r.status, latencyMs: r.latencyMs, checkedAt: now },
+        })
+      )
+    );
+
+    // Limpa logs > 30 dias para não encher o BD
+    await (prisma as any).serviceStatusLog.deleteMany({
+      where: { checkedAt: { lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+    });
+
+    // ── Alertas automáticos (#4) ─────────────────────────────────
+    const alertConfigs = await (prisma as any).adminAlertConfig.findMany();
+    const cfg: Record<string, any> = Object.fromEntries(alertConfigs.map((r: any) => [r.key, r.value]));
+
+    const alertPhone = cfg.alertPhone && cfg.alertPhone !== 'null' ? String(cfg.alertPhone) : null;
+    const queueMax   = Number(cfg.queueMaxWaiting) || 20;
+    const queueData  = results.queue as any;
+
+    const issues: string[] = [];
+    if (results.db.status       === 'down')     issues.push('❌ Banco de dados offline!');
+    if (results.redis.status    === 'down')     issues.push('❌ Redis offline!');
+    if (results.whatsapp.status === 'down')     issues.push('⚠️ Evolution API/WhatsApp offline!');
+    if (queueData?.waiting      > queueMax)    issues.push(`⚠️ Fila com ${queueData.waiting} jobs aguardando (limite: ${queueMax})`);
+    if (queueData?.failed       > 20)           issues.push(`❌ ${queueData.failed} jobs com falha na fila`);
+
+    if (issues.length > 0 && alertPhone) {
+      const message = `🚨 *ZapScript Admin — Alerta* 🚨\n\n${issues.join('\n')}\n\n⏰ ${now.toLocaleString('pt-BR')}`;
+      try {
+        // Usa o mesmo número remetente dos convites para enviar alerta
+        const senderNumber = await prisma.whatsappNumber.findFirst({
+          where:  { status: 'connected', zapiInstanceId: { not: null } },
+          select: { zapiInstanceId: true },
+        });
+        if (senderNumber?.zapiInstanceId) {
+          const { sendText } = await import('./services/evolution');
+          await sendText(senderNumber.zapiInstanceId, alertPhone, message);
+          logger.info({ issues }, '[HealthChecker] Alerta WhatsApp enviado');
+        }
+      } catch (e: any) {
+        logger.error(`[HealthChecker] Falha ao enviar alerta: ${e.message}`);
+      }
+    }
+
+    const downCount = Object.values(results).filter(r => r.status === 'down').length;
+    if (downCount > 0) {
+      logger.warn(`[HealthChecker] ${downCount} serviço(s) offline: ${Object.entries(results).filter(([, r]) => r.status === 'down').map(([s]) => s).join(', ')}`);
+    }
+  } catch (err: any) {
+    logger.error(`[HealthChecker] Erro ao verificar saúde: ${err.message}`);
+  }
+}
+
+// Executa na inicialização e a cada 5 minutos
+checkAndLogServiceHealth();
+setInterval(checkAndLogServiceHealth, 5 * 60 * 1000);
+
 // ── Graceful shutdown ────────────────────────────────────────────
 process.on('SIGTERM', async () => {
   logger.info('Worker encerrando...');
