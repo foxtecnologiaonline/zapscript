@@ -332,11 +332,13 @@ export default function TranscricoesPage() {
           />
         </div>
 
-        {/* Filtro de idioma (Ultra+) */}
-        {canLang && (
+        {/* Filtro de idioma — Ultra+: ativo | free/pro: visível mas bloqueado */}
+        <div className="relative">
           <select
-            className="input text-sm py-2"
+            disabled={!canLang}
+            className="input text-sm py-2 pr-8 disabled:opacity-50 disabled:cursor-not-allowed"
             value={filterLang}
+            title={!canLang ? 'Filtro por idioma disponível no plano Ultra' : undefined}
             onChange={e => { setFilterLang(e.target.value); setOffset(0); load(search, 0, filterTag, e.target.value); }}>
             <option value="">🌐 Idioma</option>
             <option value="pt">🇧🇷 PT</option>
@@ -345,7 +347,13 @@ export default function TranscricoesPage() {
             <option value="fr">🇫🇷 FR</option>
             <option value="de">🇩🇪 DE</option>
           </select>
-        )}
+          {!canLang && (
+            <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1 py-0.5 rounded"
+              style={{ background: 'rgba(245,158,11,.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>
+              Ultra+
+            </span>
+          )}
+        </div>
 
         <button type="submit" className="btn-primary px-4">Buscar</button>
         {hasFilters && (

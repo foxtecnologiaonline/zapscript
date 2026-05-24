@@ -45,7 +45,7 @@ const PT_BR_PROMPT = 'Transcrição em português brasileiro. Áudio de WhatsApp
  * Fallback: OpenAI whisper-1.
  * Retorna texto e duração real extraída do response verbose_json.
  */
-async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; durationSec: number }> {
+async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; durationSec: number; language: string }> {
   const audioFile = new File([mp3Buffer], 'audio.mp3', { type: 'audio/mpeg' });
 
   // ── Primário: Groq ────────────────────────────────────────────
@@ -61,8 +61,9 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
       const text = result.text?.trim();
       if (!text) throw new Error('Groq Whisper retornou texto vazio');
       const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
-      logger.info(`[Whisper] Groq whisper-large-v3-turbo — ${durationSec}s`);
-      return { text, durationSec };
+      const language    = (result as any).language || 'pt';
+      logger.info(`[Whisper] Groq whisper-large-v3-turbo — ${durationSec}s — lang:${language}`);
+      return { text, durationSec, language };
     } catch (err: any) {
       logger.warn(`[Whisper] Groq falhou, usando OpenAI como fallback: ${err.message}`);
     }
@@ -79,8 +80,9 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
   const text = result.text?.trim();
   if (!text) throw new Error('Whisper retornou texto vazio');
   const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
-  logger.info(`[Whisper] OpenAI whisper-1 — ${durationSec}s`);
-  return { text, durationSec };
+  const language    = (result as any).language || 'pt';
+  logger.info(`[Whisper] OpenAI whisper-1 — ${durationSec}s — lang:${language}`);
+  return { text, durationSec, language };
 }
 
 /**
@@ -357,12 +359,12 @@ async function processManualJob(job: Job) {
 
     // PASSO 4: Transcrever com Whisper (Groq primary / OpenAI fallback)
     log(job, '🎙️  Whisper API (PT-BR)...');
-    const { text: originalText, durationSec } = await transcribeBuffer(mp3Buffer);
-    log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
+    const { text: originalText, durationSec, language: detectedLanguage } = await transcribeBuffer(mp3Buffer);
+    log(job, `✅ ${durationSec}s — lang:${detectedLanguage} — "${originalText.substring(0, 60)}..."`);
 
-    // PASSO 5: Resumo com Claude
+    // PASSO 5: Resumo com Claude (com tradução automática se idioma ≠ PT-BR)
     log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(originalText);
+    const bullets = await generateBullets(originalText, detectedLanguage);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
     // PASSO 6: Salvar e debitar (atomicamente) — duração real do Whisper
@@ -625,8 +627,11 @@ async function processEvolutionJob(job: Job) {
     const user    = await prisma.user.findUnique({ where: { id: userId } });
     const message = buildMessage(bullets, originalText, user?.refCode || '');
 
-    // Modo privado: envia ao próprio número do usuário em vez do remetente
-    const isPrivate   = whatsappNumber.privateMode === true;
+    // Modo privado: envia ao próprio número do usuário em vez do remetente.
+    // Guard: só ativa modo privado se o phoneNumber já foi resolvido (≠ 'pending').
+    const isPrivate   = whatsappNumber.privateMode === true
+                        && !!whatsappNumber.phoneNumber
+                        && whatsappNumber.phoneNumber !== 'pending';
     const targetPhone = isPrivate ? whatsappNumber.phoneNumber : senderPhone;
     const privMsg     = isPrivate
       ? message + `\n\n💬 *Responder:* https://wa.me/${senderPhone.replace(/\D/g, '')}`

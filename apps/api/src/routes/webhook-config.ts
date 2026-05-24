@@ -2,14 +2,52 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { getUserPlan, requirePlan } from '../lib/planGate';
 import crypto from 'crypto';
+import { promises as dns } from 'dns';
 
 const PLAN_WEBHOOK = ['executive'];
 
-function isValidUrl(url: string): boolean {
+// IPs privados/internos — bloqueados para prevenir SSRF
+const PRIVATE_IP_RE =
+  /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|::1$|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:)/i;
+
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost', '0.0.0.0', 'metadata.google.internal',
+]);
+
+/**
+ * Valida se a URL do webhook é segura para fetch server-side (anti-SSRF):
+ * - HTTPS obrigatório em produção
+ * - Bloqueia IPs privados, loopback, link-local e metadata services
+ * - Resolve DNS e verifica todos os IPs retornados
+ */
+async function isSafeWebhookUrl(url: string): Promise<{ ok: boolean; error?: string }> {
+  let u: URL;
+  try { u = new URL(url); } catch { return { ok: false, error: 'URL inválida.' }; }
+
+  if (process.env.NODE_ENV === 'production' && u.protocol !== 'https:') {
+    return { ok: false, error: 'Apenas URLs HTTPS são aceitas em produção.' };
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+    return { ok: false, error: 'Protocolo não suportado. Use https://.' };
+  }
+
+  const hostname = u.hostname.toLowerCase();
+  if (BLOCKED_HOSTNAMES.has(hostname)) {
+    return { ok: false, error: 'URL aponta para host interno não permitido.' };
+  }
+
   try {
-    const u = new URL(url);
-    return u.protocol === 'https:' || u.protocol === 'http:';
-  } catch { return false; }
+    const addresses = await dns.lookup(hostname, { all: true });
+    for (const { address } of addresses) {
+      if (PRIVATE_IP_RE.test(address)) {
+        return { ok: false, error: 'URL aponta para endereço IP interno não permitido.' };
+      }
+    }
+  } catch {
+    return { ok: false, error: 'Não foi possível resolver o hostname da URL.' };
+  }
+
+  return { ok: true };
 }
 
 export default async function webhookConfigRoutes(app: FastifyInstance) {
@@ -41,9 +79,10 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
     if (!requirePlan(plan, PLAN_WEBHOOK, reply)) return;
 
     const { url } = req.body;
-    if (!url || !isValidUrl(url)) {
-      return reply.code(400).send({ error: 'URL inválida. Use uma URL válida com http:// ou https://.' });
-    }
+    if (!url) return reply.code(400).send({ error: 'URL é obrigatória.' });
+
+    const safe = await isSafeWebhookUrl(url);
+    if (!safe.ok) return reply.code(400).send({ error: safe.error });
 
     const existing = await (prisma as any).webhookConfig.findUnique({ where: { userId } });
 
@@ -93,6 +132,12 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Webhook não configurado ou inativo.' });
     }
 
+    // Re-valida a URL salva antes de fazer fetch (defesa em profundidade)
+    const safe = await isSafeWebhookUrl(config.url);
+    if (!safe.ok) {
+      return reply.code(400).send({ error: `URL inválida: ${safe.error}` });
+    }
+
     const payload = {
       event:     'test',
       timestamp: new Date().toISOString(),
@@ -107,17 +152,17 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
       const res = await fetch(config.url, {
         method:  'POST',
         headers: {
-          'Content-Type':         'application/json',
+          'Content-Type':          'application/json',
           'X-ZapScript-Signature': signature,
-          'X-ZapScript-Event':    'test',
+          'X-ZapScript-Event':     'test',
         },
         body,
         signal: AbortSignal.timeout(8_000),
       });
 
       return {
-        ok:     res.ok,
-        status: res.status,
+        ok:      res.ok,
+        status:  res.status,
         message: res.ok ? 'Teste enviado com sucesso!' : `URL retornou status ${res.status}`,
       };
     } catch (err: any) {

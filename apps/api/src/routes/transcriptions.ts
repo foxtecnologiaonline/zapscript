@@ -119,8 +119,13 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       take:    1000,
     });
 
-    // CSV
-    const escCsv = (v: string) => `"${(v || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    // CSV — sanitiza fórmulas (CSV Injection) prefixando campos que iniciam
+    // com =, +, -, @ com apóstrofo, impedindo execução em Excel/LibreOffice.
+    const sanitizeCsv = (v: string): string => {
+      const s = (v || '').replace(/"/g, '""').replace(/\n/g, ' ');
+      return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+    };
+    const escCsv = (v: string) => `"${sanitizeCsv(v)}"`;
     const rows = items.map(t => [
       escCsv(t.createdAt.toISOString().slice(0, 16).replace('T', ' ')),
       escCsv(t.contactName || ''),

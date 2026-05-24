@@ -122,14 +122,14 @@ const PLANS = [
   {
     name: 'ultra', label: 'Ultra', price: 'R$59,90', per: '/mês',
     desc: 'Para profissionais avançados',
-    feats: ['300 min/mês', '3 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', '🔍 Busca full-text', '📤 Exportação CSV', '🏷️ Tags', '🌐 Tradução automática', '✨ Agenda Automática'],
+    feats: ['300 min/mês', '3 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', '🔍 Busca full-text', '📤 Exportação CSV', '🏷️ Tags', '🌐 Tradução automática'],
     excl: ['🔗 Webhook personalizado', '🔒 Modo privado'],
     cta: 'Assinar Ultra', href: '/cadastro', popular: true, accent: null as string | null,
   },
   {
     name: 'executive', label: 'Executive', price: 'R$89,90', per: '/mês',
     desc: 'Para líderes e executivos',
-    feats: ['500 min/mês', '5 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', '🔍 Busca full-text', '📤 Exportação CSV', '🏷️ Tags', '🌐 Tradução automática', 'Agenda Automática', '🔗 Webhook personalizado', '🔒 Modo privado'],
+    feats: ['500 min/mês', '5 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', '🔍 Busca full-text', '📤 Exportação CSV', '🏷️ Tags', '🌐 Tradução automática', '🔗 Webhook personalizado', '🔒 Modo privado'],
     excl: [],
     cta: 'Assinar Executive', href: '/cadastro', popular: false, accent: '#f59e0b' as string | null,
   },
@@ -148,7 +148,6 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: '🌐 Tradução automática',    vals: [false, false, true, true] },
   { feature: '🔗 Webhook personalizado', vals: [false, false, false, true] },
   { feature: '🔒 Modo privado',           vals: [false, false, false, true] },
-  { feature: 'Agenda Automática',         vals: [false, false, true, true] },
 ];
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');

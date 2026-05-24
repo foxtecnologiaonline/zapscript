@@ -46,7 +46,7 @@ const PLANS = [
     price: 'R$59,90',
     per:   '/mês',
     desc:  'Para profissionais avançados',
-    feats: ['300 min/mês', '3 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', '🔍 Busca full-text', '📤 Exportação CSV', '🏷️ Tags', '🌐 Tradução automática', '✨ Agenda Automática'],
+    feats: ['300 min/mês', '3 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', '🔍 Busca full-text', '📤 Exportação CSV', '🏷️ Tags', '🌐 Tradução automática'],
     excl:  ['🔗 Webhook personalizado', '🔒 Modo privado'],
     pop:   true,
     accent: null as string | null,
@@ -57,7 +57,7 @@ const PLANS = [
     price: 'R$89,90',
     per:   '/mês',
     desc:  'Para líderes e executivos',
-    feats: ['500 min/mês', '5 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', '🔍 Busca full-text', '📤 Exportação CSV', '🏷️ Tags', '🌐 Tradução automática', 'Agenda Automática', '🔗 Webhook personalizado', '🔒 Modo privado'],
+    feats: ['500 min/mês', '5 números WhatsApp', 'Transcrição automática', 'Ponto chave IA', '🔍 Busca full-text', '📤 Exportação CSV', '🏷️ Tags', '🌐 Tradução automática', '🔗 Webhook personalizado', '🔒 Modo privado'],
     excl:  [],
     pop:   false,
     accent: '#f59e0b' as string | null,
@@ -76,7 +76,6 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: '🌐 Tradução automática',    vals: [false, false, true, true] },
   { feature: '🔗 Webhook personalizado', vals: [false, false, false, true] },
   { feature: '🔒 Modo privado',           vals: [false, false, false, true] },
-  { feature: 'Agenda Automática',         vals: [false, false, true, true] },
 ];
 
 /* ── Métodos de pagamento disponíveis no Asaas ── */
