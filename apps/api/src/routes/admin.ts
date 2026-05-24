@@ -1100,4 +1100,55 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
     }
   );
+
+  // POST /admin/sync-plans — garante que todos os usuários com subscription ativa
+  // tenham um MinuteBalance correspondente às cotas do plano atual.
+  // Útil após mudança de plano ou adição de novos planos ao sistema.
+  app.post(
+    '/sync-plans',
+    { preHandler: [adminAuth] },
+    async (_req, reply) => {
+      // Busca todas as assinaturas ativas com plano e usuário
+      const subscriptions = await prisma.subscription.findMany({
+        where:   { status: 'active' },
+        include: { plan: true, user: { select: { id: true, email: true } } },
+      });
+
+      let created = 0;
+      let skipped = 0;
+
+      for (const sub of subscriptions) {
+        const userId = sub.userId;
+
+        // Verifica se já existe MinuteBalance
+        const existing = await prisma.minuteBalance.findUnique({ where: { userId } });
+
+        if (!existing) {
+          // Cria com a cota do plano atual
+          await prisma.minuteBalance.create({
+            data: {
+              userId,
+              availableMinutes: sub.plan.minutesPerMonth,
+              resetAt:          new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              lastAlertSent:    null,
+            },
+          });
+          created++;
+          app.log.info({ userId, plan: sub.plan.name, minutes: sub.plan.minutesPerMonth }, '[Admin] sync-plans: MinuteBalance criado');
+        } else {
+          skipped++;
+        }
+      }
+
+      app.log.info({ created, skipped, total: subscriptions.length }, '[Admin] sync-plans concluído');
+
+      return reply.send({
+        ok:      true,
+        total:   subscriptions.length,
+        created,
+        skipped,
+        message: `Sincronização concluída: ${created} balanço(s) criado(s), ${skipped} já existiam.`,
+      });
+    }
+  );
 }

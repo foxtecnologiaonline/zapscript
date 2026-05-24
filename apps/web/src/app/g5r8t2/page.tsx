@@ -30,6 +30,7 @@ export default function AdminPage() {
 
   // Plans
   const [creatingPlan, setCreatingPlan] = useState(false);
+  const [syncingPlans, setSyncingPlans] = useState(false);
 
   // Testers / Invites
   const [invites, setInvites]         = useState<any[]>([]);
@@ -141,6 +142,23 @@ export default function AdminPage() {
     if (t === 'users'   && users.length === 0)   loadUsers('', 0);
     if (t === 'tickets' && tickets.length === 0) loadTickets('', 0);
     if (t === 'testers') loadInvites();
+    // 'monitoring' tab loads its own data internally via ServicesHealth / QueuePanel etc.
+  }
+
+  async function syncPlans() {
+    setSyncingPlans(true);
+    try {
+      const res = await fetch(`${API}/sys/g5r8t2/sync-plans`, {
+        method: 'POST',
+        headers: h,
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro ao sincronizar planos');
+      notify(`✅ ${d.message || 'Planos sincronizados!'}`, 'ok');
+      refreshStats();
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally { setSyncingPlans(false); }
   }
 
   async function createProTesterPlan() {
@@ -205,12 +223,12 @@ export default function AdminPage() {
         tickets, ticketTotal, ticketStatus, ticketOffset,
         detailId, invites, inviteTotal,
         inviteName, invitePhone, inviteLoading, lastInviteResult,
-        creatingPlan, toast, token,
+        creatingPlan, syncingPlans, toast, token,
       }}
       fn={{
         refreshStats, goTab, setTab, setUserSearch, setUserOffset, loadUsers,
         setTicketStatus, setTicketOffset, loadTickets, updateTicketStatus,
-        loadInvites, deleteInvite, createInvite, createProTesterPlan,
+        loadInvites, deleteInvite, createInvite, createProTesterPlan, syncPlans,
         setDetailId, setInviteName, setInvitePhone, notify, setToast, setLastInviteResult,
       }}
     />

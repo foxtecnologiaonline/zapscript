@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 
 /* ── Tipos ─────────────────────────────────────────────── */
-export type Tab = 'overview' | 'users' | 'tickets' | 'errors' | 'testers';
+export type Tab = 'overview' | 'users' | 'tickets' | 'testers' | 'monitoring';
 
 /* ── Constantes ────────────────────────────────────────── */
 const API  = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -53,6 +53,13 @@ function maskTesterName(name: string, code: string): string {
   return `${name[0].toUpperCase()}. ···${code?.slice(-6) || ''}`;
 }
 
+function maskPhone(phone: string | null | undefined): string {
+  if (!phone) return '—';
+  const clean = phone.replace(/\D/g, '');
+  if (clean.length < 6) return '••••••';
+  return clean.slice(0, 2) + '•'.repeat(Math.max(0, clean.length - 6)) + clean.slice(-4);
+}
+
 /* ── Tipos das props ───────────────────────────────────── */
 interface DashCtx {
   stats: any;
@@ -79,6 +86,7 @@ interface DashCtx {
     whatsappChannel?: string; whatsappError?: string;
   } | null;
   creatingPlan: boolean;
+  syncingPlans: boolean;
   toast: { text: string; type: 'ok' | 'err' | 'warn' } | null;
   token: string;
 }
@@ -98,6 +106,7 @@ interface DashFn {
   deleteInvite: (id: string, name: string) => void;
   createInvite: (e: React.FormEvent) => void;
   createProTesterPlan: () => void;
+  syncPlans: () => void;
   setDetailId: (id: string | null) => void;
   setInviteName: (s: string) => void;
   setInvitePhone: (s: string) => void;
@@ -113,12 +122,12 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
   const {
     stats, tab, growth, loading, subLoading, users, userTotal, userSearch, userOffset,
     tickets, ticketTotal, ticketStatus, ticketOffset, detailId, invites, inviteTotal,
-    inviteName, invitePhone, inviteLoading, lastInviteResult, creatingPlan, toast, token,
+    inviteName, invitePhone, inviteLoading, lastInviteResult, creatingPlan, syncingPlans, toast, token,
   } = ctx;
   const {
     refreshStats, goTab, setTab, setUserSearch, setUserOffset, loadUsers,
     setTicketStatus, setTicketOffset, loadTickets, updateTicketStatus, loadInvites,
-    deleteInvite, createInvite, createProTesterPlan, setDetailId, setInviteName,
+    deleteInvite, createInvite, createProTesterPlan, syncPlans, setDetailId, setInviteName,
     setInvitePhone, notify, setToast, setLastInviteResult,
   } = fn;
 
@@ -140,11 +149,11 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
         {/* Tabs */}
         <div className="flex gap-1.5 mb-6 bg-[#0d1c19] border border-[rgba(16,185,129,.08)] rounded-xl p-1.5 w-fit">
           {([
-            ['overview', '📊', 'Visão Geral'],
-            ['users',    '👥', 'Usuários'],
-            ['tickets',  '🎫', 'Tickets'],
-            ['testers',  '🧪', 'Testers'],
-            ['errors',   '🐛', 'Erros'],
+            ['overview',   '📊', 'Visão Geral'],
+            ['users',      '👥', 'Usuários'],
+            ['tickets',    '🎫', 'Tickets'],
+            ['testers',    '🧪', 'Testers'],
+            ['monitoring', '🖥️', 'Monitoramento'],
           ] as [Tab, string, string][]).map(([t, icon, label]) => (
             <button key={t} onClick={() => goTab(t)}
               className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
@@ -180,11 +189,9 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
               <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-sm font-bold text-[#d1fae5]">Distribuição por Plano</div>
-                  {!stats.byPlan?.['pro-tester'] && (
-                    <Btn variant="ghost" onClick={createProTesterPlan} disabled={creatingPlan} cls="text-[10px]">
-                      {creatingPlan ? '⟳' : '➕'} Criar plano PRO-Tester
-                    </Btn>
-                  )}
+                  <Btn variant="ghost" onClick={syncPlans} disabled={syncingPlans} cls="text-[10px]">
+                    {syncingPlans ? '⟳ Sincronizando...' : '🔄 Sincronizar planos'}
+                  </Btn>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   {Object.entries(stats.byPlan || {}).map(([plan, count]: any) => (
@@ -327,7 +334,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                   <div className="flex items-start justify-between gap-4 mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-[#d1fae5]">{t.name}</span>
-                      <span className="text-xs text-[rgba(16,185,129,.5)]">{t.email}</span>
+                      <span className="text-xs text-[rgba(16,185,129,.5)]">{maskEmail(t.email)}</span>
                       <Badge label={t.category} cls="text-blue-400 bg-blue-400/10 border-blue-400/20" />
                       <Badge label={STATUS_LABEL[t.status] || t.status} cls={STATUS_CLS[t.status]} />
                     </div>
@@ -382,11 +389,6 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                 {' '}O WhatsApp é enviado exclusivamente pelo número <strong className="text-[#10b981]">5534991790254</strong> via Evolution API — esse número precisa estar conectado.
                 {' '}Convite expira em <strong className="text-[#10b981]">24h</strong>.
               </p>
-              <ServicesHealth apiBase={API} token={token} />
-              <HealthMonitorPanel apiBase={API} token={token} />
-              <DiagnoseWhatsApp apiBase={API} token={token} />
-              <QueuePanel apiBase={API} token={token} />
-              <AuditNumbers apiBase={API} token={token} />
             </div>
 
             {/* Resultado do último convite */}
@@ -456,7 +458,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-[#d1fae5]">{inv.name}</span>
-                      {inv.phone && <span className="text-[10px] text-[rgba(16,185,129,.5)] font-mono">📱 {inv.phone}</span>}
+                      {inv.phone && <span className="text-[10px] text-[rgba(16,185,129,.5)] font-mono">📱 {maskPhone(inv.phone)}</span>}
                     </div>
                     <div className="text-xs text-[rgba(16,185,129,.35)] font-mono mt-0.5">{inv.code}</div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
@@ -496,33 +498,47 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           </div>
         )}
 
-        {/* ═══ ERROS ═══ */}
-        {tab === 'errors' && (
-          <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
-            <div className="px-5 py-3 border-b border-[rgba(16,185,129,.08)] text-sm font-bold text-[#d1fae5]">
-              Erros Recentes ({(stats?.recentErrors || []).length})
-            </div>
-            {(stats?.recentErrors || []).length === 0 ? (
-              <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">✅ Nenhum erro registrado</div>
-            ) : (stats?.recentErrors || []).map((e: any, i: number) => (
-              <div key={i} className="px-5 py-3 border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.02)]">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <span className="text-xs font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded mr-2">{e.service}</span>
-                    <span className="text-sm text-[#d1fae5]">{e.message}</span>
-                  </div>
-                  <div className="text-[10px] text-[rgba(16,185,129,.3)] whitespace-nowrap flex-shrink-0">
-                    {fmtFull(e.createdAt)}
-                  </div>
-                </div>
-                {e.stack && (
-                  <details className="mt-2">
-                    <summary className="text-[10px] text-[rgba(16,185,129,.3)] cursor-pointer">Stack trace</summary>
-                    <pre className="text-[10px] text-red-300/60 mt-1 overflow-x-auto bg-red-900/10 rounded p-2 max-h-32">{e.stack}</pre>
-                  </details>
-                )}
+        {/* ═══ MONITORAMENTO ═══ */}
+        {tab === 'monitoring' && (
+          <div className="space-y-5">
+            {/* Saúde dos Serviços */}
+            <ServicesHealth apiBase={API} token={token} />
+
+            {/* Monitor de Saúde (histórico horário) */}
+            <HealthMonitorPanel apiBase={API} token={token} />
+
+            {/* Monitor de Fila */}
+            <QueuePanel apiBase={API} token={token} />
+
+            {/* Diagnóstico WhatsApp */}
+            <DiagnoseWhatsApp apiBase={API} token={token} />
+
+            {/* Erros Recentes */}
+            <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-[rgba(16,185,129,.08)] flex items-center justify-between">
+                <span className="text-sm font-bold text-[#d1fae5]">🐛 Erros Recentes</span>
+                <span className="text-xs font-mono text-[rgba(16,185,129,.4)]">{(stats?.recentErrors || []).length} registro(s)</span>
               </div>
-            ))}
+              {(stats?.recentErrors || []).length === 0 ? (
+                <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">✅ Nenhum erro registrado</div>
+              ) : (stats?.recentErrors || []).map((e: any, i: number) => (
+                <div key={i} className="px-5 py-3 border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.02)]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded mr-2">{e.service}</span>
+                      <span className="text-sm text-[#d1fae5]">{e.message}</span>
+                    </div>
+                    <div className="text-[10px] text-[rgba(16,185,129,.3)] whitespace-nowrap flex-shrink-0">{fmtFull(e.createdAt)}</div>
+                  </div>
+                  {e.stack && (
+                    <details className="mt-2">
+                      <summary className="text-[10px] text-[rgba(16,185,129,.3)] cursor-pointer">Stack trace</summary>
+                      <pre className="text-[10px] text-red-300/60 mt-1 overflow-x-auto bg-red-900/10 rounded p-2 max-h-32">{e.stack}</pre>
+                    </details>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -963,139 +979,6 @@ function HealthMonitorPanel({ apiBase, token }: { apiBase: string; token: string
   );
 }
 
-function AuditNumbers({ apiBase, token }: { apiBase: string; token: string }) {
-  const [open, setOpen]       = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [fixing, setFixing]   = useState(false);
-  const [data, setData]       = useState<any>(null);
-
-  async function load() {
-    setLoading(true);
-    setData(null);
-    try {
-      const res = await fetch(`${apiBase}/sys/g5r8t2/audit-numbers`, {
-        headers: { 'x-admin-token': token },
-      });
-      setData(await res.json());
-    } catch (e: any) {
-      setData({ error: e.message });
-    } finally { setLoading(false); }
-  }
-
-  async function fixIsolation() {
-    if (!confirm('⚠️ Isso irá desconectar números duplicados (mantendo o mais recente por instância). Continuar?')) return;
-    setFixing(true);
-    try {
-      const res = await fetch(`${apiBase}/sys/g5r8t2/fix-number-isolation`, {
-        method: 'POST',
-        headers: { 'x-admin-token': token },
-      });
-      const r = await res.json();
-      alert(`✅ ${r.fixed} violação(ões) corrigida(s). Atualizando...`);
-      load();
-    } catch (e: any) { alert('Erro: ' + e.message); }
-    finally { setFixing(false); }
-  }
-
-  async function deleteAllNumbers() {
-    const confirmText = prompt('⛔ ATENÇÃO: isso apaga TODOS os números de TODOS os usuários.\n\nDigite APAGAR_TUDO para confirmar:');
-    if (confirmText !== 'APAGAR_TUDO') { alert('Cancelado.'); return; }
-    setFixing(true);
-    try {
-      const res = await fetch(`${apiBase}/sys/g5r8t2/numbers/all?confirm=APAGAR_TUDO`, {
-        method: 'DELETE',
-        headers: { 'x-admin-token': token },
-      });
-      const r = await res.json();
-      alert(`✅ ${r.deleted} número(s) excluído(s). Tabela zerada.`);
-      load();
-    } catch (e: any) { alert('Erro: ' + e.message); }
-    finally { setFixing(false); }
-  }
-
-  const summary  = data?.summary;
-  const hasViolations = summary?.violations > 0;
-
-  return (
-    <div className="mt-3 border border-[rgba(16,185,129,.1)] rounded-xl overflow-hidden">
-      <button
-        type="button"
-        onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
-        className="w-full text-left px-4 py-2.5 text-xs text-[rgba(16,185,129,.5)] hover:text-[rgba(16,185,129,.8)] flex items-center justify-between transition-colors">
-        <span>🔒 {open ? '▲' : '▼'} Auditoria de Isolamento (Números WhatsApp)</span>
-        {hasViolations && <span className="text-red-400 font-bold animate-pulse">{summary.violations} violação(ões) ⚠️</span>}
-        {data && !hasViolations && summary && <span className="text-green-400 text-[10px]">✅ OK</span>}
-      </button>
-      {open && (
-        <div className="px-4 pb-4 space-y-3">
-          <div className="flex gap-2 flex-wrap">
-            <button type="button" onClick={load} disabled={loading}
-              className="text-xs bg-[rgba(16,185,129,.1)] border border-[rgba(16,185,129,.2)] text-[#10b981] px-3 py-1.5 rounded-lg hover:bg-[rgba(16,185,129,.2)] disabled:opacity-40 transition-colors">
-              {loading ? '⟳ Verificando...' : '↻ Re-verificar'}
-            </button>
-            {hasViolations && (
-              <button type="button" onClick={fixIsolation} disabled={fixing}
-                className="text-xs bg-red-500/10 border border-red-500/30 text-red-400 px-3 py-1.5 rounded-lg hover:bg-red-500/20 disabled:opacity-40 transition-colors">
-                {fixing ? '⟳ Corrigindo...' : '🔧 Corrigir violações agora'}
-              </button>
-            )}
-            <button type="button" onClick={deleteAllNumbers} disabled={fixing}
-              className="text-xs bg-red-900/20 border border-red-600/30 text-red-400 px-3 py-1.5 rounded-lg hover:bg-red-900/40 disabled:opacity-40 transition-colors">
-              {fixing ? '⟳' : '⛔ Apagar todos os números'}
-            </button>
-          </div>
-
-          {summary && (
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                { label: 'Total números', value: summary.totalNumbers,  color: '#60a5fa' },
-                { label: 'Conectados',    value: summary.connected,     color: '#34d399' },
-                { label: 'Órfãos',        value: summary.orphans,       color: '#fbbf24' },
-                { label: 'Violações',     value: summary.violations,    color: hasViolations ? '#f87171' : '#34d399' },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="bg-[#040b09] rounded-lg p-2.5 text-center">
-                  <div className="text-xl font-black" style={{ color }}>{value}</div>
-                  <div className="text-[9px] text-[rgba(16,185,129,.4)] mt-0.5">{label}</div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {hasViolations && data.violations.map((v: any, i: number) => (
-            <div key={i} className="bg-red-900/10 border border-red-500/20 rounded-lg p-3">
-              <p className="text-xs font-bold text-red-400 mb-2">⚠️ Instância {v.instanceId} — {v.activeCount} número(s) ativos</p>
-              {v.numbers.map((n: any) => (
-                <div key={n.id} className="text-[10px] text-red-300/70 font-mono bg-[#0a0000] rounded px-2 py-1 mb-1">
-                  [{n.status}] {n.phoneNumber || 'sem número'} — user: {n.userEmail || n.userId} — atualizado: {n.updatedAt ? new Date(n.updatedAt).toLocaleString('pt-BR') : '?'}
-                </div>
-              ))}
-            </div>
-          ))}
-
-          {!hasViolations && data?.byUser && (
-            <div className="max-h-64 overflow-auto space-y-2">
-              {data.byUser.map((u: any) => (
-                <div key={u.userId} className="bg-[#040b09] rounded-lg px-3 py-2">
-                  <p className="text-[10px] font-bold text-[rgba(16,185,129,.7)] mb-1">
-                    {u.userEmail || u.userId} ({u.numbers.length} número(s))
-                  </p>
-                  {u.numbers.map((n: any) => (
-                    <div key={n.id} className="text-[10px] text-[rgba(16,185,129,.5)] font-mono ml-2">
-                      • {n.phoneNumber || n.displayName || n.id} — <span className={n.status === 'connected' ? 'text-green-400' : 'text-red-400/60'}>{n.status}</span>
-                      {n.zapiInstanceId ? ` (inst: ${n.zapiInstanceId})` : ' (sem instância)'}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {data?.error && <p className="text-xs text-red-400">Erro: {data.error}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function Pagination({ offset, total, loading, onPage }: {
   offset: number; total: number; loading: boolean; onPage: (o: number) => void;
