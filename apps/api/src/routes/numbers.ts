@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { notifyDisconnected } from '../services/whatsapp-notify';
+import { getUserPlan, requirePlan } from '../lib/planGate';
 import {
   evolutionBaseUrl,
   evolutionHeaders,
@@ -46,7 +47,8 @@ export default async function numberRoutes(app: FastifyInstance) {
         minutesUsed:  true,
         connectedAt:  true,
         createdAt:    true,
-      },
+        privateMode:  true,
+      } as any,
     });
   });
 
@@ -89,17 +91,33 @@ export default async function numberRoutes(app: FastifyInstance) {
   });
 
   // ── PATCH /numbers/:id ────────────────────────────────────────────────────
-  app.patch<{ Params: { id: string }; Body: { displayName?: string } }>(
+  app.patch<{ Params: { id: string }; Body: { displayName?: string; privateMode?: boolean } }>(
     '/:id', auth, async (req: any, reply) => {
+      const userId = req.user.sub;
       const { id } = req.params;
-      const number = await prisma.whatsappNumber.findFirst({ where: { id, userId: req.user.sub } });
+      const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
       if (!number) return reply.code(404).send({ error: 'Número não encontrado.' });
 
-      const trimmed = req.body.displayName?.trim();
-      if (!trimmed) return reply.code(400).send({ error: 'Nenhum campo para atualizar.' });
-      if (trimmed.length > 50) return reply.code(400).send({ error: 'Nome deve ter no máximo 50 caracteres.' });
+      const data: any = {};
 
-      return prisma.whatsappNumber.update({ where: { id }, data: { displayName: trimmed } });
+      if (req.body.displayName !== undefined) {
+        const trimmed = req.body.displayName.trim();
+        if (!trimmed)          return reply.code(400).send({ error: 'Nome não pode ser vazio.' });
+        if (trimmed.length > 50) return reply.code(400).send({ error: 'Nome deve ter no máximo 50 caracteres.' });
+        data.displayName = trimmed;
+      }
+
+      if (req.body.privateMode !== undefined) {
+        const plan = await getUserPlan(userId);
+        if (!requirePlan(plan, ['executive'], reply)) return;
+        data.privateMode = Boolean(req.body.privateMode);
+      }
+
+      if (Object.keys(data).length === 0) {
+        return reply.code(400).send({ error: 'Nenhum campo para atualizar.' });
+      }
+
+      return prisma.whatsappNumber.update({ where: { id }, data });
     }
   );
 

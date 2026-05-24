@@ -2,25 +2,79 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { transcriptionQueue } from '../services/queue';
 import { decryptStr, decryptArr } from '../services/encryption';
+import { getUserPlan, requirePlan } from '../lib/planGate';
+
+// Planos com acesso a cada feature
+const PLAN_SEARCH  = ['pro', 'ultra', 'executive'];
+const PLAN_EXPORT  = ['pro', 'ultra', 'executive'];
+const PLAN_TAGS    = ['ultra', 'executive'];
+const PLAN_LANG    = ['ultra', 'executive'];
 
 export default async function transcriptionRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
 
   // ── GET /transcriptions ───────────────────────────────
   app.get<{
-    Querystring: { limit?: string; offset?: string; numberId?: string; search?: string }
-  }>('/', auth, async (req: any) => {
+    Querystring: {
+      limit?: string; offset?: string; numberId?: string;
+      search?: string; tag?: string; language?: string;
+    }
+  }>('/', auth, async (req: any, reply) => {
     const userId   = req.user.sub;
     const limit    = Math.min(Math.max(parseInt(req.query.limit  || '20') || 20, 1), 100);
     const offset   = Math.max(parseInt(req.query.offset || '0') || 0, 0);
     const numberId = req.query.numberId;
-    const search   = req.query.search;
+    const search   = req.query.search?.trim();
+    const tag      = req.query.tag?.trim();
+    const language = req.query.language?.trim();
 
+    const plan = await getUserPlan(userId);
+
+    // ── Busca full-text (Pro+) ─────────────────────────
+    if (search) {
+      if (!requirePlan(plan, PLAN_SEARCH, reply)) return;
+
+      // Busca server-side: carrega últimas 300 transcrições e decripta em memória
+      const allItems = await prisma.transcription.findMany({
+        where:   { userId, ...(numberId ? { numberId: numberId === 'none' ? null : numberId } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take:    300,
+        include: { number: { select: { displayName: true, phoneNumber: true } } },
+      });
+
+      const q = search.toLowerCase();
+      const matched = allItems.filter(t => {
+        const text    = decryptStr(t.originalText).toLowerCase();
+        const bullets = decryptArr(t.summaryBullets as string).join(' ').toLowerCase();
+        const name    = (t.contactName || '').toLowerCase();
+        return text.includes(q) || bullets.includes(q) || name.includes(q);
+      });
+
+      const total = matched.length;
+      const page  = matched.slice(offset, offset + limit).map(t => ({
+        ...t,
+        contactPhone:   decryptStr(t.contactPhone),
+        originalText:   decryptStr(t.originalText),
+        summaryBullets: decryptArr(t.summaryBullets as string),
+      }));
+      return { items: page, total, limit, offset };
+    }
+
+    // ── Busca padrão ───────────────────────────────────
     const where: any = { userId };
     if (numberId) where.numberId = numberId === 'none' ? null : numberId;
-    // Nota: originalText é criptografado — busca em texto livre desabilitada.
-    // Busca por nome do contato (não criptografado) quando search é fornecido.
-    if (search)   where.contactName = { contains: search, mode: 'insensitive' };
+
+    // Filtro por tag (Ultra+)
+    if (tag) {
+      if (!requirePlan(plan, PLAN_TAGS, reply)) return;
+      (where as any).tags = { has: tag };
+    }
+
+    // Filtro por idioma (Ultra+)
+    if (language) {
+      if (!requirePlan(plan, PLAN_LANG, reply)) return;
+      where.language = language;
+    }
 
     const [items, total] = await Promise.all([
       prisma.transcription.findMany({
@@ -33,15 +87,58 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       prisma.transcription.count({ where }),
     ]);
 
-    // Decriptar campos sensíveis antes de retornar ao frontend
     const decryptedItems = items.map(t => ({
       ...t,
       contactPhone:   decryptStr(t.contactPhone),
       originalText:   decryptStr(t.originalText),
-      summaryBullets: decryptArr(t.summaryBullets),
+      summaryBullets: decryptArr(t.summaryBullets as string),
     }));
 
     return { items: decryptedItems, total, limit, offset };
+  });
+
+  // ── GET /transcriptions/export ────────────────────────
+  // Exporta transcrições do mês em CSV (Pro+)
+  app.get<{
+    Querystring: { format?: string; month?: string }
+  }>('/export', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const plan   = await getUserPlan(userId);
+    if (!requirePlan(plan, PLAN_EXPORT, reply)) return;
+
+    // format param reservado para versão futura (pdf) — por ora sempre CSV
+    const month = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
+
+    const [year, mon] = month.split('-').map(Number);
+    const from = new Date(year, mon - 1, 1);
+    const to   = new Date(year, mon, 1);
+
+    const items = await prisma.transcription.findMany({
+      where:   { userId, createdAt: { gte: from, lt: to } },
+      orderBy: { createdAt: 'desc' },
+      take:    1000,
+    });
+
+    // CSV
+    const escCsv = (v: string) => `"${(v || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    const rows = items.map(t => [
+      escCsv(t.createdAt.toISOString().slice(0, 16).replace('T', ' ')),
+      escCsv(t.contactName || ''),
+      escCsv(decryptStr(t.contactPhone)),
+      escCsv((t.durationSec / 60).toFixed(2)),
+      escCsv(t.language),
+      escCsv(decryptStr(t.originalText)),
+      escCsv(decryptArr(t.summaryBullets as string).join(' | ')),
+      escCsv(((t as any).tags || []).join(', ')),
+    ].join(','));
+
+    const header = ['Data', 'Contato', 'Telefone', 'Duração (min)', 'Idioma', 'Texto', 'Resumo', 'Tags'].join(',');
+    const csv    = [header, ...rows].join('\n');
+
+    reply
+      .header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="transcricoes-${month}.csv"`);
+    return reply.send('﻿' + csv); // BOM para UTF-8 no Excel
   });
 
   // ── GET /transcriptions/:id ───────────────────────────
@@ -55,9 +152,37 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       ...t,
       contactPhone:   decryptStr(t.contactPhone),
       originalText:   decryptStr(t.originalText),
-      summaryBullets: decryptArr(t.summaryBullets),
+      summaryBullets: decryptArr(t.summaryBullets as string),
     };
   });
+
+  // ── PATCH /transcriptions/:id/tags ───────────────────
+  // Atualiza tags de uma transcrição (Ultra+)
+  app.patch<{ Params: { id: string }; Body: { tags: string[] } }>(
+    '/:id/tags', auth, async (req: any, reply) => {
+      const userId = req.user.sub;
+      const plan   = await getUserPlan(userId);
+      if (!requirePlan(plan, PLAN_TAGS, reply)) return;
+
+      const { id }   = req.params;
+      const { tags } = req.body;
+
+      if (!Array.isArray(tags)) return reply.code(400).send({ error: 'tags deve ser um array.' });
+      if (tags.length > 5)      return reply.code(400).send({ error: 'Máximo de 5 tags por transcrição.' });
+
+      const invalid = tags.find(t => typeof t !== 'string' || t.length > 20 || !/^[\w\sÀ-ſ]+$/u.test(t));
+      if (invalid !== undefined) return reply.code(400).send({ error: 'Tag inválida. Máx 20 caracteres, sem símbolos.' });
+
+      const t = await prisma.transcription.findFirst({ where: { id, userId } });
+      if (!t) return reply.code(404).send({ error: 'Não encontrado' });
+
+      const updated = await (prisma as any).transcription.update({
+        where: { id },
+        data:  { tags: tags.map((t: string) => t.trim()) },
+      });
+      return { ...updated, tags: updated.tags };
+    }
+  );
 
   // ── DELETE /transcriptions/:id ────────────────────────
   app.delete<{ Params: { id: string } }>('/:id', auth, async (req: any, reply) => {

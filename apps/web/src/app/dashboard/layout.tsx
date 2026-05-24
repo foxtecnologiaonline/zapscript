@@ -14,9 +14,10 @@ const NAV = [
 ];
 
 const PLAN_COLORS: Record<string, string> = {
-  free:  'text-[rgba(16,185,129,.4)]',
-  pro:   'text-[#10b981]',
-  ultra: 'text-yellow-400',
+  free:      'text-[rgba(16,185,129,.4)]',
+  pro:       'text-[#10b981]',
+  ultra:     'text-yellow-400',
+  executive: 'text-amber-400',
 };
 
 /* ── Sidebar content — shared between desktop & mobile drawer ── */

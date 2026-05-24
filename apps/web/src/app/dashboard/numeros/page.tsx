@@ -12,6 +12,7 @@ interface WNumber {
   minutesUsed: number;
   connectedAt: string | null;
   createdAt: string;
+  privateMode: boolean;
 }
 
 // ── Spinner inline ────────────────────────────────────────────────────────────
@@ -443,6 +444,7 @@ export default function NumerosPage() {
   const [adding, setAdding]                 = useState(false);
   const [error, setError]                   = useState('');
   const [userId, setUserId]                 = useState('');
+  const [planName, setPlanName]             = useState('free');
   const [confirmDelete, setConfirmDelete]   = useState<string | null>(null);
   const [deleting, setDeleting]             = useState(false);
   const [connectNumber, setConnectNumber]   = useState<WNumber | null>(null);
@@ -457,7 +459,10 @@ export default function NumerosPage() {
 
   useEffect(() => {
     loadNumbers();
-    api.get<any>('/auth/me').then(u => setUserId(u.id));
+    api.get<any>('/auth/me').then(u => {
+      setUserId(u.id);
+      setPlanName(u.subscription?.plan?.name || 'free');
+    });
   }, [loadNumbers]);
 
   const { connected: socketOk } = useSocket(userId, {
@@ -496,6 +501,15 @@ export default function NumerosPage() {
       setNumbers(n => n.filter(x => x.id !== id));
     } catch (err: any) { setError(err.message || 'Erro ao remover.'); }
     finally { setDeleting(false); setConfirmDelete(null); }
+  }
+
+  async function handlePrivateMode(id: string, current: boolean) {
+    try {
+      await api.patch(`/numbers/${id}`, { privateMode: !current });
+      setNumbers(ns => ns.map(n => n.id === id ? { ...n, privateMode: !current } : n));
+    } catch (err: any) {
+      alert(err.message || 'Erro ao alterar modo privado.');
+    }
   }
 
   const statusColor = (s: string) =>
@@ -634,6 +648,25 @@ export default function NumerosPage() {
                   <div className="text-[10px] text-brand-muted mt-0.5">min usados</div>
                 </div>
               </div>
+
+              {/* Modo Privado — Executive+ */}
+              {planName === 'executive' ? (
+                <div className="flex items-center justify-between bg-brand-elevated rounded-xl px-3 py-2.5 mb-3 gap-2">
+                  <div>
+                    <div className="text-xs font-semibold text-brand-text flex items-center gap-1.5">
+                      🔒 Modo Privado
+                    </div>
+                    <div className="text-[10px] text-brand-muted mt-0.5">
+                      Transcrições enviadas só ao seu número
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handlePrivateMode(n.id, n.privateMode)}
+                    className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${n.privateMode ? 'bg-amber-400' : 'bg-brand-border'}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${n.privateMode ? 'translate-x-4' : ''}`} />
+                  </button>
+                </div>
+              ) : null}
 
               {/* Ações */}
               {n.status === 'connected' ? (

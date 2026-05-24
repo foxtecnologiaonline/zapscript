@@ -138,12 +138,17 @@ const PLANS = [
 /* ── Tabela comparativa ── */
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',           vals: ['20', '150', '300', '500'] },
-  { feature: 'Números WhatsApp',       vals: ['1', '2', '3', '5'] },
-  { feature: 'Transcrição automática', vals: [true, true, true, true] },
-  { feature: 'Ponto chave IA',         vals: [true, true, true, true] },
-  { feature: 'Agenda Automática',      vals: [false, false, true, true] },
-  { feature: 'Modo privado',           vals: [false, false, false, true] },
+  { feature: 'Minutos/mês',              vals: ['20', '150', '300', '500'] },
+  { feature: 'Números WhatsApp',          vals: ['1', '2', '3', '5'] },
+  { feature: 'Transcrição automática',    vals: [true, true, true, true] },
+  { feature: 'Ponto chave IA',            vals: [true, true, true, true] },
+  { feature: '🔍 Busca full-text',        vals: [false, true, true, true] },
+  { feature: '📤 Exportação CSV',         vals: [false, true, true, true] },
+  { feature: '🏷️ Tags & Categorias',     vals: [false, false, true, true] },
+  { feature: '🌐 Tradução automática',    vals: [false, false, true, true] },
+  { feature: '🔗 Webhook personalizado', vals: [false, false, false, true] },
+  { feature: '🔒 Modo privado',           vals: [false, false, false, true] },
+  { feature: 'Agenda Automática',         vals: [false, false, true, true] },
 ];
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');

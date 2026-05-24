@@ -33,3 +33,35 @@ export function encryptStr(plain: string): string {
 export function encryptArr(arr: string[]): string {
   return encryptStr(JSON.stringify(arr));
 }
+
+/** Decripta string no formato iv:tag:data. Suporta plaintext legado. */
+export function decryptStr(enc: string | null | undefined): string {
+  if (!enc) return enc ?? '';
+  if (!KEY) return enc;
+  const parts = enc.split(':');
+  if (parts.length !== 3) return enc; // plaintext legado
+  try {
+    const [ivHex, tagHex, dataHex] = parts;
+    const iv      = Buffer.from(ivHex, 'hex');
+    const tag     = Buffer.from(tagHex, 'hex');
+    const data    = Buffer.from(dataHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', KEY, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
+  } catch {
+    return enc;
+  }
+}
+
+/** Decripta array de strings criptografado. Suporta JSON legado direto. */
+export function decryptArr(enc: string | string[] | null | undefined): string[] {
+  if (!enc) return [];
+  if (Array.isArray(enc)) return enc;
+  try {
+    const plain = decryptStr(enc);
+    const parsed = JSON.parse(plain);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}

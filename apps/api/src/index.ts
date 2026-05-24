@@ -263,8 +263,9 @@ app.register(import('./routes/internal'),       { prefix: '/internal' });
 app.register(import('./routes/support'),        { prefix: '/support' });
 app.register(import('./routes/admin'),          { prefix: '/sys/g5r8t2' });
 app.register(import('./routes/admin-master'),   { prefix: '/sys/g5r8t2/master' });
-app.register(import('./routes/invites'),        { prefix: '/invites' });
-app.register(import('./routes/privacy'),        { prefix: '/privacy' });
+app.register(import('./routes/invites'),         { prefix: '/invites' });
+app.register(import('./routes/privacy'),         { prefix: '/privacy' });
+app.register(import('./routes/webhook-config'),  { prefix: '/webhook-config' });
 
 // ── WhatsApp Webhook (Meta Cloud API) ──────────────────────
 // Registrar sempre — webhook precisa responder para validação mesmo sem token configurado

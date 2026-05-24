@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'crypto';
 import { Worker, Job } from 'bullmq';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
@@ -8,7 +9,7 @@ import { convertToMp3 } from './services/audio';
 import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
 import { downloadAudioFromTwilio, sendMessageViaTwilio } from './services/twilio';
 import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread } from './services/evolution';
-import { encryptStr, encryptArr } from './services/encryption';
+import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encryption';
 import { logger } from './lib/logger';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
@@ -93,14 +94,21 @@ function bulletCount(text: string): number {
   return wordCount > 150 ? 2 : 1;
 }
 
-/** Gera bullets ultra-concisos com Claude Haiku — máx 10 palavras cada */
-async function generateBullets(originalText: string): Promise<string[]> {
-  const count = bulletCount(originalText);
+/** Gera bullets ultra-concisos com Claude Haiku — máx 10 palavras cada.
+ *  Se o texto estiver em idioma diferente do PT-BR, traduz os bullets para PT-BR.
+ */
+async function generateBullets(originalText: string, language?: string): Promise<string[]> {
+  const count       = bulletCount(originalText);
+  const needsTransl = language && language !== 'pt' && language !== 'pt-BR' && language !== 'pt-br';
+  const systemMsg   = needsTransl
+    ? 'Você resume áudios de WhatsApp. SEMPRE responda em português brasileiro (PT-BR). Se o texto não estiver em português, traduza e resuma em PT-BR. Cada ponto deve ter no máximo 10 palavras, ser curtíssimo, direto e objetivo. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação.'
+    : 'Você resume áudios de WhatsApp em PT-BR. Cada ponto deve ter no máximo 10 palavras, ser curtíssimo, direto e objetivo — só o essencial do assunto. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação, sem verbosidade.';
+
   try {
     const res = await claude.messages.create({
       model:      'claude-haiku-4-5',
       max_tokens: 120,
-      system:     'Você resume áudios de WhatsApp em PT-BR. Cada ponto deve ter no máximo 10 palavras, ser curtíssimo, direto e objetivo — só o essencial do assunto. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação, sem verbosidade.',
+      system:     systemMsg,
       messages: [{
         role:    'user',
         content: `Resuma em ${count === 1 ? 'exatamente 1 ponto curto e objetivo' : '2 pontos curtos e objetivos'}:\n\n${originalText}`,
@@ -165,9 +173,11 @@ async function saveTranscription(params: {
     return t;
   });
 
-  // ── Alertas de consumo (fire-and-forget, nunca bloqueia o pipeline) ──────
-  // Dispara fora da transação para não aumentar o tempo de lock no DB.
+  // ── Alertas de consumo (fire-and-forget) ─────────────────────────────────
   triggerMinuteAlertIfNeeded(userId).catch(() => null);
+
+  // ── Webhook personalizado (fire-and-forget, Executive+) ───────────────────
+  dispatchWebhook(userId, transcription, { originalText, bullets }).catch(() => null);
 
   return transcription;
 }
@@ -224,6 +234,55 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
     logger.info(`[MinuteAlert] ✅ Alerta ${threshold}% enviado ao usuário ${userId}`);
   } catch (err: any) {
     logger.warn(`[MinuteAlert] Falha ao verificar alerta: ${err.message}`);
+  }
+}
+
+/**
+ * Dispara webhook personalizado do usuário após uma transcrição concluída.
+ * Fire-and-forget: erros são logados mas não afetam o pipeline.
+ */
+async function dispatchWebhook(
+  userId: string,
+  transcription: { id: string; contactPhone: string; contactName: string | null; durationSec: number; language: string; source: string; createdAt: Date },
+  plain: { originalText: string; bullets: string[] },
+): Promise<void> {
+  try {
+    const config = await (prisma as any).webhookConfig.findUnique({ where: { userId, active: true } });
+    if (!config) return;
+
+    const payload = {
+      event:     'transcription.completed',
+      timestamp: new Date().toISOString(),
+      data: {
+        id:            transcription.id,
+        contactPhone:  decryptStr(transcription.contactPhone),
+        contactName:   transcription.contactName,
+        durationSec:   transcription.durationSec,
+        originalText:  plain.originalText,
+        summaryBullets: plain.bullets,
+        language:      transcription.language,
+        source:        transcription.source,
+        createdAt:     transcription.createdAt.toISOString(),
+      },
+    };
+
+    const body      = JSON.stringify(payload);
+    const signature = 'sha256=' + crypto.createHmac('sha256', config.secret).update(body).digest('hex');
+
+    await fetch(config.url, {
+      method:  'POST',
+      headers: {
+        'Content-Type':          'application/json',
+        'X-ZapScript-Signature': signature,
+        'X-ZapScript-Event':     'transcription.completed',
+      },
+      body,
+      signal: AbortSignal.timeout(5_000),
+    });
+
+    logger.info(`[Webhook] ✅ Disparado para ${config.url}`);
+  } catch (err: any) {
+    logger.warn(`[Webhook] Falha ao disparar: ${err.message}`);
   }
 }
 
@@ -370,9 +429,10 @@ async function processOfficialWhatsAppJob(job: Job) {
     const { text: originalText, durationSec } = await transcribeBuffer(mp3Buffer);
     log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
 
-    // PASSO 5: Resumo com Claude
+    // PASSO 5: Resumo com Claude (com tradução automática se necessário)
     log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(originalText);
+    const detectedLang = (job.data.language as string | undefined) || 'pt';
+    const bullets = await generateBullets(originalText, detectedLang);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
     // PASSO 6: Enviar resposta no WhatsApp
@@ -455,9 +515,10 @@ async function processTwilioJob(job: Job) {
     const { text: originalText, durationSec } = await transcribeBuffer(mp3Buffer);
     log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
 
-    // PASSO 5: Resumo com Claude
+    // PASSO 5: Resumo com Claude (com tradução automática se necessário)
     log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(originalText);
+    const detectedLang = (job.data.language as string | undefined) || 'pt';
+    const bullets = await generateBullets(originalText, detectedLang);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
     // PASSO 6: Enviar resposta via Twilio
@@ -550,19 +611,29 @@ async function processEvolutionJob(job: Job) {
     log(job, '🎙️  Whisper API (PT-BR)...');
     const { text: originalText, durationSec: whisperDuration } = await transcribeBuffer(mp3Buffer);
     const durationSec = whisperDuration > 0 ? whisperDuration : Math.max(1, durationHint || 1);
+    // Detectar idioma via Whisper response (stored on verbose_json) — fallback 'pt'
+    const detectedLanguage = (job.data.language as string | undefined) || 'pt';
     log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
 
-    // PASSO 5: Resumo com Claude Haiku
+    // PASSO 5: Resumo com Claude Haiku (com tradução automática se não PT-BR)
     log(job, '🤖 Claude Haiku resumo...');
-    const bullets = await generateBullets(originalText);
+    const bullets = await generateBullets(originalText, detectedLanguage);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
-    // PASSO 6: Enviar resposta via Evolution API na instância do número
+    // PASSO 6: Enviar resposta via Evolution API
     log(job, '📤 Enviando resposta via Evolution API...');
     const user    = await prisma.user.findUnique({ where: { id: userId } });
     const message = buildMessage(bullets, originalText, user?.refCode || '');
-    await sendMessageViaEvolution(instName, senderPhone, message);
-    log(job, '✅ Mensagem enviada na conversa');
+
+    // Modo privado: envia ao próprio número do usuário em vez do remetente
+    const isPrivate   = whatsappNumber.privateMode === true;
+    const targetPhone = isPrivate ? whatsappNumber.phoneNumber : senderPhone;
+    const privMsg     = isPrivate
+      ? message + `\n\n💬 *Responder:* https://wa.me/${senderPhone.replace(/\D/g, '')}`
+      : message;
+
+    await sendMessageViaEvolution(instName, targetPhone, privMsg);
+    log(job, `✅ Mensagem enviada ${isPrivate ? `(privado → ${targetPhone})` : 'na conversa'}`);
 
     // PASSO 6.5: Marcar conversa como não lida
     await markChatAsUnread(instName, senderPhone);

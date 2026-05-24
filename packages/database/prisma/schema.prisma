@@ -32,6 +32,7 @@ model User {
   transcriptions              Transcription[]
   usageLogs                   UsageLog[]
   supportTickets              SupportTicket[]
+  webhookConfig               WebhookConfig?
 }
 
 model Plan {
@@ -86,6 +87,7 @@ model WhatsappNumber {
   minutesUsed      Float            @default(0)
   zapiInstanceId   String?          // sem @unique — múltiplos usuários podem compartilhar a mesma instância Z-API
   zapiToken        String?          // Token da instância Z-API criada dinamicamente
+  privateMode      Boolean          @default(false)  // Modo privado: transcrição enviada ao próprio número
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -104,6 +106,7 @@ model Transcription {
   confidenceScore Float?
   language        String          @default("pt")
   source          String          @default("whatsapp")  // "whatsapp" | "manual"
+  tags            String[]        @default([])           // Tags do usuário (Ultra+)
   createdAt       DateTime        @default(now())
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   number          WhatsappNumber? @relation(fields: [numberId], references: [id], onDelete: SetNull)
@@ -192,4 +195,15 @@ model PrivacyPolicy {
   createdAt DateTime @default(now())
 
   @@index([version])
+}
+
+model WebhookConfig {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  url       String
+  secret    String   // Chave HMAC-SHA256 para assinar payloads
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
