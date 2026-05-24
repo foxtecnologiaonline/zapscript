@@ -906,9 +906,8 @@ async function checkAndLogServiceHealth() {
           select: { zapiInstanceId: true },
         });
         if (senderNumber?.zapiInstanceId) {
-          const { sendText } = await import('./services/evolution');
-          await sendText(senderNumber.zapiInstanceId, alertPhone, message);
-          logger.info({ issues }, '[HealthChecker] Alerta WhatsApp enviado');
+          await sendMessageViaEvolution(senderNumber.zapiInstanceId, alertPhone, message);
+          logger.info('[HealthChecker] Alerta WhatsApp enviado', { issues });
         }
       } catch (e: any) {
         logger.error(`[HealthChecker] Falha ao enviar alerta: ${e.message}`);
