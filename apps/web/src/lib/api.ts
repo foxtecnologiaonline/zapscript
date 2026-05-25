@@ -21,9 +21,9 @@ function handleUnauthorized() {
 
 async function request<T>(path: string, opts: RequestInit = {}, isFormData = false): Promise<T> {
   const token = getToken();
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...opts.headers,
+    ...(opts.headers as Record<string, string> | undefined),
   };
   // Only set Content-Type for non-FormData requests
   if (!isFormData) {
