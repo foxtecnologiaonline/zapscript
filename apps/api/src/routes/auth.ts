@@ -83,12 +83,19 @@ function emailWrapper(
 export default async function authRoutes(app: FastifyInstance) {
 
   // ── POST /auth/register ───────────────────────────────────────────────────
-  app.post<{ Body: { email: string; password: string; name?: string; inviteCode?: string } }>(
+  app.post<{ Body: {
+    email: string; password: string; name?: string; inviteCode?: string;
+    cbTos?: boolean; cbContrato?: boolean; cbLgpd?: boolean; cbMarketing?: boolean; docVersion?: string;
+  } }>(
     '/register',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const { email, password, name, inviteCode } = req.body;
+      const { email, password, name, inviteCode, cbTos, cbContrato, cbLgpd, cbMarketing, docVersion } = req.body;
       if (!email || !password) return reply.code(400).send({ error: 'email e password obrigatórios' });
+      // Validar consentimentos obrigatórios (LGPD Art. 8º §1º)
+      if (!cbTos)      return reply.code(400).send({ error: 'Aceite dos Termos de Serviço é obrigatório.' });
+      if (!cbContrato) return reply.code(400).send({ error: 'Aceite do Contrato de Prestação é obrigatório.' });
+      if (!cbLgpd)     return reply.code(400).send({ error: 'Autorização de tratamento de dados (LGPD) é obrigatória.' });
 
       // Verificar duplicata de e-mail
       const existingEmail = await prisma.user.findUnique({ where: { email } });
@@ -129,8 +136,14 @@ export default async function authRoutes(app: FastifyInstance) {
             id: data.user!.id,
             email,
             name,
-            isTester:    !!testerInvite,
-            testerSince: testerInvite ? now : undefined,
+            isTester:                !!testerInvite,
+            testerSince:             testerInvite ? now : undefined,
+            // LGPD — registro de consentimentos (Art. 8º §2º)
+            termsAcceptedAt:         cbTos      ? now : undefined,
+            contractAcceptedAt:      cbContrato ? now : undefined,
+            privacyPolicyAcceptedAt: cbLgpd     ? now : undefined,
+            marketingConsentAt:      cbMarketing ? now : undefined,
+            consentDocVersion:       docVersion || 'tos_v2.0,contrato_v2.0,pp_v2.0',
           },
         });
         await tx.subscription.create({

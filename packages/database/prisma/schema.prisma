@@ -19,9 +19,12 @@ model User {
   isAdmin                     Boolean         @default(false)
   isTester                    Boolean         @default(false)
   testerSince                 DateTime?
-  // LGPD - Direitos do usuário
+  // LGPD - Consentimentos e direitos do usuário
   privacyPolicyAcceptedAt     DateTime?
   termsAcceptedAt             DateTime?
+  contractAcceptedAt          DateTime?       // Contrato de Prestação de Serviços
+  marketingConsentAt          DateTime?       // Consentimento opcional de marketing
+  consentDocVersion           String?         // ex: "tos_v2.0,contrato_v2.0,pp_v2.0"
   deletedAt                   DateTime?       // Soft delete
   pseudonymizedAt             DateTime?       // LGPD: dados anonimizados
   createdAt                   DateTime        @default(now())

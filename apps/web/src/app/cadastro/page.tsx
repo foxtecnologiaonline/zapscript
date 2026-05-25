@@ -16,6 +16,13 @@ function CadastroForm() {
   const [done, setDone]       = useState(false);
   const [userEmail, setUserEmail] = useState('');
 
+  // Consentimentos LGPD
+  const [cbTos,       setCbTos]       = useState(false);
+  const [cbContrato,  setCbContrato]  = useState(false);
+  const [cbLgpd,      setCbLgpd]      = useState(false);
+  const [cbMarketing, setCbMarketing] = useState(false);
+  const [consentErrors, setConsentErrors] = useState({ tos: false, contrato: false, lgpd: false });
+
   useEffect(() => {
     if (!inviteCode) return;
     const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -31,15 +38,29 @@ function CadastroForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+
+    // Validação dos consentimentos obrigatórios
+    const errs = { tos: !cbTos, contrato: !cbContrato, lgpd: !cbLgpd };
+    setConsentErrors(errs);
+    if (errs.tos || errs.contrato || errs.lgpd) {
+      setError('Aceite todos os termos obrigatórios para continuar.');
+      return;
+    }
+
     if (form.password !== form.confirm) { setError('As senhas não coincidem.'); return; }
     if (form.password.length < 8)       { setError('Senha deve ter ao menos 8 caracteres.'); return; }
 
     setLoading(true);
     try {
       await api.post('/auth/register', {
-        name:     form.name,
-        email:    form.email,
-        password: form.password,
+        name:       form.name,
+        email:      form.email,
+        password:   form.password,
+        cbTos,
+        cbContrato,
+        cbLgpd,
+        cbMarketing,
+        docVersion: 'tos_v2.0,contrato_v2.0,pp_v2.0',
         ...(inviteCode ? { inviteCode } : {}),
       });
       setUserEmail(form.email);
@@ -132,6 +153,84 @@ function CadastroForm() {
               <input className="field-input" type="password" placeholder="Repita a senha" value={form.confirm} onChange={set('confirm')} required/>
             </div>
 
+            {/* Consentimentos LGPD */}
+            <div className="rounded-xl p-3 mt-1 space-y-1"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <p className="text-[10px] text-brand-muted uppercase tracking-widest font-mono mb-2">
+                Consentimentos legais
+              </p>
+
+              {/* Termos de Serviço — obrigatório */}
+              <label className={`flex items-start gap-2.5 p-2 rounded-lg cursor-pointer transition-colors ${consentErrors.tos ? 'bg-red-500/10' : 'hover:bg-white/5'}`}>
+                <input
+                  type="checkbox"
+                  checked={cbTos}
+                  onChange={e => { setCbTos(e.target.checked); if (e.target.checked) setConsentErrors(prev => ({ ...prev, tos: false })); }}
+                  className="mt-0.5 w-4 h-4 rounded accent-brand-primary flex-shrink-0"
+                />
+                <span className="text-[12px] text-brand-text-secondary leading-relaxed">
+                  Li e concordo com os{' '}
+                  <Link href="/termos" target="_blank" className="text-brand-primary hover:underline font-medium">Termos de Serviço</Link>
+                  {' '}<span className="font-mono text-[10px] text-brand-primary bg-brand-primary/10 px-1 rounded">obrigatório</span>
+                </span>
+              </label>
+              {consentErrors.tos && <p className="text-[11px] text-red-400 pl-7">Aceite obrigatório para acessar o serviço.</p>}
+
+              {/* Contrato de Prestação — obrigatório */}
+              <label className={`flex items-start gap-2.5 p-2 rounded-lg cursor-pointer transition-colors ${consentErrors.contrato ? 'bg-red-500/10' : 'hover:bg-white/5'}`}>
+                <input
+                  type="checkbox"
+                  checked={cbContrato}
+                  onChange={e => { setCbContrato(e.target.checked); if (e.target.checked) setConsentErrors(prev => ({ ...prev, contrato: false })); }}
+                  className="mt-0.5 w-4 h-4 rounded accent-brand-primary flex-shrink-0"
+                />
+                <span className="text-[12px] text-brand-text-secondary leading-relaxed">
+                  Li e aceito o{' '}
+                  <Link href="/contrato" target="_blank" className="text-brand-primary hover:underline font-medium">Contrato de Prestação de Serviços</Link>
+                  , incluindo SLA e condições de rescisão.{' '}
+                  <span className="font-mono text-[10px] text-brand-primary bg-brand-primary/10 px-1 rounded">obrigatório</span>
+                </span>
+              </label>
+              {consentErrors.contrato && <p className="text-[11px] text-red-400 pl-7">Aceite obrigatório para contratar o serviço.</p>}
+
+              {/* LGPD — obrigatório */}
+              <label className={`flex items-start gap-2.5 p-2 rounded-lg cursor-pointer transition-colors ${consentErrors.lgpd ? 'bg-red-500/10' : 'hover:bg-white/5'}`}>
+                <input
+                  type="checkbox"
+                  checked={cbLgpd}
+                  onChange={e => { setCbLgpd(e.target.checked); if (e.target.checked) setConsentErrors(prev => ({ ...prev, lgpd: false })); }}
+                  className="mt-0.5 w-4 h-4 rounded accent-brand-primary flex-shrink-0"
+                />
+                <span className="text-[12px] text-brand-text-secondary leading-relaxed">
+                  Autorizo o tratamento dos meus dados para criação de conta conforme a{' '}
+                  <Link href="/privacidade" target="_blank" className="text-brand-primary hover:underline font-medium">Política de Privacidade</Link>
+                  {' '}e a LGPD.{' '}
+                  <span className="font-mono text-[10px] text-brand-primary bg-brand-primary/10 px-1 rounded">obrigatório</span>
+                </span>
+              </label>
+              {consentErrors.lgpd && <p className="text-[11px] text-red-400 pl-7">Autorização necessária para criarmos sua conta.</p>}
+
+              <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '4px 0' }} />
+
+              {/* Marketing — opcional */}
+              <label className="flex items-start gap-2.5 p-2 rounded-lg cursor-pointer hover:bg-white/5 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={cbMarketing}
+                  onChange={e => setCbMarketing(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded accent-brand-primary flex-shrink-0"
+                />
+                <span className="text-[12px] text-brand-muted leading-relaxed">
+                  Autorizo o envio de novidades e ofertas por e-mail. Posso revogar a qualquer momento.{' '}
+                  <span className="font-mono text-[10px] text-brand-muted/60 bg-white/5 px-1 rounded">opcional</span>
+                </span>
+              </label>
+
+              <p className="text-[10px] text-brand-muted/50 font-mono leading-relaxed pt-1 px-1">
+                Aceites #1–3 são necessários para execução do contrato (Art. 7º V LGPD). Todos registrados com timestamp e versão dos documentos (Art. 8º §2º LGPD).
+              </p>
+            </div>
+
             {error && (
               <div className="text-red-400 text-xs bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
                 {error}
@@ -140,19 +239,13 @@ function CadastroForm() {
 
             <button type="submit" disabled={loading}
               className="btn-primary w-full py-3 text-sm disabled:opacity-50">
-              {loading ? 'Criando conta...' : 'Criar conta grátis'}
+              {loading ? 'Criando conta...' : 'Criar conta grátis →'}
             </button>
           </form>
 
           <p className="text-center text-xs text-brand-muted mt-4">
             Já tem conta?{' '}
             <Link href="/login" className="text-brand-primary font-semibold hover:underline">Entrar</Link>
-          </p>
-          <p className="text-center text-[10px] text-brand-muted mt-2 leading-relaxed">
-            Ao criar sua conta você concorda com os{' '}
-            <Link href="/termos" className="underline">Termos de Uso</Link>
-            {' '}e{' '}
-            <Link href="/privacidade" className="underline">Política de Privacidade</Link>
           </p>
         </div>
       </div>
