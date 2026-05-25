@@ -446,6 +446,28 @@ export default async function authRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── POST /auth/accept-terms ───────────────────────────────────────────────
+  // Aceite dos termos por usuários já cadastrados (modal bloqueante no dashboard)
+  app.post<{ Body: { cbTos: boolean; cbContrato: boolean; cbLgpd: boolean } }>(
+    '/accept-terms',
+    { preHandler: [(app as any).authenticate] },
+    async (req: any, reply) => {
+      const { cbTos, cbContrato, cbLgpd } = req.body;
+      if (!cbTos || !cbContrato || !cbLgpd) {
+        return reply.code(400).send({ error: 'Todos os aceites obrigatórios são necessários.' });
+      }
+      const now = new Date();
+      await prisma.user.update({
+        where: { id: req.user.sub },
+        data: {
+          termsAcceptedAt:         now,
+          privacyPolicyAcceptedAt: now,
+        },
+      });
+      return { accepted: true };
+    }
+  );
+
   // ── GET /auth/me ──────────────────────────────────────────────────────────
   app.get('/me', { preHandler: [(app as any).authenticate] }, async (req: any) => {
     return prisma.user.findUnique({

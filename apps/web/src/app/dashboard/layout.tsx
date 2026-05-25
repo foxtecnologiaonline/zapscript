@@ -106,15 +106,129 @@ function NavContent({
   );
 }
 
+// ── Modal de aceite de termos para usuários já cadastrados ───────────────────
+function TermsModal({ onAccepted }: { onAccepted: () => void }) {
+  const [cbTos,      setCbTos]      = useState(false);
+  const [cbContrato, setCbContrato] = useState(false);
+  const [cbLgpd,     setCbLgpd]     = useState(false);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState('');
+
+  async function handleAccept() {
+    if (!cbTos || !cbContrato || !cbLgpd) {
+      setError('Aceite todos os termos obrigatórios para continuar.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await api.post('/auth/accept-terms', { cbTos, cbContrato, cbLgpd });
+      onAccepted();
+    } catch (e: any) {
+      setError(e.message || 'Erro ao registrar aceite. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ background: 'rgba(4,11,9,0.92)', backdropFilter: 'blur(6px)' }}>
+      <div className="w-full max-w-md rounded-2xl p-6 sm:p-8 shadow-2xl"
+        style={{ background: '#0d1c19', border: '1px solid rgba(16,185,129,.18)' }}>
+
+        {/* Header */}
+        <div className="text-center mb-6">
+          <div className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center text-2xl"
+            style={{ background: 'rgba(16,185,129,.12)' }}>
+            📋
+          </div>
+          <h2 className="text-lg font-bold text-brand-primary mb-1">Termos Atualizados</h2>
+          <p className="text-xs text-brand-muted leading-relaxed">
+            Atualizamos nossos documentos legais (v2.0). Leia e aceite para continuar usando o ZapScript.
+          </p>
+        </div>
+
+        {/* Checkboxes */}
+        <div className="space-y-1 mb-5 rounded-xl p-3"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <p className="text-[10px] text-brand-muted uppercase tracking-widest font-mono mb-2">
+            Consentimentos legais
+          </p>
+
+          <label className="flex items-start gap-2.5 p-2 rounded-lg cursor-pointer hover:bg-white/5 transition-colors">
+            <input type="checkbox" checked={cbTos} onChange={e => setCbTos(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded accent-brand-primary flex-shrink-0" />
+            <span className="text-[12px] text-brand-text-secondary leading-relaxed">
+              Li e concordo com os{' '}
+              <a href="/termos" target="_blank" className="text-brand-primary hover:underline font-medium">Termos de Serviço</a>
+              {' '}<span className="font-mono text-[10px] text-brand-primary bg-brand-primary/10 px-1 rounded">obrigatório</span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2.5 p-2 rounded-lg cursor-pointer hover:bg-white/5 transition-colors">
+            <input type="checkbox" checked={cbContrato} onChange={e => setCbContrato(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded accent-brand-primary flex-shrink-0" />
+            <span className="text-[12px] text-brand-text-secondary leading-relaxed">
+              Li e aceito o{' '}
+              <a href="/contrato" target="_blank" className="text-brand-primary hover:underline font-medium">Contrato de Prestação de Serviços</a>
+              , incluindo SLA e condições de rescisão.{' '}
+              <span className="font-mono text-[10px] text-brand-primary bg-brand-primary/10 px-1 rounded">obrigatório</span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2.5 p-2 rounded-lg cursor-pointer hover:bg-white/5 transition-colors">
+            <input type="checkbox" checked={cbLgpd} onChange={e => setCbLgpd(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded accent-brand-primary flex-shrink-0" />
+            <span className="text-[12px] text-brand-text-secondary leading-relaxed">
+              Autorizo o tratamento dos meus dados conforme a{' '}
+              <a href="/privacidade" target="_blank" className="text-brand-primary hover:underline font-medium">Política de Privacidade</a>
+              {' '}e a LGPD.{' '}
+              <span className="font-mono text-[10px] text-brand-primary bg-brand-primary/10 px-1 rounded">obrigatório</span>
+            </span>
+          </label>
+
+          <p className="text-[10px] text-brand-muted/50 font-mono leading-relaxed pt-1 px-1">
+            Aceite registrado com timestamp como prova de consentimento (Art. 8º §2º LGPD).
+          </p>
+        </div>
+
+        {error && (
+          <div className="text-red-400 text-xs bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2 mb-4">
+            {error}
+          </div>
+        )}
+
+        <button
+          onClick={handleAccept}
+          disabled={loading}
+          className="btn-primary w-full py-3 text-sm font-semibold disabled:opacity-50">
+          {loading ? 'Registrando aceite...' : 'Aceitar e continuar →'}
+        </button>
+
+        <p className="text-center text-[10px] text-brand-muted mt-3 leading-relaxed">
+          Ao aceitar, você confirma que leu e concordou com todos os documentos acima.
+          Sem aceite, o acesso à plataforma não é possível.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname   = usePathname();
   const router     = useRouter();
-  const [user, setUser]         = useState<any>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [user, setUser]               = useState<any>(null);
+  const [menuOpen, setMenuOpen]       = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   useEffect(() => {
     api.get<any>('/auth/me')
-      .then(setUser)
+      .then(u => {
+        setUser(u);
+        // Mostrar modal se usuário ainda não aceitou os termos v2.0
+        if (!u?.termsAcceptedAt) setShowTermsModal(true);
+      })
       .catch(() => router.push('/login'));
   }, []);
 
@@ -136,6 +250,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen dashboard-bg">
+      {/* Modal bloqueante de aceite de termos para usuários existentes */}
+      {showTermsModal && (
+        <TermsModal onAccepted={() => {
+          setShowTermsModal(false);
+          setUser((u: any) => ({ ...u, termsAcceptedAt: new Date().toISOString() }));
+        }} />
+      )}
 
       {/* ── Desktop sidebar (hidden on mobile) ─── */}
       <aside className="hidden md:flex w-56 flex-shrink-0 dashboard-sidebar border-r dashboard-border flex-col sticky top-0 h-screen">
