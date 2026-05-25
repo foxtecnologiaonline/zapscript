@@ -79,6 +79,32 @@ const adminAuth = async (req: any, reply: any) => {
 
 export default async function adminRoutes(app: FastifyInstance) {
 
+  // ── POST /test-email — testa envio de e-mail (diagnóstico) ──────────────
+  app.post<{ Body: { to: string } }>(
+    '/test-email',
+    { preHandler: [adminAuth], schema: { body: { type: 'object', required: ['to'] } } },
+    async (req, reply) => {
+      const { to } = req.body;
+      if (!to) return reply.code(400).send({ error: 'to é obrigatório' });
+      try {
+        await sendEmail(
+          to,
+          '🧪 Teste de E-mail — ZapScript Admin',
+          `<div style="font-family:sans-serif;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px;max-width:480px;margin:0 auto">
+            <h2 style="color:#10b981">✅ E-mail de teste funcionando!</h2>
+            <p style="color:#a7f3d0">Este e-mail foi enviado pelo endpoint de diagnóstico do admin ZapScript.</p>
+            <p style="color:#6ee7b7;font-size:12px">Horário: ${new Date().toISOString()}</p>
+            <p style="color:#6ee7b7;font-size:12px">Provider: ${process.env.RESEND_API_KEY ? 'Resend' : process.env.SMTP_HOST ? 'SMTP' : 'NENHUM'}</p>
+            <p style="color:#6ee7b7;font-size:12px">SMTP_FROM: ${process.env.SMTP_FROM || 'não definido'}</p>
+          </div>`,
+        );
+        return { ok: true, message: `E-mail enviado para ${to}`, provider: process.env.RESEND_API_KEY ? 'resend' : process.env.SMTP_HOST ? 'smtp' : 'none' };
+      } catch (err: any) {
+        return reply.code(500).send({ ok: false, error: err.message, provider: process.env.RESEND_API_KEY ? 'resend' : process.env.SMTP_HOST ? 'smtp' : 'none' });
+      }
+    }
+  );
+
   // GET /admin/stats — dashboard completo do admin
   app.get('/stats', { preHandler: [adminAuth] }, async () => {
     const now            = new Date();

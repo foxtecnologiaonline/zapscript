@@ -173,12 +173,22 @@ export default async function authRoutes(app: FastifyInstance) {
 
       // Gerar link de confirmação e enviar e-mail de boas-vindas
       try {
-        const { data: linkData } = await supabase.auth.admin.generateLink({
+        logger.info(`[Auth] Gerando link de confirmação para ${email} (redirectTo: ${APP_URL}/email-confirmado)`);
+
+        const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
           type:     'signup',           // 'signup' = link de confirmação de e-mail (não magiclink)
           email,
           password, // necessário para o tipo 'signup'
           options:  { redirectTo: `${APP_URL}/email-confirmado` },
         });
+
+        if (linkError) {
+          logger.error(`[Auth] generateLink falhou para ${email}: ${linkError.message}`);
+        } else if (!linkData?.properties?.action_link) {
+          logger.error(`[Auth] generateLink não retornou action_link para ${email}. linkData: ${JSON.stringify(linkData?.properties)}`);
+        } else {
+          logger.info(`[Auth] Link gerado com sucesso para ${email}. Enviando e-mail via sendEmail()...`);
+        }
 
         if (linkData?.properties?.action_link) {
           const confirmLink = linkData.properties.action_link;
