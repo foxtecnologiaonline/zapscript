@@ -116,7 +116,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
     // Polling periódico a cada 25s para renovar o QR antes de expirar
     qrPollRef.current = setInterval(fetchQr, 25_000);
     // Também inicia polling de status
-    setPhase((p: typeof phase) => (p === 'ready' ? 'waiting' : p));
+    setPhase(p => (p === 'ready' ? 'waiting' : p));
     return () => { active = false; clearInterval(qrPollRef.current!); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectMode, phase === 'ready' || phase === 'waiting' || phase === 'code']);
