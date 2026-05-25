@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pricing-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "pricing-preview", "-p", "4999", "--no-clipboard"],
+      "port": 4999
+    }
+  ]
+}

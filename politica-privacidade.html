@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Política de Privacidade — ZapScript</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --brand: #1DB954;
+      --bg: #0d0d0d;
+      --surface: #161616;
+      --surface2: #1c1c1c;
+      --border: rgba(255,255,255,0.08);
+      --text: #f0f0f0;
+      --muted: #777;
+      --accent-bg: rgba(29,185,84,0.07);
+      --warn-bg: rgba(255,180,0,0.06);
+      --warn-border: rgba(255,180,0,0.2);
+    }
+    body { font-family: 'Georgia','Times New Roman',serif; background: var(--bg); color: var(--text); line-height: 1.85; font-size: 16px; }
+    header { border-bottom: 1px solid var(--border); padding: 2rem 0; text-align: center; background: var(--surface); }
+    .logo { font-family: 'Courier New',monospace; font-size: 1.1rem; color: var(--brand); letter-spacing: .1em; text-transform: uppercase; margin-bottom: .5rem; }
+    header h1 { font-size: 1.6rem; font-weight: normal; letter-spacing: -.02em; }
+    header .meta { font-family: 'Courier New',monospace; font-size: .72rem; color: var(--muted); margin-top: .5rem; }
+    main { max-width: 780px; margin: 0 auto; padding: 3rem 2rem 5rem; }
+    .intro { background: var(--accent-bg); border-left: 3px solid var(--brand); padding: 1.25rem 1.5rem; border-radius: 0 6px 6px 0; margin-bottom: 2rem; font-size: .94rem; color: #ccc; }
+    .version-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 3rem; font-family: 'Courier New',monospace; font-size: .75rem; color: var(--muted); }
+    .version-box table { width: 100%; border-collapse: collapse; }
+    .version-box td { padding: 3px 0; }
+    .version-box td:first-child { color: #555; width: 120px; }
+    h2 { font-family: 'Courier New',monospace; font-size: .73rem; text-transform: uppercase; letter-spacing: .15em; color: var(--brand); margin-top: 3rem; margin-bottom: 1rem; padding-bottom: .5rem; border-bottom: 1px solid var(--border); }
+    p { margin-bottom: 1rem; color: #ccc; }
+    ul, ol { margin: .75rem 0 1rem 1.5rem; color: #ccc; }
+    ul li, ol li { margin-bottom: .4rem; }
+    strong { color: var(--text); font-weight: 600; }
+    .box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem 1.5rem; margin: 1.5rem 0; }
+    .box p { margin-bottom: .3rem; }
+    .box p:last-child { margin-bottom: 0; }
+    .warn-box { background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 8px; padding: 1.1rem 1.4rem; margin: 1.5rem 0; }
+    .warn-box p { color: #d4aa40; font-size: .9rem; margin-bottom: 0; }
+    .legal-ref { font-family: 'Courier New',monospace; font-size: .7rem; color: #444; margin-left: .4rem; }
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .table-legal { width: 100%; border-collapse: collapse; font-size: .88rem; margin: 1rem 0; }
+    .table-legal th { text-align: left; font-weight: 600; color: var(--text); font-size: .75rem; font-family: 'Courier New',monospace; text-transform: uppercase; letter-spacing: .07em; padding: .5rem .75rem; border-bottom: 1px solid var(--border); }
+    .table-legal td { padding: .6rem .75rem; color: #bbb; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: top; }
+    .table-legal tr:last-child td { border-bottom: none; }
+    .rights-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: .75rem; margin: 1.25rem 0; }
+    .right-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: .875rem 1rem; }
+    .right-item .right-title { font-weight: 600; color: var(--text); font-size: .88rem; margin-bottom: .25rem; }
+    .right-item .right-desc { font-size: .82rem; color: #888; line-height: 1.5; }
+    .right-item .right-law { font-family: 'Courier New',monospace; font-size: .65rem; color: var(--brand); margin-top: .3rem; }
+    footer { text-align: center; padding: 2rem; border-top: 1px solid var(--border); font-family: 'Courier New',monospace; font-size: .7rem; color: var(--muted); }
+    .sn { font-family: 'Courier New',monospace; font-size: .68rem; color: #444; margin-right: .4rem; }
+    @media (max-width:600px) { main { padding: 2rem 1.25rem 4rem; } .rights-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">⚡ ZapScript</div>
+  <h1>Política de Privacidade</h1>
+  <p class="meta">Versão 2.0 &nbsp;·&nbsp; Vigente a partir de 01/06/2025 &nbsp;·&nbsp; Conforme Lei nº 13.709/2018 (LGPD)</p>
+</header>
+
+<main>
+
+  <div class="intro">
+    Esta Política descreve de forma clara e transparente como a <strong>ZapScript</strong> coleta, utiliza, armazena, compartilha e protege seus dados pessoais. O tratamento é realizado com base legal definida, em estrita conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018 — LGPD) e demais normas aplicáveis. <strong>O mero uso da plataforma não constitui consentimento</strong> — onde este for necessário, será coletado de forma específica, destacada e inequívoca.
+  </div>
+
+  <div class="version-box">
+    <table>
+      <tr><td>Versão atual</td><td>2.0</td></tr>
+      <tr><td>Vigência</td><td>01 de junho de 2025</td></tr>
+      <tr><td>Substituiu</td><td>Versão 1.0 (mai/2025)</td></tr>
+      <tr><td>Próxima revisão</td><td>01 de junho de 2026</td></tr>
+      <tr><td>Contato DPO</td><td>privacidade@zapscript.me</td></tr>
+    </table>
+  </div>
+
+  <!-- 01 -->
+  <h2><span class="sn">01 /</span> Identificação do Controlador <span class="legal-ref">Art. 5º VI e Art. 41 LGPD</span></h2>
+  <div class="box">
+    <p><strong>Razão Social:</strong> [INSERIR RAZÃO SOCIAL COMPLETA DA EMPRESA] &nbsp;·&nbsp; <strong>CNPJ:</strong> [XX.XXX.XXX/0001-XX]</p>
+    <p><strong>Endereço:</strong> [Endereço completo com CEP] — Uberaba/MG, Brasil</p>
+    <p><strong>Encarregado de Proteção de Dados (Encarregado/DPO):</strong> [Nome do Encarregado]</p>
+    <p><strong>E-mail do Encarregado:</strong> <a href="mailto:privacidade@zapscript.me">privacidade@zapscript.me</a></p>
+    <p><strong>Site:</strong> <a href="https://zapscript.me">zapscript.me</a> &nbsp;·&nbsp; <strong>Atendimento:</strong> <a href="mailto:suporte@zapscript.me">suporte@zapscript.me</a></p>
+  </div>
+  <p>A ZapScript é uma plataforma SaaS de transcrição automatizada de áudios do WhatsApp, operada pela empresa acima identificada, responsável pelo tratamento dos dados pessoais nos termos da LGPD.</p>
+
+  <!-- 02 -->
+  <h2><span class="sn">02 /</span> Base Legal por Finalidade <span class="legal-ref">Art. 7º e Art. 9º II LGPD</span></h2>
+  <p>Todo tratamento de dados realizado pela ZapScript possui uma base legal específica. A tabela abaixo detalha cada finalidade e seu respectivo fundamento legal:</p>
+  <table class="table-legal">
+    <thead><tr><th>Finalidade</th><th>Dados Envolvidos</th><th>Base Legal</th><th>Fundamento</th></tr></thead>
+    <tbody>
+      <tr><td>Criação e gerenciamento de conta</td><td>Nome, e-mail, senha (hash)</td><td>Execução de contrato</td><td>Art. 7º V LGPD</td></tr>
+      <tr><td>Prestação do serviço de transcrição</td><td>Áudios, transcrições, metadados de uso</td><td>Execução de contrato</td><td>Art. 7º V LGPD</td></tr>
+      <tr><td>Processamento de pagamentos</td><td>Dados de cobrança (via gateway)</td><td>Execução de contrato</td><td>Art. 7º V LGPD</td></tr>
+      <tr><td>Comunicações transacionais</td><td>E-mail, dados de conta</td><td>Legítimo interesse / Contrato</td><td>Art. 7º IX e V LGPD</td></tr>
+      <tr><td>Segurança e prevenção de fraudes</td><td>IP, logs, dados técnicos</td><td>Legítimo interesse</td><td>Art. 7º IX LGPD</td></tr>
+      <tr><td>Melhoria da plataforma (anonimizado)</td><td>Dados estatísticos anonimizados</td><td>Legítimo interesse</td><td>Art. 7º IX LGPD — dado anonimizado não é dado pessoal (Art. 12)</td></tr>
+      <tr><td>Obrigações fiscais e contábeis</td><td>Dados de cobrança, NF</td><td>Obrigação legal</td><td>Art. 7º II LGPD c/c Lei 9.430/96</td></tr>
+      <tr><td>Retenção de logs de acesso</td><td>IP, timestamp, logs</td><td>Obrigação legal</td><td>Art. 7º II LGPD c/c Art. 15 Marco Civil (Lei 12.965/14)</td></tr>
+      <tr><td>Comunicações de marketing</td><td>E-mail, nome</td><td><strong>Consentimento</strong></td><td>Art. 7º I LGPD — checkbox opcional e revogável</td></tr>
+    </tbody>
+  </table>
+  <div class="warn-box">
+    <p>⚠ O tratamento com base em <strong>legítimo interesse</strong> é sempre proporcional, necessário e respeita os direitos fundamentais do titular. O titular pode opor-se a qualquer momento (Art. 18 II LGPD).</p>
+  </div>
+
+  <!-- 03 -->
+  <h2><span class="sn">03 /</span> Dados Coletados <span class="legal-ref">Art. 6º III LGPD — Princípio da Necessidade</span></h2>
+  <p>Coletamos apenas os dados estritamente necessários para cada finalidade declarada (princípio da necessidade):</p>
+  <ul>
+    <li><strong>Dados de cadastro:</strong> nome completo, e-mail e senha (armazenada exclusivamente em hash irreversível — nunca em texto puro).</li>
+    <li><strong>Dados de uso:</strong> data, hora e volume das transcrições realizadas, funcionalidades utilizadas e frequência de acesso.</li>
+    <li><strong>Dados de pagamento:</strong> processados diretamente pelos gateways de pagamento contratados (Stripe, HotMart ou similar). A ZapScript <strong>não armazena</strong> número de cartão, CVV ou dados bancários completos.</li>
+    <li><strong>Dados técnicos:</strong> endereço IP, tipo e versão de navegador, sistema operacional, identificadores de sessão e logs de acesso (obrigação legal — Marco Civil da Internet).</li>
+    <li><strong>Conteúdo de áudio:</strong> os áudios são processados exclusivamente para geração da transcrição e <strong>excluídos em até 24 horas</strong> após o processamento. Não são armazenados permanentemente, salvo se o usuário ativar essa função expressamente.</li>
+    <li><strong>Transcrições geradas:</strong> armazenadas no perfil do usuário enquanto a conta estiver ativa, podendo ser excluídas a qualquer momento pelo próprio usuário.</li>
+  </ul>
+  <p>Não coletamos dados pessoais sensíveis (Art. 5º II LGPD: origem racial, convicção religiosa, saúde, biometria, orientação sexual, dado genético ou político) de forma intencional. Caso um áudio processado contenha tais informações, elas seguem o mesmo ciclo de vida do áudio e são descartadas após o processamento, sem registro separado.</p>
+
+  <!-- 04 -->
+  <h2><span class="sn">04 /</span> Compartilhamento de Dados <span class="legal-ref">Art. 7º §5º e Art. 26 LGPD</span></h2>
+  <p>A ZapScript <strong>não vende, aluga ou comercializa</strong> dados pessoais de seus usuários. O compartilhamento ocorre apenas nas seguintes situações:</p>
+  <ul>
+    <li><strong>Operadores de pagamento</strong> (ex: Stripe, HotMart): para processamento de assinaturas. Sujeitos a seus próprios termos e obrigações legais de sigilo.</li>
+    <li><strong>Provedores de infraestrutura em nuvem</strong> (ex: AWS, GCP, Azure): para hospedagem, backup e processamento. Contratados como operadores nos termos do Art. 37 LGPD, com cláusulas contratuais de proteção de dados.</li>
+    <li><strong>Fornecedores de API de Speech-to-Text</strong>: recebem os áudios exclusivamente para processamento técnico, sem direito de uso, retenção ou treinamento de modelos com o conteúdo do usuário. Vinculados por DPA (Data Processing Agreement).</li>
+    <li><strong>Ferramentas de análise e monitoramento</strong> (ex: analytics, APM): apenas dados técnicos anonimizados ou pseudonimizados.</li>
+    <li><strong>Autoridades e órgãos reguladores</strong>: quando exigido por lei, decisão judicial ou regulação administrativa, nos estritos limites da requisição.</li>
+  </ul>
+  <p>Todos os operadores são formalmente vinculados por contrato ou DPA com cláusulas de proteção de dados equivalentes às exigidas pela LGPD, conforme Art. 37 e 38 LGPD.</p>
+
+  <!-- 05 -->
+  <h2><span class="sn">05 /</span> Transferência Internacional de Dados <span class="legal-ref">Art. 33 ao 36 LGPD</span></h2>
+  <p>Alguns de nossos fornecedores técnicos operam fora do Brasil. A transferência internacional de dados pessoais é realizada apenas nas seguintes hipóteses previstas no Art. 33 LGPD:</p>
+  <ul>
+    <li>Para países ou organismos internacionais que proporcionem grau de proteção de dados pessoais adequado ao previsto na LGPD, conforme avaliação da ANPD (Art. 33 I);</li>
+    <li>Mediante cláusulas contratuais específicas (Standard Contractual Clauses — SCCs) que garantam e estabeleçam princípios, direitos dos titulares e obrigações de proteção equivalentes aos da LGPD (Art. 33 II);</li>
+    <li>Quando necessário para a execução do contrato de prestação de serviço solicitado pelo próprio titular (Art. 33 V).</li>
+  </ul>
+  <p>O usuário pode solicitar informações sobre os mecanismos específicos utilizados em cada transferência através do canal do Encarregado.</p>
+
+  <!-- 06 -->
+  <h2><span class="sn">06 /</span> Retenção e Eliminação de Dados <span class="legal-ref">Art. 15 e 16 LGPD</span></h2>
+  <table class="table-legal">
+    <thead><tr><th>Tipo de Dado</th><th>Prazo de Retenção</th><th>Fundamento</th></tr></thead>
+    <tbody>
+      <tr><td>Áudios enviados</td><td>Até 24h após processamento</td><td>Princípio da necessidade — Art. 6º III LGPD</td></tr>
+      <tr><td>Transcrições geradas</td><td>Enquanto a conta estiver ativa + 90 dias após cancelamento</td><td>Execução de contrato — Art. 15 I LGPD</td></tr>
+      <tr><td>Dados de cadastro</td><td>Enquanto ativo + 90 dias após cancelamento</td><td>Execução de contrato — Art. 15 I LGPD</td></tr>
+      <tr><td>Logs de acesso (IP)</td><td>6 meses</td><td>Obrigação legal — Art. 15 Marco Civil (Lei 12.965/14)</td></tr>
+      <tr><td>Dados de faturamento / NF</td><td>5 anos</td><td>Obrigação legal — Art. 173 CTN c/c Lei 9.430/96</td></tr>
+      <tr><td>Registros de consentimento</td><td>5 anos após revogação</td><td>Ônus da prova — Art. 8º §2º LGPD</td></tr>
+      <tr><td>Dados de comunicações marketing</td><td>Até revogação do consentimento + 30 dias para exclusão efetiva</td><td>Art. 8º §5º LGPD</td></tr>
+    </tbody>
+  </table>
+  <p>Após o término dos prazos de retenção, os dados são eliminados de forma segura ou anonimizados de maneira irreversível, conforme Art. 16 LGPD.</p>
+
+  <!-- 07 -->
+  <h2><span class="sn">07 /</span> Seus Direitos como Titular <span class="legal-ref">Art. 18 ao 20 LGPD</span></h2>
+  <p>Você possui os seguintes direitos garantidos pela LGPD, exercíveis a qualquer momento:</p>
+  <div class="rights-grid">
+    <div class="right-item">
+      <div class="right-title">Acesso</div>
+      <div class="right-desc">Confirmar a existência de tratamento e obter cópia dos seus dados.</div>
+      <div class="right-law">Art. 18 II LGPD</div>
+    </div>
+    <div class="right-item">
+      <div class="right-title">Correção</div>
+      <div class="right-desc">Corrigir dados incompletos, inexatos ou desatualizados.</div>
+      <div class="right-law">Art. 18 III LGPD</div>
+    </div>
+    <div class="right-item">
+      <div class="right-title">Anonimização ou Eliminação</div>
+      <div class="right-desc">Eliminar dados desnecessários, excessivos ou tratados em desconformidade.</div>
+      <div class="right-law">Art. 18 IV LGPD</div>
+    </div>
+    <div class="right-item">
+      <div class="right-title">Portabilidade</div>
+      <div class="right-desc">Receber seus dados em formato estruturado e interoperável.</div>
+      <div class="right-law">Art. 18 V LGPD</div>
+    </div>
+    <div class="right-item">
+      <div class="right-title">Informação sobre Compartilhamento</div>
+      <div class="right-desc">Saber com quais entidades seus dados foram compartilhados.</div>
+      <div class="right-law">Art. 18 VII LGPD</div>
+    </div>
+    <div class="right-item">
+      <div class="right-title">Revogação do Consentimento</div>
+      <div class="right-desc">Revogar consentimento a qualquer momento, sem ônus.</div>
+      <div class="right-law">Art. 18 IX LGPD</div>
+    </div>
+    <div class="right-item">
+      <div class="right-title">Oposição</div>
+      <div class="right-desc">Opor-se a tratamentos baseados em legítimo interesse.</div>
+      <div class="right-law">Art. 18 II LGPD</div>
+    </div>
+    <div class="right-item">
+      <div class="right-title">Informação sobre Negativa</div>
+      <div class="right-desc">Ser informado sobre as consequências de não fornecer consentimento.</div>
+      <div class="right-law">Art. 18 VIII LGPD</div>
+    </div>
+  </div>
+  <div class="box">
+    <p><strong>Como exercer seus direitos:</strong></p>
+    <p>📧 E-mail: <a href="mailto:privacidade@zapscript.me">privacidade@zapscript.me</a> — Prazo de resposta: <strong>15 dias corridos</strong> a contar do recebimento (Art. 18 §5º LGPD).</p>
+    <p>🖥 Painel da conta: funcionalidades de acesso, correção e exclusão disponíveis diretamente em <a href="https://zapscript.me/conta">zapscript.me/conta</a>.</p>
+    <p>Em caso de insatisfação com nossa resposta, você pode registrar reclamação junto à <strong>ANPD</strong> em <a href="https://www.gov.br/anpd" target="_blank">gov.br/anpd</a> (Art. 18 §1º LGPD).</p>
+  </div>
+
+  <!-- 08 -->
+  <h2><span class="sn">08 /</span> Segurança da Informação <span class="legal-ref">Art. 46 ao 51 LGPD</span></h2>
+  <p>Adotamos medidas técnicas, administrativas e organizacionais adequadas ao risco do tratamento realizado, conforme Art. 46 LGPD:</p>
+  <ul>
+    <li>Transmissão criptografada via TLS 1.2+ (HTTPS) em todas as comunicações;</li>
+    <li>Armazenamento de dados em repouso com criptografia AES-256;</li>
+    <li>Senhas armazenadas exclusivamente em hash com salting (bcrypt/argon2);</li>
+    <li>Controle de acesso baseado em função (RBAC) com princípio do menor privilégio;</li>
+    <li>Autenticação de dois fatores (2FA) disponível e incentivada para usuários;</li>
+    <li>Monitoramento contínuo de segurança e logs de auditoria interna;</li>
+    <li>Revisões periódicas de segurança e testes de vulnerabilidade.</li>
+  </ul>
+  <p><strong>Incidentes de segurança:</strong> Em caso de incidente que possa acarretar risco ou dano relevante aos titulares, a ZapScript notificará a ANPD e os titulares afetados em prazo razoável, conforme Art. 48 LGPD, com informações sobre a natureza dos dados, os titulares afetados, as medidas técnicas e de segurança adotadas e os riscos relacionados ao incidente.</p>
+
+  <!-- 09 -->
+  <h2><span class="sn">09 /</span> Cookies e Tecnologias de Rastreamento</h2>
+  <table class="table-legal">
+    <thead><tr><th>Tipo</th><th>Finalidade</th><th>Duração</th><th>Base Legal</th></tr></thead>
+    <tbody>
+      <tr><td>Cookies essenciais</td><td>Autenticação de sessão, segurança CSRF</td><td>Sessão</td><td>Legítimo interesse — Art. 7º IX LGPD</td></tr>
+      <tr><td>Cookies de preferência</td><td>Configurações de idioma e interface</td><td>12 meses</td><td>Legítimo interesse — Art. 7º IX LGPD</td></tr>
+      <tr><td>Cookies analíticos</td><td>Métricas de uso anonimizadas</td><td>13 meses</td><td>Consentimento — Art. 7º I LGPD</td></tr>
+      <tr><td>Pixels de marketing</td><td>Mensuração de campanhas</td><td>Conforme parceiro</td><td>Consentimento — Art. 7º I LGPD</td></tr>
+    </tbody>
+  </table>
+  <p>O usuário pode gerenciar cookies analíticos e de marketing via Central de Preferências de Cookies disponível no rodapé do site. Cookies essenciais não podem ser desativados sem comprometer o funcionamento da plataforma.</p>
+
+  <!-- 10 -->
+  <h2><span class="sn">10 /</span> Relatório de Impacto à Proteção de Dados (RIPD) <span class="legal-ref">Art. 38 LGPD</span></h2>
+  <p>A ZapScript realiza Relatórios de Impacto à Proteção de Dados Pessoais (RIPD) para tratamentos que possam gerar riscos às liberdades civis e aos direitos fundamentais dos titulares, conforme Art. 38 LGPD e orientações da ANPD. Os RIPDs ficam disponíveis para consulta pela ANPD quando solicitado.</p>
+
+  <!-- 11 -->
+  <h2><span class="sn">11 /</span> Menores de Idade <span class="legal-ref">Art. 14 LGPD</span></h2>
+  <p>Os serviços da ZapScript são destinados exclusivamente a pessoas com <strong>18 anos ou mais</strong>. Não coletamos conscientemente dados de crianças (menores de 12 anos) ou adolescentes (12 a 18 anos). Caso identifiquemos que dados de menores foram coletados sem o consentimento dos responsáveis, procederemos com a exclusão imediata, conforme Art. 14 §§1º e 2º LGPD.</p>
+
+  <!-- 12 -->
+  <h2><span class="sn">12 /</span> Alterações nesta Política <span class="legal-ref">Art. 8º §6º LGPD</span></h2>
+  <p>Esta Política poderá ser atualizada periodicamente. Em caso de alterações materiais que afetem direitos dos titulares ou bases legais de tratamento, notificaremos os usuários ativos por e-mail com antecedência mínima de <strong>15 dias corridos</strong>. A data da versão em vigor constará sempre no cabeçalho deste documento. O histórico de versões anteriores pode ser solicitado ao Encarregado.</p>
+
+  <!-- 13 -->
+  <h2><span class="sn">13 /</span> Encarregado de Proteção de Dados e Contatos <span class="legal-ref">Art. 41 LGPD</span></h2>
+  <div class="box">
+    <p><strong>Encarregado de Proteção de Dados (DPO):</strong> [Nome do Encarregado]</p>
+    <p><strong>E-mail:</strong> <a href="mailto:privacidade@zapscript.me">privacidade@zapscript.me</a></p>
+    <p><strong>Prazo de resposta:</strong> até 15 dias corridos da data de recebimento da solicitação (Art. 18 §5º LGPD)</p>
+    <p style="margin-top:.75rem;"><strong>Autoridade Nacional de Proteção de Dados (ANPD):</strong><br>
+    Para registrar reclamações ou obter mais informações: <a href="https://www.gov.br/anpd" target="_blank">gov.br/anpd</a></p>
+  </div>
+
+</main>
+<footer>
+  © 2025 ZapScript &nbsp;·&nbsp; Todos os direitos reservados &nbsp;·&nbsp;
+  <a href="https://zapscript.me/termos">Termos de Serviço</a> &nbsp;·&nbsp;
+  <a href="https://zapscript.me/contrato">Contrato de Prestação</a> &nbsp;·&nbsp;
+  <a href="https://zapscript.me/privacidade">Política de Privacidade</a>
+</footer>
+</body>
+</html>

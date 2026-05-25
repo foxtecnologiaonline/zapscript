@@ -130,7 +130,7 @@ function CadastroForm() {
               </div>
             </div>
           ) : (
-            <p className="text-brand-text-secondary text-sm mt-2 font-light">10 minutos grátis, sem cartão de crédito</p>
+            <p className="text-brand-text-secondary text-sm mt-2 font-light">20 minutos grátis, sem cartão de crédito</p>
           )}
         </div>
 

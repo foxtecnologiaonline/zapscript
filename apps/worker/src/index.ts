@@ -10,6 +10,7 @@ import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-of
 import { downloadAudioFromTwilio, sendMessageViaTwilio } from './services/twilio';
 import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread } from './services/evolution';
 import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encryption';
+import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
@@ -162,17 +163,21 @@ async function saveTranscription(params: {
     const encText    = encryptStr(originalText);
     const encBullets = encryptArr(bullets);
 
-    const [t] = await Promise.all([
-      tx.transcription.create({
-        data: { userId, numberId, contactPhone: encPhone, contactName: contactName ?? null, durationSec, originalText: encText, summaryBullets: encBullets, confidenceScore: 99.0, source },
-      }),
+    const transcr = await tx.transcription.create({
+      data: { userId, numberId, contactPhone: encPhone, contactName: contactName ?? null, durationSec, originalText: encText, summaryBullets: encBullets, confidenceScore: 99.0, source },
+    });
+
+    await Promise.all([
       tx.whatsappNumber.update({
         where: { id: numberId },
         data:  { messageCount: { increment: 1 }, minutesUsed: { increment: durationMin }, lastMessageAt: new Date() },
       }),
+      tx.usageLog.create({
+        data: { userId, transcriptionId: transcr.id, minutesUsed: durationMin },
+      }),
     ]);
 
-    return t;
+    return transcr;
   });
 
   // ── Alertas de consumo (fire-and-forget) ─────────────────────────────────
@@ -225,7 +230,63 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
       100: `🔴 *ZapScript* — Minutos esgotados\n\nVocê atingiu *100% dos seus minutos* deste mês.\n\n📵 As transcrições foram *pausadas* até o próximo ciclo ou upgrade.\n\n⚡ Faça upgrade agora:\n👉 https://ZapScript.me/dashboard/plano`,
     };
 
-    await sendMessageViaEvolution(n.zapiInstanceId, n.phoneNumber, msgs[threshold]);
+    // Enviar via WhatsApp (principal)
+    await sendMessageViaEvolution(n.zapiInstanceId, n.phoneNumber, msgs[threshold]).catch(() => null);
+
+    // Enviar via e-mail como fallback/reforço
+    const userRecord = await (prisma as any).user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+    if (userRecord?.email) {
+      const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+      const emailMsgs: Record<number, { subject: string; body: string }> = {
+        50: {
+          subject: '📊 ZapScript — Você usou 50% dos seus minutos',
+          body: `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+            <div style="font-size:22px;font-weight:bold;margin-bottom:16px">📊 Metade dos minutos usados</div>
+            <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
+              Olá${userRecord.name ? `, <strong>${userRecord.name}</strong>` : ''}!<br><br>
+              Você já usou <strong>50% dos seus minutos</strong> do mês. Ainda há bastante — mas vale a pena ficar de olho.<br><br>
+              Se quiser ampliar sua capacidade antes de chegar ao limite, acesse seus planos:
+            </div>
+            <div style="margin:24px 0;text-align:center">
+              <a href="${APP_URL}/dashboard/plano" style="background:#10b981;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Ver planos →</a>
+            </div>
+            <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+          </div>`,
+        },
+        80: {
+          subject: '⚠️ ZapScript — 80% dos minutos usados — atenção!',
+          body: `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+            <div style="font-size:22px;font-weight:bold;margin-bottom:16px">⚠️ Seus minutos estão quase no limite</div>
+            <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
+              Olá${userRecord.name ? `, <strong>${userRecord.name}</strong>` : ''}!<br><br>
+              Você usou <strong>80% dos seus minutos</strong> — restam apenas 20%. Quando zerar, as transcrições são pausadas até o próximo ciclo.<br><br>
+              Faça upgrade agora para não perder nenhum áudio importante:
+            </div>
+            <div style="margin:24px 0;text-align:center">
+              <a href="${APP_URL}/dashboard/plano" style="background:#f59e0b;color:#1c1204;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Fazer upgrade →</a>
+            </div>
+            <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+          </div>`,
+        },
+        100: {
+          subject: '🔴 ZapScript — Minutos esgotados — transcrições pausadas',
+          body: `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+            <div style="font-size:22px;font-weight:bold;margin-bottom:16px">🔴 Seus minutos acabaram</div>
+            <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
+              Olá${userRecord.name ? `, <strong>${userRecord.name}</strong>` : ''}!<br><br>
+              Você atingiu <strong>100% dos seus minutos</strong> deste mês. As transcrições estão <strong>pausadas</strong> até o próximo ciclo ou até você fazer upgrade.<br><br>
+              Para voltar a transcrever agora mesmo:
+            </div>
+            <div style="margin:24px 0;text-align:center">
+              <a href="${APP_URL}/dashboard/plano" style="background:#ef4444;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Desbloquear agora →</a>
+            </div>
+            <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+          </div>`,
+        },
+      };
+      const em = emailMsgs[threshold];
+      sendEmail(userRecord.email, em.subject, em.body).catch(() => null);
+    }
 
     // Marcar alerta enviado para não repetir no mesmo ciclo
     await (prisma as any).minuteBalance.update({
@@ -233,7 +294,7 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
       data:  { lastAlertSent: String(threshold) }, // schema: String?
     }).catch(() => null);
 
-    logger.info(`[MinuteAlert] ✅ Alerta ${threshold}% enviado ao usuário ${userId}`);
+    logger.info(`[MinuteAlert] ✅ Alerta ${threshold}% enviado ao usuário ${userId} (WA + email)`);
   } catch (err: any) {
     logger.warn(`[MinuteAlert] Falha ao verificar alerta: ${err.message}`);
   }

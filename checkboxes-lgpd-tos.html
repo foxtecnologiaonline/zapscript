@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Componente de Consentimento — ZapScript</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --brand: #1DB954; --brand-dark: #15a046;
+      --bg: #0d0d0d; --surface: #161616; --surface2: #1f1f1f;
+      --border: rgba(255,255,255,0.1); --text: #f0f0f0; --muted: #666;
+      --error: #ff5757; --error-bg: rgba(255,87,87,0.07);
+    }
+    body { font-family: -apple-system,'Segoe UI',sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+    .demo-wrapper { width: 100%; max-width: 500px; }
+    .form-demo { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 2rem; }
+    .form-header { text-align: center; margin-bottom: 2rem; }
+    .form-logo { font-family: 'Courier New',monospace; font-size: 1rem; color: var(--brand); letter-spacing: .1em; text-transform: uppercase; margin-bottom: .5rem; }
+    .form-header h2 { font-size: 1.3rem; font-weight: 500; }
+    .form-header p { font-size: .88rem; color: var(--muted); margin-top: .25rem; }
+    .form-field { margin-bottom: 1rem; }
+    .form-field label { display: block; font-size: .75rem; color: var(--muted); margin-bottom: .4rem; text-transform: uppercase; letter-spacing: .06em; font-family: 'Courier New',monospace; }
+    .form-field input { width: 100%; padding: .65rem .875rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: .9rem; outline: none; transition: border-color .15s; }
+    .form-field input:focus { border-color: var(--brand); }
+    .form-field input::placeholder { color: #444; }
+
+    /* ============================================
+       COMPONENTE LEGAL CONSENT — ZapScript v2
+       LGPD-compliant · Art. 8º §1º e §5º LGPD
+    ============================================ */
+    .legal-consent-block { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-top: 1.5rem; }
+    .legal-consent-title { font-size: .68rem; font-family: 'Courier New',monospace; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin-bottom: 1rem; display: flex; align-items: center; gap: .5rem; }
+    .legal-consent-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .consent-item { display: flex; align-items: flex-start; gap: 12px; padding: .875rem; border-radius: 8px; transition: background .15s; margin-bottom: .375rem; }
+    .consent-item:hover { background: rgba(255,255,255,0.03); }
+    .consent-item.has-error { background: var(--error-bg); }
+    .consent-item:last-of-type { margin-bottom: 0; }
+
+    .consent-item input[type="checkbox"] { appearance: none; -webkit-appearance: none; width: 18px; height: 18px; min-width: 18px; border: 1.5px solid rgba(255,255,255,0.2); border-radius: 4px; background: transparent; cursor: pointer; margin-top: 2px; position: relative; transition: border-color .15s, background .15s; }
+    .consent-item input[type="checkbox"]:checked { background: var(--brand); border-color: var(--brand); }
+    .consent-item input[type="checkbox"]:checked::after { content: ''; position: absolute; left: 4px; top: 1.5px; width: 5px; height: 9px; border: 2px solid #000; border-top: none; border-left: none; transform: rotate(45deg); }
+    .consent-item input[type="checkbox"]:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+    .has-error input[type="checkbox"] { border-color: var(--error) !important; }
+
+    .consent-label { font-size: .85rem; color: #bbb; line-height: 1.55; cursor: pointer; user-select: none; }
+    .consent-label a { color: var(--brand); text-decoration: none; font-weight: 500; }
+    .consent-label a:hover { text-decoration: underline; }
+
+    .badge-req { font-size: .62rem; font-family: 'Courier New',monospace; background: rgba(29,185,84,0.12); color: var(--brand); padding: 1px 6px; border-radius: 3px; margin-left: 5px; text-transform: uppercase; letter-spacing: .05em; vertical-align: middle; white-space: nowrap; }
+    .badge-opt { font-size: .62rem; font-family: 'Courier New',monospace; background: rgba(255,255,255,0.05); color: #555; padding: 1px 6px; border-radius: 3px; margin-left: 5px; text-transform: uppercase; letter-spacing: .05em; vertical-align: middle; white-space: nowrap; }
+
+    .error-msg { font-size: .77rem; color: var(--error); margin-top: .15rem; padding-left: 30px; display: none; }
+    .error-msg.visible { display: block; }
+
+    .consent-divider { height: 1px; background: var(--border); margin: .5rem 0; }
+
+    /* Consent explanation footer */
+    .consent-footer { font-size: .73rem; color: #444; line-height: 1.5; margin-top: .875rem; padding-top: .875rem; border-top: 1px solid var(--border); font-family: 'Courier New',monospace; }
+    /* ============================================ */
+
+    .submit-btn { width: 100%; margin-top: 1.5rem; padding: .875rem; background: var(--brand); color: #000; font-size: .9rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; letter-spacing: .02em; transition: background .15s, transform .1s; }
+    .submit-btn:hover { background: var(--brand-dark); }
+    .submit-btn:active { transform: scale(0.99); }
+    .submit-btn:disabled { background: rgba(29,185,84,0.25); cursor: not-allowed; color: rgba(0,0,0,0.5); }
+
+    .global-error { background: var(--error-bg); border: 1px solid rgba(255,87,87,0.2); border-radius: 8px; padding: .75rem 1rem; font-size: .82rem; color: var(--error); margin-top: 1rem; display: none; }
+    .global-error.visible { display: block; }
+
+    .success-message { display: none; text-align: center; padding: 2rem 1rem; }
+    .success-icon { font-size: 2.5rem; margin-bottom: .75rem; display: block; }
+    .success-message h3 { font-size: 1.1rem; font-weight: 500; color: var(--brand); margin-bottom: .5rem; }
+    .success-message p { font-size: .85rem; color: var(--muted); line-height: 1.6; }
+    .consent-log { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-top: 1.25rem; font-family: 'Courier New',monospace; font-size: .72rem; color: #555; text-align: left; }
+    .consent-log .cl-title { color: var(--brand); margin-bottom: .5rem; font-size: .7rem; }
+    .consent-log div { margin-bottom: .2rem; }
+    .consent-log .cl-val { color: #888; }
+
+    /* Guia de integração */
+    .dev-guide { margin-top: 1.5rem; background: #161616; border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; padding: 1.25rem; }
+    .dev-guide .dg-title { font-family: 'Courier New',monospace; font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--brand); margin-bottom: .75rem; }
+    .dev-guide p, .dev-guide li { font-size: .8rem; color: #666; line-height: 1.6; }
+    .dev-guide ul { margin-left: 1.25rem; margin-top: .4rem; }
+    .dev-guide code { font-family: 'Courier New',monospace; background: rgba(255,255,255,0.05); padding: 1px 5px; border-radius: 3px; color: #aaa; font-size: .78rem; }
+    .dev-guide .note { font-size: .77rem; color: #555; margin-top: .75rem; padding-top: .75rem; border-top: 1px solid rgba(255,255,255,0.05); font-family: 'Courier New',monospace; }
+  </style>
+</head>
+<body>
+
+<div class="demo-wrapper">
+
+  <div class="form-demo">
+    <div class="form-header">
+      <div class="form-logo">⚡ ZapScript</div>
+      <h2>Criar conta grátis</h2>
+      <p>7 dias grátis · Transcrevendo em minutos</p>
+    </div>
+
+    <div id="form-content">
+      <div class="form-field">
+        <label for="name">Nome completo</label>
+        <input type="text" id="name" placeholder="Seu nome" autocomplete="name" />
+      </div>
+      <div class="form-field">
+        <label for="email">E-mail</label>
+        <input type="email" id="email" placeholder="seu@email.com" autocomplete="email" />
+      </div>
+      <div class="form-field">
+        <label for="password">Senha</label>
+        <input type="password" id="password" placeholder="Mínimo 8 caracteres" autocomplete="new-password" />
+      </div>
+
+      <!--
+        =============================================
+        COMPONENTE: ZapScript Legal Consent Block v2
+        LGPD-compliant per Arts. 7º I, 8º §1º, §2º, §5º
+
+        IDs para captura no backend:
+          cb-tos      → Termos de Serviço (obrigatório)
+          cb-contrato → Contrato de Prestação (obrigatório)
+          cb-lgpd     → Consentimento LGPD (obrigatório)
+          cb-marketing → Comunicações (opcional)
+
+        Dados a registrar no backend:
+          - user_id
+          - ip_address
+          - timestamp (ISO 8601 UTC)
+          - doc_version (ex: "tos_v2.0, contrato_v2.0, pp_v2.0")
+          - consents: { tos, contrato, lgpd, marketing }
+        =============================================
+      -->
+      <div class="legal-consent-block" role="group" aria-labelledby="consent-heading">
+        <div class="legal-consent-title" id="consent-heading">Consentimentos legais</div>
+
+        <!-- 1. Termos de Serviço — OBRIGATÓRIO (contrato) -->
+        <label class="consent-item" for="cb-tos" id="item-tos">
+          <input type="checkbox" id="cb-tos" name="cb_tos" aria-required="true" aria-describedby="err-tos" />
+          <span class="consent-label">
+            Li e concordo com os <a href="https://zapscript.me/termos" target="_blank">Termos de Serviço</a> da ZapScript.
+            <span class="badge-req">obrigatório</span>
+          </span>
+        </label>
+        <div class="error-msg" id="err-tos" role="alert">Aceite obrigatório para acessar o serviço.</div>
+
+        <!-- 2. Contrato de Prestação — OBRIGATÓRIO (contrato) — SEPARADO por Art. 8º §5º LGPD -->
+        <label class="consent-item" for="cb-contrato" id="item-contrato">
+          <input type="checkbox" id="cb-contrato" name="cb_contrato" aria-required="true" aria-describedby="err-contrato" />
+          <span class="consent-label">
+            Li e aceito o <a href="https://zapscript.me/contrato" target="_blank">Contrato de Prestação de Serviços</a>, incluindo SLA, cláusula penal e condições de rescisão.
+            <span class="badge-req">obrigatório</span>
+          </span>
+        </label>
+        <div class="error-msg" id="err-contrato" role="alert">Aceite obrigatório para contratar o serviço.</div>
+
+        <!-- 3. LGPD — OBRIGATÓRIO (execução do contrato, Art. 7º V LGPD) -->
+        <label class="consent-item" for="cb-lgpd" id="item-lgpd">
+          <input type="checkbox" id="cb-lgpd" name="cb_lgpd" aria-required="true" aria-describedby="err-lgpd" />
+          <span class="consent-label">
+            Autorizo o tratamento dos meus dados pessoais (nome e e-mail) para criação de conta e prestação do serviço, conforme a <a href="https://zapscript.me/privacidade" target="_blank">Política de Privacidade</a> e a LGPD (Lei nº 13.709/2018).
+            <span class="badge-req">obrigatório</span>
+          </span>
+        </label>
+        <div class="error-msg" id="err-lgpd" role="alert">Autorização necessária para criarmos e gerenciarmos sua conta.</div>
+
+        <div class="consent-divider"></div>
+
+        <!-- 4. Marketing — OPCIONAL (consentimento, Art. 7º I LGPD) -->
+        <label class="consent-item" for="cb-marketing">
+          <input type="checkbox" id="cb-marketing" name="cb_marketing" />
+          <span class="consent-label">
+            Autorizo o envio de comunicações sobre novidades, dicas e ofertas do ZapScript por e-mail. Posso revogar a qualquer momento.
+            <span class="badge-opt">opcional</span>
+          </span>
+        </label>
+
+        <div class="consent-footer">
+          Consentimentos #1–3 são necessários para execução do contrato (Art. 7º V LGPD). O consentimento #4 é voluntário e pode ser revogado a qualquer momento no painel da conta (Art. 8º §5º LGPD). Todos os aceites são registrados com timestamp e versão dos documentos como prova (Art. 8º §2º LGPD).
+        </div>
+      </div>
+      <!-- Fim do componente -->
+
+      <div class="global-error" id="global-error" role="alert">
+        Por favor, aceite todos os termos obrigatórios para continuar.
+      </div>
+
+      <button class="submit-btn" id="submit-btn" onclick="handleSubmit(event)">
+        Criar conta gratuitamente →
+      </button>
+    </div>
+
+    <!-- Tela de sucesso com log de consentimento simulado -->
+    <div class="success-message" id="success-msg">
+      <span class="success-icon">✓</span>
+      <h3>Conta criada com sucesso!</h3>
+      <p>Verifique seu e-mail para confirmar o cadastro e começar a transcrever.</p>
+      <div class="consent-log">
+        <div class="cl-title">// Registro de consentimento (backend)</div>
+        <div>user_email: <span class="cl-val" id="log-email">—</span></div>
+        <div>timestamp: <span class="cl-val" id="log-ts">—</span></div>
+        <div>ip_address: <span class="cl-val">capturado no servidor</span></div>
+        <div>doc_versions: <span class="cl-val">tos_v2.0 | contrato_v2.0 | pp_v2.0</span></div>
+        <div>cb_tos: <span class="cl-val" id="log-tos">—</span></div>
+        <div>cb_contrato: <span class="cl-val" id="log-contrato">—</span></div>
+        <div>cb_lgpd: <span class="cl-val" id="log-lgpd">—</span></div>
+        <div>cb_marketing: <span class="cl-val" id="log-mkt">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dev-guide">
+    <div class="dg-title">Guia de integração — Backend</div>
+    <p>Ao submeter o formulário, registre no banco:</p>
+    <ul>
+      <li><code>cb_tos</code> — aceite dos Termos de Serviço (obrigatório)</li>
+      <li><code>cb_contrato</code> — aceite do Contrato de Prestação (obrigatório)</li>
+      <li><code>cb_lgpd</code> — autorização LGPD tratamento de dados (obrigatório)</li>
+      <li><code>cb_marketing</code> — comunicações de marketing (opcional, default false)</li>
+      <li><code>consent_timestamp</code> — <code>new Date().toISOString()</code></li>
+      <li><code>doc_version</code> — ex: <code>"tos_v2.0,contrato_v2.0,pp_v2.0"</code></li>
+      <li><code>ip_address</code> — capturar no servidor (req.ip)</li>
+    </ul>
+    <div class="note">Art. 8º §2º LGPD — o ônus da prova do consentimento é do controlador. Estes registros são sua evidência.</div>
+  </div>
+
+</div>
+
+<script>
+  function handleSubmit(e) {
+    e.preventDefault();
+
+    const fields = [
+      { cb: 'cb-tos', item: 'item-tos', err: 'err-tos' },
+      { cb: 'cb-contrato', item: 'item-contrato', err: 'err-contrato' },
+      { cb: 'cb-lgpd', item: 'item-lgpd', err: 'err-lgpd' },
+    ];
+
+    let valid = true;
+
+    fields.forEach(f => {
+      document.getElementById(f.item).classList.remove('has-error');
+      document.getElementById(f.err).classList.remove('visible');
+    });
+    document.getElementById('global-error').classList.remove('visible');
+
+    fields.forEach(f => {
+      if (!document.getElementById(f.cb).checked) {
+        document.getElementById(f.item).classList.add('has-error');
+        document.getElementById(f.err).classList.add('visible');
+        valid = false;
+      }
+    });
+
+    if (!valid) {
+      document.getElementById('global-error').classList.add('visible');
+      return;
+    }
+
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Criando conta...';
+
+    // Monta payload de consentimento — enviar para o backend
+    const consentPayload = {
+      email: document.getElementById('email').value,
+      timestamp: new Date().toISOString(),
+      doc_version: 'tos_v2.0,contrato_v2.0,pp_v2.0',
+      cb_tos: document.getElementById('cb-tos').checked,
+      cb_contrato: document.getElementById('cb-contrato').checked,
+      cb_lgpd: document.getElementById('cb-lgpd').checked,
+      cb_marketing: document.getElementById('cb-marketing').checked,
+    };
+
+    // AQUI: enviar consentPayload junto com os dados de cadastro via POST
+
+    setTimeout(() => {
+      // Popular log simulado
+      document.getElementById('log-email').textContent = consentPayload.email || '—';
+      document.getElementById('log-ts').textContent = consentPayload.timestamp;
+      document.getElementById('log-tos').textContent = consentPayload.cb_tos + ' (v2.0)';
+      document.getElementById('log-contrato').textContent = consentPayload.cb_contrato + ' (v2.0)';
+      document.getElementById('log-lgpd').textContent = consentPayload.cb_lgpd + ' (v2.0)';
+      document.getElementById('log-mkt').textContent = consentPayload.cb_marketing;
+
+      document.getElementById('form-content').style.display = 'none';
+      document.getElementById('success-msg').style.display = 'block';
+    }, 1200);
+  }
+
+  // Limpar erros ao marcar
+  ['cb-tos','cb-contrato','cb-lgpd'].forEach(id => {
+    const map = { 'cb-tos': ['item-tos','err-tos'], 'cb-contrato': ['item-contrato','err-contrato'], 'cb-lgpd': ['item-lgpd','err-lgpd'] };
+    document.getElementById(id).addEventListener('change', function() {
+      if (this.checked) {
+        document.getElementById(map[id][0]).classList.remove('has-error');
+        document.getElementById(map[id][1]).classList.remove('visible');
+      }
+    });
+  });
+</script>
+
+</body>
+</html>

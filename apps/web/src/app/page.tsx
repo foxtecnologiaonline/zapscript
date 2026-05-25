@@ -36,6 +36,73 @@ function RotatingText() {
   );
 }
 
+/* ── FAQ ── */
+const FAQ_ITEMS = [
+  {
+    q: 'Como o ZapScript funciona?',
+    a: 'Você conecta seu número de WhatsApp ao ZapScript. A partir daí, qualquer áudio que você receber é automaticamente transcrito e resumido em tópicos usando IA. Você recebe o texto de volta no próprio WhatsApp, em segundos.',
+  },
+  {
+    q: 'Meus áudios ficam armazenados?',
+    a: 'Não. Os arquivos de áudio nunca são armazenados — são processados em memória e descartados imediatamente após a transcrição. Apenas o texto transcrito é salvo, criptografado com AES-256-GCM.',
+  },
+  {
+    q: 'Funciona com qualquer conta do WhatsApp?',
+    a: 'Sim, funciona com qualquer número de WhatsApp — pessoal ou empresarial. Você conecta escaneando um QR Code, sem precisar instalar nada no celular.',
+  },
+  {
+    q: 'O que acontece quando os minutos acabam?',
+    a: 'As transcrições são pausadas até o início do próximo ciclo mensal. Você recebe alertas por WhatsApp e e-mail ao atingir 50%, 80% e 100% do seu limite. Pode fazer upgrade a qualquer momento para continuar.',
+  },
+  {
+    q: 'Posso cancelar quando quiser?',
+    a: 'Sim, sem multa e sem fidelidade. Você cancela diretamente pelo dashboard. O acesso continua até o fim do período já pago.',
+  },
+  {
+    q: 'Em quais idiomas funciona?',
+    a: 'O ZapScript transcreve áudios em qualquer idioma suportado pelo Whisper (português, inglês, espanhol e mais de 50 idiomas). Nos planos Ultra e Executive, os resumos são automaticamente traduzidos para o português do Brasil.',
+  },
+];
+
+function FaqSection() {
+  const [open, setOpen] = useState<number | null>(null);
+  return (
+    <div className="space-y-2">
+      {FAQ_ITEMS.map((item, i) => (
+        <div key={i} className="card rounded-2xl overflow-hidden">
+          <button
+            onClick={() => setOpen(open === i ? null : i)}
+            className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left"
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-text))' }}>
+              {item.q}
+            </span>
+            <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-full transition-transform"
+              style={{
+                background: 'rgb(var(--color-surface-elevated))',
+                color: 'rgb(var(--color-primary))',
+                transform: open === i ? 'rotate(45deg)' : 'none',
+                transition: 'transform .2s ease',
+              }}>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M5 1v8M1 5h8"/>
+              </svg>
+            </span>
+          </button>
+          {open === i && (
+            <div className="px-5 pb-4" style={{ animation: 'fadeInUp .2s ease both' }}>
+              <p className="text-sm leading-relaxed font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                {item.a}
+              </p>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ── Feature cards ── */
 const FEATURES = [
   {
@@ -611,6 +678,74 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ══ DEPOIMENTOS ══ */}
+        <section className="px-5 pb-16">
+          <div className="mb-7">
+            <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>
+              Depoimentos
+            </span>
+            <h2 className="font-display text-3xl font-bold mt-2 leading-tight tracking-tight">
+              Quem já usa o ZapScript
+            </h2>
+          </div>
+          <div className="flex flex-col gap-4">
+            {[
+              {
+                text: 'Minha equipe recebia mais de 50 áudios por dia. Com o ZapScript, viramos texto em segundos. Triplicou nossa agilidade no atendimento ao cliente.',
+                name: 'Fernanda S.',
+                role: 'Advogada · São Paulo/SP',
+                initials: 'FS',
+                color: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+              },
+              {
+                text: 'Antes eu ouvia o mesmo áudio três vezes para não perder nada. Agora leio o resumo em 10 segundos e sigo em frente. Mudou minha rotina de vendas.',
+                name: 'Ricardo M.',
+                role: 'Consultor Comercial · Campinas/SP',
+                initials: 'RM',
+                color: 'linear-gradient(135deg,#0ea5e9,#0d9488)',
+              },
+              {
+                text: 'Trabalho com 4 executivos e cada um manda áudio o dia inteiro. O ZapScript organiza tudo em tópicos claros. Nunca mais perdi uma tarefa importante.',
+                name: 'Camila T.',
+                role: 'Assistente Executiva · Belo Horizonte/MG',
+                initials: 'CT',
+                color: 'linear-gradient(135deg,#10b981,#059669)',
+              },
+            ].map((d, i) => (
+              <div key={i} className="card rounded-2xl p-5">
+                <p className="text-sm leading-relaxed mb-4 font-light"
+                  style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                  "{d.text}"
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                    style={{ background: d.color }}>
+                    {d.initials}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">{d.name}</p>
+                    <p className="text-[11px]" style={{ color: 'rgb(var(--color-text-muted))' }}>{d.role}</p>
+                  </div>
+                  <div className="ml-auto text-yellow-400 text-sm">★★★★★</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ══ FAQ ══ */}
+        <section className="px-5 pb-16">
+          <div className="mb-7">
+            <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>
+              FAQ
+            </span>
+            <h2 className="font-display text-3xl font-bold mt-2 leading-tight tracking-tight">
+              Perguntas frequentes
+            </h2>
+          </div>
+          <FaqSection />
+        </section>
+
         {/* ══ CTA FINAL ══ */}
         <section className="px-5 pb-14">
           <div className="rounded-[1.75rem] p-8 text-center"
@@ -646,8 +781,8 @@ export default function HomePage() {
             Código-fonte, design e marca protegidos pela Lei nº 9.610/1998. Reprodução proibida.
           </p>
           <div className="flex justify-center gap-4 mt-3">
-            {['Termos', 'Privacidade'].map(l => (
-              <Link key={l} href={`/${l.toLowerCase()}`}
+            {[['Termos', '/termos'], ['Privacidade', '/privacidade'], ['Contrato', '/contrato']].map(([l, href]) => (
+              <Link key={l} href={href}
                 className="text-xs transition-colors hover:text-brand-text"
                 style={{ color: 'rgb(var(--color-text-muted))' }}>
                 {l}

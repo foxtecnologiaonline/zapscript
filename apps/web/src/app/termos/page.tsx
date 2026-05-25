@@ -222,7 +222,9 @@ export default function TermosPage() {
         <h2><span className="sn">18 /</span> Contato</h2>
         <div className="box">
           <p>📧 Suporte: <a href="mailto:suporte@zapscript.me">suporte@zapscript.me</a></p>
-          <p>🔒 Privacidade: <a href="mailto:privacidade@zapscript.me">privacidade@zapscript.me</a></p>
+          <p>🔒 Privacidade / LGPD: <a href="mailto:privacidade@zapscript.me">privacidade@zapscript.me</a></p>
+          <p>👤 <strong>Encarregado de Dados (DPO):</strong> Roberto Frattari Tulio Silva — <a href="mailto:privacidade@zapscript.me">privacidade@zapscript.me</a></p>
+          <p>🏢 <strong>Controlador:</strong> FOX TecnologIA LTDA — CNPJ 66.586.436/0001-12</p>
           <p>🌐 <a href="https://zapscript.me">zapscript.me</a></p>
         </div>
       </main>

@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZapScript — Opções de Pricing</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0c12;
+    --surface: #111118;
+    --elevated: #16161f;
+    --border: rgba(255,255,255,0.07);
+    --green: #10b981;
+    --green-dark: #059669;
+    --green-glow: rgba(16,185,129,0.15);
+    --gold: #f59e0b;
+    --gold-glow: rgba(245,158,11,0.12);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --muted2: #94a3b8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    margin: 0; padding: 0;
+  }
+  h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; }
+
+  /* Tab switcher */
+  .tab-nav {
+    display: flex; gap: 8px; justify-content: center;
+    padding: 24px 16px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0;
+    background: #0a0a10;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .tab-btn {
+    padding: 10px 20px; border-radius: 8px 8px 0 0;
+    border: 1px solid var(--border); border-bottom: none;
+    background: transparent; color: var(--muted);
+    cursor: pointer; font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+    transition: all 0.2s;
+  }
+  .tab-btn:hover { color: var(--text); background: var(--surface); }
+  .tab-btn.active {
+    background: var(--surface); color: var(--green);
+    border-color: var(--border); border-bottom-color: var(--surface);
+    margin-bottom: -1px;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Badge */
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .badge-green { background: var(--green-glow); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+  .badge-gold { background: var(--gold-glow); color: var(--gold); border: 1px solid rgba(245,158,11,0.3); }
+
+  /* Buttons */
+  .btn-primary {
+    display: block; width: 100%; padding: 12px;
+    background: var(--green); color: #000;
+    border: none; border-radius: 10px;
+    font-weight: 700; font-size: 14px; cursor: pointer;
+    transition: all 0.2s; text-align: center;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+  .btn-primary:hover { background: #0da870; transform: translateY(-1px); }
+  .btn-outline {
+    display: block; width: 100%; padding: 12px;
+    background: transparent; color: var(--muted2);
+    border: 1px solid var(--border); border-radius: 10px;
+    font-weight: 600; font-size: 14px; cursor: pointer;
+    transition: all 0.2s; text-align: center;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+  .btn-outline:hover { border-color: var(--green); color: var(--green); }
+  .btn-gold {
+    display: block; width: 100%; padding: 12px;
+    background: linear-gradient(135deg, #f59e0b, #d97706); color: #000;
+    border: none; border-radius: 10px;
+    font-weight: 700; font-size: 14px; cursor: pointer;
+    transition: all 0.2s; text-align: center;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+  .btn-gold:hover { transform: translateY(-1px); filter: brightness(1.1); }
+
+  /* Check / X */
+  .check { color: var(--green); }
+  .cross { color: #374151; }
+  .check-gold { color: var(--gold); }
+
+  /* Section wrapper */
+  .section { max-width: 1100px; margin: 0 auto; padding: 60px 24px; }
+  .section-title { font-size: 32px; font-weight: 700; text-align: center; margin-bottom: 8px; }
+  .section-sub { color: var(--muted2); text-align: center; font-size: 16px; margin-bottom: 48px; }
+
+  /* Empresas section */
+  .empresas-card {
+    background: linear-gradient(135deg, #111118, #0f1a14);
+    border: 1px solid rgba(16,185,129,0.2);
+    border-radius: 20px; padding: 48px;
+    max-width: 900px; margin: 0 auto;
+  }
+  .form-input {
+    width: 100%; padding: 12px 16px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-size: 14px;
+    font-family: 'DM Sans', sans-serif; outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-input:focus { border-color: rgba(16,185,129,0.4); }
+  .form-input::placeholder { color: var(--muted); }
+  .form-label { font-size: 13px; color: var(--muted2); margin-bottom: 6px; display: block; font-weight: 500; }
+  select.form-input { cursor: pointer; }
+
+  /* Toggle button for hybrid */
+  .toggle-compare {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted2); padding: 10px 24px; border-radius: 8px;
+    cursor: pointer; font-size: 13px; font-weight: 600;
+    font-family: 'Space Grotesk', sans-serif;
+    transition: all 0.2s; display: flex; align-items: center; gap: 8px;
+    margin: 0 auto;
+  }
+  .toggle-compare:hover { border-color: var(--green); color: var(--green); }
+
+  /* Pros/Cons pills */
+  .pros-cons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .pro-pill { background: rgba(16,185,129,0.1); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.2); padding: 4px 10px; border-radius: 20px; font-size: 12px; }
+  .con-pill { background: rgba(239,68,68,0.08); color: #fca5a5; border: 1px solid rgba(239,68,68,0.15); padding: 4px 10px; border-radius: 20px; font-size: 12px; }
+
+  /* Analysis label */
+  .analysis-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<!-- Tab Navigation -->
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="showTab('op1')">Opção 1 — Linha Reta</button>
+  <button class="tab-btn" onclick="showTab('op2')">Opção 2 — Tabela Completa</button>
+  <button class="tab-btn" onclick="showTab('op3')">Opção 3 — Híbrido ⭐</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     OPÇÃO 1 — LINHA RETA (CARDS COM SPOTLIGHT)
+══════════════════════════════════════════════════════════ -->
+<div id="op1" class="tab-panel active">
+  <div class="analysis-bar">
+    <strong style="color:#10b981">Opção 1 — Linha Reta (Straight Line)</strong> &nbsp;·&nbsp;
+    <span class="pro-pill" style="display:inline-flex">✓ Alta conversão emocional</span>&nbsp;
+    <span class="pro-pill" style="display:inline-flex">✓ Mobile-first</span>&nbsp;
+    <span class="con-pill" style="display:inline-flex">✗ Analítico pede mais info</span>
+  </div>
+
+  <div class="section">
+    <p style="text-align:center; font-size:13px; color:var(--muted); margin-bottom:8px; letter-spacing:1px; text-transform:uppercase; font-weight:600">Planos e Preços</p>
+    <h2 class="section-title">Escolha o plano ideal para você</h2>
+    <p class="section-sub">Transcrição automática de áudios do WhatsApp. Sem complicação.</p>
+
+    <!-- Cards Grid -->
+    <div style="display:grid; grid-template-columns: 1fr 1fr 1.15fr 1fr; gap: 12px; align-items: start;">
+
+      <!-- Free -->
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px;">
+        <p style="font-size:13px; color:var(--muted); font-weight:600; margin:0 0 8px">FREE</p>
+        <p style="font-size:32px; font-weight:700; margin:0; font-family:'Space Grotesk',sans-serif">R$0</p>
+        <p style="font-size:12px; color:var(--muted); margin:4px 0 20px">para sempre</p>
+        <button class="btn-outline">Começar grátis</button>
+        <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px; font-size:13px;">
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>20 min/mês</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>1 número WhatsApp</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Transcrição automática</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Ponto chave IA</span></div>
+          <div style="display:flex; gap:8px"><span class="cross">✗</span> <span style="color:var(--muted)">Agenda Automática</span></div>
+          <div style="display:flex; gap:8px"><span class="cross">✗</span> <span style="color:var(--muted)">Modo privado</span></div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--muted)">📁 Histórico 7 dias</div>
+        </div>
+      </div>
+
+      <!-- Pro -->
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px;">
+        <p style="font-size:13px; color:var(--muted); font-weight:600; margin:0 0 8px">PRO</p>
+        <p style="font-size:32px; font-weight:700; margin:0; font-family:'Space Grotesk',sans-serif">R$29<span style="font-size:16px; color:var(--muted)">,90</span></p>
+        <p style="font-size:12px; color:var(--muted); margin:4px 0 20px">por mês</p>
+        <button class="btn-outline">Assinar Pro</button>
+        <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px; font-size:13px;">
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span><strong>150 min/mês</strong></span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span><strong>2 números</strong> WhatsApp</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Transcrição automática</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Ponto chave IA</span></div>
+          <div style="display:flex; gap:8px"><span class="cross">✗</span> <span style="color:var(--muted)">Agenda Automática</span></div>
+          <div style="display:flex; gap:8px"><span class="cross">✗</span> <span style="color:var(--muted)">Modo privado</span></div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--muted)">📁 Histórico 30 dias</div>
+        </div>
+      </div>
+
+      <!-- ULTRA — SPOTLIGHT -->
+      <div style="background:linear-gradient(160deg,#0f1f17,#111118); border:1.5px solid rgba(16,185,129,0.4); border-radius:16px; padding:28px; position:relative; box-shadow: 0 0 40px rgba(16,185,129,0.1);">
+        <div style="position:absolute; top:-12px; left:50%; transform:translateX(-50%)">
+          <span class="badge badge-green">⭐ Mais Popular</span>
+        </div>
+        <p style="font-size:13px; color:var(--green); font-weight:700; margin:0 0 8px; letter-spacing:0.5px">ULTRA</p>
+        <p style="font-size:36px; font-weight:700; margin:0; font-family:'Space Grotesk',sans-serif; color:#fff">R$59<span style="font-size:18px; color:var(--muted)">,90</span></p>
+        <p style="font-size:12px; color:var(--muted); margin:4px 0 20px">por mês</p>
+        <button class="btn-primary">Assinar Ultra →</button>
+        <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px; font-size:13px;">
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span><strong>300 min/mês</strong></span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span><strong>3 números</strong> WhatsApp</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Transcrição automática</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Ponto chave IA</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span style="color:#6ee7b7"><strong>✨ Agenda Automática</strong></span></div>
+          <div style="display:flex; gap:8px"><span class="cross">✗</span> <span style="color:var(--muted)">Modo privado</span></div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--muted)">📁 Histórico 90 dias</div>
+        </div>
+      </div>
+
+      <!-- Executive -->
+      <div style="background:linear-gradient(160deg,#1a1508,#111118); border:1px solid rgba(245,158,11,0.25); border-radius:16px; padding:24px;">
+        <p style="font-size:13px; color:var(--gold); font-weight:700; margin:0 0 8px; letter-spacing:0.5px">EXECUTIVE</p>
+        <p style="font-size:32px; font-weight:700; margin:0; font-family:'Space Grotesk',sans-serif">R$89<span style="font-size:16px; color:var(--muted)">,90</span></p>
+        <p style="font-size:12px; color:var(--muted); margin:4px 0 20px">por mês</p>
+        <button class="btn-gold">Assinar Executive</button>
+        <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px; font-size:13px;">
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span><strong>500 min/mês</strong></span></div>
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span><strong>5 números</strong> WhatsApp</span></div>
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span>Transcrição automática</span></div>
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span>Ponto chave IA</span></div>
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span><strong>Agenda Automática</strong></span></div>
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span style="color:#fcd34d"><strong>🔒 Modo privado</strong></span></div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--muted)">📁 Histórico ilimitado · Suporte prioritário</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empresas -->
+    <div style="margin-top:80px">
+      <div class="empresas-card">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:48px; align-items:center;">
+          <div>
+            <div style="display:inline-flex; align-items:center; gap:8px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2); padding:6px 14px; border-radius:20px; margin-bottom:16px;">
+              <span style="font-size:16px">🏢</span>
+              <span style="font-size:12px; color:var(--green); font-weight:700; letter-spacing:0.5px">PARA EMPRESAS</span>
+            </div>
+            <h3 style="font-size:26px; font-weight:700; margin:0 0 12px; font-family:'Space Grotesk',sans-serif">Precisa de mais?<br>Monte seu plano.</h3>
+            <p style="color:var(--muted2); font-size:15px; line-height:1.6; margin:0 0 20px">
+              Times maiores, volumes customizados, integrações específicas — montamos uma proposta no tamanho certo para o seu negócio.
+            </p>
+            <div style="display:flex; flex-direction:column; gap:8px; font-size:13px; color:var(--muted2);">
+              <div style="display:flex; gap:8px; align-items:center"><span class="check">✓</span> Múltiplos Usuários</div>
+              <div style="display:flex; gap:8px; align-items:center"><span class="check">✓</span> Múltiplos Números</div>
+              <div style="display:flex; gap:8px; align-items:center"><span class="check">✓</span> Volume Ajustável de Minutos</div>
+              <div style="display:flex; gap:8px; align-items:center"><span class="check">✓</span> Integrações customizadas (CRM, ERP, Outlook, Google Calendar)</div>
+            </div>
+          </div>
+          <div>
+            <div style="display:flex; flex-direction:column; gap:14px;">
+              <div>
+                <label class="form-label">Números de WhatsApp</label>
+                <input type="text" class="form-input" placeholder="Quantos números você precisa?">
+              </div>
+              <div>
+                <label class="form-label">Recebe em média quantos áudios por mês?</label>
+                <input type="text" class="form-input" placeholder="Ex: 500 áudios por mês">
+              </div>
+              <div>
+                <label class="form-label">Precisa de integração com algum sistema?</label>
+                <input type="text" class="form-input" placeholder="Ex: Google Calendar, Salesforce, ERP...">
+              </div>
+              <div>
+                <label class="form-label">E-mail corporativo</label>
+                <input type="email" class="form-input" placeholder="voce@empresa.com.br">
+              </div>
+              <button class="btn-primary" style="margin-top:4px">Receber proposta comercial →</button>
+              <p style="font-size:11px; color:var(--muted); text-align:center; margin:0">Respondemos em até 24h · Sem compromisso</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     OPÇÃO 2 — TABELA COMPLETA
+══════════════════════════════════════════════════════════ -->
+<div id="op2" class="tab-panel">
+  <div class="analysis-bar">
+    <strong style="color:#10b981">Opção 2 — Tabela Completa</strong> &nbsp;·&nbsp;
+    <span class="pro-pill" style="display:inline-flex">✓ Transparência total</span>&nbsp;
+    <span class="pro-pill" style="display:inline-flex">✓ Ideal para Dashboard</span>&nbsp;
+    <span class="con-pill" style="display:inline-flex">✗ Pesada no mobile</span>&nbsp;
+    <span class="con-pill" style="display:inline-flex">✗ Muitos caminhos</span>
+  </div>
+
+  <div class="section">
+    <p style="text-align:center; font-size:13px; color:var(--muted); margin-bottom:8px; letter-spacing:1px; text-transform:uppercase; font-weight:600">Planos e Preços</p>
+    <h2 class="section-title">Compare e escolha o seu plano</h2>
+    <p class="section-sub">Veja tudo que cada plano inclui antes de decidir.</p>
+
+    <!-- Tabela -->
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:20px; overflow:hidden;">
+
+      <!-- Header -->
+      <div style="display:grid; grid-template-columns: 1.8fr 1fr 1fr 1.1fr 1fr; border-bottom:1px solid var(--border);">
+        <div style="padding:24px 20px; border-right:1px solid var(--border);">
+          <p style="font-size:13px; color:var(--muted); margin:0">Compare os planos</p>
+        </div>
+        <!-- Free -->
+        <div style="padding:24px 16px; text-align:center; border-right:1px solid var(--border);">
+          <p style="font-size:11px; color:var(--muted); font-weight:700; letter-spacing:1px; margin:0 0 4px">FREE</p>
+          <p style="font-size:24px; font-weight:700; margin:0 0 12px; font-family:'Space Grotesk',sans-serif">R$0</p>
+          <button class="btn-outline" style="font-size:12px; padding:8px">Começar</button>
+        </div>
+        <!-- Pro -->
+        <div style="padding:24px 16px; text-align:center; border-right:1px solid var(--border);">
+          <p style="font-size:11px; color:var(--muted); font-weight:700; letter-spacing:1px; margin:0 0 4px">PRO</p>
+          <p style="font-size:24px; font-weight:700; margin:0 0 12px; font-family:'Space Grotesk',sans-serif">R$29<span style="font-size:13px; color:var(--muted)">,90</span></p>
+          <button class="btn-outline" style="font-size:12px; padding:8px">Assinar</button>
+        </div>
+        <!-- Ultra -->
+        <div style="padding:24px 16px; text-align:center; background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.2); border-left:1px solid rgba(16,185,129,0.2); position:relative;">
+          <div style="position:absolute;top:-1px;left:0;right:0;height:3px;background:var(--green);border-radius:0"></div>
+          <span class="badge badge-green" style="margin-bottom:6px; display:inline-block">Mais Popular</span>
+          <p style="font-size:11px; color:var(--green); font-weight:700; letter-spacing:1px; margin:0 0 4px">ULTRA</p>
+          <p style="font-size:24px; font-weight:700; margin:0 0 12px; font-family:'Space Grotesk',sans-serif">R$59<span style="font-size:13px; color:var(--muted)">,90</span></p>
+          <button class="btn-primary" style="font-size:12px; padding:8px">Assinar</button>
+        </div>
+        <!-- Executive -->
+        <div style="padding:24px 16px; text-align:center;">
+          <p style="font-size:11px; color:var(--gold); font-weight:700; letter-spacing:1px; margin:0 0 4px">EXECUTIVE</p>
+          <p style="font-size:24px; font-weight:700; margin:0 0 12px; font-family:'Space Grotesk',sans-serif">R$89<span style="font-size:13px; color:var(--muted)">,90</span></p>
+          <button class="btn-gold" style="font-size:12px; padding:8px">Assinar</button>
+        </div>
+      </div>
+
+      <!-- Rows -->
+      <div>
+        <!-- Section label -->
+        <div style="display:grid; grid-template-columns: 1.8fr 1fr 1fr 1.1fr 1fr; background:rgba(255,255,255,0.02);">
+          <div style="padding:10px 20px; font-size:11px; color:var(--muted); font-weight:700; letter-spacing:1px; text-transform:uppercase; border-right:1px solid var(--border);">USO</div>
+          <div style="border-right:1px solid var(--border)"></div><div style="border-right:1px solid var(--border)"></div>
+          <div style="background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.15); border-left:1px solid rgba(16,185,129,0.15)"></div><div></div>
+        </div>
+        <!-- Row: Minutos -->
+        <div style="display:grid; grid-template-columns: 1.8fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border);">
+          <div style="padding:16px 20px; font-size:14px; border-right:1px solid var(--border); display:flex; align-items:center; gap:8px"><span>⏱</span> Minutos por mês</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); font-weight:600; display:flex; align-items:center; justify-content:center">20</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); font-weight:600; display:flex; align-items:center; justify-content:center">150</div>
+          <div style="padding:16px; text-align:center; font-weight:700; color:var(--green); background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.15); border-left:1px solid rgba(16,185,129,0.15); display:flex; align-items:center; justify-content:center">300</div>
+          <div style="padding:16px; text-align:center; font-weight:600; display:flex; align-items:center; justify-content:center">500</div>
+        </div>
+        <!-- Row: Números -->
+        <div style="display:grid; grid-template-columns: 1.8fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border); background:rgba(255,255,255,0.01);">
+          <div style="padding:16px 20px; font-size:14px; border-right:1px solid var(--border); display:flex; align-items:center; gap:8px"><span>📱</span> Números WhatsApp</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); font-weight:600; display:flex; align-items:center; justify-content:center">1</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); font-weight:600; display:flex; align-items:center; justify-content:center">2</div>
+          <div style="padding:16px; text-align:center; font-weight:700; color:var(--green); background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.15); border-left:1px solid rgba(16,185,129,0.15); display:flex; align-items:center; justify-content:center">3</div>
+          <div style="padding:16px; text-align:center; font-weight:600; display:flex; align-items:center; justify-content:center">5</div>
+        </div>
+        <!-- Section label RECURSOS -->
+        <div style="display:grid; grid-template-columns: 1.8fr 1fr 1fr 1.1fr 1fr; background:rgba(255,255,255,0.02); border-top:1px solid var(--border);">
+          <div style="padding:10px 20px; font-size:11px; color:var(--muted); font-weight:700; letter-spacing:1px; text-transform:uppercase; border-right:1px solid var(--border);">RECURSOS</div>
+          <div style="border-right:1px solid var(--border)"></div><div style="border-right:1px solid var(--border)"></div>
+          <div style="background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.15); border-left:1px solid rgba(16,185,129,0.15)"></div><div></div>
+        </div>
+        <!-- Row: Transcrição -->
+        <div style="display:grid; grid-template-columns: 1.8fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border);">
+          <div style="padding:16px 20px; font-size:14px; border-right:1px solid var(--border); display:flex; align-items:center; gap:8px"><span>✍️</span> Transcrição automática</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center"><span class="check" style="font-size:18px">✓</span></div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center"><span class="check" style="font-size:18px">✓</span></div>
+          <div style="padding:16px; text-align:center; background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.15); border-left:1px solid rgba(16,185,129,0.15); display:flex; align-items:center; justify-content:center"><span class="check" style="font-size:18px">✓</span></div>
+          <div style="padding:16px; text-align:center; display:flex; align-items:center; justify-content:center"><span class="check" style="font-size:18px">✓</span></div>
+        </div>
+        <!-- Row: Ponto chave -->
+        <div style="display:grid; grid-template-columns: 1.8fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border); background:rgba(255,255,255,0.01);">
+          <div style="padding:16px 20px; font-size:14px; border-right:1px solid var(--border); display:flex; align-items:center; gap:8px"><span>🔑</span> Ponto chave (resumo IA)</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center"><span class="check" style="font-size:18px">✓</span></div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center"><span class="check" style="font-size:18px">✓</span></div>
+          <div style="padding:16px; text-align:center; background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.15); border-left:1px solid rgba(16,185,129,0.15); display:flex; align-items:center; justify-content:center"><span class="check" style="font-size:18px">✓</span></div>
+          <div style="padding:16px; text-align:center; display:flex; align-items:center; justify-content:center"><span class="check" style="font-size:18px">✓</span></div>
+        </div>
+        <!-- Row: Agenda Automática -->
+        <div style="display:grid; grid-template-columns: 1.8fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border);">
+          <div style="padding:16px 20px; font-size:14px; border-right:1px solid var(--border); display:flex; align-items:center; gap:8px"><span>📅</span> Agenda Automática</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center"><span class="cross" style="font-size:18px">✗</span></div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center"><span class="cross" style="font-size:18px">✗</span></div>
+          <div style="padding:16px; text-align:center; background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.15); border-left:1px solid rgba(16,185,129,0.15); display:flex; align-items:center; justify-content:center"><span class="check" style="font-size:18px">✓</span></div>
+          <div style="padding:16px; text-align:center; display:flex; align-items:center; justify-content:center"><span class="check-gold" style="font-size:18px">✓</span></div>
+        </div>
+        <!-- Row: Modo privado -->
+        <div style="display:grid; grid-template-columns: 1.8fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border); background:rgba(255,255,255,0.01);">
+          <div style="padding:16px 20px; font-size:14px; border-right:1px solid var(--border); display:flex; align-items:center; gap:8px"><span>🔒</span> Modo privado</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center"><span class="cross" style="font-size:18px">✗</span></div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center"><span class="cross" style="font-size:18px">✗</span></div>
+          <div style="padding:16px; text-align:center; background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.15); border-left:1px solid rgba(16,185,129,0.15); display:flex; align-items:center; justify-content:center"><span class="cross" style="font-size:18px">✗</span></div>
+          <div style="padding:16px; text-align:center; display:flex; align-items:center; justify-content:center"><span class="check-gold" style="font-size:18px">✓</span></div>
+        </div>
+        <!-- Row: Histórico -->
+        <div style="display:grid; grid-template-columns: 1.8fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border);">
+          <div style="padding:16px 20px; font-size:14px; border-right:1px solid var(--border); display:flex; align-items:center; gap:8px"><span>📁</span> Histórico de transcrições</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); font-size:13px; color:var(--muted); display:flex; align-items:center; justify-content:center">7 dias</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); font-size:13px; display:flex; align-items:center; justify-content:center">30 dias</div>
+          <div style="padding:16px; text-align:center; background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.15); border-left:1px solid rgba(16,185,129,0.15); font-size:13px; display:flex; align-items:center; justify-content:center">90 dias</div>
+          <div style="padding:16px; text-align:center; font-size:13px; color:var(--gold); font-weight:600; display:flex; align-items:center; justify-content:center">Ilimitado</div>
+        </div>
+        <!-- Row: Suporte -->
+        <div style="display:grid; grid-template-columns: 1.8fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border); background:rgba(255,255,255,0.01);">
+          <div style="padding:16px 20px; font-size:14px; border-right:1px solid var(--border); display:flex; align-items:center; gap:8px"><span>💬</span> Suporte</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); font-size:13px; color:var(--muted); display:flex; align-items:center; justify-content:center">—</div>
+          <div style="padding:16px; text-align:center; border-right:1px solid var(--border); font-size:13px; display:flex; align-items:center; justify-content:center">E-mail</div>
+          <div style="padding:16px; text-align:center; background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.15); border-left:1px solid rgba(16,185,129,0.15); font-size:13px; display:flex; align-items:center; justify-content:center">E-mail</div>
+          <div style="padding:16px; text-align:center; font-size:13px; color:var(--gold); font-weight:600; display:flex; align-items:center; justify-content:center">Prioritário</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empresas (mesma da op1) -->
+    <div style="margin-top:80px">
+      <div class="empresas-card">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:48px; align-items:center;">
+          <div>
+            <div style="display:inline-flex; align-items:center; gap:8px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2); padding:6px 14px; border-radius:20px; margin-bottom:16px;">
+              <span style="font-size:16px">🏢</span>
+              <span style="font-size:12px; color:var(--green); font-weight:700; letter-spacing:0.5px">PARA EMPRESAS</span>
+            </div>
+            <h3 style="font-size:26px; font-weight:700; margin:0 0 12px; font-family:'Space Grotesk',sans-serif">Precisa de mais?<br>Monte seu plano.</h3>
+            <p style="color:var(--muted2); font-size:15px; line-height:1.6; margin:0 0 20px">Times maiores, volumes customizados — montamos uma proposta no tamanho certo para o seu negócio.</p>
+            <div style="display:flex; flex-direction:column; gap:8px; font-size:13px; color:var(--muted2);">
+              <div style="display:flex; gap:8px"><span class="check">✓</span> Múltiplos Usuários</div>
+              <div style="display:flex; gap:8px"><span class="check">✓</span> Múltiplos Números</div>
+              <div style="display:flex; gap:8px"><span class="check">✓</span> Volume Ajustável de Minutos</div>
+              <div style="display:flex; gap:8px"><span class="check">✓</span> Integrações customizadas (CRM, ERP, Outlook, Google Calendar)</div>
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <div><label class="form-label">Números de WhatsApp</label>
+            <input type="text" class="form-input" placeholder="Quantos números você precisa?"></div>
+            <div><label class="form-label">Recebe em média quantos áudios por mês?</label>
+            <input type="text" class="form-input" placeholder="Ex: 500 áudios por mês"></div>
+            <div><label class="form-label">Precisa de integração com algum sistema?</label>
+            <input type="text" class="form-input" placeholder="Ex: Google Calendar, Salesforce, ERP..."></div>
+            <div><label class="form-label">E-mail corporativo</label>
+            <input type="email" class="form-input" placeholder="voce@empresa.com.br"></div>
+            <button class="btn-primary">Receber proposta comercial →</button>
+            <p style="font-size:11px; color:var(--muted); text-align:center; margin:0">Respondemos em até 24h · Sem compromisso</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     OPÇÃO 3 — HÍBRIDO ⭐ (CARDS + TOGGLE TABELA)
+══════════════════════════════════════════════════════════ -->
+<div id="op3" class="tab-panel">
+  <div class="analysis-bar">
+    <strong style="color:#f59e0b">Opção 3 — Híbrido ⭐ RECOMENDADA</strong> &nbsp;·&nbsp;
+    <span class="pro-pill" style="display:inline-flex">✓ Converte emocional E racional</span>&nbsp;
+    <span class="pro-pill" style="display:inline-flex">✓ Straight Line preservado</span>&nbsp;
+    <span class="pro-pill" style="display:inline-flex">✓ Mobile + Desktop</span>
+  </div>
+
+  <div class="section">
+    <p style="text-align:center; font-size:13px; color:var(--muted); margin-bottom:8px; letter-spacing:1px; text-transform:uppercase; font-weight:600">Planos e Preços</p>
+    <h2 class="section-title">Comece grátis. Evolua quando precisar.</h2>
+    <p class="section-sub">Mais de <strong style="color:var(--text)">2.400 áudios transcritos</strong> automaticamente toda semana.</p>
+
+    <!-- Cards (same as op1 but with social proof) -->
+    <div style="display:grid; grid-template-columns: 1fr 1fr 1.15fr 1fr; gap:12px; align-items:start;">
+
+      <!-- Free -->
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px;">
+        <p style="font-size:13px; color:var(--muted); font-weight:600; margin:0 0 8px">FREE</p>
+        <p style="font-size:32px; font-weight:700; margin:0; font-family:'Space Grotesk',sans-serif">R$0</p>
+        <p style="font-size:12px; color:var(--muted); margin:4px 0 20px">para sempre</p>
+        <button class="btn-outline">Começar grátis</button>
+        <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px; font-size:13px;">
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>20 min/mês</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>1 número WhatsApp</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Transcrição automática</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Ponto chave IA</span></div>
+          <div style="display:flex; gap:8px"><span class="cross">✗</span> <span style="color:var(--muted)">Agenda Automática</span></div>
+          <div style="display:flex; gap:8px"><span class="cross">✗</span> <span style="color:var(--muted)">Modo privado</span></div>
+        </div>
+      </div>
+
+      <!-- Pro -->
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px;">
+        <p style="font-size:13px; color:var(--muted); font-weight:600; margin:0 0 8px">PRO</p>
+        <p style="font-size:32px; font-weight:700; margin:0; font-family:'Space Grotesk',sans-serif">R$29<span style="font-size:16px; color:var(--muted)">,90</span></p>
+        <p style="font-size:12px; color:var(--muted); margin:4px 0 20px">por mês</p>
+        <button class="btn-outline">Assinar Pro</button>
+        <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px; font-size:13px;">
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span><strong>150 min/mês</strong></span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span><strong>2 números</strong> WhatsApp</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Transcrição automática</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Ponto chave IA</span></div>
+          <div style="display:flex; gap:8px"><span class="cross">✗</span> <span style="color:var(--muted)">Agenda Automática</span></div>
+          <div style="display:flex; gap:8px"><span class="cross">✗</span> <span style="color:var(--muted)">Modo privado</span></div>
+        </div>
+      </div>
+
+      <!-- ULTRA SPOTLIGHT -->
+      <div style="background:linear-gradient(160deg,#0f1f17,#111118); border:1.5px solid rgba(16,185,129,0.5); border-radius:16px; padding:28px; position:relative; box-shadow: 0 8px 40px rgba(16,185,129,0.12), 0 0 0 1px rgba(16,185,129,0.1);">
+        <div style="position:absolute; top:-13px; left:50%; transform:translateX(-50%); white-space:nowrap">
+          <span class="badge badge-green">⭐ Mais Popular</span>
+        </div>
+        <p style="font-size:13px; color:var(--green); font-weight:700; margin:0 0 8px; letter-spacing:0.5px">ULTRA</p>
+        <p style="font-size:36px; font-weight:700; margin:0; font-family:'Space Grotesk',sans-serif">R$59<span style="font-size:18px; color:var(--muted)">,90</span></p>
+        <p style="font-size:12px; color:var(--muted); margin:4px 0 6px">por mês</p>
+        <p style="font-size:11px; color:#6ee7b7; margin:0 0 16px; background:rgba(16,185,129,0.08); padding:4px 8px; border-radius:6px; display:inline-block">💡 Do áudio à agenda, automático</p>
+        <button class="btn-primary">Assinar Ultra →</button>
+        <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px; font-size:13px;">
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span><strong>300 min/mês</strong></span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span><strong>3 números</strong> WhatsApp</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Transcrição automática</span></div>
+          <div style="display:flex; gap:8px"><span class="check">✓</span> <span>Ponto chave IA</span></div>
+          <div style="display:flex; gap:8px"><span class="check" style="color:#6ee7b7">✓</span> <span style="color:#6ee7b7"><strong>✨ Agenda Automática</strong></span></div>
+          <div style="display:flex; gap:8px"><span class="cross">✗</span> <span style="color:var(--muted)">Modo privado</span></div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--muted)">📁 Histórico 90 dias</div>
+        </div>
+      </div>
+
+      <!-- Executive -->
+      <div style="background:linear-gradient(160deg,#1a1508,#111118); border:1px solid rgba(245,158,11,0.3); border-radius:16px; padding:24px;">
+        <p style="font-size:13px; color:var(--gold); font-weight:700; margin:0 0 8px; letter-spacing:0.5px">EXECUTIVE</p>
+        <p style="font-size:32px; font-weight:700; margin:0; font-family:'Space Grotesk',sans-serif">R$89<span style="font-size:16px; color:var(--muted)">,90</span></p>
+        <p style="font-size:12px; color:var(--muted); margin:4px 0 20px">por mês</p>
+        <button class="btn-gold">Assinar Executive</button>
+        <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px; font-size:13px;">
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span><strong>500 min/mês</strong></span></div>
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span><strong>5 números</strong> WhatsApp</span></div>
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span>Transcrição automática</span></div>
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span>Ponto chave IA</span></div>
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span><strong>Agenda Automática</strong></span></div>
+          <div style="display:flex; gap:8px"><span class="check-gold">✓</span> <span style="color:#fcd34d"><strong>🔒 Modo privado</strong></span></div>
+          <div style="display:flex; gap:8px; font-size:12px; color:var(--muted)">📁 Ilimitado · Suporte prioritário</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toggle tabela -->
+    <div style="text-align:center; margin-top:32px">
+      <button class="toggle-compare" onclick="toggleTable()" id="toggleBtn">
+        <span id="toggleIcon">↓</span>
+        <span id="toggleText">Comparar todos os recursos</span>
+      </button>
+    </div>
+
+    <!-- Tabela oculta -->
+    <div id="compareTable" style="display:none; margin-top:24px; background:var(--surface); border:1px solid var(--border); border-radius:20px; overflow:hidden;">
+      <!-- Header mini -->
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1.1fr 1fr; border-bottom:1px solid var(--border); background:rgba(255,255,255,0.02);">
+        <div style="padding:16px 20px; font-size:12px; color:var(--muted); font-weight:700; border-right:1px solid var(--border)">RECURSO</div>
+        <div style="padding:16px; text-align:center; border-right:1px solid var(--border); font-size:12px; color:var(--muted); font-weight:700">FREE</div>
+        <div style="padding:16px; text-align:center; border-right:1px solid var(--border); font-size:12px; color:var(--muted); font-weight:700">PRO</div>
+        <div style="padding:16px; text-align:center; border-right:1px solid rgba(16,185,129,0.2); border-left:1px solid rgba(16,185,129,0.2); font-size:12px; color:var(--green); font-weight:700; background:rgba(16,185,129,0.04)">ULTRA</div>
+        <div style="padding:16px; text-align:center; font-size:12px; color:var(--gold); font-weight:700">EXEC.</div>
+      </div>
+      <!-- Rows compactas -->
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border);">
+        <div style="padding:12px 20px; font-size:13px; border-right:1px solid var(--border)">⏱ Minutos/mês</div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border); font-size:13px; font-weight:600">20</div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border); font-size:13px; font-weight:600">150</div>
+        <div style="padding:12px; text-align:center; font-size:13px; font-weight:700; color:var(--green); background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.2); border-left:1px solid rgba(16,185,129,0.2)">300</div>
+        <div style="padding:12px; text-align:center; font-size:13px; font-weight:600">500</div>
+      </div>
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border); background:rgba(255,255,255,0.01);">
+        <div style="padding:12px 20px; font-size:13px; border-right:1px solid var(--border)">📱 Números WhatsApp</div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border); font-size:13px; font-weight:600">1</div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border); font-size:13px; font-weight:600">2</div>
+        <div style="padding:12px; text-align:center; font-size:13px; font-weight:700; color:var(--green); background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.2); border-left:1px solid rgba(16,185,129,0.2)">3</div>
+        <div style="padding:12px; text-align:center; font-size:13px; font-weight:600">5</div>
+      </div>
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border);">
+        <div style="padding:12px 20px; font-size:13px; border-right:1px solid var(--border)">✍️ Transcrição + Ponto chave</div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border)"><span class="check">✓</span></div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border)"><span class="check">✓</span></div>
+        <div style="padding:12px; text-align:center; background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.2); border-left:1px solid rgba(16,185,129,0.2)"><span class="check">✓</span></div>
+        <div style="padding:12px; text-align:center"><span class="check-gold">✓</span></div>
+      </div>
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border); background:rgba(255,255,255,0.01);">
+        <div style="padding:12px 20px; font-size:13px; border-right:1px solid var(--border)">📅 Agenda Automática</div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border)"><span class="cross">✗</span></div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border)"><span class="cross">✗</span></div>
+        <div style="padding:12px; text-align:center; background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.2); border-left:1px solid rgba(16,185,129,0.2)"><span class="check">✓</span></div>
+        <div style="padding:12px; text-align:center"><span class="check-gold">✓</span></div>
+      </div>
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border);">
+        <div style="padding:12px 20px; font-size:13px; border-right:1px solid var(--border)">🔒 Modo privado</div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border)"><span class="cross">✗</span></div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border)"><span class="cross">✗</span></div>
+        <div style="padding:12px; text-align:center; background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.2); border-left:1px solid rgba(16,185,129,0.2)"><span class="cross">✗</span></div>
+        <div style="padding:12px; text-align:center"><span class="check-gold">✓</span></div>
+      </div>
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1.1fr 1fr; border-top:1px solid var(--border); background:rgba(255,255,255,0.01);">
+        <div style="padding:12px 20px; font-size:13px; border-right:1px solid var(--border)">📁 Histórico</div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border); font-size:12px; color:var(--muted)">7 dias</div>
+        <div style="padding:12px; text-align:center; border-right:1px solid var(--border); font-size:12px">30 dias</div>
+        <div style="padding:12px; text-align:center; background:rgba(16,185,129,0.04); border-right:1px solid rgba(16,185,129,0.2); border-left:1px solid rgba(16,185,129,0.2); font-size:12px">90 dias</div>
+        <div style="padding:12px; text-align:center; font-size:12px; color:var(--gold); font-weight:600">Ilimitado</div>
+      </div>
+    </div>
+
+    <!-- Social proof bar -->
+    <div style="display:flex; justify-content:center; gap:32px; margin-top:32px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted)">
+        <span style="color:var(--green)">✓</span> Cancele a qualquer momento
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted)">
+        <span style="color:var(--green)">✓</span> Sem taxa de setup
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted)">
+        <span style="color:var(--green)">✓</span> Suporte por e-mail
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted)">
+        <span style="color:var(--green)">✓</span> Áudios nunca armazenados
+      </div>
+    </div>
+
+    <!-- Empresas -->
+    <div style="margin-top:80px">
+      <div class="empresas-card">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:48px; align-items:center;">
+          <div>
+            <div style="display:inline-flex; align-items:center; gap:8px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2); padding:6px 14px; border-radius:20px; margin-bottom:16px;">
+              <span>🏢</span>
+              <span style="font-size:12px; color:var(--green); font-weight:700; letter-spacing:0.5px">PARA EMPRESAS</span>
+            </div>
+            <h3 style="font-size:26px; font-weight:700; margin:0 0 12px; font-family:'Space Grotesk',sans-serif">Precisa de mais?<br>Monte seu plano.</h3>
+            <p style="color:var(--muted2); font-size:15px; line-height:1.6; margin:0 0 20px">
+              Times maiores, volumes customizados, integrações específicas — montamos uma proposta no tamanho certo para o seu negócio.
+            </p>
+            <div style="display:flex; flex-direction:column; gap:8px; font-size:13px; color:var(--muted2);">
+              <div style="display:flex; gap:8px"><span class="check">✓</span> Múltiplos Usuários</div>
+              <div style="display:flex; gap:8px"><span class="check">✓</span> Múltiplos Números</div>
+              <div style="display:flex; gap:8px"><span class="check">✓</span> Volume Ajustável de Minutos</div>
+              <div style="display:flex; gap:8px"><span class="check">✓</span> Integrações customizadas (CRM, ERP, Outlook, Google Calendar)</div>
+            </div>
+          </div>
+          <div>
+            <div style="display:flex; flex-direction:column; gap:14px;">
+              <div>
+                <label class="form-label">Números de WhatsApp</label>
+                <input type="text" class="form-input" placeholder="Quantos números você precisa?">
+              </div>
+              <div>
+                <label class="form-label">Recebe em média quantos áudios por mês?</label>
+                <input type="text" class="form-input" placeholder="Ex: 500 áudios por mês">
+              </div>
+              <div>
+                <label class="form-label">Precisa de integração com algum sistema?</label>
+                <input type="text" class="form-input" placeholder="Ex: Google Calendar, Salesforce, ERP...">
+              </div>
+              <div>
+                <label class="form-label">E-mail corporativo</label>
+                <input type="email" class="form-input" placeholder="voce@empresa.com.br">
+              </div>
+              <button class="btn-primary" style="margin-top:4px">Receber proposta comercial →</button>
+              <p style="font-size:11px; color:var(--muted); text-align:center; margin:0">Respondemos em até 24h · Sem compromisso</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function toggleTable() {
+  const t = document.getElementById('compareTable');
+  const icon = document.getElementById('toggleIcon');
+  const text = document.getElementById('toggleText');
+  if (t.style.display === 'none') {
+    t.style.display = 'block';
+    icon.textContent = '↑';
+    text.textContent = 'Ocultar comparativo';
+  } else {
+    t.style.display = 'none';
+    icon.textContent = '↓';
+    text.textContent = 'Comparar todos os recursos';
+  }
+}
+</script>
+</body>
+</html>

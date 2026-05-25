@@ -214,9 +214,9 @@ export default async function authRoutes(app: FastifyInstance) {
                   <tr>
                     <td style="vertical-align:top;padding-right:10px;font-size:20px;line-height:1">🎁</td>
                     <td>
-                      <p style="color:#6ee7b7;font-size:13px;font-weight:700;margin:0 0 4px">10 minutos grátis te esperam</p>
+                      <p style="color:#6ee7b7;font-size:13px;font-weight:700;margin:0 0 4px">20 minutos grátis te esperam</p>
                       <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
-                        Assim que confirmar, sua conta recebe <strong style="color:#5d8a72">10 minutos de transcrição</strong> sem cartão de crédito.
+                        Assim que confirmar, sua conta recebe <strong style="color:#5d8a72">20 minutos de transcrição</strong> sem cartão de crédito.
                         Transcreva áudios do WhatsApp com IA em segundos.
                       </p>
                     </td>
@@ -336,7 +336,7 @@ export default async function authRoutes(app: FastifyInstance) {
               <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:12px;padding:16px 20px">
                 <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
                   ⏰ <strong style="color:#5d8a72">Este link expira em 24 horas.</strong>
-                  Após confirmar, sua conta estará ativa com <strong style="color:#5d8a72">10 minutos grátis</strong> de transcrição, sem cartão de crédito.
+                  Após confirmar, sua conta estará ativa com <strong style="color:#5d8a72">20 minutos grátis</strong> de transcrição, sem cartão de crédito.
                 </p>
               </div>
             `, 'Se você não solicitou este link, pode ignorar este e-mail com segurança.')

@@ -14,7 +14,8 @@
       "Bash(Get-ChildItem -Path \"C:\\\\FOX tecnologIA\\\\ZapScript\\\\.claude\\\\worktrees\\\\determined-swartz-fbb83e\" -Recurse -Directory)",
       "Bash(Select-Object -ExpandProperty FullName)",
       "Bash(powershell -Command \"\\(Get-Content apps/web/src/app/g5r8t2/page.tsx\\) -replace '/admin/', '/sys/g5r8t2/' | Set-Content apps/web/src/app/g5r8t2/page.tsx\")",
-      "Bash(npx prisma *)"
+      "Bash(npx prisma *)",
+      "Bash(ls \"C:\\\\FOX tecnologIA\" 2>/dev/null || echo \"não acessível via bash\")"
     ]
   }
 }
