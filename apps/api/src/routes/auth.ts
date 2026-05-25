@@ -90,7 +90,7 @@ export default async function authRoutes(app: FastifyInstance) {
     '/register',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const { email, password, name, inviteCode, cbTos, cbContrato, cbLgpd } = req.body;
+      const { email, password, name, inviteCode, cbTos, cbContrato, cbLgpd, cbMarketing, docVersion } = req.body;
       if (!email || !password) return reply.code(400).send({ error: 'email e password obrigatórios' });
       // Validar consentimentos obrigatórios (LGPD Art. 8º §1º)
       if (!cbTos)      return reply.code(400).send({ error: 'Aceite dos Termos de Serviço é obrigatório.' });
@@ -139,8 +139,11 @@ export default async function authRoutes(app: FastifyInstance) {
             isTester:                !!testerInvite,
             testerSince:             testerInvite ? now : undefined,
             // LGPD — registro de consentimentos (Art. 8º §2º)
-            termsAcceptedAt:         cbTos  ? now : undefined,
-            privacyPolicyAcceptedAt: cbLgpd ? now : undefined,
+            termsAcceptedAt:         cbTos      ? now : undefined,
+            contractAcceptedAt:      cbContrato ? now : undefined,
+            privacyPolicyAcceptedAt: cbLgpd     ? now : undefined,
+            marketingConsentAt:      cbMarketing ? now : undefined,
+            consentDocVersion:       docVersion || 'tos_v2.0,contrato_v2.0,pp_v2.0',
           },
         });
         await tx.subscription.create({
@@ -448,11 +451,11 @@ export default async function authRoutes(app: FastifyInstance) {
 
   // ── POST /auth/accept-terms ───────────────────────────────────────────────
   // Aceite dos termos por usuários já cadastrados (modal bloqueante no dashboard)
-  app.post<{ Body: { cbTos: boolean; cbContrato: boolean; cbLgpd: boolean } }>(
+  app.post<{ Body: { cbTos: boolean; cbContrato: boolean; cbLgpd: boolean; cbMarketing?: boolean } }>(
     '/accept-terms',
     { preHandler: [(app as any).authenticate] },
     async (req: any, reply) => {
-      const { cbTos, cbContrato, cbLgpd } = req.body;
+      const { cbTos, cbContrato, cbLgpd, cbMarketing } = req.body;
       if (!cbTos || !cbContrato || !cbLgpd) {
         return reply.code(400).send({ error: 'Todos os aceites obrigatórios são necessários.' });
       }
@@ -461,7 +464,10 @@ export default async function authRoutes(app: FastifyInstance) {
         where: { id: req.user.sub },
         data: {
           termsAcceptedAt:         now,
+          contractAcceptedAt:      now,
           privacyPolicyAcceptedAt: now,
+          marketingConsentAt:      cbMarketing ? now : undefined,
+          consentDocVersion:       'tos_v2.0,contrato_v2.0,pp_v2.0',
         },
       });
       return { accepted: true };
