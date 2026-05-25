@@ -10,7 +10,7 @@ function CadastroForm() {
   const inviteCode   = searchParams.get('invite') || '';
   const [isTesterInvite, setIsTesterInvite] = useState(false);
 
-  const [form, setForm]   = useState({ name: '', email: '', password: '', confirm: '' });
+  const [form, setForm]   = useState({ name: '', email: '', phone: '', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const [done, setDone]       = useState(false);
@@ -55,6 +55,7 @@ function CadastroForm() {
       await api.post('/auth/register', {
         name:       form.name,
         email:      form.email,
+        phone:      form.phone || undefined,
         password:   form.password,
         cbTos,
         cbContrato,
@@ -143,6 +144,20 @@ function CadastroForm() {
             <div>
               <label className="block text-xs font-semibold text-brand-text-secondary mb-1">E-mail</label>
               <input className="field-input" type="email" placeholder="seu@email.com" value={form.email} onChange={set('email')} required/>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-brand-text-secondary mb-1">
+                Celular <span className="font-normal text-brand-muted">(opcional)</span>
+              </label>
+              <input
+                className="field-input"
+                type="tel"
+                placeholder="(11) 99999-9999"
+                value={form.phone}
+                onChange={set('phone')}
+                inputMode="tel"
+                autoComplete="tel"
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Senha</label>

@@ -12,6 +12,7 @@ model User {
   id                          String          @id @default(cuid())
   email                       String          @unique
   name                        String?
+  phone                       String?                   // Celular de contato (opcional)
   document                    String?         @unique   // CPF ou CNPJ
   emailVerified               Boolean         @default(false)
   refCode                     String          @unique @default(cuid())

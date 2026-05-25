@@ -2091,86 +2091,105 @@ function CampanhasTab({ apiBase, token, notify }: {
   // ── Templates de campanha prontos ────────────────────────────────────────────
   const TEMPLATES = [
     {
-      icon: '🎉',
+      icon: '🎙️',
       name: 'Boas-vindas',
-      desc: 'Free · nunca usou',
-      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(true); setMinDays(''); setHasDocument(false); },
-      subject: '🎉 Bem-vindo ao ZapScript! Comece agora',
-      msg: `Olá! Seja bem-vindo ao ZapScript 🎙️
+      desc: 'Free · 1ª transcrição',
+      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(true); setMinDays(''); setHasDocument(false); setTesters(false); },
+      subject: '🎙️ Sua primeira transcrição está a um passo — faça agora!',
+      msg: `Olá! Tudo bem?
 
-Você se cadastrou mas ainda não experimentou a mágica das transcrições automáticas de áudio no WhatsApp.
+Você criou sua conta no ZapScript há pouco tempo — mas ainda não fez a sua primeira transcrição.
 
-Como começar em 3 passos:
-1️⃣ Acesse o dashboard e vá em "Números"
-2️⃣ Conecte seu WhatsApp escaneando o QR code
-3️⃣ Receba um áudio e pronto — o ZapScript transcreve automaticamente!
+Sabe aquele áudio longo que você recebe no WhatsApp e fica com preguiça de ouvir? O ZapScript resolve isso em segundos: transcreve, resume em tópicos e ainda te diz o que é importante.
 
-O plano gratuito inclui 30 minutos/mês. Experimente hoje 👇
+✨ Para começar agora mesmo:
+1. Acesse zapscript.me/dashboard
+2. Clique em "Números" e conecte seu WhatsApp (leva menos de 1 minuto)
+3. Receba qualquer áudio — o ZapScript transcreve automaticamente!
+
+Seu plano gratuito já vem com minutos prontos para usar. Não deixa expirar 😉
+
 👉 https://zapscript.me/dashboard
 
-Qualquer dúvida, é só responder este e-mail.
+Qualquer dúvida é só responder este e-mail — respondemos rápido.
 
+Um abraço,
 Equipe ZapScript`,
     },
     {
-      icon: '😴',
-      name: 'Reativação',
-      desc: '+14 dias sem uso',
-      applyFilters: () => { setPlans([]); setFree(false); setNeverUsed(false); setMinDays('14'); setHasDocument(false); },
-      subject: '😴 Sumiu! Suas transcrições estão esperando',
-      msg: `Olá! Faz um tempinho que você não usa o ZapScript…
+      icon: '📱',
+      name: 'Conectar número',
+      desc: 'Free · sem número WA',
+      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(true); setMinDays(''); setHasDocument(false); setTesters(false); },
+      subject: '📱 Conecte seu WhatsApp e comece a transcrever',
+      msg: `Olá! Aqui é o time do ZapScript 👋
 
-Sentimos sua falta por aqui! 😊
+Notamos que você criou sua conta mas ainda não conectou nenhum número de WhatsApp — e sem isso o ZapScript não consegue transcrever seus áudios.
 
-Enquanto isso, melhoramos muito a plataforma:
-✅ Transcrições mais rápidas e precisas
-✅ Novo painel de estatísticas
-✅ Suporte a múltiplos números
+A boa notícia: conectar é bem simples e leva menos de 60 segundos!
 
-Seu plano ainda está ativo — aproveite os minutos disponíveis!
+Como fazer:
+1️⃣ Acesse: https://zapscript.me/dashboard/numeros
+2️⃣ Clique em "Adicionar número"
+3️⃣ Abra o WhatsApp no celular → Menu → Dispositivos conectados → Escanear QR code
+4️⃣ Pronto! A partir daí, todo áudio que você receber será transcrito automaticamente.
 
-👉 https://zapscript.me/dashboard
+Sem mensalidade agora, sem cartão de crédito. O plano gratuito já te dá minutos para experimentar.
 
-Precisa de ajuda para voltar a usar? Responda este e-mail.
+👉 Conectar agora: https://zapscript.me/dashboard/numeros
+
+Qualquer dúvida, responda este e-mail — estamos aqui!
 
 Equipe ZapScript`,
     },
     {
       icon: '⚡',
-      name: 'Upgrade → Pro',
-      desc: 'Usuários free',
-      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(false); setMinDays(''); setHasDocument(false); },
-      subject: '⚡ Desbloqueie o ZapScript Pro por R$29,90/mês',
-      msg: `Olá! Você está usando o ZapScript gratuito — ótima escolha para começar!
+      name: 'Upgrade por limite',
+      desc: 'Free ativos · limite',
+      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(false); setMinDays(''); setHasDocument(false); setTesters(false); },
+      subject: '⚡ Seus minutos estão acabando — não pare agora',
+      msg: `Olá! Boas notícias e uma notícia chata 😅
 
-Quer ir além? O plano Pro desbloqueia:
-⚡ 300 minutos/mês (vs 30 do gratuito)
-🔍 Busca nas transcrições
-📤 Exportação em CSV
-📱 Até 3 números simultâneos
+A boa: você já está usando o ZapScript e sabe como ele economiza tempo.
+A chata: no plano gratuito os minutos são limitados — e podem acabar logo.
 
-Tudo isso por apenas R$29,90/mês — menos que um almoço 😄
+Quando zerar, você fica sem transcrições até o próximo ciclo. Já imaginou perder um áudio importante por isso?
 
-👉 Fazer upgrade agora: https://zapscript.me/dashboard/plano
+O plano Pro resolve de vez:
+⚡ 300 minutos/mês — 10x mais que o gratuito
+🔍 Busca nas suas transcrições antigas
+📤 Exportação em CSV para organizar tudo
+📱 Conecte até 3 números simultâneos
+
+Tudo por R$29,90/mês — menos que uma pizza. Cancele quando quiser.
+
+👉 Fazer upgrade: https://zapscript.me/dashboard/plano
+
+Não perca o ritmo que você já criou 💪
 
 Equipe ZapScript`,
     },
     {
       icon: '🚀',
-      name: 'Upgrade → Ultra',
-      desc: 'Usuários Pro',
-      applyFilters: () => { setPlans(['pro']); setFree(false); setNeverUsed(false); setMinDays(''); setHasDocument(false); },
-      subject: '🚀 Você está pronto para o ZapScript Ultra',
-      msg: `Olá! Você já usa o ZapScript Pro — parabéns pela escolha! 🎉
+      name: 'Upgrade Ultra',
+      desc: 'Pro · upsell Ultra',
+      applyFilters: () => { setPlans(['pro']); setFree(false); setNeverUsed(false); setMinDays(''); setHasDocument(false); setTesters(false); },
+      subject: '🚀 Você usa muito o ZapScript — hora de ir para o Ultra',
+      msg: `Olá! Você é um dos nossos usuários mais ativos no plano Pro. Isso é incrível! 🎉
 
-Mas você ainda não conhece o Ultra. Veja o que está perdendo:
+Mas percebemos que usuários no seu perfil costumam bater no limite de minutos antes do fim do mês — e a gente não quer que isso aconteça com você.
+
+O plano Ultra foi feito para quem usa de verdade:
 🚀 600 minutos/mês (o dobro do Pro)
-🏷️ Tags personalizadas nas transcrições
-🌐 Tradução automática de áudios em inglês/espanhol
+🏷️ Tags para organizar suas transcrições por projeto ou cliente
+🌐 Tradução automática de áudios em inglês e espanhol para PT-BR
 📱 Até 5 números simultâneos
 
-Upgrade por apenas R$59,90/mês:
-👉 https://zapscript.me/dashboard/plano
+Por apenas R$29,90/mês a mais — ou seja, R$59,90 total.
+
+👉 Ver plano Ultra: https://zapscript.me/dashboard/plano
+
+Se quiser conversar antes de decidir, é só responder este e-mail.
 
 Equipe ZapScript`,
     },
@@ -2178,20 +2197,24 @@ Equipe ZapScript`,
       icon: '🏢',
       name: 'Para Empresas',
       desc: 'CNPJs cadastrados',
-      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(false); setMinDays(''); setHasDocument(true); },
-      subject: '🏢 ZapScript para sua empresa — plano Executive',
-      msg: `Olá! Vimos que você tem uma empresa e usa o ZapScript.
+      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(false); setMinDays(''); setHasDocument(true); setTesters(false); },
+      subject: '🏢 Sua empresa merece um ZapScript à altura',
+      msg: `Olá! Vimos que você usa o ZapScript com um CNPJ — isso nos diz que você tem uma operação profissional para cuidar.
 
-Empresas que crescem precisam de mais — e o plano Executive foi feito para isso:
-💎 1.200 minutos/mês
-🔒 Modo privado (transcrições só para você)
-🔗 Webhook personalizado para integrar com seus sistemas
-📱 Números ilimitados
-🏷️ Tags e exportação avançada
+Empresas que usam o ZapScript para times de vendas, jurídico ou atendimento normalmente precisam de mais do que os planos individuais oferecem.
 
-Ideal para equipes de vendas, jurídico e atendimento.
+Por isso criamos o plano Executive — feito para empresas:
+💎 1.200 minutos/mês para toda a equipe
+🔒 Modo privado: transcrições chegam só no número da empresa, não para o contato
+🔗 Webhook personalizado: integre com CRM, ERP ou qualquer sistema via API
+📱 Números ilimitados para cada membro do time
+🏷️ Tags e exportação avançada para relatórios
+
+Tudo por R$89,90/mês — sem taxa de implantação, sem fidelidade.
 
 👉 Ver plano Executive: https://zapscript.me/dashboard/plano
+
+Ou se preferir, me responda que conversamos sobre o que faz mais sentido para o seu caso.
 
 Equipe ZapScript`,
     },

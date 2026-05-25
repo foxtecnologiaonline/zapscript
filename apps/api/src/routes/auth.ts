@@ -84,13 +84,13 @@ export default async function authRoutes(app: FastifyInstance) {
 
   // ── POST /auth/register ───────────────────────────────────────────────────
   app.post<{ Body: {
-    email: string; password: string; name?: string; inviteCode?: string;
+    email: string; password: string; name?: string; phone?: string; inviteCode?: string;
     cbTos?: boolean; cbContrato?: boolean; cbLgpd?: boolean; cbMarketing?: boolean; docVersion?: string;
   } }>(
     '/register',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const { email, password, name, inviteCode, cbTos, cbContrato, cbLgpd, cbMarketing, docVersion } = req.body;
+      const { email, password, name, phone, inviteCode, cbTos, cbContrato, cbLgpd, cbMarketing, docVersion } = req.body;
       if (!email || !password) return reply.code(400).send({ error: 'email e password obrigatórios' });
       // Validar consentimentos obrigatórios (LGPD Art. 8º §1º)
       if (!cbTos)      return reply.code(400).send({ error: 'Aceite dos Termos de Serviço é obrigatório.' });
@@ -136,6 +136,7 @@ export default async function authRoutes(app: FastifyInstance) {
             id: data.user!.id,
             email,
             name,
+            phone:                   phone?.trim() || undefined,
             isTester:                !!testerInvite,
             testerSince:             testerInvite ? now : undefined,
             // LGPD — registro de consentimentos (Art. 8º §2º)
