@@ -1618,6 +1618,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       emailVerified?:   boolean;
       includeTesters?:  boolean;
       includeFree?:     boolean;
+      hasDocument?:     boolean;    // apenas usuários com CNPJ/CPF cadastrado (empresas)
     };
   }>(
     '/campaigns/preview',
@@ -1644,6 +1645,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       emailVerified?:   boolean;
       includeTesters?:  boolean;
       includeFree?:     boolean;
+      hasDocument?:     boolean;    // apenas usuários com CNPJ/CPF cadastrado (empresas)
       channel:          'whatsapp' | 'email' | 'both';
       message:          string;
       subject?:         string;
@@ -1724,6 +1726,7 @@ async function getCampaignRecipients(filters: {
   emailVerified?:   boolean;
   includeTesters?:  boolean;
   includeFree?:     boolean;
+  hasDocument?:     boolean;
 }) {
   const since14d = filters.minDaysInactive
     ? new Date(Date.now() - filters.minDaysInactive * 86_400_000)
@@ -1734,6 +1737,7 @@ async function getCampaignRecipients(filters: {
       deletedAt:      null,
       emailVerified:  filters.emailVerified === true ? true : undefined,
       isTester:       filters.includeTesters ? undefined : false,
+      document:       filters.hasDocument === true ? { not: null } : undefined,
     },
     include: {
       subscription: { include: { plan: { select: { name: true } } } },

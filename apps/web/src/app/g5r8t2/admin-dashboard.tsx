@@ -2056,6 +2056,7 @@ function CampanhasTab({ apiBase, token, notify }: {
   const [emailVerifiedF, setEmailVerified] = useState(false);
   const [includeTesters, setTesters]      = useState(false);
   const [includeFree, setFree]            = useState(false);
+  const [hasDocument, setHasDocument]     = useState(false);
 
   // Mensagem
   const [channel, setChannel]   = useState<'whatsapp' | 'email' | 'both'>('email');
@@ -2083,8 +2084,118 @@ function CampanhasTab({ apiBase, token, notify }: {
       emailVerified:    emailVerifiedF || undefined,
       includeTesters:   includeTesters || undefined,
       includeFree:      includeFree || undefined,
+      hasDocument:      hasDocument || undefined,
     };
   }
+
+  // ── Templates de campanha prontos ────────────────────────────────────────────
+  const TEMPLATES = [
+    {
+      icon: '🎉',
+      name: 'Boas-vindas',
+      desc: 'Free · nunca usou',
+      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(true); setMinDays(''); setHasDocument(false); },
+      subject: '🎉 Bem-vindo ao ZapScript! Comece agora',
+      msg: `Olá! Seja bem-vindo ao ZapScript 🎙️
+
+Você se cadastrou mas ainda não experimentou a mágica das transcrições automáticas de áudio no WhatsApp.
+
+Como começar em 3 passos:
+1️⃣ Acesse o dashboard e vá em "Números"
+2️⃣ Conecte seu WhatsApp escaneando o QR code
+3️⃣ Receba um áudio e pronto — o ZapScript transcreve automaticamente!
+
+O plano gratuito inclui 30 minutos/mês. Experimente hoje 👇
+👉 https://zapscript.me/dashboard
+
+Qualquer dúvida, é só responder este e-mail.
+
+Equipe ZapScript`,
+    },
+    {
+      icon: '😴',
+      name: 'Reativação',
+      desc: '+14 dias sem uso',
+      applyFilters: () => { setPlans([]); setFree(false); setNeverUsed(false); setMinDays('14'); setHasDocument(false); },
+      subject: '😴 Sumiu! Suas transcrições estão esperando',
+      msg: `Olá! Faz um tempinho que você não usa o ZapScript…
+
+Sentimos sua falta por aqui! 😊
+
+Enquanto isso, melhoramos muito a plataforma:
+✅ Transcrições mais rápidas e precisas
+✅ Novo painel de estatísticas
+✅ Suporte a múltiplos números
+
+Seu plano ainda está ativo — aproveite os minutos disponíveis!
+
+👉 https://zapscript.me/dashboard
+
+Precisa de ajuda para voltar a usar? Responda este e-mail.
+
+Equipe ZapScript`,
+    },
+    {
+      icon: '⚡',
+      name: 'Upgrade → Pro',
+      desc: 'Usuários free',
+      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(false); setMinDays(''); setHasDocument(false); },
+      subject: '⚡ Desbloqueie o ZapScript Pro por R$29,90/mês',
+      msg: `Olá! Você está usando o ZapScript gratuito — ótima escolha para começar!
+
+Quer ir além? O plano Pro desbloqueia:
+⚡ 300 minutos/mês (vs 30 do gratuito)
+🔍 Busca nas transcrições
+📤 Exportação em CSV
+📱 Até 3 números simultâneos
+
+Tudo isso por apenas R$29,90/mês — menos que um almoço 😄
+
+👉 Fazer upgrade agora: https://zapscript.me/dashboard/plano
+
+Equipe ZapScript`,
+    },
+    {
+      icon: '🚀',
+      name: 'Upgrade → Ultra',
+      desc: 'Usuários Pro',
+      applyFilters: () => { setPlans(['pro']); setFree(false); setNeverUsed(false); setMinDays(''); setHasDocument(false); },
+      subject: '🚀 Você está pronto para o ZapScript Ultra',
+      msg: `Olá! Você já usa o ZapScript Pro — parabéns pela escolha! 🎉
+
+Mas você ainda não conhece o Ultra. Veja o que está perdendo:
+🚀 600 minutos/mês (o dobro do Pro)
+🏷️ Tags personalizadas nas transcrições
+🌐 Tradução automática de áudios em inglês/espanhol
+📱 Até 5 números simultâneos
+
+Upgrade por apenas R$59,90/mês:
+👉 https://zapscript.me/dashboard/plano
+
+Equipe ZapScript`,
+    },
+    {
+      icon: '🏢',
+      name: 'Para Empresas',
+      desc: 'CNPJs cadastrados',
+      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(false); setMinDays(''); setHasDocument(true); },
+      subject: '🏢 ZapScript para sua empresa — plano Executive',
+      msg: `Olá! Vimos que você tem uma empresa e usa o ZapScript.
+
+Empresas que crescem precisam de mais — e o plano Executive foi feito para isso:
+💎 1.200 minutos/mês
+🔒 Modo privado (transcrições só para você)
+🔗 Webhook personalizado para integrar com seus sistemas
+📱 Números ilimitados
+🏷️ Tags e exportação avançada
+
+Ideal para equipes de vendas, jurídico e atendimento.
+
+👉 Ver plano Executive: https://zapscript.me/dashboard/plano
+
+Equipe ZapScript`,
+    },
+  ] as const;
 
   async function doPreview() {
     setPreviewing(true); setPreview(null); setResult(null);
@@ -2115,10 +2226,44 @@ function CampanhasTab({ apiBase, token, notify }: {
     finally { setSending(false); }
   }
 
-  const planOpts: [string, string][] = [['pro','⚡ Pro'], ['ultra','🚀 Ultra'], ['executive','💎 Executive'], ['pro-tester','🧪 Pro Tester']];
+  const planOpts: [string, string][] = [
+    ['free',       '🆓 Free'],
+    ['pro',        '⚡ Pro'],
+    ['ultra',      '🚀 Ultra'],
+    ['executive',  '💎 Executive'],
+    ['pro-tester', '🧪 Pro Tester'],
+  ];
 
   return (
     <div className="space-y-5">
+
+      {/* Templates prontos */}
+      <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">
+        <div className="text-sm font-bold text-[#d1fae5] mb-1">📋 Templates Prontos</div>
+        <p className="text-[10px] text-[rgba(16,185,129,.4)] mb-4">Clique para carregar filtros + mensagem automaticamente.</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+          {TEMPLATES.map(tpl => (
+            <button
+              key={tpl.name}
+              type="button"
+              onClick={() => {
+                tpl.applyFilters();
+                setSubject(tpl.subject);
+                setMessage(tpl.msg);
+                setPreview(null);
+                setResult(null);
+                setConfirmSend(false);
+                notify(`✅ Template "${tpl.name}" carregado`, 'ok');
+              }}
+              className="flex flex-col items-start gap-1 bg-[#132621] hover:bg-[rgba(16,185,129,.08)] border border-[rgba(16,185,129,.1)] hover:border-[rgba(16,185,129,.25)] rounded-xl p-3 text-left transition-colors group"
+            >
+              <span className="text-xl">{tpl.icon}</span>
+              <span className="text-xs font-bold text-[#d1fae5] group-hover:text-[#10b981] transition-colors">{tpl.name}</span>
+              <span className="text-[10px] text-[rgba(16,185,129,.4)]">{tpl.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Filtros de segmentação */}
       <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">
@@ -2155,6 +2300,7 @@ function CampanhasTab({ apiBase, token, notify }: {
               [emailVerifiedF,  setEmailVerified,  'E-mail verificado'],
               [includeTesters,  setTesters,        'Incluir testers'],
               [includeFree,     setFree,           'Incluir plano free'],
+              [hasDocument,     setHasDocument,    '🏢 Apenas empresas (CNPJ)'],
             ] as [boolean, (v: boolean) => void, string][]).map(([val, setter, label]) => (
               <label key={label} className="flex items-center gap-2.5 cursor-pointer bg-[#132621] rounded-lg px-3 py-2 border border-[rgba(16,185,129,.08)] hover:border-[rgba(16,185,129,.2)] transition-colors">
                 <input type="checkbox" checked={val} onChange={e => setter(e.target.checked)} className="accent-[#10b981] w-3.5 h-3.5" />
