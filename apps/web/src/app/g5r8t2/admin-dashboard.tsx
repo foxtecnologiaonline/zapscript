@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 
 /* ── Tipos ─────────────────────────────────────────────── */
-export type Tab = 'overview' | 'users' | 'tickets' | 'testers' | 'monitoring' | 'financeiro';
+export type Tab = 'overview' | 'users' | 'tickets' | 'testers' | 'monitoring' | 'financeiro' | 'campanhas';
 
 /* ── Constantes ────────────────────────────────────────── */
 const API  = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -199,6 +199,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
             ['testers',    '🧪', 'Testers'],
             ['monitoring',  '🖥️', 'Monitoramento'],
             ['financeiro',  '💰', 'Financeiro'],
+            ['campanhas',   '📣', 'Campanhas'],
           ] as [Tab, string, string][]).map(([t, icon, label]) => (
             <button key={t} onClick={() => goTab(t)}
               className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
@@ -640,6 +641,11 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
             <ChurnRisk   apiBase={API} token={token} />
             <NPSPanel    apiBase={API} token={token} />
           </div>
+        )}
+
+        {/* ═══ CAMPANHAS ═══ */}
+        {tab === 'campanhas' && (
+          <CampanhasTab apiBase={API} token={token} notify={notify} />
         )}
 
       </div>
@@ -1132,6 +1138,14 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
   const [tlLoading, setTlLoading] = useState(false);
   const [showTl, setShowTl]       = useState(false);
 
+  // Envio de mensagem individual
+  const [showMsg, setShowMsg]         = useState(false);
+  const [msgChannel, setMsgChannel]   = useState<'whatsapp' | 'email' | 'both'>('both');
+  const [msgText, setMsgText]         = useState('');
+  const [msgSubject, setMsgSubject]   = useState('');
+  const [msgSending, setMsgSending]   = useState(false);
+  const [msgResult, setMsgResult]     = useState<any>(null);
+
   const [editPlan, setEditPlan]       = useState('');
   const [editMins, setEditMins]       = useState('');
   const [editMode, setEditMode]       = useState<'set' | 'add'>('set');
@@ -1214,6 +1228,22 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
     } finally { setEditSaving(false); }
   }
 
+  async function sendMessage() {
+    if (!msgText.trim()) return;
+    setMsgSending(true); setMsgResult(null);
+    try {
+      const res = await fetch(`${API}/sys/g5r8t2/users/${userId}/send-message`, {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ channel: msgChannel, message: msgText, subject: msgSubject || undefined }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro');
+      setMsgResult(d);
+      onAction('✅ Mensagem enviada!', 'ok');
+    } catch (e: any) { onAction(`❌ ${e.message}`, 'err'); }
+    finally { setMsgSending(false); }
+  }
+
   if (loading) return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
       <div className="text-[#10b981] text-sm animate-pulse">Carregando...</div>
@@ -1277,6 +1307,66 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
                 {tlLoading ? '⟳' : '📅'} {showTl ? 'Ocultar timeline' : 'Ver timeline'}
               </Btn>
             </div>
+          </div>
+
+          {/* Enviar Mensagem */}
+          <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+            <button type="button" onClick={() => setShowMsg(m => !m)}
+              className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-[rgba(16,185,129,.02)] transition-colors">
+              <span className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide">📨 Enviar Mensagem</span>
+              <span className="text-xs text-[rgba(16,185,129,.4)]">{showMsg ? '▲' : '▼'}</span>
+            </button>
+            {showMsg && (
+              <div className="px-4 pb-4 space-y-3">
+                {/* Canal */}
+                <div className="flex gap-1.5">
+                  {([['whatsapp', '📱 WhatsApp'], ['email', '📧 E-mail'], ['both', '📨 Ambos']] as const).map(([v, label]) => (
+                    <button key={v} type="button" onClick={() => setMsgChannel(v)}
+                      className={`flex-1 py-1.5 text-xs rounded-lg border font-semibold transition-colors ${
+                        msgChannel === v
+                          ? 'bg-[rgba(16,185,129,.15)] border-[rgba(16,185,129,.3)] text-[#10b981]'
+                          : 'bg-[#132621] border-[rgba(16,185,129,.1)] text-[rgba(16,185,129,.4)]'
+                      }`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {/* Assunto (email) */}
+                {(msgChannel === 'email' || msgChannel === 'both') && (
+                  <input
+                    value={msgSubject} onChange={e => setMsgSubject(e.target.value)}
+                    placeholder="Assunto do e-mail (opcional)"
+                    className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
+                  />
+                )}
+                {/* Mensagem */}
+                <textarea
+                  value={msgText} onChange={e => setMsgText(e.target.value)}
+                  placeholder="Digite a mensagem..."
+                  rows={4}
+                  className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)] resize-none"
+                />
+                <Btn variant="primary" disabled={msgSending || !msgText.trim()} onClick={sendMessage} cls="w-full justify-center py-2">
+                  {msgSending ? '⟳ Enviando...' : '📨 Enviar mensagem'}
+                </Btn>
+                {/* Resultado */}
+                {msgResult && (
+                  <div className="bg-[#132621] rounded-lg p-3 space-y-1">
+                    {msgResult.results?.whatsapp && (
+                      <div className={`text-xs flex items-center gap-1.5 ${msgResult.results.whatsapp.ok ? 'text-green-400' : 'text-red-400'}`}>
+                        {msgResult.results.whatsapp.ok ? '✅' : '❌'} WhatsApp: {msgResult.results.whatsapp.ok ? 'enviado' : msgResult.results.whatsapp.error}
+                      </div>
+                    )}
+                    {msgResult.results?.email && (
+                      <div className={`text-xs flex items-center gap-1.5 ${msgResult.results.email.ok ? 'text-green-400' : 'text-red-400'}`}>
+                        {msgResult.results.email.ok ? '✅' : '❌'} E-mail: {msgResult.results.email.ok ? 'enviado' : msgResult.results.email.error}
+                      </div>
+                    )}
+                    {msgResult.warning && <div className="text-xs text-yellow-400">⚠️ {msgResult.warning}</div>}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Timeline */}
@@ -1946,6 +2036,278 @@ function NPSPanel({ apiBase, token }: { apiBase: string; token: string }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   CAMPANHAS — envio em massa com filtros
+══════════════════════════════════════════════════════════ */
+function CampanhasTab({ apiBase, token, notify }: {
+  apiBase: string; token: string;
+  notify: (text: string, type?: 'ok' | 'err' | 'warn') => void;
+}) {
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+
+  // Filtros
+  const [plans, setPlans]                 = useState<string[]>([]);
+  const [minDaysInactive, setMinDays]     = useState('');
+  const [hasNeverUsed, setNeverUsed]      = useState(false);
+  const [emailVerifiedF, setEmailVerified] = useState(false);
+  const [includeTesters, setTesters]      = useState(false);
+  const [includeFree, setFree]            = useState(false);
+
+  // Mensagem
+  const [channel, setChannel]   = useState<'whatsapp' | 'email' | 'both'>('email');
+  const [message, setMessage]   = useState('');
+  const [subject, setSubject]   = useState('');
+
+  // Preview
+  const [preview, setPreview]       = useState<any>(null);
+  const [previewing, setPreviewing] = useState(false);
+
+  // Envio
+  const [sending, setSending]         = useState(false);
+  const [result, setResult]           = useState<any>(null);
+  const [confirmSend, setConfirmSend] = useState(false);
+
+  function togglePlan(p: string) {
+    setPlans(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+  }
+
+  function buildFilters() {
+    return {
+      plans:            plans.length > 0 ? plans : undefined,
+      minDaysInactive:  minDaysInactive ? Number(minDaysInactive) : undefined,
+      hasNeverUsed:     hasNeverUsed || undefined,
+      emailVerified:    emailVerifiedF || undefined,
+      includeTesters:   includeTesters || undefined,
+      includeFree:      includeFree || undefined,
+    };
+  }
+
+  async function doPreview() {
+    setPreviewing(true); setPreview(null); setResult(null);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/campaigns/preview`, {
+        method: 'POST', headers: h, body: JSON.stringify(buildFilters()),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro');
+      setPreview(d);
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setPreviewing(false); }
+  }
+
+  async function doSend() {
+    if (!message.trim()) { notify('❌ Digite a mensagem', 'err'); return; }
+    setSending(true); setConfirmSend(false); setResult(null);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/campaigns/send`, {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ ...buildFilters(), channel, message, subject: subject || undefined }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro');
+      setResult(d);
+      notify(`✅ Campanha enviada: ${d.sent} de ${d.total}`, 'ok');
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setSending(false); }
+  }
+
+  const planOpts: [string, string][] = [['pro','⚡ Pro'], ['ultra','🚀 Ultra'], ['executive','💎 Executive'], ['pro-tester','🧪 Pro Tester']];
+
+  return (
+    <div className="space-y-5">
+
+      {/* Filtros de segmentação */}
+      <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">
+        <div className="text-sm font-bold text-[#d1fae5] mb-4">🎯 Segmentação</div>
+        <div className="space-y-4">
+
+          {/* Planos */}
+          <div>
+            <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-2">Planos (vazio = todos pagantes)</div>
+            <div className="flex flex-wrap gap-2">
+              {planOpts.map(([p, label]) => (
+                <button key={p} type="button" onClick={() => togglePlan(p)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition-colors ${
+                    plans.includes(p)
+                      ? 'bg-[rgba(16,185,129,.15)] border-[rgba(16,185,129,.3)] text-[#10b981]'
+                      : 'bg-[#132621] border-[rgba(16,185,129,.1)] text-[rgba(16,185,129,.4)]'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Checkboxes + inatividade */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[10px] text-[rgba(16,185,129,.4)] mb-1.5 uppercase tracking-wide">Dias sem atividade (mín.)</label>
+              <input type="number" min="1" value={minDaysInactive} onChange={e => setMinDays(e.target.value)}
+                placeholder="Ex: 14"
+                className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] font-mono outline-none focus:border-[rgba(16,185,129,.35)]" />
+            </div>
+            {([
+              [hasNeverUsed,    setNeverUsed,      'Nunca usou o sistema'],
+              [emailVerifiedF,  setEmailVerified,  'E-mail verificado'],
+              [includeTesters,  setTesters,        'Incluir testers'],
+              [includeFree,     setFree,           'Incluir plano free'],
+            ] as [boolean, (v: boolean) => void, string][]).map(([val, setter, label]) => (
+              <label key={label} className="flex items-center gap-2.5 cursor-pointer bg-[#132621] rounded-lg px-3 py-2 border border-[rgba(16,185,129,.08)] hover:border-[rgba(16,185,129,.2)] transition-colors">
+                <input type="checkbox" checked={val} onChange={e => setter(e.target.checked)} className="accent-[#10b981] w-3.5 h-3.5" />
+                <span className="text-xs text-[rgba(16,185,129,.7)]">{label}</span>
+              </label>
+            ))}
+          </div>
+
+          <Btn variant="ghost" disabled={previewing} onClick={doPreview} cls="px-5">
+            {previewing ? '⟳ Calculando...' : '🔍 Calcular destinatários'}
+          </Btn>
+        </div>
+
+        {/* Resultado do preview */}
+        {preview && (
+          <div className="mt-4 bg-[#132621] rounded-xl p-4 border border-[rgba(16,185,129,.12)]">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-2xl font-black text-[#10b981]">{preview.total}</span>
+              <span className="text-sm text-[rgba(16,185,129,.6)]">destinatário(s)</span>
+            </div>
+            {preview.sample?.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1.5">Amostra</div>
+                {preview.sample.map((u: any, i: number) => (
+                  <div key={i} className="flex items-center gap-3 text-xs">
+                    <span className="text-[rgba(16,185,129,.6)]">{maskEmail(u.email)}</span>
+                    <Badge label={u.plan} cls={PLAN_CLS[u.plan] || PLAN_CLS.free} />
+                    {u.hasWhatsapp && <span className="text-[10px] text-green-400">📱 WA</span>}
+                  </div>
+                ))}
+                {preview.total > preview.sample.length && (
+                  <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-1">+ {preview.total - preview.sample.length} outros</div>
+                )}
+              </div>
+            )}
+            {preview.total === 0 && (
+              <p className="text-xs text-yellow-400">⚠️ Nenhum destinatário encontrado com esses filtros.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Composição da mensagem */}
+      <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">
+        <div className="text-sm font-bold text-[#d1fae5] mb-4">✍️ Mensagem</div>
+        <div className="space-y-3">
+
+          {/* Canal */}
+          <div>
+            <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-2">Canal de envio</div>
+            <div className="flex gap-1.5">
+              {([['whatsapp', '📱 WhatsApp'], ['email', '📧 E-mail'], ['both', '📨 Ambos']] as const).map(([v, label]) => (
+                <button key={v} type="button" onClick={() => setChannel(v)}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border font-semibold transition-colors ${
+                    channel === v
+                      ? 'bg-[rgba(16,185,129,.15)] border-[rgba(16,185,129,.3)] text-[#10b981]'
+                      : 'bg-[#132621] border-[rgba(16,185,129,.1)] text-[rgba(16,185,129,.4)]'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {channel === 'whatsapp' && (
+              <p className="text-[10px] text-yellow-400 mt-2">⚠️ WhatsApp usa o número Evolution API configurado. Apenas usuários com número conectado receberão.</p>
+            )}
+          </div>
+
+          {/* Assunto (email) */}
+          {(channel === 'email' || channel === 'both') && (
+            <div>
+              <label className="block text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1.5">Assunto do e-mail</label>
+              <input value={subject} onChange={e => setSubject(e.target.value)}
+                placeholder="Ex: Novidade no ZapScript para você!"
+                className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
+              />
+            </div>
+          )}
+
+          {/* Texto */}
+          <div>
+            <label className="block text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1.5">Texto da mensagem</label>
+            <textarea value={message} onChange={e => setMessage(e.target.value)}
+              placeholder="Olá! Temos uma novidade no ZapScript..."
+              rows={6}
+              className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)] resize-none"
+            />
+            <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-1 text-right">{message.length} chars</div>
+          </div>
+
+          {/* Botão enviar */}
+          {!confirmSend ? (
+            <Btn variant="primary"
+              disabled={!message.trim() || !preview || preview.total === 0 || sending}
+              onClick={() => setConfirmSend(true)}
+              cls="w-full justify-center py-2.5">
+              📣 Enviar campanha para {preview?.total ?? '?'} destinatário(s)
+            </Btn>
+          ) : (
+            <div className="bg-yellow-900/20 border border-yellow-400/20 rounded-xl p-4">
+              <div className="text-sm font-bold text-yellow-400 mb-3">
+                ⚠️ Confirmar envio para {preview?.total} destinatário(s)?
+              </div>
+              <p className="text-xs text-yellow-400/70 mb-4">
+                Esta ação não pode ser desfeita. Os usuários receberão a mensagem agora.
+              </p>
+              <div className="flex gap-2">
+                <Btn variant="danger" disabled={sending} onClick={doSend} cls="flex-1 justify-center py-2">
+                  {sending ? '⟳ Enviando...' : '🚀 Sim, enviar agora'}
+                </Btn>
+                <Btn variant="ghost" disabled={sending} onClick={() => setConfirmSend(false)} cls="flex-1 justify-center py-2">
+                  ✕ Cancelar
+                </Btn>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Resultado do envio */}
+      {result && (
+        <div className={`border rounded-xl p-5 ${result.failed === 0 ? 'bg-[rgba(16,185,129,.06)] border-[rgba(16,185,129,.2)]' : 'bg-yellow-900/10 border-yellow-400/20'}`}>
+          <div className="text-sm font-bold text-[#d1fae5] mb-3">📊 Resultado da Campanha</div>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <div className="bg-[#132621] rounded-lg p-3 text-center">
+              <div className="text-2xl font-black text-[#10b981]">{result.sent}</div>
+              <div className="text-[10px] text-[rgba(16,185,129,.4)]">Enviados</div>
+            </div>
+            <div className="bg-[#132621] rounded-lg p-3 text-center">
+              <div className="text-2xl font-black text-red-400">{result.failed}</div>
+              <div className="text-[10px] text-[rgba(16,185,129,.4)]">Falhos</div>
+            </div>
+            <div className="bg-[#132621] rounded-lg p-3 text-center">
+              <div className="text-2xl font-black text-[#d1fae5]">{result.total}</div>
+              <div className="text-[10px] text-[rgba(16,185,129,.4)]">Total</div>
+            </div>
+          </div>
+          {result.errors?.length > 0 && (
+            <details className="mt-2">
+              <summary className="text-[10px] text-red-400 cursor-pointer hover:text-red-300">
+                {result.errors.length} erro(s) ↓
+              </summary>
+              <div className="mt-2 space-y-1 max-h-40 overflow-auto">
+                {result.errors.slice(0, 20).map((e: any, i: number) => (
+                  <div key={i} className="text-[10px] text-red-300/70 bg-red-900/10 rounded px-2 py-1">
+                    {maskEmail(e.email)}: {e.error}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }

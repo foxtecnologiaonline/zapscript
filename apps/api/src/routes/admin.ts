@@ -8,6 +8,7 @@ import { runHealthCheck, lastReport, history } from '../services/health-monitor'
 import { Queue } from 'bullmq';
 import { redis } from '../services/queue';
 import { sendText } from '../services/evolution';
+import { sendEmail } from '../lib/mailer';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -101,14 +102,22 @@ export default async function adminRoutes(app: FastifyInstance) {
       prisma.user.count({ where: { createdAt: { gte: today } } }),
       prisma.user.count({ where: { createdAt: { gte: monthStart } } }),
       prisma.user.count({ where: { createdAt: { gte: lastMonthStart, lt: lastMonthEnd } } }),
-      // distribuição por plano
-      prisma.subscription.findMany({ include: { plan: { select: { name: true } } } }).then(subs =>
-        subs.reduce((acc: Record<string, number>, s) => {
+      // distribuição por plano — inclui usuários sem subscription (= free)
+      Promise.all([
+        prisma.user.count(),
+        prisma.subscription.findMany({ include: { plan: { select: { name: true } } } }),
+      ]).then(([total, subs]) => {
+        const acc: Record<string, number> = {};
+        for (const s of subs) {
           const name = s.plan.name;
           acc[name] = (acc[name] || 0) + 1;
-          return acc;
-        }, {})
-      ),
+        }
+        // usuários sem subscription são free
+        const withSub = subs.length;
+        const withoutSub = total - withSub;
+        if (withoutSub > 0) acc['free'] = (acc['free'] || 0) + withoutSub;
+        return acc;
+      }),
       // assinaturas ativas com plano (para MRR) — inclui isTester para excluir do cálculo financeiro
       prisma.subscription.findMany({
         where:   { status: 'active' },
@@ -1519,4 +1528,240 @@ export default async function adminRoutes(app: FastifyInstance) {
       return { npsScore, avgScore, total, promoters, passives, detractors, distribution, recent, days };
     }
   );
+
+  // ═══════════════════════════════════════════════════════
+  //  MENSAGENS INDIVIDUAIS & CAMPANHAS
+  // ═══════════════════════════════════════════════════════
+
+  // ── POST /users/:id/send-message ────────────────────────
+  // Envia mensagem individual para um usuário (WhatsApp e/ou email)
+  app.post<{
+    Params: { id: string };
+    Body:   { channel: 'whatsapp' | 'email' | 'both'; message: string; subject?: string };
+  }>(
+    '/users/:id/send-message',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { id } = req.params;
+      const { channel, message, subject } = req.body;
+
+      if (!channel || !message?.trim()) {
+        return reply.code(400).send({ error: 'channel e message são obrigatórios.' });
+      }
+      if (!['whatsapp', 'email', 'both'].includes(channel)) {
+        return reply.code(400).send({ error: 'channel deve ser whatsapp, email ou both.' });
+      }
+
+      const user = await prisma.user.findUnique({
+        where:   { id },
+        select:  {
+          id: true, email: true, deletedAt: true,
+          numbers: { where: { status: 'connected' }, select: { phoneNumber: true, zapiInstanceId: true }, take: 1 },
+        },
+      });
+      if (!user)          return reply.code(404).send({ error: 'Usuário não encontrado.' });
+      if (user.deletedAt) return reply.code(400).send({ error: 'Usuário deletado.' });
+
+      const results: Record<string, any> = {};
+
+      // ── WhatsApp ──────────────────────────────────────────
+      if (channel === 'whatsapp' || channel === 'both') {
+        const number = user.numbers[0];
+        if (!number?.phoneNumber || !number?.zapiInstanceId) {
+          results.whatsapp = { ok: false, error: 'Usuário não tem número WhatsApp conectado.' };
+        } else {
+          try {
+            // Usa número remetente do admin (mesmo dos convites)
+            const sender = await prisma.whatsappNumber.findFirst({
+              where:  { status: 'connected', zapiInstanceId: { not: null } },
+              select: { zapiInstanceId: true },
+            });
+            if (!sender?.zapiInstanceId) throw new Error('Nenhum número admin conectado para envio.');
+            await sendText(sender.zapiInstanceId, number.phoneNumber, message.trim());
+            results.whatsapp = { ok: true, phone: number.phoneNumber };
+          } catch (e: any) {
+            results.whatsapp = { ok: false, error: e.message };
+          }
+        }
+      }
+
+      // ── E-mail ────────────────────────────────────────────
+      if (channel === 'email' || channel === 'both') {
+        try {
+          const emailSubject = subject?.trim() || '📩 Mensagem da equipe ZapScript';
+          const html = `
+            <div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+              <div style="font-size:22px;font-weight:bold;margin-bottom:16px">📩 Mensagem do ZapScript</div>
+              <div style="font-size:14px;line-height:1.6;white-space:pre-wrap;color:#a7f3d0">${message.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+              <div style="margin-top:24px;font-size:11px;color:#6ee7b7;opacity:0.5">Equipe ZapScript · zapscript.me</div>
+            </div>`;
+          await sendEmail(user.email, emailSubject, html);
+          results.email = { ok: true, to: maskEmail(user.email) };
+        } catch (e: any) {
+          results.email = { ok: false, error: e.message };
+        }
+      }
+
+      app.log.info({ userId: id, channel }, '[Admin] Mensagem individual enviada');
+      const anyOk = Object.values(results).some((r: any) => r.ok);
+      return reply.code(anyOk ? 200 : 502).send({ ok: anyOk, results });
+    }
+  );
+
+  // ── POST /campaigns/preview ──────────────────────────────
+  // Retorna quantos usuários serão impactados pelos filtros (sem enviar nada)
+  app.post<{
+    Body: {
+      plans?:           string[];   // ex: ['pro','ultra']
+      minDaysInactive?: number;     // ex: 14 — sem transcrição há N dias
+      hasNeverUsed?:    boolean;    // nunca fez transcrição
+      emailVerified?:   boolean;
+      includeTesters?:  boolean;
+      includeFree?:     boolean;
+    };
+  }>(
+    '/campaigns/preview',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req) => {
+      const filters = req.body || {};
+      const users   = await getCampaignRecipients(filters);
+      const sample  = users.slice(0, 5).map(u => ({
+        email:    maskEmail(u.email),
+        plan:     u.subscription?.plan?.name || 'free',
+        hasPhone: u.numbers.length > 0,
+      }));
+      return { total: users.length, sample };
+    }
+  );
+
+  // ── POST /campaigns/send ─────────────────────────────────
+  // Envia mensagem em massa para usuários filtrados
+  app.post<{
+    Body: {
+      plans?:           string[];
+      minDaysInactive?: number;
+      hasNeverUsed?:    boolean;
+      emailVerified?:   boolean;
+      includeTesters?:  boolean;
+      includeFree?:     boolean;
+      channel:          'whatsapp' | 'email' | 'both';
+      message:          string;
+      subject?:         string;
+    };
+  }>(
+    '/campaigns/send',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { channel, message, subject, ...filters } = req.body;
+
+      if (!channel || !message?.trim()) {
+        return reply.code(400).send({ error: 'channel e message são obrigatórios.' });
+      }
+
+      const users = await getCampaignRecipients(filters);
+
+      if (users.length === 0) return reply.send({ ok: true, sent: 0, failed: 0, message: 'Nenhum usuário corresponde aos filtros.' });
+      if (users.length > 1000) return reply.code(400).send({ error: `Campanha limitada a 1000 destinatários. Filtros retornaram ${users.length}.` });
+
+      // Número remetente admin (para WhatsApp)
+      const sender = await prisma.whatsappNumber.findFirst({
+        where:  { status: 'connected', zapiInstanceId: { not: null } },
+        select: { zapiInstanceId: true },
+      });
+
+      let sent = 0; let failed = 0;
+      const errors: string[] = [];
+
+      const emailSubject = subject?.trim() || '📩 Mensagem da equipe ZapScript';
+      const html = `
+        <div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+          <div style="font-size:22px;font-weight:bold;margin-bottom:16px">📩 Mensagem do ZapScript</div>
+          <div style="font-size:14px;line-height:1.6;white-space:pre-wrap;color:#a7f3d0">${message.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+          <div style="margin-top:24px;font-size:11px;color:#6ee7b7;opacity:0.5">Equipe ZapScript · zapscript.me</div>
+        </div>`;
+
+      for (const user of users) {
+        let userOk = false;
+
+        if ((channel === 'whatsapp' || channel === 'both') && sender?.zapiInstanceId) {
+          const num = user.numbers[0];
+          if (num?.phoneNumber && num?.zapiInstanceId) {
+            try {
+              await sendText(sender.zapiInstanceId, num.phoneNumber, message.trim());
+              userOk = true;
+            } catch (e: any) {
+              errors.push(`WA ${maskEmail(user.email)}: ${e.message}`);
+            }
+          }
+        }
+
+        if (channel === 'email' || channel === 'both') {
+          try {
+            await sendEmail(user.email, emailSubject, html);
+            userOk = true;
+          } catch (e: any) {
+            errors.push(`Email ${maskEmail(user.email)}: ${e.message}`);
+          }
+        }
+
+        userOk ? sent++ : failed++;
+
+        // Pausa de 200ms entre envios para não sobrecarregar
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      app.log.info({ channel, sent, failed, total: users.length }, '[Admin] Campanha enviada');
+      return { ok: true, sent, failed, total: users.length, errors: errors.slice(0, 20) };
+    }
+  );
+}
+
+// ── Helper: monta lista de usuários para campanha ────────────────────────────
+async function getCampaignRecipients(filters: {
+  plans?:           string[];
+  minDaysInactive?: number;
+  hasNeverUsed?:    boolean;
+  emailVerified?:   boolean;
+  includeTesters?:  boolean;
+  includeFree?:     boolean;
+}) {
+  const since14d = filters.minDaysInactive
+    ? new Date(Date.now() - filters.minDaysInactive * 86_400_000)
+    : null;
+
+  const users = await prisma.user.findMany({
+    where: {
+      deletedAt:      null,
+      emailVerified:  filters.emailVerified === true ? true : undefined,
+      isTester:       filters.includeTesters ? undefined : false,
+    },
+    include: {
+      subscription: { include: { plan: { select: { name: true } } } },
+      numbers:      { where: { status: 'connected' }, select: { phoneNumber: true, zapiInstanceId: true }, take: 1 },
+      transcriptions: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
+    },
+    take: 1100, // hard cap
+  });
+
+  return users.filter(u => {
+    const planName = u.subscription?.plan?.name || 'free';
+
+    // Filtro por plano
+    if (filters.plans && filters.plans.length > 0) {
+      if (!filters.plans.includes(planName)) return false;
+    } else if (!filters.includeFree && planName === 'free') {
+      return false; // por padrão exclui free
+    }
+
+    // Filtro por inatividade
+    if (since14d) {
+      const lastT = u.transcriptions[0]?.createdAt;
+      if (!lastT || new Date(lastT) >= since14d) return false; // ainda ativo — exclui
+    }
+
+    // Filtro "nunca usou"
+    if (filters.hasNeverUsed === true && u.transcriptions.length > 0) return false;
+
+    return true;
+  });
 }
