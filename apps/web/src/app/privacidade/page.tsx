@@ -90,9 +90,9 @@ export default function PrivacidadePage() {
         {/* 01 */}
         <h2 className="legal-h2"><span className="sn">01 /</span> Identificação do Controlador <span className="legal-ref">Art. 5º VI e Art. 41 LGPD</span></h2>
         <div className="box">
-          <p><strong className="legal-strong">Razão Social:</strong> FOX TecnologIA &nbsp;·&nbsp; <strong className="legal-strong">CNPJ:</strong> [CNPJ A PREENCHER]</p>
-          <p><strong className="legal-strong">Endereço:</strong> [ENDEREÇO A PREENCHER] — Uberaba/MG, Brasil</p>
-          <p><strong className="legal-strong">Encarregado de Proteção de Dados (Encarregado/DPO):</strong> [NOME DO DPO A PREENCHER]</p>
+          <p><strong className="legal-strong">Razão Social:</strong> FOX TECNOLOGIA LTDA &nbsp;·&nbsp; <strong className="legal-strong">CNPJ:</strong> 66.586.436/0001-12</p>
+          <p><strong className="legal-strong">Endereço:</strong> Rua João Alfredo, 152 – Nossa Senhora da Abadia – Uberaba/MG – CEP 38025-300, Brasil</p>
+          <p><strong className="legal-strong">Encarregado de Proteção de Dados (Encarregado/DPO):</strong> Roberto Frattari Tulio Silva</p>
           <p><strong className="legal-strong">E-mail do Encarregado:</strong> <a href="mailto:privacidade@zapscript.me" className="legal-a">privacidade@zapscript.me</a></p>
           <p><strong className="legal-strong">Site:</strong> <a href="https://zapscript.me" className="legal-a">zapscript.me</a> &nbsp;·&nbsp; <strong className="legal-strong">Atendimento:</strong> <a href="mailto:suporte@zapscript.me" className="legal-a">suporte@zapscript.me</a></p>
         </div>
@@ -224,7 +224,7 @@ export default function PrivacidadePage() {
         {/* 12 */}
         <h2 className="legal-h2"><span className="sn">12 /</span> Encarregado de Proteção de Dados e Contatos <span className="legal-ref">Art. 41 LGPD</span></h2>
         <div className="box">
-          <p><strong className="legal-strong">Encarregado de Proteção de Dados (DPO):</strong> [NOME DO DPO A PREENCHER]</p>
+          <p><strong className="legal-strong">Encarregado de Proteção de Dados (DPO):</strong> Roberto Frattari Tulio Silva</p>
           <p><strong className="legal-strong">E-mail:</strong> <a href="mailto:privacidade@zapscript.me" className="legal-a">privacidade@zapscript.me</a></p>
           <p><strong className="legal-strong">Prazo de resposta:</strong> até 15 dias corridos (Art. 18 §5º LGPD)</p>
           <p style={{ marginTop: '.75rem' }}><strong className="legal-strong">ANPD:</strong> <a href="https://www.gov.br/anpd" target="_blank" rel="noopener noreferrer" className="legal-a">gov.br/anpd</a></p>

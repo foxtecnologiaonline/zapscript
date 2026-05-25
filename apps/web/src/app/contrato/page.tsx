@@ -62,13 +62,13 @@ export default function ContratoPage() {
         <div className="parties">
           <div className="party-card">
             <div className="party-label">Contratada (Prestadora de Serviços)</div>
-            <p><strong>FOX TecnologIA</strong></p>
-            <p>CNPJ: <strong>[CNPJ A PREENCHER]</strong></p>
-            <p>Endereço: [ENDEREÇO A PREENCHER]</p>
-            <p>Uberaba/MG — Brasil — CEP: [CEP A PREENCHER]</p>
+            <p><strong>FOX TECNOLOGIA LTDA</strong></p>
+            <p>CNPJ: <strong>66.586.436/0001-12</strong></p>
+            <p>Endereço: Rua João Alfredo, 152 – Nossa Senhora da Abadia</p>
+            <p>Uberaba/MG — Brasil — CEP: 38025-300</p>
             <p>E-mail: <a href="mailto:contrato@zapscript.me">contrato@zapscript.me</a></p>
-            <p>Representada por: [NOME DO REPRESENTANTE LEGAL]</p>
-            <p>Cargo: [Sócio-Administrador / Diretor]</p>
+            <p>Representada por: Roberto Frattari Tulio Silva</p>
+            <p>Cargo: Sócio-Administrador</p>
           </div>
           <div className="party-card">
             <div className="party-label">Contratante (Assinante)</div>
