@@ -90,7 +90,7 @@ export default async function authRoutes(app: FastifyInstance) {
     '/register',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const { email, password, name, inviteCode, cbTos, cbContrato, cbLgpd, cbMarketing, docVersion } = req.body;
+      const { email, password, name, inviteCode, cbTos, cbContrato, cbLgpd } = req.body;
       if (!email || !password) return reply.code(400).send({ error: 'email e password obrigatórios' });
       // Validar consentimentos obrigatórios (LGPD Art. 8º §1º)
       if (!cbTos)      return reply.code(400).send({ error: 'Aceite dos Termos de Serviço é obrigatório.' });
@@ -139,11 +139,8 @@ export default async function authRoutes(app: FastifyInstance) {
             isTester:                !!testerInvite,
             testerSince:             testerInvite ? now : undefined,
             // LGPD — registro de consentimentos (Art. 8º §2º)
-            termsAcceptedAt:         cbTos      ? now : undefined,
-            contractAcceptedAt:      cbContrato ? now : undefined,
-            privacyPolicyAcceptedAt: cbLgpd     ? now : undefined,
-            marketingConsentAt:      cbMarketing ? now : undefined,
-            consentDocVersion:       docVersion || 'tos_v2.0,contrato_v2.0,pp_v2.0',
+            termsAcceptedAt:         cbTos  ? now : undefined,
+            privacyPolicyAcceptedAt: cbLgpd ? now : undefined,
           },
         });
         await tx.subscription.create({
