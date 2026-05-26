@@ -249,7 +249,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Informe ao menos um campo: planName, isAdmin ou minutes.' });
       }
 
-      const VALID_PLANS = ['free', 'pro', 'ultra', 'pro-tester'];
+      const VALID_PLANS = ['free', 'pro', 'ultra', 'executive', 'pro-tester'];
       if (planName !== undefined && !VALID_PLANS.includes(planName)) {
         return reply.code(400).send({ error: `Plano inválido. Use: ${VALID_PLANS.join(', ')}` });
       }
@@ -630,6 +630,104 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
       app.log.info({ planId: plan.id, name }, '[Admin] Plano criado');
       return reply.code(201).send(plan);
+    }
+  );
+
+  // GET /admin/testers — lista todos os usuários marcados como tester
+  app.get('/testers', { preHandler: [adminAuth] }, async () => {
+    const testers = await prisma.user.findMany({
+      where: { isTester: true, deletedAt: null },
+      select: {
+        id:           true,
+        name:         true,
+        email:        true,
+        testerSince:  true,
+        createdAt:    true,
+        subscription: { include: { plan: true } },
+        balance:      { select: { availableMinutes: true, accumulatedMinutes: true } },
+        numbers:      { select: { id: true, status: true, phoneNumber: true } },
+      },
+      orderBy: { testerSince: 'asc' },
+    });
+
+    return {
+      total: testers.length,
+      testers: testers.map(u => ({
+        id:             u.id,
+        name:           u.name,
+        email:          u.email,
+        testerSince:    u.testerSince,
+        createdAt:      u.createdAt,
+        planName:       u.subscription?.plan?.name  || 'sem plano',
+        planLabel:      u.subscription?.plan?.label || '—',
+        subStatus:      u.subscription?.status      || '—',
+        minutesAvail:   u.balance?.availableMinutes  ?? 0,
+        numbersConnected: u.numbers.filter(n => n.status === 'connected').length,
+      })),
+    };
+  });
+
+  // POST /admin/testers/upgrade-executive — migra todos os testers para plano executive
+  app.post(
+    '/testers/upgrade-executive',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (_req, reply) => {
+      // Garante que o plano executive existe (upsert)
+      const execPlan = await prisma.plan.upsert({
+        where:  { name: 'executive' },
+        update: {},
+        create: {
+          name:            'executive',
+          label:           'Executive',
+          minutesPerMonth: 500,
+          maxNumbers:      5,
+          priceBrl:        0,   // gratuito para testers
+          features:        JSON.stringify([
+            '500 min/mês', '5 números WhatsApp', 'Transcrição automática',
+            'Ponto chave IA', 'Busca full-text', 'Exportação CSV',
+            'Tags', 'Tradução automática', 'Webhook personalizado', 'Modo privado',
+          ]),
+        },
+      });
+
+      const testers = await prisma.user.findMany({
+        where: { isTester: true, deletedAt: null },
+        include: { subscription: { include: { plan: true } } },
+      });
+
+      let upgraded = 0;
+      let skipped  = 0;
+      const results: { email: string; from: string; to: string; action: string }[] = [];
+
+      for (const u of testers) {
+        const currentPlan = u.subscription?.plan?.name;
+        if (currentPlan === 'executive') {
+          skipped++;
+          results.push({ email: u.email, from: currentPlan, to: 'executive', action: 'skipped (já executive)' });
+          continue;
+        }
+
+        await prisma.$transaction([
+          prisma.subscription.update({
+            where: { userId: u.id },
+            data: {
+              planId:              execPlan.id,
+              status:              'active',
+              asaasSubscriptionId: null,       // gratuito — sem cobrança Asaas
+              currentPeriodEnd:    null,        // não expira
+            },
+          }),
+          prisma.minuteBalance.update({
+            where: { userId: u.id },
+            data:  { availableMinutes: execPlan.minutesPerMonth, lastAlertSent: null },
+          }),
+        ]);
+
+        upgraded++;
+        results.push({ email: u.email, from: currentPlan || '?', to: 'executive', action: 'upgraded' });
+      }
+
+      return { total: testers.length, upgraded, skipped, results };
     }
   );
 

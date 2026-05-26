@@ -118,6 +118,142 @@ interface DashFn {
 /* ══════════════════════════════════════════════════════════
    COMPONENTE PRINCIPAL DO PAINEL
 ══════════════════════════════════════════════════════════ */
+/* ── TesterUpgradePanel — lista e upgrade executivo ─────────────── */
+const ADMIN_API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
+
+function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: string, type?: 'ok'|'err'|'warn') => void }) {
+  const [list,      setList]      = useState<any[]>([]);
+  const [loaded,    setLoaded]    = useState(false);
+  const [loading,   setLoading]   = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
+  const [result,    setResult]    = useState<any>(null);
+
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+
+  async function loadTesters() {
+    setLoading(true);
+    try {
+      const res = await fetch(`${ADMIN_API}/sys/g5r8t2/testers`, { headers: h });
+      const d   = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro ao carregar testers');
+      setList(d.testers || []);
+      setLoaded(true);
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function upgradeAll() {
+    if (!confirm(`Confirma upgrade de ${list.length} tester(s) para o plano Executive?`)) return;
+    setUpgrading(true);
+    setResult(null);
+    try {
+      const res = await fetch(`${ADMIN_API}/sys/g5r8t2/testers/upgrade-executive`, { method: 'POST', headers: h });
+      const d   = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro no upgrade');
+      setResult(d);
+      notify(`✅ ${d.upgraded} tester(s) migrado(s) para Executive!`, 'ok');
+      loadTesters(); // refresh lista
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally {
+      setUpgrading(false);
+    }
+  }
+
+  const PLAN_COLOR: Record<string, string> = {
+    executive:    'text-amber-400',
+    ultra:        'text-purple-400',
+    pro:          'text-teal-400',
+    'pro-tester': 'text-emerald-300',
+    free:         'text-gray-400',
+  };
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.12)] rounded-xl p-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
+        <div>
+          <div className="text-sm font-bold text-[#d1fae5]">👥 Base de Testers</div>
+          <div className="text-xs text-[rgba(16,185,129,.4)] mt-0.5">Visualize e libere acesso Executive para todos os testers</div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={loadTesters}
+            disabled={loading}
+            className="text-xs font-semibold px-4 py-2 rounded-lg bg-[rgba(16,185,129,.1)] border border-[rgba(16,185,129,.2)] text-[#10b981] hover:bg-[rgba(16,185,129,.18)] transition-colors disabled:opacity-50"
+          >
+            {loading ? '⟳ Carregando...' : loaded ? '🔄 Recarregar' : '🔍 Carregar testers'}
+          </button>
+          {loaded && list.length > 0 && (
+            <button
+              onClick={upgradeAll}
+              disabled={upgrading}
+              className="text-xs font-bold px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+            >
+              {upgrading ? '⟳ Atualizando...' : `⭐ Upgrade Executive (${list.length})`}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Resultado do upgrade */}
+      {result && (
+        <div className="mb-4 p-3 rounded-lg bg-[rgba(16,185,129,.06)] border border-[rgba(16,185,129,.2)] text-xs">
+          <div className="font-bold text-[#10b981] mb-1">Resultado: {result.upgraded} migrado(s) · {result.skipped} já eram Executive</div>
+          <div className="space-y-0.5 max-h-32 overflow-y-auto">
+            {result.results?.map((r: any, i: number) => (
+              <div key={i} className={`font-mono ${r.action.includes('skipped') ? 'text-[rgba(16,185,129,.4)]' : 'text-[#6ee7b7]'}`}>
+                {r.action.includes('skipped') ? '✓' : '↑'} {r.email} — {r.from} → {r.to} {r.action.includes('skipped') ? '(já executive)' : ''}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Lista de testers */}
+      {loaded && (
+        list.length === 0 ? (
+          <div className="text-center text-xs text-[rgba(16,185,129,.3)] py-8">Nenhum tester encontrado na base.</div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-[rgba(16,185,129,.08)]">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-[rgba(16,185,129,.08)]">
+                  {['#', 'Nome', 'E-mail', 'Plano atual', 'Minutos', 'Números', 'Tester desde'].map(h => (
+                    <th key={h} className="text-left px-3 py-2 text-[rgba(16,185,129,.4)] font-semibold uppercase tracking-wide text-[10px]">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((t, i) => (
+                  <tr key={t.id} className="border-b border-[rgba(16,185,129,.05)] hover:bg-[rgba(16,185,129,.03)] transition-colors">
+                    <td className="px-3 py-2.5 text-[rgba(16,185,129,.3)]">{i + 1}</td>
+                    <td className="px-3 py-2.5 text-[#d1fae5] font-medium">{t.name || '—'}</td>
+                    <td className="px-3 py-2.5 text-[rgba(16,185,129,.6)] font-mono">{t.email}</td>
+                    <td className="px-3 py-2.5">
+                      <span className={`font-bold ${PLAN_COLOR[t.planName] || 'text-gray-400'}`}>
+                        {t.planLabel}
+                        {t.planName === 'executive' && ' ✓'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-[rgba(16,185,129,.6)]">{t.minutesAvail.toFixed(1)} min</td>
+                    <td className="px-3 py-2.5 text-[rgba(16,185,129,.6)]">{t.numbersConnected} conectado(s)</td>
+                    <td className="px-3 py-2.5 text-[rgba(16,185,129,.4)]">
+                      {t.testerSince ? new Date(t.testerSince).toLocaleDateString('pt-BR') : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }) {
   const {
     stats, tab, growth, loading, subLoading, users, userTotal, userSearch, userOffset,
@@ -440,6 +576,9 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
         {/* ═══ TESTERS ═══ */}
         {tab === 'testers' && (
           <div className="space-y-5">
+            {/* ── Painel: Base de Testers + Upgrade Executive ── */}
+            <TesterUpgradePanel token={ctx.token} notify={fn.notify} />
+
             {/* Gerador de convite */}
             <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.12)] rounded-xl p-6">
               <div className="text-sm font-bold text-[#d1fae5] mb-4">🧪 Gerar Convite Tester</div>
