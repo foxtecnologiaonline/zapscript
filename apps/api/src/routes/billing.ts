@@ -359,7 +359,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           prisma.minuteBalance.upsert({
             where:  { userId },
             create: { userId, availableMinutes: plan.minutesPerMonth, resetAt: nextPeriod, lastAlertSent: null },
-            update: { availableMinutes: plan.minutesPerMonth, lastAlertSent: null },
+            update: { availableMinutes: plan.minutesPerMonth, resetAt: nextPeriod, lastAlertSent: null },
           }),
         ]);
 

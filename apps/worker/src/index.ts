@@ -151,7 +151,7 @@ async function saveTranscription(params: {
     // Débito atômico: só desconta se tiver saldo suficiente
     const balanceUpdate = await tx.minuteBalance.updateMany({
       where: { userId, availableMinutes: { gte: durationMin } },
-      data:  { availableMinutes: { decrement: durationMin } },
+      data:  { availableMinutes: { decrement: durationMin }, accumulatedMinutes: { increment: durationMin } },
     });
 
     if (balanceUpdate.count === 0) {

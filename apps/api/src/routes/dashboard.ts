@@ -26,7 +26,8 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     ]);
 
     const minutesTotal  = sub?.plan.minutesPerMonth || 0;
-    const minutesAvail  = balance?.availableMinutes || 0;
+    // availableMinutes pode ser maior que minutesTotal após downgrade — limitar ao total
+    const minutesAvail  = Math.min(balance?.availableMinutes || 0, minutesTotal);
     const minutesUsed   = Math.max(0, minutesTotal - minutesAvail);
 
     return {
@@ -37,6 +38,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       minutesAvailable:    +minutesAvail.toFixed(1),
       minutesTotal,
       minutesPct:          minutesTotal > 0 ? Math.round((minutesUsed / minutesTotal) * 100) : 0,
+      accumulatedMinutes:  +(balance?.accumulatedMinutes || 0).toFixed(1),
       activeNumbers,
       avgConfidence:       +(avgConf._avg.confidenceScore || 99.1).toFixed(1),
       planName:            sub?.plan.label || 'Free',
