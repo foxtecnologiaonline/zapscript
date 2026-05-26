@@ -731,6 +731,55 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // POST /admin/testers/downgrade-pro — reverte testers para o plano Pro padrão
+  app.post(
+    '/testers/downgrade-pro',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (_req, _reply) => {
+      const proPlan = await prisma.plan.findFirst({ where: { name: 'pro' } });
+      if (!proPlan) return { error: 'Plano Pro não encontrado na base.' };
+
+      const testers = await prisma.user.findMany({
+        where: { isTester: true, deletedAt: null },
+        include: { subscription: { include: { plan: true } } },
+      });
+
+      let downgraded = 0;
+      let skipped    = 0;
+      const results: { email: string; from: string; to: string; action: string }[] = [];
+
+      for (const u of testers) {
+        const currentPlan = u.subscription?.plan?.name;
+        if (currentPlan === 'pro') {
+          skipped++;
+          results.push({ email: u.email, from: currentPlan, to: 'pro', action: 'skipped (já pro)' });
+          continue;
+        }
+
+        await prisma.$transaction([
+          prisma.subscription.update({
+            where: { userId: u.id },
+            data: {
+              planId:              proPlan.id,
+              status:              'active',
+              asaasSubscriptionId: null,
+              currentPeriodEnd:    null,
+            },
+          }),
+          prisma.minuteBalance.update({
+            where: { userId: u.id },
+            data:  { availableMinutes: proPlan.minutesPerMonth, lastAlertSent: null },
+          }),
+        ]);
+
+        downgraded++;
+        results.push({ email: u.email, from: currentPlan || '?', to: 'pro', action: 'downgraded' });
+      }
+
+      return { total: testers.length, downgraded, skipped, results };
+    }
+  );
+
   // POST /admin/testers/upgrade-pro-tester — migra todos os testers para plano Pro-Tester
   app.post(
     '/testers/upgrade-pro-tester',

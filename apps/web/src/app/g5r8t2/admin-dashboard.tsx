@@ -127,6 +127,7 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
   const [loading,           setLoading]           = useState(false);
   const [upgrading,         setUpgrading]         = useState(false);
   const [upgradingPT,       setUpgradingPT]       = useState(false);
+  const [downgradingPro,    setDowngradingPro]    = useState(false);
   const [result,            setResult]            = useState<any>(null);
 
   const h = { 'x-admin-token': token, 'content-type': 'application/json' };
@@ -161,6 +162,25 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
       notify(`❌ ${e.message}`, 'err');
     } finally {
       setUpgrading(false);
+    }
+  }
+
+  async function downgradeToProPlan() {
+    const elegivel = list.filter(t => t.planName !== 'pro');
+    if (!confirm(`Reverter ${elegivel.length} tester(s) para o plano Pro?\n\nEssa ação reduz minutos e limites de todos exceto quem já é Pro.`)) return;
+    setDowngradingPro(true);
+    setResult(null);
+    try {
+      const res = await fetch(`${ADMIN_API}/sys/g5r8t2/testers/downgrade-pro`, { method: 'POST', headers: h });
+      const d   = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro no downgrade');
+      setResult(d);
+      notify(`↩️ ${d.downgraded} tester(s) revertido(s) para Pro!`, 'ok');
+      loadTesters();
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally {
+      setDowngradingPro(false);
     }
   }
 
@@ -209,15 +229,22 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
           {loaded && list.length > 0 && (
             <>
               <button
+                onClick={downgradeToProPlan}
+                disabled={downgradingPro || upgradingPT || upgrading}
+                className="text-xs font-bold px-4 py-2 rounded-lg bg-teal-500/20 border border-teal-500/30 text-teal-300 hover:bg-teal-500/30 transition-colors disabled:opacity-50"
+              >
+                {downgradingPro ? '⟳ Revertendo...' : `↩️ Pro · ${list.filter(t => t.planName !== 'pro').length} elegíveis`}
+              </button>
+              <button
                 onClick={upgradeProTester}
-                disabled={upgradingPT || upgrading}
+                disabled={upgradingPT || upgrading || downgradingPro}
                 className="text-xs font-bold px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
               >
                 {upgradingPT ? '⟳ Migrando...' : `🧪 Pro-Tester · 150min (${list.filter(t => t.planName !== 'executive' && t.planName !== 'pro-tester').length})`}
               </button>
               <button
                 onClick={upgradeAll}
-                disabled={upgrading || upgradingPT}
+                disabled={upgrading || upgradingPT || downgradingPro}
                 className="text-xs font-bold px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
               >
                 {upgrading ? '⟳ Atualizando...' : `⭐ Executive · 500min (${list.filter(t => t.planName !== 'executive').length})`}
