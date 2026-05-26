@@ -122,11 +122,12 @@ interface DashFn {
 const ADMIN_API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 
 function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: string, type?: 'ok'|'err'|'warn') => void }) {
-  const [list,      setList]      = useState<any[]>([]);
-  const [loaded,    setLoaded]    = useState(false);
-  const [loading,   setLoading]   = useState(false);
-  const [upgrading, setUpgrading] = useState(false);
-  const [result,    setResult]    = useState<any>(null);
+  const [list,              setList]              = useState<any[]>([]);
+  const [loaded,            setLoaded]            = useState(false);
+  const [loading,           setLoading]           = useState(false);
+  const [upgrading,         setUpgrading]         = useState(false);
+  const [upgradingPT,       setUpgradingPT]       = useState(false);
+  const [result,            setResult]            = useState<any>(null);
 
   const h = { 'x-admin-token': token, 'content-type': 'application/json' };
 
@@ -155,11 +156,30 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
       if (!res.ok) throw new Error(d.error || 'Erro no upgrade');
       setResult(d);
       notify(`✅ ${d.upgraded} tester(s) migrado(s) para Executive!`, 'ok');
-      loadTesters(); // refresh lista
+      loadTesters();
     } catch (e: any) {
       notify(`❌ ${e.message}`, 'err');
     } finally {
       setUpgrading(false);
+    }
+  }
+
+  async function upgradeProTester() {
+    const elegivel = list.filter(t => t.planName !== 'executive' && t.planName !== 'pro-tester');
+    if (!confirm(`Migrar ${elegivel.length} tester(s) para Pro-Tester (150 min, 2 números, todas as features)?\n\nTesters já em Executive não serão alterados.`)) return;
+    setUpgradingPT(true);
+    setResult(null);
+    try {
+      const res = await fetch(`${ADMIN_API}/sys/g5r8t2/testers/upgrade-pro-tester`, { method: 'POST', headers: h });
+      const d   = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro no upgrade');
+      setResult(d);
+      notify(`✅ ${d.upgraded} tester(s) migrado(s) para Pro-Tester!`, 'ok');
+      loadTesters();
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally {
+      setUpgradingPT(false);
     }
   }
 
@@ -187,13 +207,22 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
             {loading ? '⟳ Carregando...' : loaded ? '🔄 Recarregar' : '🔍 Carregar testers'}
           </button>
           {loaded && list.length > 0 && (
-            <button
-              onClick={upgradeAll}
-              disabled={upgrading}
-              className="text-xs font-bold px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
-            >
-              {upgrading ? '⟳ Atualizando...' : `⭐ Upgrade Executive (${list.length})`}
-            </button>
+            <>
+              <button
+                onClick={upgradeProTester}
+                disabled={upgradingPT || upgrading}
+                className="text-xs font-bold px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
+              >
+                {upgradingPT ? '⟳ Migrando...' : `🧪 Pro-Tester · 150min (${list.filter(t => t.planName !== 'executive' && t.planName !== 'pro-tester').length})`}
+              </button>
+              <button
+                onClick={upgradeAll}
+                disabled={upgrading || upgradingPT}
+                className="text-xs font-bold px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+              >
+                {upgrading ? '⟳ Atualizando...' : `⭐ Executive · 500min (${list.filter(t => t.planName !== 'executive').length})`}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -201,7 +230,7 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
       {/* Resultado do upgrade */}
       {result && (
         <div className="mb-4 p-3 rounded-lg bg-[rgba(16,185,129,.06)] border border-[rgba(16,185,129,.2)] text-xs">
-          <div className="font-bold text-[#10b981] mb-1">Resultado: {result.upgraded} migrado(s) · {result.skipped} já eram Executive</div>
+          <div className="font-bold text-[#10b981] mb-1">Resultado: {result.upgraded} migrado(s) · {result.skipped} ignorado(s)</div>
           <div className="space-y-0.5 max-h-32 overflow-y-auto">
             {result.results?.map((r: any, i: number) => (
               <div key={i} className={`font-mono ${r.action.includes('skipped') ? 'text-[rgba(16,185,129,.4)]' : 'text-[#6ee7b7]'}`}>

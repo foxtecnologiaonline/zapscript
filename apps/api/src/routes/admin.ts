@@ -731,6 +731,71 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // POST /admin/testers/upgrade-pro-tester — migra todos os testers para plano Pro-Tester
+  app.post(
+    '/testers/upgrade-pro-tester',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (_req, _reply) => {
+      // Garante que o plano pro-tester existe (upsert)
+      const ptPlan = await prisma.plan.upsert({
+        where:  { name: 'pro-tester' },
+        update: {},
+        create: {
+          name:            'pro-tester',
+          label:           'Pro Tester',
+          minutesPerMonth: 150,
+          maxNumbers:      2,
+          priceBrl:        0,   // gratuito — plano interno
+          features:        JSON.stringify([
+            '150 min/mês', '2 números WhatsApp', 'Transcrição automática',
+            'Ponto chave IA', 'Busca full-text', 'Exportação CSV',
+            'Tags', 'Tradução automática', 'Webhook personalizado', 'Modo privado',
+          ]),
+        },
+      });
+
+      const testers = await prisma.user.findMany({
+        where: { isTester: true, deletedAt: null },
+        include: { subscription: { include: { plan: true } } },
+      });
+
+      let upgraded = 0;
+      let skipped  = 0;
+      const results: { email: string; from: string; to: string; action: string }[] = [];
+
+      for (const u of testers) {
+        const currentPlan = u.subscription?.plan?.name;
+        // Não faz downgrade de quem já tem executive
+        if (currentPlan === 'executive' || currentPlan === 'pro-tester') {
+          skipped++;
+          results.push({ email: u.email, from: currentPlan, to: 'pro-tester', action: `skipped (já ${currentPlan})` });
+          continue;
+        }
+
+        await prisma.$transaction([
+          prisma.subscription.update({
+            where: { userId: u.id },
+            data: {
+              planId:              ptPlan.id,
+              status:              'active',
+              asaasSubscriptionId: null,
+              currentPeriodEnd:    null,
+            },
+          }),
+          prisma.minuteBalance.update({
+            where: { userId: u.id },
+            data:  { availableMinutes: ptPlan.minutesPerMonth, lastAlertSent: null },
+          }),
+        ]);
+
+        upgraded++;
+        results.push({ email: u.email, from: currentPlan || '?', to: 'pro-tester', action: 'upgraded' });
+      }
+
+      return { total: testers.length, upgraded, skipped, results };
+    }
+  );
+
   // GET /admin/tickets — tickets de suporte com filtro e paginação
   app.get<{ Querystring: { limit?: string; offset?: string; status?: string } }>(
     '/tickets',
