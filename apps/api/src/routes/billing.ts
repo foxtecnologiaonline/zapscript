@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
+import { calculateProration } from '../lib/proration';
 
 /* ─────────────────────────────────────────────────────────
    ASAAS  — Billing Routes
@@ -181,6 +182,158 @@ export default async function billingRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── GET /billing/upgrade-preview ─────────────────────
+  // Simula a proration sem criar cobranças — usado pelo modal do frontend
+  app.get<{ Querystring: { targetPlan: string } }>(
+    '/upgrade-preview',
+    auth,
+    async (req: any, reply) => {
+      const { targetPlan } = req.query;
+      const userId         = req.user.sub;
+
+      const newPrice = PLAN_PRICES[targetPlan];
+      if (!newPrice) return reply.code(400).send({ error: 'Plano inválido' });
+
+      const sub = await prisma.subscription.findUnique({
+        where:   { userId },
+        include: { plan: true },
+      });
+
+      if (!sub || !sub.plan || sub.plan.priceBrl === 0) {
+        return reply.code(400).send({ error: 'Use /billing/checkout para sair do plano gratuito.' });
+      }
+
+      const currentPrice = sub.plan.priceBrl;
+      if (newPrice <= currentPrice) {
+        return reply.code(400).send({ error: 'Plano destino deve ser mais caro que o atual.' });
+      }
+
+      const proration = calculateProration(currentPrice, newPrice, sub.currentPeriodEnd);
+
+      return {
+        currentPlanName:  sub.plan.name,
+        currentPlanLabel: sub.plan.label,
+        currentPlanPrice: currentPrice,
+        targetPlanName:   targetPlan,
+        targetPlanPrice:  newPrice,
+        remainingDays:    proration.remainingDays,
+        totalDays:        proration.totalDays,
+        proratedAmount:   proration.proratedAmount,
+        shouldCharge:     proration.shouldCharge,
+        nextCycleDate:    sub.currentPeriodEnd ?? null,
+      };
+    }
+  );
+
+  // ── POST /billing/upgrade ─────────────────────────────
+  // Upgrade de plano pago → pago: cobra apenas a diferença proporcional
+  app.post<{ Body: { targetPlan: string; billingType?: string } }>(
+    '/upgrade',
+    { ...auth, config: { rateLimit: { max: 3, timeWindow: '1 minute' } } },
+    async (req: any, reply) => {
+      const { targetPlan, billingType = 'UNDEFINED' } = req.body;
+      const userId = req.user.sub;
+
+      const newPrice = PLAN_PRICES[targetPlan];
+      if (!newPrice) return reply.code(400).send({ error: 'Plano inválido' });
+
+      const newPlan = await prisma.plan.findUnique({ where: { name: targetPlan } });
+      if (!newPlan) return reply.code(400).send({ error: 'Plano não encontrado no banco' });
+
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return reply.code(401).send({ error: 'Usuário não encontrado' });
+
+      const sub = await prisma.subscription.findUnique({
+        where:   { userId },
+        include: { plan: true },
+      });
+
+      if (!sub || !sub.plan || sub.plan.priceBrl === 0) {
+        return reply.code(400).send({ error: 'Use /billing/checkout para sair do plano gratuito.' });
+      }
+
+      const currentPrice = sub.plan.priceBrl;
+      if (newPrice <= currentPrice) {
+        return reply.code(400).send({ error: 'Plano destino deve ser mais caro que o atual.' });
+      }
+
+      const proration = calculateProration(currentPrice, newPrice, sub.currentPeriodEnd);
+
+      // ── Proration irrisória: troca imediata sem nova cobrança ──
+      if (!proration.shouldCharge) {
+        const nextPeriod = sub.currentPeriodEnd ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        await prisma.$transaction([
+          prisma.subscription.update({
+            where: { userId },
+            data:  { planId: newPlan.id, status: 'active', currentPeriodEnd: nextPeriod },
+          }),
+          prisma.minuteBalance.update({
+            where: { userId },
+            data:  { availableMinutes: newPlan.minutesPerMonth, lastAlertSent: null },
+          }),
+        ]);
+        return { switched: true, message: 'Plano atualizado imediatamente (sem custo adicional).' };
+      }
+
+      // ── Obter/criar cliente Asaas ──
+      let asaasCustomerId: string;
+      try {
+        asaasCustomerId = await getOrCreateCustomer({
+          id: user.id, name: user.name ?? 'Usuário', email: user.email, document: user.document,
+        });
+      } catch (err) {
+        app.log.error({ err }, 'Asaas customer error (upgrade)');
+        return reply.code(503).send({ error: 'Serviço de pagamento indisponível. Tente novamente.' });
+      }
+
+      // ── Cancelar assinatura recorrente atual no Asaas ──
+      if (sub.asaasSubscriptionId) {
+        try {
+          await asaas(`/subscriptions/${sub.asaasSubscriptionId}`, { method: 'DELETE' });
+        } catch (err) {
+          app.log.warn({ err }, 'Asaas: falha ao cancelar assinatura antiga no upgrade');
+        }
+      }
+
+      // ── Criar cobrança avulsa pelo valor proporcional ──
+      const today     = new Date().toISOString().split('T')[0];
+      const chargeRes = await asaas('/payments', {
+        method: 'POST',
+        body:   JSON.stringify({
+          customer:          asaasCustomerId,
+          billingType:       billingType.toUpperCase(),
+          dueDate:           today,
+          value:             proration.proratedAmount,
+          description:       `ZapScript — Upgrade para ${newPlan.label} (${proration.remainingDays} dias restantes do ciclo atual)`,
+          externalReference: `${userId}|${targetPlan}|upgrade`,
+        }),
+      });
+
+      const charge = await chargeRes.json() as any;
+      if (!charge?.id) {
+        app.log.error({ charge }, 'Asaas: erro ao criar cobrança proporcional');
+        return reply.code(500).send({ error: 'Erro ao criar cobrança. Tente novamente.' });
+      }
+
+      const paymentUrl = charge.invoiceUrl || `https://www.asaas.com/c/${charge.id}`;
+
+      // Salvar estado de transição no banco (asaasSubscriptionId = null, status = pending)
+      await prisma.subscription.update({
+        where: { userId },
+        data:  { asaasCustomerId, asaasSubscriptionId: null, status: 'pending' },
+      }).catch(() => null);
+
+      app.log.info(`Upgrade iniciado: userId=${userId} de ${sub.plan.name} para ${targetPlan} — proration R$${proration.proratedAmount}`);
+
+      return {
+        proratedAmount: proration.proratedAmount,
+        remainingDays:  proration.remainingDays,
+        url:            paymentUrl,
+        chargeId:       charge.id,
+      };
+    }
+  );
+
   // ── POST /billing/cancel ──────────────────────────────
   // Cancela a assinatura no Asaas e faz downgrade para o plano free
   app.post('/cancel', auth, async (req: any, reply) => {
@@ -311,19 +464,22 @@ export default async function billingRoutes(app: FastifyInstance) {
       // ── Pagamento confirmado (PIX, cartão, boleto) ──
       case 'PAYMENT_CONFIRMED':
       case 'PAYMENT_RECEIVED': {
-        const paymentId  = payment?.id as string | undefined;
-        // payment.subscription é string (ID), não objeto — usar payment.externalReference diretamente
+        const paymentId   = payment?.id as string | undefined;
         const externalRef = payment?.externalReference
           || payment?.subscription?.externalReference
           || '';
 
-        const [userId, planName] = externalRef.split('|');
+        const parts      = externalRef.split('|');
+        const userId     = parts[0];
+        const planName   = parts[1];
+        const upgradeTag = parts[2]; // 'upgrade' se for cobrança proporcional
+
         if (!userId || !planName) {
           app.log.error(`Webhook ${eventType}: externalReference malformado: "${externalRef}" (paymentId: ${paymentId})`);
           break;
         }
 
-        // Idempotência: ignorar webhooks duplicados
+        // Idempotência
         if (paymentId && await isPaymentProcessed(paymentId)) {
           app.log.info(`Webhook duplicado ignorado: paymentId=${paymentId}`);
           break;
@@ -335,21 +491,82 @@ export default async function billingRoutes(app: FastifyInstance) {
           break;
         }
 
-        const asaasSubId  = payment?.subscription?.id;
-        const asaasCustId = payment?.customer?.id || payment?.customerId;
+        const asaasSubId  = payment?.subscription?.id || null;
+        const asaasCustId = payment?.customer?.id || payment?.customerId || null;
 
-        // Calcular próximo período (30 dias)
+        // Próximo período: 30 dias a partir de hoje
         const nextPeriod = new Date();
         nextPeriod.setDate(nextPeriod.getDate() + 30);
 
+        // ── Pagamento de proration (upgrade pago → pago) ──
+        if (upgradeTag === 'upgrade') {
+          // 1. Atualizar plano no banco imediatamente
+          await prisma.$transaction([
+            prisma.subscription.upsert({
+              where:  { userId },
+              create: {
+                userId,
+                planId:           plan.id,
+                asaasCustomerId:  asaasCustId,
+                status:           'active',
+                currentPeriodEnd: nextPeriod,
+              },
+              update: {
+                planId:           plan.id,
+                asaasCustomerId:  asaasCustId || undefined,
+                status:           'active',
+                currentPeriodEnd: nextPeriod,
+              },
+            }),
+            prisma.minuteBalance.upsert({
+              where:  { userId },
+              create: { userId, availableMinutes: plan.minutesPerMonth, resetAt: nextPeriod, lastAlertSent: null },
+              update: { availableMinutes: plan.minutesPerMonth, resetAt: nextPeriod, lastAlertSent: null },
+            }),
+          ]);
+
+          // 2. Criar nova assinatura recorrente no Asaas (cobranças futuras)
+          try {
+            const nextDueDate = nextPeriod.toISOString().split('T')[0];
+            const newSubRes   = await asaas('/subscriptions', {
+              method: 'POST',
+              body:   JSON.stringify({
+                customer:          asaasCustId,
+                billingType:       payment?.billingType || 'UNDEFINED',
+                cycle:             'MONTHLY',
+                value:             PLAN_PRICES[planName] ?? plan.priceBrl,
+                nextDueDate,
+                description:       `ZapScript ${plan.label}`,
+                externalReference: `${userId}|${planName}`,
+              }),
+            });
+            const newSub = await newSubRes.json() as any;
+            if (newSub?.id) {
+              await prisma.subscription.update({
+                where: { userId },
+                data:  { asaasSubscriptionId: newSub.id },
+              });
+              app.log.info(`Upgrade concluído: userId=${userId} plano=${planName} nova sub=${newSub.id}`);
+            } else {
+              app.log.error({ newSub }, `Asaas: falha ao criar assinatura recorrente pós-upgrade userId=${userId}`);
+            }
+          } catch (err) {
+            app.log.error({ err }, `Asaas: exceção ao criar assinatura recorrente pós-upgrade userId=${userId}`);
+          }
+
+          if (paymentId) await markPaymentProcessed(paymentId);
+          break;
+        }
+
+        // ── Pagamento de assinatura normal (checkout inicial ou renovação) ──
         await prisma.$transaction([
           prisma.subscription.upsert({
             where:  { userId },
             create: {
               userId,
               planId:              plan.id,
-              asaasSubscriptionId: asaasSubId || null,
-              asaasCustomerId:     asaasCustId || null,
+              asaasSubscriptionId: asaasSubId,
+              asaasCustomerId:     asaasCustId,
               status:              'active',
               currentPeriodEnd:    nextPeriod,
             },

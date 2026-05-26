@@ -98,6 +98,162 @@ function formatDocument(val: string): string {
   return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8,12)}-${n.slice(12)}`;
 }
 
+/* ── Modal de upgrade com proration ── */
+interface UpgradePreview {
+  currentPlanLabel: string;
+  currentPlanPrice: number;
+  targetPlanName:   string;
+  targetPlanPrice:  number;
+  proratedAmount:   number;
+  remainingDays:    number;
+  totalDays:        number;
+  shouldCharge:     boolean;
+  nextCycleDate:    string | null;
+}
+
+function UpgradeModal({
+  preview,
+  billingType,
+  setBillingType,
+  loading,
+  onConfirm,
+  onCancel,
+}: {
+  preview: UpgradePreview;
+  billingType: string;
+  setBillingType: (v: string) => void;
+  loading: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const targetLabel = PLANS.find(p => p.name === preview.targetPlanName)?.label ?? preview.targetPlanName;
+  const nextDate = preview.nextCycleDate
+    ? new Date(preview.nextCycleDate).toLocaleDateString('pt-BR')
+    : '30 dias';
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-2xl p-6"
+        style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-primary)/.25)' }}
+        onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="text-center mb-5">
+          <div className="w-12 h-12 rounded-full bg-brand-primary/10 flex items-center justify-center mx-auto mb-3 text-2xl">
+            ⭐
+          </div>
+          <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
+            Upgrade para {targetLabel}
+          </h3>
+          <p className="text-xs mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
+            {preview.currentPlanLabel} → {targetLabel}
+          </p>
+        </div>
+
+        {/* Breakdown */}
+        <div className="rounded-xl p-4 mb-4 space-y-3"
+          style={{ background: 'rgba(var(--color-primary)/.06)', border: '1px solid rgba(var(--color-primary)/.15)' }}>
+
+          {preview.shouldCharge ? (
+            <>
+              <div className="flex justify-between items-baseline">
+                <span className="text-xs" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                  Paga agora <span className="text-[10px] opacity-70">({preview.remainingDays} dias restantes)</span>
+                </span>
+                <span className="font-black text-xl" style={{ color: 'rgb(var(--color-primary))' }}>
+                  {brl(preview.proratedAmount)}
+                </span>
+              </div>
+              <div className="h-px" style={{ background: 'rgba(var(--color-primary)/.12)' }} />
+              <div className="flex justify-between items-baseline">
+                <span className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                  A partir de {nextDate}
+                </span>
+                <span className="font-bold text-sm" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                  {brl(preview.targetPlanPrice)}<span className="font-normal text-xs">/mês</span>
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-1">
+              <div className="font-black text-xl mb-1" style={{ color: 'rgb(var(--color-primary))' }}>
+                Sem custo adicional
+              </div>
+              <div className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                A diferença é menor que R$1,00. Troca imediata!
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Cálculo detalhado */}
+        {preview.shouldCharge && (
+          <details className="mb-4 group">
+            <summary className="text-[10px] cursor-pointer select-none flex items-center gap-1"
+              style={{ color: 'rgb(var(--color-text-muted))' }}>
+              <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+              Como calculamos?
+            </summary>
+            <div className="mt-2 rounded-lg p-3 text-[10px] space-y-1"
+              style={{ background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-text-muted))' }}>
+              <div>Diferença mensal: {brl(preview.targetPlanPrice)} − {brl(preview.currentPlanPrice)} = {brl(preview.targetPlanPrice - preview.currentPlanPrice)}</div>
+              <div>Dias restantes no ciclo: {preview.remainingDays} / {preview.totalDays}</div>
+              <div className="font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>
+                Total: {brl(preview.targetPlanPrice - preview.currentPlanPrice)} × {preview.remainingDays}/{preview.totalDays} = {brl(preview.proratedAmount)}
+              </div>
+            </div>
+          </details>
+        )}
+
+        {/* Forma de pagamento (só se houver cobrança) */}
+        {preview.shouldCharge && (
+          <div className="mb-4">
+            <p className="text-xs font-semibold mb-2" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Forma de pagamento
+            </p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {BILLING_TYPES.map(bt => (
+                <button key={bt.value} onClick={() => setBillingType(bt.value)}
+                  className="text-left p-2.5 rounded-xl border transition-all"
+                  style={{
+                    borderColor: billingType === bt.value ? 'rgb(var(--color-primary))' : 'rgb(var(--color-border))',
+                    background:  billingType === bt.value ? 'rgba(var(--color-primary)/.08)' : 'transparent',
+                  }}>
+                  <div className="font-semibold text-[11px]">{bt.label}</div>
+                  <div className="text-[10px] opacity-60 mt-0.5">{bt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Botões */}
+        <div className="flex gap-2">
+          <button onClick={onCancel} disabled={loading}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+            style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
+            Cancelar
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50">
+            {loading
+              ? 'Aguarde...'
+              : preview.shouldCharge
+              ? `Pagar ${brl(preview.proratedAmount)} →`
+              : 'Confirmar upgrade →'}
+          </button>
+        </div>
+
+        <p className="text-center text-[10px] mt-3" style={{ color: 'rgb(var(--color-text-muted))' }}>
+          Pagamento seguro via Asaas · Cancele a qualquer momento
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /* ── Modal de CPF/CNPJ ── */
 function DocumentModal({
   planLabel,
@@ -197,10 +353,12 @@ function PlanoContent() {
   const [stats, setStats]             = useState<Stats | null>(null);
   const [user, setUser]               = useState<User | null>(null);
   const [loading, setLoading]         = useState(true);
-  const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null);
-  const [billingType, setBillingType] = useState('UNDEFINED');
-  const [docModal, setDocModal]       = useState<string | null>(null);
-  const [showTable, setShowTable]     = useState(false);
+  const [checkoutPlan, setCheckoutPlan]     = useState<string | null>(null);
+  const [billingType, setBillingType]       = useState('UNDEFINED');
+  const [docModal, setDocModal]             = useState<string | null>(null);
+  const [showTable, setShowTable]           = useState(false);
+  const [upgradePreview, setUpgradePreview] = useState<UpgradePreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [empresasForm, setEmpresasForm] = useState({ whatsappNumbers: '', audiosPerMonth: '', integrations: '', email: '' });
   const [empresasLoading, setEmpresasLoading] = useState(false);
   const [empresasSent, setEmpresasSent]       = useState(false);
@@ -237,12 +395,47 @@ function PlanoContent() {
   }
 
   async function upgrade(planName: string) {
-    // Se o usuário não tem CPF/CNPJ, solicitar antes do checkout
     if (!user?.document) {
       setDocModal(planName);
       return;
     }
+    // Usuário já em plano pago → mostrar simulação de proration
+    if (currentPlan !== 'free') {
+      setPreviewLoading(true);
+      try {
+        const preview = await api.get<UpgradePreview>(`/billing/upgrade-preview?targetPlan=${planName}`);
+        setUpgradePreview(preview);
+      } catch (err: any) {
+        alert(err.message || 'Erro ao calcular upgrade. Tente novamente.');
+      } finally {
+        setPreviewLoading(false);
+      }
+      return;
+    }
     await doCheckout(planName);
+  }
+
+  async function doUpgrade() {
+    if (!upgradePreview) return;
+    const planName = upgradePreview.targetPlanName;
+    setCheckoutPlan(planName);
+    try {
+      const res = await api.post<any>('/billing/upgrade', { targetPlan: planName, billingType });
+      if (res.switched) {
+        window.location.href = '/dashboard/plano?upgrade=success';
+        return;
+      }
+      if (res.url) {
+        window.location.href = res.url;
+      } else {
+        alert('Não foi possível abrir o checkout. Tente novamente.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Erro ao processar upgrade.');
+    } finally {
+      setCheckoutPlan(null);
+      setUpgradePreview(null);
+    }
   }
 
   async function handleDocumentConfirm(document: string) {
@@ -438,7 +631,7 @@ function PlanoContent() {
               </ul>
 
               <button
-                disabled={isCurrent || plan.name === 'free' || checkoutPlan === plan.name}
+                disabled={isCurrent || plan.name === 'free' || checkoutPlan === plan.name || previewLoading}
                 onClick={() => upgrade(plan.name)}
                 className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold transition-all"
                 style={{
@@ -454,9 +647,10 @@ function PlanoContent() {
                   cursor: isCurrent || plan.name === 'free' ? 'not-allowed' : 'pointer',
                   boxShadow: plan.pop && !isCurrent ? 'rgba(var(--color-primary)/.25) 0 4px 14px' : 'none',
                 }}>
-                {isCurrent ? 'Plano atual' :
+                {isCurrent         ? 'Plano atual' :
                  plan.name === 'free' ? 'Gratuito' :
-                 checkoutPlan === plan.name ? 'Redirecionando...' :
+                 checkoutPlan === plan.name || (previewLoading) ? 'Calculando...' :
+                 currentPlan !== 'free' ? '↑ Fazer upgrade' :
                  'Assinar agora'}
               </button>
             </div>
@@ -582,6 +776,18 @@ function PlanoContent() {
           planLabel={PLANS.find(p => p.name === docModal)?.label || docModal}
           onConfirm={handleDocumentConfirm}
           onCancel={() => setDocModal(null)}
+        />
+      )}
+
+      {/* Modal de upgrade com proration */}
+      {upgradePreview && (
+        <UpgradeModal
+          preview={upgradePreview}
+          billingType={billingType}
+          setBillingType={setBillingType}
+          loading={!!checkoutPlan}
+          onConfirm={doUpgrade}
+          onCancel={() => setUpgradePreview(null)}
         />
       )}
     </div>
