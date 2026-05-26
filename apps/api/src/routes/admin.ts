@@ -671,7 +671,7 @@ export default async function adminRoutes(app: FastifyInstance) {
   app.post(
     '/testers/upgrade-executive',
     { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
-    async (_req, reply) => {
+    async (_req, _reply) => {
       // Garante que o plano executive existe (upsert)
       const execPlan = await prisma.plan.upsert({
         where:  { name: 'executive' },
