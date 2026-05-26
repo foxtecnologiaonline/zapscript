@@ -63,6 +63,9 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
   const [qrLoading, setQrLoading]     = useState(false);
   const [copied, setCopied]           = useState(false);
 
+  // Detecta telefone fixo: 10 dígitos = DDD(2) + 8 dígitos (sem o "9" do celular)
+  const isLandline = phoneInput.replace(/\D/g, '').length === 10;
+
   const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -142,6 +145,13 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
   async function handleRequestCode() {
     const digits = phoneInput.replace(/\D/g, '');
     if (digits.length < 10) { setPhoneError('Informe DDD + número (mínimo 10 dígitos).'); return; }
+    // Telefone fixo (10 dígitos): código por número não funciona → redireciona para QR
+    if (digits.length === 10) {
+      setConnectMode('qr');
+      setPairingCode(null);
+      setPhoneError('');
+      return;
+    }
     setRequesting(true); setPhoneError(''); setPairingCode(null);
     try {
       const res = await api.post<{ code: string }>(`/numbers/${number.id}/pairing-code`, { phone: digits });
@@ -293,7 +303,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                           </span>
                           <input
                             className="flex-1 bg-transparent px-3 py-3 text-sm text-brand-text placeholder:text-brand-muted outline-none"
-                            placeholder="11 9 8765-4321"
+                            placeholder="11 9 8765-4321 ou 11 3333-4567"
                             value={phoneInput}
                             onChange={e => { setPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 11)); setPhoneError(''); }}
                             inputMode="numeric"
@@ -301,7 +311,27 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                           />
                         </div>
                         {phoneError && <p className="text-red-400 text-xs mt-1">{phoneError}</p>}
-                        <p className="text-[10px] text-brand-muted mt-1">DDD + número (ex: 11987654321)</p>
+                        {isLandline && (
+                          <div className="flex items-center justify-between gap-2 bg-amber-400/10 border border-amber-400/25 rounded-xl px-3 py-2.5 mt-1.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-base flex-shrink-0">📞</span>
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-amber-400">Telefone fixo detectado</p>
+                                <p className="text-[10px] text-brand-muted leading-tight">Código por número não funciona em fixos — use QR Code</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => { setConnectMode('qr'); setPhoneError(''); }}
+                              className="text-[11px] px-2.5 py-1.5 rounded-lg bg-amber-400/20 text-amber-400 border border-amber-400/30 hover:bg-amber-400/30 transition-colors font-semibold flex-shrink-0"
+                            >
+                              Usar QR →
+                            </button>
+                          </div>
+                        )}
+                        <p className="text-[10px] text-brand-muted mt-1">
+                          Celular: DDD + 9 + número (11 dígitos) · Fixo: DDD + número (10 dígitos) → use QR Code
+                        </p>
                       </div>
                       <button
                         onClick={handleRequestCode}
@@ -583,7 +613,7 @@ export default function NumerosPage() {
               </span>
               <input
                 className="flex-1 bg-transparent px-3 py-2.5 text-sm text-brand-text placeholder:text-brand-muted outline-none min-w-0"
-                placeholder="11 9 8765-4321"
+                placeholder="11 9 8765-4321 ou 11 3333-4567"
                 value={addPhone}
                 onChange={e => setAddPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
                 inputMode="numeric"
@@ -594,7 +624,7 @@ export default function NumerosPage() {
             </button>
           </div>
 
-          <p className="text-[10px] text-brand-muted">DDD + número sem o +55 (ex: 11987654321)</p>
+          <p className="text-[10px] text-brand-muted">Celular: 11987654321 (11 dígitos) · Fixo: 1133334567 (10 dígitos) — conecte via QR Code</p>
         </form>
 
         {error && !loading && (
