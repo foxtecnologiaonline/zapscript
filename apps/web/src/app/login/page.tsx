@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, Suspense } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
@@ -58,13 +59,8 @@ function LoginForm() {
       <div className="w-full max-w-[390px]">
 
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2.5 mb-2">
-            <div className="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center shadow-glow-green">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.96 9.96 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/>
-              </svg>
-            </div>
-            <span className="font-display font-bold text-xl">ZapScript</span>
+          <div className="flex items-center justify-center mb-3">
+            <Image src="/logo.png" alt="ZapScript" width={164} height={36} className="object-contain" />
           </div>
           <p className="text-sm font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>Bem-vindo de volta</p>
         </div>

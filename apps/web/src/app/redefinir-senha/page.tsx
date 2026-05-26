@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
@@ -97,8 +98,8 @@ export default function RedefinirSenhaPage() {
     <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 text-xl font-bold text-brand-primary">
-            <span className="w-2.5 h-2.5 rounded-full bg-brand-primary animate-pulse"/>ZapScript
+          <Link href="/" className="inline-flex items-center justify-center">
+            <Image src="/logo.png" alt="ZapScript" width={148} height={32} className="object-contain" />
           </Link>
           <p className="text-brand-text-secondary text-sm mt-2 font-light">Criar nova senha</p>
         </div>

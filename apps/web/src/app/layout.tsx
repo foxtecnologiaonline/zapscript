@@ -15,9 +15,9 @@ export const metadata: Metadata = {
   creator:     'ZapScript',
   robots:      { index: true, follow: true },
   icons: {
-    icon:             [{ url: '/icon.svg', type: 'image/svg+xml' }],
-    shortcut:         '/icon.svg',
-    apple:            '/icon.svg',
+    icon:    [{ url: '/icon.png', type: 'image/png' }],
+    shortcut: '/icon.png',
+    apple:    '/icon.png',
   },
   openGraph: {
     title:       'ZapScript — Transcrição Inteligente de Áudios do WhatsApp',

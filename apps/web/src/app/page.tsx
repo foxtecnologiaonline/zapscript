@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { ThemeToggleButton } from '@/components/ThemeProvider';
 
@@ -461,13 +462,8 @@ export default function HomePage() {
 
           {/* Nav */}
           <div className="relative flex items-center gap-3 mb-7" style={{ animation: 'fadeInUp .6s ease .1s both' }}>
-            <div className="w-10 h-10 bg-brand-primary rounded-2xl flex items-center justify-center shadow-glow-green flex-shrink-0">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.96 9.96 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/>
-              </svg>
-            </div>
-            <span className="font-display font-bold text-xl tracking-tight text-brand-text">ZapScript</span>
-            <div className="ml-auto flex items-center gap-2">
+            <Image src="/logo.png" alt="ZapScript" width={148} height={32} className="object-contain object-left flex-1" style={{ minWidth: 0 }} />
+            <div className="ml-auto flex items-center gap-2 flex-shrink-0">
               <ThemeToggleButton />
             </div>
           </div>

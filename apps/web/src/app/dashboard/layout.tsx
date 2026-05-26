@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
@@ -32,9 +33,8 @@ function NavContent({
   return (
     <>
       {/* Logo header */}
-      <div className="flex items-center gap-2 px-5 py-5 border-b dashboard-border">
-        <span className="w-2 h-2 rounded-full dashboard-primary animate-pulse" />
-        <span className="font-bold dashboard-primary text-base flex-1">ZapScript</span>
+      <div className="flex items-center gap-2 px-5 py-4 border-b dashboard-border">
+        <Image src="/logo.png" alt="ZapScript" width={126} height={28} className="flex-1 object-contain object-left" style={{ minWidth: 0 }} />
         {/* Close button — only shown inside mobile drawer */}
         {onClose && (
           <button
@@ -301,7 +301,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </svg>
           </button>
 
-          <span className="font-bold dashboard-primary text-base flex-1">ZapScript</span>
+          <Image src="/logo.png" alt="ZapScript" width={120} height={26} className="flex-1 object-contain object-left" style={{ minWidth: 0 }} />
 
           {user && (
             <div className="w-8 h-8 rounded-full dashboard-avatar flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
