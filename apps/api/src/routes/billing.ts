@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
+import { sendEmail } from '../lib/mailer';
 
 /* ─────────────────────────────────────────────────────────
    ASAAS  — Billing Routes
@@ -221,7 +222,11 @@ export default async function billingRoutes(app: FastifyInstance) {
       }),
       prisma.minuteBalance.update({
         where: { userId },
-        data:  { availableMinutes: freePlan.minutesPerMonth, lastAlertSent: null },
+        data:  {
+          availableMinutes: freePlan.minutesPerMonth,
+          resetAt:          new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          lastAlertSent:    null,
+        },
       }),
     ]);
 
@@ -381,6 +386,38 @@ export default async function billingRoutes(app: FastifyInstance) {
           where: { userId },
           data:  { status: 'past_due' },
         }).catch(() => null);
+
+        // Notificar usuário por e-mail sobre pagamento pendente
+        const overdueUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true, name: true },
+        }).catch(() => null);
+
+        if (overdueUser?.email) {
+          const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+          const firstName = overdueUser.name?.split(' ')[0] || 'você';
+          const html = `
+            <div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+              <div style="font-size:22px;font-weight:bold;margin-bottom:16px">⚠️ Pagamento não realizado</div>
+              <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
+                Olá, <strong>${firstName}</strong>!<br><br>
+                Identificamos que o pagamento da sua assinatura <strong>ZapScript</strong> não foi processado com sucesso.<br><br>
+                Para manter seu acesso e evitar a interrupção das transcrições, efetue o pagamento em até <strong>24 horas</strong>.
+                Após esse prazo, sua conta será movida automaticamente para o plano gratuito.<br><br>
+                Para regularizar, acesse o portal de pagamento:
+              </div>
+              <div style="margin:24px 0;text-align:center">
+                <a href="${APP_URL}/dashboard/plano" style="background:#f59e0b;color:#1c1204;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Regularizar pagamento →</a>
+              </div>
+              <div style="font-size:13px;color:#a7f3d0;margin-top:16px">
+                Você também pode acessar suas faturas em <a href="${APP_URL}/dashboard/plano" style="color:#10b981">Dashboard → Plano</a>.
+              </div>
+              <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+            </div>
+          `;
+          sendEmail(overdueUser.email, '⚠️ ZapScript — Pagamento não realizado — ação necessária', html)
+            .catch(err => app.log.error({ err }, 'Erro ao enviar e-mail de pagamento pendente'));
+        }
         break;
       }
 
@@ -410,7 +447,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           prisma.minuteBalance.upsert({
             where:  { userId },
             create: { userId, availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
-            update: { availableMinutes: freePlan.minutesPerMonth, lastAlertSent: null },
+            update: { availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
           }),
         ]);
         break;

@@ -806,19 +806,106 @@ logger.info('Worker de transcrição iniciado (WhatsApp + Upload manual)');
 //  Roda a cada hora e reseta saldos cujo resetAt já passou
 // ─────────────────────────────────────────────────────────────────
 async function resetExpiredMinutes() {
+  const now = new Date();
+
+  // ── Seção 1: Downgrade de assinaturas past_due após 24h de tolerância ──
+  try {
+    const graceCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24h atrás
+
+    const overdueList = await prisma.subscription.findMany({
+      where: {
+        status:           'past_due',
+        currentPeriodEnd: { lte: graceCutoff },
+      },
+      include: { plan: true, user: { select: { id: true, email: true, name: true } } },
+    });
+
+    if (overdueList.length > 0) {
+      logger.info(`[Cron] Fazendo downgrade de ${overdueList.length} assinatura(s) past_due...`);
+
+      const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
+
+      for (const sub of overdueList) {
+        if (!freePlan) continue;
+
+        const nextReset = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+        await prisma.$transaction([
+          prisma.subscription.update({
+            where: { id: sub.id },
+            data: {
+              planId:           freePlan.id,
+              status:           'canceled',
+              currentPeriodEnd: null,
+            },
+          }),
+          prisma.minuteBalance.upsert({
+            where:  { userId: sub.userId },
+            create: { userId: sub.userId, availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
+            update: { availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
+          }),
+        ]);
+
+        logger.info(`[Cron] Downgrade: ${sub.user.email} (${sub.plan.name} → free) por falta de pagamento`);
+
+        // Notificação por e-mail
+        if (sub.user.email) {
+          const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+          const firstName = sub.user.name?.split(' ')[0] || 'você';
+          const html = `
+            <div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+              <div style="font-size:22px;font-weight:bold;margin-bottom:16px">🔴 Sua assinatura foi cancelada</div>
+              <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
+                Olá, <strong>${firstName}</strong>!<br><br>
+                Por falta de pagamento, sua assinatura <strong>${sub.plan.label}</strong> foi cancelada e sua conta foi movida para o <strong>plano gratuito (20 min/mês)</strong>.<br><br>
+                Para reativar seu plano e recuperar todas as funcionalidades, basta renovar sua assinatura:
+              </div>
+              <div style="margin:24px 0;text-align:center">
+                <a href="${APP_URL}/dashboard/plano" style="background:#10b981;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Reativar assinatura →</a>
+              </div>
+              <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+            </div>
+          `;
+          sendEmail(sub.user.email, '🔴 ZapScript — Assinatura cancelada por falta de pagamento', html)
+            .catch(e => logger.warn(`[Cron] Erro ao enviar e-mail de downgrade: ${e.message}`));
+        }
+
+        // Notificação por WhatsApp
+        const wn = await prisma.whatsappNumber.findFirst({
+          where: { userId: sub.userId, status: 'connected', phoneNumber: { not: null } },
+          orderBy: { connectedAt: 'desc' },
+        }).catch(() => null);
+
+        if (wn?.zapiInstanceId && wn?.phoneNumber) {
+          const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+          const msg = `🔴 *ZapScript* — Assinatura cancelada\n\nOlá! Sua assinatura *${sub.plan.label}* foi cancelada por falta de pagamento.\n\nSua conta foi movida para o plano gratuito (20 min/mês).\n\nPara reativar:\n👉 ${APP_URL}/dashboard/plano`;
+          sendMessageViaEvolution(wn.zapiInstanceId, wn.phoneNumber, msg).catch(() => null);
+        }
+      }
+    }
+  } catch (err) {
+    logger.error(`[Cron] Erro no downgrade de past_due: ${(err as Error).message}`);
+  }
+
+  // ── Seção 2: Reset mensal de minutos expirados ──
   try {
     const expired = await prisma.minuteBalance.findMany({
-      where:   { resetAt: { lte: new Date() } },
+      where:   { resetAt: { lte: now } },
       include: { user: { include: { subscription: { include: { plan: true } } } } },
     });
 
-    if (expired.length === 0) return;
+    // Pular usuários past_due — serão tratados pela seção 1 (antes ou na próxima hora)
+    const toReset = expired.filter(b => b.user.subscription?.status !== 'past_due');
 
-    logger.info(`[Cron] Resetando minutos de ${expired.length} usuário(s)...`);
+    if (toReset.length === 0) return;
 
-    for (const balance of expired) {
+    logger.info(`[Cron] Resetando minutos de ${toReset.length} usuário(s)...`);
+
+    for (const balance of toReset) {
       const minutesPerMonth = balance.user.subscription?.plan?.minutesPerMonth ?? 0;
-      const nextReset       = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      // Ancorar o próximo reset na data original (resetAt atual + 30 dias),
+      // não em "agora + 30 dias" — garante ciclo mensal a partir do dia do cadastro/pagamento
+      const nextReset = new Date(balance.resetAt.getTime() + 30 * 24 * 60 * 60 * 1000);
 
       await prisma.minuteBalance.update({
         where: { id: balance.id },
