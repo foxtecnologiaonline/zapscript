@@ -7,14 +7,13 @@ function getToken(): string | null {
 
 // ── Auto-redirect ao expirar JWT ────────────────────────────────────────────
 // Quando o servidor retornar 401 (token expirado ou inválido), limpa o token
-// local e redireciona o usuário para /login com um parâmetro de mensagem.
+// local e redireciona o usuário para /login — APENAS em rotas do dashboard,
+// que são as únicas que exigem autenticação JWT de usuário.
 function handleUnauthorized() {
   if (typeof window === 'undefined') return;
   localStorage.removeItem('zs_token');
-  // Não redirecionar em rotas públicas (login, cadastro, etc.)
-  const publicPaths = ['/login', '/cadastro', '/esqueci-senha', '/redefinir-senha', '/convite', '/email-confirmado'];
-  const isPublic = publicPaths.some(p => window.location.pathname.startsWith(p));
-  if (!isPublic && window.location.pathname !== '/') {
+  // Redirecionar somente dentro do dashboard (rotas protegidas por JWT de usuário)
+  if (window.location.pathname.startsWith('/dashboard')) {
     window.location.href = '/login?sessao=expirada';
   }
 }
