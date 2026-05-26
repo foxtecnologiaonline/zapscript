@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import OnboardingBanner from './OnboardingBanner';
 
 interface Stats {
   transcriptionsToday: number;
@@ -75,6 +76,12 @@ export default function DashboardPage() {
         <p className="text-sm text-brand-text-secondary font-light mt-1">Visão geral da sua operação</p>
       </div>
 
+      {/* ── Onboarding Banner (até conectar 1º número) ── */}
+      <OnboardingBanner
+        hasNumber={(stats?.activeNumbers ?? 0) > 0}
+        hasTranscription={(stats?.transcriptionsTotal ?? 0) > 0}
+      />
+
       {/* ── KPIs ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         {kpis.map(k => (
@@ -132,31 +139,28 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Início Rápido */}
-        <div className="card p-5">
-          <div className="font-bold text-sm mb-3 text-brand-text">Início Rápido</div>
-          {[
-            { done: true,                                          label: 'Conta criada' },
-            { done: (stats?.activeNumbers ?? 0) > 0,              label: 'Número conectado' },
-            { done: (stats?.transcriptionsTotal ?? 0) > 0,        label: 'Primeira transcrição' },
-          ].map((s, i) => (
-            <div key={i} className="flex items-center gap-2.5 mb-2.5">
-              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] flex-shrink-0 ${
-                s.done ? 'bg-brand-primary text-white' : 'border border-brand-border'
-              }`}>
-                {s.done ? '✓' : ''}
-              </span>
-              <span className={`text-xs ${s.done ? 'text-brand-muted line-through' : 'text-brand-text'}`}>
-                {s.label}
-              </span>
-            </div>
-          ))}
-          {!stats?.activeNumbers && (
-            <Link href="/dashboard/numeros" className="btn-ghost w-full justify-center text-xs mt-2 py-2">
-              Conectar número →
-            </Link>
-          )}
-        </div>
+        {/* Início Rápido — visível somente após ter número conectado */}
+        {(stats?.activeNumbers ?? 0) > 0 && (
+          <div className="card p-5">
+            <div className="font-bold text-sm mb-3 text-brand-text">Início Rápido</div>
+            {[
+              { done: true,                                   label: 'Conta criada' },
+              { done: (stats?.activeNumbers ?? 0) > 0,       label: 'Número conectado' },
+              { done: (stats?.transcriptionsTotal ?? 0) > 0, label: 'Primeira transcrição' },
+            ].map((s, i) => (
+              <div key={i} className="flex items-center gap-2.5 mb-2.5">
+                <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] flex-shrink-0 ${
+                  s.done ? 'bg-brand-primary text-white' : 'border border-brand-border'
+                }`}>
+                  {s.done ? '✓' : ''}
+                </span>
+                <span className={`text-xs ${s.done ? 'text-brand-muted line-through' : 'text-brand-text'}`}>
+                  {s.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Compartilhar */}
         <div className="card p-5">
