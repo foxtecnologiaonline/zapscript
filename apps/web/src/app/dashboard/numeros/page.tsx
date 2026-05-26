@@ -303,7 +303,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                           </span>
                           <input
                             className="flex-1 bg-transparent px-3 py-3 text-sm text-brand-text placeholder:text-brand-muted outline-none"
-                            placeholder="11 9 8765-4321 ou 11 3333-4567"
+                            placeholder="(DDD) 9 8765-4321 ou (DDD) 3333-4567"
                             value={phoneInput}
                             onChange={e => { setPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 11)); setPhoneError(''); }}
                             inputMode="numeric"
@@ -613,7 +613,7 @@ export default function NumerosPage() {
               </span>
               <input
                 className="flex-1 bg-transparent px-3 py-2.5 text-sm text-brand-text placeholder:text-brand-muted outline-none min-w-0"
-                placeholder="11 9 8765-4321 ou 11 3333-4567"
+                placeholder="(DDD) 9 8765-4321 ou (DDD) 3333-4567"
                 value={addPhone}
                 onChange={e => setAddPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
                 inputMode="numeric"
@@ -624,7 +624,7 @@ export default function NumerosPage() {
             </button>
           </div>
 
-          <p className="text-[10px] text-brand-muted">Celular: 11987654321 (11 dígitos) · Fixo: 1133334567 (10 dígitos) — conecte via QR Code</p>
+          <p className="text-[10px] text-brand-muted">Celular: 11 dígitos (DDD+9+número) · Fixo: 10 dígitos (DDD+número) — conecte via QR Code</p>
         </form>
 
         {error && !loading && (
