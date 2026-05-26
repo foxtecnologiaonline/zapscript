@@ -766,7 +766,7 @@ const WORKER_CONCURRENCY  = parseInt(process.env.WORKER_CONCURRENCY  || '2');
 const WORKER_LOCK_MINUTES = parseInt(process.env.WORKER_LOCK_MINUTES || '5');
 
 const worker = new Worker('transcriptions', routeJob, {
-  connection:      redis,
+  connection:      redis as any,
   concurrency:     WORKER_CONCURRENCY,
   lockDuration:    WORKER_LOCK_MINUTES * 60_000,  // Whisper pode demorar em áudios longos
   lockRenewTime:   Math.floor(WORKER_LOCK_MINUTES * 60_000 / 2),
@@ -960,7 +960,7 @@ async function checkAndLogServiceHealth() {
     const t = Date.now();
     try {
       const { Queue: BQueue } = await import('bullmq');
-      const q = new BQueue('transcription', { connection: redis });
+      const q = new BQueue('transcription', { connection: redis as any });
       const [waiting, active, failed] = await Promise.all([q.getWaitingCount(), q.getActiveCount(), q.getFailedCount()]);
       await q.close();
       // Degraded if too many waiting or failed

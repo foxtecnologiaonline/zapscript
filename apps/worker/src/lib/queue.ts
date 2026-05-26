@@ -22,7 +22,7 @@ export const redis = new Redis(process.env.REDIS_URL!, {
 });
 
 export const transcriptionQueue = new Queue('transcriptions', {
-  connection: redis,
+  connection: redis as any,
   defaultJobOptions: {
     attempts: 4,
     backoff:  { type: 'exponential', delay: 5_000 },
