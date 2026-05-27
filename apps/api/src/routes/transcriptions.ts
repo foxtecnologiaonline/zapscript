@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma';
 import { transcriptionQueue } from '../services/queue';
 import { decryptStr, decryptArr } from '../services/encryption';
@@ -7,8 +8,11 @@ import { getUserPlan, requirePlan } from '../lib/planGate';
 // Planos com acesso a cada feature
 const PLAN_SEARCH  = ['pro', 'ultra', 'executive'];
 const PLAN_EXPORT  = ['pro', 'ultra', 'executive'];
-const PLAN_TAGS    = ['ultra', 'executive'];
+const PLAN_TAGS    = ['pro', 'ultra', 'executive'];   // tags abertas para Pro+
 const PLAN_LANG    = ['ultra', 'executive'];
+const PLAN_AI_FEAT = ['pro', 'ultra', 'executive'];   // reply sugerida + doc
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export default async function transcriptionRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -18,6 +22,8 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     Querystring: {
       limit?: string; offset?: string; numberId?: string;
       search?: string; tag?: string; language?: string;
+      dateFrom?: string; dateTo?: string; contact?: string;
+      sort?: string; source?: string;
     }
   }>('/', auth, async (req: any, reply) => {
     const userId   = req.user.sub;
@@ -27,17 +33,60 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     const search   = req.query.search?.trim();
     const tag      = req.query.tag?.trim();
     const language = req.query.language?.trim();
+    const dateFrom = req.query.dateFrom?.trim();   // YYYY-MM-DD
+    const dateTo   = req.query.dateTo?.trim();     // YYYY-MM-DD
+    const contact  = req.query.contact?.trim();    // nome ou telefone
+    const sort     = req.query.sort || 'date_desc'; // date_desc | date_asc | contact
+    const source   = req.query.source?.trim();     // voice-note | whatsapp | manual
 
     const plan = await getUserPlan(userId);
+
+    // ── Orderby ──────────────────────────────────────
+    const orderBy: any =
+      sort === 'date_asc'  ? { createdAt: 'asc' } :
+      sort === 'contact'   ? { contactName: 'asc' } :
+      { createdAt: 'desc' }; // default
+
+    // ── Where base ────────────────────────────────────
+    const where: any = { userId };
+    if (numberId) where.numberId = numberId === 'none' ? null : numberId;
+    if (source)   where.source   = source;
+
+    // Filtro por data (todos os planos)
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setDate(end.getDate() + 1); // inclusive
+        where.createdAt.lt = end;
+      }
+    }
+
+    // Filtro por contato (DB-level, todos os planos)
+    if (contact) {
+      where.contactName = { contains: contact, mode: 'insensitive' };
+    }
+
+    // Filtro por tag (Pro+)
+    if (tag) {
+      if (!requirePlan(plan, PLAN_TAGS, reply)) return;
+      where.tags = { has: tag };
+    }
+
+    // Filtro por idioma (Ultra+)
+    if (language) {
+      if (!requirePlan(plan, PLAN_LANG, reply)) return;
+      where.language = language;
+    }
 
     // ── Busca full-text (Pro+) ─────────────────────────
     if (search) {
       if (!requirePlan(plan, PLAN_SEARCH, reply)) return;
 
-      // Busca server-side: carrega últimas 300 transcrições e decripta em memória
       const allItems = await prisma.transcription.findMany({
-        where:   { userId, ...(numberId ? { numberId: numberId === 'none' ? null : numberId } : {}) },
-        orderBy: { createdAt: 'desc' },
+        where:   { ...where },
+        orderBy,
         take:    300,
         include: { number: { select: { displayName: true, phoneNumber: true } } },
       });
@@ -61,25 +110,10 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     }
 
     // ── Busca padrão ───────────────────────────────────
-    const where: any = { userId };
-    if (numberId) where.numberId = numberId === 'none' ? null : numberId;
-
-    // Filtro por tag (Ultra+)
-    if (tag) {
-      if (!requirePlan(plan, PLAN_TAGS, reply)) return;
-      (where as any).tags = { has: tag };
-    }
-
-    // Filtro por idioma (Ultra+)
-    if (language) {
-      if (!requirePlan(plan, PLAN_LANG, reply)) return;
-      where.language = language;
-    }
-
     const [items, total] = await Promise.all([
       prisma.transcription.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         take:    limit,
         skip:    offset,
         include: { number: { select: { displayName: true, phoneNumber: true } } },
@@ -161,8 +195,106 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     };
   });
 
+  // ── GET /transcriptions/:id/suggest-reply ───────────
+  // Gera 3 sugestões de resposta com Claude (Pro+)
+  app.get<{ Params: { id: string } }>(
+    '/:id/suggest-reply', auth, async (req: any, reply) => {
+      const userId = req.user.sub;
+      const plan   = await getUserPlan(userId);
+      if (!requirePlan(plan, PLAN_AI_FEAT, reply)) return;
+
+      const t = await prisma.transcription.findFirst({ where: { id: req.params.id, userId } });
+      if (!t) return reply.code(404).send({ error: 'Não encontrado' });
+
+      const text = decryptStr(t.originalText);
+      const bullets = decryptArr(t.summaryBullets as string);
+      const contact = t.contactName || decryptStr(t.contactPhone);
+
+      const prompt = `Você é um assistente de comunicação. Analise esta mensagem de áudio recebida via WhatsApp e gere exatamente 3 sugestões de resposta em português brasileiro.
+
+Remetente: ${contact}
+Transcrição: "${text}"
+${bullets.length ? `Pontos principais:\n${bullets.map(b => `• ${b}`).join('\n')}` : ''}
+
+Gere 3 sugestões de resposta:
+1. Curta e direta (1 linha)
+2. Média com detalhes (2-3 linhas)
+3. Completa e profissional (3-5 linhas)
+
+Responda SOMENTE com JSON no formato:
+{"replies": ["resposta curta", "resposta média", "resposta completa"]}`;
+
+      try {
+        const response = await anthropic.messages.create({
+          model:      'claude-haiku-20240307',
+          max_tokens: 600,
+          messages:   [{ role: 'user', content: prompt }],
+        });
+        const raw   = (response.content[0] as any).text?.trim() || '{}';
+        const match = raw.match(/\{[\s\S]*\}/);
+        const json  = JSON.parse(match ? match[0] : raw);
+        return { replies: json.replies || [] };
+      } catch (err) {
+        app.log.error({ err }, 'suggest-reply: Claude error');
+        return reply.code(500).send({ error: 'Erro ao gerar sugestões. Tente novamente.' });
+      }
+    }
+  );
+
+  // ── POST /transcriptions/:id/generate-document ────────
+  // Gera documento estruturado a partir da transcrição (Pro+)
+  app.post<{
+    Params: { id: string };
+    Body: { docType: 'ata' | 'briefing' | 'combinados' | 'resumo' | 'email' };
+  }>(
+    '/:id/generate-document', auth, async (req: any, reply) => {
+      const userId = req.user.sub;
+      const plan   = await getUserPlan(userId);
+      if (!requirePlan(plan, PLAN_AI_FEAT, reply)) return;
+
+      const { docType = 'resumo' } = req.body;
+      const t = await prisma.transcription.findFirst({ where: { id: req.params.id, userId } });
+      if (!t) return reply.code(404).send({ error: 'Não encontrado' });
+
+      const text    = decryptStr(t.originalText);
+      const bullets = decryptArr(t.summaryBullets as string);
+      const contact = t.contactName || decryptStr(t.contactPhone);
+      const date    = new Date(t.createdAt).toLocaleDateString('pt-BR');
+
+      const DOC_PROMPTS: Record<string, string> = {
+        ata:        `Crie uma ATA DE REUNIÃO formal e profissional em português brasileiro. Inclua: Data, Participantes (${contact}), Pauta, Pontos discutidos, Decisões tomadas, Próximos passos. Use formatação com seções em MAIÚSCULAS e bullet points.`,
+        briefing:   `Crie um BRIEFING executivo em português brasileiro. Inclua: Contexto, Objetivo, Pontos principais, Ações necessárias, Prazo/urgência (se mencionado). Formato profissional e conciso.`,
+        combinados: `Extraia e liste todos os COMBINADOS E COMPROMISSOS mencionados em português brasileiro. Para cada item: o quê foi combinado, quem é responsável, prazo (se mencionado). Use checkboxes: ☐`,
+        resumo:     `Crie um RESUMO EXECUTIVO em português brasileiro com: Situação, Principais pontos, Conclusão. Máximo 200 palavras. Profissional e direto.`,
+        email:      `Converta esta mensagem em um EMAIL PROFISSIONAL em português brasileiro. Inclua: Assunto sugerido, Corpo do e-mail completo com saudação e despedida. Tom profissional e cordial.`,
+      };
+
+      const prompt = `${DOC_PROMPTS[docType] || DOC_PROMPTS.resumo}
+
+Data da mensagem: ${date}
+Remetente: ${contact}
+Transcrição completa: "${text}"
+${bullets.length ? `Pontos principais já identificados:\n${bullets.map(b => `• ${b}`).join('\n')}` : ''}
+
+Gere apenas o documento, sem explicações adicionais.`;
+
+      try {
+        const response = await anthropic.messages.create({
+          model:      'claude-haiku-20240307',
+          max_tokens: 1000,
+          messages:   [{ role: 'user', content: prompt }],
+        });
+        const content = (response.content[0] as any).text?.trim() || '';
+        return { docType, content, contact, date };
+      } catch (err) {
+        app.log.error({ err }, 'generate-document: Claude error');
+        return reply.code(500).send({ error: 'Erro ao gerar documento. Tente novamente.' });
+      }
+    }
+  );
+
   // ── PATCH /transcriptions/:id/tags ───────────────────
-  // Atualiza tags de uma transcrição (Ultra+)
+  // Atualiza tags de uma transcrição (Pro+)
   app.patch<{ Params: { id: string }; Body: { tags: string[] } }>(
     '/:id/tags', auth, async (req: any, reply) => {
       const userId = req.user.sub;

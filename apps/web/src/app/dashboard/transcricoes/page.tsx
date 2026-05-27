@@ -21,8 +21,18 @@ const LIMIT       = 20;
 
 const PLAN_SEARCH  = ['pro', 'ultra', 'executive'];
 const PLAN_EXPORT  = ['pro', 'ultra', 'executive'];
-const PLAN_TAGS    = ['ultra', 'executive'];
+const PLAN_TAGS    = ['pro', 'ultra', 'executive'];   // Pro+
 const PLAN_LANG    = ['ultra', 'executive'];
+const PLAN_AI_FEAT = ['pro', 'ultra', 'executive'];   // reply + doc
+const PLAN_VOICE   = ['ultra', 'executive'];          // voice notes pessoais
+
+const DOC_TYPES = [
+  { value: 'ata',        label: '📋 Ata de Reunião' },
+  { value: 'briefing',   label: '📌 Briefing' },
+  { value: 'combinados', label: '☑️ Combinados' },
+  { value: 'resumo',     label: '📄 Resumo Executivo' },
+  { value: 'email',      label: '✉️ E-mail Profissional' },
+];
 
 const LANG_FLAG: Record<string, string> = {
   pt: '🇧🇷 PT', 'pt-BR': '🇧🇷 PT', en: '🇺🇸 EN', es: '🇪🇸 ES',
@@ -185,20 +195,32 @@ function TagInput({ tags, onChange, disabled }: { tags: string[]; onChange: (t: 
 
 // ── Página principal ─────────────────────────────────────────────────────────
 export default function TranscricoesPage() {
-  const [items, setItems]         = useState<Transcription[]>([]);
-  const [total, setTotal]         = useState(0);
-  const [search, setSearch]       = useState('');
-  const [filterTag, setFilterTag] = useState('');
+  const [items, setItems]           = useState<Transcription[]>([]);
+  const [total, setTotal]           = useState(0);
+  const [search, setSearch]         = useState('');
+  const [filterTag, setFilterTag]   = useState('');
   const [filterLang, setFilterLang] = useState('');
-  const [offset, setOffset]       = useState(0);
-  const [loading, setLoading]     = useState(true);
-  const [selected, setSelected]   = useState<Transcription | null>(null);
-  const [copied, setCopied]       = useState(false);
+  const [filterContact, setFilterContact] = useState('');
+  const [dateFrom, setDateFrom]     = useState('');
+  const [dateTo, setDateTo]         = useState('');
+  const [sortOrder, setSortOrder]   = useState('date_desc');
+  const [filterSource, setFilterSource] = useState('');
+  const [offset, setOffset]         = useState(0);
+  const [loading, setLoading]       = useState(true);
+  const [selected, setSelected]     = useState<Transcription | null>(null);
+  const [copied, setCopied]         = useState(false);
   const [showUpload, setShowUpload] = useState(false);
-  const [planName, setPlanName]   = useState('free');
-  const [exporting, setExporting] = useState(false);
-  const [editTags, setEditTags]   = useState<string[]>([]);
+  const [planName, setPlanName]     = useState('free');
+  const [exporting, setExporting]   = useState(false);
+  const [editTags, setEditTags]     = useState<string[]>([]);
   const [savingTags, setSavingTags] = useState(false);
+  // IA features
+  const [suggestedReplies, setSuggestedReplies] = useState<string[] | null>(null);
+  const [loadingReplies, setLoadingReplies]     = useState(false);
+  const [generatedDoc, setGeneratedDoc]         = useState<{ type: string; content: string } | null>(null);
+  const [loadingDoc, setLoadingDoc]             = useState(false);
+  const [docType, setDocType]                   = useState('resumo');
+  const [showDocMenu, setShowDocMenu]           = useState(false);
 
   // NPS Modal (#10)
   const [npsVisible,  setNpsVisible]  = useState(false);
@@ -229,13 +251,22 @@ export default function TranscricoesPage() {
     finally { setNpsSubmitting(false); }
   }
 
-  const load = useCallback(async (s = search, o = offset, tag = filterTag, lang = filterLang) => {
+  const load = useCallback(async (
+    s = search, o = offset, tag = filterTag, lang = filterLang,
+    contact = filterContact, from = dateFrom, to = dateTo,
+    sort = sortOrder, source = filterSource,
+  ) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ limit: String(LIMIT), offset: String(o) });
-      if (s)    params.set('search', s);
-      if (tag)  params.set('tag', tag);
-      if (lang) params.set('language', lang);
+      if (s)       params.set('search', s);
+      if (tag)     params.set('tag', tag);
+      if (lang)    params.set('language', lang);
+      if (contact) params.set('contact', contact);
+      if (from)    params.set('dateFrom', from);
+      if (to)      params.set('dateTo', to);
+      if (sort)    params.set('sort', sort);
+      if (source)  params.set('source', source);
       const res = await api.get<{ items: Transcription[]; total: number }>(`/transcriptions?${params}`);
       setItems(res.items);
       setTotal(res.total);
@@ -247,11 +278,130 @@ export default function TranscricoesPage() {
   useEffect(() => { load(); }, []);
 
   function handleSearch(e: React.FormEvent) {
-    e.preventDefault(); setOffset(0); load(search, 0, filterTag, filterLang);
+    e.preventDefault();
+    setOffset(0);
+    load(search, 0, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource);
   }
 
   function clearFilters() {
-    setSearch(''); setFilterTag(''); setFilterLang(''); setOffset(0); load('', 0, '', '');
+    setSearch(''); setFilterTag(''); setFilterLang(''); setFilterContact('');
+    setDateFrom(''); setDateTo(''); setSortOrder('date_desc'); setFilterSource('');
+    setOffset(0);
+    load('', 0, '', '', '', '', '', 'date_desc', '');
+  }
+
+  // ── Exportar transcrição individual ──────────────────────────────────────────
+  function exportSingleCsv(t: Transcription) {
+    const esc = (v: string) => `"${(v || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    const header = 'Data,Contato,Telefone,Duração (s),Idioma,Tags,Texto,Resumo';
+    const row    = [
+      esc(new Date(t.createdAt).toLocaleString('pt-BR')),
+      esc(t.contactName || ''), esc(t.contactPhone),
+      esc(String(t.durationSec)), esc(t.language),
+      esc((t.tags || []).join(', ')),
+      esc(t.originalText),
+      esc(t.summaryBullets.join(' | ')),
+    ].join(',');
+    const blob = new Blob(['﻿' + header + '\n' + row], { type: 'text/csv;charset=utf-8' });
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: `transcricao-${t.id.slice(0, 8)}.csv`,
+    });
+    a.click(); URL.revokeObjectURL(a.href);
+  }
+
+  function exportSingleXls(t: Transcription) {
+    const row = (v: string) => `<td>${(v || '').replace(/</g, '&lt;')}</td>`;
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"/></head><body><table>
+<tr><th>Data</th><th>Contato</th><th>Telefone</th><th>Duração (s)</th><th>Idioma</th><th>Tags</th><th>Texto</th><th>Resumo</th></tr>
+<tr>${row(new Date(t.createdAt).toLocaleString('pt-BR'))}${row(t.contactName||'')}${row(t.contactPhone)}${row(String(t.durationSec))}${row(t.language)}${row((t.tags||[]).join(', '))}${row(t.originalText)}${row(t.summaryBullets.join(' | '))}</tr>
+</table></body></html>`;
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: `transcricao-${t.id.slice(0, 8)}.xls`,
+    });
+    a.click(); URL.revokeObjectURL(a.href);
+  }
+
+  function exportSingleDocx(t: Transcription) {
+    const date = new Date(t.createdAt).toLocaleString('pt-BR');
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"/><style>body{font-family:Calibri,Arial;font-size:11pt;margin:2cm}h1{font-size:14pt}h2{font-size:12pt;color:#0d9668}p{margin:6pt 0}li{margin:3pt 0}</style></head><body>
+<h1>Transcrição — ${t.contactName || t.contactPhone}</h1>
+<p><b>Data:</b> ${date} &nbsp;|&nbsp; <b>Duração:</b> ${t.durationSec}s &nbsp;|&nbsp; <b>Idioma:</b> ${t.language.toUpperCase()}</p>
+${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
+<h2>✨ Resumo</h2><ul>${t.summaryBullets.map(b => `<li>${b}</li>`).join('')}</ul>
+<h2>📝 Texto Original</h2><p><i>${t.originalText}</i></p>
+</body></html>`;
+    const blob = new Blob([html], { type: 'application/msword;charset=utf-8' });
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: `transcricao-${t.id.slice(0, 8)}.docx`,
+    });
+    a.click(); URL.revokeObjectURL(a.href);
+  }
+
+  function exportSinglePdf(t: Transcription) {
+    const date = new Date(t.createdAt).toLocaleString('pt-BR');
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Transcrição</title>
+<style>body{font-family:Arial,sans-serif;font-size:12px;margin:2cm;color:#111}h1{font-size:18px;color:#0d9668}h2{font-size:13px;color:#0d9668;border-bottom:1px solid #ddd;padding-bottom:4px}p{line-height:1.6}li{margin:4px 0}@media print{body{margin:1.5cm}}</style>
+</head><body>
+<h1>📝 Transcrição — ${t.contactName || t.contactPhone}</h1>
+<p><b>Data:</b> ${date} &nbsp;|&nbsp; <b>Duração:</b> ${t.durationSec}s &nbsp;|&nbsp; <b>Idioma:</b> ${t.language.toUpperCase()}</p>
+${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
+<h2>✨ Resumo</h2><ul>${t.summaryBullets.map(b => `<li>${b}</li>`).join('')}</ul>
+<h2>📝 Texto Original</h2><p><i>"${t.originalText}"</i></p>
+<hr style="margin-top:40px;border:none;border-top:1px solid #eee"/>
+<p style="font-size:10px;color:#999;text-align:center">Gerado pelo ZapScript · zapscript.me</p>
+<script>window.onload=()=>{window.print()}<\/script>
+</body></html>`);
+    w.document.close();
+  }
+
+  // ── IA: sugestão de resposta ──────────────────────────────────────────────
+  async function loadSuggestedReplies(t: Transcription) {
+    setSuggestedReplies(null);
+    setLoadingReplies(true);
+    try {
+      const res = await api.get<{ replies: string[] }>(`/transcriptions/${t.id}/suggest-reply`);
+      setSuggestedReplies(res.replies || []);
+    } catch (err: any) {
+      alert(err.message || 'Erro ao gerar sugestões.');
+    } finally {
+      setLoadingReplies(false);
+    }
+  }
+
+  // ── IA: gerar documento ───────────────────────────────────────────────────
+  async function generateDocument(t: Transcription, type: string) {
+    setGeneratedDoc(null);
+    setLoadingDoc(true);
+    setShowDocMenu(false);
+    try {
+      const res = await api.post<{ content: string; docType: string }>(
+        `/transcriptions/${t.id}/generate-document`,
+        { docType: type }
+      );
+      setGeneratedDoc({ type, content: res.content });
+    } catch (err: any) {
+      alert(err.message || 'Erro ao gerar documento.');
+    } finally {
+      setLoadingDoc(false);
+    }
+  }
+
+  function downloadGeneratedDoc(t: Transcription) {
+    if (!generatedDoc) return;
+    const label = DOC_TYPES.find(d => d.value === generatedDoc.type)?.label || generatedDoc.type;
+    const html = `<html><head><meta charset="utf-8"/><style>body{font-family:Arial,sans-serif;font-size:12px;margin:2cm;line-height:1.7;white-space:pre-wrap}</style></head><body><h2>${label} — ${t.contactName || t.contactPhone}</h2>\n\n${generatedDoc.content}</body></html>`;
+    const blob = new Blob([html], { type: 'application/msword;charset=utf-8' });
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: `${generatedDoc.type}-${t.id.slice(0, 8)}.docx`,
+    });
+    a.click(); URL.revokeObjectURL(a.href);
   }
 
   async function handleDelete(id: string) {
@@ -306,13 +456,18 @@ export default function TranscricoesPage() {
   function openDetail(t: Transcription) {
     setSelected(t);
     setEditTags(t.tags || []);
+    setSuggestedReplies(null);
+    setGeneratedDoc(null);
+    setShowDocMenu(false);
   }
 
-  const canSearch = PLAN_SEARCH.includes(planName);
-  const canExport = PLAN_EXPORT.includes(planName);
-  const canTags   = PLAN_TAGS.includes(planName);
-  const canLang   = PLAN_LANG.includes(planName);
-  const hasFilters = search || filterTag || filterLang;
+  const canSearch  = PLAN_SEARCH.includes(planName);
+  const canExport  = PLAN_EXPORT.includes(planName);
+  const canTags    = PLAN_TAGS.includes(planName);
+  const canLang    = PLAN_LANG.includes(planName);
+  const canAiFeat  = PLAN_AI_FEAT.includes(planName);
+  const canVoice   = PLAN_VOICE.includes(planName);
+  const hasFilters = search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource;
 
   return (
     <div className="p-4 sm:p-8 max-w-4xl">
@@ -343,57 +498,88 @@ export default function TranscricoesPage() {
         </div>
       </div>
 
-      {/* Busca e filtros */}
-      <form onSubmit={handleSearch} className="flex gap-2 mb-3 flex-wrap">
-        {/* Campo de busca */}
-        <div className="relative flex-1 min-w-[180px]">
-          <input
-            className={`input w-full ${!canSearch ? 'opacity-60 cursor-not-allowed' : ''}`}
-            placeholder={canSearch ? 'Buscar por contato, texto ou resumo...' : '🔒 Busca disponível no plano Pro'}
-            value={search}
-            onChange={e => canSearch && setSearch(e.target.value)}
-            readOnly={!canSearch}
-            title={!canSearch ? 'Disponível no plano Pro ou superior' : ''}
-          />
-        </div>
-
-        {/* Filtro de idioma — Ultra+: ativo | free/pro: visível mas bloqueado */}
-        <div className="relative">
-          <select
-            disabled={!canLang}
-            className="input text-sm py-2 pr-8 disabled:opacity-50 disabled:cursor-not-allowed"
-            value={filterLang}
-            title={!canLang ? 'Filtro por idioma disponível no plano Ultra' : undefined}
-            onChange={e => { setFilterLang(e.target.value); setOffset(0); load(search, 0, filterTag, e.target.value); }}>
-            <option value="">🌐 Idioma</option>
-            <option value="pt">🇧🇷 PT</option>
-            <option value="en">🇺🇸 EN</option>
-            <option value="es">🇪🇸 ES</option>
-            <option value="fr">🇫🇷 FR</option>
-            <option value="de">🇩🇪 DE</option>
-          </select>
-          {!canLang && (
-            <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1 py-0.5 rounded"
-              style={{ background: 'rgba(245,158,11,.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>
-              Ultra+
-            </span>
+      {/* ── Barra de busca + filtros ──────────────────────────────────────────── */}
+      <form onSubmit={handleSearch} className="space-y-2 mb-3">
+        {/* Linha 1: busca + botões */}
+        <div className="flex gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[180px]">
+            <input
+              className={`input w-full ${!canSearch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              placeholder={canSearch ? 'Buscar por contato, texto ou resumo...' : '🔒 Busca disponível no plano Pro'}
+              value={search}
+              onChange={e => canSearch && setSearch(e.target.value)}
+              readOnly={!canSearch}
+            />
+          </div>
+          <button type="submit" className="btn-primary px-4">Buscar</button>
+          {hasFilters && (
+            <button type="button" className="btn-ghost px-3 text-sm" onClick={clearFilters}>✕ Limpar</button>
           )}
         </div>
 
-        <button type="submit" className="btn-primary px-4">Buscar</button>
-        {hasFilters && (
-          <button type="button" className="btn-ghost px-3 text-sm" onClick={clearFilters}>Limpar</button>
-        )}
+        {/* Linha 2: filtros adicionais */}
+        <div className="flex gap-2 flex-wrap items-center">
+          {/* Contato */}
+          <input
+            className="input text-sm py-2 w-40"
+            placeholder="👤 Contato"
+            value={filterContact}
+            onChange={e => { setFilterContact(e.target.value); }}
+          />
+          {/* Data de */}
+          <input type="date" className="input text-sm py-2 w-38"
+            value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            title="Data inicial" />
+          {/* Data até */}
+          <input type="date" className="input text-sm py-2 w-38"
+            value={dateTo} onChange={e => setDateTo(e.target.value)}
+            title="Data final" />
+          {/* Idioma (Ultra+) */}
+          <div className="relative">
+            <select disabled={!canLang} className="input text-sm py-2 pr-8 disabled:opacity-50 disabled:cursor-not-allowed"
+              value={filterLang}
+              onChange={e => { setFilterLang(e.target.value); setOffset(0); load(search, 0, filterTag, e.target.value, filterContact, dateFrom, dateTo, sortOrder, filterSource); }}>
+              <option value="">🌐 Idioma</option>
+              <option value="pt">🇧🇷 PT</option><option value="en">🇺🇸 EN</option>
+              <option value="es">🇪🇸 ES</option><option value="fr">🇫🇷 FR</option>
+              <option value="de">🇩🇪 DE</option>
+            </select>
+            {!canLang && <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: 'rgba(245,158,11,.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>Ultra+</span>}
+          </div>
+          {/* Voice notes (Ultra+) */}
+          {canVoice && (
+            <button type="button"
+              onClick={() => { const s = filterSource === 'voice-note' ? '' : 'voice-note'; setFilterSource(s); setOffset(0); load(search, 0, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, s); }}
+              className={`text-xs px-3 py-2 rounded-xl border transition-colors ${filterSource === 'voice-note' ? 'bg-brand-primary text-white border-brand-primary' : 'border-brand-border text-brand-muted hover:border-brand-primary hover:text-brand-primary'}`}>
+              🎙️ Notas pessoais
+            </button>
+          )}
+          {/* Ordenar */}
+          <select className="input text-sm py-2 ml-auto"
+            value={sortOrder}
+            onChange={e => { setSortOrder(e.target.value); setOffset(0); load(search, 0, filterTag, filterLang, filterContact, dateFrom, dateTo, e.target.value, filterSource); }}>
+            <option value="date_desc">📅 Mais recentes</option>
+            <option value="date_asc">📅 Mais antigas</option>
+            <option value="contact">🔤 Contato A-Z</option>
+          </select>
+        </div>
       </form>
 
-      {/* Filtro por tag ativo */}
-      {filterTag && (
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs text-brand-muted">Tag:</span>
-          <span className="text-xs bg-brand-primary/10 text-brand-primary border border-brand-primary/20 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
-            {filterTag}
-            <button onClick={() => { setFilterTag(''); setOffset(0); load(search, 0, '', filterLang); }} className="hover:opacity-70">×</button>
-          </span>
+      {/* Chips de filtros ativos */}
+      {(filterTag || filterContact) && (
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          {filterTag && (
+            <span className="text-xs bg-brand-primary/10 text-brand-primary border border-brand-primary/20 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+              🏷️ {filterTag}
+              <button onClick={() => { setFilterTag(''); setOffset(0); load(search, 0, '', filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); }}>×</button>
+            </span>
+          )}
+          {filterContact && (
+            <span className="text-xs bg-blue-400/10 text-blue-400 border border-blue-400/20 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+              👤 {filterContact}
+              <button onClick={() => { setFilterContact(''); setOffset(0); load(search, 0, filterTag, filterLang, '', dateFrom, dateTo, sortOrder, filterSource); }}>×</button>
+            </span>
+          )}
         </div>
       )}
 
@@ -520,11 +706,11 @@ export default function TranscricoesPage() {
                 <p className="text-sm text-brand-text-secondary font-light leading-relaxed italic">"{selected.originalText}"</p>
               </div>
 
-              {/* Tags (Ultra+) */}
+              {/* Tags (Pro+) */}
               <div className={`inner-block ${!canTags ? 'opacity-60' : ''}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest">🏷️ Tags</div>
-                  {!canTags && <span className="text-[9px] bg-brand-primary/10 text-brand-primary px-1.5 py-0.5 rounded font-bold">Ultra+</span>}
+                  {!canTags && <span className="text-[9px] bg-brand-primary/10 text-brand-primary px-1.5 py-0.5 rounded font-bold">Pro+</span>}
                 </div>
                 {canTags ? (
                   <div className="flex items-center gap-2">
@@ -541,8 +727,119 @@ export default function TranscricoesPage() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-brand-muted">Tags disponíveis no plano Ultra ou superior.</p>
+                  <p className="text-xs text-brand-muted">Tags disponíveis no plano Pro ou superior.</p>
                 )}
+              </div>
+
+              {/* Resposta Sugerida (Pro+) */}
+              <div className={`inner-block ${!canAiFeat ? 'opacity-60' : ''}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest">💬 Resposta Sugerida</div>
+                  {!canAiFeat && <span className="text-[9px] bg-brand-primary/10 text-brand-primary px-1.5 py-0.5 rounded font-bold">Pro+</span>}
+                </div>
+                {canAiFeat ? (
+                  suggestedReplies ? (
+                    <div className="space-y-2">
+                      {suggestedReplies.map((r, i) => (
+                        <div key={i} className="flex items-start gap-2 bg-brand-elevated rounded-lg px-3 py-2">
+                          <p className="text-xs text-brand-text flex-1 leading-relaxed">{r}</p>
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(r); }}
+                            className="text-brand-muted hover:text-brand-primary text-[11px] flex-shrink-0 transition-colors"
+                            title="Copiar">
+                            📋
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => loadSuggestedReplies(selected)}
+                        className="text-xs text-brand-muted hover:text-brand-primary transition-colors">
+                        ↻ Gerar novamente
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => loadSuggestedReplies(selected)}
+                      disabled={loadingReplies}
+                      className="btn-ghost text-xs py-2 w-full justify-center">
+                      {loadingReplies ? '⟳ Gerando...' : '✨ Sugerir respostas'}
+                    </button>
+                  )
+                ) : (
+                  <p className="text-xs text-brand-muted">Sugestões de resposta disponíveis no plano Pro ou superior.</p>
+                )}
+              </div>
+
+              {/* Gerar Documento (Pro+) */}
+              <div className={`inner-block ${!canAiFeat ? 'opacity-60' : ''}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest">📝 Gerar Documento</div>
+                  {!canAiFeat && <span className="text-[9px] bg-brand-primary/10 text-brand-primary px-1.5 py-0.5 rounded font-bold">Pro+</span>}
+                </div>
+                {canAiFeat ? (
+                  generatedDoc ? (
+                    <div className="space-y-2">
+                      <div className="bg-brand-elevated rounded-lg px-3 py-2 max-h-40 overflow-y-auto">
+                        <p className="text-xs text-brand-text whitespace-pre-wrap leading-relaxed">{generatedDoc.content}</p>
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        <button
+                          onClick={() => downloadGeneratedDoc(selected)}
+                          className="btn-ghost text-xs py-1.5 px-3">
+                          ⬇️ Baixar .docx
+                        </button>
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(generatedDoc.content); }}
+                          className="btn-ghost text-xs py-1.5 px-3">
+                          📋 Copiar
+                        </button>
+                        <button
+                          onClick={() => setGeneratedDoc(null)}
+                          className="text-xs text-brand-muted hover:text-brand-primary transition-colors py-1.5 px-2">
+                          ← Novo
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 items-center">
+                      <select
+                        value={docType}
+                        onChange={e => setDocType(e.target.value)}
+                        className="input text-xs py-1.5 flex-1">
+                        {DOC_TYPES.map(d => (
+                          <option key={d.value} value={d.value}>{d.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => generateDocument(selected, docType)}
+                        disabled={loadingDoc}
+                        className="btn-primary text-xs py-1.5 px-4 flex-shrink-0">
+                        {loadingDoc ? '⟳' : 'Gerar'}
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  <p className="text-xs text-brand-muted">Geração de documentos disponível no plano Pro ou superior.</p>
+                )}
+              </div>
+
+              {/* Exportar */}
+              <div className="inner-block">
+                <div className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest mb-2">📤 Exportar</div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  <button onClick={() => exportSinglePdf(selected)} className="btn-ghost text-xs py-2 justify-center flex-col gap-0.5">
+                    <span>📄</span><span>PDF</span>
+                  </button>
+                  <button onClick={() => exportSingleDocx(selected)} className="btn-ghost text-xs py-2 justify-center flex-col gap-0.5">
+                    <span>📝</span><span>DOCX</span>
+                  </button>
+                  <button onClick={() => exportSingleCsv(selected)} className="btn-ghost text-xs py-2 justify-center flex-col gap-0.5">
+                    <span>📊</span><span>CSV</span>
+                  </button>
+                  <button onClick={() => exportSingleXls(selected)} className="btn-ghost text-xs py-2 justify-center flex-col gap-0.5">
+                    <span>📊</span><span>XLS</span>
+                  </button>
+                </div>
               </div>
 
               {/* Ações */}
