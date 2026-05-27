@@ -140,15 +140,16 @@ export default async function billingRoutes(app: FastifyInstance) {
         method: 'POST',
         body: JSON.stringify({
           customer:          asaasCustomerId,
-          billingType:       billingType.toUpperCase(), // CREDIT_CARD | PIX | BOLETO | UNDEFINED
+          billingType:       billingType.toUpperCase(),
           cycle:             'MONTHLY',
           value:             price,
           nextDueDate:       today,
           description:       `ZapScript ${planName === 'pro' ? 'Pro' : planName === 'ultra' ? 'Ultra' : 'Executive'}`,
           externalReference: `${userId}|${planName}`,
-          // Redireciona após pagamento
-          successPage:       `${process.env.APP_URL}/payment/success?plan=${planName}`,
-          failurePage:       `${process.env.APP_URL}/payment/failed?plan=${planName}`,
+          callback: {
+            successUrl:   `${process.env.APP_URL}/payment/success?plan=${planName}`,
+            autoRedirect: true,
+          },
         }),
       });
 
@@ -286,7 +287,14 @@ export default async function billingRoutes(app: FastifyInstance) {
         return reply.code(503).send({ error: 'Serviço de pagamento indisponível. Tente novamente.' });
       }
 
-      // ── Cancelar assinatura recorrente atual no Asaas ──
+      // ── 1. Marcar como 'pending' ANTES de cancelar no Asaas ──
+      // (evita race condition: SUBSCRIPTION_DELETED chegar antes do update local)
+      await prisma.subscription.update({
+        where: { userId },
+        data:  { asaasCustomerId, asaasSubscriptionId: null, status: 'pending' },
+      }).catch(() => null);
+
+      // ── 2. Cancelar assinatura recorrente atual no Asaas ──
       if (sub.asaasSubscriptionId) {
         try {
           await asaas(`/subscriptions/${sub.asaasSubscriptionId}`, { method: 'DELETE' });
@@ -295,7 +303,7 @@ export default async function billingRoutes(app: FastifyInstance) {
         }
       }
 
-      // ── Criar cobrança avulsa pelo valor proporcional ──
+      // ── 3. Criar cobrança avulsa pelo valor proporcional ──
       const today     = new Date().toISOString().split('T')[0];
       const chargeRes = await asaas('/payments', {
         method: 'POST',
@@ -306,6 +314,10 @@ export default async function billingRoutes(app: FastifyInstance) {
           value:             proration.proratedAmount,
           description:       `ZapScript — Upgrade para ${newPlan.label} (${proration.remainingDays} dias restantes do ciclo atual)`,
           externalReference: `${userId}|${targetPlan}|upgrade`,
+          callback: {
+            successUrl:   `${process.env.APP_URL}/payment/success?plan=${targetPlan}`,
+            autoRedirect: true,
+          },
         }),
       });
 
@@ -316,12 +328,6 @@ export default async function billingRoutes(app: FastifyInstance) {
       }
 
       const paymentUrl = charge.invoiceUrl || `https://www.asaas.com/c/${charge.id}`;
-
-      // Salvar estado de transição no banco (asaasSubscriptionId = null, status = pending)
-      await prisma.subscription.update({
-        where: { userId },
-        data:  { asaasCustomerId, asaasSubscriptionId: null, status: 'pending' },
-      }).catch(() => null);
 
       app.log.info(`Upgrade iniciado: userId=${userId} de ${sub.plan.name} para ${targetPlan} — proration R$${proration.proratedAmount}`);
 
@@ -639,15 +645,53 @@ export default async function billingRoutes(app: FastifyInstance) {
       }
 
       // ── Assinatura cancelada ──
-      case 'SUBSCRIPTION_DELETED':
-      case 'PAYMENT_REFUNDED': {
+      case 'SUBSCRIPTION_DELETED': {
         const externalRef = subEvent?.externalReference
           || payment?.subscription?.externalReference
           || '';
 
         const [userId] = externalRef.split('|');
         if (!userId) {
-          app.log.error(`Webhook ${eventType}: externalReference malformado: "${externalRef}"`);
+          app.log.error(`Webhook SUBSCRIPTION_DELETED: externalReference malformado: "${externalRef}"`);
+          break;
+        }
+
+        // Guard: se status for 'pending', esse DELETE foi disparado pelo nosso próprio
+        // fluxo de upgrade — não fazer downgrade para free.
+        const currentSub = await prisma.subscription.findUnique({ where: { userId }, select: { status: true } });
+        if (currentSub?.status === 'pending') {
+          app.log.info(`SUBSCRIPTION_DELETED ignorado (upgrade em andamento): userId=${userId}`);
+          break;
+        }
+
+        const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
+        if (!freePlan) break;
+
+        const nextReset = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        await prisma.$transaction([
+          prisma.subscription.upsert({
+            where:  { userId },
+            create: { userId, planId: freePlan.id, status: 'canceled' },
+            update: { planId: freePlan.id, status: 'canceled', asaasSubscriptionId: null, currentPeriodEnd: null },
+          }),
+          prisma.minuteBalance.upsert({
+            where:  { userId },
+            create: { userId, availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
+            update: { availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
+          }),
+        ]);
+        app.log.info(`Assinatura cancelada (downgrade para free): userId=${userId}`);
+        break;
+      }
+
+      case 'PAYMENT_REFUNDED': {
+        const externalRef = payment?.subscription?.externalReference
+          || payment?.externalReference
+          || '';
+
+        const [userId] = externalRef.split('|');
+        if (!userId) {
+          app.log.error(`Webhook PAYMENT_REFUNDED: externalReference malformado: "${externalRef}"`);
           break;
         }
 
