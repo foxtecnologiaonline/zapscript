@@ -9,7 +9,9 @@ on:
 env:
   NODE_VERSION: '22'
   PNPM_VERSION: '9'
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 removido — as actions (checkout/setup-node)
+  # ainda não suportam Node.js 24 internamente; habilitar quando versões compatíveis
+  # forem publicadas (previsto para set/2026)
 
 jobs:
   # ── BUILD & DEPENDENCIES ──────────────────────────────────────
