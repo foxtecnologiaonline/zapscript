@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "nodemon --exec ts-node src/index.ts",
     "prebuild": "npm install --prefix ../../packages/database",
-    "build": "prisma generate --schema=../../packages/database/prisma/schema.prisma && tsc",
+    "build": "prisma generate --schema=../../packages/database/prisma/schema.prisma && mkdir -p node_modules/.prisma && rm -rf node_modules/.prisma/client && cp -r ../../packages/database/node_modules/.prisma/client node_modules/.prisma/ && tsc",
     "start": "node dist/index.js",
     "test": "jest --runInBand",
     "test:watch": "jest --watch"
