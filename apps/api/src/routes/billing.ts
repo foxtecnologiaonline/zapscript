@@ -65,6 +65,32 @@ async function markPaymentProcessed(paymentId: string): Promise<void> {
   });
 }
 
+/* ── Busca fatura pendente de uma assinatura Asaas ── */
+async function findPendingSubscriptionInvoice(subscriptionId: string): Promise<string | null> {
+  try {
+    for (const status of ['PENDING', 'OVERDUE']) {
+      const res  = await asaas(`/subscriptions/${subscriptionId}/payments?status=${status}&limit=1`);
+      const data = await res.json() as any;
+      const p    = data?.data?.[0];
+      if (p?.id) return p.invoiceUrl || `https://www.asaas.com/c/${p.id}`;
+    }
+  } catch { /* ignora — seguirá criando nova */ }
+  return null;
+}
+
+/* ── Busca cobrança avulsa pendente por externalReference ── */
+async function findPendingCharge(externalReference: string): Promise<{ id: string; url: string } | null> {
+  try {
+    for (const status of ['PENDING', 'OVERDUE']) {
+      const res  = await asaas(`/payments?externalReference=${encodeURIComponent(externalReference)}&status=${status}&limit=1`);
+      const data = await res.json() as any;
+      const p    = data?.data?.[0];
+      if (p?.id) return { id: p.id, url: p.invoiceUrl || `https://www.asaas.com/c/${p.id}` };
+    }
+  } catch { /* ignora */ }
+  return null;
+}
+
 /* ── Busca ou cria cliente no Asaas ── */
 async function getOrCreateCustomer(user: { id: string; name: string; email: string; document?: string | null }) {
   // Buscar por email primeiro
@@ -118,6 +144,28 @@ export default async function billingRoutes(app: FastifyInstance) {
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) return reply.code(401).send({ error: 'Usuário não encontrado' });
+
+      // ── Verificar fatura pendente existente ──────────────────────────────────
+      // Se já existe assinatura pending para o mesmo plano, reusar a fatura.
+      const existingSub = await prisma.subscription.findUnique({ where: { userId } });
+      if (
+        existingSub?.asaasSubscriptionId &&
+        existingSub?.status === 'pending'
+      ) {
+        // Verificar se a assinatura pendente corresponde ao mesmo plano solicitado
+        const asaasSubRes  = await asaas(`/subscriptions/${existingSub.asaasSubscriptionId}`).then(r => r.json()).catch(() => null) as any;
+        const subExtRef    = asaasSubRes?.externalReference ?? '';
+        const subPlanMatch = subExtRef === `${userId}|${planName}`;
+
+        if (subPlanMatch) {
+          const existingUrl = await findPendingSubscriptionInvoice(existingSub.asaasSubscriptionId);
+          if (existingUrl) {
+            app.log.info(`Checkout: reutilizando fatura pendente userId=${userId} plan=${planName}`);
+            return { url: existingUrl, subscriptionId: existingSub.asaasSubscriptionId, reused: true };
+          }
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────────
 
       // 1. Obter ou criar cliente no Asaas
       let asaasCustomerId: string;
@@ -259,6 +307,24 @@ export default async function billingRoutes(app: FastifyInstance) {
       }
 
       const proration = calculateProration(currentPrice, newPrice, sub.currentPeriodEnd);
+
+      // ── Verificar cobrança de upgrade pendente existente ─────────────────────
+      // Se o usuário já iniciou o upgrade (status=pending) e a cobrança ainda
+      // está em aberto no Asaas, redirecionar para a fatura existente.
+      if (sub.status === 'pending') {
+        const existingCharge = await findPendingCharge(`${userId}|${targetPlan}|upgrade`);
+        if (existingCharge) {
+          app.log.info(`Upgrade: reutilizando cobrança pendente userId=${userId} plan=${targetPlan}`);
+          return {
+            proratedAmount: proration.proratedAmount,
+            remainingDays:  proration.remainingDays,
+            url:            existingCharge.url,
+            chargeId:       existingCharge.id,
+            reused:         true,
+          };
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────────
 
       // ── Proration irrisória: troca imediata sem nova cobrança ──
       if (!proration.shouldCharge) {
