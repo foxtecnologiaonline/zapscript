@@ -84,7 +84,7 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
 
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
-      const totalMinutesUsed = usageLogs.reduce((s, l) => s + (l.minutesUsed || 0), 0);
+      const totalMinutesUsed = usageLogs.reduce((s: number, l: any) => s + (l.minutesUsed || 0), 0);
       const planLimit        = (user as any).subscription?.plan?.minutesPerMonth || 0;
       const available        = (user as any).balance?.availableMinutes || 0;
       const usagePct         = planLimit > 0 ? Math.min(100, ((planLimit - available) / planLimit) * 100) : 0;
@@ -142,7 +142,7 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
       ]);
       const appUrl = process.env.APP_URL || 'https://zapscript.me';
       return {
-        invites: invites.map(i => ({ ...i, link: `${appUrl}/convite/${i.code}` })),
+        invites: invites.map((i: any) => ({ ...i, link: `${appUrl}/convite/${i.code}` })),
         total,
         limit,
         offset,

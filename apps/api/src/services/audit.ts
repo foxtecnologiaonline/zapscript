@@ -115,7 +115,7 @@ export async function getAuditSummary(days: number = 30) {
     usersAffected: new Set<string>(),
   };
 
-  logs.forEach(log => {
+  logs.forEach((log: any) => {
     summary.actionsByType[log.action as AuditAction] = (summary.actionsByType[log.action as AuditAction] || 0) + 1;
     summary.adminsActive.add(log.adminId);
     if (log.targetUserId) summary.usersAffected.add(log.targetUserId);

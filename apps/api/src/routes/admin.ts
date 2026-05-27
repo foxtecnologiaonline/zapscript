@@ -163,11 +163,11 @@ export default async function adminRoutes(app: FastifyInstance) {
     ]);
 
     // Testers não contam como pagantes — têm plano pro-tester (gratuito por design)
-    const mrr            = activeSubs.reduce((sum, s) => (s.user.isTester ? sum : sum + (PLAN_PRICES[s.plan.name] || 0)), 0);
-    const paidActive     = activeSubs.filter(s => s.plan.name !== 'free' && s.plan.name !== 'pro-tester' && !s.user.isTester).length;
-    const testerCount    = activeSubs.filter(s => s.user.isTester).length;
+    const mrr            = activeSubs.reduce((sum: number, s: any) => (s.user.isTester ? sum : sum + (PLAN_PRICES[s.plan.name] || 0)), 0);
+    const paidActive     = activeSubs.filter((s: any) => s.plan.name !== 'free' && s.plan.name !== 'pro-tester' && !s.user.isTester).length;
+    const testerCount    = activeSubs.filter((s: any) => s.user.isTester).length;
     const conversionRate = totalUsers > 0 ? (paidActive / totalUsers) * 100 : 0;
-    const subsByStatus   = subStatusGroups.reduce((acc: Record<string, number>, g) => {
+    const subsByStatus   = subStatusGroups.reduce((acc: Record<string, number>, g: any) => {
       acc[g.status] = g._count.status;
       return acc;
     }, {});
@@ -392,7 +392,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       try {
         const user = await retryWithBackoff(() =>
           prisma.user.findUnique({ where: { id } })
-        );
+        ) as any;
         if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
         if (user.emailVerified) return reply.code(400).send({ error: 'E-mail já verificado.' });
 
@@ -521,7 +521,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
-      const totalMinutesUsed = usageLogs.reduce((s, l) => s + (l.minutesUsed || 0), 0);
+      const totalMinutesUsed = usageLogs.reduce((s: number, l: any) => s + (l.minutesUsed || 0), 0);
       const planLimit        = user.subscription?.plan?.minutesPerMonth || 0;
       const available        = user.balance?.availableMinutes || 0;
       const usagePct         = planLimit > 0 ? Math.min(100, ((planLimit - available) / planLimit) * 100) : 0;
@@ -652,7 +652,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
     return {
       total: testers.length,
-      testers: testers.map(u => ({
+      testers: testers.map((u: any) => ({
         id:             u.id,
         name:           u.name,
         email:          u.email,
@@ -662,7 +662,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         planLabel:      u.subscription?.plan?.label || '—',
         subStatus:      u.subscription?.status      || '—',
         minutesAvail:   u.balance?.availableMinutes  ?? 0,
-        numbersConnected: u.numbers.filter(n => n.status === 'connected').length,
+        numbersConnected: u.numbers.filter((n: any) => n.status === 'connected').length,
       })),
     };
   });
@@ -975,7 +975,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       ]);
       const appUrl = process.env.APP_URL || 'https://zapscript.me';
       return {
-        invites: invites.map(i => ({ ...i, link: `${appUrl}/convite/${i.code}` })),
+        invites: invites.map((i: any) => ({ ...i, link: `${appUrl}/convite/${i.code}` })),
         total,
         limit,
         offset,
@@ -1050,7 +1050,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     { preHandler: [adminAuth] },
     async (_req, reply) => {
       try {
-        const q = new Queue('transcriptions', { connection: redis });
+        const q = new Queue('transcriptions', { connection: redis as any });
 
         const [waiting, active, failed, completed, delayed, paused] = await Promise.all([
           q.getWaitingCount(),
@@ -1109,7 +1109,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     { preHandler: [adminAuth] },
     async (_req, reply) => {
       try {
-        const q = new Queue('transcriptions', { connection: redis });
+        const q = new Queue('transcriptions', { connection: redis as any });
         const failedJobs = await q.getFailed(0, 99);
         let retried = 0;
         for (const job of failedJobs) {
@@ -1678,8 +1678,8 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
 
       const atRisk = subs
-        .filter(s => s.plan.priceBrl > 0 && !s.user.isTester)
-        .map(s => {
+        .filter((s: any) => s.plan.priceBrl > 0 && !s.user.isTester)
+        .map((s: any) => {
           const lastT = s.user.transcriptions[0]?.createdAt ?? null;
           const daysSinceLast = lastT
             ? Math.floor((Date.now() - new Date(lastT).getTime()) / 86_400_000)
@@ -1699,8 +1699,8 @@ export default async function adminRoutes(app: FastifyInstance) {
             isAtRisk,
           };
         })
-        .filter(u => u.isAtRisk)
-        .sort((a, b) => (b.daysSinceLast ?? 9999) - (a.daysSinceLast ?? 9999));
+        .filter((u: any) => u.isAtRisk)
+        .sort((a: any, b: any) => (b.daysSinceLast ?? 9999) - (a.daysSinceLast ?? 9999));
 
       return { atRisk, total: atRisk.length, inactiveDays: days };
     }
@@ -1864,7 +1864,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     async (req) => {
       const filters = req.body || {};
       const users   = await getCampaignRecipients(filters);
-      const sample  = users.slice(0, 5).map(u => ({
+      const sample  = users.slice(0, 5).map((u: any) => ({
         email:    maskEmail(u.email),
         plan:     u.subscription?.plan?.name || 'free',
         hasPhone: u.numbers.length > 0,
@@ -1985,7 +1985,7 @@ async function getCampaignRecipients(filters: {
     take: 1100, // hard cap
   });
 
-  return users.filter(u => {
+  return users.filter((u: any) => {
     const planName = u.subscription?.plan?.name || 'free';
 
     // Filtro por plano

@@ -92,7 +92,7 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       });
 
       const q = search.toLowerCase();
-      const matched = allItems.filter(t => {
+      const matched = allItems.filter((t: any) => {
         const text    = decryptStr(t.originalText).toLowerCase();
         const bullets = decryptArr(t.summaryBullets as string).join(' ').toLowerCase();
         const name    = (t.contactName || '').toLowerCase();
@@ -100,7 +100,7 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       });
 
       const total = matched.length;
-      const page  = matched.slice(offset, offset + limit).map(t => ({
+      const page  = matched.slice(offset, offset + limit).map((t: any) => ({
         ...t,
         contactPhone:   decryptStr(t.contactPhone),
         originalText:   decryptStr(t.originalText),
@@ -121,7 +121,7 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       prisma.transcription.count({ where }),
     ]);
 
-    const decryptedItems = items.map(t => ({
+    const decryptedItems = items.map((t: any) => ({
       ...t,
       contactPhone:   decryptStr(t.contactPhone),
       originalText:   decryptStr(t.originalText),
@@ -160,7 +160,7 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
     };
     const escCsv = (v: string) => `"${sanitizeCsv(v)}"`;
-    const rows = items.map(t => [
+    const rows = items.map((t: any) => [
       escCsv(t.createdAt.toISOString().slice(0, 16).replace('T', ' ')),
       escCsv(t.contactName || ''),
       escCsv(decryptStr(t.contactPhone)),

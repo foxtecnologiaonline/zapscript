@@ -282,6 +282,10 @@ html, body {
 .hover-row { transition: background .12s; }
 .hover-row:hover { background: rgb(var(--color-surface-elevated)); }
 
+/* ── Hide scrollbar but keep scroll functionality ── */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* ── Mobile sidebar slide-in ── */
 @keyframes slideInLeft {
   from { transform: translateX(-100%); }

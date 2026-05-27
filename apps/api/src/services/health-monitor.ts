@@ -94,7 +94,7 @@ async function checkQueue(): Promise<
 > {
   const zero = { waiting: 0, active: 0, failed: 0, completed: 0, delayed: 0 };
   try {
-    const q = new Queue('transcriptions', { connection: redis });
+    const q = new Queue('transcriptions', { connection: redis as any });
     const [waiting, active, failed, completed, delayed] = await Promise.all([
       q.getWaitingCount(),
       q.getActiveCount(),

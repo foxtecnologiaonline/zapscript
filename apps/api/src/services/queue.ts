@@ -34,7 +34,7 @@ redis.on('ready',        ()    => logger.info('[Redis] ✅ Pronto'));
 
 // ── Fila de transcrições ───────────────────────────────────────────────────────
 export const transcriptionQueue = new Queue('transcriptions', {
-  connection: redis,
+  connection: redis as any,
   defaultJobOptions: {
     attempts: 4,                              // 4 tentativas (era 3)
     backoff:  { type: 'exponential', delay: 5_000 }, // 5s → 10s → 20s → 40s

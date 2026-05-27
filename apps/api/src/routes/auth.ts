@@ -130,7 +130,7 @@ export default async function authRoutes(app: FastifyInstance) {
       const oneYearFromNow = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
 
       // Criar User + Subscription + MinuteBalance em transação atômica
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         const u = await tx.user.create({
           data: {
             id: data.user!.id,
