@@ -116,11 +116,11 @@ export default function ConfiguracoesPage() {
         </div>
       </div>
 
-      {/* Webhook Personalizado (Executive) */}
+      {/* Integração com outros Apps (Executive) */}
       <div className={`card rounded-2xl p-6 mb-5 ${!canWebhook ? 'opacity-70' : ''}`}>
         <div className="flex items-center justify-between mb-1">
           <h2 className="font-bold text-sm text-brand-text flex items-center gap-2">
-            🔗 Webhook Personalizado
+            🔗 Integração com outros Apps
             {webhookActive && canWebhook && (
               <span className="text-[9px] bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 px-1.5 py-0.5 rounded font-bold">Ativo</span>
             )}

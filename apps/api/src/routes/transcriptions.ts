@@ -10,7 +10,7 @@ const PLAN_SEARCH  = ['pro', 'ultra', 'executive'];
 const PLAN_EXPORT  = ['pro', 'ultra', 'executive'];
 const PLAN_TAGS    = ['pro', 'ultra', 'executive'];   // tags abertas para Pro+
 const PLAN_LANG    = ['ultra', 'executive'];
-const PLAN_AI_FEAT = ['pro', 'ultra', 'executive'];   // reply sugerida + doc
+const PLAN_AI_FEAT = ['ultra', 'executive'];          // reply sugerida + doc (Ultra+)
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -140,8 +140,8 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     const plan   = await getUserPlan(userId);
     if (!requirePlan(plan, PLAN_EXPORT, reply)) return;
 
-    // format param reservado para versão futura (pdf) — por ora sempre CSV
-    const month = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
+    const format = (req.query.format || 'csv').toLowerCase(); // csv | xls
+    const month  = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
 
     const [year, mon] = month.split('-').map(Number);
     const from = new Date(year, mon - 1, 1);
@@ -153,7 +153,31 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       take:    1000,
     });
 
-    // CSV — sanitiza fórmulas (CSV Injection) prefixando campos que iniciam
+    // ── XLS export (HTML-based, opens natively in Excel) ──
+    if (format === 'xls') {
+      const esc = (v: string) => (v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const tableRows = items.map((t: any) => {
+        const c = (v: string) => `<td>${esc(v)}</td>`;
+        return `<tr>${[
+          c(t.createdAt.toLocaleString('pt-BR')),
+          c(t.contactName || ''),
+          c(decryptStr(t.contactPhone)),
+          c((t.durationSec / 60).toFixed(2)),
+          c(t.language),
+          c(decryptStr(t.originalText)),
+          c(decryptArr(t.summaryBullets as string).join(' | ')),
+          c(((t as any).tags || []).join(', ')),
+        ].join('')}</tr>`;
+      }).join('');
+      const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"/></head><body><table><tr><th>Data</th><th>Contato</th><th>Telefone</th><th>Duração (min)</th><th>Idioma</th><th>Texto</th><th>Resumo</th><th>Tags</th></tr>${tableRows}</table></body></html>`;
+      reply
+        .header('Content-Type', 'application/vnd.ms-excel; charset=utf-8')
+        .header('Content-Disposition', `attachment; filename="transcricoes-${month}.xls"`);
+      return reply.send(html);
+    }
+
+    // ── CSV export (default) ──────────────────────────────
+    // Sanitiza fórmulas (CSV Injection) prefixando campos que iniciam
     // com =, +, -, @ com apóstrofo, impedindo execução em Excel/LibreOffice.
     const sanitizeCsv = (v: string): string => {
       const s = (v || '').replace(/"/g, '""').replace(/\n/g, ' ');
@@ -226,7 +250,7 @@ Responda SOMENTE com JSON no formato:
 
       try {
         const response = await anthropic.messages.create({
-          model:      'claude-haiku-20240307',
+          model:      'claude-3-haiku-20240307',
           max_tokens: 600,
           messages:   [{ role: 'user', content: prompt }],
         });
@@ -280,7 +304,7 @@ Gere apenas o documento, sem explicações adicionais.`;
 
       try {
         const response = await anthropic.messages.create({
-          model:      'claude-haiku-20240307',
+          model:      'claude-3-haiku-20240307',
           max_tokens: 1000,
           messages:   [{ role: 'user', content: prompt }],
         });

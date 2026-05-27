@@ -328,7 +328,7 @@ export default async function billingRoutes(app: FastifyInstance) {
 
       // ── Proration irrisória: troca imediata sem nova cobrança ──
       if (!proration.shouldCharge) {
-        const nextPeriod = sub.currentPeriodEnd ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        const nextPeriod = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
         await prisma.$transaction([
           prisma.subscription.update({
             where: { userId },
@@ -336,7 +336,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           }),
           prisma.minuteBalance.update({
             where: { userId },
-            data:  { availableMinutes: newPlan.minutesPerMonth, lastAlertSent: null },
+            data:  { availableMinutes: newPlan.minutesPerMonth, resetAt: nextPeriod, lastAlertSent: null },
           }),
         ]);
         return { switched: true, message: 'Plano atualizado imediatamente (sem custo adicional).' };

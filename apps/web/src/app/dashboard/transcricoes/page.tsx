@@ -25,7 +25,7 @@ const PLAN_SEARCH  = ['pro', 'ultra', 'executive'];
 const PLAN_EXPORT  = ['pro', 'ultra', 'executive'];
 const PLAN_TAGS    = ['pro', 'ultra', 'executive'];
 const PLAN_LANG    = ['ultra', 'executive'];
-const PLAN_AI_FEAT = ['pro', 'ultra', 'executive'];
+const PLAN_AI_FEAT = ['ultra', 'executive'];
 const PLAN_VOICE   = ['ultra', 'executive'];
 
 const DOC_TYPES = [
@@ -365,6 +365,7 @@ export default function TranscricoesPage() {
   /* — Upload & export — */
   const [showUpload, setShowUpload]         = useState(false);
   const [exporting, setExporting]           = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   /* — Plan — */
   const [planName, setPlanName]             = useState('free');
@@ -494,20 +495,22 @@ export default function TranscricoesPage() {
     }
   }
 
-  async function handleExport() {
+  async function handleExport(format: 'csv' | 'xls' = 'csv') {
     setExporting(true);
+    setShowExportMenu(false);
     try {
       const month = new Date().toISOString().slice(0, 7);
       const token = typeof window !== 'undefined' ? localStorage.getItem('zs_token') : null;
       const base  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      const res   = await fetch(`${base}/transcriptions/export?format=csv&month=${month}`, {
+      const res   = await fetch(`${base}/transcriptions/export?format=${format}&month=${month}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) { alert('Erro ao exportar. Verifique seu plano.'); return; }
       const blob = await res.blob();
+      const ext  = format === 'xls' ? 'xls' : 'csv';
       const a = Object.assign(document.createElement('a'), {
         href: URL.createObjectURL(blob),
-        download: `transcricoes-${month}.csv`,
+        download: `transcricoes-${month}.${ext}`,
       });
       a.click(); URL.revokeObjectURL(a.href);
     } finally {
@@ -609,12 +612,25 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   const totalPages = Math.ceil(total / LIMIT);
   const currentPage = Math.floor(offset / LIMIT) + 1;
 
-  /* ─── Keyboard shortcut: Escape closes modal ─────────────────────────── */
+  /* ─── Keyboard shortcut: Escape closes modal/menus ─────────────────────── */
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && selected) closeDetail(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selected) closeDetail();
+        setShowExportMenu(false);
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [selected]);
+
+  /* ─── Close export menu on outside click ──────────────────────────────── */
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const handler = () => setShowExportMenu(false);
+    document.addEventListener('click', handler, { capture: true });
+    return () => document.removeEventListener('click', handler, { capture: true });
+  }, [showExportMenu]);
 
   /* ══════════════════════════════════════════════════════════════════════ */
   /*  RENDER                                                                */
@@ -632,28 +648,61 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Export bulk CSV — Pro+ */}
-          <button
-            type="button"
-            onClick={canExport ? handleExport : undefined}
-            disabled={exporting}
-            title={!canExport ? 'Exportação disponível no plano Pro' : 'Exportar CSV do mês atual'}
-            className={`relative text-sm px-3 py-2 rounded-xl border flex items-center gap-1.5 transition-colors ${
-              canExport
-                ? 'border-brand-border text-brand-text-secondary hover:border-brand-primary hover:text-brand-primary'
-                : 'border-brand-border/40 text-brand-muted cursor-not-allowed'
-            }`}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            <span className="hidden sm:inline">{exporting ? 'Exportando…' : 'Exportar CSV'}</span>
-            {!canExport && (
-              <span className="text-[9px] font-bold px-1 py-0.5 rounded ml-0.5"
-                style={{ background: 'rgba(13,150,104,.12)', color: 'rgb(var(--color-primary))' }}>
-                Pro+
-              </span>
+          {/* Export bulk — Pro+ */}
+          <div className="relative">
+            {canExport ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowExportMenu(v => !v)}
+                  disabled={exporting}
+                  title="Exportar transcrições do mês"
+                  className="text-sm px-3 py-2 rounded-xl border border-brand-border text-brand-text-secondary hover:border-brand-primary hover:text-brand-primary flex items-center gap-1.5 transition-colors">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  <span className="hidden sm:inline">{exporting ? 'Exportando…' : 'Exportar'}</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="hidden sm:block">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+                {showExportMenu && (
+                  <div
+                    className="absolute right-0 top-full mt-1 z-20 rounded-xl shadow-lg border border-brand-border overflow-hidden"
+                    style={{ background: 'rgb(var(--color-surface-elevated))', minWidth: '140px' }}>
+                    {[
+                      { fmt: 'csv' as const, emoji: '📋', label: 'CSV' },
+                      { fmt: 'xls' as const, emoji: '📊', label: 'Excel (XLS)' },
+                    ].map(({ fmt, emoji, label }) => (
+                      <button
+                        key={fmt}
+                        type="button"
+                        onClick={() => handleExport(fmt)}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-xs text-brand-text-secondary hover:bg-brand-primary/5 hover:text-brand-primary transition-colors text-left">
+                        <span>{emoji}</span>
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled
+                  title="Exportação disponível no plano Pro"
+                  className="text-sm px-3 py-2 rounded-xl border border-brand-border/40 text-brand-muted cursor-not-allowed flex items-center gap-1.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  <span className="hidden sm:inline">Exportar</span>
+                  <span className="text-[9px] font-bold px-1 py-0.5 rounded"
+                    style={{ background: 'rgba(13,150,104,.12)', color: 'rgb(var(--color-primary))' }}>Pro+</span>
+                </button>
+              </div>
             )}
-          </button>
+          </div>
 
           {/* Upload audio */}
           <button
@@ -686,10 +735,11 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               className={`input pl-9 w-full ${!canSearch ? 'opacity-70 cursor-not-allowed' : ''}`}
               placeholder={canSearch
                 ? 'Buscar por contato, texto ou resumo…'
-                : '🔒 Busca disponível no plano Pro'
+                : '🔒 Busca disponível no plano Pro → Ver planos'
               }
               value={search}
               onChange={e => canSearch && setSearch(e.target.value)}
+              onClick={!canSearch ? () => { window.location.href = '/dashboard/plano'; } : undefined}
               readOnly={!canSearch}
               aria-label="Buscar transcrições"
             />
@@ -1155,8 +1205,8 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                     {tab === 'ia' && !canAiFeat && (
                       <span
                         className="text-[9px] font-bold px-1 py-0.5 rounded leading-none"
-                        style={{ background: 'rgba(13,150,104,.12)', color: 'rgb(var(--color-primary))' }}>
-                        Pro+
+                        style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b' }}>
+                        Ultra+
                       </span>
                     )}
                   </button>
@@ -1191,7 +1241,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                   )}
 
                   {/* Tags section */}
-                  <div className={`pt-2 ${!canTags ? 'opacity-60' : ''}`}>
+                  <div className="pt-2">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest">
                         🏷️ Tags
@@ -1205,30 +1255,37 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                       )}
                     </div>
                     {canTags ? (
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1">
-                          <TagInput tags={editTags} onChange={setEditTags} />
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1">
+                            <TagInput tags={editTags} onChange={setEditTags} />
+                          </div>
+                          {tagsChanged && (
+                            <button
+                              type="button"
+                              onClick={saveTags}
+                              disabled={savingTags}
+                              className="btn-primary text-xs px-3 py-2 flex-shrink-0 disabled:opacity-50">
+                              {savingTags ? '…' : 'Salvar'}
+                            </button>
+                          )}
                         </div>
-                        {tagsChanged && (
-                          <button
-                            type="button"
-                            onClick={saveTags}
-                            disabled={savingTags}
-                            className="btn-primary text-xs px-3 py-2 flex-shrink-0 disabled:opacity-50">
-                            {savingTags ? '…' : 'Salvar'}
-                          </button>
-                        )}
-                      </div>
+                        <p className="text-[10px] text-brand-muted mt-1.5">
+                          Pressione Enter ou vírgula para adicionar · Máximo 5 tags
+                        </p>
+                      </>
                     ) : (
-                      <p className="text-xs text-brand-muted">
-                        Organização por tags disponível no plano{' '}
-                        <a href="/dashboard/plano" className="text-brand-primary hover:underline font-medium">Pro ou superior</a>.
-                      </p>
-                    )}
-                    {canTags && (
-                      <p className="text-[10px] text-brand-muted mt-1.5">
-                        Pressione Enter ou vírgula para adicionar · Máximo 5 tags
-                      </p>
+                      <div className="rounded-xl p-3 text-center"
+                        style={{ background: 'rgba(var(--color-primary)/.05)', border: '1px solid rgba(var(--color-primary)/.12)' }}>
+                        <p className="text-xs text-brand-muted mb-2">
+                          Organize transcrições com tags no plano Pro ou superior.
+                        </p>
+                        <a href="/dashboard/plano"
+                          className="text-[11px] font-semibold px-3 py-1.5 rounded-lg inline-block"
+                          style={{ background: 'rgba(var(--color-primary)/.12)', color: 'rgb(var(--color-primary))' }}>
+                          Ver planos →
+                        </a>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1391,16 +1448,18 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                   <div className="flex flex-col items-center justify-center py-8 text-center">
                     <div
                       className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-2xl"
-                      style={{ background: 'rgba(13,150,104,.1)', border: '1px solid rgba(13,150,104,.2)' }}>
+                      style={{ background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.2)' }}>
                       🤖
                     </div>
                     <p className="font-semibold text-brand-text mb-1">Recursos de Inteligência Artificial</p>
-                    <p className="text-sm text-brand-muted mb-5 max-w-xs">
+                    <p className="text-sm text-brand-muted mb-1 max-w-xs">
                       Gere respostas sugeridas, atas de reunião, e-mails profissionais e muito mais com IA.
-                      Disponível no plano Pro.
+                    </p>
+                    <p className="text-xs font-semibold mb-4" style={{ color: '#f59e0b' }}>
+                      Disponível a partir do plano Ultra
                     </p>
                     <a href="/dashboard/plano" className="btn-primary text-sm px-6 py-2.5 inline-block">
-                      Ver planos →
+                      ⭐ Ver planos →
                     </a>
                   </div>
                 )
