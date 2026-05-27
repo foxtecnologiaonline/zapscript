@@ -1,10 +1,10 @@
 {
   "name": "worker",
   "version": "1.0.0",
+  "packageManager": "npm@10.0.0",
   "scripts": {
     "dev": "nodemon --exec ts-node src/index.ts",
-    "prebuild": "npm install -g pnpm@9 --quiet 2>/dev/null || true",
-    "build": "prisma generate --schema=../../packages/database/prisma/schema.prisma && tsc",
+    "build": "npm_config_user_agent=npm prisma generate --schema=../../packages/database/prisma/schema.prisma && tsc",
     "start": "node dist/index.js",
     "test": "jest --runInBand",
     "test:watch": "jest --watch"
