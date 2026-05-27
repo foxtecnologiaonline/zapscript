@@ -113,13 +113,7 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: '🔒 Modo privado',                    vals: [false, false, false, true] },
 ];
 
-/* ── Métodos de pagamento disponíveis no Asaas ── */
-const BILLING_TYPES = [
-  { value: 'UNDEFINED',    label: '💳 Escolher na hora',    desc: 'PIX, cartão ou boleto' },
-  { value: 'PIX',          label: '⚡ PIX',                 desc: 'R$0,80 por cobrança' },
-  { value: 'CREDIT_CARD',  label: '💳 Cartão de crédito',  desc: '3,5% + R$0,60' },
-  { value: 'BOLETO',       label: '📄 Boleto bancário',     desc: 'Vence em 3 dias úteis' },
-];
+// Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento
 
 function formatDocument(val: string): string {
   const n = val.replace(/\D/g, '').slice(0, 14);
@@ -148,24 +142,26 @@ interface UpgradePreview {
 
 function UpgradeModal({
   preview,
-  billingType,
-  setBillingType,
   loading,
   onConfirm,
   onCancel,
 }: {
   preview: UpgradePreview;
-  billingType: string;
-  setBillingType: (v: string) => void;
   loading: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const targetLabel = PLANS.find(p => p.name === preview.targetPlanName)?.label ?? preview.targetPlanName;
-  const nextDate = preview.nextCycleDate
+  const targetPlan  = PLANS.find(p => p.name === preview.targetPlanName);
+  const targetLabel = targetPlan?.label ?? preview.targetPlanName;
+  const nextDate    = preview.nextCycleDate
     ? new Date(preview.nextCycleDate).toLocaleDateString('pt-BR')
-    : '30 dias';
+    : null;
+
+  // Sem proration real: plano cancelado ou primeiro ciclo completo
+  const isFullPrice = preview.proratedAmount >= preview.targetPlanPrice * 0.99;
+  // Apenas features exclusivas do plano destino (não herdadas dos anteriores)
+  const newFeats = (targetPlan?.feats ?? []).slice(2, 5); // pula minutos/números, pega até 3 diferenciais
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
@@ -187,7 +183,23 @@ function UpgradeModal({
           </p>
         </div>
 
-        {/* Breakdown */}
+        {/* Features desbloqueadas */}
+        {newFeats.length > 0 && (
+          <div className="rounded-xl p-3 mb-4 space-y-1.5"
+            style={{ background: 'rgba(var(--color-primary)/.05)', border: '1px solid rgba(var(--color-primary)/.12)' }}>
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'rgb(var(--color-primary))' }}>
+              Você vai desbloquear
+            </p>
+            {newFeats.map((f, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                <span className="text-green-400 flex-shrink-0">✓</span>
+                <span>{f}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Breakdown de valor */}
         <div className="rounded-xl p-4 mb-4 space-y-3"
           style={{ background: 'rgba(var(--color-primary)/.06)', border: '1px solid rgba(var(--color-primary)/.15)' }}>
 
@@ -195,21 +207,36 @@ function UpgradeModal({
             <>
               <div className="flex justify-between items-baseline">
                 <span className="text-xs" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                  Paga agora <span className="text-[10px] opacity-70">({preview.remainingDays} dias restantes)</span>
+                  {isFullPrice ? 'Valor da assinatura' : (
+                    <>Paga agora <span className="text-[10px] opacity-70">({preview.remainingDays} dias restantes)</span></>
+                  )}
                 </span>
                 <span className="font-black text-xl" style={{ color: 'rgb(var(--color-primary))' }}>
                   {brl(preview.proratedAmount)}
                 </span>
               </div>
-              <div className="h-px" style={{ background: 'rgba(var(--color-primary)/.12)' }} />
-              <div className="flex justify-between items-baseline">
-                <span className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                  A partir de {nextDate}
-                </span>
-                <span className="font-bold text-sm" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                  {brl(preview.targetPlanPrice)}<span className="font-normal text-xs">/mês</span>
-                </span>
-              </div>
+              {!isFullPrice && nextDate && (
+                <>
+                  <div className="h-px" style={{ background: 'rgba(var(--color-primary)/.12)' }} />
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                      A partir de {nextDate}
+                    </span>
+                    <span className="font-bold text-sm" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                      {brl(preview.targetPlanPrice)}<span className="font-normal text-xs">/mês</span>
+                    </span>
+                  </div>
+                </>
+              )}
+              {isFullPrice && (
+                <>
+                  <div className="h-px" style={{ background: 'rgba(var(--color-primary)/.12)' }} />
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>Renovação mensal</span>
+                    <span className="font-semibold text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>automática</span>
+                  </div>
+                </>
+              )}
             </>
           ) : (
             <div className="text-center py-1">
@@ -223,8 +250,8 @@ function UpgradeModal({
           )}
         </div>
 
-        {/* Cálculo detalhado */}
-        {preview.shouldCharge && (
+        {/* Cálculo detalhado (apenas quando há proration real) */}
+        {preview.shouldCharge && !isFullPrice && (
           <details className="mb-4 group">
             <summary className="text-[10px] cursor-pointer select-none flex items-center gap-1"
               style={{ color: 'rgb(var(--color-text-muted))' }}>
@@ -242,47 +269,23 @@ function UpgradeModal({
           </details>
         )}
 
-        {/* Forma de pagamento (só se houver cobrança) */}
-        {preview.shouldCharge && (
-          <div className="mb-4">
-            <p className="text-xs font-semibold mb-2" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Forma de pagamento
-            </p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {BILLING_TYPES.map(bt => (
-                <button key={bt.value} onClick={() => setBillingType(bt.value)}
-                  className="text-left p-2.5 rounded-xl border transition-all"
-                  style={{
-                    borderColor: billingType === bt.value ? 'rgb(var(--color-primary))' : 'rgb(var(--color-border))',
-                    background:  billingType === bt.value ? 'rgba(var(--color-primary)/.08)' : 'transparent',
-                  }}>
-                  <div className="font-semibold text-[11px]">{bt.label}</div>
-                  <div className="text-[10px] opacity-60 mt-0.5">{bt.desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Botões */}
-        <div className="flex gap-2">
-          <button onClick={onCancel} disabled={loading}
-            className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-            style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
-            Cancelar
-          </button>
-          <button onClick={onConfirm} disabled={loading}
-            className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50">
-            {loading
-              ? 'Aguarde...'
-              : preview.shouldCharge
-              ? `Pagar ${brl(preview.proratedAmount)} →`
-              : 'Confirmar upgrade →'}
-          </button>
-        </div>
+        <button onClick={onConfirm} disabled={loading}
+          className="w-full btn-primary py-3 text-sm font-bold disabled:opacity-50 mb-2">
+          {loading
+            ? 'Aguarde...'
+            : preview.shouldCharge
+            ? `Pagar ${brl(preview.proratedAmount)} →`
+            : 'Confirmar upgrade →'}
+        </button>
+        <button onClick={onCancel} disabled={loading}
+          className="w-full py-2 text-xs transition-colors disabled:opacity-50"
+          style={{ color: 'rgb(var(--color-text-muted))' }}>
+          Cancelar
+        </button>
 
-        <p className="text-center text-[10px] mt-3" style={{ color: 'rgb(var(--color-text-muted))' }}>
-          Pagamento seguro via Asaas · Cancele a qualquer momento
+        <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.5)' }}>
+          🔒 Pagamento seguro via Asaas · Cancele a qualquer momento
         </p>
       </div>
     </div>
@@ -389,7 +392,6 @@ function PlanoContent() {
   const [user, setUser]               = useState<User | null>(null);
   const [loading, setLoading]         = useState(true);
   const [checkoutPlan, setCheckoutPlan]     = useState<string | null>(null);
-  const [billingType, setBillingType]       = useState('UNDEFINED');
   const [docModal, setDocModal]             = useState<string | null>(null);
   const [showTable, setShowTable]           = useState(false);
   const [upgradePreview, setUpgradePreview] = useState<UpgradePreview | null>(null);
@@ -415,7 +417,7 @@ function PlanoContent() {
     try {
       const res = await api.post<{ url: string; subscriptionId: string }>(
         '/billing/checkout',
-        { planName, billingType }
+        { planName, billingType: 'UNDEFINED' }
       );
       if (res.url) {
         window.location.href = res.url;
@@ -455,7 +457,7 @@ function PlanoContent() {
     const planName = upgradePreview.targetPlanName;
     setCheckoutPlan(planName);
     try {
-      const res = await api.post<any>('/billing/upgrade', { targetPlan: planName, billingType });
+      const res = await api.post<any>('/billing/upgrade', { targetPlan: planName, billingType: 'UNDEFINED' });
       if (res.switched) {
         window.location.href = '/dashboard/plano?upgrade=success';
         return;
@@ -580,27 +582,7 @@ function PlanoContent() {
         </div>
       )}
 
-      {/* Payment method selector */}
-      {currentPlan === 'free' && (
-        <div className="card rounded-2xl p-4 mb-5">
-          <p className="text-xs font-semibold mb-3" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-            Forma de pagamento
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {BILLING_TYPES.map(bt => (
-              <button key={bt.value} onClick={() => setBillingType(bt.value)}
-                className="text-left p-3 rounded-xl border transition-all"
-                style={{
-                  borderColor: billingType === bt.value ? 'rgb(var(--color-primary))' : 'rgb(var(--color-border))',
-                  background: billingType === bt.value ? 'rgba(var(--color-primary)/.08)' : 'transparent',
-                }}>
-                <div className="font-semibold text-xs">{bt.label}</div>
-                <div className="text-xs font-light mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{bt.desc}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Nota: forma de pagamento (PIX, cartão, boleto) é escolhida na página segura da Asaas */}
 
       {/* ── Planos — Opção 3 Híbrido ── */}
       <h2 className="font-display font-bold text-base mb-4">
@@ -818,8 +800,6 @@ function PlanoContent() {
       {upgradePreview && (
         <UpgradeModal
           preview={upgradePreview}
-          billingType={billingType}
-          setBillingType={setBillingType}
           loading={!!checkoutPlan}
           onConfirm={doUpgrade}
           onCancel={() => setUpgradePreview(null)}
