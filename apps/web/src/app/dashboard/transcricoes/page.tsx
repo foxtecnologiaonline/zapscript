@@ -22,8 +22,8 @@ const MAX_MB      = 50;
 const LIMIT       = 20;
 
 const PLAN_HISTORY = ['pro', 'ultra', 'executive'];
-const PLAN_FILTERS = ['ultra', 'executive'];
-const PLAN_SEARCH  = ['ultra', 'executive'];
+const PLAN_FILTERS = ['pro', 'ultra', 'executive'];
+const PLAN_SEARCH  = ['pro', 'ultra', 'executive'];
 
 const DOC_TYPES = [
   { value: 'resumo',     label: 'Resumo Executivo'    },

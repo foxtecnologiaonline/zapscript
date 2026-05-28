@@ -130,46 +130,56 @@ export default async function authRoutes(app: FastifyInstance) {
       const oneYearFromNow = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
 
       // Criar User + Subscription + MinuteBalance em transação atômica
-      await prisma.$transaction(async (tx: any) => {
-        const u = await tx.user.create({
-          data: {
-            id: data.user!.id,
-            email,
-            name,
-            phone:                   phone?.trim() || undefined,
-            isTester:                !!testerInvite,
-            testerSince:             testerInvite ? now : undefined,
-            // LGPD — registro de consentimentos (Art. 8º §2º)
-            termsAcceptedAt:         cbTos      ? now : undefined,
-            contractAcceptedAt:      cbContrato ? now : undefined,
-            privacyPolicyAcceptedAt: cbLgpd     ? now : undefined,
-            marketingConsentAt:      cbMarketing ? now : undefined,
-            consentDocVersion:       docVersion || 'tos_v2.0,contrato_v2.0,pp_v2.0',
-          },
-        });
-        await tx.subscription.create({
-          data: {
-            userId:          u.id,
-            planId:          plan.id,
-            status:          'active',
-            currentPeriodEnd: testerInvite ? oneYearFromNow : undefined,
-          },
-        });
-        await tx.minuteBalance.create({
-          data: {
-            userId:           u.id,
-            availableMinutes: plan.minutesPerMonth,
-            resetAt:          testerInvite ? oneYearFromNow : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          },
-        });
-        // Marcar convite como usado
-        if (testerInvite) {
-          await tx.testerInvite.update({
-            where: { id: testerInvite.id },
-            data:  { usedAt: now, usedBy: u.id },
+      // Se falhar: rollback do usuário Supabase para evitar conta órfã (autenticada mas sem dados)
+      try {
+        await prisma.$transaction(async (tx: any) => {
+          const u = await tx.user.create({
+            data: {
+              id: data.user!.id,
+              email,
+              name,
+              phone:                   phone?.trim() || undefined,
+              isTester:                !!testerInvite,
+              testerSince:             testerInvite ? now : undefined,
+              // LGPD — registro de consentimentos (Art. 8º §2º)
+              termsAcceptedAt:         cbTos      ? now : undefined,
+              contractAcceptedAt:      cbContrato ? now : undefined,
+              privacyPolicyAcceptedAt: cbLgpd     ? now : undefined,
+              marketingConsentAt:      cbMarketing ? now : undefined,
+              consentDocVersion:       docVersion || 'tos_v2.0,contrato_v2.0,pp_v2.0',
+            },
           });
-        }
-      });
+          await tx.subscription.create({
+            data: {
+              userId:          u.id,
+              planId:          plan.id,
+              status:          'active',
+              currentPeriodEnd: testerInvite ? oneYearFromNow : undefined,
+            },
+          });
+          await tx.minuteBalance.create({
+            data: {
+              userId:           u.id,
+              availableMinutes: plan.minutesPerMonth,
+              resetAt:          testerInvite ? oneYearFromNow : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            },
+          });
+          // Marcar convite como usado
+          if (testerInvite) {
+            await tx.testerInvite.update({
+              where: { id: testerInvite.id },
+              data:  { usedAt: now, usedBy: u.id },
+            });
+          }
+        });
+      } catch (txErr: any) {
+        // Transação Prisma falhou — remover usuário do Supabase para evitar conta órfã
+        logger.error(`[Auth] Transação Prisma falhou para ${email}: ${txErr.message}. Fazendo rollback Supabase...`);
+        await supabase.auth.admin.deleteUser(data.user!.id).catch((delErr: any) => {
+          logger.error(`[Auth] Falha ao remover usuário Supabase ${data.user!.id} após rollback: ${delErr.message}`);
+        });
+        return reply.code(500).send({ error: 'Erro ao criar conta. Tente novamente em instantes.' });
+      }
 
       // Gerar link de confirmação e enviar e-mail de boas-vindas
       try {

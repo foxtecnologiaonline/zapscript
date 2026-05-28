@@ -16,7 +16,11 @@ const KEY =
     : null;
 
 if (!KEY) {
-  console.warn('[Encryption] ENCRYPTION_KEY não configurada — dados serão salvos sem criptografia.');
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[Encryption] FATAL: ENCRYPTION_KEY ausente ou inválida em produção. Configure no Render.com e redeploy.');
+    process.exit(1);
+  }
+  console.warn('[Encryption] ENCRYPTION_KEY não configurada — dados serão salvos sem criptografia (modo dev).');
 }
 
 /** Criptografa uma string. Retorna iv:tag:data em hex. */

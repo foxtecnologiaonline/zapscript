@@ -109,7 +109,7 @@ async function generateBullets(originalText: string, language?: string): Promise
 
   try {
     const res = await claude.messages.create({
-      model:      'claude-haiku-4-5',
+      model:      'claude-3-haiku-20240307',
       max_tokens: 120,
       system:     systemMsg,
       messages: [{
@@ -406,17 +406,24 @@ async function processManualJob(job: Job) {
     const rawBuffer = Buffer.from(audioBase64, 'base64');
     log(job, `✅ Buffer: ${(rawBuffer.length / 1024).toFixed(0)} KB`);
 
-    // PASSO 2.5: Validar tamanho (Whisper aceita no máximo 25MB)
-    const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
-    if (rawBuffer.length > MAX_AUDIO_BYTES) {
-      log(job, `⚠️ Arquivo muito grande: ${(rawBuffer.length / 1024 / 1024).toFixed(1)}MB > 25MB`);
+    // Limite absoluto de segurança antes da conversão (100MB)
+    if (rawBuffer.length > 100 * 1024 * 1024) {
+      log(job, `⚠️ Arquivo excede limite absoluto de 100MB`);
       return { skipped: true, reason: 'file_too_large' };
     }
 
     // PASSO 3: Converter para MP3 (aceita OGG, MP3, M4A, WAV, WebM)
+    // FFmpeg comprime para 64kbps — arquivo de 50MB raw vira ~2-5MB MP3
     log(job, '🔄 Convertendo para MP3...');
     mp3Buffer = await convertToMp3(rawBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 3.5: Validar MP3 resultante (Whisper aceita até 25MB)
+    const MAX_MP3_BYTES = 25 * 1024 * 1024;
+    if (mp3Buffer.length > MAX_MP3_BYTES) {
+      log(job, `⚠️ MP3 pós-conversão ainda grande: ${(mp3Buffer.length / 1024 / 1024).toFixed(1)}MB > 25MB`);
+      return { skipped: true, reason: 'file_too_large_after_compression' };
+    }
 
     // PASSO 4: Transcrever com Whisper (Groq primary / OpenAI fallback)
     log(job, '🎙️  Whisper API (PT-BR)...');
