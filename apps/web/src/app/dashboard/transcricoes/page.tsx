@@ -21,12 +21,9 @@ const ALLOWED_EXT = ['.ogg', '.opus', '.mp3', '.mp4', '.m4a', '.wav', '.webm', '
 const MAX_MB      = 50;
 const LIMIT       = 20;
 
-const PLAN_SEARCH  = ['pro', 'ultra', 'executive'];
-const PLAN_EXPORT  = ['pro', 'ultra', 'executive'];
-const PLAN_TAGS    = ['pro', 'ultra', 'executive'];
-const PLAN_LANG    = ['ultra', 'executive'];
-const PLAN_AI_FEAT = ['ultra', 'executive'];
-const PLAN_VOICE   = ['ultra', 'executive'];
+const PLAN_HISTORY = ['pro', 'ultra', 'executive'];
+const PLAN_FILTERS = ['ultra', 'executive'];
+const PLAN_SEARCH  = ['ultra', 'executive'];
 
 const DOC_TYPES = [
   { value: 'resumo',     label: 'Resumo Executivo'    },
@@ -600,12 +597,9 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   }
 
   /* ── Derived ───────────────────────────────────────────────────────────── */
+  const canHistory = PLAN_HISTORY.includes(planName);
+  const canFilters = PLAN_FILTERS.includes(planName);
   const canSearch  = PLAN_SEARCH.includes(planName);
-  const canExport  = PLAN_EXPORT.includes(planName);
-  const canTags    = PLAN_TAGS.includes(planName);
-  const canLang    = PLAN_LANG.includes(planName);
-  const canAiFeat  = PLAN_AI_FEAT.includes(planName);
-  const canVoice   = PLAN_VOICE.includes(planName);
   const hasFilters = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource);
   const tagsChanged = JSON.stringify(editTags) !== JSON.stringify(selected?.tags || []);
 
@@ -648,61 +642,19 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Export bulk — Pro+ */}
-          <div className="relative">
-            {canExport ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowExportMenu(v => !v)}
-                  disabled={exporting}
-                  title="Exportar transcrições do mês"
-                  className="text-sm px-3 py-2 rounded-xl border border-brand-border text-brand-text-secondary hover:border-brand-primary hover:text-brand-primary flex items-center gap-1.5 transition-colors">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                  <span className="hidden sm:inline">{exporting ? 'Exportando…' : 'Exportar'}</span>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="hidden sm:block">
-                    <polyline points="6 9 12 15 18 9"/>
-                  </svg>
-                </button>
-                {showExportMenu && (
-                  <div
-                    className="absolute right-0 top-full mt-1 z-20 rounded-xl shadow-lg border border-brand-border overflow-hidden"
-                    style={{ background: 'rgb(var(--color-surface-elevated))', minWidth: '140px' }}>
-                    {[
-                      { fmt: 'csv' as const, emoji: '📋', label: 'CSV' },
-                      { fmt: 'xls' as const, emoji: '📊', label: 'Excel (XLS)' },
-                    ].map(({ fmt, emoji, label }) => (
-                      <button
-                        key={fmt}
-                        type="button"
-                        onClick={() => handleExport(fmt)}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-xs text-brand-text-secondary hover:bg-brand-primary/5 hover:text-brand-primary transition-colors text-left">
-                        <span>{emoji}</span>
-                        <span>{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  disabled
-                  title="Exportação disponível no plano Pro"
-                  className="text-sm px-3 py-2 rounded-xl border border-brand-border/40 text-brand-muted cursor-not-allowed flex items-center gap-1.5">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                  <span className="hidden sm:inline">Exportar</span>
-                  <span className="text-[9px] font-bold px-1 py-0.5 rounded"
-                    style={{ background: 'rgba(13,150,104,.12)', color: 'rgb(var(--color-primary))' }}>Pro+</span>
-                </button>
-              </div>
-            )}
-          </div>
+          {/* Export — Em breve */}
+          <button
+            type="button"
+            disabled
+            title="Exportação chegando em breve!"
+            className="text-sm px-3 py-2 rounded-xl border border-brand-border/40 text-brand-muted cursor-not-allowed flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span className="hidden sm:inline">Exportar</span>
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>Em breve</span>
+          </button>
 
           {/* Upload audio */}
           <button
@@ -735,7 +687,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               className={`input pl-9 w-full ${!canSearch ? 'opacity-70 cursor-not-allowed' : ''}`}
               placeholder={canSearch
                 ? 'Buscar por contato, texto ou resumo…'
-                : '🔒 Busca disponível no plano Pro → Ver planos'
+                : '🔒 Busca disponível no plano Ultra → Ver planos'
               }
               value={search}
               onChange={e => canSearch && setSearch(e.target.value)}
@@ -778,40 +730,52 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
           <div className="card p-4 space-y-3 mb-2 border border-brand-border/60">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
 
-              {/* Contact */}
-              <input
-                className="input text-sm py-2 col-span-2 sm:col-span-1"
-                placeholder="👤 Filtrar por contato"
-                value={filterContact}
-                onChange={e => setFilterContact(e.target.value)}
-              />
+              {/* Contact — Ultra+ */}
+              <div className="relative col-span-2 sm:col-span-1">
+                <input
+                  className={`input text-sm py-2 w-full ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  placeholder={canFilters ? '👤 Filtrar por contato' : '🔒 Filtros — plano Ultra'}
+                  value={filterContact}
+                  onChange={e => canFilters && setFilterContact(e.target.value)}
+                  readOnly={!canFilters}
+                  onClick={!canFilters ? () => { window.location.href = '/dashboard/plano'; } : undefined}
+                />
+                {!canFilters && (
+                  <span className="absolute -top-1.5 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded"
+                    style={{ background: 'rgba(245,158,11,.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>
+                    Ultra+
+                  </span>
+                )}
+              </div>
 
-              {/* Date from */}
+              {/* Date from — Ultra+ */}
               <div className="relative">
                 <input
                   type="date"
-                  className="input text-sm py-2 w-full"
+                  className={`input text-sm py-2 w-full ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
                   value={dateFrom}
-                  onChange={e => setDateFrom(e.target.value)}
+                  onChange={e => canFilters && setDateFrom(e.target.value)}
+                  disabled={!canFilters}
                   aria-label="Data inicial"
                 />
-                {!dateFrom && (
+                {!dateFrom && canFilters && (
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted text-xs pointer-events-none">
                     De
                   </span>
                 )}
               </div>
 
-              {/* Date to */}
+              {/* Date to — Ultra+ */}
               <div className="relative">
                 <input
                   type="date"
-                  className="input text-sm py-2 w-full"
+                  className={`input text-sm py-2 w-full ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
                   value={dateTo}
-                  onChange={e => setDateTo(e.target.value)}
+                  onChange={e => canFilters && setDateTo(e.target.value)}
+                  disabled={!canFilters}
                   aria-label="Data final"
                 />
-                {!dateTo && (
+                {!dateTo && canFilters && (
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted text-xs pointer-events-none">
                     Até
                   </span>
@@ -821,7 +785,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               {/* Language — Ultra+ */}
               <div className="relative">
                 <select
-                  disabled={!canLang}
+                  disabled={!canFilters}
                   className="input text-sm py-2 w-full disabled:opacity-50 disabled:cursor-not-allowed"
                   value={filterLang}
                   onChange={e => {
@@ -836,7 +800,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                   <option value="fr">🇫🇷 Français</option>
                   <option value="de">🇩🇪 Deutsch</option>
                 </select>
-                {!canLang && (
+                {!canFilters && (
                   <span className="absolute -top-1.5 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded"
                     style={{ background: 'rgba(245,158,11,.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>
                     Ultra+
@@ -857,25 +821,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                 <option value="date_asc">📅 Mais antigas</option>
                 <option value="contact">🔤 Contato A-Z</option>
               </select>
-
-              {/* Voice notes — Ultra+ */}
-              {canVoice && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const s = filterSource === 'voice-note' ? '' : 'voice-note';
-                    setFilterSource(s);
-                    setOffset(0);
-                    load(search, 0, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, s);
-                  }}
-                  className={`text-xs px-3 py-2 rounded-xl border transition-colors ${
-                    filterSource === 'voice-note'
-                      ? 'bg-brand-primary text-white border-brand-primary'
-                      : 'border-brand-border text-brand-muted hover:border-brand-primary hover:text-brand-primary'
-                  }`}>
-                  🎙️ Notas pessoais
-                </button>
-              )}
             </div>
 
             <div className="flex items-center justify-between pt-1">
@@ -1088,27 +1033,44 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         )}
       </div>
 
-      {/* ── PAGINATION ──────────────────────────────────────────────────── */}
+      {/* ── PAGINATION / HISTORY GATE ───────────────────────────────────── */}
       {total > LIMIT && (
-        <div className="flex items-center justify-center gap-3 mt-4">
-          <button
-            type="button"
-            className="btn-ghost text-xs py-1.5 px-4 disabled:opacity-40"
-            disabled={offset === 0}
-            onClick={() => { const o = offset - LIMIT; setOffset(o); load(search, o, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); }}>
-            ← Anterior
-          </button>
-          <span className="text-xs text-brand-muted min-w-[80px] text-center">
-            {currentPage} de {totalPages}
-          </span>
-          <button
-            type="button"
-            className="btn-ghost text-xs py-1.5 px-4 disabled:opacity-40"
-            disabled={offset + LIMIT >= total}
-            onClick={() => { const o = offset + LIMIT; setOffset(o); load(search, o, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); }}>
-            Próxima →
-          </button>
-        </div>
+        canHistory ? (
+          <div className="flex items-center justify-center gap-3 mt-4">
+            <button
+              type="button"
+              className="btn-ghost text-xs py-1.5 px-4 disabled:opacity-40"
+              disabled={offset === 0}
+              onClick={() => { const o = offset - LIMIT; setOffset(o); load(search, o, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); }}>
+              ← Anterior
+            </button>
+            <span className="text-xs text-brand-muted min-w-[80px] text-center">
+              {currentPage} de {totalPages}
+            </span>
+            <button
+              type="button"
+              className="btn-ghost text-xs py-1.5 px-4 disabled:opacity-40"
+              disabled={offset + LIMIT >= total}
+              onClick={() => { const o = offset + LIMIT; setOffset(o); load(search, o, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); }}>
+              Próxima →
+            </button>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-xl px-5 py-4 text-center"
+            style={{ background: 'rgba(16,185,129,.05)', border: '1px solid rgba(16,185,129,.15)' }}>
+            <div className="text-sm font-semibold mb-1" style={{ color: 'rgb(var(--color-primary))' }}>
+              📋 Histórico completo — plano Pro
+            </div>
+            <p className="text-xs mb-3" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              Acesse transcrições além da página atual com o plano Pro.
+            </p>
+            <a href="/dashboard/plano"
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl transition-colors"
+              style={{ background: 'rgb(var(--color-primary))', color: '#030d06' }}>
+              Ver planos →
+            </a>
+          </div>
+        )
       )}
 
       {/* ── UPLOAD MODAL ────────────────────────────────────────────────── */}
@@ -1202,11 +1164,11 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                         : 'border-transparent text-brand-muted hover:text-brand-text'
                     }`}>
                     {label}
-                    {tab === 'ia' && !canAiFeat && (
+                    {tab === 'ia' && (
                       <span
                         className="text-[9px] font-bold px-1 py-0.5 rounded leading-none"
-                        style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b' }}>
-                        Ultra+
+                        style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
+                        Em breve
                       </span>
                     )}
                   </button>
@@ -1240,53 +1202,24 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                     <p className="text-sm text-brand-muted italic py-2">Sem resumo disponível.</p>
                   )}
 
-                  {/* Tags section */}
+                  {/* Tags section — Em breve */}
                   <div className="pt-2">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest">
                         🏷️ Tags
                       </span>
-                      {!canTags && (
-                        <span
-                          className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                          style={{ background: 'rgba(13,150,104,.12)', color: 'rgb(var(--color-primary))' }}>
-                          Pro+
-                        </span>
-                      )}
+                      <span
+                        className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
+                        Em breve
+                      </span>
                     </div>
-                    {canTags ? (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1">
-                            <TagInput tags={editTags} onChange={setEditTags} />
-                          </div>
-                          {tagsChanged && (
-                            <button
-                              type="button"
-                              onClick={saveTags}
-                              disabled={savingTags}
-                              className="btn-primary text-xs px-3 py-2 flex-shrink-0 disabled:opacity-50">
-                              {savingTags ? '…' : 'Salvar'}
-                            </button>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-brand-muted mt-1.5">
-                          Pressione Enter ou vírgula para adicionar · Máximo 5 tags
-                        </p>
-                      </>
-                    ) : (
-                      <div className="rounded-xl p-3 text-center"
-                        style={{ background: 'rgba(var(--color-primary)/.05)', border: '1px solid rgba(var(--color-primary)/.12)' }}>
-                        <p className="text-xs text-brand-muted mb-2">
-                          Organize transcrições com tags no plano Pro ou superior.
-                        </p>
-                        <a href="/dashboard/plano"
-                          className="text-[11px] font-semibold px-3 py-1.5 rounded-lg inline-block"
-                          style={{ background: 'rgba(var(--color-primary)/.12)', color: 'rgb(var(--color-primary))' }}>
-                          Ver planos →
-                        </a>
-                      </div>
-                    )}
+                    <div className="rounded-xl p-3 text-center"
+                      style={{ background: 'rgba(var(--color-primary)/.04)', border: '1px solid rgba(var(--color-primary)/.1)' }}>
+                      <p className="text-xs text-brand-muted">
+                        Tags e categorias chegando em breve para todos os planos pagos.
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1314,205 +1247,42 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
 
               {/* ── TAB: IA ─────────────────────────────────────────────── */}
               {activeTab === 'ia' && (
-                canAiFeat ? (
-                  <div className="space-y-5">
-
-                    {/* Suggested replies */}
-                    <div>
-                      <div className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest mb-3">
-                        💬 Resposta Sugerida
-                      </div>
-                      {suggestedReplies ? (
-                        <div className="space-y-2">
-                          {suggestedReplies.map((r, i) => (
-                            <div
-                              key={i}
-                              className="flex items-start gap-3 bg-brand-elevated rounded-xl px-3.5 py-3">
-                              <p className="text-xs text-brand-text leading-relaxed flex-1">{r}</p>
-                              <button
-                                type="button"
-                                onClick={() => navigator.clipboard.writeText(r)}
-                                className="text-brand-muted hover:text-brand-primary transition-colors flex-shrink-0 p-0.5"
-                                title="Copiar sugestão">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                                </svg>
-                              </button>
-                            </div>
-                          ))}
-                          <button
-                            type="button"
-                            onClick={() => loadSuggestedReplies(selected)}
-                            className="text-xs text-brand-muted hover:text-brand-primary transition-colors flex items-center gap-1">
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
-                              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                            </svg>
-                            Gerar novamente
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => loadSuggestedReplies(selected)}
-                          disabled={loadingReplies}
-                          className="btn-ghost text-xs py-3 w-full justify-center gap-2 flex items-center">
-                          {loadingReplies ? (
-                            <>
-                              <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                              </svg>
-                              Gerando sugestões…
-                            </>
-                          ) : '✨ Sugerir respostas'}
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Divider */}
-                    <div className="border-t border-brand-border/40" />
-
-                    {/* Generate document */}
-                    <div>
-                      <div className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest mb-3">
-                        📝 Gerar Documento
-                      </div>
-                      {generatedDoc ? (
-                        <div className="space-y-2.5">
-                          <div className="bg-brand-elevated rounded-xl px-4 py-3 max-h-40 overflow-y-auto">
-                            <p className="text-xs text-brand-text whitespace-pre-wrap leading-relaxed">
-                              {generatedDoc.content}
-                            </p>
-                          </div>
-                          <div className="flex gap-2 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={() => downloadGeneratedDoc(selected)}
-                              className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5">
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                              </svg>
-                              Baixar .docx
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => navigator.clipboard.writeText(generatedDoc.content)}
-                              className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5">
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                              </svg>
-                              Copiar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setGeneratedDoc(null)}
-                              className="text-xs text-brand-muted hover:text-brand-primary py-1.5 px-2 transition-colors">
-                              ← Novo
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex gap-2">
-                          <select
-                            value={docType}
-                            onChange={e => setDocType(e.target.value)}
-                            className="input text-xs py-2 flex-1">
-                            {DOC_TYPES.map(d => (
-                              <option key={d.value} value={d.value}>{d.label}</option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => generateDocument(selected, docType)}
-                            disabled={loadingDoc}
-                            className="btn-primary text-xs py-2 px-4 flex-shrink-0 disabled:opacity-50 flex items-center gap-1.5">
-                            {loadingDoc ? (
-                              <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                              </svg>
-                            ) : null}
-                            {loadingDoc ? 'Gerando…' : 'Gerar'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <div
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-2xl"
+                    style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.15)' }}>
+                    🚀
                   </div>
-
-                ) : (
-                  /* IA upsell */
-                  <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <div
-                      className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-2xl"
-                      style={{ background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.2)' }}>
-                      🤖
-                    </div>
-                    <p className="font-semibold text-brand-text mb-1">Recursos de Inteligência Artificial</p>
-                    <p className="text-sm text-brand-muted mb-1 max-w-xs">
-                      Gere respostas sugeridas, atas de reunião, e-mails profissionais e muito mais com IA.
-                    </p>
-                    <p className="text-xs font-semibold mb-4" style={{ color: '#f59e0b' }}>
-                      Disponível a partir do plano Ultra
-                    </p>
-                    <a href="/dashboard/plano" className="btn-primary text-sm px-6 py-2.5 inline-block">
-                      ⭐ Ver planos →
-                    </a>
-                  </div>
-                )
+                  <p className="font-semibold text-brand-text mb-1">Recursos de IA em desenvolvimento</p>
+                  <p className="text-sm text-brand-muted mb-2 max-w-xs">
+                    Respostas sugeridas, atas, e-mails e muito mais chegam em breve para todos os planos pagos.
+                  </p>
+                  <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+                    style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
+                    Em breve
+                  </span>
+                </div>
               )}
+
+              {/* ── PLACEHOLDER for removed IA code (keep for future restore) ── */}
+              {/* (IA tab content rendered above) */}
 
               {/* ── TAB: EXPORTAR ───────────────────────────────────────── */}
               {activeTab === 'exportar' && (
-                <div>
-                  <p className="text-xs text-brand-muted mb-4">
-                    Exporte esta transcrição individualmente no formato desejado.
-                  </p>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {[
-                      {
-                        label: 'PDF',
-                        desc: 'Para visualizar e imprimir',
-                        emoji: '📄',
-                        fn: () => exportSinglePdf(selected),
-                      },
-                      {
-                        label: 'Word (.docx)',
-                        desc: 'Para editar no Word',
-                        emoji: '📝',
-                        fn: () => exportSingleDocx(selected),
-                      },
-                      {
-                        label: 'Excel (.xls)',
-                        desc: 'Para planilha de dados',
-                        emoji: '📊',
-                        fn: () => exportSingleXls(selected),
-                      },
-                      {
-                        label: 'CSV',
-                        desc: 'Para importar em sistemas',
-                        emoji: '📋',
-                        fn: () => exportSingleCsv(selected),
-                      },
-                    ].map(({ label, desc, emoji, fn }) => (
-                      <button
-                        key={label}
-                        type="button"
-                        onClick={fn}
-                        className="flex items-start gap-3 px-4 py-3.5 rounded-xl border border-brand-border hover:border-brand-primary hover:bg-brand-primary/5 transition-all text-left group/btn">
-                        <span className="text-2xl leading-none flex-shrink-0">{emoji}</span>
-                        <div>
-                          <div className="text-sm font-semibold text-brand-text group-hover/btn:text-brand-primary transition-colors">
-                            {label}
-                          </div>
-                          <div className="text-[10px] text-brand-muted mt-0.5">{desc}</div>
-                        </div>
-                      </button>
-                    ))}
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <div
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-2xl"
+                    style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.15)' }}>
+                    📤
                   </div>
+                  <p className="font-semibold text-brand-text mb-1">Exportação de transcrições</p>
+                  <p className="text-sm text-brand-muted mb-3 max-w-xs">
+                    PDF · DOCX · CSV · XLS — chegando em breve para todos os planos pagos.
+                  </p>
+                  <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+                    style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
+                    Em breve
+                  </span>
                 </div>
               )}
             </div>

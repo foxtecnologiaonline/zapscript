@@ -10,7 +10,6 @@ const NAV = [
   { href: '/dashboard/transcricoes',  icon: '📝', label: 'Transcrições' },
   { href: '/dashboard/numeros',       icon: '📱', label: 'Números' },
   { href: '/dashboard/plano',         icon: '💳', label: 'Plano' },
-  { href: '/dashboard/invoices',      icon: '🧾', label: 'Faturas' },
   { href: '/dashboard/configuracoes', icon: '⚙️', label: 'Configurações' },
 ];
 
@@ -101,6 +100,9 @@ function NavContent({
         >
           ↩ Sair da conta
         </button>
+        <div className="px-3 pt-1 pb-0.5">
+          <span className="text-[10px] text-brand-muted/40 font-mono">ZapScript v2.0</span>
+        </div>
       </div>
     </>
   );

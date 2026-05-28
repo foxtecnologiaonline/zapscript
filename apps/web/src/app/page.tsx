@@ -380,107 +380,55 @@ const PLANS = [
       '1 número WhatsApp',
       '🎙️ Transcrição automática',
       '✨ Resumo com pontos-chave IA',
-      '📤 Exportar PDF · DOCX · CSV · XLS',
-      '📅 Filtros por data e contato',
-      '📋 Histórico de transcrições',
     ],
-    excl: ['🔍 Busca full-text', '💬 Respostas sugeridas por IA', '🌐 Tradução automática', '🔒 Modo privado & Integração com outros Apps'],
+    excl: ['📋 Histórico de transcrições', '📅 Filtros por data e contato', '🔍 Busca no histórico'],
     cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
   },
   {
-    name: 'pro', label: 'Pro', price: 'R$29,90', per: '/mês',
+    name: 'pro', label: 'Pro', price: 'R$39,90', per: '/mês',
     desc: 'Para profissionais',
     feats: [
-      '150 min/mês',
+      '100 min/mês',
       '2 números WhatsApp',
-      '🔍 Busca full-text no histórico',
-      '🏷️ Tags & Categorias',
-      '📤 Exportação CSV · XLS do mês',
-      '📅 Todos os filtros avançados',
-      '⬆️ Tudo do Free incluído',
+      '📋 Histórico completo de transcrições',
+      '🎙️ Transcrição automática',
+      '✨ Resumo com pontos-chave IA',
     ],
-    excl: ['💬 Respostas sugeridas por IA', '🌐 Tradução automática', '🔗 Integração com outros Apps & Modo privado'],
+    excl: ['📅 Filtros por data e contato', '🔍 Busca no histórico'],
     cta: 'Assinar Pro', href: '/cadastro', popular: false, accent: '#3b82f6' as string | null,
   },
   {
-    name: 'ultra', label: 'Ultra', price: 'R$59,90', per: '/mês',
+    name: 'ultra', label: 'Ultra', price: 'R$69,90', per: '/mês',
     desc: 'Para profissionais avançados',
     feats: [
       '300 min/mês',
       '3 números WhatsApp',
-      '💬 Respostas sugeridas por IA',
-      '📝 Gerar ata · briefing · e-mail com IA',
-      '🌐 Tradução automática dos resumos',
-      '🗣️ Filtro por idioma de transcrição',
+      '📋 Histórico completo de transcrições',
+      '📅 Filtros por data e contato',
+      '🔍 Busca no histórico',
       '⬆️ Tudo do Pro incluído',
     ],
-    excl: ['🔗 Integração com outros Apps (Webhook)', '🔒 Modo privado'],
-    cta: 'Assinar Ultra', href: '/cadastro', popular: true, accent: null as string | null,
-  },
-  {
-    name: 'executive', label: 'Executive', price: 'R$89,90', per: '/mês',
-    desc: 'Para líderes e executivos',
-    feats: [
-      '500 min/mês',
-      '5 números WhatsApp',
-      '🔗 Integração com outros Apps (Webhook HMAC)',
-      '🔒 Modo privado (transcrição só para você)',
-      '🌐 Multi-idioma completo',
-      '🏷️ Tags · IA Docs · Respostas',
-      '⭐ Tudo do Ultra incluído',
-    ],
     excl: [],
-    cta: 'Assinar Executive', href: '/cadastro', popular: false, accent: '#f59e0b' as string | null,
+    cta: 'Assinar Ultra', href: '/cadastro', popular: true, accent: null as string | null,
   },
 ];
 
 /* ── Tabela comparativa ── */
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                       vals: ['20', '150', '300', '500'] },
-  { feature: 'Números WhatsApp',                   vals: ['1', '2', '3', '5'] },
-  { feature: '🎙️ Transcrição automática',          vals: [true, true, true, true] },
-  { feature: '✨ Resumo pontos-chave IA',           vals: [true, true, true, true] },
-  { feature: '📤 Exportar PDF · DOCX · CSV · XLS', vals: [true, true, true, true] },
-  { feature: '🔍 Busca full-text',                 vals: [false, true, true, true] },
-  { feature: '🏷️ Tags & Categorias',              vals: [false, true, true, true] },
-  { feature: '💬 Respostas sugeridas por IA',      vals: [false, false, true, true] },
-  { feature: '📝 Gerar documentos com IA',         vals: [false, false, true, true] },
-  { feature: '🌐 Tradução automática',             vals: [false, false, true, true] },
-  { feature: '🗣️ Filtro por idioma',              vals: [false, false, true, true] },
-  { feature: '🔗 Integração com outros Apps',      vals: [false, false, false, true] },
-  { feature: '🔒 Modo privado',                    vals: [false, false, false, true] },
+  { feature: 'Minutos/mês',                    vals: ['20', '100', '300'] },
+  { feature: 'Números WhatsApp',                vals: ['1', '2', '3'] },
+  { feature: '🎙️ Transcrição automática',       vals: [true, true, true] },
+  { feature: '✨ Resumo pontos-chave IA',        vals: [true, true, true] },
+  { feature: '📋 Histórico de transcrições',    vals: [false, true, true] },
+  { feature: '📅 Filtros por data e contato',   vals: [false, false, true] },
+  { feature: '🔍 Busca no histórico',           vals: [false, false, true] },
 ];
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
-
 export default function HomePage() {
-  // Planos — tabela comparativa + Para Empresas
+  // Planos — tabela comparativa
   const [showTable, setShowTable] = useState(false);
-  const [empresasForm, setEmpresasForm] = useState({ whatsappNumbers: '', audiosPerMonth: '', integrations: '', email: '' });
-  const [empresasLoading, setEmpresasLoading] = useState(false);
-  const [empresasSent, setEmpresasSent] = useState(false);
-  const [empresasErr, setEmpresasErr] = useState('');
 
-  async function handleEmpresasSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setEmpresasLoading(true);
-    setEmpresasErr('');
-    try {
-      const res = await fetch(`${API_BASE}/support/enterprise-contact`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(empresasForm),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao enviar.');
-      setEmpresasSent(true);
-    } catch (err: any) {
-      setEmpresasErr(err.message || 'Erro ao enviar. Tente novamente.');
-    } finally {
-      setEmpresasLoading(false);
-    }
-  }
 
   return (
     <div className="min-h-screen bg-mesh font-sans text-brand-text overflow-x-hidden">
@@ -755,72 +703,32 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Para Empresas */}
-          <div className="mt-10 rounded-2xl p-6" style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(245,158,11,.25)' }}>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-5"
-              style={{ background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>
-              🏢 PARA EMPRESAS
+          {/* Em breve */}
+          <div className="mt-10 rounded-2xl p-6" style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(16,185,129,.18)' }}>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-4"
+              style={{ background: 'rgba(16,185,129,.08)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
+              🚀 EM BREVE
             </div>
             <h3 className="font-display font-bold text-xl leading-snug mb-2">
-              Precisa de mais?<br />Monte seu plano.
+              Ainda mais funcionalidades
             </h3>
-            <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Times maiores, volumes customizados, integrações específicas — montamos uma proposta no tamanho certo para o seu negócio.
+            <p className="text-sm font-light mb-5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Estamos desenvolvendo recursos avançados para potencializar ainda mais sua produtividade.
             </p>
-            <div className="flex flex-col gap-2 mb-6">
-              {['Múltiplos Usuários', 'Múltiplos Números', 'Volume Ajustável de Minutos', 'Integrações customizadas (CRM, ERP, Outlook, Google Calendar)'].map((f, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                  <span style={{ color: '#f59e0b' }}>✓</span> {f}
+            <div className="grid grid-cols-2 gap-2.5">
+              {[
+                { icon: '📤', label: 'Exportar PDF · DOCX · CSV · XLS' },
+                { icon: '🌐', label: 'Tradução automática dos resumos' },
+                { icon: '🗒️', label: 'Notas pessoais de voz' },
+                { icon: '🔒', label: 'Modo privado de transcrição' },
+              ].map((f, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs rounded-xl px-3 py-2.5"
+                  style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
+                  <span>{f.icon}</span>
+                  <span>{f.label}</span>
                 </div>
               ))}
             </div>
-
-            {empresasSent ? (
-              <div className="rounded-xl py-8 text-center" style={{ background: 'rgba(16,185,129,.05)', border: '1px solid rgba(16,185,129,.15)' }}>
-                <div className="text-3xl mb-2">✅</div>
-                <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Proposta solicitada!</div>
-                <div className="text-xs mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>Respondemos em até 24h</div>
-              </div>
-            ) : (
-              <form onSubmit={handleEmpresasSubmit} className="flex flex-col gap-3">
-                {([
-                  { key: 'whatsappNumbers', label: 'Números de WhatsApp', placeholder: 'Quantos números você precisa?', type: 'text' },
-                  { key: 'audiosPerMonth',  label: 'Recebe em média quantos áudios por mês?', placeholder: 'Ex: 500 áudios por mês', type: 'text' },
-                  { key: 'integrations',   label: 'Precisa de integração com algum sistema?', placeholder: 'Ex: Google Calendar, Salesforce, ERP...', type: 'text' },
-                  { key: 'email',          label: 'E-mail corporativo', placeholder: 'voce@empresa.com.br', type: 'email' },
-                ] as { key: keyof typeof empresasForm; label: string; placeholder: string; type: string }[]).map(field => (
-                  <div key={field.key}>
-                    <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                      {field.label}
-                    </label>
-                    <input
-                      type={field.type}
-                      placeholder={field.placeholder}
-                      value={empresasForm[field.key]}
-                      onChange={e => setEmpresasForm(f => ({ ...f, [field.key]: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none transition-all"
-                      style={{
-                        background: 'rgb(var(--color-surface))',
-                        border: '1.5px solid rgb(var(--color-border))',
-                        color: 'rgb(var(--color-text))',
-                      }}
-                      required={field.key === 'email'}
-                    />
-                  </div>
-                ))}
-                {empresasErr && (
-                  <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,.1)', color: '#f87171' }}>{empresasErr}</p>
-                )}
-                <button type="submit" disabled={empresasLoading}
-                  className="w-full py-3 rounded-xl font-semibold text-sm transition-all mt-1 disabled:opacity-60"
-                  style={{ background: '#f59e0b', color: '#1c1204' }}>
-                  {empresasLoading ? 'Enviando...' : 'Receber proposta comercial →'}
-                </button>
-                <p className="text-center text-[11px]" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                  Respondemos em até 24h · Sem compromisso
-                </p>
-              </form>
-            )}
           </div>
         </section>
 
@@ -921,7 +829,7 @@ export default function HomePage() {
         {/* ══ FOOTER ══ */}
         <footer className="px-5 py-8 border-t text-center" style={{ borderColor: 'rgb(var(--color-border))' }}>
           <p className="text-xs font-medium" style={{ color: 'rgb(var(--color-text-muted))' }}>
-            © 2026 ZapScript · FOX TecnologIA · Todos os direitos reservados.
+            © 2026 ZapScript v2.0 · FOX TecnologIA · Todos os direitos reservados.
           </p>
           <p className="text-[11px] mt-1" style={{ color: 'rgb(var(--color-text-muted))', opacity: 0.6 }}>
             Código-fonte, design e marca protegidos pela Lei nº 9.610/1998. Reprodução proibida.

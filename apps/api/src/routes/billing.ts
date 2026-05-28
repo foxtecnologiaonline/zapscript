@@ -119,8 +119,8 @@ async function getOrCreateCustomer(user: { id: string; name: string; email: stri
 
 /* ── Valores dos planos ── */
 const PLAN_PRICES: Record<string, number> = {
-  pro:       29.90,
-  ultra:     59.90,
+  pro:       39.90,
+  ultra:     69.90,
   executive: 89.90,
 };
 

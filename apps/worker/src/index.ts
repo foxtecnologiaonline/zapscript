@@ -145,7 +145,7 @@ async function saveTranscription(params: {
   durationSec: number; originalText: string; bullets: string[]; source: string;
 }) {
   const { userId, numberId, contactPhone, contactName, durationSec, originalText, bullets, source } = params;
-  const durationMin = durationSec / 60;
+  const durationMin = Math.round((durationSec / 60) * 100) / 100;
 
   const transcription = await prisma.$transaction(async (tx) => {
     // Débito atômico: só desconta se tiver saldo suficiente

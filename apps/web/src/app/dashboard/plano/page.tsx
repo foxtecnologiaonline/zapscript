@@ -29,15 +29,11 @@ const PLANS = [
       '1 número WhatsApp',
       '🎙️ Transcrição automática',
       '✨ Resumo com pontos-chave IA',
-      '📤 Exportar PDF · DOCX · CSV · XLS',
-      '📅 Filtros por data e contato',
-      '📋 Histórico de transcrições',
     ],
     excl:  [
-      '🔍 Busca full-text no histórico',
-      '🏷️ Tags & Categorias',
-      '💬 Respostas sugeridas por IA',
-      '🔒 Modo privado & Integração com outros Apps',
+      '📋 Histórico de transcrições',
+      '📅 Filtros por data e contato',
+      '🔍 Busca no histórico',
     ],
     pop:   false,
     accent: null as string | null,
@@ -45,23 +41,19 @@ const PLANS = [
   {
     name:  'pro',
     label: 'Pro',
-    price: 'R$29,90',
+    price: 'R$39,90',
     per:   '/mês',
     desc:  'Para profissionais',
     feats: [
-      '150 min/mês',
+      '100 min/mês',
       '2 números WhatsApp',
-      '🔍 Busca full-text no histórico',
-      '🏷️ Tags & Categorias',
-      '📤 Exportação CSV · XLS do mês',
-      '📅 Todos os filtros avançados',
-      '⬆️ Tudo do Free incluído',
+      '📋 Histórico completo de transcrições',
+      '🎙️ Transcrição automática',
+      '✨ Resumo com pontos-chave IA',
     ],
     excl:  [
-      '💬 Respostas sugeridas por IA',
-      '📝 Gerar documentos com IA',
-      '🌐 Tradução automática dos resumos',
-      '🔗 Integração com outros Apps & Modo privado',
+      '📅 Filtros por data e contato',
+      '🔍 Busca no histórico',
     ],
     pop:   false,
     accent: '#3b82f6' as string | null,
@@ -69,61 +61,32 @@ const PLANS = [
   {
     name:  'ultra',
     label: 'Ultra',
-    price: 'R$59,90',
+    price: 'R$69,90',
     per:   '/mês',
     desc:  'Para profissionais avançados',
     feats: [
       '300 min/mês',
       '3 números WhatsApp',
-      '💬 Respostas sugeridas por IA',
-      '📝 Gerar ata · briefing · e-mail com IA',
-      '🌐 Tradução automática dos resumos',
-      '🗣️ Filtro por idioma de transcrição',
+      '📋 Histórico completo de transcrições',
+      '📅 Filtros por data e contato',
+      '🔍 Busca no histórico',
       '⬆️ Tudo do Pro incluído',
     ],
-    excl:  [
-      '🔗 Integração com outros Apps (Webhook)',
-      '🔒 Modo privado',
-    ],
+    excl:  [],
     pop:   true,
     accent: null as string | null,
-  },
-  {
-    name:  'executive',
-    label: 'Executive',
-    price: 'R$89,90',
-    per:   '/mês',
-    desc:  'Para líderes e executivos',
-    feats: [
-      '500 min/mês',
-      '5 números WhatsApp',
-      '🔗 Integração com outros Apps (Webhook HMAC)',
-      '🔒 Modo privado (transcrição só para você)',
-      '🎙️ Notas pessoais de voz',
-      '⭐ Tudo do Ultra incluído',
-    ],
-    excl:  [],
-    pop:   false,
-    accent: '#f59e0b' as string | null,
   },
 ];
 
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                       vals: ['20', '150', '300', '500'] },
-  { feature: 'Números WhatsApp',                   vals: ['1', '2', '3', '5'] },
-  { feature: '🎙️ Transcrição automática',          vals: [true, true, true, true] },
-  { feature: '✨ Resumo pontos-chave IA',           vals: [true, true, true, true] },
-  { feature: '📤 Exportar PDF · DOCX · CSV · XLS', vals: [true, true, true, true] },
-  { feature: '🔍 Busca full-text',                 vals: [false, true, true, true] },
-  { feature: '🏷️ Tags & Categorias',              vals: [false, true, true, true] },
-  { feature: '📤 Exportação CSV · XLS do mês',    vals: [false, true, true, true] },
-  { feature: '💬 Respostas sugeridas por IA',      vals: [false, false, true, true] },
-  { feature: '📝 Gerar documentos com IA',         vals: [false, false, true, true] },
-  { feature: '🌐 Tradução automática',             vals: [false, false, true, true] },
-  { feature: '🗣️ Filtro por idioma',              vals: [false, false, true, true] },
-  { feature: '🔗 Integração com outros Apps',           vals: [false, false, false, true] },
-  { feature: '🔒 Modo privado',                    vals: [false, false, false, true] },
+  { feature: 'Minutos/mês',                    vals: ['20', '100', '300'] },
+  { feature: 'Números WhatsApp',                vals: ['1', '2', '3'] },
+  { feature: '🎙️ Transcrição automática',       vals: [true, true, true] },
+  { feature: '✨ Resumo pontos-chave IA',        vals: [true, true, true] },
+  { feature: '📋 Histórico de transcrições',    vals: [false, true, true] },
+  { feature: '📅 Filtros por data e contato',   vals: [false, false, true] },
+  { feature: '🔍 Busca no histórico',           vals: [false, false, true] },
 ];
 
 // Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento
@@ -409,10 +372,6 @@ function PlanoContent() {
   const [showTable, setShowTable]           = useState(false);
   const [upgradePreview, setUpgradePreview] = useState<UpgradePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [empresasForm, setEmpresasForm] = useState({ whatsappNumbers: '', audiosPerMonth: '', integrations: '', email: '' });
-  const [empresasLoading, setEmpresasLoading] = useState(false);
-  const [empresasSent, setEmpresasSent]       = useState(false);
-  const [empresasErr, setEmpresasErr]         = useState('');
   const [invoices, setInvoices]               = useState<any[]>([]);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const justUpgraded = searchParams.get('upgrade') === 'success';
@@ -508,20 +467,6 @@ function PlanoContent() {
     await doCheckout(plan);
   }
 
-  async function handleEmpresasSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setEmpresasLoading(true);
-    setEmpresasErr('');
-    try {
-      const res = await api.post<{ ok: boolean }>('/support/enterprise-contact', empresasForm);
-      if (res.ok) setEmpresasSent(true);
-    } catch (err: any) {
-      setEmpresasErr(err.message || 'Erro ao enviar. Tente novamente.');
-    } finally {
-      setEmpresasLoading(false);
-    }
-  }
-
   if (loading) return (
     <div className="p-8 text-center text-brand-muted text-sm pt-20">Carregando...</div>
   );
@@ -529,6 +474,8 @@ function PlanoContent() {
   const currentPlan = stats?.planName?.toLowerCase() || 'free';
   const PLAN_ORDER: Record<string, number> = { free: 0, pro: 1, ultra: 2, executive: 3 };
   const currentPlanOrder = PLAN_ORDER[currentPlan] ?? 0;
+  // Executive users see their plan as "ultra" for UI purposes (still has all benefits)
+  const displayedPlans = PLANS.filter(p => p.name !== 'executive' || currentPlan === 'executive');
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl">
@@ -600,7 +547,7 @@ function PlanoContent() {
       </h2>
 
       <div className="flex flex-col gap-4">
-        {PLANS.map(plan => {
+        {displayedPlans.map(plan => {
           const isCurrent    = currentPlan === plan.name;
           const planOrder    = PLAN_ORDER[plan.name] ?? 0;
           const isInferior   = planOrder < currentPlanOrder;
@@ -709,7 +656,7 @@ function PlanoContent() {
               <thead>
                 <tr style={{ background: 'rgb(var(--color-surface-elevated))' }}>
                   <th className="text-left px-4 py-2.5 font-semibold" style={{ color: 'rgb(var(--color-text-muted))' }}>Recurso</th>
-                  {PLANS.map(p => (
+                  {displayedPlans.map(p => (
                     <th key={p.name} className="px-2 py-2.5 font-bold text-center"
                       style={{ color: p.pop ? 'rgb(var(--color-primary))' : p.accent || 'rgb(var(--color-text-secondary))' }}>
                       {p.label}
@@ -721,7 +668,7 @@ function PlanoContent() {
                 {TABLE_ROWS.map((row, ri) => (
                   <tr key={ri} style={{ borderTop: '1px solid rgb(var(--color-border-light))' }}>
                     <td className="px-4 py-2.5 font-medium" style={{ color: 'rgb(var(--color-text-secondary))' }}>{row.feature}</td>
-                    {row.vals.map((v, vi) => (
+                    {row.vals.slice(0, displayedPlans.length).map((v, vi) => (
                       <td key={vi} className="px-2 py-2.5 text-center">
                         {typeof v === 'boolean' ? (
                           v ? <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>
@@ -804,67 +751,32 @@ function PlanoContent() {
         </div>
       )}
 
-      {/* Para Empresas */}
-      <div className="mt-8 rounded-2xl p-5" style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(245,158,11,.25)' }}>
+      {/* Em breve */}
+      <div className="mt-8 rounded-2xl p-5" style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(16,185,129,.15)' }}>
         <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-[11px] font-bold mb-4"
-          style={{ background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>
-          🏢 PARA EMPRESAS
+          style={{ background: 'rgba(16,185,129,.08)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
+          🚀 EM BREVE
         </div>
-        <h3 className="font-display font-bold text-lg leading-snug mb-1">
-          Precisa de mais? Monte seu plano.
+        <h3 className="font-display font-bold text-base leading-snug mb-1">
+          Novidades chegando em todos os planos
         </h3>
-        <p className="text-xs font-light mb-3" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-          Times maiores, volumes customizados, integrações específicas — propomos algo no tamanho certo.
+        <p className="text-xs font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+          Funcionalidades em desenvolvimento — disponíveis em breve para todos os assinantes.
         </p>
-        <div className="flex flex-col gap-1.5 mb-5 text-xs">
-          {['Múltiplos Usuários', 'Múltiplos Números', 'Volume Ajustável de Minutos', 'Integrações customizadas (CRM, ERP, Outlook, Google Calendar)'].map((f, i) => (
-            <div key={i} className="flex items-center gap-2" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              <span style={{ color: '#f59e0b' }}>✓</span> {f}
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { icon: '📤', label: 'Exportar PDF · DOCX · CSV · XLS' },
+            { icon: '🌐', label: 'Tradução automática dos resumos' },
+            { icon: '🗒️', label: 'Notas pessoais de voz' },
+            { icon: '🔒', label: 'Modo privado de transcrição' },
+          ].map((f, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs rounded-xl px-3 py-2.5"
+              style={{ background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-text-muted))' }}>
+              <span>{f.icon}</span>
+              <span>{f.label}</span>
             </div>
           ))}
         </div>
-
-        {empresasSent ? (
-          <div className="rounded-xl py-6 text-center" style={{ background: 'rgba(16,185,129,.05)', border: '1px solid rgba(16,185,129,.15)' }}>
-            <div className="text-2xl mb-1">✅</div>
-            <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Proposta solicitada!</div>
-            <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Respondemos em até 24h</div>
-          </div>
-        ) : (
-          <form onSubmit={handleEmpresasSubmit} className="flex flex-col gap-3">
-            {([
-              { key: 'whatsappNumbers', label: 'Números de WhatsApp', placeholder: 'Quantos números você precisa?', type: 'text' },
-              { key: 'audiosPerMonth',  label: 'Recebe em média quantos áudios por mês?', placeholder: 'Ex: 500 áudios por mês', type: 'text' },
-              { key: 'integrations',   label: 'Precisa de integração com algum sistema?', placeholder: 'Ex: Google Calendar, Salesforce, ERP...', type: 'text' },
-              { key: 'email',          label: 'E-mail corporativo', placeholder: 'voce@empresa.com.br', type: 'email' },
-            ] as { key: keyof typeof empresasForm; label: string; placeholder: string; type: string }[]).map(field => (
-              <div key={field.key}>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                  {field.label}
-                </label>
-                <input
-                  type={field.type}
-                  placeholder={field.placeholder}
-                  value={empresasForm[field.key]}
-                  onChange={e => setEmpresasForm(f => ({ ...f, [field.key]: e.target.value }))}
-                  className="field-input text-sm"
-                  required={field.key === 'email'}
-                />
-              </div>
-            ))}
-            {empresasErr && (
-              <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,.1)', color: '#f87171' }}>{empresasErr}</p>
-            )}
-            <button type="submit" disabled={empresasLoading}
-              className="w-full py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-60 mt-1"
-              style={{ background: '#f59e0b', color: '#1c1204' }}>
-              {empresasLoading ? 'Enviando...' : 'Receber proposta comercial →'}
-            </button>
-            <p className="text-center text-[11px]" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              Respondemos em até 24h · Sem compromisso
-            </p>
-          </form>
-        )}
       </div>
 
       {/* Modal de CPF/CNPJ */}
