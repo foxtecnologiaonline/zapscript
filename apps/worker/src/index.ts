@@ -104,8 +104,8 @@ async function generateBullets(originalText: string, language?: string): Promise
   const count       = bulletCount(originalText);
   const needsTransl = language && language !== 'pt' && language !== 'pt-BR' && language !== 'pt-br';
   const systemMsg   = needsTransl
-    ? 'Você resume áudios de WhatsApp. SEMPRE responda em português brasileiro (PT-BR). Se o texto não estiver em português, traduza e resuma em PT-BR. Cada ponto deve ter no máximo 10 palavras, ser curtíssimo, direto e objetivo. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação.'
-    : 'Você resume áudios de WhatsApp em PT-BR. Cada ponto deve ter no máximo 10 palavras, ser curtíssimo, direto e objetivo — só o essencial do assunto. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação, sem verbosidade.';
+    ? 'Você resume áudios de WhatsApp. SEMPRE responda em português brasileiro (PT-BR). Se o texto não estiver em português, traduza e resuma em PT-BR. Cada ponto deve ter no máximo 7 palavras, ser curtíssimo, direto e objetivo. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação.'
+    : 'Você resume áudios de WhatsApp em PT-BR. Cada ponto deve ter no máximo 7 palavras, ser curtíssimo, direto e objetivo — só o essencial do assunto. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação, sem verbosidade.';
 
   try {
     const res = await claude.messages.create({
@@ -375,7 +375,7 @@ function buildMessage(bullets: string[], originalText: string, _refCode: string)
     : '';
 
   return (
-    `✨ Transcrição do seu áudio ✨\n\n` +
+    `🎙️ Transcrição do seu áudio ✨\n\n` +
     highlightsSection +
     `📄 Transcrição completa\n_${originalText}_\n\n` +
     `---\n` +

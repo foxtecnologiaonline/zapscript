@@ -378,22 +378,27 @@ function PlanoContent() {
   const justUpgraded = searchParams.get('upgrade') === 'success';
 
   useEffect(() => {
-    Promise.all([
+    // Se veio da página de sucesso, sincroniza com Asaas antes de carregar
+    const doLoad = () => Promise.all([
       api.get<Stats>('/dashboard/stats'),
       api.get<User>('/auth/me'),
     ]).then(([s, u]) => {
       setStats(s);
       setUser(u);
-      // Load invoices for paid plans
-      const plan = s?.planName?.toLowerCase() || 'free';
-      if (plan !== 'free') {
-        setInvoicesLoading(true);
-        api.get<{ invoices: any[] }>('/billing/invoices')
-          .then(r => setInvoices(r.invoices || []))
-          .catch(() => null)
-          .finally(() => setInvoicesLoading(false));
-      }
+      // Sempre tenta carregar faturas (plano pode ter sido ativado por webhook recente)
+      setInvoicesLoading(true);
+      api.get<{ invoices: any[] }>('/billing/invoices')
+        .then(r => setInvoices(r.invoices || []))
+        .catch(() => null)
+        .finally(() => setInvoicesLoading(false));
     }).finally(() => setLoading(false));
+
+    if (justUpgraded) {
+      // Chama sync para garantir ativação mesmo se webhook não chegou
+      api.get('/billing/sync').catch(() => null).finally(doLoad);
+    } else {
+      doLoad();
+    }
   }, []);
 
   async function doCheckout(planName: string) {

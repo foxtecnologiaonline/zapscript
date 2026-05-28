@@ -217,15 +217,23 @@ export default async function billingRoutes(app: FastifyInstance) {
         || `https://www.asaas.com/c/${firstPayment?.id}`
         || null;
 
-      // Salvar IDs no banco (já para o webhook ter contexto)
-      await prisma.subscription.update({
-        where: { userId },
-        data: {
+      // Salvar IDs no banco — upsert para funcionar mesmo quando o registro não existe ainda
+      const freePlanForCheckout = await prisma.plan.findUnique({ where: { name: 'free' } });
+      await prisma.subscription.upsert({
+        where:  { userId },
+        create: {
+          userId,
+          planId:              freePlanForCheckout?.id ?? plan.id,
           asaasSubscriptionId: sub.id,
           asaasCustomerId,
-          status: 'pending',
+          status:              'pending',
         },
-      }).catch(() => null); // não falhar se não existir ainda
+        update: {
+          asaasSubscriptionId: sub.id,
+          asaasCustomerId,
+          status:              'pending',
+        },
+      }).catch((err) => app.log.error({ err }, 'Erro ao salvar subscription no checkout'));
 
       return { url: paymentUrl, subscriptionId: sub.id };
     }
@@ -459,33 +467,159 @@ export default async function billingRoutes(app: FastifyInstance) {
   });
 
   // ── GET /billing/invoices ─────────────────────────────
-  // Lista as últimas 12 faturas da assinatura no Asaas
+  // Lista as últimas 12 faturas — busca por assinatura e por cliente
   app.get('/invoices', auth, async (req: any) => {
     const userId = req.user.sub;
     const sub = await prisma.subscription.findUnique({ where: { userId } });
 
-    if (!sub?.asaasSubscriptionId) {
+    if (!sub?.asaasSubscriptionId && !sub?.asaasCustomerId) {
       return { invoices: [] };
     }
 
+    const mapPayment = (p: any) => ({
+      id:          p.id,
+      value:       p.value,
+      netValue:    p.netValue,
+      status:      p.status,
+      dueDate:     p.dueDate,
+      paymentDate: p.paymentDate,
+      invoiceUrl:  p.invoiceUrl || `https://www.asaas.com/c/${p.id}`,
+      billingType: p.billingType,
+      description: p.description,
+    });
+
+    const allPayments: any[] = [];
+
     try {
-      const res  = await asaas(`/subscriptions/${sub.asaasSubscriptionId}/payments?limit=12&offset=0`);
-      const data = await res.json() as any;
-      const invoices = (data?.data || []).map((p: any) => ({
-        id:          p.id,
-        value:       p.value,
-        netValue:    p.netValue,
-        status:      p.status,
-        dueDate:     p.dueDate,
-        paymentDate: p.paymentDate,
-        invoiceUrl:  p.invoiceUrl || `https://www.asaas.com/c/${p.id}`,
-        billingType: p.billingType,
-        description: p.description,
-      }));
-      return { invoices };
+      // 1. Buscar pagamentos da assinatura recorrente (se existir)
+      if (sub.asaasSubscriptionId) {
+        const res  = await asaas(`/subscriptions/${sub.asaasSubscriptionId}/payments?limit=12&offset=0`);
+        const data = await res.json() as any;
+        allPayments.push(...(data?.data || []));
+      }
+
+      // 2. Buscar todos os pagamentos do cliente (inclui cobranças avulsas de upgrade)
+      if (sub.asaasCustomerId) {
+        const res  = await asaas(`/payments?customer=${sub.asaasCustomerId}&limit=20&offset=0`);
+        const data = await res.json() as any;
+        for (const p of (data?.data || [])) {
+          if (!allPayments.find(x => x.id === p.id)) allPayments.push(p);
+        }
+      }
+
+      // Ordenar por data de vencimento decrescente
+      allPayments.sort((a, b) =>
+        new Date(b.dueDate || 0).getTime() - new Date(a.dueDate || 0).getTime()
+      );
+
+      return { invoices: allPayments.slice(0, 12).map(mapPayment) };
     } catch (err) {
       app.log.error({ err }, 'Erro ao buscar faturas Asaas');
       return { invoices: [] };
+    }
+  });
+
+  // ── GET /billing/sync ─────────────────────────────────
+  // Fallback: verifica status do pagamento no Asaas e ativa o plano se confirmado
+  // Usado pela página /payment/success para não depender exclusivamente do webhook
+  app.get('/sync', auth, async (req: any) => {
+    const userId = req.user.sub;
+    const sub = await prisma.subscription.findUnique({
+      where:   { userId },
+      include: { plan: true },
+    });
+
+    if (!sub) return { synced: false, reason: 'no_subscription' };
+
+    // Se já está ativo, nada a fazer
+    if (sub.status === 'active' && sub.plan.name !== 'free') {
+      return { synced: false, reason: 'already_active', planName: sub.plan.name };
+    }
+
+    if (!sub.asaasSubscriptionId && !sub.asaasCustomerId) {
+      return { synced: false, reason: 'no_asaas_ids' };
+    }
+
+    try {
+      // Buscar último pagamento confirmado no Asaas para este cliente
+      const sources: any[] = [];
+
+      if (sub.asaasSubscriptionId) {
+        const r = await asaas(`/subscriptions/${sub.asaasSubscriptionId}/payments?status=CONFIRMED&limit=1`);
+        const d = await r.json() as any;
+        if (d?.data?.[0]) sources.push({ payment: d.data[0], subId: sub.asaasSubscriptionId });
+
+        const r2 = await asaas(`/subscriptions/${sub.asaasSubscriptionId}/payments?status=RECEIVED&limit=1`);
+        const d2 = await r2.json() as any;
+        if (d2?.data?.[0]) sources.push({ payment: d2.data[0], subId: sub.asaasSubscriptionId });
+      }
+
+      if (sub.asaasCustomerId) {
+        const r = await asaas(`/payments?customer=${sub.asaasCustomerId}&status=CONFIRMED&limit=5`);
+        const d = await r.json() as any;
+        for (const p of (d?.data || [])) sources.push({ payment: p, subId: null });
+
+        const r2 = await asaas(`/payments?customer=${sub.asaasCustomerId}&status=RECEIVED&limit=5`);
+        const d2 = await r2.json() as any;
+        for (const p of (d2?.data || [])) sources.push({ payment: p, subId: null });
+      }
+
+      if (sources.length === 0) return { synced: false, reason: 'no_confirmed_payment' };
+
+      // Pegar o mais recente
+      sources.sort((a, b) =>
+        new Date(b.payment.confirmedDate || b.payment.dueDate || 0).getTime() -
+        new Date(a.payment.confirmedDate || a.payment.dueDate || 0).getTime()
+      );
+      const { payment: confirmedPayment, subId } = sources[0];
+
+      // Resolver externalReference
+      let externalRef: string = confirmedPayment.externalReference || '';
+      const paymentSubId = typeof confirmedPayment.subscription === 'string'
+        ? confirmedPayment.subscription
+        : (subId || sub.asaasSubscriptionId);
+
+      if (!externalRef && paymentSubId) {
+        const r    = await asaas(`/subscriptions/${paymentSubId}`);
+        const data = await r.json() as any;
+        externalRef = data?.externalReference || '';
+      }
+
+      const parts    = externalRef.split('|');
+      const planName = parts[1];
+      if (!planName) return { synced: false, reason: 'cannot_resolve_plan' };
+
+      const plan = await prisma.plan.findUnique({ where: { name: planName } });
+      if (!plan) return { synced: false, reason: 'plan_not_found' };
+
+      const nextPeriod = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const asaasCustId = typeof confirmedPayment.customer === 'string'
+        ? confirmedPayment.customer
+        : (confirmedPayment.customer?.id || sub.asaasCustomerId);
+
+      await prisma.$transaction([
+        prisma.subscription.update({
+          where: { userId },
+          data:  {
+            planId:              plan.id,
+            status:              'active',
+            currentPeriodEnd:    nextPeriod,
+            asaasSubscriptionId: paymentSubId || sub.asaasSubscriptionId || undefined,
+            asaasCustomerId:     asaasCustId  || sub.asaasCustomerId     || undefined,
+          },
+        }),
+        prisma.minuteBalance.upsert({
+          where:  { userId },
+          create: { userId, availableMinutes: plan.minutesPerMonth, resetAt: nextPeriod, lastAlertSent: null },
+          update: { availableMinutes: plan.minutesPerMonth, resetAt: nextPeriod, lastAlertSent: null },
+        }),
+      ]);
+
+      app.log.info(`[Sync] Plano ativado via sync: userId=${userId} planName=${planName}`);
+      return { synced: true, planName };
+    } catch (err: any) {
+      app.log.error({ err }, 'Erro no billing/sync');
+      return { synced: false, reason: 'error', message: err.message };
     }
   });
 
@@ -536,10 +670,26 @@ export default async function billingRoutes(app: FastifyInstance) {
       // ── Pagamento confirmado (PIX, cartão, boleto) ──
       case 'PAYMENT_CONFIRMED':
       case 'PAYMENT_RECEIVED': {
-        const paymentId   = payment?.id as string | undefined;
-        const externalRef = payment?.externalReference
-          || payment?.subscription?.externalReference
-          || '';
+        const paymentId = payment?.id as string | undefined;
+
+        // payment.subscription é uma STRING (ID) no Asaas, não um objeto
+        const asaasSubId  = typeof payment?.subscription === 'string' ? payment.subscription : null;
+        // payment.customer também é STRING no Asaas
+        const asaasCustId = typeof payment?.customer === 'string'
+          ? payment.customer
+          : (payment?.customer?.id || payment?.customerId || null);
+
+        // externalReference pode estar no payment ou precisar ser buscado na subscription
+        let externalRef: string = payment?.externalReference || '';
+        if (!externalRef && asaasSubId) {
+          try {
+            const subRes  = await asaas(`/subscriptions/${asaasSubId}`);
+            const subData = await subRes.json() as any;
+            externalRef   = subData?.externalReference || '';
+          } catch {
+            // ignora — continua com externalRef vazio
+          }
+        }
 
         const parts      = externalRef.split('|');
         const userId     = parts[0];
@@ -562,9 +712,6 @@ export default async function billingRoutes(app: FastifyInstance) {
           app.log.error(`Webhook ${eventType}: plano "${planName}" não encontrado`);
           break;
         }
-
-        const asaasSubId  = payment?.subscription?.id || null;
-        const asaasCustId = payment?.customer?.id || payment?.customerId || null;
 
         // Próximo período: 30 dias a partir de hoje
         const nextPeriod = new Date();
