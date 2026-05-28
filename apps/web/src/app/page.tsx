@@ -381,7 +381,7 @@ const PLANS = [
       '🎙️ Transcrição automática',
       '✨ Resumo com pontos-chave IA',
     ],
-    excl: ['📋 Histórico de transcrições', '📅 Filtros por data e contato', '🔍 Busca no histórico'],
+    excl: ['📋 Histórico de transcrições', '📅 Filtros por data e contato', '🔍 Busca por transcrição'],
     cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
   },
   {
@@ -394,7 +394,7 @@ const PLANS = [
       '🎙️ Transcrição automática',
       '✨ Resumo com pontos-chave IA',
     ],
-    excl: ['📅 Filtros por data e contato', '🔍 Busca no histórico'],
+    excl: ['📅 Filtros por data e contato', '🔍 Busca por transcrição'],
     cta: 'Assinar Pro', href: '/cadastro', popular: false, accent: '#3b82f6' as string | null,
   },
   {
@@ -403,10 +403,11 @@ const PLANS = [
     feats: [
       '300 min/mês',
       '3 números WhatsApp',
-      '📋 Histórico completo de transcrições',
+      '🎙️ Transcrição automática',
+      '✨ Ponto Chave (Resumo com IA)',
+      '📋 Histórico de transcrições',
       '📅 Filtros por data e contato',
-      '🔍 Busca no histórico',
-      '⬆️ Tudo do Pro incluído',
+      '🔍 Busca por transcrição',
     ],
     excl: [],
     cta: 'Assinar Ultra', href: '/cadastro', popular: true, accent: null as string | null,
@@ -422,7 +423,7 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: '✨ Resumo pontos-chave IA',        vals: [true, true, true] },
   { feature: '📋 Histórico de transcrições',    vals: [false, true, true] },
   { feature: '📅 Filtros por data e contato',   vals: [false, false, true] },
-  { feature: '🔍 Busca no histórico',           vals: [false, false, true] },
+  { feature: '🔍 Busca por transcrição',           vals: [false, false, true] },
 ];
 
 export default function HomePage() {
