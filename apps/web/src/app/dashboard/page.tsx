@@ -140,8 +140,8 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Início Rápido — visível somente após ter número conectado */}
-        {(stats?.activeNumbers ?? 0) > 0 && (
+        {/* Início Rápido — visível até completar todos os passos */}
+        {(stats?.activeNumbers ?? 0) > 0 && (stats?.transcriptionsTotal ?? 0) === 0 && (
           <div className="card p-5">
             <div className="font-bold text-sm mb-3 text-brand-text">Início Rápido</div>
             {[
