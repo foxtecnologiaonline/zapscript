@@ -169,6 +169,79 @@ export default async function privacyRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── POST /privacy/meta-deletion ──────────────────────────
+  // Chamado pelo Next.js quando chega callback da Meta (server-to-server).
+  // Requer header Authorization: Bearer INTERNAL_API_SECRET
+  app.post<{ Body: { user_id: string; request_id: string; confirmation_code: string } }>(
+    '/meta-deletion',
+    async (req: any, reply) => {
+      // Verificar segredo interno
+      const authHeader = req.headers.authorization as string | undefined;
+      const internalSecret = process.env.INTERNAL_API_SECRET;
+      if (!internalSecret || authHeader !== `Bearer ${internalSecret}`) {
+        return reply.code(401).send({ error: 'Unauthorized' });
+      }
+
+      const { user_id, request_id, confirmation_code } = req.body;
+      if (!user_id || !request_id || !confirmation_code) {
+        return reply.code(400).send({ error: 'user_id, request_id e confirmation_code são obrigatórios.' });
+      }
+
+      // Gravar no AuditLog para rastreabilidade/conformidade
+      await prisma.auditLog.create({
+        data: {
+          action:      'META_DATA_DELETION_REQUEST',
+          adminId:     'meta-platform',
+          metadata:    {
+            metaUserId:       user_id,
+            metaRequestId:    request_id,
+            confirmationCode: confirmation_code,
+            receivedAt:       new Date().toISOString(),
+            status:           'pending',
+          },
+        },
+      });
+
+      app.log.info({ user_id, request_id, confirmation_code }, '[Privacy] Meta deletion request registrada');
+      return reply.code(200).send({ ok: true });
+    }
+  );
+
+  // ── GET /privacy/meta-deletion-status/:code ───────────────
+  // Consultado pelo Next.js para retornar status real ao visitante
+  app.get<{ Params: { code: string } }>(
+    '/meta-deletion-status/:code',
+    async (req: any, reply) => {
+      const { code } = req.params;
+      if (!code || code.length < 10) {
+        return reply.code(400).send({ error: 'Código inválido.' });
+      }
+
+      // Buscar no AuditLog pela confirmationCode armazenada no metadata
+      const logs = await prisma.auditLog.findMany({
+        where: {
+          action:  'META_DATA_DELETION_REQUEST',
+          adminId: 'meta-platform',
+        },
+        orderBy: { timestamp: 'desc' },
+        take: 500,
+      });
+
+      const entry = logs.find((l: any) => (l.metadata as any)?.confirmationCode === code);
+      if (!entry) {
+        return reply.code(404).send({ error: 'Código de confirmação não encontrado.' });
+      }
+
+      const meta = entry.metadata as any;
+      return {
+        status:                 meta.status || 'pending',
+        confirmationCode:       code,
+        requestedAt:            entry.timestamp.toISOString(),
+        expectedCompletionDate: new Date(entry.timestamp.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+    }
+  );
+
   // ── GET /privacy/audit-log ────────────────────────────────
   app.get('/audit-log', { ...auth }, async (req: any, reply) => {
     const userId = req.user.sub;

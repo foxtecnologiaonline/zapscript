@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { notifyDisconnected } from '../services/whatsapp-notify';
 import { getUserPlan, requirePlan } from '../lib/planGate';
+import { validateRequest, createNumberSchema } from '../lib/validation';
 import {
   evolutionBaseUrl,
   evolutionHeaders,
@@ -54,6 +55,9 @@ export default async function numberRoutes(app: FastifyInstance) {
 
   // ── POST /numbers ─────────────────────────────────────────────────────────
   app.post<{ Body: { displayName: string; phoneNumber?: string } }>('/', auth, async (req: any, reply) => {
+    const v = validateRequest(createNumberSchema)(req.body);
+    if (!v.valid) return reply.code(400).send({ error: v.error });
+
     const { displayName, phoneNumber } = req.body;
     const userId = req.user.sub;
 

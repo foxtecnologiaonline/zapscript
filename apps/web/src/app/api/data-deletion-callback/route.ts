@@ -1,41 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'https://zapscript-api.onrender.com';
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.text();
     const signature = req.headers.get('x-hub-signature-256');
 
     if (!signature) {
-      return NextResponse.json(
-        { error: 'Missing signature' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Missing signature' }, { status: 401 });
     }
 
-    // Validar assinatura HMAC-SHA256
+    // Validar assinatura HMAC-SHA256 da Meta
     const appSecret = process.env.FACEBOOK_APP_SECRET;
     if (!appSecret) {
-      console.error('FACEBOOK_APP_SECRET não configurado');
-      return NextResponse.json(
-        { error: 'Server misconfiguration' },
-        { status: 500 }
-      );
+      console.error('[Data Deletion] FACEBOOK_APP_SECRET não configurado');
+      return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
     }
 
-    const hash = crypto
-      .createHmac('sha256', appSecret)
-      .update(body)
-      .digest('hex');
-
-    const expectedSignature = `sha256=${hash}`;
-
-    if (signature !== expectedSignature) {
+    const hash = crypto.createHmac('sha256', appSecret).update(body).digest('hex');
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(`sha256=${hash}`))) {
       console.warn('[Data Deletion] Assinatura inválida');
-      return NextResponse.json(
-        { error: 'Invalid signature' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
     // Parse payload
@@ -43,38 +30,46 @@ export async function POST(req: NextRequest) {
     const { user_id, request_id } = payload;
 
     if (!user_id || !request_id) {
-      return NextResponse.json(
-        { error: 'Missing user_id or request_id' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing user_id or request_id' }, { status: 400 });
     }
 
     // Gerar confirmation code único
-    const confirmationCode = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    const confirmationCode = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
 
-    // TODO: Implementar lógica de exclusão real
-    // - Buscar usuário pelo user_id (usuários do Facebook/Meta)
-    // - Deletar dados conforme política de privacidade
-    // - Registrar em auditLog
-    console.log(`[Data Deletion] Processando exclusão para user_id=${user_id}, request_id=${request_id}`);
+    // Registrar no banco via API interna
+    const internalSecret = process.env.INTERNAL_API_SECRET;
+    if (internalSecret) {
+      try {
+        await fetch(`${API_URL}/privacy/meta-deletion`, {
+          method:  'POST',
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${internalSecret}`,
+          },
+          body: JSON.stringify({ user_id, request_id, confirmation_code: confirmationCode }),
+          signal: AbortSignal.timeout(8_000),
+        });
+      } catch (err) {
+        console.error('[Data Deletion] Falha ao registrar no banco:', err);
+        // Não bloquear a resposta à Meta — continuar com o código gerado
+      }
+    } else {
+      console.warn('[Data Deletion] INTERNAL_API_SECRET não configurado — request não persistida no banco.');
+    }
 
-    // URL de status (usar o domínio configurado)
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://zapscript.me';
-    const statusUrl = `${baseUrl}/deletion-status/${confirmationCode}`;
+    console.log(`[Data Deletion] Callback Meta processado: user_id=${user_id}, code=${confirmationCode}`);
 
     // Resposta obrigatória da Meta
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://zapscript.me';
     return NextResponse.json(
       {
-        url: statusUrl,
+        url:               `${baseUrl}/deletion-status/${confirmationCode}`,
         confirmation_code: confirmationCode,
       },
       { status: 200 }
     );
   } catch (error) {
     console.error('[Data Deletion] Erro ao processar callback:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

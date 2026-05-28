@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { getUserPlan, requirePlan } from '../lib/planGate';
+import { encryptStr, decryptStr } from '../services/encryption';
 import crypto from 'crypto';
 import { promises as dns } from 'dns';
 
@@ -64,7 +65,7 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
     return {
       id:        config.id,
       url:       config.url,
-      secret:    config.secret,
+      secret:    decryptStr(config.secret),
       active:    config.active,
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
@@ -95,12 +96,12 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
       return updated;
     }
 
-    // Cria nova configuração com secret gerado automaticamente
-    const secret = crypto.randomBytes(32).toString('hex');
+    // Cria nova configuração com secret gerado automaticamente (criptografado em repouso)
+    const rawSecret = crypto.randomBytes(32).toString('hex');
     const config = await (prisma as any).webhookConfig.create({
-      data: { userId, url, secret, active: true },
+      data: { userId, url, secret: encryptStr(rawSecret), active: true },
     });
-    return reply.code(201).send(config);
+    return reply.code(201).send({ ...config, secret: rawSecret });
   });
 
   // ── DELETE /webhook-config ────────────────────────────
@@ -146,7 +147,7 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
     };
 
     const body      = JSON.stringify(payload);
-    const signature = 'sha256=' + crypto.createHmac('sha256', config.secret).update(body).digest('hex');
+    const signature = 'sha256=' + crypto.createHmac('sha256', decryptStr(config.secret)).update(body).digest('hex');
 
     try {
       const res = await fetch(config.url, {

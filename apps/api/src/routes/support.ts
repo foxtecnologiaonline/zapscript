@@ -1,6 +1,17 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
+import { createClient } from '@supabase/supabase-js';
+
+// Bucket no Supabase Storage para anexos de suporte (criar no dashboard Supabase se ainda não existir)
+const ATTACHMENTS_BUCKET = 'support-attachments';
+
+function getSupabase() {
+  return createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!
+  );
+}
 
 function escapeHtml(str: string): string {
   return str
@@ -15,7 +26,7 @@ export default async function supportRoutes(app: FastifyInstance) {
 
   // POST /support/ticket — criar ticket de suporte com suporte a anexo
   app.post('/ticket', { config: { rateLimit: { max: 3, timeWindow: '10 minutes' } } }, async (req, reply) => {
-    let attachmentData: string | undefined;
+    let attachmentUrl: string | undefined;
     let attachmentFilename: string | undefined;
     let attachmentMimeType: string | undefined;
     const fields: Record<string, string> = {};
@@ -44,9 +55,29 @@ export default async function supportRoutes(app: FastifyInstance) {
         if (!allowedTypes.includes(part.mimetype)) {
           return reply.code(400).send({ error: 'Tipo de arquivo não permitido' });
         }
-        attachmentData = buffer.toString('base64');
         attachmentFilename = part.filename;
         attachmentMimeType = part.mimetype;
+
+        // Upload para Supabase Storage (evita Base64 gigante no banco)
+        try {
+          const supabase = getSupabase();
+          const ext      = part.filename?.split('.').pop() || 'bin';
+          const path     = `tickets/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+          const { error: uploadError } = await supabase.storage
+            .from(ATTACHMENTS_BUCKET)
+            .upload(path, buffer, { contentType: part.mimetype, upsert: false });
+
+          if (uploadError) {
+            app.log.error({ err: uploadError.message }, '[Support] Falha no upload para Supabase Storage');
+            return reply.code(500).send({ error: 'Falha ao armazenar anexo. Tente novamente.' });
+          }
+
+          const { data: urlData } = supabase.storage.from(ATTACHMENTS_BUCKET).getPublicUrl(path);
+          attachmentUrl = urlData.publicUrl;
+        } catch (err: any) {
+          app.log.error({ err: err.message }, '[Support] Erro inesperado no upload do anexo');
+          return reply.code(500).send({ error: 'Falha ao armazenar anexo. Tente novamente.' });
+        }
       }
     }
 
@@ -81,10 +112,10 @@ export default async function supportRoutes(app: FastifyInstance) {
         email,
         category,
         description,
-        attachmentData,
+        attachmentUrl,
         attachmentFilename,
         attachmentMimeType,
-      },
+      } as any,
     });
 
     const safeName        = escapeHtml(name);
@@ -94,7 +125,10 @@ export default async function supportRoutes(app: FastifyInstance) {
 
     let attachmentHtml = '';
     if (attachmentFilename) {
-      attachmentHtml = `<p><b>Anexo:</b> ${escapeHtml(attachmentFilename)} (${attachmentMimeType})</p>`;
+      const safeFilename = escapeHtml(attachmentFilename);
+      attachmentHtml = attachmentUrl
+        ? `<p><b>Anexo:</b> <a href="${escapeHtml(attachmentUrl)}">${safeFilename}</a> (${attachmentMimeType})</p>`
+        : `<p><b>Anexo:</b> ${safeFilename} (${attachmentMimeType})</p>`;
     }
 
     // Enviar e-mail para a equipe

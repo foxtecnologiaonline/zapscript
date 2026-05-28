@@ -8,9 +8,24 @@ export const signupSchema = z.object({
   referralCode: z.string().optional(),
 });
 
+// Schema completo de registro (inclui todos os campos do form)
+export const registerSchema = z.object({
+  email:        z.string().email('E-mail inválido'),
+  password:     z.string().min(6, 'Senha deve ter pelo menos 6 caracteres').max(128),
+  name:         z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100).optional(),
+  phone:        z.string().max(20).optional(),
+  inviteCode:   z.string().max(100).optional(),
+  referralCode: z.string().max(100).optional(),
+  cbTos:        z.boolean().optional(),
+  cbContrato:   z.boolean().optional(),
+  cbLgpd:       z.boolean().optional(),
+  cbMarketing:  z.boolean().optional(),
+  docVersion:   z.string().max(100).optional(),
+});
+
 export const loginSchema = z.object({
-  email: z.string().email('Email inválido').toLowerCase(),
-  password: z.string().min(1, 'Senha é obrigatória'),
+  email:    z.string().email('E-mail inválido'),
+  password: z.string().min(1, 'Senha é obrigatória').max(128),
 });
 
 export const resetPasswordSchema = z.object({
@@ -51,6 +66,11 @@ export const transcriptionQuerySchema = z.object({
 });
 
 // ── Billing Schemas ──────────────────────────────────────
+export const billingCheckoutSchema = z.object({
+  planName:    z.enum(['pro', 'ultra', 'executive'], { errorMap: () => ({ message: 'Plano inválido. Use pro, ultra ou executive.' }) }),
+  billingType: z.string().max(20).optional(),
+});
+
 export const createSubscriptionSchema = z.object({
   planId: z.string().cuid('ID do plano inválido'),
 });

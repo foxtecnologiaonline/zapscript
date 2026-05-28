@@ -6,6 +6,15 @@ if (!rawKey || rawKey.length !== 64 || !/^[0-9a-fA-F]+$/.test(rawKey)) {
 }
 const KEY = Buffer.from(rawKey, 'hex');
 
+/** Criptografa uma string simples. Retorna iv:tag:data em hex. */
+export function encryptStr(plain: string): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', KEY, iv);
+  const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [iv.toString('hex'), tag.toString('hex'), enc.toString('hex')].join(':');
+}
+
 export function encrypt(data: object): string {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', KEY, iv);

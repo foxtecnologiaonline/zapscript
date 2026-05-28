@@ -1,62 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'https://zapscript-api.onrender.com';
+
 export async function GET(
   req: NextRequest,
-  { params }: { params: { code: string } }
+  { params }: { params: Promise<{ code: string }> }
 ) {
   try {
-    const { code } = params;
+    const { code } = await params;
 
     if (!code || code.length < 10) {
-      return NextResponse.json(
-        { error: 'Código de confirmação inválido' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Código de confirmação inválido' }, { status: 400 });
     }
 
-    // TODO: Buscar status real do banco de dados
-    // const status = await prisma.deletionRequest.findUnique({
-    //   where: { confirmationCode: code },
-    // });
+    // Buscar status real no banco via API interna
+    try {
+      const res = await fetch(`${API_URL}/privacy/meta-deletion-status/${encodeURIComponent(code)}`, {
+        signal: AbortSignal.timeout(8_000),
+      });
 
-    // Por enquanto, retornar mock com base no timestamp no código
-    const requestedDate = new Date();
-    const expectedCompletionDate = new Date(requestedDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+      if (res.ok) {
+        const data = await res.json();
 
-    // Simular diferentes status baseado no código
-    const statusMap: Record<string, 'pending' | 'processing' | 'completed' | 'failed'> = {
-      pending: 'pending',
-      processing: 'processing',
-      completed: 'completed',
-      error: 'failed',
-    };
+        const statusMessages: Record<string, string> = {
+          pending:    'Sua solicitação foi recebida e está na fila de processamento.',
+          processing: 'Seus dados estão sendo deletados. Este processo pode levar até 30 dias conforme exigido pela LGPD.',
+          completed:  'Todos os seus dados foram deletados com sucesso.',
+          failed:     'Houve um erro ao processar sua solicitação. Por favor, contate o suporte.',
+        };
 
-    // Determinar status aleatório para demo (remover em produção)
-    const statusList: Array<'pending' | 'processing' | 'completed'> = ['pending', 'processing', 'completed'];
-    const currentStatus = statusList[Math.floor(Math.random() * statusList.length)];
+        return NextResponse.json(
+          {
+            status:                 data.status || 'pending',
+            confirmationCode:       code,
+            requestedAt:            data.requestedAt,
+            expectedCompletionDate: data.expectedCompletionDate,
+            message:                statusMessages[data.status] || statusMessages.pending,
+          },
+          { status: 200 }
+        );
+      }
 
-    const statusMessages: Record<string, string> = {
-      pending: 'Sua solicitação foi recebida e está na fila de processamento. Você será notificado por e-mail quando o processamento começar.',
-      processing: 'Seus dados estão sendo deletados. Este processo pode levar até 30 dias conforme exigido pela LGPD.',
-      completed: 'Todos os seus dados foram deletados com sucesso. Você pode fechar esta página.',
-      failed: 'Houve um erro ao processar sua solicitação. Por favor, contate o suporte.',
-    };
+      if (res.status === 404) {
+        return NextResponse.json({ error: 'Código de confirmação não encontrado.' }, { status: 404 });
+      }
+    } catch (err) {
+      console.error('[Deletion Status] Falha ao consultar API:', err);
+    }
 
+    // Fallback: código válido mas DB inacessível
     return NextResponse.json(
       {
-        status: currentStatus,
+        status:           'pending',
         confirmationCode: code,
-        requestedAt: requestedDate.toISOString(),
-        expectedCompletionDate: expectedCompletionDate.toISOString(),
-        message: statusMessages[currentStatus] || statusMessages.pending,
+        requestedAt:      new Date().toISOString(),
+        message:          'Sua solicitação foi recebida e está sendo processada.',
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error('[Deletion Status] Erro ao buscar status:', error);
-    return NextResponse.json(
-      { error: 'Erro ao buscar status de exclusão' },
-      { status: 500 }
-    );
+    console.error('[Deletion Status] Erro:', error);
+    return NextResponse.json({ error: 'Erro ao buscar status de exclusão' }, { status: 500 });
   }
 }

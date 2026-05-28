@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
 import { logger } from '../lib/logger';
+import { validateRequest, registerSchema, loginSchema } from '../lib/validation';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -85,12 +86,17 @@ export default async function authRoutes(app: FastifyInstance) {
   // ── POST /auth/register ───────────────────────────────────────────────────
   app.post<{ Body: {
     email: string; password: string; name?: string; phone?: string; inviteCode?: string;
+    referralCode?: string;
     cbTos?: boolean; cbContrato?: boolean; cbLgpd?: boolean; cbMarketing?: boolean; docVersion?: string;
   } }>(
     '/register',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const { email, password, name, phone, inviteCode, cbTos, cbContrato, cbLgpd, cbMarketing, docVersion } = req.body;
+      // Validação Zod (formato/tamanho de campos)
+      const v = validateRequest(registerSchema)(req.body);
+      if (!v.valid) return reply.code(400).send({ error: v.error });
+
+      const { email, password, name, phone, inviteCode, referralCode, cbTos, cbContrato, cbLgpd, cbMarketing, docVersion } = req.body;
       if (!email || !password) return reply.code(400).send({ error: 'email e password obrigatórios' });
       // Validar consentimentos obrigatórios (LGPD Art. 8º §1º)
       if (!cbTos)      return reply.code(400).send({ error: 'Aceite dos Termos de Serviço é obrigatório.' });
@@ -113,6 +119,14 @@ export default async function authRoutes(app: FastifyInstance) {
         }
       }
 
+      // Verificar referral code (se fornecido)
+      let referrer: any = null;
+      if (referralCode) {
+        referrer = await prisma.user.findUnique({ where: { refCode: referralCode }, select: { id: true } });
+        // Referral inválido: não bloquear o cadastro, apenas ignorar
+        if (!referrer) logger.warn(`[Auth] referralCode inválido: ${referralCode}`);
+      }
+
       // Criar no Supabase Auth sem confirmar e-mail automaticamente
       const { data, error } = await supabase.auth.admin.createUser({
         email,
@@ -133,12 +147,15 @@ export default async function authRoutes(app: FastifyInstance) {
       // Se falhar: rollback do usuário Supabase para evitar conta órfã (autenticada mas sem dados)
       try {
         await prisma.$transaction(async (tx: any) => {
+          const REFERRAL_BONUS_MINUTES = 30;
+
           const u = await tx.user.create({
             data: {
               id: data.user!.id,
               email,
               name,
               phone:                   phone?.trim() || undefined,
+              referredBy:              referrer ? referrer.id : undefined,
               isTester:                !!testerInvite,
               testerSince:             testerInvite ? now : undefined,
               // LGPD — registro de consentimentos (Art. 8º §2º)
@@ -157,13 +174,21 @@ export default async function authRoutes(app: FastifyInstance) {
               currentPeriodEnd: testerInvite ? oneYearFromNow : undefined,
             },
           });
+          // Novo usuário recebe bônus de 30 min extra se vier via referral
           await tx.minuteBalance.create({
             data: {
               userId:           u.id,
-              availableMinutes: plan.minutesPerMonth,
+              availableMinutes: plan.minutesPerMonth + (referrer ? REFERRAL_BONUS_MINUTES : 0),
               resetAt:          testerInvite ? oneYearFromNow : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
           });
+          // Referrer também ganha bônus de 30 min por indicar
+          if (referrer) {
+            await tx.minuteBalance.update({
+              where: { userId: referrer.id },
+              data:  { availableMinutes: { increment: REFERRAL_BONUS_MINUTES } },
+            });
+          }
           // Marcar convite como usado
           if (testerInvite) {
             await tx.testerInvite.update({
@@ -272,6 +297,9 @@ export default async function authRoutes(app: FastifyInstance) {
     '/login',
     { config: { rateLimit: { max: 15, timeWindow: '15 minutes' } } },
     async (req, reply) => {
+      const v = validateRequest(loginSchema)(req.body);
+      if (!v.valid) return reply.code(400).send({ error: v.error });
+
       const { email, password } = req.body;
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 

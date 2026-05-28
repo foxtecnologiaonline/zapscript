@@ -84,10 +84,11 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     if (search) {
       if (!requirePlan(plan, PLAN_SEARCH, reply)) return;
 
+      // Carrega TODAS as transcrições do usuário para busca in-memory
+      // (necessário pois originalText é criptografado — pg_trgm não funciona)
       const allItems = await prisma.transcription.findMany({
         where:   { ...where },
         orderBy,
-        take:    300,
         include: { number: { select: { displayName: true, phoneNumber: true } } },
       });
 

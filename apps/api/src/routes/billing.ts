@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
 import { calculateProration } from '../lib/proration';
+import { validateRequest, billingCheckoutSchema } from '../lib/validation';
 
 /* ─────────────────────────────────────────────────────────
    ASAAS  — Billing Routes
@@ -133,6 +134,9 @@ export default async function billingRoutes(app: FastifyInstance) {
     '/checkout',
     { ...auth, config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (req: any, reply) => {
+      const v = validateRequest(billingCheckoutSchema)(req.body);
+      if (!v.valid) return reply.code(400).send({ error: v.error });
+
       const { planName, billingType = 'UNDEFINED' } = req.body;
       const userId = req.user.sub;
 

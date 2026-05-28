@@ -136,7 +136,8 @@ model SupportTicket {
   category            String
   description         String
   status              String   @default("open")
-  attachmentData      String?  // Base64 encoded file
+  attachmentUrl       String?  // Supabase Storage URL (novo)
+  attachmentData      String?  // Base64 legado (manter para registros antigos)
   attachmentFilename  String?
   attachmentMimeType  String?
   createdAt           DateTime @default(now())
