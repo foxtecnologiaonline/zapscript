@@ -39,8 +39,9 @@ export const confirmResetSchema = z.object({
 
 // ── Numbers Schemas ──────────────────────────────────────
 export const createNumberSchema = z.object({
-  phoneNumber: z.string().regex(/^\d{10,15}$/, 'Número deve ter 10-15 dígitos'),
   displayName: z.string().min(1, 'Nome é obrigatório').max(50),
+  // phoneNumber é opcional — usuário pode conectar via QR sem informar o número
+  phoneNumber: z.string().regex(/^\d{10,15}$/, 'Número deve ter 10-15 dígitos').optional(),
 });
 
 export const updateNumberSchema = z.object({

@@ -9,6 +9,7 @@ function CadastroForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const inviteCode   = searchParams.get('invite') || '';
+  const referralCode = searchParams.get('ref')    || '';
   const [isTesterInvite, setIsTesterInvite] = useState(false);
 
   const [form, setForm]   = useState({ name: '', email: '', phone: '', password: '', confirm: '' });
@@ -63,7 +64,8 @@ function CadastroForm() {
         cbLgpd,
         cbMarketing,
         docVersion: 'tos_v2.0,contrato_v2.0,pp_v2.0',
-        ...(inviteCode ? { inviteCode } : {}),
+        ...(inviteCode   ? { inviteCode }   : {}),
+        ...(referralCode ? { referralCode } : {}),
       });
       setUserEmail(form.email);
       setDone(true);
