@@ -545,8 +545,46 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ══ COMO FUNCIONA — 3 passos ══ */}
+        <section className="px-5 pt-10 pb-2">
+          <p className="text-xs font-semibold uppercase tracking-widest mb-5 text-center"
+            style={{ color: 'rgb(var(--color-primary))' }}>
+            Como funciona
+          </p>
+          <div className="flex items-start justify-between gap-1">
+            {[
+              { icon: '🎙️', label: 'Receba o áudio',      sub: 'No WhatsApp' },
+              { icon: '⚡',  label: 'IA processa',         sub: 'Em segundos' },
+              { icon: '📄', label: 'Texto entregue',      sub: 'Na mesma conversa' },
+            ].map((step, i) => (
+              <div key={i} className="flex items-start gap-1 flex-1">
+                {/* Seta entre steps */}
+                {i > 0 && (
+                  <div className="flex-shrink-0 mt-5 text-base" style={{ color: 'rgb(var(--color-text-muted))' }}>›</div>
+                )}
+                <div className="flex-1 flex flex-col items-center text-center">
+                  {/* Ícone */}
+                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl mb-2 flex-shrink-0"
+                    style={{ background: 'rgba(var(--color-primary)/.1)', border: '1px solid rgba(var(--color-primary)/.15)' }}>
+                    {step.icon}
+                  </div>
+                  <p className="text-xs font-semibold leading-tight" style={{ color: 'rgb(var(--color-text))' }}>
+                    {step.label}
+                  </p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                    {step.sub}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Linha visual conectando os passos */}
+          <div className="relative mt-4 mb-1 h-px mx-6"
+            style={{ background: 'linear-gradient(90deg, rgba(var(--color-primary)/.4), rgba(var(--color-primary)/.1))' }} />
+        </section>
+
         {/* ══ FEATURES ══ */}
-        <section className="relative z-10 py-16 px-5">
+        <section className="relative z-10 py-10 px-5">
           <div className="mb-8" style={{ animation: 'fadeInUp .6s ease both' }}>
             <span className="text-xs font-semibold uppercase tracking-widest"
               style={{ color: 'rgb(var(--color-accent))' }}>
