@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 
 /* ── Tipos ─────────────────────────────────────────────── */
-export type Tab = 'overview' | 'users' | 'tickets' | 'testers' | 'monitoring' | 'financeiro' | 'campanhas';
+export type Tab = 'overview' | 'users' | 'tickets' | 'testers' | 'monitoring' | 'financeiro' | 'campanhas' | 'planos';
 
 /* ── Constantes ────────────────────────────────────────── */
 const API  = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -118,6 +118,250 @@ interface DashFn {
 /* ══════════════════════════════════════════════════════════
    COMPONENTE PRINCIPAL DO PAINEL
 ══════════════════════════════════════════════════════════ */
+/* ── PlanosPanel — gerenciar configuração dos planos ────────────── */
+function PlanosPanel({ apiBase, token, notify }: { apiBase: string; token: string; notify: (t: string, type?: 'ok'|'err'|'warn') => void }) {
+  const [plans,       setPlans]       = useState<any[]>([]);
+  const [loading,     setLoading]     = useState(false);
+  const [syncing,     setSyncing]     = useState(false);
+  const [syncResult,  setSyncResult]  = useState<any>(null);
+  const [editing,     setEditing]     = useState<string | null>(null);  // planId em edição
+  const [editData,    setEditData]    = useState<any>({});
+  const [saving,      setSaving]      = useState(false);
+
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+
+  async function loadPlans() {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/plans`, { headers: h });
+      const d   = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro ao carregar planos');
+      setPlans(Array.isArray(d) ? d : []);
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally { setLoading(false); }
+  }
+
+  async function applyLimits() {
+    if (!confirm('Recalibrar minutos disponíveis de TODOS os usuários ativos com base nos limites atuais dos planos?\n\nOperação segura e idempotente.')) return;
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/sync-plans`, { method: 'POST', headers: h });
+      const d   = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro');
+      setSyncResult(d);
+      notify(`✅ ${d.message}`, 'ok');
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally { setSyncing(false); }
+  }
+
+  function startEdit(plan: any) {
+    setEditing(plan.id);
+    setEditData({
+      label:           plan.label,
+      minutesPerMonth: plan.minutesPerMonth,
+      maxNumbers:      plan.maxNumbers,
+      priceBrl:        plan.priceBrl,
+      features:        Array.isArray(plan.features) ? plan.features.join('\n') : '',
+    });
+  }
+
+  async function savePlan(id: string) {
+    setSaving(true);
+    try {
+      const features = editData.features
+        .split('\n')
+        .map((f: string) => f.trim())
+        .filter(Boolean);
+      const body = {
+        label:           editData.label,
+        minutesPerMonth: Number(editData.minutesPerMonth),
+        maxNumbers:      Number(editData.maxNumbers),
+        priceBrl:        Number(editData.priceBrl),
+        features,
+      };
+      const res = await fetch(`${apiBase}/sys/g5r8t2/plans/${id}`, {
+        method:  'PATCH',
+        headers: h,
+        body:    JSON.stringify(body),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro ao salvar');
+      setPlans(prev => prev.map(p => p.id === id ? d : p));
+      setEditing(null);
+      notify('✅ Plano atualizado! Clique em "Aplicar limites" para sincronizar os usuários.', 'ok');
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally { setSaving(false); }
+  }
+
+  const PLAN_COLOR: Record<string, string> = {
+    free: 'text-gray-400', pro: 'text-teal-400', ultra: 'text-purple-400',
+    executive: 'text-amber-400', 'pro-tester': 'text-emerald-300',
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <div className="text-sm font-bold text-[#d1fae5]">📋 Gerenciar Planos</div>
+          <div className="text-xs text-[rgba(16,185,129,.4)] mt-0.5">
+            Edite configurações e aplique os limites atuais a todos os usuários ativos
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={loadPlans} disabled={loading}
+            className="text-xs font-semibold px-4 py-2 rounded-lg bg-[rgba(16,185,129,.1)] border border-[rgba(16,185,129,.2)] text-[#10b981] hover:bg-[rgba(16,185,129,.18)] disabled:opacity-50 transition-colors">
+            {loading ? '⟳ Carregando...' : plans.length ? '🔄 Recarregar' : '📂 Carregar planos'}
+          </button>
+          {plans.length > 0 && (
+            <button onClick={applyLimits} disabled={syncing}
+              className="text-xs font-bold px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 disabled:opacity-50 transition-colors">
+              {syncing ? '⟳ Aplicando...' : '⚡ Aplicar limites a todos os usuários'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Resultado do sync */}
+      {syncResult && (
+        <div className={`rounded-xl p-4 border text-xs ${syncResult.ok ? 'bg-[rgba(16,185,129,.06)] border-[rgba(16,185,129,.2)]' : 'bg-yellow-900/10 border-yellow-400/20'}`}>
+          <div className="font-bold text-[#10b981] mb-2">{syncResult.message}</div>
+          <div className="grid grid-cols-3 gap-2 mb-2">
+            <div className="bg-[#132621] rounded-lg p-2 text-center">
+              <div className="text-lg font-black text-teal-400">{syncResult.created ?? 0}</div>
+              <div className="text-[9px] text-[rgba(16,185,129,.4)]">Criados</div>
+            </div>
+            <div className="bg-[#132621] rounded-lg p-2 text-center">
+              <div className="text-lg font-black text-[#10b981]">{syncResult.updated ?? 0}</div>
+              <div className="text-[9px] text-[rgba(16,185,129,.4)]">Recalibrados</div>
+            </div>
+            <div className="bg-[#132621] rounded-lg p-2 text-center">
+              <div className="text-lg font-black text-[#d1fae5]">{syncResult.total ?? 0}</div>
+              <div className="text-[9px] text-[rgba(16,185,129,.4)]">Total</div>
+            </div>
+          </div>
+          {syncResult.errors?.length > 0 && (
+            <details>
+              <summary className="text-[10px] text-red-400 cursor-pointer">{syncResult.errors.length} erro(s) ↓</summary>
+              <div className="mt-2 space-y-1 max-h-28 overflow-auto">
+                {syncResult.errors.map((e: string, i: number) => (
+                  <div key={i} className="text-[10px] text-red-300/70 bg-red-900/10 rounded px-2 py-1">{e}</div>
+                ))}
+              </div>
+            </details>
+          )}
+          <button onClick={() => setSyncResult(null)} className="text-[10px] text-[rgba(16,185,129,.3)] hover:text-[rgba(16,185,129,.6)] mt-2 block">Fechar</button>
+        </div>
+      )}
+
+      {/* Lista de planos */}
+      {plans.length === 0 && !loading && (
+        <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.1)] rounded-xl p-10 text-center text-xs text-[rgba(16,185,129,.3)]">
+          Clique em "Carregar planos" para ver os planos atuais do banco.
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {plans.map(plan => (
+          <div key={plan.id} className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-[rgba(16,185,129,.08)] flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className={`text-base font-black ${PLAN_COLOR[plan.name] || 'text-gray-400'}`}>{plan.label}</span>
+                <span className="text-[10px] font-mono text-[rgba(16,185,129,.35)] bg-[rgba(16,185,129,.06)] border border-[rgba(16,185,129,.1)] px-2 py-0.5 rounded">{plan.name}</span>
+              </div>
+              {editing === plan.id ? (
+                <div className="flex gap-2">
+                  <button onClick={() => savePlan(plan.id)} disabled={saving}
+                    className="text-xs font-bold px-3 py-1.5 rounded-lg bg-[#10b981] text-[#011a12] hover:bg-[#34d399] disabled:opacity-50 transition-colors">
+                    {saving ? '⟳' : '✓ Salvar'}
+                  </button>
+                  <button onClick={() => setEditing(null)}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-[rgba(16,185,129,.08)] border border-[rgba(16,185,129,.15)] text-[rgba(16,185,129,.6)] hover:text-[#10b981] transition-colors">
+                    ✕ Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => startEdit(plan)}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-[rgba(16,185,129,.08)] border border-[rgba(16,185,129,.15)] text-[#10b981] hover:bg-[rgba(16,185,129,.16)] transition-colors">
+                  ✏️ Editar
+                </button>
+              )}
+            </div>
+
+            {editing === plan.id ? (
+              <div className="px-5 py-4 grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Label (exibível)</label>
+                  <input value={editData.label} onChange={e => setEditData((p: any) => ({ ...p, label: e.target.value }))}
+                    className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)]" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Minutos/mês</label>
+                  <input type="number" value={editData.minutesPerMonth} onChange={e => setEditData((p: any) => ({ ...p, minutesPerMonth: e.target.value }))}
+                    className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)]" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Preço (R$)</label>
+                  <input type="number" step="0.01" value={editData.priceBrl} onChange={e => setEditData((p: any) => ({ ...p, priceBrl: e.target.value }))}
+                    className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)]" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Máx. números</label>
+                  <input type="number" value={editData.maxNumbers} onChange={e => setEditData((p: any) => ({ ...p, maxNumbers: e.target.value }))}
+                    className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)]" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">
+                    Features (uma por linha)
+                  </label>
+                  <textarea rows={5} value={editData.features} onChange={e => setEditData((p: any) => ({ ...p, features: e.target.value }))}
+                    className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-xs text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] font-mono resize-none" />
+                </div>
+              </div>
+            ) : (
+              <div className="px-5 py-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Minutos/mês</div>
+                  <div className="text-xl font-black text-[#10b981]">{plan.minutesPerMonth}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Preço</div>
+                  <div className="text-xl font-black text-[#d1fae5]">
+                    {plan.priceBrl === 0 ? 'Grátis' : `R$ ${Number(plan.priceBrl).toFixed(2).replace('.', ',')}`}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Máx. números</div>
+                  <div className="text-xl font-black text-[#d1fae5]">{plan.maxNumbers}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Features</div>
+                  <div className="text-sm font-bold text-[#d1fae5]">{Array.isArray(plan.features) ? plan.features.length : 0} itens</div>
+                </div>
+                {Array.isArray(plan.features) && plan.features.length > 0 && (
+                  <div className="col-span-2 sm:col-span-4">
+                    <div className="flex flex-wrap gap-1.5">
+                      {(plan.features as string[]).map((f, i) => (
+                        <span key={i} className="text-[10px] bg-[#132621] border border-[rgba(16,185,129,.1)] text-[rgba(16,185,129,.7)] rounded-full px-2 py-0.5">
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── TesterUpgradePanel — lista e upgrade executivo ─────────────── */
 const ADMIN_API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 
@@ -389,6 +633,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
             ['users',      '👥', 'Usuários'],
             ['tickets',    '🎫', 'Tickets'],
             ['testers',    '🧪', 'Testers'],
+            ['planos',     '📋', 'Planos'],
             ['monitoring',  '🖥️', 'Monitoramento'],
             ['financeiro',  '💰', 'Financeiro'],
             ['campanhas',   '📣', 'Campanhas'],
@@ -827,6 +1072,11 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
               ))}
             </div>
           </div>
+        )}
+
+        {/* ═══ PLANOS ═══ */}
+        {tab === 'planos' && (
+          <PlanosPanel apiBase={API} token={token} notify={notify} />
         )}
 
         {/* ═══ FINANCEIRO ═══ */}

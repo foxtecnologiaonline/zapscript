@@ -15,7 +15,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!,
 );
 
-const PLAN_PRICES: Record<string, number> = { pro: 29.90, ultra: 59.90, executive: 89.90, free: 0, 'pro-tester': 0 };
+const PLAN_PRICES: Record<string, number> = { pro: 39.90, ultra: 69.90, executive: 89.90, free: 0, 'pro-tester': 0 };
 
 // Mascara email para LGPD: "fr***@gmail.com"
 function maskEmail(email: string): string {
@@ -1356,53 +1356,77 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // POST /admin/sync-plans — garante que todos os usuários com subscription ativa
-  // tenham um MinuteBalance correspondente às cotas do plano atual.
-  // Útil após mudança de plano ou adição de novos planos ao sistema.
+  // POST /admin/sync-plans — aplica as cotas atuais dos planos a TODOS os usuários
+  // com assinatura ativa, recalculando availableMinutes com base no uso real do ciclo.
+  // Cria MinuteBalance para quem não tem; recalibra quem já tem.
+  // Idempotente: pode ser executado quantas vezes for necessário.
   app.post(
     '/sync-plans',
     { preHandler: [adminAuth] },
     async (_req, reply) => {
-      // Busca todas as assinaturas ativas com plano e usuário
       const subscriptions = await prisma.subscription.findMany({
         where:   { status: 'active' },
         include: { plan: true, user: { select: { id: true, email: true } } },
       });
 
-      let created = 0;
-      let skipped = 0;
+      let created  = 0;
+      let updated  = 0;
+      const errors: string[] = [];
 
       for (const sub of subscriptions) {
-        const userId = sub.userId;
+        const { userId } = sub;
+        const planMinutes = sub.plan.minutesPerMonth;
 
-        // Verifica se já existe MinuteBalance
-        const existing = await prisma.minuteBalance.findUnique({ where: { userId } });
+        try {
+          const existing = await prisma.minuteBalance.findUnique({ where: { userId } });
 
-        if (!existing) {
-          // Cria com a cota do plano atual
-          await prisma.minuteBalance.create({
-            data: {
-              userId,
-              availableMinutes: sub.plan.minutesPerMonth,
-              resetAt:          new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-              lastAlertSent:    null,
-            },
-          });
-          created++;
-          app.log.info({ userId, plan: sub.plan.name, minutes: sub.plan.minutesPerMonth }, '[Admin] sync-plans: MinuteBalance criado');
-        } else {
-          skipped++;
+          if (!existing) {
+            // Usuário sem MinuteBalance — criar com cota cheia
+            await prisma.minuteBalance.create({
+              data: {
+                userId,
+                availableMinutes: planMinutes,
+                resetAt:          new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                lastAlertSent:    null,
+              },
+            });
+            created++;
+            app.log.info({ userId, plan: sub.plan.name, planMinutes }, '[Admin] sync-plans: criado');
+          } else {
+            // Recalcular uso real do ciclo atual
+            const cycleStart = new Date(existing.resetAt.getTime() - 30 * 24 * 60 * 60 * 1000);
+            const usageLogs  = await prisma.usageLog.aggregate({
+              _sum: { minutesUsed: true },
+              where: {
+                userId,
+                createdAt: { gte: cycleStart, lt: existing.resetAt },
+              },
+            });
+            const minutesUsed   = usageLogs._sum.minutesUsed ?? 0;
+            const newAvailable  = Math.max(0, Math.round((planMinutes - minutesUsed) * 100) / 100);
+
+            await prisma.minuteBalance.update({
+              where: { userId },
+              data:  { availableMinutes: newAvailable, lastAlertSent: null },
+            });
+            updated++;
+            app.log.info({ userId, plan: sub.plan.name, planMinutes, minutesUsed, newAvailable }, '[Admin] sync-plans: recalibrado');
+          }
+        } catch (err: any) {
+          errors.push(`${sub.user.email}: ${err.message}`);
+          app.log.error({ userId, err: err.message }, '[Admin] sync-plans: erro');
         }
       }
 
-      app.log.info({ created, skipped, total: subscriptions.length }, '[Admin] sync-plans concluído');
+      app.log.info({ created, updated, errors: errors.length, total: subscriptions.length }, '[Admin] sync-plans concluído');
 
       return reply.send({
-        ok:      true,
+        ok:      errors.length === 0,
         total:   subscriptions.length,
         created,
-        skipped,
-        message: `Sincronização concluída: ${created} balanço(s) criado(s), ${skipped} já existiam.`,
+        updated,
+        errors,
+        message: `Sincronização concluída: ${created} criado(s), ${updated} recalibrado(s)${errors.length ? `, ${errors.length} erro(s)` : ''}.`,
       });
     }
   );
