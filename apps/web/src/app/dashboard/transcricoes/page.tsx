@@ -374,6 +374,14 @@ export default function TranscricoesPage() {
   const [npsSubmitting, setNpsSubmitting]   = useState(false);
   const [npsDone, setNpsDone]               = useState(false);
 
+  /* ── Open upload modal when ?upload=1 ─────────────────────────────────── */
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('upload') === '1') setShowUpload(true);
+    }
+  }, []);
+
   /* ── Boot ──────────────────────────────────────────────────────────────── */
   useEffect(() => {
     api.get<any>('/auth/me')

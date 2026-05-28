@@ -30,6 +30,7 @@ const PLANS = [
       '20 min/mês',
       '1 número WhatsApp',
       '🎙️ Transcrição automática',
+      '🖥️ Transcrição de áudios no site',
       '✨ Resumo com pontos-chave IA',
     ],
     excl:  [
@@ -49,9 +50,10 @@ const PLANS = [
     feats: [
       '100 min/mês',
       '2 números WhatsApp',
-      '📋 Histórico completo de transcrições',
       '🎙️ Transcrição automática',
+      '🖥️ Transcrição de áudios no site',
       '✨ Resumo com pontos-chave IA',
+      '📋 Histórico completo de transcrições',
     ],
     excl:  [
       '📅 Filtros por data e contato',
@@ -70,6 +72,7 @@ const PLANS = [
       '300 min/mês',
       '3 números WhatsApp',
       '🎙️ Transcrição automática',
+      '🖥️ Transcrição de áudios no site',
       '✨ Ponto Chave (Resumo com IA)',
       '📋 Histórico de transcrições',
       '📅 Filtros por data e contato',
@@ -83,12 +86,13 @@ const PLANS = [
 
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                    vals: ['20', '100', '300'] },
-  { feature: 'Números WhatsApp',                vals: ['1', '2', '3'] },
-  { feature: '🎙️ Transcrição automática',       vals: [true, true, true] },
-  { feature: '✨ Resumo pontos-chave IA',        vals: [true, true, true] },
-  { feature: '📋 Histórico de transcrições',    vals: [false, true, true] },
-  { feature: '📅 Filtros por data e contato',   vals: [false, false, true] },
+  { feature: 'Minutos/mês',                      vals: ['20', '100', '300'] },
+  { feature: 'Números WhatsApp',                  vals: ['1', '2', '3'] },
+  { feature: '🎙️ Transcrição automática',         vals: [true, true, true] },
+  { feature: '🖥️ Transcrição no site (upload)',   vals: [true, true, true] },
+  { feature: '✨ Resumo pontos-chave IA',          vals: [true, true, true] },
+  { feature: '📋 Histórico de transcrições',      vals: [false, true, true] },
+  { feature: '📅 Filtros por data e contato',     vals: [false, false, true] },
   { feature: '🔍 Busca por transcrição',           vals: [false, false, true] },
 ];
 

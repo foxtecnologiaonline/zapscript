@@ -163,6 +163,22 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Upload de áudio */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">🖥️</span>
+            <div className="font-bold text-sm text-brand-text">Transcrição pelo site</div>
+          </div>
+          <p className="text-xs text-brand-text-secondary mb-4 leading-relaxed">
+            Envie um áudio direto do computador e receba a transcrição em segundos.
+          </p>
+          <Link
+            href="/dashboard/transcricoes?upload=1"
+            className="btn-primary block w-full text-center text-xs py-2.5">
+            🎙️ Enviar áudio agora
+          </Link>
+        </div>
+
         {/* Compartilhar */}
         <div className="card p-5">
           <div className="font-bold text-sm mb-2 text-brand-text">Indique o ZapScript</div>
