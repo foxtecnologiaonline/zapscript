@@ -6,7 +6,9 @@ import { api } from '@/lib/api';
 interface Stats {
   minutesUsed: number; minutesAvailable: number;
   minutesTotal: number; minutesPct: number;
-  planName: string; planStatus: string;
+  planName: string;   // slug: 'free' | 'pro' | 'ultra' | 'executive'
+  planLabel: string;  // exibível: 'Grátis' | 'Pro' | 'Ultra' | 'Executive'
+  planStatus: string;
 }
 
 interface User {
@@ -477,7 +479,8 @@ function PlanoContent() {
     <div className="p-8 text-center text-brand-muted text-sm pt-20">Carregando...</div>
   );
 
-  const currentPlan = stats?.planName?.toLowerCase() || 'free';
+  // planName já vem como slug ('free'|'pro'|'ultra'|'executive') — sem precisar de toLowerCase
+  const currentPlan = stats?.planName || 'free';
   const PLAN_ORDER: Record<string, number> = { free: 0, pro: 1, ultra: 2, executive: 3 };
   const currentPlanOrder = PLAN_ORDER[currentPlan] ?? 0;
   // Executive users see their plan as "ultra" for UI purposes (still has all benefits)
@@ -511,7 +514,7 @@ function PlanoContent() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <span className="font-bold">Plano atual: </span>
-              <span className="font-bold" style={{ color: 'rgb(var(--color-primary))' }}>{stats.planName}</span>
+              <span className="font-bold" style={{ color: 'rgb(var(--color-primary))' }}>{stats.planLabel ?? stats.planName}</span>
             </div>
             <span className={`text-xs font-bold px-3 py-1 rounded-full border ${
               stats.planStatus === 'active'   ? 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10' :

@@ -14,7 +14,8 @@ interface Stats {
   minutesPct: number;
   activeNumbers: number;
   avgConfidence: number;
-  planName: string;
+  planName: string;   // slug: 'free' | 'pro' | 'ultra' | 'executive'
+  planLabel: string;  // exibível: 'Grátis' | 'Pro' | 'Ultra' | 'Executive'
   planStatus: string;
 }
 
@@ -115,7 +116,7 @@ export default function DashboardPage() {
         {stats && (
           <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
-              <span className="font-bold text-sm text-brand-text">Plano {stats.planName}</span>
+              <span className="font-bold text-sm text-brand-text">Plano {stats.planLabel ?? stats.planName}</span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
                 {stats.planStatus === 'active' ? 'Ativo' : stats.planStatus}
               </span>
@@ -134,7 +135,7 @@ export default function DashboardPage() {
               <span>{stats.minutesAvailable.toFixed(1)} min restantes</span>
             </div>
             <Link href="/dashboard/plano" className="btn-primary block w-full text-center text-sm py-2">
-              {stats.planName === 'Free' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
+              {stats.planName === 'free' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
             </Link>
           </div>
         )}

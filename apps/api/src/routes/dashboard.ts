@@ -41,7 +41,10 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       accumulatedMinutes:  +(balance?.accumulatedMinutes || 0).toFixed(1),
       activeNumbers,
       avgConfidence:       +(avgConf._avg.confidenceScore || 99.1).toFixed(1),
-      planName:            sub?.plan.label || 'Free',
+      // planName = slug do plano ('free'|'pro'|'ultra'|'executive') — usado para gating
+      // planLabel = label exibível ('Grátis'|'Pro'|'Ultra'|'Executive')
+      planName:            sub?.plan.name  || 'free',
+      planLabel:           sub?.plan.label || 'Free',
       planStatus:          sub?.status || 'active',
     };
   });
