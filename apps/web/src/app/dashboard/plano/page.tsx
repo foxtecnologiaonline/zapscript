@@ -2,6 +2,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import CheckoutInline from '@/components/CheckoutInline';
 
 interface Stats {
   minutesUsed: number; minutesAvailable: number;
@@ -268,7 +269,7 @@ function UpgradeModal({
         </button>
 
         <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.5)' }}>
-          🔒 Pagamento seguro via Asaas · Cancele a qualquer momento
+          🔒 Pagamento seguro via Pagar.me · Cancele a qualquer momento
         </p>
       </div>
     </div>
@@ -374,7 +375,7 @@ function PlanoContent() {
   const [stats, setStats]             = useState<Stats | null>(null);
   const [user, setUser]               = useState<User | null>(null);
   const [loading, setLoading]         = useState(true);
-  const [checkoutPlan, setCheckoutPlan]     = useState<string | null>(null);
+  const [checkoutPlan, setCheckoutPlan]     = useState<string | null>(null);  // plano com checkout inline aberto
   const [docModal, setDocModal]             = useState<string | null>(null);
   const [showTable, setShowTable]           = useState(false);
   const [upgradePreview, setUpgradePreview] = useState<UpgradePreview | null>(null);
@@ -407,23 +408,10 @@ function PlanoContent() {
     }
   }, []);
 
-  async function doCheckout(planName: string) {
+  // Abre o checkout inline para o plano
+  function doCheckout(planName: string) {
     setCheckoutPlan(planName);
-    try {
-      const res = await api.post<{ url: string; subscriptionId: string }>(
-        '/billing/checkout',
-        { planName, billingType: 'UNDEFINED' }
-      );
-      if (res.url) {
-        window.location.href = res.url;
-      } else {
-        alert('Não foi possível abrir o checkout. Tente novamente.');
-      }
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setCheckoutPlan(null);
-    }
+    setUpgradePreview(null);
   }
 
   async function upgrade(planName: string) {
@@ -431,7 +419,7 @@ function PlanoContent() {
       setDocModal(planName);
       return;
     }
-    // Usuário já em plano pago → mostrar simulação de proration
+    // Usuário já em plano pago → mostrar simulação de proration antes
     if (currentPlan !== 'free') {
       setPreviewLoading(true);
       try {
@@ -444,30 +432,21 @@ function PlanoContent() {
       }
       return;
     }
-    await doCheckout(planName);
+    doCheckout(planName);
   }
 
+  function handleCheckoutSuccess(planName: string) {
+    setCheckoutPlan(null);
+    setUpgradePreview(null);
+    window.location.href = `/dashboard/plano?upgrade=success`;
+  }
+
+  // doUpgrade: fecha o modal de proration e abre o checkout inline
   async function doUpgrade() {
     if (!upgradePreview) return;
     const planName = upgradePreview.targetPlanName;
+    setUpgradePreview(null);
     setCheckoutPlan(planName);
-    try {
-      const res = await api.post<any>('/billing/upgrade', { targetPlan: planName, billingType: 'UNDEFINED' });
-      if (res.switched) {
-        window.location.href = '/dashboard/plano?upgrade=success';
-        return;
-      }
-      if (res.url) {
-        window.location.href = res.url;
-      } else {
-        alert('Não foi possível abrir o checkout. Tente novamente.');
-      }
-    } catch (err: any) {
-      alert(err.message || 'Erro ao processar upgrade.');
-    } finally {
-      setCheckoutPlan(null);
-      setUpgradePreview(null);
-    }
   }
 
   async function handleDocumentConfirm(document: string) {
@@ -552,9 +531,7 @@ function PlanoContent() {
         </div>
       )}
 
-      {/* Nota: forma de pagamento (PIX, cartão, boleto) é escolhida na página segura da Asaas */}
-
-      {/* ── Planos — Opção 3 Híbrido ── */}
+      {/* ── Planos ── */}
       <h2 className="font-display font-bold text-base mb-4">
         {currentPlan === 'free' ? 'Fazer upgrade' : 'Mudar plano'}
       </h2>
@@ -625,7 +602,7 @@ function PlanoContent() {
               </ul>
 
               <button
-                disabled={isDisabled || checkoutPlan === plan.name || previewLoading}
+                disabled={isDisabled || previewLoading}
                 onClick={!isDisabled ? () => upgrade(plan.name) : undefined}
                 className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold transition-all"
                 style={{
@@ -645,7 +622,7 @@ function PlanoContent() {
                 {isCurrent         ? 'Plano atual' :
                  isFree            ? 'Gratuito' :
                  isInferior        ? 'Plano inferior' :
-                 checkoutPlan === plan.name || previewLoading ? 'Calculando...' :
+                 previewLoading    ? 'Calculando...' :
                  currentPlan !== 'free' ? '↑ Fazer upgrade' :
                  'Assinar agora'}
               </button>
@@ -700,7 +677,7 @@ function PlanoContent() {
       )}
 
       <p className="text-xs text-center mt-4" style={{ color: 'rgb(var(--color-text-muted))' }}>
-        Pagamentos processados com segurança pelo Asaas. Cancele a qualquer momento.
+        Pagamentos processados com segurança pelo Pagar.me. Cancele a qualquer momento.
       </p>
 
       {/* ── Faturas / Histórico de pagamentos ── */}
@@ -718,14 +695,19 @@ function PlanoContent() {
               <div className="divide-y divide-brand-border/30">
                 {invoices.map((inv: any) => {
                   const statusMap: Record<string, { label: string; color: string }> = {
-                    CONFIRMED: { label: 'Pago', color: 'text-emerald-400' },
-                    RECEIVED:  { label: 'Pago', color: 'text-emerald-400' },
-                    PENDING:   { label: 'Pendente', color: 'text-amber-400' },
-                    OVERDUE:   { label: 'Atrasado', color: 'text-red-400' },
-                    REFUNDED:  { label: 'Reembolsado', color: 'text-brand-muted' },
-                    CANCELED:  { label: 'Cancelado', color: 'text-brand-muted' },
+                    RECEIVED:             { label: 'Pago',          color: 'text-emerald-400' },
+                    CONFIRMED:            { label: 'Pago',          color: 'text-emerald-400' },
+                    DUNNING_RECEIVED:     { label: 'Regularizado',  color: 'text-emerald-400' },
+                    PENDING:              { label: 'Pendente',      color: 'text-amber-400'   },
+                    AWAITING_RISK_ANALYSIS: { label: 'Em análise', color: 'text-amber-400'   },
+                    DUNNING_REQUESTED:    { label: 'Em cobrança',   color: 'text-amber-400'   },
+                    OVERDUE:              { label: 'Atrasado',      color: 'text-red-400'     },
+                    CHARGEBACK_REQUESTED: { label: 'Chargeback',    color: 'text-red-400'     },
+                    REFUNDED:             { label: 'Reembolsado',   color: 'text-brand-muted' },
+                    PARTIALLY_REFUNDED:   { label: 'Reemb. parcial',color: 'text-brand-muted' },
+                    CANCELED:             { label: 'Cancelado',     color: 'text-brand-muted' },
                   };
-                  const st = statusMap[inv.status] || { label: inv.status, color: 'text-brand-muted' };
+                  const st = statusMap[inv.status] || { label: inv.statusLabel || inv.status, color: inv.statusColor || 'text-brand-muted' };
                   const date = inv.paymentDate || inv.dueDate;
                   const dateStr = date
                     ? new Date(date + 'T12:00:00').toLocaleDateString('pt-BR')
@@ -791,6 +773,43 @@ function PlanoContent() {
           ))}
         </div>
       </div>
+
+      {/* ── Checkout inline Pagar.me ── */}
+      {checkoutPlan && checkoutPlan !== 'free' && (() => {
+        const plan = PLANS.find(p => p.name === checkoutPlan) ?? { label: checkoutPlan, price: '', feats: [] as string[] };
+        return (
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 overflow-y-auto"
+            onClick={() => setCheckoutPlan(null)}
+          >
+            <div className="min-h-full flex items-start justify-center py-8 px-4">
+              <div
+                className="w-full max-w-lg rounded-2xl p-6"
+                style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-primary)/.3)' }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="mb-5">
+                  <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
+                    {currentPlan !== 'free' ? `Upgrade para ${plan.label}` : `Assinar plano ${plan.label}`}
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                    {plan.price}/mês · Cancele a qualquer momento
+                  </p>
+                </div>
+                <CheckoutInline
+                  planName={checkoutPlan as 'pro' | 'ultra' | 'executive'}
+                  planLabel={plan.label}
+                  planPrice={plan.price}
+                  planFeats={plan.feats}
+                  isUpgrade={currentPlan !== 'free'}
+                  onSuccess={handleCheckoutSuccess}
+                  onCancel={() => setCheckoutPlan(null)}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal de CPF/CNPJ */}
       {docModal && (

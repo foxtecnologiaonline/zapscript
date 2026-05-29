@@ -67,9 +67,33 @@ export const transcriptionQuerySchema = z.object({
 });
 
 // ── Billing Schemas ──────────────────────────────────────
+
+// Schema de cartão (checkout transparente Asaas — sem tokenização frontend)
+const cardSchema = z.object({
+  holderName:  z.string().min(2, 'Nome do titular é obrigatório').max(64),
+  number:      z.string().min(13, 'Número do cartão inválido').max(19),
+  expiryMonth: z.string().length(2, 'Mês inválido (MM)'),
+  expiryYear:  z.string().min(2, 'Ano inválido').max(4),
+  ccv:         z.string().min(3, 'CVV inválido').max(4),
+});
+
+const billingAddressSchema = z.object({
+  postalCode:    z.string().min(8).max(9).optional(),
+  addressNumber: z.string().max(20).optional(),
+}).optional();
+
 export const billingCheckoutSchema = z.object({
-  planName:    z.enum(['pro', 'ultra', 'executive'], { errorMap: () => ({ message: 'Plano inválido. Use pro, ultra ou executive.' }) }),
-  billingType: z.string().max(20).optional(),
+  planName:       z.enum(['pro', 'ultra', 'executive'], { errorMap: () => ({ message: 'Plano inválido. Use pro, ultra ou executive.' }) }),
+  paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
+  card:           cardSchema.optional(),   // obrigatório se paymentMethod === 'credit_card' | 'debit_card'
+  billingAddress: billingAddressSchema,
+});
+
+export const billingUpgradeSchema = z.object({
+  targetPlan:     z.enum(['pro', 'ultra', 'executive'], { errorMap: () => ({ message: 'Plano inválido.' }) }),
+  paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
+  card:           cardSchema.optional(),
+  billingAddress: billingAddressSchema,
 });
 
 export const createSubscriptionSchema = z.object({

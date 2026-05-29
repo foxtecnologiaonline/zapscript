@@ -47,24 +47,24 @@ model Plan {
   minutesPerMonth Int
   maxNumbers      Int
   priceBrl        Float
-  asaasProductId  String?  // Não usado — Asaas não pré-cria price IDs
   features        Json           @default("[]")
   createdAt       DateTime       @default(now())
   subscriptions   Subscription[]
 }
 
 model Subscription {
-  id                   String    @id @default(cuid())
-  userId               String    @unique
-  planId               String
-  asaasSubscriptionId String?
-  asaasCustomerId     String?
-  status               String    @default("active")
-  currentPeriodEnd     DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan                 Plan      @relation(fields: [planId], references: [id])
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  planId                String
+  asaasSubscriptionId   String?   // Asaas subscription ID (sub_...)
+  asaasCustomerId       String?   // Asaas customer ID (cus_...)
+  paymentMethod         String?   // 'credit_card' | 'pix'
+  status                String    @default("active")
+  currentPeriodEnd      DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                  Plan      @relation(fields: [planId], references: [id])
 }
 
 model MinuteBalance {
