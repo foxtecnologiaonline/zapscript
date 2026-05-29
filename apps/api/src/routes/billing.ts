@@ -176,13 +176,13 @@ async function getPixQrForSubscription(subscriptionId: string): Promise<{
 }
 
 /* ── Mapear método frontend → billingType Asaas ── */
-function toAsaasBillingType(method: string): string {
+function toAsaasBillingType(method: string | undefined): string {
   if (method === 'credit_card') return 'CREDIT_CARD';
   if (method === 'debit_card')  return 'DEBIT_CARD';
-  return 'PIX'; // pix, pix_auto, google_pay, apple_pay
+  return 'PIX'; // pix, pix_auto, google_pay, apple_pay (+ undefined → default PIX)
 }
 
-function isCardMethod(method: string): boolean {
+function isCardMethod(method: string | undefined): boolean {
   return method === 'credit_card' || method === 'debit_card';
 }
 
