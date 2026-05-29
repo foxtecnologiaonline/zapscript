@@ -14,9 +14,9 @@ import { validateRequest, billingCheckoutSchema, billingUpgradeSchema } from '..
    ───────────────────────────────────────────────────────── */
 
 const IS_PROD    = process.env.NODE_ENV === 'production';
-const ASAAS_BASE = IS_PROD
-  ? 'https://api.asaas.com/api/v3'
-  : 'https://sandbox.asaas.com/api/v3';
+// Prioridade: ASAAS_BASE_URL (env explícita) → fallback por NODE_ENV
+const ASAAS_BASE = process.env.ASAAS_BASE_URL?.replace(/\/$/, '')
+  || (IS_PROD ? 'https://api.asaas.com/api/v3' : 'https://sandbox.asaas.com/api/v3');
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY!;
 
 function asaas(path: string, options: RequestInit = {}) {
