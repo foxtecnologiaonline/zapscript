@@ -62,15 +62,22 @@ const isCardMethod = (m: Method) => m === 'credit_card' || m === 'debit_card';
 const isPixMethod  = (m: Method) => m === 'pix' || m === 'pix_auto' || m === 'google_pay' || m === 'apple_pay';
 
 /* ── Definições de métodos ── */
-type MethodDef = { id: Method; label: string; icon: React.ReactNode; sub: string; comingSoon?: boolean };
+// Usar referências de componente (não instâncias JSX) para evitar problemas de hidratação SSR
+type MethodDef = {
+  id:           Method;
+  label:        string;
+  Icon:         React.ComponentType | string; // componente ou emoji
+  sub:          string;
+  comingSoon?:  boolean;
+};
 const METHODS: MethodDef[] = [
-  { id: 'pix',         label: 'PIX',         icon: '⚡', sub: 'QR code por ciclo mensal' },
-  { id: 'pix_auto',   label: 'PIX Auto',     icon: '🔄', sub: 'Débito automático via PIX' },
-  { id: 'credit_card', label: 'Crédito',     icon: '💳', sub: 'Cobrança mensal automática' },
-  { id: 'debit_card',  label: 'Débito',      icon: '🏦', sub: 'Débito no cartão' },
-  { id: 'google_pay',  label: 'Google Pay',  icon: <GooglePaySvg />, sub: 'Pague com Google Pay' },
-  { id: 'apple_pay',   label: 'Apple Pay',   icon: <ApplePaySvg />, sub: 'Pague com Apple Pay' },
-  { id: 'paypal',      label: 'PayPal',      icon: <PayPalSvg />, sub: 'Em breve', comingSoon: true },
+  { id: 'pix',         label: 'PIX',         Icon: '⚡',        sub: 'QR code por ciclo mensal' },
+  { id: 'pix_auto',   label: 'PIX Auto',     Icon: '🔄',        sub: 'Débito automático via PIX' },
+  { id: 'credit_card', label: 'Crédito',     Icon: '💳',        sub: 'Cobrança mensal automática' },
+  { id: 'debit_card',  label: 'Débito',      Icon: '🏦',        sub: 'Débito no cartão' },
+  { id: 'google_pay',  label: 'Google Pay',  Icon: GooglePaySvg, sub: 'Pague com Google Pay' },
+  { id: 'apple_pay',   label: 'Apple Pay',   Icon: ApplePaySvg,  sub: 'Pague com Apple Pay' },
+  { id: 'paypal',      label: 'PayPal',      Icon: PayPalSvg,    sub: 'Em breve', comingSoon: true },
 ];
 
 /* ── Formatação ── */
@@ -346,6 +353,29 @@ function PayPalSection() {
   );
 }
 
+/* ── Normalizar mensagens de erro da API ── */
+function normalizeApiError(err: any): string {
+  const msg: string = err?.message || err?.error || String(err || '');
+  if (!msg || msg === 'undefined') return 'Erro inesperado. Tente novamente.';
+
+  const lower = msg.toLowerCase();
+  // Erros de serviço / infraestrutura
+  if (lower.includes('indisponível') || lower.includes('503') || lower.includes('unavailable') || lower.includes('network') || lower.includes('fetch'))
+    return 'O serviço de pagamento está temporariamente indisponível. Aguarde alguns instantes e tente novamente.';
+  // Cartão recusado
+  if (lower.includes('recusado') || lower.includes('declined') || lower.includes('refused'))
+    return 'Cartão não aprovado. Verifique os dados ou tente outro cartão.';
+  // Dados inválidos
+  if (lower.includes('inválid') || lower.includes('invalid') || lower.includes('400'))
+    return 'Dados de pagamento inválidos. Verifique as informações e tente novamente.';
+  // Timeout
+  if (lower.includes('timeout') || lower.includes('time out'))
+    return 'A requisição demorou muito. Verifique sua conexão e tente novamente.';
+
+  // Mensagem original se não encaixou em nenhum padrão
+  return msg.length > 120 ? msg.slice(0, 120) + '…' : msg;
+}
+
 /* ═══════════════════════════════════════════════════════
    Componente principal
    ══════════════════════════════════════════════════════ */
@@ -398,10 +428,10 @@ export default function CheckoutInline({
         setStep(3);
         setTimeout(() => onSuccess(planName), 1500);
       } else {
-        setError(res.error || 'Cartão não aprovado. Verifique os dados e tente novamente.');
+        setError(normalizeApiError(res.error || 'Cartão não aprovado. Verifique os dados e tente novamente.'));
       }
     } catch (err: any) {
-      setError(err.message || 'Erro ao processar pagamento. Tente novamente.');
+      setError(normalizeApiError(err));
     } finally {
       setLoading(false);
     }
@@ -430,10 +460,10 @@ export default function CheckoutInline({
           amount:    res.amount || res.proratedAmount || 0,
         });
       } else {
-        setError('Erro ao gerar PIX. Tente novamente.');
+        setError(normalizeApiError(res.error || 'Erro ao gerar PIX. Tente novamente.'));
       }
     } catch (err: any) {
-      setError(err.message || 'Erro ao gerar PIX.');
+      setError(normalizeApiError(err));
     } finally {
       setLoading(false);
     }
@@ -450,8 +480,8 @@ export default function CheckoutInline({
       } else {
         setError('Pagamento ainda não confirmado. Aguarde alguns segundos e tente novamente.');
       }
-    } catch {
-      setError('Erro ao verificar pagamento.');
+    } catch (err: any) {
+      setError(normalizeApiError(err));
     } finally {
       setLoading(false);
     }
@@ -551,9 +581,9 @@ export default function CheckoutInline({
                   </span>
                 )}
                 <span style={{ height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {typeof m.icon === 'string'
-                    ? <span style={{ fontSize: 16 }}>{m.icon}</span>
-                    : m.icon}
+                  {typeof m.Icon === 'string'
+                    ? <span style={{ fontSize: 16 }}>{m.Icon}</span>
+                    : <m.Icon />}
                 </span>
                 <span style={{ fontSize: 9, fontWeight: active ? 700 : 400, textAlign: 'center', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
                   {m.label}

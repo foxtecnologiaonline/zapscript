@@ -269,7 +269,7 @@ function UpgradeModal({
         </button>
 
         <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.5)' }}>
-          🔒 Pagamento seguro via Pagar.me · Cancele a qualquer momento
+          🔒 Pagamento seguro via Asaas · Cancele a qualquer momento
         </p>
       </div>
     </div>
@@ -677,7 +677,7 @@ function PlanoContent() {
       )}
 
       <p className="text-xs text-center mt-4" style={{ color: 'rgb(var(--color-text-muted))' }}>
-        Pagamentos processados com segurança pelo Pagar.me. Cancele a qualquer momento.
+        Pagamentos processados com segurança pela Asaas. Cancele a qualquer momento.
       </p>
 
       {/* ── Faturas / Histórico de pagamentos ── */}
@@ -774,7 +774,7 @@ function PlanoContent() {
         </div>
       </div>
 
-      {/* ── Checkout inline Pagar.me ── */}
+      {/* ── Checkout inline Asaas ── */}
       {checkoutPlan && checkoutPlan !== 'free' && (() => {
         const plan = PLANS.find(p => p.name === checkoutPlan) ?? { label: checkoutPlan, price: '', feats: [] as string[] };
         return (
