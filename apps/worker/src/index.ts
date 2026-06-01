@@ -100,19 +100,29 @@ function bulletCount(text: string): number {
 }
 
 /**
- * Gera pontos chave com Claude Haiku.
- * Cada bullet: 10-18 palavras, informativo e legível no WhatsApp.
+ * Gera resumo em tópicos com Claude Haiku.
+ * Cada tópico: 10-20 palavras, reformulado com palavras próprias (NUNCA copia da transcrição).
  * Traduz automaticamente para PT-BR se necessário.
  */
 async function generateBullets(originalText: string, language?: string): Promise<string[]> {
   const count       = bulletCount(originalText);
   const needsTransl = language && language !== 'pt' && language !== 'pt-BR' && language !== 'pt-br';
 
-  const systemMsg = needsTransl
-    ? `Você resume áudios de WhatsApp. SEMPRE responda em português brasileiro (PT-BR), mesmo que o texto seja em outro idioma. Gere exatamente ${count} ponto(s) chave que capture(m) o essencial da mensagem. Cada ponto deve ter entre 10 e 18 palavras — informativo e completo o suficiente para entender sem ouvir o áudio. Responda SOMENTE com os pontos, um por linha, iniciando cada um com "• ". Sem título, sem numeração, sem explicação.`
-    : `Você resume áudios de WhatsApp em PT-BR. Gere exatamente ${count} ponto(s) chave que capture(m) o essencial da mensagem. Cada ponto deve ter entre 10 e 18 palavras — claro, direto e informativo o suficiente para entender sem ouvir o áudio. Responda SOMENTE com os pontos, um por linha, iniciando cada um com "• ". Sem título, sem numeração, sem explicação.`;
+  const baseRules = `
+REGRAS OBRIGATÓRIAS:
+1. NUNCA copie frases ou trechos da transcrição — reformule SEMPRE com suas próprias palavras
+2. Gere exatamente ${count} tópico(s) resumindo o conteúdo do áudio
+3. Cada tópico: entre 10 e 20 palavras, completo e informativo
+4. Escreva como se estivesse explicando para alguém que não ouviu o áudio
+5. Foque no que foi dito, solicitado, decidido ou proposto
+6. Responda SOMENTE com os tópicos, um por linha, começando cada um com "• "
+7. Sem título, sem numeração, sem explicação adicional`.trim();
 
-  const countLabel = count === 1 ? '1 ponto chave' : `${count} pontos chave`;
+  const systemMsg = needsTransl
+    ? `Você resume áudios de WhatsApp. SEMPRE responda em português brasileiro (PT-BR), mesmo que a transcrição esteja em outro idioma — traduza e reformule em PT-BR.\n\n${baseRules}`
+    : `Você resume áudios de WhatsApp em português brasileiro (PT-BR).\n\n${baseRules}`;
+
+  const countLabel = count === 1 ? '1 tópico de resumo' : `${count} tópicos de resumo`;
 
   try {
     const res = await claude.messages.create({
@@ -121,7 +131,7 @@ async function generateBullets(originalText: string, language?: string): Promise
       system:     systemMsg,
       messages: [{
         role:    'user',
-        content: `Gere ${countLabel} sobre este áudio:\n\n${originalText}`,
+        content: `Gere ${countLabel} para este áudio. Lembre-se: reformule com suas próprias palavras, não copie frases da transcrição.\n\nTranscrição:\n${originalText}`,
       }],
     });
 
@@ -406,8 +416,7 @@ function buildMessage(
 
   let pontoSection = '';
   if (hasRealBullets) {
-    const label = bullets.length > 1 ? '✨ *Pontos Chave*' : '✨ *Ponto Chave*';
-    pontoSection = `\n\n${label}\n${bullets.map(b => `• ${b}`).join('\n')}`;
+    pontoSection = `\n\n📋 *Resumo*\n${bullets.map(b => `• ${b}`).join('\n')}`;
   }
 
   // ── Transcrição (sem itálico; truncar se muito longa) ──
