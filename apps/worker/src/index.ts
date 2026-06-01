@@ -406,50 +406,65 @@ async function dispatchWebhook(
   }
 }
 
+/** Formata número de telefone BR: "5534917902​54" → "+55 34 9 1790-254" */
+function fmtPhone(phone: string): string {
+  const d = phone.replace(/\D/g, '');
+  if (d.length === 13) return `+${d.slice(0,2)} ${d.slice(2,4)} ${d.slice(4,5)} ${d.slice(5,9)}-${d.slice(9)}`;
+  if (d.length === 12) return `+${d.slice(0,2)} ${d.slice(2,4)} ${d.slice(4,8)}-${d.slice(8)}`;
+  if (d.length === 11) return `+55 ${d.slice(0,2)} ${d.slice(2,3)} ${d.slice(3,7)}-${d.slice(7)}`;
+  if (d.length === 10) return `+55 ${d.slice(0,2)} ${d.slice(2,6)}-${d.slice(6)}`;
+  return phone;
+}
+
 /**
  * Formata mensagem de resposta para o WhatsApp.
  *
- * Formatação WhatsApp:
- *   *texto*  → negrito   |  _texto_ → itálico
- *   • item   → bullet    |  \n      → nova linha
- *
- * Estrutura:
- *   🎙️ *Áudio de [nome]* • [duração]
- *
- *   ✨ *Ponto(s) Chave*
- *   • bullet 1
- *   • bullet 2
- *
+ * Modo normal:
+ *   🎙️ *Áudio de [nome]* • ⏱ [dur]
+ *   📋 *Resumo* / bullets
  *   📝 *Transcrição*
- *   [texto — sem itálico; truncado se longo]
+ *   _ZapScript.me_ ⚡
  *
+ * Modo Privado (Opção B):
+ *   🔒 *Privado* | *[nome]* → você
+ *   📱 +55 xx x xxxx-xxxx · ⏱ [dur]
+ *   📋 *Resumo* / bullets
+ *   📝 *Transcrição*
+ *   ↩️ Responder: wa.me/[phone]
  *   _ZapScript.me_ ⚡
  */
 function buildMessage(
   bullets:      string[],
   originalText: string,
-  opts: { contactName?: string | null; durationSec?: number; refCode?: string } = {},
+  opts: { contactName?: string | null; durationSec?: number; isPrivate?: boolean; senderPhone?: string } = {},
 ): string {
-  const { contactName, durationSec } = opts;
+  const { contactName, durationSec, isPrivate, senderPhone } = opts;
+
+  const hasName = contactName && contactName !== 'manual' && contactName.trim().length > 0;
+  const durStr  = durationSec && durationSec > 0
+    ? `⏱ ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60 > 0 ? ` ${durationSec % 60}s` : ''}` : `${durationSec}s`}`
+    : '';
 
   // ── Cabeçalho ──
-  const hasName = contactName && contactName !== 'manual' && contactName.trim().length > 0;
-  const nameStr = hasName ? `Áudio de *${contactName}*` : '*Áudio*';
-  const durStr  = durationSec && durationSec > 0
-    ? ` • ⏱ ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60 > 0 ? ` ${durationSec % 60}s` : ''}` : `${durationSec}s`}`
-    : '';
-  const header = `🎙️ ${nameStr}${durStr}`;
-
-  // ── Pontos chave ──
-  const FALLBACK_PHRASES = ['Transcrição disponível', 'Resumo não disponível', 'Não foi possível'];
-  const hasRealBullets   = bullets.length > 0 && !bullets.some(b => FALLBACK_PHRASES.some(f => b.includes(f)));
-
-  let pontoSection = '';
-  if (hasRealBullets) {
-    pontoSection = `\n\n📋 *Resumo*\n${bullets.map(b => `• ${b}`).join('\n')}`;
+  let header: string;
+  if (isPrivate && senderPhone) {
+    // Opção B: bloco de origem destacado
+    const namePart = hasName ? `*${contactName}*` : `*${fmtPhone(senderPhone)}*`;
+    const phoneLine = `📱 ${fmtPhone(senderPhone)}${durStr ? ` · ${durStr}` : ''}`;
+    header = `🔒 *Privado* | ${namePart} → você\n${phoneLine}`;
+  } else {
+    const nameStr = hasName ? `Áudio de *${contactName}*` : '*Áudio*';
+    header = `🎙️ ${nameStr}${durStr ? ` • ${durStr}` : ''}`;
   }
 
-  // ── Transcrição (sem itálico; truncar se muito longa) ──
+  // ── Resumo ──
+  const FALLBACK = ['Transcrição disponível', 'Resumo não disponível', 'Não foi possível'];
+  const hasRealBullets = bullets.length > 0 && !bullets.some(b => FALLBACK.some(f => b.includes(f)));
+  const pontoSection = hasRealBullets
+    ? `\n\n📋 *Resumo*\n${bullets.map(b => `• ${b}`).join('\n')}`
+    : '';
+
+  // ── Transcrição (truncar se longa) ──
   const MAX_CHARS = 600;
   const truncated = originalText.length > MAX_CHARS
     ? originalText.slice(0, MAX_CHARS).trimEnd() + '…'
@@ -457,7 +472,10 @@ function buildMessage(
   const transcSection = `\n\n📝 *Transcrição*\n${truncated}`;
 
   // ── Rodapé ──
-  const footer = `\n\n_ZapScript.me_ ⚡`;
+  const replyLink = isPrivate && senderPhone
+    ? `\n\n↩️ Responder: wa.me/${senderPhone.replace(/\D/g, '')}`
+    : '';
+  const footer = `${replyLink}\n\n_ZapScript.me_ ⚡`;
 
   return header + pontoSection + transcSection + footer;
 }
@@ -774,20 +792,23 @@ async function processEvolutionJob(job: Job) {
 
     // PASSO 6: Enviar resposta via Evolution API
     log(job, '📤 Enviando resposta via Evolution API...');
-    const message = buildMessage(bullets, originalText, { contactName: senderName, durationSec });
 
-    // Modo privado: envia ao próprio número do usuário em vez do remetente.
-    // Guard: só ativa modo privado se o phoneNumber já foi resolvido (≠ 'pending').
+    // Modo privado (Executive): envia ao próprio número; inclui link de resposta no cabeçalho.
+    // Guard: phoneNumber deve estar resolvido (≠ 'pending').
     const isPrivate   = whatsappNumber.privateMode === true
                         && !!whatsappNumber.phoneNumber
                         && whatsappNumber.phoneNumber !== 'pending';
-    const targetPhone = isPrivate ? whatsappNumber.phoneNumber : senderPhone;
-    const privMsg     = isPrivate
-      ? message + `\n\n💬 *Responder:* https://wa.me/${senderPhone.replace(/\D/g, '')}`
-      : message;
+    const targetPhone = isPrivate ? whatsappNumber.phoneNumber! : senderPhone;
 
-    await sendMessageViaEvolution(instName, targetPhone, privMsg);
-    log(job, `✅ Mensagem enviada ${isPrivate ? `(privado → ${targetPhone})` : 'na conversa'}`);
+    const message = buildMessage(bullets, originalText, {
+      contactName: senderName,
+      durationSec,
+      isPrivate,
+      senderPhone,
+    });
+
+    await sendMessageViaEvolution(instName, targetPhone, message);
+    log(job, `✅ Mensagem enviada ${isPrivate ? `(🔒 privado → ${targetPhone})` : 'na conversa'}`);
 
     // PASSO 6.5: Marcar conversa como não lida
     await markChatAsUnread(instName, senderPhone);
