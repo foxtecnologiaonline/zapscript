@@ -100,38 +100,29 @@ function bulletCount(text: string): number {
 }
 
 /**
- * Gera resumo em tópicos com Claude Haiku.
- * Cada tópico: 10-20 palavras, reformulado com palavras próprias (NUNCA copia da transcrição).
+ * Gera resumo em tópicos com Claude Haiku 3.5.
+ * Reformula com palavras próprias — nunca extrai frases da transcrição.
  * Traduz automaticamente para PT-BR se necessário.
  */
 async function generateBullets(originalText: string, language?: string): Promise<string[]> {
   const count       = bulletCount(originalText);
   const needsTransl = language && language !== 'pt' && language !== 'pt-BR' && language !== 'pt-br';
 
-  const baseRules = `
-REGRAS OBRIGATÓRIAS:
-1. NUNCA copie frases ou trechos da transcrição — reformule SEMPRE com suas próprias palavras
-2. Gere exatamente ${count} tópico(s) resumindo o conteúdo do áudio
-3. Cada tópico: entre 10 e 20 palavras, completo e informativo
-4. Escreva como se estivesse explicando para alguém que não ouviu o áudio
-5. Foque no que foi dito, solicitado, decidido ou proposto
-6. Responda SOMENTE com os tópicos, um por linha, começando cada um com "• "
-7. Sem título, sem numeração, sem explicação adicional`.trim();
-
+  // Framing de "jornalista/intérprete" → força abstração em vez de extração
   const systemMsg = needsTransl
-    ? `Você resume áudios de WhatsApp. SEMPRE responda em português brasileiro (PT-BR), mesmo que a transcrição esteja em outro idioma — traduza e reformule em PT-BR.\n\n${baseRules}`
-    : `Você resume áudios de WhatsApp em português brasileiro (PT-BR).\n\n${baseRules}`;
+    ? `Você é um intérprete que ouve áudios de WhatsApp e explica o conteúdo em português brasileiro (PT-BR) com suas próprias palavras — nunca copia frases da transcrição. Responda apenas com os tópicos pedidos, um por linha, iniciando cada um com "• ".`
+    : `Você é um intérprete que ouve áudios de WhatsApp e explica o conteúdo com suas próprias palavras — nunca copia frases da transcrição. Responda apenas com os tópicos pedidos, um por linha, iniciando cada um com "• ".`;
 
-  const countLabel = count === 1 ? '1 tópico de resumo' : `${count} tópicos de resumo`;
+  const countLabel = count === 1 ? '1 tópico' : `${count} tópicos`;
 
   try {
     const res = await claude.messages.create({
-      model:      'claude-3-haiku-20240307',
-      max_tokens: 200,
+      model:      'claude-3-5-haiku-20241022',   // Haiku 3.5 — muito melhor em não copiar
+      max_tokens: 250,
       system:     systemMsg,
       messages: [{
         role:    'user',
-        content: `Gere ${countLabel} para este áudio. Lembre-se: reformule com suas próprias palavras, não copie frases da transcrição.\n\nTranscrição:\n${originalText}`,
+        content: `Explique em ${countLabel} (10 a 20 palavras cada) o que foi dito neste áudio, usando suas próprias palavras:\n\n${originalText}`,
       }],
     });
 
