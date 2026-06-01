@@ -118,10 +118,8 @@ Responda apenas com os tópicos, um por linha, iniciando cada um com "• ". Sem
 
   const userMsg = `Resuma em ${count === 1 ? '1 tópico' : `${count} tópicos`} (10 a 20 palavras cada):\n\n${originalText}`;
 
-  // Cadeia de modelos — tenta haiku 3.5 primeiro, fallback para haiku 3
-  const MODELS = ['claude-3-5-haiku-20241022', 'claude-3-haiku-20240307'];
-
-  for (const model of MODELS) {
+  // ── Tentativa 1: Claude (se ANTHROPIC_API_KEY válida) ──────────────────────
+  for (const model of ['claude-3-5-haiku-20241022', 'claude-3-haiku-20240307']) {
     try {
       const res = await claude.messages.create({
         model,
@@ -129,44 +127,66 @@ Responda apenas com os tópicos, um por linha, iniciando cada um com "• ". Sem
         system:     systemMsg,
         messages:   [{ role: 'user', content: userMsg }],
       });
-
-      const raw = (res.content[0] as any).text?.trim() || '';
-      logger.info(`[Resumo] ${model} → "${raw.slice(0, 80)}..."`);
-
-      // Parsear linhas com "• "
-      const bullets = raw
-        .split('\n')
-        .map((l: string) => l.trim())
-        .filter((l: string) => l.startsWith('• '))
-        .map((l: string) => l.replace(/^•\s*/, '').trim())
-        .filter(Boolean)
-        .slice(0, count);
-
-      if (bullets.length > 0) return bullets;
-
-      // Claude respondeu mas sem "• " — tentar parsear formato alternativo
-      const alt = parseFallbackLines(raw, count);
-      if (alt.length > 0) return alt;
-
-      logger.warn(`[Resumo] ${model} respondeu mas sem bullets parseáveis: "${raw.slice(0, 100)}"`);
+      const raw     = (res.content[0] as any).text?.trim() || '';
+      const bullets = parseBullets(raw, count);
+      if (bullets.length > 0) {
+        logger.info(`[Resumo] ${model} ✅`);
+        return bullets;
+      }
     } catch (err: any) {
-      logger.error(`[Resumo] ${model} falhou — status: ${err.status ?? 'N/A'} — ${err.message}`);
-      // Continua para o próximo modelo
+      logger.warn(`[Resumo] ${model} falhou (${err.status ?? err.message}) — tentando OpenAI`);
     }
   }
 
-  // Todos os modelos falharam — placeholder (NUNCA copiar frases do texto)
-  logger.error('[Resumo] Todos os modelos falharam — usando placeholder');
+  // ── Tentativa 2: OpenAI gpt-4o-mini (já configurado e funcionando) ──────────
+  try {
+    const res = await openai.chat.completions.create({
+      model:      'gpt-4o-mini',
+      max_tokens: 250,
+      messages: [
+        { role: 'system', content: systemMsg },
+        { role: 'user',   content: userMsg   },
+      ],
+    });
+    const raw     = res.choices[0]?.message?.content?.trim() || '';
+    const bullets = parseBullets(raw, count);
+    if (bullets.length > 0) {
+      logger.info(`[Resumo] gpt-4o-mini ✅`);
+      return bullets;
+    }
+    logger.warn(`[Resumo] gpt-4o-mini respondeu sem bullets: "${raw.slice(0, 100)}"`);
+  } catch (err: any) {
+    logger.error(`[Resumo] gpt-4o-mini falhou: ${err.message}`);
+  }
+
+  // ── Fallback final — NUNCA copiar frases do texto ────────────────────────────
+  logger.error('[Resumo] Todos os modelos falharam — placeholder');
   return ['Resumo não disponível'];
 }
 
-/** Tenta extrair bullets de resposta sem "• " (Claude usou outro formato) */
-function parseFallbackLines(raw: string, count: number): string[] {
+/** Parseia bullets da resposta — aceita "• ", "- ", "1. " e texto puro */
+function parseBullets(raw: string, count: number): string[] {
+  if (!raw) return [];
+  // Preferência: linhas com "• "
+  const withDot = raw
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.startsWith('• '))
+    .map(l => l.replace(/^•\s*/, '').trim())
+    .filter(Boolean);
+  if (withDot.length > 0) return withDot.slice(0, count);
+
+  // Fallback: remover qualquer prefixo de bullet (-  –  1.  *  etc.)
   const lines = raw
     .split('\n')
     .map(l => l.replace(/^[-–—*\d.)\s]+/, '').trim())
-    .filter(l => l.length > 10);
-  return lines.length > 0 ? lines.slice(0, count) : ['Resumo não disponível'];
+    .filter(l => l.length > 8);
+  return lines.slice(0, count);
+}
+
+/** @deprecated use parseBullets */
+function parseFallbackLines(raw: string, count: number): string[] {
+  return parseBullets(raw, count);
 }
 
 /**
