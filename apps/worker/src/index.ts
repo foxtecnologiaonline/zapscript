@@ -119,7 +119,7 @@ Responda apenas com os tópicos, um por linha, iniciando cada um com "• ". Sem
   const userMsg = `Resuma em ${count === 1 ? '1 tópico' : `${count} tópicos`} (10 a 20 palavras cada):\n\n${originalText}`;
 
   // ── Tentativa 1: Claude (se ANTHROPIC_API_KEY válida) ──────────────────────
-  for (const model of ['claude-3-5-haiku-20241022', 'claude-3-haiku-20240307']) {
+  for (const model of ['claude-haiku-4-5', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307']) {
     try {
       const res = await claude.messages.create({
         model,
