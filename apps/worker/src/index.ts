@@ -572,7 +572,9 @@ async function processOfficialWhatsAppJob(job: Job) {
     // Tentar notificar usuário do erro
     try {
       await sendMessageToMeta(senderPhone, '❌ Erro ao processar seu áudio. Tente novamente.');
-    } catch {}
+    } catch (notifyErr: any) {
+      logger.warn(`[Worker] M7: Falha ao notificar usuário Meta sobre erro: ${notifyErr.message}`);
+    }
     throw err;
   } finally {
     mp3Buffer?.fill(0);
@@ -657,7 +659,9 @@ async function processTwilioJob(job: Job) {
     log(job, `❌ Erro Twilio: ${(err as Error).message}`);
     try {
       await sendMessageViaTwilio(senderPhone, twilioFrom, '❌ Erro ao processar seu áudio. Tente novamente.');
-    } catch {}
+    } catch (notifyErr: any) {
+      logger.warn(`[Worker] M7: Falha ao notificar usuário Twilio sobre erro: ${notifyErr.message}`);
+    }
     throw err;
   } finally {
     mp3Buffer?.fill(0);
@@ -1005,7 +1009,7 @@ async function checkAndLogServiceHealth() {
     const t = Date.now();
     try {
       const { Queue: BQueue } = await import('bullmq');
-      const q = new BQueue('transcription', { connection: redis as any });
+      const q = new BQueue('transcriptions', { connection: redis as any }); // A1: era 'transcription' (singular) — fila real é 'transcriptions'
       const [waiting, active, failed] = await Promise.all([q.getWaitingCount(), q.getActiveCount(), q.getFailedCount()]);
       await q.close();
       // Degraded if too many waiting or failed

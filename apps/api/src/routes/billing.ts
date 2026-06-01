@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
 import { calculateProration } from '../lib/proration';
 import { validateRequest, billingCheckoutSchema, billingUpgradeSchema } from '../lib/validation';
+import { invalidatePlanCache } from '../lib/planGate';
 
 /* ─────────────────────────────────────────────────────────
    ASAAS v3 — Billing Routes (Checkout Transparente)
@@ -108,10 +109,20 @@ async function activatePlan(userId: string, planName: string, opts: {
   paymentMethod?:       string | null;
   paymentId?:           string;
 }): Promise<void> {
-  const plan = await prisma.plan.findUnique({ where: { name: planName } });
+  // A6: Buscar plano e sub existente em paralelo para evitar drift de ciclo de cobrança
+  const [plan, existingSub] = await Promise.all([
+    prisma.plan.findUnique({ where: { name: planName } }),
+    prisma.subscription.findUnique({ where: { userId }, select: { currentPeriodEnd: true } }),
+  ]);
   if (!plan) throw new Error(`Plano "${planName}" não encontrado no banco`);
 
-  const nextPeriod = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  // A6: Ancoragem do ciclo — se houver período ativo, extender a partir dele (não de now)
+  // Evita drift progressivo quando o webhook chega depois da data de vencimento
+  const now  = new Date();
+  const base = existingSub?.currentPeriodEnd && existingSub.currentPeriodEnd > now
+    ? existingSub.currentPeriodEnd
+    : now;
+  const nextPeriod = new Date(base.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   await prisma.$transaction([
     prisma.subscription.upsert({
@@ -142,6 +153,9 @@ async function activatePlan(userId: string, planName: string, opts: {
   ]);
 
   if (opts.paymentId) await markProcessed(opts.paymentId);
+
+  // M6: Invalidar cache de plano após mudança de subscription
+  invalidatePlanCache(userId).catch(() => null);
 }
 
 /* ── Buscar QR code PIX da primeira cobrança de uma assinatura ── */
@@ -241,7 +255,7 @@ export default async function billingRoutes(app: FastifyInstance) {
         where:  { userId },
         create: { userId, planId: freePlan?.id ?? '', asaasCustomerId, paymentMethod, status: 'pending' },
         update: { asaasCustomerId, paymentMethod, status: 'pending' },
-      }).catch(() => null);
+      }).catch(e => app.log.warn({ err: e.message, userId }, '[Checkout] M2: Falha ao salvar subscription pendente — estado pode ficar inconsistente'));
 
       // ── Montar body da assinatura ──
       const subBody: Record<string, any> = {
@@ -404,12 +418,7 @@ export default async function billingRoutes(app: FastifyInstance) {
 
       // ── Sem cobrança adicional (troca imediata) ──
       if (!proration.shouldCharge) {
-        // Cancelar assinatura antiga no Asaas
-        if (sub.asaasSubscriptionId) {
-          await asaas(`/subscriptions/${sub.asaasSubscriptionId}`, { method: 'DELETE' })
-            .catch(err => app.log.warn({ err }, 'Asaas: falha ao cancelar sub antiga'));
-        }
-        // Criar nova assinatura no Asaas
+        // C5: Criar nova assinatura PRIMEIRO — só cancelar a antiga após confirmação
         const newSubRes = await asaas('/subscriptions', {
           method: 'POST',
           body: JSON.stringify({
@@ -423,8 +432,19 @@ export default async function billingRoutes(app: FastifyInstance) {
           }),
         }).then(r => r.json()).catch(() => null) as any;
 
+        if (!newSubRes?.id) {
+          app.log.error({ newSubRes }, '[Upgrade] Falha ao criar nova assinatura — assinatura atual mantida');
+          return reply.code(503).send({ error: 'Erro ao criar nova assinatura. Tente novamente.' });
+        }
+
+        // Nova assinatura confirmada — cancelar a antiga com segurança
+        if (sub.asaasSubscriptionId) {
+          await asaas(`/subscriptions/${sub.asaasSubscriptionId}`, { method: 'DELETE' })
+            .catch(err => app.log.warn({ err }, 'Asaas: falha ao cancelar sub antiga'));
+        }
+
         await activatePlan(userId, targetPlan, {
-          asaasSubscriptionId: newSubRes?.id ?? null,
+          asaasSubscriptionId: newSubRes.id,
           asaasCustomerId,
           paymentMethod,
         });

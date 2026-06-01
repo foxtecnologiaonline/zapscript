@@ -169,10 +169,11 @@ app.register(cors, {
 app.register(helmet, {
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'https:'],
+      defaultSrc:    ["'self'"],
+      scriptSrc:     ["'self'"],
+      styleSrc:      ["'self'"],        // M8: removido unsafe-inline
+      imgSrc:        ["'self'", 'data:', 'https:'],
+      frameAncestors: ["'none'"],       // M8: CSP frame-ancestors redundante com X-Frame-Options mas correto
     },
   },
   hsts: { maxAge: 31536000, includeSubDomains: true },
@@ -248,8 +249,20 @@ app.addHook('onSend', async (_req, reply) => {
 });
 
 app.decorate('authenticate', async function (req: any, reply: any) {
+  // Verificar JWT
   try { await req.jwtVerify(); }
-  catch { reply.code(401).send({ error: 'Unauthorized' }); }
+  catch { return reply.code(401).send({ error: 'Unauthorized' }); }
+
+  // C4: Rejeitar usuários com soft-delete (deletedAt !== null)
+  try {
+    const u = await prisma.user.findUnique({ where: { id: req.user.sub }, select: { deletedAt: true } });
+    if (!u || u.deletedAt !== null) {
+      return reply.code(401).send({ error: 'Conta desativada.' });
+    }
+  } catch {
+    // DB indisponível: fail-open para não bloquear usuários legítimos
+    app.log.warn({ userId: req.user.sub }, '[Auth] Falha ao verificar deletedAt — prosseguindo');
+  }
 });
 
 // ── Routes ────────────────────────────────────────────────────
@@ -390,6 +403,22 @@ async function runAutoMigrations() {
 
 async function start() {
   try {
+    // ── C1: Validações de startup — fail-fast em produção ───────────────────
+    if (process.env.NODE_ENV === 'production') {
+      if (!process.env.ASAAS_WEBHOOK_TOKEN) {
+        app.log.error('[Startup] FATAL: ASAAS_WEBHOOK_TOKEN não configurado. Qualquer requisição pode ativar planos pagos. Configure no Render e redeploy.');
+        process.exit(1);
+      }
+      if (!process.env.EVOLUTION_WEBHOOK_SECRET) {
+        // A4: Não fatal (Evolution pode ser opcional), mas alertar claramente
+        app.log.warn('[Startup] ⚠️  EVOLUTION_WEBHOOK_SECRET não configurado — webhook Evolution sem autenticação! Qualquer IP pode injetar transcrições.');
+      }
+      if (!process.env.JWT_SECRET) {
+        app.log.error('[Startup] FATAL: JWT_SECRET não configurado.');
+        process.exit(1);
+      }
+    }
+
     await runAutoMigrations();
     await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' });
 

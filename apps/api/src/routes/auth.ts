@@ -524,10 +524,43 @@ export default async function authRoutes(app: FastifyInstance) {
   );
 
   // ── GET /auth/me ──────────────────────────────────────────────────────────
+  // C3: Retornar apenas campos necessários ao frontend (sem metadados internos de compliance)
   app.get('/me', { preHandler: [(app as any).authenticate] }, async (req: any) => {
     return prisma.user.findUnique({
-      where:   { id: req.user.sub },
-      include: { subscription: { include: { plan: true } }, balance: true },
+      where:  { id: req.user.sub },
+      select: {
+        id:            true,
+        email:         true,
+        name:          true,
+        phone:         true,
+        document:      true,
+        emailVerified: true,
+        isAdmin:       true,
+        isTester:      true,
+        refCode:       true,
+        createdAt:     true,
+        subscription: {
+          select: {
+            id:              true,
+            status:          true,
+            paymentMethod:   true,
+            currentPeriodEnd: true,
+            plan: {
+              select: {
+                id: true, name: true, label: true,
+                minutesPerMonth: true, maxNumbers: true, priceBrl: true, features: true,
+              },
+            },
+          },
+        },
+        balance: {
+          select: {
+            availableMinutes:   true,
+            accumulatedMinutes: true,
+            resetAt:            true,
+          },
+        },
+      },
     });
   });
 

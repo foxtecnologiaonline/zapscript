@@ -97,6 +97,9 @@ model WhatsappNumber {
   updatedAt        DateTime         @updatedAt
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcriptions   Transcription[]
+
+  @@index([userId])             // A2: listagem de números por usuário
+  @@index([zapiInstanceId])     // A2: busca de instância em webhook (hot path)
 }
 
 model Transcription {
@@ -116,6 +119,9 @@ model Transcription {
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   number          WhatsappNumber? @relation(fields: [numberId], references: [id], onDelete: SetNull)
   usageLog        UsageLog?
+
+  @@index([userId])                       // A2: listagem por usuário (hot path em toda API)
+  @@index([userId, createdAt(sort: Desc)]) // A2: ordenação padrão date_desc
 }
 
 model UsageLog {
@@ -126,6 +132,9 @@ model UsageLog {
   createdAt       DateTime       @default(now())
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcription   Transcription? @relation(fields: [transcriptionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])       // A2: aggregations de uso por usuário
+  @@index([createdAt])    // A2: relatórios e agregações por período
 }
 
 model SupportTicket {

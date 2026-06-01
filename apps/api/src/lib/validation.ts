@@ -11,7 +11,7 @@ export const signupSchema = z.object({
 // Schema completo de registro (inclui todos os campos do form)
 export const registerSchema = z.object({
   email:        z.string().email('E-mail inválido'),
-  password:     z.string().min(6, 'Senha deve ter pelo menos 6 caracteres').max(128),
+  password:     z.string().min(8, 'Senha deve ter pelo menos 8 caracteres').max(128), // M1: min 6→8 (OWASP)
   name:         z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100).optional(),
   phone:        z.string().max(20).optional(),
   inviteCode:   z.string().max(100).optional(),

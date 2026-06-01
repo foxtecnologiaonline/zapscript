@@ -84,11 +84,13 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     if (search) {
       if (!requirePlan(plan, PLAN_SEARCH, reply)) return;
 
-      // Carrega TODAS as transcrições do usuário para busca in-memory
-      // (necessário pois originalText é criptografado — pg_trgm não funciona)
+      // C2: Limite de 2000 registros para evitar crash de memória em usuários com muitos dados
+      // (busca in-memory necessária pois originalText é criptografado — pg_trgm não funciona)
+      const SEARCH_LIMIT = 2000;
       const allItems = await prisma.transcription.findMany({
         where:   { ...where },
         orderBy,
+        take:    SEARCH_LIMIT,
         include: { number: { select: { displayName: true, phoneNumber: true } } },
       });
 
