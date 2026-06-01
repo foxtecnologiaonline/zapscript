@@ -87,52 +87,69 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
 }
 
 /**
- * Decide quantos bullets gerar:
- * - até 60s (~150 palavras) → 1 bullet
- * - acima de 60s            → 2 bullets
- * Máximo 2 — ponto chave deve ser curto e direto.
+ * Decide quantos bullets gerar baseado no tamanho do texto:
+ * - < 80 palavras  → 1 bullet (mensagem curta)
+ * - 80-220 palavras → 2 bullets
+ * - > 220 palavras  → 3 bullets (áudio longo)
  */
 function bulletCount(text: string): number {
-  const wordCount = text.trim().split(/\s+/).length;
-  return wordCount > 150 ? 2 : 1;
+  const words = text.trim().split(/\s+/).length;
+  if (words > 220) return 3;
+  if (words > 80)  return 2;
+  return 1;
 }
 
-/** Gera bullets ultra-concisos com Claude Haiku — máx 10 palavras cada.
- *  Se o texto estiver em idioma diferente do PT-BR, traduz os bullets para PT-BR.
+/**
+ * Gera pontos chave com Claude Haiku.
+ * Cada bullet: 10-18 palavras, informativo e legível no WhatsApp.
+ * Traduz automaticamente para PT-BR se necessário.
  */
 async function generateBullets(originalText: string, language?: string): Promise<string[]> {
   const count       = bulletCount(originalText);
   const needsTransl = language && language !== 'pt' && language !== 'pt-BR' && language !== 'pt-br';
-  const systemMsg   = needsTransl
-    ? 'Você resume áudios de WhatsApp. SEMPRE responda em português brasileiro (PT-BR). Se o texto não estiver em português, traduza e resuma em PT-BR. Cada ponto deve ter no máximo 7 palavras, ser curtíssimo, direto e objetivo. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação.'
-    : 'Você resume áudios de WhatsApp em PT-BR. Cada ponto deve ter no máximo 7 palavras, ser curtíssimo, direto e objetivo — só o essencial do assunto. Responda SOMENTE com os pontos, um por linha, começando com "- ". Sem título, sem explicação, sem verbosidade.';
+
+  const systemMsg = needsTransl
+    ? `Você resume áudios de WhatsApp. SEMPRE responda em português brasileiro (PT-BR), mesmo que o texto seja em outro idioma. Gere exatamente ${count} ponto(s) chave que capture(m) o essencial da mensagem. Cada ponto deve ter entre 10 e 18 palavras — informativo e completo o suficiente para entender sem ouvir o áudio. Responda SOMENTE com os pontos, um por linha, iniciando cada um com "• ". Sem título, sem numeração, sem explicação.`
+    : `Você resume áudios de WhatsApp em PT-BR. Gere exatamente ${count} ponto(s) chave que capture(m) o essencial da mensagem. Cada ponto deve ter entre 10 e 18 palavras — claro, direto e informativo o suficiente para entender sem ouvir o áudio. Responda SOMENTE com os pontos, um por linha, iniciando cada um com "• ". Sem título, sem numeração, sem explicação.`;
+
+  const countLabel = count === 1 ? '1 ponto chave' : `${count} pontos chave`;
 
   try {
     const res = await claude.messages.create({
       model:      'claude-3-haiku-20240307',
-      max_tokens: 120,
+      max_tokens: 200,
       system:     systemMsg,
       messages: [{
         role:    'user',
-        content: `Resuma em ${count === 1 ? 'exatamente 1 ponto curto e objetivo' : '2 pontos curtos e objetivos'}:\n\n${originalText}`,
+        content: `Gere ${countLabel} sobre este áudio:\n\n${originalText}`,
       }],
     });
-    const raw     = (res.content[0] as any).text || '';
+
+    const raw = (res.content[0] as any).text || '';
     const bullets = raw
       .split('\n')
       .map((l: string) => l.trim())
-      .filter((l: string) => l.startsWith('- '))
-      .map((l: string) => l.replace(/^-\s*/, '').trim())
+      .filter((l: string) => l.startsWith('• '))
+      .map((l: string) => l.replace(/^•\s*/, '').trim())
       .filter(Boolean)
       .slice(0, count);
-    return bullets.length > 0 ? bullets : ['Resumo não disponível'];
+
+    return bullets.length > 0 ? bullets : parseFallbackLines(raw, count);
   } catch (err: any) {
-    logger.warn(`[Worker] Claude falhou ao gerar bullets — usando fallback: ${(err as Error).message}`);
-    // Fallback: primeira frase do texto, truncada
-    const first = originalText.split(/[.!?]\s+/).find(s => s.trim().length > 5) || originalText;
-    const words = first.trim().split(/\s+/).slice(0, 12).join(' ');
-    return [words || 'Transcrição disponível'];
+    logger.warn(`[Worker] Claude falhou ao gerar bullets: ${(err as Error).message}`);
+    // Fallback: primeiras frases do texto
+    const sentences = originalText.split(/[.!?]\s+/).map(s => s.trim()).filter(s => s.length > 10);
+    return sentences.slice(0, count).map(s => s.slice(0, 120)) || ['Transcrição disponível'];
   }
+}
+
+/** Tenta extrair bullets de resposta sem "• " (Claude usou outro formato) */
+function parseFallbackLines(raw: string, count: number): string[] {
+  const lines = raw
+    .split('\n')
+    .map(l => l.replace(/^[-–—*\d.)\s]+/, '').trim())
+    .filter(l => l.length > 10);
+  return lines.length > 0 ? lines.slice(0, count) : ['Resumo não disponível'];
 }
 
 /**
@@ -349,39 +366,63 @@ async function dispatchWebhook(
   }
 }
 
-/** Formata mensagem de resposta para o WhatsApp.
+/**
+ * Formata mensagem de resposta para o WhatsApp.
  *
  * Formatação WhatsApp:
- *   *texto*   → negrito
- *   _texto_   → itálico
- *   ~texto~   → tachado
- *   `texto`   → monoespaçado
- *   \n        → nova linha
+ *   *texto*  → negrito   |  _texto_ → itálico
+ *   • item   → bullet    |  \n      → nova linha
+ *
+ * Estrutura:
+ *   🎙️ *Áudio de [nome]* • [duração]
+ *
+ *   ✨ *Ponto(s) Chave*
+ *   • bullet 1
+ *   • bullet 2
+ *
+ *   📝 *Transcrição*
+ *   [texto — sem itálico; truncado se longo]
+ *
+ *   _ZapScript.me_ ⚡
  */
-function buildMessage(bullets: string[], originalText: string, _refCode: string): string {
-  // Detectar bullets genéricos/fallback que não agregam valor ao usuário
-  const FALLBACK_PHRASES = [
-    'Transcrição disponível',
-    'resumo temporariamente indisponível',
-    'Resumo não disponível',
-    'Não foi possível gerar',
-  ];
-  const hasRealBullets =
-    bullets.length > 0 &&
-    !bullets.some(b => FALLBACK_PHRASES.some(f => b.includes(f)));
+function buildMessage(
+  bullets:      string[],
+  originalText: string,
+  opts: { contactName?: string | null; durationSec?: number; refCode?: string } = {},
+): string {
+  const { contactName, durationSec } = opts;
 
-  const highlightsSection = hasRealBullets
-    ? `🔑 Ponto chave\n${bullets.map(b => `- ${b}`).join('\n')}\n\n`
+  // ── Cabeçalho ──
+  const hasName = contactName && contactName !== 'manual' && contactName.trim().length > 0;
+  const nameStr = hasName ? `Áudio de *${contactName}*` : '*Áudio*';
+  const durStr  = durationSec && durationSec > 0
+    ? ` • ⏱ ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60 > 0 ? ` ${durationSec % 60}s` : ''}` : `${durationSec}s`}`
     : '';
+  const header = `🎙️ ${nameStr}${durStr}`;
 
-  return (
-    `🎙️ Transcrição do seu áudio ✨\n\n` +
-    highlightsSection +
-    `📄 Transcrição completa\n_${originalText}_\n\n` +
-    `---\n` +
-    `👉 https://ZapScript.me`
-  );
+  // ── Pontos chave ──
+  const FALLBACK_PHRASES = ['Transcrição disponível', 'Resumo não disponível', 'Não foi possível'];
+  const hasRealBullets   = bullets.length > 0 && !bullets.some(b => FALLBACK_PHRASES.some(f => b.includes(f)));
+
+  let pontoSection = '';
+  if (hasRealBullets) {
+    const label = bullets.length > 1 ? '✨ *Pontos Chave*' : '✨ *Ponto Chave*';
+    pontoSection = `\n\n${label}\n${bullets.map(b => `• ${b}`).join('\n')}`;
+  }
+
+  // ── Transcrição (sem itálico; truncar se muito longa) ──
+  const MAX_CHARS = 600;
+  const truncated = originalText.length > MAX_CHARS
+    ? originalText.slice(0, MAX_CHARS).trimEnd() + '…'
+    : originalText;
+  const transcSection = `\n\n📝 *Transcrição*\n${truncated}`;
+
+  // ── Rodapé ──
+  const footer = `\n\n_ZapScript.me_ ⚡`;
+
+  return header + pontoSection + transcSection + footer;
 }
+
 
 // ─────────────────────────────────────────────────────────────────
 //  PIPELINE B — Uploads manuais do dashboard (source: 'manual')
@@ -507,8 +548,7 @@ async function processOfficialWhatsAppJob(job: Job) {
 
     // PASSO 6: Enviar resposta no WhatsApp
     log(job, '📤 Enviando resposta via Meta API...');
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    const message = buildMessage(bullets, originalText, user?.refCode || '');
+    const message = buildMessage(bullets, originalText, { contactName: senderName, durationSec });
     await sendMessageToMeta(senderPhone, message);
     log(job, '✅ Mensagem enviada');
 
@@ -593,8 +633,7 @@ async function processTwilioJob(job: Job) {
 
     // PASSO 6: Enviar resposta via Twilio
     log(job, '📤 Enviando resposta via Twilio...');
-    const user    = await prisma.user.findUnique({ where: { id: userId } });
-    const message = buildMessage(bullets, originalText, user?.refCode || '');
+    const message = buildMessage(bullets, originalText, { contactName: senderName, durationSec });
     await sendMessageViaTwilio(senderPhone, twilioFrom, message);
     log(job, '✅ Mensagem enviada');
 
@@ -692,8 +731,7 @@ async function processEvolutionJob(job: Job) {
 
     // PASSO 6: Enviar resposta via Evolution API
     log(job, '📤 Enviando resposta via Evolution API...');
-    const user    = await prisma.user.findUnique({ where: { id: userId } });
-    const message = buildMessage(bullets, originalText, user?.refCode || '');
+    const message = buildMessage(bullets, originalText, { contactName: senderName, durationSec });
 
     // Modo privado: envia ao próprio número do usuário em vez do remetente.
     // Guard: só ativa modo privado se o phoneNumber já foi resolvido (≠ 'pending').
