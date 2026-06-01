@@ -100,58 +100,64 @@ function bulletCount(text: string): number {
 }
 
 /**
- * Gera resumo em tópicos com Claude Haiku 3.5.
- * Reformula com palavras próprias — nunca extrai frases da transcrição.
- * Traduz automaticamente para PT-BR se necessário.
+ * Gera resumo em tópicos com Claude.
+ * Cadeia de modelos: haiku-3-5 → haiku-3 → placeholder (nunca copia o texto).
  */
 async function generateBullets(originalText: string, language?: string): Promise<string[]> {
   const count       = bulletCount(originalText);
   const needsTransl = language && language !== 'pt' && language !== 'pt-BR' && language !== 'pt-br';
+  const ptNote      = needsTransl ? ' Responda sempre em português brasileiro (PT-BR).' : '';
 
-  const ptNote = needsTransl ? ' Responda sempre em português brasileiro (PT-BR), mesmo que a transcrição esteja em outro idioma.' : '';
+  const systemMsg = `Você recebe transcrições de áudios de WhatsApp e escreve um resumo com suas próprias palavras.${ptNote}
 
-  // Few-shot: exemplo concreto de cópia (errado) vs resumo (certo)
-  // Técnica mais eficaz para evitar extração em modelos menores
-  const systemMsg = `Você recebe transcrições de áudios de WhatsApp e escreve um resumo objetivo com suas próprias palavras.${ptNote}
+Exemplo:
+Transcrição: "então, a reunião que ia ser às 10h foi remarcada pra 14h na sala 2"
+Resumo correto: "• Reunião remarcada de 10h para 14h na sala 2"
 
-IMPORTANTE — compare os dois exemplos abaixo:
+Responda apenas com os tópicos, um por linha, iniciando cada um com "• ". Sem título, sem explicação.`;
 
-Transcrição: "então gente, a reunião que ia ser às 10h foi remarcada pra 14h na sala 2, tá bom?"
-❌ ERRADO (cópia): "• então gente, a reunião que ia ser às 10h foi remarcada"
-✅ CERTO (resumo): "• Reunião remarcada de 10h para 14h na sala 2"
+  const userMsg = `Resuma em ${count === 1 ? '1 tópico' : `${count} tópicos`} (10 a 20 palavras cada):\n\n${originalText}`;
 
-Sempre escreva como o exemplo CERTO: uma frase nova que explica o que foi dito, sem copiar palavras da transcrição.
-Responda apenas com os tópicos, um por linha, iniciando cada um com "• ". Sem título nem explicação.`;
+  // Cadeia de modelos — tenta haiku 3.5 primeiro, fallback para haiku 3
+  const MODELS = ['claude-3-5-haiku-20241022', 'claude-3-haiku-20240307'];
 
-  const countLabel = count === 1 ? '1 tópico' : `${count} tópicos`;
+  for (const model of MODELS) {
+    try {
+      const res = await claude.messages.create({
+        model,
+        max_tokens: 250,
+        system:     systemMsg,
+        messages:   [{ role: 'user', content: userMsg }],
+      });
 
-  try {
-    const res = await claude.messages.create({
-      model:      'claude-3-5-haiku-20241022',
-      max_tokens: 250,
-      system:     systemMsg,
-      messages: [{
-        role:    'user',
-        content: `Resuma em ${countLabel} (10 a 20 palavras cada):\n\n${originalText}`,
-      }],
-    });
+      const raw = (res.content[0] as any).text?.trim() || '';
+      logger.info(`[Resumo] ${model} → "${raw.slice(0, 80)}..."`);
 
-    const raw = (res.content[0] as any).text || '';
-    const bullets = raw
-      .split('\n')
-      .map((l: string) => l.trim())
-      .filter((l: string) => l.startsWith('• '))
-      .map((l: string) => l.replace(/^•\s*/, '').trim())
-      .filter(Boolean)
-      .slice(0, count);
+      // Parsear linhas com "• "
+      const bullets = raw
+        .split('\n')
+        .map((l: string) => l.trim())
+        .filter((l: string) => l.startsWith('• '))
+        .map((l: string) => l.replace(/^•\s*/, '').trim())
+        .filter(Boolean)
+        .slice(0, count);
 
-    return bullets.length > 0 ? bullets : parseFallbackLines(raw, count);
-  } catch (err: any) {
-    logger.warn(`[Worker] Claude falhou ao gerar bullets: ${(err as Error).message}`);
-    // Fallback: primeiras frases do texto
-    const sentences = originalText.split(/[.!?]\s+/).map(s => s.trim()).filter(s => s.length > 10);
-    return sentences.slice(0, count).map(s => s.slice(0, 120)) || ['Transcrição disponível'];
+      if (bullets.length > 0) return bullets;
+
+      // Claude respondeu mas sem "• " — tentar parsear formato alternativo
+      const alt = parseFallbackLines(raw, count);
+      if (alt.length > 0) return alt;
+
+      logger.warn(`[Resumo] ${model} respondeu mas sem bullets parseáveis: "${raw.slice(0, 100)}"`);
+    } catch (err: any) {
+      logger.error(`[Resumo] ${model} falhou — status: ${err.status ?? 'N/A'} — ${err.message}`);
+      // Continua para o próximo modelo
+    }
   }
+
+  // Todos os modelos falharam — placeholder (NUNCA copiar frases do texto)
+  logger.error('[Resumo] Todos os modelos falharam — usando placeholder');
+  return ['Resumo não disponível'];
 }
 
 /** Tenta extrair bullets de resposta sem "• " (Claude usou outro formato) */
