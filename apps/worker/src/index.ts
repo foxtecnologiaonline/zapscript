@@ -108,21 +108,31 @@ async function generateBullets(originalText: string, language?: string): Promise
   const count       = bulletCount(originalText);
   const needsTransl = language && language !== 'pt' && language !== 'pt-BR' && language !== 'pt-br';
 
-  // Framing de "jornalista/intérprete" → força abstração em vez de extração
-  const systemMsg = needsTransl
-    ? `Você é um intérprete que ouve áudios de WhatsApp e explica o conteúdo em português brasileiro (PT-BR) com suas próprias palavras — nunca copia frases da transcrição. Responda apenas com os tópicos pedidos, um por linha, iniciando cada um com "• ".`
-    : `Você é um intérprete que ouve áudios de WhatsApp e explica o conteúdo com suas próprias palavras — nunca copia frases da transcrição. Responda apenas com os tópicos pedidos, um por linha, iniciando cada um com "• ".`;
+  const ptNote = needsTransl ? ' Responda sempre em português brasileiro (PT-BR), mesmo que a transcrição esteja em outro idioma.' : '';
+
+  // Few-shot: exemplo concreto de cópia (errado) vs resumo (certo)
+  // Técnica mais eficaz para evitar extração em modelos menores
+  const systemMsg = `Você recebe transcrições de áudios de WhatsApp e escreve um resumo objetivo com suas próprias palavras.${ptNote}
+
+IMPORTANTE — compare os dois exemplos abaixo:
+
+Transcrição: "então gente, a reunião que ia ser às 10h foi remarcada pra 14h na sala 2, tá bom?"
+❌ ERRADO (cópia): "• então gente, a reunião que ia ser às 10h foi remarcada"
+✅ CERTO (resumo): "• Reunião remarcada de 10h para 14h na sala 2"
+
+Sempre escreva como o exemplo CERTO: uma frase nova que explica o que foi dito, sem copiar palavras da transcrição.
+Responda apenas com os tópicos, um por linha, iniciando cada um com "• ". Sem título nem explicação.`;
 
   const countLabel = count === 1 ? '1 tópico' : `${count} tópicos`;
 
   try {
     const res = await claude.messages.create({
-      model:      'claude-3-5-haiku-20241022',   // Haiku 3.5 — muito melhor em não copiar
+      model:      'claude-3-5-haiku-20241022',
       max_tokens: 250,
       system:     systemMsg,
       messages: [{
         role:    'user',
-        content: `Explique em ${countLabel} (10 a 20 palavras cada) o que foi dito neste áudio, usando suas próprias palavras:\n\n${originalText}`,
+        content: `Resuma em ${countLabel} (10 a 20 palavras cada):\n\n${originalText}`,
       }],
     });
 
