@@ -500,19 +500,29 @@ export default function TranscricoesPage() {
     }
   }
 
-  async function handleExport(format: 'csv' | 'xls' = 'csv') {
+  async function handleExport(format: 'csv' | 'xls' | 'pdf' | 'docx' = 'csv') {
     setExporting(true);
     setShowExportMenu(false);
     try {
       const month = new Date().toISOString().slice(0, 7);
       const token = typeof window !== 'undefined' ? localStorage.getItem('zs_token') : null;
       const base  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      const res   = await fetch(`${base}/transcriptions/export?format=${format}&month=${month}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const url   = `${base}/transcriptions/export?format=${format}&month=${month}`;
+
+      // PDF: abrir em nova aba (o HTML já tem botão de imprimir/salvar)
+      if (format === 'pdf') {
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) { alert('Erro ao exportar. Verifique seu plano.'); return; }
+        const html = await res.text();
+        const w = window.open('', '_blank');
+        if (w) { w.document.write(html); w.document.close(); }
+        return;
+      }
+
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) { alert('Erro ao exportar. Verifique seu plano.'); return; }
       const blob = await res.blob();
-      const ext  = format === 'xls' ? 'xls' : 'csv';
+      const ext  = { csv: 'csv', xls: 'xls', docx: 'docx', pdf: 'pdf' }[format] || format;
       const a = Object.assign(document.createElement('a'), {
         href: URL.createObjectURL(blob),
         download: `transcricoes-${month}.${ext}`,
@@ -650,19 +660,51 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Export — Em breve */}
-          <button
-            type="button"
-            disabled
-            title="Exportação chegando em breve!"
-            className="text-sm px-3 py-2 rounded-xl border border-brand-border/40 text-brand-muted cursor-not-allowed flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            <span className="hidden sm:inline">Exportar</span>
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-              style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>Em breve</span>
-          </button>
+          {/* Export — Executive only */}
+          {planName === 'executive' ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setShowExportMenu(v => !v); }}
+                disabled={exporting}
+                className="text-sm px-3 py-2 rounded-xl border border-brand-border/60 text-brand-text-secondary hover:border-brand-primary/40 hover:text-brand-text transition-colors flex items-center gap-1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span className="hidden sm:inline">{exporting ? 'Exportando…' : 'Exportar'}</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1 z-30 rounded-xl border border-brand-border/60 shadow-xl overflow-hidden"
+                  style={{ background: 'rgb(var(--color-surface-elevated))', minWidth: 170 }}>
+                  {[
+                    { fmt: 'pdf',  label: '📄 PDF',  sub: 'Imprimir / salvar' },
+                    { fmt: 'docx', label: '📝 DOCX', sub: 'Word / LibreOffice' },
+                    { fmt: 'csv',  label: '📊 CSV',  sub: 'Planilhas, Excel'  },
+                    { fmt: 'xls',  label: '📗 XLS',  sub: 'Excel nativo'      },
+                  ].map(({ fmt, label, sub }) => (
+                    <button key={fmt} type="button"
+                      onClick={() => handleExport(fmt as any)}
+                      className="w-full text-left px-4 py-2.5 hover:bg-brand-primary/8 transition-colors flex justify-between items-center">
+                      <span className="text-sm font-medium text-brand-text">{label}</span>
+                      <span className="text-[10px] text-brand-muted">{sub}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <button type="button" disabled
+              title="Disponível no plano Executive"
+              className="text-sm px-3 py-2 rounded-xl border border-brand-border/40 text-brand-muted cursor-not-allowed flex items-center gap-1.5 opacity-60">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span className="hidden sm:inline">Exportar</span>
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>Executive</span>
+            </button>
+          )}
 
           {/* Upload audio */}
           <button
@@ -1276,22 +1318,43 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               {/* (IA tab content rendered above) */}
 
               {/* ── TAB: EXPORTAR ───────────────────────────────────────── */}
-              {activeTab === 'exportar' && (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <div
-                    className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-2xl"
-                    style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.15)' }}>
-                    📤
+              {activeTab === 'exportar' && selected && (
+                planName === 'executive' ? (
+                  <div className="py-4">
+                    <p className="text-xs text-brand-muted mb-4">Exportar esta transcrição individualmente:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { fn: () => exportSinglePdf(selected),  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
+                        { fn: () => exportSingleDocx(selected), icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
+                        { fn: () => exportSingleCsv(selected),  icon: '📊', label: 'CSV',  sub: 'Planilhas, dados'  },
+                        { fn: () => exportSingleXls(selected),  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
+                      ].map(({ fn, icon, label, sub }) => (
+                        <button key={label} type="button" onClick={fn}
+                          className="flex flex-col items-center gap-1.5 py-4 rounded-xl border border-brand-border/50 hover:border-brand-primary/40 hover:bg-brand-primary/5 transition-colors">
+                          <span className="text-xl">{icon}</span>
+                          <span className="text-sm font-semibold text-brand-text">{label}</span>
+                          <span className="text-[10px] text-brand-muted">{sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-brand-muted mt-4 text-center">
+                      Para exportar todas as transcrições do mês, use o botão <b>Exportar</b> na lista.
+                    </p>
                   </div>
-                  <p className="font-semibold text-brand-text mb-1">Exportação de transcrições</p>
-                  <p className="text-sm text-brand-muted mb-3 max-w-xs">
-                    PDF · DOCX · CSV · XLS — chegando em breve para todos os planos pagos.
-                  </p>
-                  <span className="text-[11px] font-bold px-3 py-1 rounded-full"
-                    style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
-                    Em breve
-                  </span>
-                </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <div className="text-3xl mb-3">🔒</div>
+                    <p className="font-semibold text-brand-text mb-1">Plano Executive</p>
+                    <p className="text-sm text-brand-muted mb-3 max-w-xs">
+                      Exporte em PDF, DOCX, CSV e XLS individualmente ou em massa.
+                    </p>
+                    <a href="/dashboard/plano"
+                      className="text-xs font-bold px-4 py-2 rounded-full"
+                      style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.25)' }}>
+                      Ver plano Executive →
+                    </a>
+                  </div>
+                )
               )}
             </div>
 

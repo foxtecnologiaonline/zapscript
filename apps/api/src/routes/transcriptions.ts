@@ -7,7 +7,7 @@ import { getUserPlan, requirePlan } from '../lib/planGate';
 
 // Planos com acesso a cada feature
 const PLAN_SEARCH  = ['pro', 'ultra', 'executive'];
-const PLAN_EXPORT  = ['pro', 'ultra', 'executive'];
+const PLAN_EXPORT  = ['executive']; // Exportação exclusiva do plano Executive
 const PLAN_TAGS    = ['pro', 'ultra', 'executive'];   // tags abertas para Pro+
 const PLAN_LANG    = ['ultra', 'executive'];
 const PLAN_AI_FEAT = ['ultra', 'executive'];          // reply sugerida + doc (Ultra+)
@@ -135,7 +135,8 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
   });
 
   // ── GET /transcriptions/export ────────────────────────
-  // Exporta transcrições do mês em CSV (Pro+)
+  // Exporta transcrições do mês — Executive only
+  // Formatos: csv | xls | pdf | docx
   app.get<{
     Querystring: { format?: string; month?: string }
   }>('/export', auth, async (req: any, reply) => {
@@ -143,7 +144,7 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     const plan   = await getUserPlan(userId);
     if (!requirePlan(plan, PLAN_EXPORT, reply)) return;
 
-    const format = (req.query.format || 'csv').toLowerCase(); // csv | xls
+    const format = (req.query.format || 'csv').toLowerCase(); // csv | xls | pdf | docx
     const month  = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
 
     const [year, mon] = month.split('-').map(Number);
@@ -156,9 +157,76 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
       take:    1000,
     });
 
+    const esc = (v: string) => (v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    // ── PDF export (HTML imprimível — Ctrl+P → Salvar como PDF) ──────────────
+    if (format === 'pdf') {
+      const rows = items.map((t: any) => {
+        const date    = new Date(t.createdAt).toLocaleString('pt-BR');
+        const contact = esc(t.contactName || decryptStr(t.contactPhone));
+        const dur     = (t.durationSec / 60).toFixed(1);
+        const bullets = decryptArr(t.summaryBullets as string);
+        const text    = esc(decryptStr(t.originalText));
+        return `<div class="tr">
+          <div class="hdr"><b>${contact}</b> <span class="meta">${date} · ${dur} min · ${t.language.toUpperCase()}</span></div>
+          ${bullets.length ? `<ul>${bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
+          <p class="txt">${text}</p>
+        </div>`;
+      }).join('<hr>');
+      const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Transcrições ${month}</title>
+<style>body{font-family:Arial,sans-serif;font-size:11px;margin:1.5cm;color:#111}
+h1{font-size:16px;color:#0d9668;margin-bottom:16px}
+.tr{margin-bottom:20px;padding-bottom:20px}
+.hdr{font-size:12px;margin-bottom:6px}
+.meta{color:#666;font-weight:400;font-size:10px}
+ul{margin:4px 0 8px 18px;padding:0}li{margin:2px 0;color:#333}
+.txt{color:#555;font-style:italic;line-height:1.5;margin-top:4px}
+hr{border:none;border-top:1px solid #ddd;margin:16px 0}
+@media print{.no-print{display:none}body{margin:1cm}}</style>
+</head><body>
+<div class="no-print" style="background:#0d9668;color:#fff;padding:10px 16px;margin:-1.5cm -1.5cm 20px;font-size:12px">
+  📄 Pressione <b>Ctrl+P</b> (ou <b>⌘P</b>) → "Salvar como PDF"
+</div>
+<h1>📝 Transcrições — ${month}</h1>
+<p style="color:#666;font-size:10px;margin-bottom:20px">Total: ${items.length} transcrição(ões) · Gerado pelo ZapScript</p>
+${rows}
+<script>const b=document.querySelector('.no-print');if(b)b.style.display='block'</script>
+</body></html>`;
+      reply
+        .header('Content-Type', 'text/html; charset=utf-8')
+        .header('Content-Disposition', `inline; filename="transcricoes-${month}.pdf"`);
+      return reply.send(html);
+    }
+
+    // ── DOCX export (HTML Word-compatible) ────────────────────────────────────
+    if (format === 'docx') {
+      const rows = items.map((t: any) => {
+        const date    = new Date(t.createdAt).toLocaleString('pt-BR');
+        const contact = esc(t.contactName || decryptStr(t.contactPhone));
+        const dur     = (t.durationSec / 60).toFixed(1);
+        const bullets = decryptArr(t.summaryBullets as string);
+        const text    = esc(decryptStr(t.originalText));
+        return `<h2 style="font-size:12pt;color:#0d9668">${contact}</h2>
+<p style="color:#666;font-size:10pt">${date} &nbsp;·&nbsp; ${dur} min &nbsp;·&nbsp; ${t.language.toUpperCase()}</p>
+${bullets.length ? `<ul>${bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
+<p><i>${text}</i></p><hr/>`;
+      }).join('\n');
+      const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+<head><meta charset="utf-8"/>
+<style>body{font-family:Calibri,Arial;font-size:11pt;margin:2cm}h1{font-size:14pt;color:#0d9668}ul{margin:4pt 0}li{margin:2pt 0}</style>
+</head><body>
+<h1>Transcrições — ${month}</h1>
+<p style="color:#666;font-size:9pt">Total: ${items.length} · ZapScript</p><hr/>
+${rows}
+</body></html>`;
+      reply
+        .header('Content-Type', 'application/msword; charset=utf-8')
+        .header('Content-Disposition', `attachment; filename="transcricoes-${month}.docx"`);
+      return reply.send(html);
+    }
+
     // ── XLS export (HTML-based, opens natively in Excel) ──
     if (format === 'xls') {
-      const esc = (v: string) => (v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const tableRows = items.map((t: any) => {
         const c = (v: string) => `<td>${esc(v)}</td>`;
         return `<tr>${[

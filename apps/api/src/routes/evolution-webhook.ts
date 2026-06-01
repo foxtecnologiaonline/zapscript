@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected } from '../services/whatsapp-notify';
 import { storeQr } from '../lib/qrStore';
 import { io } from '../index';
+import { getUserPlan } from '../lib/planGate';
 
 export default async function evolutionWebhookRoutes(app: FastifyInstance) {
 
@@ -179,9 +180,45 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       const messageType = msg?.messageType;       // 'audioMessage', 'pttMessage', 'documentMessage', 'textMessage'
       const messageId   = key?.id ?? `evo_${Date.now()}`;
 
-      // Ignorar mensagens enviadas pelo próprio número ou de grupos
-      if (fromMe) return;
-      if (remoteJid.includes('@g.us')) return;  // grupo — ignorar
+      // Ignorar grupos
+      if (remoteJid.includes('@g.us')) return;
+
+      // ── Notas Pessoais de Voz (Executive) ─────────────────────────────────
+      // Mensagens fromMe = usuário enviou áudio para o próprio número (saved messages)
+      // Apenas Executive pode usar; áudio é transcrito e devolvido na mesma conversa.
+      if (fromMe) {
+        const isAudio = AUDIO_TYPES.has(messageType)
+          || (messageType === 'documentMessage' && isAudioDocument(msg?.message?.documentMessage))
+          || messageType === 'documentWithCaptionMessage';
+
+        if (!isAudio) return; // ignorar mensagens não-áudio próprias
+
+        const selfNumber = await findNumber(false);
+        if (!selfNumber) return;
+
+        const plan = await getUserPlan(selfNumber.userId);
+        if (plan !== 'executive') return; // Notas de Voz apenas no plano Executive
+
+        const selfPhone = (selfNumber.phoneNumber || remoteJid.replace('@s.whatsapp.net', ''))
+          .replace(/\D/g, '');
+
+        app.log.info({ instance: instName }, '[Evolution] 🎤 Nota pessoal de voz (Executive)');
+
+        transcriptionQueue.add('transcribe-evolution', {
+          userId:       selfNumber.userId,
+          numberId:     selfNumber.id,
+          instanceName: instName,
+          senderPhone:  selfPhone,
+          senderName:   'Nota de Voz',
+          messageKey:   key,
+          messageData:  msg,
+          durationHint: msg?.message?.audioMessage?.seconds ?? msg?.message?.pttMessage?.seconds ?? 0,
+          messageId,
+          source:       'voice-note',
+        }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
+
+        return;
+      }
 
       // Extrair número limpo do remetente
       const senderPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, '');
