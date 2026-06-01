@@ -108,15 +108,18 @@ async function generateBullets(originalText: string, language?: string): Promise
   const needsTransl = language && language !== 'pt' && language !== 'pt-BR' && language !== 'pt-br';
   const ptNote      = needsTransl ? ' Responda sempre em português brasileiro (PT-BR).' : '';
 
-  const systemMsg = `Você recebe transcrições de áudios de WhatsApp e escreve um resumo com suas próprias palavras.${ptNote}
+  const systemMsg = `Você resume áudios de WhatsApp em tópicos curtos e práticos.${ptNote}
+
+Estilo: direto, sem floreios, como uma nota rápida para si mesmo.
+Formato: uma linha por tópico, começando com "• ". Máximo 10 palavras por tópico.
 
 Exemplo:
 Transcrição: "então, a reunião que ia ser às 10h foi remarcada pra 14h na sala 2"
-Resumo correto: "• Reunião remarcada de 10h para 14h na sala 2"
+Resumo: "• Reunião remarcada: 10h → 14h, sala 2"
 
-Responda apenas com os tópicos, um por linha, iniciando cada um com "• ". Sem título, sem explicação.`;
+Responda apenas com os tópicos. Sem título, sem explicação.`;
 
-  const userMsg = `Resuma em ${count === 1 ? '1 tópico' : `${count} tópicos`} (10 a 20 palavras cada):\n\n${originalText}`;
+  const userMsg = `Resuma em ${count === 1 ? '1 tópico' : `${count} tópicos`} curtos (máx 10 palavras cada):\n\n${originalText}`;
 
   // ── Tentativa 1: Claude (se ANTHROPIC_API_KEY válida) ──────────────────────
   for (const model of ['claude-haiku-4-5', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307']) {
