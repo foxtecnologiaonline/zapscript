@@ -512,7 +512,7 @@ function buildMessage(
     header = `🔒 *Privado* | ${namePart} → você\n${phoneLine}${tldrLine}`;
   } else if (tldr) {
     const nameStr = hasName ? `*${contactName}*` : '*Áudio*';
-    header = `🎙️ ${nameStr} → ${tldr}${durStr ? ` • ${durStr}` : ''}`;
+    header = `🎙️ ${nameStr}${durStr ? ` • ${durStr}` : ''}\n→ ${tldr}`;
   } else {
     const nameStr = hasName ? `Áudio de *${contactName}*` : '*Áudio*';
     header = `🎙️ ${nameStr}${durStr ? ` • ${durStr}` : ''}`;
