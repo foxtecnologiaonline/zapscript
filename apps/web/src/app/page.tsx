@@ -380,7 +380,7 @@ const PLANS = [
       '1 número WhatsApp',
       '🎙️ Transcrição automática',
       '🖥️ Transcrição de áudios no site',
-      '✨ Resumo com pontos-chave IA',
+      '✨ Resumo com IA',
     ],
     excl: ['📋 Histórico de transcrições', '📅 Filtros por data e contato', '🔍 Busca por transcrição'],
     cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
@@ -394,7 +394,7 @@ const PLANS = [
       '🎙️ Transcrição automática',
       '🖥️ Transcrição de áudios no site',
       '✨ Resumo com IA',
-      '📋 Histórico completo de transcrições',
+      '📋 Histórico de transcrições',
       '📅 Filtros por data e contato',
       '🔍 Busca por transcrição',
     ],
@@ -405,7 +405,7 @@ const PLANS = [
     name: 'executive', label: 'Executive', price: 'R$69,90', per: '/mês',
     desc: 'Para uso profissional e privacidade total',
     feats: [
-      '300 min/mês',
+      '500 min/mês',
       '3 números WhatsApp',
       '🎙️ Transcrição automática',
       '🖥️ Transcrição de áudios no site',
@@ -425,7 +425,7 @@ const PLANS = [
 /* ── Tabela comparativa ── */
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                        vals: ['20', '100', '300'] },
+  { feature: 'Minutos/mês',                        vals: ['20', '100', '500'] },
   { feature: 'Números WhatsApp',                   vals: ['1', '2', '3'] },
   { feature: '🎙️ Transcrição automática',           vals: [true, true, true] },
   { feature: '🖥️ Transcrição no site (upload)',     vals: [true, true, true] },
