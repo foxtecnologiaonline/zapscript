@@ -529,16 +529,17 @@ export default async function authRoutes(app: FastifyInstance) {
     return prisma.user.findUnique({
       where:  { id: req.user.sub },
       select: {
-        id:            true,
-        email:         true,
-        name:          true,
-        phone:         true,
-        document:      true,
-        emailVerified: true,
-        isAdmin:       true,
-        isTester:      true,
-        refCode:       true,
-        createdAt:     true,
+        id:               true,
+        email:            true,
+        name:             true,
+        phone:            true,
+        document:         true,
+        emailVerified:    true,
+        isAdmin:          true,
+        isTester:         true,
+        refCode:          true,
+        createdAt:        true,
+        termsAcceptedAt:  true,
         subscription: {
           select: {
             id:              true,
