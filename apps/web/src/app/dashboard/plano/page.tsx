@@ -758,16 +758,17 @@ function PlanoContent() {
           🚀 EM BREVE
         </div>
         <h3 className="font-display font-bold text-base leading-snug mb-1">
-          Integrações chegando em breve
+          Mais poder para seus áudios
         </h3>
         <p className="text-xs font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-          Conecte o ZapScript às ferramentas que você já usa no dia a dia.
+          + funcionalidades, + produtividade, + organização, + ZapScript
         </p>
         <div className="grid grid-cols-2 gap-2">
           {[
-            { icon: '📅', label: 'Integração com Planner' },
-            { icon: '🗓️', label: 'Integração com Calendário' },
-            { icon: '🔗', label: 'Integração com ERP/CRM' },
+            { icon: '👥', label: 'Resumo de Grupos' },
+            { icon: '✅', label: 'Tarefas e Planner de áudios' },
+            { icon: '🗓️', label: 'Organização e Calendário' },
+            { icon: '🔗', label: 'Integração com Sistemas' },
           ].map((f, i) => (
             <div key={i} className="flex items-center gap-2 text-xs rounded-xl px-3 py-2.5"
               style={{ background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-text-muted))' }}>
