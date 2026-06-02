@@ -858,10 +858,10 @@ async function processEvolutionJob(job: Job) {
 // ─────────────────────────────────────────────────────────────────
 async function routeJob(job: Job) {
   const source = job.data.source || 'transcribe-official';
-  if (source === 'manual')           return processManualJob(job);
-  if (source === 'whatsapp-twilio')  return processTwilioJob(job);
-  if (source === 'whatsapp-evolution') return processEvolutionJob(job);
-  // transcribe-official = WhatsApp Cloud API (Meta) — pipeline principal
+  if (source === 'manual')                                         return processManualJob(job);
+  if (source === 'whatsapp-twilio')                                return processTwilioJob(job);
+  if (source === 'whatsapp-evolution' || source === 'voice-note')  return processEvolutionJob(job);
+  // transcribe-official / whatsapp-meta = WhatsApp Cloud API (Meta)
   return processOfficialWhatsAppJob(job);
 }
 
