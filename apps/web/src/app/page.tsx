@@ -405,7 +405,7 @@ const PLANS = [
     name: 'executive', label: 'Executive', price: 'R$69,90', per: '/mês',
     desc: 'Para uso profissional e privacidade total',
     feats: [
-      '500 min/mês',
+      '300 min/mês',
       '3 números WhatsApp',
       '🎙️ Transcrição automática',
       '🖥️ Transcrição de áudios no site',
@@ -425,7 +425,7 @@ const PLANS = [
 /* ── Tabela comparativa ── */
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                        vals: ['20', '100', '500'] },
+  { feature: 'Minutos/mês',                        vals: ['20', '100', '300'] },
   { feature: 'Números WhatsApp',                   vals: ['1', '2', '3'] },
   { feature: '🎙️ Transcrição automática',           vals: [true, true, true] },
   { feature: '🖥️ Transcrição no site (upload)',     vals: [true, true, true] },
@@ -761,17 +761,16 @@ export default function HomePage() {
               🚀 EM BREVE
             </div>
             <h3 className="font-display font-bold text-xl leading-snug mb-2">
-              Ainda mais funcionalidades
+              Integrações chegando em breve
             </h3>
             <p className="text-sm font-light mb-5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Estamos desenvolvendo recursos avançados para potencializar ainda mais sua produtividade.
+              Conecte o ZapScript às ferramentas que você já usa no dia a dia.
             </p>
             <div className="grid grid-cols-2 gap-2.5">
               {[
-                { icon: '📤', label: 'Exportar PDF · DOCX · CSV · XLS' },
-                { icon: '🌐', label: 'Tradução automática dos resumos' },
-                { icon: '🗒️', label: 'Notas pessoais de voz' },
-                { icon: '🔒', label: 'Modo privado de transcrição' },
+                { icon: '📅', label: 'Integração com Planner' },
+                { icon: '🗓️', label: 'Integração com Calendário' },
+                { icon: '🔗', label: 'Integração com ERP/CRM' },
               ].map((f, i) => (
                 <div key={i} className="flex items-center gap-2 text-xs rounded-xl px-3 py-2.5"
                   style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>

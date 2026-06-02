@@ -69,7 +69,7 @@ const PLANS = [
     per:   '/mês',
     desc:  'Para uso profissional e privacidade total',
     feats: [
-      '500 min/mês',
+      '300 min/mês',
       '3 números WhatsApp',
       '🎙️ Transcrição automática',
       '🖥️ Transcrição de áudios no site',
@@ -89,7 +89,7 @@ const PLANS = [
 
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                        vals: ['20', '100', '500'] },
+  { feature: 'Minutos/mês',                        vals: ['20', '100', '300'] },
   { feature: 'Números WhatsApp',                   vals: ['1', '2', '3'] },
   { feature: '🎙️ Transcrição automática',           vals: [true, true, true] },
   { feature: '🖥️ Transcrição no site (upload)',     vals: [true, true, true] },

@@ -147,7 +147,7 @@ export default async function authRoutes(app: FastifyInstance) {
       // Se falhar: rollback do usuário Supabase para evitar conta órfã (autenticada mas sem dados)
       try {
         await prisma.$transaction(async (tx: any) => {
-          const REFERRAL_BONUS_MINUTES = 30;
+          const REFERRAL_BONUS_MINUTES = 15;
 
           const u = await tx.user.create({
             data: {
@@ -174,7 +174,7 @@ export default async function authRoutes(app: FastifyInstance) {
               currentPeriodEnd: testerInvite ? oneYearFromNow : undefined,
             },
           });
-          // Novo usuário recebe bônus de 30 min extra se vier via referral
+          // Novo usuário recebe bônus de 15 min extra se vier via referral
           await tx.minuteBalance.create({
             data: {
               userId:           u.id,
@@ -182,7 +182,7 @@ export default async function authRoutes(app: FastifyInstance) {
               resetAt:          testerInvite ? oneYearFromNow : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
           });
-          // Referrer também ganha bônus de 30 min por indicar
+          // Referrer também ganha bônus de 15 min por indicar
           if (referrer) {
             await tx.minuteBalance.update({
               where: { userId: referrer.id },
