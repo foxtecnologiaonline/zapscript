@@ -45,7 +45,7 @@ const PLANS = [
   {
     name:  'pro',
     label: 'Pro',
-    price: 'R$39,90',
+    price: 'R$29,90',
     per:   '/mês',
     desc:  'Para profissionais',
     feats: [
@@ -65,7 +65,7 @@ const PLANS = [
   {
     name:  'executive',
     label: 'Executive',
-    price: 'R$69,90',
+    price: 'R$49,90',
     per:   '/mês',
     desc:  'Para uso profissional e privacidade total',
     feats: [
@@ -468,9 +468,9 @@ function PlanoContent() {
     <div className="p-8 text-center text-brand-muted text-sm pt-20">Carregando...</div>
   );
 
-  // planName já vem como slug ('free'|'pro'|'ultra'|'executive') — sem precisar de toLowerCase
+  // planName já vem como slug ('free'|'pro'|'executive') — sem precisar de toLowerCase
   const currentPlan = stats?.planName || 'free';
-  const PLAN_ORDER: Record<string, number> = { free: 0, pro: 1, ultra: 2, executive: 3 };
+  const PLAN_ORDER: Record<string, number> = { free: 0, pro: 1, executive: 2 };
   const currentPlanOrder = PLAN_ORDER[currentPlan] ?? 0;
   const displayedPlans = PLANS; // Free · Pro · Executive — sempre visíveis
 
@@ -801,7 +801,7 @@ function PlanoContent() {
                   </p>
                 </div>
                 <CheckoutInline
-                  planName={checkoutPlan as 'pro' | 'ultra' | 'executive'}
+                  planName={checkoutPlan as 'pro' | 'executive'}
                   planLabel={plan.label}
                   planPrice={plan.price}
                   planFeats={plan.feats}

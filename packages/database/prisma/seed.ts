@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Atualizando planos ZapScript v2.0...');
+  console.log('🌱 Atualizando planos ZapScript v3.0...');
 
   const plans = [
     {
@@ -12,12 +12,12 @@ async function main() {
       minutesPerMonth: 20,
       maxNumbers:      1,
       priceBrl:        0,
-      asaasProductId:  null,
       features:        JSON.stringify([
         '20 min/mês',
         '1 número WhatsApp',
         'Transcrição automática',
-        'Resumo com pontos-chave IA',
+        'Transcrição de áudios no site',
+        'Resumo com IA',
       ]),
     },
     {
@@ -25,28 +25,13 @@ async function main() {
       label:           'Pro',
       minutesPerMonth: 100,
       maxNumbers:      2,
-      priceBrl:        39.90,
-      asaasProductId:  null,
+      priceBrl:        29.90,
       features:        JSON.stringify([
         '100 min/mês',
         '2 números WhatsApp',
         'Transcrição automática',
-        'Resumo com pontos-chave IA',
-        'Histórico completo de transcrições',
-      ]),
-    },
-    {
-      name:            'ultra',
-      label:           'Ultra',
-      minutesPerMonth: 300,
-      maxNumbers:      3,
-      priceBrl:        69.90,
-      asaasProductId:  null,
-      features:        JSON.stringify([
-        '300 min/mês',
-        '3 números WhatsApp',
-        'Transcrição automática',
-        'Resumo com pontos-chave IA',
+        'Transcrição de áudios no site',
+        'Resumo com IA',
         'Histórico completo de transcrições',
         'Filtros por data e contato',
         'Busca no histórico',
@@ -55,18 +40,21 @@ async function main() {
     {
       name:            'executive',
       label:           'Executive',
-      minutesPerMonth: 500,
-      maxNumbers:      5,
-      priceBrl:        89.90,
-      asaasProductId:  null,
+      minutesPerMonth: 300,
+      maxNumbers:      3,
+      priceBrl:        49.90,
       features:        JSON.stringify([
-        '500 min/mês',
-        '5 números WhatsApp',
+        '300 min/mês',
+        '3 números WhatsApp',
         'Transcrição automática',
-        'Resumo com pontos-chave IA',
+        'Transcrição de áudios no site',
+        'Resumo com IA',
         'Histórico completo de transcrições',
         'Filtros por data e contato',
         'Busca no histórico',
+        'Exportação PDF · DOCX · CSV · XLS',
+        'Notas Pessoais de Voz',
+        'Modo Privado de transcrição',
       ]),
     },
   ];
@@ -83,9 +71,10 @@ async function main() {
       },
       create: plan,
     });
+    console.log(`  ✓ ${plan.label} — R$${plan.priceBrl.toFixed(2)}/mês, ${plan.minutesPerMonth} min`);
   }
 
-  console.log('✅ Planos v2.0: Grátis, Pro (R$39,90/100min), Ultra (R$69,90/300min), Executive (R$89,90/500min)');
+  console.log('✅ Planos v3.0: Grátis (R$0/20min), Pro (R$29,90/100min), Executive (R$49,90/300min)');
 }
 
 main()

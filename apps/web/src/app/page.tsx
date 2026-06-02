@@ -260,7 +260,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Em quais idiomas funciona?',
-    a: 'O ZapScript transcreve áudios em qualquer idioma suportado pelo Whisper (português, inglês, espanhol e mais de 50 idiomas). Nos planos Ultra e Executive, os resumos são automaticamente traduzidos para o português do Brasil.',
+    a: 'O ZapScript transcreve áudios em qualquer idioma suportado pelo Whisper (português, inglês, espanhol e mais de 50 idiomas). No plano Executive, os resumos são automaticamente traduzidos para o português do Brasil.',
   },
 ];
 
@@ -386,7 +386,7 @@ const PLANS = [
     cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
   },
   {
-    name: 'pro', label: 'Pro', price: 'R$39,90', per: '/mês',
+    name: 'pro', label: 'Pro', price: 'R$29,90', per: '/mês',
     desc: 'Para profissionais',
     feats: [
       '100 min/mês',
@@ -402,7 +402,7 @@ const PLANS = [
     cta: 'Assinar Pro', href: '/cadastro', popular: false, accent: '#3b82f6' as string | null,
   },
   {
-    name: 'executive', label: 'Executive', price: 'R$69,90', per: '/mês',
+    name: 'executive', label: 'Executive', price: 'R$49,90', per: '/mês',
     desc: 'Para uso profissional e privacidade total',
     feats: [
       '300 min/mês',

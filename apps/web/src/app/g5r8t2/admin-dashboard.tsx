@@ -2615,24 +2615,25 @@ Não perca o ritmo que você já criou 💪
 Equipe ZapScript`,
     },
     {
-      icon: '🚀',
-      name: 'Upgrade Ultra',
-      desc: 'Pro · upsell Ultra',
+      icon: '💎',
+      name: 'Upgrade Executive',
+      desc: 'Pro · upsell Executive',
       applyFilters: () => { setPlans(['pro']); setFree(false); setNeverUsed(false); setMinDays(''); setHasDocument(false); setTesters(false); },
-      subject: '🚀 Você usa muito o ZapScript — hora de ir para o Ultra',
+      subject: '💎 Você usa muito o ZapScript — hora de ir para o Executive',
       msg: `Olá! Você é um dos nossos usuários mais ativos no plano Pro. Isso é incrível! 🎉
 
 Mas percebemos que usuários no seu perfil costumam bater no limite de minutos antes do fim do mês — e a gente não quer que isso aconteça com você.
 
-O plano Ultra foi feito para quem usa de verdade:
-🚀 600 minutos/mês (o dobro do Pro)
-🏷️ Tags para organizar suas transcrições por projeto ou cliente
-🌐 Tradução automática de áudios em inglês e espanhol para PT-BR
-📱 Até 5 números simultâneos
+O plano Executive foi feito para quem usa de verdade:
+💎 300 minutos/mês (o triplo do Pro)
+🔒 Modo Privado: transcrição enviada só para você, não para o remetente
+📤 Exportação em PDF, DOCX, CSV e XLS
+🎤 Notas Pessoais de Voz (transcreva seus próprios áudios)
+📱 Até 3 números simultâneos
 
-Por apenas R$29,90/mês a mais — ou seja, R$59,90 total.
+Por apenas R$20,00/mês a mais — ou seja, R$49,90 total.
 
-👉 Ver plano Ultra: https://zapscript.me/dashboard/plano
+👉 Ver plano Executive: https://zapscript.me/dashboard/plano
 
 Se quiser conversar antes de decidir, é só responder este e-mail.
 
@@ -2655,7 +2656,7 @@ Por isso criamos o plano Executive — feito para empresas:
 📱 Números ilimitados para cada membro do time
 🏷️ Tags e exportação avançada para relatórios
 
-Tudo por R$89,90/mês — sem taxa de implantação, sem fidelidade.
+Tudo por R$49,90/mês — sem taxa de implantação, sem fidelidade.
 
 👉 Ver plano Executive: https://zapscript.me/dashboard/plano
 

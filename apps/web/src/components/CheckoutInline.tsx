@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
    ───────────────────────────────────────────────────────── */
 
 interface Props {
-  planName:   'pro' | 'ultra' | 'executive';
+  planName:   'pro' | 'executive';
   planLabel:  string;
   planPrice:  string;
   planFeats:  string[];

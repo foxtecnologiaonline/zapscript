@@ -6,11 +6,11 @@ import { decryptStr, decryptArr } from '../services/encryption';
 import { getUserPlan, requirePlan } from '../lib/planGate';
 
 // Planos com acesso a cada feature
-const PLAN_SEARCH  = ['pro', 'ultra', 'executive'];
+const PLAN_SEARCH  = ['pro', 'executive'];
 const PLAN_EXPORT  = ['executive']; // Exportação exclusiva do plano Executive
-const PLAN_TAGS    = ['pro', 'ultra', 'executive'];   // tags abertas para Pro+
-const PLAN_LANG    = ['ultra', 'executive'];
-const PLAN_AI_FEAT = ['ultra', 'executive'];          // reply sugerida + doc (Ultra+)
+const PLAN_TAGS    = ['pro', 'executive'];   // tags abertas para Pro+
+const PLAN_LANG    = ['executive'];
+const PLAN_AI_FEAT = ['executive'];          // reply sugerida + doc (Executive)
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 

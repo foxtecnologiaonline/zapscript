@@ -21,9 +21,9 @@ const ALLOWED_EXT = ['.ogg', '.opus', '.mp3', '.mp4', '.m4a', '.wav', '.webm', '
 const MAX_MB      = 50;
 const LIMIT       = 20;
 
-const PLAN_HISTORY = ['pro', 'ultra', 'executive'];
-const PLAN_FILTERS = ['pro', 'ultra', 'executive'];
-const PLAN_SEARCH  = ['pro', 'ultra', 'executive'];
+const PLAN_HISTORY = ['pro', 'executive'];
+const PLAN_FILTERS = ['pro', 'executive'];
+const PLAN_SEARCH  = ['pro', 'executive'];
 
 const DOC_TYPES = [
   { value: 'resumo',     label: 'Resumo Executivo'    },
@@ -737,7 +737,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               className={`input pl-9 w-full ${!canSearch ? 'opacity-70 cursor-not-allowed' : ''}`}
               placeholder={canSearch
                 ? 'Buscar por contato, texto ou resumo…'
-                : '🔒 Busca disponível no plano Ultra → Ver planos'
+                : '🔒 Busca disponível no plano Pro → Ver planos'
               }
               value={search}
               onChange={e => canSearch && setSearch(e.target.value)}
@@ -784,7 +784,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               <div className="relative col-span-2 sm:col-span-1">
                 <input
                   className={`input text-sm py-2 w-full ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  placeholder={canFilters ? '👤 Filtrar por contato' : '🔒 Filtros — plano Ultra'}
+                  placeholder={canFilters ? '👤 Filtrar por contato' : '🔒 Filtros — plano Pro'}
                   value={filterContact}
                   onChange={e => canFilters && setFilterContact(e.target.value)}
                   readOnly={!canFilters}
@@ -793,7 +793,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                 {!canFilters && (
                   <span className="absolute -top-1.5 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded"
                     style={{ background: 'rgba(245,158,11,.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>
-                    Ultra+
+                    Pro+
                   </span>
                 )}
               </div>
@@ -853,7 +853,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                 {!canFilters && (
                   <span className="absolute -top-1.5 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded"
                     style={{ background: 'rgba(245,158,11,.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>
-                    Ultra+
+                    Pro+
                   </span>
                 )}
               </div>

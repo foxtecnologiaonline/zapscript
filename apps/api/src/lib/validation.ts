@@ -83,14 +83,14 @@ const billingAddressSchema = z.object({
 }).optional();
 
 export const billingCheckoutSchema = z.object({
-  planName:       z.enum(['pro', 'ultra', 'executive'], { errorMap: () => ({ message: 'Plano inválido. Use pro, ultra ou executive.' }) }),
+  planName:       z.enum(['pro', 'executive'], { errorMap: () => ({ message: 'Plano inválido. Use pro ou executive.' }) }),
   paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
   card:           cardSchema.optional(),   // obrigatório se paymentMethod === 'credit_card' | 'debit_card'
   billingAddress: billingAddressSchema,
 });
 
 export const billingUpgradeSchema = z.object({
-  targetPlan:     z.enum(['pro', 'ultra', 'executive'], { errorMap: () => ({ message: 'Plano inválido.' }) }),
+  targetPlan:     z.enum(['pro', 'executive'], { errorMap: () => ({ message: 'Plano inválido.' }) }),
   paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
   card:           cardSchema.optional(),
   billingAddress: billingAddressSchema,
