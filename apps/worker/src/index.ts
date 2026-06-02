@@ -87,84 +87,135 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
 }
 
 /**
- * Decide quantos bullets gerar baseado no tamanho do texto:
- * - < 80 palavras  → 1 bullet (mensagem curta)
- * - 80-220 palavras → 2 bullets
- * - > 220 palavras  → 3 bullets (áudio longo)
+ * Modo de resumo baseado no tamanho do áudio:
+ * - < 80 palavras  → 'tldr'    (1 frase telegráfica integrada no cabeçalho)
+ * - >= 80 palavras → 'bullets' (extração cirúrgica de fatos concretos)
+ */
+function audioMode(text: string): 'tldr' | 'bullets' {
+  return text.trim().split(/\s+/).length < 80 ? 'tldr' : 'bullets';
+}
+
+/**
+ * Quantos bullets extrair no modo 'bullets':
+ * - 80-220 palavras → 2
+ * - > 220 palavras  → 3
  */
 function bulletCount(text: string): number {
   const words = text.trim().split(/\s+/).length;
   if (words > 220) return 3;
-  if (words > 80)  return 2;
-  return 1;
+  return 2;
 }
 
 /**
- * Gera resumo em tópicos com Claude.
- * Cadeia de modelos: haiku-3-5 → haiku-3 → placeholder (nunca copia o texto).
+ * Gera resumo com modo adaptado ao tamanho do áudio:
+ *
+ * TLDR (< 80 palavras): uma frase telegráfica de até 10 palavras,
+ *   sem prefixo "•", integrada diretamente no cabeçalho da mensagem.
+ *
+ * Bullets (>= 80 palavras): extração cirúrgica de fatos concretos
+ *   (datas, valores, decisões, ações) em 2-3 tópicos curtos.
+ *
+ * Cadeia: claude-haiku-4-5 → claude-3-5-haiku → claude-3-haiku → gpt-4o-mini → placeholder.
  */
 async function generateBullets(originalText: string, language?: string): Promise<string[]> {
+  const mode        = audioMode(originalText);
   const count       = bulletCount(originalText);
   const needsTransl = language && language !== 'pt' && language !== 'pt-BR' && language !== 'pt-br';
   const ptNote      = needsTransl ? ' Responda sempre em português brasileiro (PT-BR).' : '';
 
-  const systemMsg = `Você resume áudios de WhatsApp em tópicos curtos e práticos.${ptNote}
+  let systemMsg: string;
+  let userMsg: string;
 
-Estilo: direto, sem floreios, como uma nota rápida para si mesmo.
-Formato: uma linha por tópico, começando com "• ". Máximo 10 palavras por tópico.
+  if (mode === 'tldr') {
+    // ── Modo TLDR: 1 frase direta, sem prefixo ───────────────────────────────
+    systemMsg = `Resuma o áudio em UMA frase telegráfica em PT-BR.${ptNote}
 
-Exemplo:
-Transcrição: "então, a reunião que ia ser às 10h foi remarcada pra 14h na sala 2"
-Resumo: "• Reunião remarcada: 10h → 14h, sala 2"
+Regras:
+- Máximo 10 palavras
+- Comece com o ponto mais importante
+- Use dois-pontos para separar contexto de detalhe quando útil
+- Sem artigos desnecessários, sem "então", "né", "tipo"
+- Responda apenas com a frase. Sem "• ", sem prefixo, sem explicação.
 
-Responda apenas com os tópicos. Sem título, sem explicação.`;
+Exemplos:
+"então a reunião das 10 foi remarcada pra 14h na sala 2" → Reunião remarcada: 14h sala 2
+"queria saber se você pode me ajudar com o relatório até sexta" → Relatório: ajuda necessária até sexta
+"só passando pra avisar que o pedido chegou" → Pedido chegou`;
 
-  const userMsg = `Resuma em ${count === 1 ? '1 tópico' : `${count} tópicos`} curtos (máx 10 palavras cada):\n\n${originalText}`;
+    userMsg = `Em até 10 palavras:\n\n${originalText}`;
 
-  // ── Tentativa 1: Claude (se ANTHROPIC_API_KEY válida) ──────────────────────
+  } else {
+    // ── Modo Bullets: extração cirúrgica de fatos concretos ──────────────────
+    systemMsg = `Extraia apenas fatos concretos de áudios de WhatsApp em PT-BR.${ptNote}
+
+Inclua: datas, horários, nomes, valores, decisões, ações pendentes.
+Exclua: opiniões, contexto redundante, palavras de preenchimento.
+Cada tópico: verbo ou substantivo de ação + dado essencial. Máx 8 palavras.
+Formato: "• " no início de cada linha. Sem título, sem explicação.
+
+Exemplos:
+"vou passar aí sexta às 15h pra assinar o contrato" → • Visita sexta 15h — assinar contrato
+"precisa que você mande o orçamento até amanhã de manhã" → • Enviar orçamento: até amanhã cedo`;
+
+    userMsg = `Extraia em ${count} ${count === 1 ? 'tópico' : 'tópicos'} (máx 8 palavras cada):\n\n${originalText}`;
+  }
+
+  // ── Tentativa 1: Claude ───────────────────────────────────────────────────
   for (const model of ['claude-haiku-4-5', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307']) {
     try {
       const res = await claude.messages.create({
         model,
-        max_tokens: 250,
+        max_tokens: 200,
         system:     systemMsg,
         messages:   [{ role: 'user', content: userMsg }],
       });
       const raw     = (res.content[0] as any).text?.trim() || '';
-      const bullets = parseBullets(raw, count);
+      const bullets = mode === 'tldr' ? parseTldr(raw) : parseBullets(raw, count);
       if (bullets.length > 0) {
-        logger.info(`[Resumo] ${model} ✅`);
+        logger.info(`[Resumo] ${model} ✅ (modo: ${mode})`);
         return bullets;
       }
     } catch (err: any) {
-      logger.warn(`[Resumo] ${model} falhou (${err.status ?? err.message}) — tentando OpenAI`);
+      logger.warn(`[Resumo] ${model} falhou (${err.status ?? err.message}) — tentando próximo`);
     }
   }
 
-  // ── Tentativa 2: OpenAI gpt-4o-mini (já configurado e funcionando) ──────────
+  // ── Tentativa 2: OpenAI gpt-4o-mini ──────────────────────────────────────
   try {
     const res = await openai.chat.completions.create({
       model:      'gpt-4o-mini',
-      max_tokens: 250,
+      max_tokens: 200,
       messages: [
         { role: 'system', content: systemMsg },
         { role: 'user',   content: userMsg   },
       ],
     });
     const raw     = res.choices[0]?.message?.content?.trim() || '';
-    const bullets = parseBullets(raw, count);
+    const bullets = mode === 'tldr' ? parseTldr(raw) : parseBullets(raw, count);
     if (bullets.length > 0) {
-      logger.info(`[Resumo] gpt-4o-mini ✅`);
+      logger.info(`[Resumo] gpt-4o-mini ✅ (modo: ${mode})`);
       return bullets;
     }
-    logger.warn(`[Resumo] gpt-4o-mini respondeu sem bullets: "${raw.slice(0, 100)}"`);
+    logger.warn(`[Resumo] gpt-4o-mini respondeu vazio: "${raw.slice(0, 100)}"`);
   } catch (err: any) {
     logger.error(`[Resumo] gpt-4o-mini falhou: ${err.message}`);
   }
 
-  // ── Fallback final — NUNCA copiar frases do texto ────────────────────────────
+  // ── Fallback final ────────────────────────────────────────────────────────
   logger.error('[Resumo] Todos os modelos falharam — placeholder');
   return ['Resumo não disponível'];
+}
+
+/**
+ * Parseia resposta TLDR — extrai a primeira frase não-vazia,
+ * removendo qualquer prefixo de bullet que o modelo insistir em colocar.
+ */
+function parseTldr(raw: string): string[] {
+  const line = raw
+    .split('\n')
+    .map(l => l.replace(/^[•\-–—*\d.)\s]+/, '').trim())
+    .find(l => l.length > 3);
+  return line ? [line] : [];
 }
 
 /** Parseia bullets da resposta — aceita "• ", "- ", "1. " e texto puro */
@@ -440,27 +491,35 @@ function buildMessage(
 ): string {
   const { contactName, durationSec, isPrivate, senderPhone } = opts;
 
+  const mode    = audioMode(originalText); // 'tldr' | 'bullets'
   const hasName = contactName && contactName !== 'manual' && contactName.trim().length > 0;
   const durStr  = durationSec && durationSec > 0
     ? `⏱ ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60 > 0 ? ` ${durationSec % 60}s` : ''}` : `${durationSec}s`}`
     : '';
 
+  const FALLBACK       = ['Transcrição disponível', 'Resumo não disponível', 'Não foi possível'];
+  const hasRealBullets = bullets.length > 0 && !bullets.some(b => FALLBACK.some(f => b.includes(f)));
+  const tldr           = hasRealBullets && mode === 'tldr' ? bullets[0] : null;
+
   // ── Cabeçalho ──
+  // Modo TLDR: frase integrada na mesma linha do cabeçalho → menos blocos, mais direto
+  // Modo Bullets: cabeçalho simples + seção 📋 separada abaixo
   let header: string;
   if (isPrivate && senderPhone) {
-    // Opção B: bloco de origem destacado
-    const namePart = hasName ? `*${contactName}*` : `*${fmtPhone(senderPhone)}*`;
+    const namePart  = hasName ? `*${contactName}*` : `*${fmtPhone(senderPhone)}*`;
     const phoneLine = `📱 ${fmtPhone(senderPhone)}${durStr ? ` · ${durStr}` : ''}`;
-    header = `🔒 *Privado* | ${namePart} → você\n${phoneLine}`;
+    const tldrLine  = tldr ? `\n↯ ${tldr}` : '';
+    header = `🔒 *Privado* | ${namePart} → você\n${phoneLine}${tldrLine}`;
+  } else if (tldr) {
+    const nameStr = hasName ? `*${contactName}*` : '*Áudio*';
+    header = `🎙️ ${nameStr} → ${tldr}${durStr ? ` • ${durStr}` : ''}`;
   } else {
     const nameStr = hasName ? `Áudio de *${contactName}*` : '*Áudio*';
     header = `🎙️ ${nameStr}${durStr ? ` • ${durStr}` : ''}`;
   }
 
-  // ── Resumo ──
-  const FALLBACK = ['Transcrição disponível', 'Resumo não disponível', 'Não foi possível'];
-  const hasRealBullets = bullets.length > 0 && !bullets.some(b => FALLBACK.some(f => b.includes(f)));
-  const pontoSection = hasRealBullets
+  // ── Seção de bullets (apenas no modo 'bullets') ──
+  const pontoSection = hasRealBullets && mode === 'bullets'
     ? `\n\n📋 *Resumo*\n${bullets.map(b => `• ${b}`).join('\n')}`
     : '';
 
