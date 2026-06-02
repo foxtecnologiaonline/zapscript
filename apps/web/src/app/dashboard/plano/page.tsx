@@ -149,8 +149,9 @@ function UpgradeModal({
 
   // Sem proration real: plano cancelado ou primeiro ciclo completo
   const isFullPrice = preview.proratedAmount >= preview.targetPlanPrice * 0.99;
-  // Apenas features exclusivas do plano destino (não herdadas dos anteriores)
-  const newFeats = (targetPlan?.feats ?? []).slice(2, 5); // pula minutos/números, pega até 3 diferenciais
+  // Features exclusivas do plano destino = o que o plano atual NÃO tem
+  const currentPlanFeats = new Set(PLANS.find(p => p.name === preview.currentPlanName)?.feats ?? []);
+  const newFeats = (targetPlan?.feats ?? []).filter(f => !currentPlanFeats.has(f)).slice(0, 4);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
@@ -757,17 +758,16 @@ function PlanoContent() {
           🚀 EM BREVE
         </div>
         <h3 className="font-display font-bold text-base leading-snug mb-1">
-          Novidades chegando em todos os planos
+          Integrações chegando em breve
         </h3>
         <p className="text-xs font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-          Funcionalidades em desenvolvimento — disponíveis em breve para todos os assinantes.
+          Conecte o ZapScript às ferramentas que você já usa no dia a dia.
         </p>
         <div className="grid grid-cols-2 gap-2">
           {[
-            { icon: '📤', label: 'Exportar PDF · DOCX · CSV · XLS' },
-            { icon: '🌐', label: 'Tradução automática dos resumos' },
-            { icon: '🗒️', label: 'Notas pessoais de voz' },
-            { icon: '🔒', label: 'Modo privado de transcrição' },
+            { icon: '📅', label: 'Integração com Planner' },
+            { icon: '🗓️', label: 'Integração com Calendário' },
+            { icon: '🔗', label: 'Integração com ERP/CRM' },
           ].map((f, i) => (
             <div key={i} className="flex items-center gap-2 text-xs rounded-xl px-3 py-2.5"
               style={{ background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-text-muted))' }}>
