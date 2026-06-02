@@ -151,7 +151,7 @@ function UpgradeModal({
   const isFullPrice = preview.proratedAmount >= preview.targetPlanPrice * 0.99;
   // Features exclusivas do plano destino = o que o plano atual NÃO tem
   const currentPlanFeats = new Set(PLANS.find(p => p.name === preview.currentPlanName)?.feats ?? []);
-  const newFeats = (targetPlan?.feats ?? []).filter(f => !currentPlanFeats.has(f)).slice(0, 4);
+  const newFeats = (targetPlan?.feats ?? []).filter(f => !currentPlanFeats.has(f));
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
