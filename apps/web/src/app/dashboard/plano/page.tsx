@@ -150,7 +150,7 @@ function UpgradeModal({
   // Sem proration real: plano cancelado ou primeiro ciclo completo
   const isFullPrice = preview.proratedAmount >= preview.targetPlanPrice * 0.99;
   // Features exclusivas do plano destino = o que o plano atual NÃO tem
-  const currentPlanFeats = new Set(PLANS.find(p => p.name === preview.currentPlanName)?.feats ?? []);
+  const currentPlanFeats = new Set(PLANS.find(p => p.label === preview.currentPlanLabel)?.feats ?? []);
   const newFeats = (targetPlan?.feats ?? []).filter(f => !currentPlanFeats.has(f));
 
   return (
