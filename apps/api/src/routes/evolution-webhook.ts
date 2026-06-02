@@ -184,8 +184,9 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       if (remoteJid.includes('@g.us')) return;
 
       // ── Notas Pessoais de Voz (Executive) ─────────────────────────────────
-      // Mensagens fromMe = usuário enviou áudio para o próprio número (saved messages)
-      // Apenas Executive pode usar; áudio é transcrito e devolvido na mesma conversa.
+      // Ativado SOMENTE quando o usuário envia um áudio para o próprio número
+      // (chat "Eu mesmo" / Saved Messages do WhatsApp).
+      // Condição: fromMe=true E remoteJid == número próprio do usuário.
       if (fromMe) {
         const isAudio = AUDIO_TYPES.has(messageType)
           || (messageType === 'documentMessage' && isAudioDocument(msg?.message?.documentMessage))
@@ -196,11 +197,13 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
         const selfNumber = await findNumber(false);
         if (!selfNumber) return;
 
+        // Verificar se o áudio foi enviado para o próprio número (chat pessoal)
+        const selfPhone    = (selfNumber.phoneNumber || '').replace(/\D/g, '');
+        const remotePhone  = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, '');
+        if (!selfPhone || remotePhone !== selfPhone) return; // áudio enviado para outra pessoa — ignorar
+
         const plan = await getUserPlan(selfNumber.userId);
         if (plan !== 'executive') return; // Notas de Voz apenas no plano Executive
-
-        const selfPhone = (selfNumber.phoneNumber || remoteJid.replace('@s.whatsapp.net', ''))
-          .replace(/\D/g, '');
 
         app.log.info({ instance: instName }, '[Evolution] 🎤 Nota pessoal de voz (Executive)');
 
