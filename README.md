@@ -9,9 +9,10 @@
 ```
 zapscript/
 ├── apps/
-│   ├── api/          → Servidor Fastify (autenticação, números, billing)
+│   ├── api/          → Servidor Fastify (autenticação, números, billing, webhooks)
 │   ├── worker/       → Pipeline de transcrição (Whisper + Claude)
-│   └── web/          → Frontend Next.js 14
+│   ├── web/          → Frontend Next.js 14
+│   └── monitor/      → Health checker + alertas
 ├── packages/
 │   └── database/     → Schema Prisma + migrations
 └── infra/            → Scripts de deploy e configuração
@@ -30,37 +31,37 @@ https://nodejs.org
 # pnpm
 npm install -g pnpm
 
-# ffmpeg (converte OGG → MP3)
+# ffmpeg (converte OGG/M4A/WAV → MP3)
 # Mac:    brew install ffmpeg
 # Ubuntu: sudo apt install ffmpeg
-
-# Stripe CLI (para webhooks locais)
-# Mac:    brew install stripe/stripe-cli/stripe
-# Outros: https://stripe.com/docs/stripe-cli
+# Windows: https://ffmpeg.org/download.html
 ```
 
 ---
 
-## 🔑 Contas necessárias (todas gratuitas para começar)
+## 🔑 Contas necessárias
 
-| Serviço      | Para quê                        | URL                                |
-|--------------|---------------------------------|------------------------------------|
-| Supabase     | Banco PostgreSQL                | https://supabase.com               |
-| Upstash      | Redis (filas BullMQ)            | https://upstash.com                |
-| OpenAI       | Whisper API (transcrição)       | https://platform.openai.com        |
-| Anthropic    | Claude API (resumos)            | https://console.anthropic.com      |
-| Stripe       | Pagamentos                      | https://stripe.com                 |
-| Railway      | Hospedagem API + Worker         | https://railway.app                |
-| Vercel       | Hospedagem Frontend             | https://vercel.com                 |
+| Serviço      | Para quê                              | URL                                |
+|--------------|---------------------------------------|------------------------------------|
+| Supabase     | Banco PostgreSQL                      | https://supabase.com               |
+| Upstash      | Redis (filas BullMQ)                  | https://upstash.com                |
+| OpenAI       | Whisper API (transcrição)             | https://platform.openai.com        |
+| Groq         | Whisper turbo (primário, mais rápido) | https://console.groq.com           |
+| Anthropic    | Claude API (resumos)                  | https://console.anthropic.com      |
+| Asaas        | Pagamentos (PIX + cartão)             | https://asaas.com                  |
+| Evolution API| WhatsApp self-hosted                  | https://github.com/EvolutionAPI    |
+| Resend       | E-mail transacional                   | https://resend.com                 |
+| Railway      | Hospedagem API + Worker               | https://railway.app                |
+| Vercel       | Hospedagem Frontend                   | https://vercel.com                 |
 
 ---
 
-## 🚀 Setup Local (passo a passo)
+## 🚀 Setup Local
 
 ### 1. Clonar e instalar
 
 ```bash
-git clone https://github.com/seu-usuario/zapscript.git
+git clone https://github.com/foxtecnologiaonline/zapscript.git
 cd zapscript
 pnpm install
 ```
@@ -72,56 +73,40 @@ cp .env.example .env
 # Abrir .env no editor e preencher TODAS as variáveis
 ```
 
-Gerar JWT_SECRET e ENCRYPTION_KEY:
+Gerar secrets:
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# Rode duas vezes — uma para JWT_SECRET, outra para ENCRYPTION_KEY
+node infra/gen-secrets.js
 ```
 
 ### 3. Configurar banco de dados
 
 ```bash
-# Rodar migrations
 cd packages/database
 npx prisma migrate dev --name init
 npx prisma generate
-
-# Seed dos planos (Free, Starter, Pro)
-npx ts-node prisma/seed.ts
+npx ts-node prisma/seed.ts   # Seed: planos Free, Pro, Executive
 cd ../..
 ```
 
-### 4. Criar produtos no Stripe
+### 4. Rodar em desenvolvimento
 
 ```bash
-stripe login
-chmod +x infra/stripe-setup.sh
-./infra/stripe-setup.sh
-# Copiar os IDs gerados para o .env
-```
-
-### 5. Rodar em desenvolvimento
-
-```bash
-# Terminal 1 — API + Worker + Frontend simultâneo
+# API + Worker + Frontend simultâneo
 pnpm dev
-
-# Terminal 2 — Stripe webhooks locais
-pnpm stripe:listen
 ```
 
 Acessar:
 - **Frontend:** http://localhost:3000
 - **API:**      http://localhost:3001/health
 
-### 6. Testar fluxo completo
+### 5. Testar fluxo completo
 
 ```
-1. Abrir localhost:3000 → Cadastrar conta
-2. Ir em Números → Adicionar → Conectar → Escanear QR
+1. localhost:3000 → Cadastrar conta
+2. Dashboard → Números → Conectar via QR (Evolution API)
 3. Enviar áudio para o número no WhatsApp
-4. Verificar transcrição no chat e no dashboard
-5. Testar pagamento (cartão: 4242 4242 4242 4242)
+4. Transcrição aparece no dashboard em ~10s
+5. Testar pagamento: dashboard → Plano → Assinar Pro
 ```
 
 ---
@@ -131,18 +116,13 @@ Acessar:
 ### Railway (API + Worker)
 
 ```bash
-# Instalar Railway CLI
 npm install -g @railway/cli
 railway login
-
-# Criar projeto e fazer deploy
 railway init
 railway up
 
-# Configurar variáveis de ambiente no dashboard Railway
-# (copiar todas do .env)
-
-# Rodar migration em produção
+# Configurar variáveis no Railway dashboard
+# Rodar migrations em produção:
 railway run npx prisma migrate deploy --schema=packages/database/prisma/schema.prisma
 ```
 
@@ -153,81 +133,58 @@ npm install -g vercel
 cd apps/web
 vercel --prod
 
-# Configurar variáveis no Vercel dashboard:
-# NEXT_PUBLIC_API_URL=https://seu-projeto.railway.app
+# Variáveis no Vercel dashboard:
+# NEXT_PUBLIC_API_URL=https://zapscript-api.railway.app
 # NEXT_PUBLIC_SUPABASE_URL=...
 # NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-```
-
-### Domínio
-
-```
-1. Registrar zapscript.me em namecheap.com (~R$80/ano)
-2. Vercel → Settings → Domains → Add → zapscript.me
-3. Seguir instruções de DNS (CNAME record)
-```
-
-### Stripe Produção
-
-```
-1. Stripe Dashboard → Ativar conta → KYC (CNPJ + documentos)
-2. Trocar STRIPE_SECRET_KEY de sk_test_ para sk_live_
-3. Criar novo webhook apontando para produção:
-   https://zapscript-api.railway.app/billing/webhook
-4. Atualizar STRIPE_WEBHOOK_SECRET
 ```
 
 ---
 
 ## 🏗️ Stack Completa
 
-| Camada       | Tecnologia                   |
-|--------------|------------------------------|
-| Frontend     | Next.js 14, Tailwind CSS     |
-| API          | Fastify, TypeScript          |
-| WebSocket    | Socket.io                    |
-| Worker/Filas | BullMQ + Redis (Upstash)     |
-| WhatsApp     | Baileys (multi-device)       |
-| Transcrição  | OpenAI Whisper v1            |
-| Resumos      | Anthropic Claude Sonnet      |
-| Banco        | PostgreSQL (Supabase) + Prisma|
-| Pagamentos   | Stripe                       |
-| Criptografia | AES-256-GCM (sessões WA)     |
-| Deploy API   | Railway                      |
-| Deploy Web   | Vercel                       |
+| Camada       | Tecnologia                         |
+|--------------|------------------------------------|
+| Frontend     | Next.js 14, Tailwind CSS           |
+| API          | Fastify, TypeScript                |
+| WebSocket    | Socket.io + Redis adapter          |
+| Worker/Filas | BullMQ + Redis (Upstash)           |
+| WhatsApp     | Evolution API (instâncias dedicadas)|
+| Transcrição  | Groq whisper-large-v3-turbo (primary) + OpenAI whisper-1 (fallback) |
+| Resumos      | Anthropic Claude Haiku (primary) + GPT-4o-mini (fallback) |
+| Banco        | PostgreSQL (Supabase) + Prisma     |
+| Pagamentos   | Asaas (PIX + cartão)               |
+| E-mail       | Resend API                         |
+| Criptografia | AES-256-GCM (dados sensíveis)      |
+| Error tracking | Sentry                           |
+| Deploy API   | Railway                            |
+| Deploy Web   | Vercel                             |
 
 ---
 
-## 💰 Custo Estimado (mensal)
+## 💰 Planos
 
-| Serviço         | Custo        |
-|-----------------|--------------|
-| Railway (API+Worker) | ~$10/mês |
-| Supabase        | $0 (free tier)|
-| Upstash Redis   | $0–3/mês     |
-| OpenAI Whisper  | $0.006/min   |
-| Anthropic Claude| ~$2/mês      |
-| Vercel          | $0 (hobby)   |
-| **Total fixo**  | **~$13–15/mês** |
-
----
-
-## 📋 Variáveis de Ambiente
-
-Ver `.env.example` para lista completa e comentada.
+| Plano     | Preço       | Minutos | Números |
+|-----------|-------------|---------|---------|
+| Free      | R$0/mês     | 20      | 1       |
+| Pro       | R$29,90/mês | 100     | 2       |
+| Executive | R$49,90/mês | 300     | 3       |
 
 ---
 
 ## 🔒 Segurança & LGPD
 
-- Áudios processados em memória e descartados imediatamente após transcrição
-- Sessões WhatsApp criptografadas com AES-256-GCM antes de salvar no banco
-- Row Level Security (RLS) ativado no Supabase — cada usuário acessa apenas seus dados
+- Áudios processados em memória e descartados após transcrição
+- Textos e telefones criptografados com AES-256-GCM no banco
+- Row Level Security (RLS) ativado no Supabase
 - JWT com expiração de 30 dias
+- HMAC-SHA256 em todos os webhooks (Asaas + Evolution + webhooks personalizados)
+- Rate limiting global + proteção contra abusos
+- Soft-delete + pseudonymização (direitos LGPD)
 
 ---
 
 ## 📞 Suporte
 
-- Email: contato@zapscript.me
-- WhatsApp: disponível no site
+- Email: suporte@zapscript.me
+- Site: https://zapscript.me
