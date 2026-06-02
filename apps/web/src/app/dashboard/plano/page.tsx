@@ -53,31 +53,33 @@ const PLANS = [
       '2 números WhatsApp',
       '🎙️ Transcrição automática',
       '🖥️ Transcrição de áudios no site',
-      '✨ Resumo com pontos-chave IA',
+      '✨ Resumo com IA',
       '📋 Histórico completo de transcrições',
-    ],
-    excl:  [
       '📅 Filtros por data e contato',
       '🔍 Busca por transcrição',
     ],
+    excl:  [],
     pop:   false,
     accent: '#3b82f6' as string | null,
   },
   {
-    name:  'ultra',
-    label: 'Ultra',
+    name:  'executive',
+    label: 'Executive',
     price: 'R$69,90',
     per:   '/mês',
-    desc:  'Para profissionais avançados',
+    desc:  'Para uso profissional e privacidade total',
     feats: [
       '300 min/mês',
       '3 números WhatsApp',
       '🎙️ Transcrição automática',
       '🖥️ Transcrição de áudios no site',
-      '✨ Ponto Chave (Resumo com IA)',
+      '✨ Resumo com IA',
       '📋 Histórico de transcrições',
       '📅 Filtros por data e contato',
       '🔍 Busca por transcrição',
+      '📤 Exportação PDF · DOCX · CSV · XLS',
+      '🎤 Notas Pessoais de Voz',
+      '🔒 Modo Privado de transcrição',
     ],
     excl:  [],
     pop:   true,
@@ -87,14 +89,17 @@ const PLANS = [
 
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                      vals: ['20', '100', '300'] },
-  { feature: 'Números WhatsApp',                  vals: ['1', '2', '3'] },
-  { feature: '🎙️ Transcrição automática',         vals: [true, true, true] },
-  { feature: '🖥️ Transcrição no site (upload)',   vals: [true, true, true] },
-  { feature: '✨ Resumo pontos-chave IA',          vals: [true, true, true] },
-  { feature: '📋 Histórico de transcrições',      vals: [false, true, true] },
-  { feature: '📅 Filtros por data e contato',     vals: [false, false, true] },
-  { feature: '🔍 Busca por transcrição',           vals: [false, false, true] },
+  { feature: 'Minutos/mês',                        vals: ['20', '100', '300'] },
+  { feature: 'Números WhatsApp',                   vals: ['1', '2', '3'] },
+  { feature: '🎙️ Transcrição automática',           vals: [true, true, true] },
+  { feature: '🖥️ Transcrição no site (upload)',     vals: [true, true, true] },
+  { feature: '✨ Resumo com IA',                    vals: [true, true, true] },
+  { feature: '📋 Histórico de transcrições',        vals: [false, true, true] },
+  { feature: '📅 Filtros por data e contato',       vals: [false, true, true] },
+  { feature: '🔍 Busca por transcrição',             vals: [false, true, true] },
+  { feature: '📤 Exportação PDF/DOCX/CSV/XLS',      vals: [false, false, true] },
+  { feature: '🎤 Notas Pessoais de Voz',             vals: [false, false, true] },
+  { feature: '🔒 Modo Privado de transcrição',       vals: [false, false, true] },
 ];
 
 // Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento
@@ -466,8 +471,7 @@ function PlanoContent() {
   const currentPlan = stats?.planName || 'free';
   const PLAN_ORDER: Record<string, number> = { free: 0, pro: 1, ultra: 2, executive: 3 };
   const currentPlanOrder = PLAN_ORDER[currentPlan] ?? 0;
-  // Executive users see their plan as "ultra" for UI purposes (still has all benefits)
-  const displayedPlans = PLANS.filter(p => p.name !== 'executive' || currentPlan === 'executive');
+  const displayedPlans = PLANS; // Free · Pro · Executive — sempre visíveis
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl">

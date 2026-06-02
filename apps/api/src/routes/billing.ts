@@ -51,7 +51,7 @@ async function markProcessed(paymentId: string): Promise<void> {
 }
 
 /* ── Preços ── */
-const PLAN_PRICES: Record<string, number> = { pro: 39.90, ultra: 69.90, executive: 89.90 };
+const PLAN_PRICES: Record<string, number> = { pro: 39.90, ultra: 69.90, executive: 69.90 };
 const PLAN_LABELS: Record<string, string>  = { pro: 'Pro', ultra: 'Ultra', executive: 'Executive' };
 
 /* ── Data de hoje no formato Asaas (YYYY-MM-DD) ── */
