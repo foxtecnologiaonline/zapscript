@@ -851,6 +851,73 @@ export default function HomePage() {
           <FaqSection />
         </section>
 
+        {/* ══ FALE CONOSCO ══ */}
+        <section className="px-5 pb-16">
+          <div className="text-center mb-8">
+            <span className="inline-block text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full mb-3"
+              style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
+              Suporte
+            </span>
+            <h2 className="font-display font-bold text-2xl tracking-tight mb-2">Fale Conosco</h2>
+            <p className="text-sm font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Tem dúvidas, sugestões ou precisa de ajuda? Nossa equipe está aqui para você.
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4 max-w-lg mx-auto">
+            {/* E-mail */}
+            <a
+              href="mailto:contato@zapscript.me"
+              className="flex items-center gap-4 rounded-2xl p-5 border transition-all hover:scale-[1.02]"
+              style={{
+                background: 'rgb(var(--color-surface-elevated))',
+                borderColor: 'rgb(var(--color-border))',
+              }}
+            >
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                  <rect x="2" y="4" width="20" height="16" rx="2"/>
+                  <path d="M22 7l-10 7L2 7"/>
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>E-mail</p>
+                <p className="text-sm font-semibold truncate" style={{ color: 'rgb(var(--color-primary))' }}>
+                  contato@zapscript.me
+                </p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Resposta em até 24h</p>
+              </div>
+            </a>
+
+            {/* Chat de suporte */}
+            <button
+              type="button"
+              onClick={() => {
+                const btn = document.querySelector<HTMLButtonElement>('[aria-label="Suporte"]');
+                btn?.click();
+              }}
+              className="flex items-center gap-4 rounded-2xl p-5 border transition-all hover:scale-[1.02] text-left"
+              style={{
+                background: 'rgb(var(--color-surface-elevated))',
+                borderColor: 'rgb(var(--color-border))',
+              }}
+            >
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Chat ao vivo</p>
+                <p className="text-sm font-semibold" style={{ color: 'rgb(var(--color-text))' }}>Abrir suporte</p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Clique no ícone 💬 abaixo</p>
+              </div>
+            </button>
+          </div>
+        </section>
+
         {/* ══ CTA FINAL ══ */}
         <section className="px-5 pb-14">
           <div className="rounded-[1.75rem] p-8 text-center"

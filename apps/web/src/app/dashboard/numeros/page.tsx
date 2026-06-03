@@ -145,13 +145,6 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
   async function handleRequestCode() {
     const digits = phoneInput.replace(/\D/g, '');
     if (digits.length < 10) { setPhoneError('Informe DDD + número (mínimo 10 dígitos).'); return; }
-    // Telefone fixo (10 dígitos): código por número não funciona → redireciona para QR
-    if (digits.length === 10) {
-      setConnectMode('qr');
-      setPairingCode(null);
-      setPhoneError('');
-      return;
-    }
     setRequesting(true); setPhoneError(''); setPairingCode(null);
     try {
       const res = await api.post<{ code: string }>(`/numbers/${number.id}/pairing-code`, { phone: digits });
@@ -317,7 +310,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                               <span className="text-base flex-shrink-0">📞</span>
                               <div className="min-w-0">
                                 <p className="text-xs font-semibold text-amber-400">Telefone fixo detectado</p>
-                                <p className="text-[10px] text-brand-muted leading-tight">Código por número não funciona em fixos — use QR Code</p>
+                                <p className="text-[10px] text-brand-muted leading-tight">Tente o código ou escaneie o QR Code</p>
                               </div>
                             </div>
                             <button
@@ -330,7 +323,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                           </div>
                         )}
                         <p className="text-[10px] text-brand-muted mt-1">
-                          Celular: DDD + 9 + número (11 dígitos) · Fixo: DDD + número (10 dígitos) → use QR Code
+                          Celular: DDD + 9 + número (11 dígitos) · Fixo: DDD + número (10 dígitos)
                         </p>
                       </div>
                       <button
