@@ -25,6 +25,20 @@ const PLAN_HISTORY = ['pro', 'executive'];
 const PLAN_FILTERS = ['pro', 'executive'];
 const PLAN_SEARCH  = ['pro', 'executive'];
 
+const SORT_OPTIONS = [
+  { value: 'date_desc',    label: 'Data — Mais recente', icon: '📅' },
+  { value: 'date_asc',     label: 'Data — Mais antiga',  icon: '📅' },
+  { value: 'contact',      label: 'Contato A → Z',       icon: '👤' },
+  { value: 'contact_desc', label: 'Contato Z → A',       icon: '👤' },
+] as const;
+
+const SORT_LABELS: Record<string, string> = {
+  date_desc:    'Data — Recente',
+  date_asc:     'Data — Antiga',
+  contact:      'Contato A → Z',
+  contact_desc: 'Contato Z → A',
+};
+
 const DOC_TYPES = [
   { value: 'resumo',     label: 'Resumo Executivo'    },
   { value: 'ata',        label: 'Ata de Reunião'      },
@@ -325,6 +339,162 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   );
 }
 
+/* ─── FilterDrawer ─────────────────────────────────────────────────────────── */
+function FilterDrawer({
+  onClose, canFilters,
+  filterContact, setFilterContact,
+  filterLang, setFilterLang,
+  dateFrom, setDateFrom,
+  dateTo, setDateTo,
+  onApply, onClear,
+}: {
+  onClose: () => void; canFilters: boolean;
+  filterContact: string; setFilterContact: (v: string) => void;
+  filterLang: string;   setFilterLang:    (v: string) => void;
+  dateFrom: string;     setDateFrom:      (v: string) => void;
+  dateTo: string;       setDateTo:        (v: string) => void;
+  onApply: () => void;  onClear:          () => void;
+}) {
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" onClick={onClose} />
+
+      {/* Drawer: bottom sheet (mobile) / side panel (desktop) */}
+      <div
+        className="fixed bottom-0 inset-x-0 sm:inset-x-auto sm:right-0 sm:top-0 sm:bottom-0 sm:w-80 z-50 flex flex-col rounded-t-2xl sm:rounded-none shadow-2xl"
+        style={{ background: 'rgb(var(--color-surface-elevated))', borderLeft: '1px solid rgb(var(--color-border))' }}>
+
+        {/* Drag handle — mobile only */}
+        <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-1 sm:hidden" style={{ background: 'rgb(var(--color-border))' }} />
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'rgb(var(--color-border))' }}>
+          <span className="font-semibold text-sm" style={{ color: 'rgb(var(--color-text))' }}>⚙️ Filtros</span>
+          <button type="button" onClick={onClose}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-xs transition-colors"
+            style={{ color: 'rgb(var(--color-text-muted))' }}
+            aria-label="Fechar filtros">✕</button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+          {/* Contato */}
+          <div>
+            <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-2"
+              style={{ color: 'rgb(var(--color-text-muted))' }}>
+              👤 Contato
+              {!canFilters && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded ml-1"
+                  style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.25)' }}>Pro+</span>
+              )}
+            </label>
+            <input
+              className={`input w-full text-sm ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
+              placeholder={canFilters ? 'Nome ou telefone...' : '🔒 Disponível no plano Pro'}
+              value={filterContact}
+              onChange={e => canFilters && setFilterContact(e.target.value)}
+              readOnly={!canFilters}
+            />
+          </div>
+
+          {/* Período */}
+          <div>
+            <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-2"
+              style={{ color: 'rgb(var(--color-text-muted))' }}>
+              📅 Período
+              {!canFilters && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded ml-1"
+                  style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.25)' }}>Pro+</span>
+              )}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="relative">
+                <input type="date"
+                  className={`input w-full text-sm ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  value={dateFrom}
+                  onChange={e => canFilters && setDateFrom(e.target.value)}
+                  disabled={!canFilters}
+                  aria-label="De" />
+                {!dateFrom && canFilters && (
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none"
+                    style={{ color: 'rgb(var(--color-text-muted))' }}>De</span>
+                )}
+              </div>
+              <div className="relative">
+                <input type="date"
+                  className={`input w-full text-sm ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  value={dateTo}
+                  onChange={e => canFilters && setDateTo(e.target.value)}
+                  disabled={!canFilters}
+                  aria-label="Até" />
+                {!dateTo && canFilters && (
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none"
+                    style={{ color: 'rgb(var(--color-text-muted))' }}>Até</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Idioma */}
+          <div>
+            <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-2"
+              style={{ color: 'rgb(var(--color-text-muted))' }}>
+              🌐 Idioma
+              {!canFilters && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded ml-1"
+                  style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.25)' }}>Pro+</span>
+              )}
+            </label>
+            <select
+              className={`input w-full text-sm ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
+              value={filterLang}
+              onChange={e => canFilters && setFilterLang(e.target.value)}
+              disabled={!canFilters}>
+              <option value="">Todos os idiomas</option>
+              <option value="pt">🇧🇷 Português</option>
+              <option value="en">🇺🇸 English</option>
+              <option value="es">🇪🇸 Español</option>
+              <option value="fr">🇫🇷 Français</option>
+              <option value="de">🇩🇪 Deutsch</option>
+            </select>
+          </div>
+
+          {/* Upgrade banner — free plan */}
+          {!canFilters && (
+            <div className="rounded-xl px-4 py-3 text-center"
+              style={{ background: 'rgba(16,185,129,.05)', border: '1px solid rgba(16,185,129,.15)' }}>
+              <p className="text-xs mb-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                🔒 Filtros disponíveis no plano <span className="font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>Pro</span>
+              </p>
+              <a href="/dashboard/plano"
+                className="text-xs font-bold hover:underline"
+                style={{ color: 'rgb(var(--color-primary))' }}>Ver planos →</a>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-2 p-4 border-t" style={{ borderColor: 'rgb(var(--color-border))' }}>
+          <button type="button" onClick={onClear}
+            className="flex-1 text-sm py-2.5 rounded-xl border transition-colors"
+            style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#f87171'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgb(var(--color-text-muted))'; }}>
+            🗑️ Limpar
+          </button>
+          <button type="button"
+            onClick={() => { onApply(); onClose(); }}
+            className="flex-1 btn-primary text-sm py-2.5">
+            ✓ Aplicar filtros
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ─── Main Page ────────────────────────────────────────────────────────────── */
 export default function TranscricoesPage() {
 
@@ -343,7 +513,13 @@ export default function TranscricoesPage() {
   const [dateTo, setDateTo]                 = useState('');
   const [sortOrder, setSortOrder]           = useState('date_desc');
   const [filterSource, setFilterSource]     = useState('');
-  const [showFilters, setShowFilters]       = useState(false);
+
+  /* — Page UI state — */
+  const [pageTab, setPageTab]                     = useState<'transcricoes' | 'notas'>('transcricoes');
+  const [showFilterDrawer, setShowFilterDrawer]   = useState(false);
+  const [showSortMenu, setShowSortMenu]           = useState(false);
+  const [voiceCount, setVoiceCount]               = useState(0);
+  const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
 
   /* — Detail modal state — */
   const [selected, setSelected]             = useState<Transcription | null>(null);
@@ -390,6 +566,10 @@ export default function TranscricoesPage() {
     api.get<any>('/nps/status')
       .then(s => { if (s.shouldShow) setNpsVisible(true); })
       .catch(() => null);
+    // Badge de contagem para a tab Notas de Voz
+    api.get<{ items: any[]; total: number }>('/transcriptions?limit=1&source=voice-note')
+      .then(r => setVoiceCount(r.total || 0))
+      .catch(() => null);
   }, []);
 
   /* ── Load list ─────────────────────────────────────────────────────────── */
@@ -432,6 +612,24 @@ export default function TranscricoesPage() {
     setDateFrom(''); setDateTo(''); setSortOrder('date_desc'); setFilterSource('');
     setOffset(0);
     load('', 0, '', '', '', '', '', 'date_desc', '');
+  }
+
+  // Limpa filtros ativos mantendo tab e ordenação atuais
+  function clearActiveFilters() {
+    setSearch(''); setFilterTag(''); setFilterLang(''); setFilterContact('');
+    setDateFrom(''); setDateTo('');
+    setOffset(0);
+    load('', 0, '', '', '', '', '', sortOrder, filterSource);
+  }
+
+  // Alterna entre abas Transcrições / Notas de Voz
+  function switchPageTab(tab: 'transcricoes' | 'notas') {
+    setPageTab(tab);
+    const src = tab === 'notas' ? 'voice-note' : '';
+    setFilterSource(src);
+    setSearch('');
+    setOffset(0);
+    load('', 0, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, src);
   }
 
   function openDetail(t: Transcription) {
@@ -615,11 +813,13 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   }
 
   /* ── Derived ───────────────────────────────────────────────────────────── */
-  const canHistory = PLAN_HISTORY.includes(planName);
-  const canFilters = PLAN_FILTERS.includes(planName);
-  const canSearch  = PLAN_SEARCH.includes(planName);
-  const hasFilters = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource);
-  const tagsChanged = JSON.stringify(editTags) !== JSON.stringify(selected?.tags || []);
+  const canHistory      = PLAN_HISTORY.includes(planName);
+  const canFilters      = PLAN_FILTERS.includes(planName);
+  const canSearch       = PLAN_SEARCH.includes(planName);
+  const canExport       = planName === 'executive';
+  const hasFilters      = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource);
+  const hasActiveFilters = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo);
+  const tagsChanged     = JSON.stringify(editTags) !== JSON.stringify(selected?.tags || []);
 
   const totalPages = Math.ceil(total / LIMIT);
   const currentPage = Math.floor(offset / LIMIT) + 1;
@@ -630,6 +830,8 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
       if (e.key === 'Escape') {
         if (selected) closeDetail();
         setShowExportMenu(false);
+        setShowSortMenu(false);
+        setShowFilterDrawer(false);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -644,6 +846,14 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
     return () => document.removeEventListener('click', handler, { capture: true });
   }, [showExportMenu]);
 
+  /* ─── Close sort menu on outside click ────────────────────────────────── */
+  useEffect(() => {
+    if (!showSortMenu) return;
+    const handler = () => setShowSortMenu(false);
+    document.addEventListener('click', handler, { capture: true });
+    return () => document.removeEventListener('click', handler, { capture: true });
+  }, [showSortMenu]);
+
   /* ══════════════════════════════════════════════════════════════════════ */
   /*  RENDER                                                                */
   /* ══════════════════════════════════════════════════════════════════════ */
@@ -651,274 +861,271 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl">
 
       {/* ── PAGE HEADER ─────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
+      <div className="flex items-start justify-between gap-3 mb-5">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-brand-text">Transcrições</h1>
-          <p className="text-sm text-brand-muted mt-0.5">
-            {loading ? 'Carregando…' : `${total.toLocaleString('pt-BR')} transcrição${total !== 1 ? 'ões' : ''}`}
+          <h1 className="text-xl sm:text-2xl font-bold" style={{ color: 'rgb(var(--color-text))' }}>Transcrições</h1>
+          <p className="text-sm mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+            {loading ? 'Carregando…'
+              : `${total.toLocaleString('pt-BR')} ${pageTab === 'notas' ? `nota${total !== 1 ? 's' : ''}` : `transcrição${total !== 1 ? 'ões' : ''}`}`}
           </p>
         </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Export — Executive only */}
-          {planName === 'executive' ? (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); setShowExportMenu(v => !v); }}
-                disabled={exporting}
-                className="text-sm px-3 py-2 rounded-xl border border-brand-border/60 text-brand-text-secondary hover:border-brand-primary/40 hover:text-brand-text transition-colors flex items-center gap-1.5">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                <span className="hidden sm:inline">{exporting ? 'Exportando…' : 'Exportar'}</span>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
-              </button>
-              {showExportMenu && (
-                <div className="absolute right-0 top-full mt-1 z-30 rounded-xl border border-brand-border/60 shadow-xl overflow-hidden"
-                  style={{ background: 'rgb(var(--color-surface-elevated))', minWidth: 170 }}>
-                  {[
-                    { fmt: 'pdf',  label: '📄 PDF',  sub: 'Imprimir / salvar' },
-                    { fmt: 'docx', label: '📝 DOCX', sub: 'Word / LibreOffice' },
-                    { fmt: 'csv',  label: '📊 CSV',  sub: 'Planilhas, Excel'  },
-                    { fmt: 'xls',  label: '📗 XLS',  sub: 'Excel nativo'      },
-                  ].map(({ fmt, label, sub }) => (
-                    <button key={fmt} type="button"
-                      onClick={() => handleExport(fmt as any)}
-                      className="w-full text-left px-4 py-2.5 hover:bg-brand-primary/8 transition-colors flex justify-between items-center">
-                      <span className="text-sm font-medium text-brand-text">{label}</span>
-                      <span className="text-[10px] text-brand-muted">{sub}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <button type="button" disabled
-              title="Disponível no plano Executive"
-              className="text-sm px-3 py-2 rounded-xl border border-brand-border/40 text-brand-muted cursor-not-allowed flex items-center gap-1.5 opacity-60">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              <span className="hidden sm:inline">Exportar</span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                style={{ background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>Executive</span>
-            </button>
-          )}
-
-          {/* Upload audio */}
-          <button
-            type="button"
-            onClick={() => setShowUpload(true)}
-            className="btn-primary text-sm px-4 py-2 flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-            </svg>
-            <span className="hidden sm:inline">Enviar áudio</span>
-            <span className="sm:hidden">Enviar</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowUpload(true)}
+          className="btn-primary text-sm px-4 py-2.5 flex items-center gap-2 flex-shrink-0">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          <span className="hidden sm:inline">Enviar áudio</span>
+          <span className="sm:hidden">Enviar</span>
+        </button>
       </div>
 
-      {/* ── SEARCH + FILTER BAR ─────────────────────────────────────────── */}
+      {/* ── HERO SEARCH ─────────────────────────────────────────────────── */}
       <form onSubmit={handleSearch} className="mb-3">
-
-        {/* Row 1: search + toggle + submit */}
-        <div className="flex gap-2 mb-2">
-
-          {/* Search input */}
+        <div className="flex gap-2">
           <div className="relative flex-1">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
               </svg>
             </div>
             <input
-              className={`input pl-9 w-full ${!canSearch ? 'opacity-70 cursor-not-allowed' : ''}`}
+              className={`input pl-10 pr-4 py-3 w-full text-sm rounded-xl ${!canSearch ? 'opacity-60 cursor-not-allowed' : ''}`}
               placeholder={canSearch
-                ? 'Buscar por contato, texto ou resumo…'
-                : '🔒 Busca disponível no plano Pro → Ver planos'
-              }
+                ? (pageTab === 'notas' ? 'Buscar nota de voz...' : 'Buscar por contato, texto ou resumo…')
+                : '🔒 Busca disponível no plano Pro'}
               value={search}
               onChange={e => canSearch && setSearch(e.target.value)}
-              onClick={!canSearch ? () => { window.location.href = '/dashboard/plano'; } : undefined}
+              onClick={!canSearch ? () => setShowUpgradeBanner(b => !b) : undefined}
               readOnly={!canSearch}
               aria-label="Buscar transcrições"
             />
           </div>
-
-          {/* Filter toggle */}
-          <button
-            type="button"
-            onClick={() => setShowFilters(f => !f)}
-            aria-label="Filtros"
-            aria-expanded={showFilters}
-            className={`px-3 py-2 rounded-xl border text-sm flex items-center gap-1.5 transition-colors flex-shrink-0 ${
-              showFilters || hasFilters
-                ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
-                : 'border-brand-border text-brand-muted hover:border-brand-primary hover:text-brand-primary'
-            }`}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="4" y1="6" x2="20" y2="6"/>
-              <line x1="8" y1="12" x2="16" y2="12"/>
-              <line x1="11" y1="18" x2="13" y2="18"/>
-            </svg>
-            <span className="hidden sm:inline">Filtros</span>
-            {hasFilters && !showFilters && (
-              <span className="w-2 h-2 rounded-full bg-brand-primary flex-shrink-0" />
-            )}
-          </button>
-
-          {/* Search button */}
-          <button type="submit" className="btn-primary px-4 text-sm flex-shrink-0">
+          <button type="submit" disabled={!canSearch}
+            className="btn-primary px-5 text-sm disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
             Buscar
           </button>
         </div>
 
-        {/* Row 2: expanded filter panel */}
-        {showFilters && (
-          <div className="card p-4 space-y-3 mb-2 border border-brand-border/60">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-
-              {/* Contact — Ultra+ */}
-              <div className="relative col-span-2 sm:col-span-1">
-                <input
-                  className={`input text-sm py-2 w-full ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  placeholder={canFilters ? '👤 Filtrar por contato' : '🔒 Filtros — plano Pro'}
-                  value={filterContact}
-                  onChange={e => canFilters && setFilterContact(e.target.value)}
-                  readOnly={!canFilters}
-                  onClick={!canFilters ? () => { window.location.href = '/dashboard/plano'; } : undefined}
-                />
-                {!canFilters && (
-                  <span className="absolute -top-1.5 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(245,158,11,.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>
-                    Pro+
-                  </span>
-                )}
-              </div>
-
-              {/* Date from — Ultra+ */}
-              <div className="relative">
-                <input
-                  type="date"
-                  className={`input text-sm py-2 w-full ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  value={dateFrom}
-                  onChange={e => canFilters && setDateFrom(e.target.value)}
-                  disabled={!canFilters}
-                  aria-label="Data inicial"
-                />
-                {!dateFrom && canFilters && (
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted text-xs pointer-events-none">
-                    De
-                  </span>
-                )}
-              </div>
-
-              {/* Date to — Ultra+ */}
-              <div className="relative">
-                <input
-                  type="date"
-                  className={`input text-sm py-2 w-full ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  value={dateTo}
-                  onChange={e => canFilters && setDateTo(e.target.value)}
-                  disabled={!canFilters}
-                  aria-label="Data final"
-                />
-                {!dateTo && canFilters && (
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted text-xs pointer-events-none">
-                    Até
-                  </span>
-                )}
-              </div>
-
-              {/* Language — Ultra+ */}
-              <div className="relative">
-                <select
-                  disabled={!canFilters}
-                  className="input text-sm py-2 w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                  value={filterLang}
-                  onChange={e => {
-                    setFilterLang(e.target.value);
-                    setOffset(0);
-                    load(search, 0, filterTag, e.target.value, filterContact, dateFrom, dateTo, sortOrder, filterSource);
-                  }}>
-                  <option value="">🌐 Idioma (todos)</option>
-                  <option value="pt">🇧🇷 Português</option>
-                  <option value="en">🇺🇸 English</option>
-                  <option value="es">🇪🇸 Español</option>
-                  <option value="fr">🇫🇷 Français</option>
-                  <option value="de">🇩🇪 Deutsch</option>
-                </select>
-                {!canFilters && (
-                  <span className="absolute -top-1.5 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(245,158,11,.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>
-                    Pro+
-                  </span>
-                )}
-              </div>
-
-              {/* Sort */}
-              <select
-                className="input text-sm py-2"
-                value={sortOrder}
-                onChange={e => {
-                  setSortOrder(e.target.value);
-                  setOffset(0);
-                  load(search, 0, filterTag, filterLang, filterContact, dateFrom, dateTo, e.target.value, filterSource);
-                }}>
-                <option value="date_desc">📅 Mais recentes</option>
-                <option value="date_asc">📅 Mais antigas</option>
-                <option value="contact">🔤 Contato A-Z</option>
-              </select>
-            </div>
-
-            <div className="flex items-center justify-between pt-1">
-              <button type="submit" className="btn-primary text-sm px-5 py-2">
-                Aplicar filtros
-              </button>
-              {hasFilters && (
-                <button type="button" onClick={clearFilters}
-                  className="text-xs text-brand-muted hover:text-red-400 transition-colors">
-                  Limpar todos
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Active filter chips — when panel is closed */}
-        {hasFilters && !showFilters && (
-          <div className="flex items-center gap-1.5 flex-wrap mb-1">
-            {filterTag && (
-              <FilterChip label={`🏷️ ${filterTag}`}
-                onRemove={() => { setFilterTag(''); setOffset(0); load(search, 0, '', filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); }} />
-            )}
-            {filterContact && (
-              <FilterChip label={`👤 ${filterContact}`}
-                onRemove={() => { setFilterContact(''); setOffset(0); load(search, 0, filterTag, filterLang, '', dateFrom, dateTo, sortOrder, filterSource); }} />
-            )}
-            {filterLang && (
-              <FilterChip label={`${LANG_FLAG[filterLang] || '🌐'} ${LANG_CODE[filterLang] || filterLang.toUpperCase()}`}
-                onRemove={() => { setFilterLang(''); setOffset(0); load(search, 0, filterTag, '', filterContact, dateFrom, dateTo, sortOrder, filterSource); }} />
-            )}
-            {(dateFrom || dateTo) && (
-              <FilterChip label={`📅 ${dateFrom || '…'} → ${dateTo || '…'}`}
-                onRemove={() => { setDateFrom(''); setDateTo(''); setOffset(0); load(search, 0, filterTag, filterLang, filterContact, '', '', sortOrder, filterSource); }} />
-            )}
-            {filterSource === 'voice-note' && (
-              <FilterChip label="🎙️ Notas pessoais"
-                onRemove={() => { setFilterSource(''); setOffset(0); load(search, 0, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, ''); }} />
-            )}
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="text-xs text-brand-muted hover:text-brand-text transition-colors px-1 py-0.5">
-              Limpar tudo
-            </button>
+        {/* Banner upgrade — exibido ao clicar na busca bloqueada */}
+        {showUpgradeBanner && !canSearch && (
+          <div className="mt-2 flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl"
+            style={{ background: 'rgba(16,185,129,.06)', border: '1px solid rgba(16,185,129,.2)' }}>
+            <span className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              🔒 Busca disponível no plano <strong style={{ color: 'rgb(var(--color-primary))' }}>Pro</strong>
+            </span>
+            <a href="/dashboard/plano"
+              className="text-xs font-bold flex-shrink-0 hover:underline"
+              style={{ color: 'rgb(var(--color-primary))' }}>
+              Ver planos →
+            </a>
           </div>
         )}
       </form>
+
+      {/* ── ACTIONS ROW ─────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+
+        {/* Filtrar */}
+        <button
+          type="button"
+          onClick={() => setShowFilterDrawer(true)}
+          className={`flex items-center gap-2 text-sm px-3.5 py-2 rounded-xl border transition-colors ${
+            hasActiveFilters
+              ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
+              : ''
+          }`}
+          style={!hasActiveFilters ? { borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' } : {}}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="4" y1="6" x2="20" y2="6"/>
+            <line x1="8" y1="12" x2="16" y2="12"/>
+            <line x1="11" y1="18" x2="13" y2="18"/>
+          </svg>
+          Filtrar
+          {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-brand-primary flex-shrink-0" />}
+        </button>
+
+        {/* Ordenar */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setShowSortMenu(v => !v); }}
+            className="flex items-center gap-2 text-sm px-3.5 py-2 rounded-xl border transition-colors"
+            style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6h18M7 12h10M11 18h2"/>
+            </svg>
+            <span className="hidden sm:inline">{SORT_LABELS[sortOrder] || 'Ordenar'}</span>
+            <span className="sm:hidden">Ordenar</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          {showSortMenu && (
+            <div className="absolute left-0 top-full mt-1 z-30 rounded-xl border shadow-xl overflow-hidden"
+              style={{ background: 'rgb(var(--color-surface-elevated))', borderColor: 'rgb(var(--color-border))', minWidth: 200 }}>
+              {SORT_OPTIONS.map(opt => (
+                <button key={opt.value} type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    setSortOrder(opt.value);
+                    setShowSortMenu(false);
+                    setOffset(0);
+                    load(search, 0, filterTag, filterLang, filterContact, dateFrom, dateTo, opt.value, filterSource);
+                  }}
+                  className="w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-sm transition-colors hover:bg-brand-primary/8"
+                  style={{ color: sortOrder === opt.value ? 'rgb(var(--color-primary))' : 'rgb(var(--color-text))' }}>
+                  <span>{opt.icon}</span>
+                  <span className={sortOrder === opt.value ? 'font-semibold' : ''}>{opt.label}</span>
+                  {sortOrder === opt.value && (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="ml-auto flex-shrink-0">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Exportar */}
+        {canExport ? (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); setShowExportMenu(v => !v); }}
+              disabled={exporting}
+              className="flex items-center gap-2 text-sm px-3.5 py-2 rounded-xl border transition-colors disabled:opacity-50"
+              style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              {exporting ? 'Exportando…' : 'Exportar'}
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            {showExportMenu && (
+              <div className="absolute left-0 top-full mt-1 z-30 rounded-xl border shadow-xl overflow-hidden"
+                style={{ background: 'rgb(var(--color-surface-elevated))', borderColor: 'rgb(var(--color-border))', minWidth: 185 }}>
+                {[
+                  { fmt: 'pdf',  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
+                  { fmt: 'docx', icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
+                  { fmt: 'csv',  icon: '📊', label: 'CSV',  sub: 'Planilhas'         },
+                  { fmt: 'xls',  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
+                ].map(({ fmt, icon, label, sub }) => (
+                  <button key={fmt} type="button"
+                    onClick={() => handleExport(fmt as any)}
+                    className="w-full text-left px-4 py-2.5 hover:bg-brand-primary/8 transition-colors flex items-center gap-3">
+                    <span className="text-base flex-shrink-0">{icon}</span>
+                    <div>
+                      <div className="text-sm font-medium" style={{ color: 'rgb(var(--color-text))' }}>{label}</div>
+                      <div className="text-[10px]" style={{ color: 'rgb(var(--color-text-muted))' }}>{sub}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="relative group">
+            <button type="button" disabled
+              className="flex items-center gap-2 text-sm px-3.5 py-2 rounded-xl border opacity-50 cursor-not-allowed"
+              style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Exportar
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>
+                Executive
+              </span>
+            </button>
+            <div className="absolute left-0 top-full mt-1.5 z-30 w-52 rounded-xl p-3 shadow-xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(245,158,11,.25)' }}>
+              <div className="text-xs font-semibold mb-1" style={{ color: 'rgb(var(--color-text))' }}>🔒 Disponível no Executive</div>
+              <div className="text-[11px] mb-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                Exporte em PDF, DOCX, CSV ou XLS.
+              </div>
+              <a href="/dashboard/plano" className="text-[11px] font-bold hover:underline pointer-events-auto"
+                style={{ color: 'rgb(var(--color-primary))' }}>
+                Fazer upgrade →
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── ACTIVE FILTER CHIPS ─────────────────────────────────────────── */}
+      {hasActiveFilters && (
+        <div className="flex items-center gap-1.5 flex-wrap mb-4">
+          {filterContact && (
+            <FilterChip label={`👤 ${filterContact}`}
+              onRemove={() => { setFilterContact(''); setOffset(0); load(search, 0, filterTag, filterLang, '', dateFrom, dateTo, sortOrder, filterSource); }} />
+          )}
+          {filterTag && (
+            <FilterChip label={`🏷️ ${filterTag}`}
+              onRemove={() => { setFilterTag(''); setOffset(0); load(search, 0, '', filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); }} />
+          )}
+          {filterLang && (
+            <FilterChip label={`${LANG_FLAG[filterLang] || '🌐'} ${LANG_CODE[filterLang] || filterLang.toUpperCase()}`}
+              onRemove={() => { setFilterLang(''); setOffset(0); load(search, 0, filterTag, '', filterContact, dateFrom, dateTo, sortOrder, filterSource); }} />
+          )}
+          {(dateFrom || dateTo) && (
+            <FilterChip label={`📅 ${dateFrom || '…'} → ${dateTo || '…'}`}
+              onRemove={() => { setDateFrom(''); setDateTo(''); setOffset(0); load(search, 0, filterTag, filterLang, filterContact, '', '', sortOrder, filterSource); }} />
+          )}
+          <button type="button" onClick={clearActiveFilters}
+            className="text-xs transition-colors px-1 py-0.5 hover:text-red-400"
+            style={{ color: 'rgb(var(--color-text-muted))' }}>
+            Limpar tudo
+          </button>
+        </div>
+      )}
+
+      {/* ── PAGE TABS ───────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 mb-5 p-1 rounded-xl w-fit"
+        style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgb(var(--color-border))' }}>
+        <button
+          type="button"
+          onClick={() => switchPageTab('transcricoes')}
+          className="flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium transition-all"
+          style={pageTab === 'transcricoes'
+            ? { background: 'rgb(var(--color-primary))', color: '#030d06' }
+            : { color: 'rgb(var(--color-text-muted))' }}>
+          📋 Transcrições
+        </button>
+        <button
+          type="button"
+          onClick={() => switchPageTab('notas')}
+          className="flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium transition-all"
+          style={pageTab === 'notas'
+            ? { background: 'rgb(var(--color-primary))', color: '#030d06' }
+            : { color: 'rgb(var(--color-text-muted))' }}>
+          🎙️ Notas de Voz
+          {voiceCount > 0 && pageTab !== 'notas' && (
+            <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ background: 'rgba(13,150,104,.15)', color: 'rgb(var(--color-primary))' }}>
+              {voiceCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* ── FILTER DRAWER ───────────────────────────────────────────────── */}
+      {showFilterDrawer && (
+        <FilterDrawer
+          onClose={() => setShowFilterDrawer(false)}
+          canFilters={canFilters}
+          filterContact={filterContact} setFilterContact={setFilterContact}
+          filterLang={filterLang}       setFilterLang={setFilterLang}
+          dateFrom={dateFrom}           setDateFrom={setDateFrom}
+          dateTo={dateTo}               setDateTo={setDateTo}
+          onApply={() => { setOffset(0); load(search, 0, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); setShowFilterDrawer(false); }}
+          onClear={() => { clearActiveFilters(); setShowFilterDrawer(false); }}
+        />
+      )}
 
       {/* ── TRANSCRIPTION LIST ───────────────────────────────────────────── */}
       <div className="card overflow-hidden">

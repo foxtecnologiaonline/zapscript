@@ -36,16 +36,17 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     const dateFrom = req.query.dateFrom?.trim();   // YYYY-MM-DD
     const dateTo   = req.query.dateTo?.trim();     // YYYY-MM-DD
     const contact  = req.query.contact?.trim();    // nome ou telefone
-    const sort     = req.query.sort || 'date_desc'; // date_desc | date_asc | contact
+    const sort     = req.query.sort || 'date_desc'; // date_desc | date_asc | contact | contact_desc
     const source   = req.query.source?.trim();     // voice-note | whatsapp | manual
 
     const plan = await getUserPlan(userId);
 
     // ── Orderby ──────────────────────────────────────
     const orderBy: any =
-      sort === 'date_asc'  ? { createdAt: 'asc' } :
-      sort === 'contact'   ? { contactName: 'asc' } :
-      { createdAt: 'desc' }; // default
+      sort === 'date_asc'     ? { createdAt: 'asc' }    :
+      sort === 'contact'      ? { contactName: 'asc' }  :
+      sort === 'contact_desc' ? { contactName: 'desc' } :
+      { createdAt: 'desc' }; // default: date_desc
 
     // ── Where base ────────────────────────────────────
     const where: any = { userId };
