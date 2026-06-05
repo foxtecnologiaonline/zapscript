@@ -240,51 +240,46 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
           {/* ── Pronto / digitando código / aguardando ── */}
           {(phase === 'ready' || phase === 'code' || phase === 'waiting') && (
             <>
-              {/* ── Tabs: Código / QR ── */}
-              <div className="flex bg-brand-elevated rounded-xl p-1 gap-1">
-                <button
-                  onClick={() => { setConnectMode('phone'); setPairingCode(null); setPhoneError(''); }}
-                  className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    connectMode === 'phone'
-                      ? 'bg-brand-primary text-white shadow-sm'
-                      : 'text-brand-muted hover:text-brand-text'
-                  }`}
-                >
-                  📲 Código por número
-                </button>
-                <button
-                  onClick={() => { setConnectMode('qr'); setPairingCode(null); setPhoneError(''); setQrImage(null); }}
-                  className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    connectMode === 'qr'
-                      ? 'bg-brand-primary text-white shadow-sm'
-                      : 'text-brand-muted hover:text-brand-text'
-                  }`}
-                >
-                  🔳 QR Code
-                </button>
-              </div>
 
-              {/* ── Modo: Código por número ── */}
+              {/* ════════════════════════════════════════════════
+                  MÉTODO PRINCIPAL — Código por número
+                  (sem aviso de golpe, funciona em celular e fixo)
+              ════════════════════════════════════════════════ */}
               {connectMode === 'phone' && (
                 <>
+                  {/* Cabeçalho do método */}
+                  <div className="flex items-center gap-2 pb-1">
+                    <div className="w-7 h-7 rounded-lg bg-brand-primary/15 flex items-center justify-center flex-shrink-0">
+                      <span className="text-sm">📲</span>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-brand-text">Conectar pelo número</p>
+                      <p className="text-[10px] text-brand-muted">Método recomendado — sem avisos do WhatsApp</p>
+                    </div>
+                  </div>
+
                   {pairingCode ? (
+                    /* ── Código gerado ── */
                     <div className="text-center bg-brand-primary/10 border-2 border-brand-primary/30 rounded-2xl p-6">
-                      <p className="text-xs text-brand-muted mb-1 font-semibold uppercase tracking-wider">Seu código de conexão</p>
-                      <p className="text-5xl font-black font-mono tracking-[0.15em] text-brand-primary my-3">
+                      <p className="text-[10px] text-brand-muted mb-1 font-bold uppercase tracking-widest">
+                        Seu código de conexão
+                      </p>
+                      <p className="text-5xl font-black font-mono tracking-[0.18em] text-brand-primary my-4 select-all">
                         {formatCode(pairingCode)}
                       </p>
                       <button
-                        onClick={() => { navigator.clipboard.writeText(pairingCode!); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                        className="mt-3 flex items-center gap-2 mx-auto px-4 py-2 rounded-xl bg-brand-primary/15 border border-brand-primary/30 text-brand-primary text-sm font-semibold hover:bg-brand-primary/25 transition-all active:scale-95"
+                        onClick={() => { navigator.clipboard.writeText(pairingCode!); setCopied(true); setTimeout(() => setCopied(false), 2500); }}
+                        className="flex items-center gap-2 mx-auto px-4 py-2 rounded-xl bg-brand-primary/15 border border-brand-primary/30 text-brand-primary text-sm font-semibold hover:bg-brand-primary/25 transition-all active:scale-95"
                       >
                         {copied ? '✅ Copiado!' : '📋 Copiar código'}
                       </button>
-                      <div className="flex items-center justify-center gap-1.5 text-xs text-brand-muted mt-3">
+                      <div className="flex items-center justify-center gap-1.5 text-xs text-brand-muted mt-4">
                         <Spinner size={3} />
-                        Aguardando você digitar no WhatsApp...
+                        Aguardando você digitar no WhatsApp…
                       </div>
                     </div>
                   ) : (
+                    /* ── Formulário de número ── */
                     <div className="space-y-3">
                       <div>
                         <label className="text-xs font-semibold text-brand-text block mb-1.5">
@@ -304,103 +299,119 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                           />
                         </div>
                         {phoneError && <p className="text-red-400 text-xs mt-1">{phoneError}</p>}
+
+                        {/* Aviso fixo — neutro, sem forçar QR */}
                         {isLandline && (
-                          <div className="flex items-center justify-between gap-2 bg-amber-400/10 border border-amber-400/25 rounded-xl px-3 py-2.5 mt-1.5">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-base flex-shrink-0">📞</span>
-                              <div className="min-w-0">
-                                <p className="text-xs font-semibold text-amber-400">Telefone fixo detectado</p>
-                                <p className="text-[10px] text-brand-muted leading-tight">Tente o código ou escaneie o QR Code</p>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => { setConnectMode('qr'); setPhoneError(''); }}
-                              className="text-[11px] px-2.5 py-1.5 rounded-lg bg-amber-400/20 text-amber-400 border border-amber-400/30 hover:bg-amber-400/30 transition-colors font-semibold flex-shrink-0"
-                            >
-                              Usar QR →
-                            </button>
+                          <div className="flex items-center gap-2 bg-amber-400/8 border border-amber-400/20 rounded-xl px-3 py-2 mt-1.5">
+                            <span className="text-sm flex-shrink-0">📞</span>
+                            <p className="text-[10px] text-amber-400/90 leading-snug">
+                              <strong>Telefone fixo</strong> — tente o código normalmente.
+                              Se não funcionar, use QR Code abaixo.
+                            </p>
                           </div>
                         )}
-                        <p className="text-[10px] text-brand-muted mt-1">
+
+                        <p className="text-[10px] text-brand-muted mt-1.5">
                           Celular: DDD + 9 + número (11 dígitos) · Fixo: DDD + número (10 dígitos)
                         </p>
                       </div>
+
                       <button
                         onClick={handleRequestCode}
-                        disabled={requesting || phoneInput.replace(/\D/g,'').length < 10}
+                        disabled={requesting || phoneInput.replace(/\D/g, '').length < 10}
                         className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50 text-sm font-semibold"
                       >
-                        {requesting ? <><Spinner size={4}/> Gerando código...</> : '📲 Solicitar código de conexão'}
+                        {requesting ? <><Spinner size={4} /> Gerando código…</> : '📲 Solicitar código de conexão'}
+                      </button>
+
+                      {/* Fallback discreto para QR */}
+                      <button
+                        type="button"
+                        onClick={() => { setConnectMode('qr'); setPhoneError(''); setQrImage(null); }}
+                        className="w-full text-center text-[11px] text-brand-muted hover:text-brand-text transition-colors py-1"
+                      >
+                        🔳 Prefiro escanear QR Code
                       </button>
                     </div>
                   )}
-                  <div className="bg-brand-elevated rounded-2xl p-4 space-y-3">
-                    <p className="text-xs font-bold text-brand-text mb-3">
-                      {pairingCode ? '✅ Código gerado! Agora faça no celular:' : 'Como conectar:'}
+
+                  {/* Passos — visíveis antes e depois do código */}
+                  <div className="bg-brand-elevated rounded-2xl p-4 space-y-2.5">
+                    <p className="text-xs font-bold text-brand-text">
+                      {pairingCode ? '✅ Código gerado! Agora no celular:' : 'Como vai funcionar:'}
                     </p>
-                    <Step n={1} done={!!pairingCode}>Digite o número e clique em <em>"Solicitar código"</em></Step>
+                    <Step n={1} done={!!pairingCode}>
+                      {pairingCode ? 'Código gerado com sucesso' : <>Digite o número e clique em <em>"Solicitar código"</em></>}
+                    </Step>
                     <Step n={2} done={!!pairingCode}>No celular, abra o <strong>WhatsApp</strong></Step>
-                    <Step n={3} done={!!pairingCode}>Toque nos <strong>3 pontos ⋮</strong> → <strong>Dispositivos conectados</strong></Step>
+                    <Step n={3} done={!!pairingCode}>
+                      Toque nos <strong>3 pontos ⋮</strong> → <strong>Dispositivos conectados</strong>
+                    </Step>
                     <Step n={4} done={!!pairingCode}>Toque em <strong>"Conectar dispositivo"</strong></Step>
                     <Step n={5} done={false}>Escolha <strong>"Conectar pelo número do telefone"</strong></Step>
                     <Step n={6} done={false}>
                       {pairingCode
-                        ? <><strong>Digite o código</strong> <span className="font-mono font-black text-brand-primary">{formatCode(pairingCode)}</span></>
-                        : <strong>Digite o código de 8 caracteres que aparecerá aqui</strong>}
+                        ? <><strong>Digite o código</strong>{' '}
+                            <span className="font-mono font-black text-brand-primary text-base tracking-wider">
+                              {formatCode(pairingCode)}
+                            </span>
+                          </>
+                        : <strong>Digite aqui o código de 8 dígitos que vai aparecer</strong>}
                     </Step>
                   </div>
                 </>
               )}
 
-              {/* ── Modo: QR Code ── */}
+              {/* ════════════════════════════════════════════════
+                  FALLBACK — QR Code
+                  (exibido só quando o usuário escolhe ou código falha)
+              ════════════════════════════════════════════════ */}
               {connectMode === 'qr' && (
                 <>
-                  {/* Aviso "Suspeita de golpe" — mostrar antes do QR para o usuário não se assustar */}
-                  <div className="rounded-xl border border-amber-400/25 bg-amber-400/5 px-3 py-3">
-                    <div className="flex items-start gap-2 mb-2">
-                      <span className="text-base flex-shrink-0 mt-0.5">⚠️</span>
-                      <p className="text-[11px] font-semibold text-amber-400 leading-snug">
-                        O WhatsApp pode exibir "Suspeita de golpe" — isso é <span className="underline decoration-dotted">completamente normal</span>
-                      </p>
-                    </div>
-                    <p className="text-[11px] text-brand-muted leading-relaxed ml-6">
-                      Nossos servidores ficam nos EUA e o WhatsApp alerta quando a conexão vem de fora do Brasil.
-                      Basta <strong className="text-brand-text">ignorar o aviso e confirmar</strong> — sua conta está 100% segura.
-                    </p>
-                    <details className="mt-2 ml-6 group">
-                      <summary className="text-[10px] text-brand-primary cursor-pointer select-none hover:underline list-none flex items-center gap-1">
-                        <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
-                        Por que isso acontece?
-                      </summary>
-                      <div className="mt-2 space-y-2 text-[10px] text-brand-muted leading-relaxed">
-                        <p>
-                          <strong className="text-brand-text">O que é esse aviso?</strong> O WhatsApp detecta que a conexão está vindo de um IP nos EUA (onde nossos servidores ficam) e exibe automaticamente um alerta de segurança.
+                  {/* Voltar para código */}
+                  <button
+                    type="button"
+                    onClick={() => { setConnectMode('phone'); setPairingCode(null); setPhoneError(''); }}
+                    className="flex items-center gap-1.5 text-xs text-brand-primary hover:text-brand-primary/80 transition-colors font-semibold"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="15 18 9 12 15 6"/>
+                    </svg>
+                    Voltar para código por número (recomendado)
+                  </button>
+
+                  {/* Aviso de golpe — compacto, sem ser alarmante */}
+                  <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-2.5">
+                    <div className="flex items-start gap-2">
+                      <span className="text-sm flex-shrink-0 mt-0.5">⚠️</span>
+                      <div>
+                        <p className="text-[11px] font-semibold text-amber-400 leading-snug">
+                          O WhatsApp pode exibir "Suspeita de golpe"
                         </p>
-                        <p>
-                          <strong className="text-brand-text">É seguro confirmar?</strong> Sim. O ZapScript funciona exatamente como o WhatsApp Web — é apenas um dispositivo adicional vinculado à sua conta. O alerta desaparece após a primeira conexão.
-                        </p>
-                        <p>
-                          <strong className="text-brand-text">Dica:</strong> Se preferir evitar o aviso, use <strong>Código por número</strong> (aba ao lado) — esse método não exibe o alerta.
+                        <p className="text-[10px] text-brand-muted mt-0.5 leading-relaxed">
+                          É normal — nossos servidores ficam nos EUA.
+                          Basta <strong className="text-brand-text">ignorar e confirmar</strong>.
+                          Para evitar o aviso, use o <strong className="text-brand-text">código por número</strong>.
                         </p>
                       </div>
-                    </details>
+                    </div>
                   </div>
 
+                  {/* QR */}
                   <div className="flex flex-col items-center justify-center bg-brand-elevated rounded-2xl p-5 gap-3">
                     {qrImage ? (
                       <>
                         <img src={qrImage} alt="QR Code WhatsApp" className="w-52 h-52 rounded-xl border-2 border-brand-primary/30" />
                         <div className="flex items-center gap-1.5 text-xs text-brand-muted">
                           <Spinner size={3} />
-                          Aguardando leitura do QR...
+                          Aguardando leitura do QR…
                         </div>
-                        <p className="text-[10px] text-brand-muted">O QR atualiza automaticamente a cada 20s</p>
+                        <p className="text-[10px] text-brand-muted">QR atualiza automaticamente a cada 20s</p>
                       </>
                     ) : (
                       <div className="flex flex-col items-center gap-3 py-6 text-brand-muted">
                         {qrLoading ? (
-                          <><Spinner size={8} /><p className="text-sm">Carregando QR Code... (pode levar até 15s)</p></>
+                          <><Spinner size={8} /><p className="text-sm">Carregando QR Code… (pode levar até 15s)</p></>
                         ) : (
                           <>
                             <p className="text-xs text-center">QR não disponível ainda.</p>
@@ -422,32 +433,38 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                     )}
                   </div>
 
-                  <div className="bg-brand-elevated rounded-2xl p-4 space-y-3">
-                    <p className="text-xs font-bold text-brand-text mb-3">Como conectar via QR Code:</p>
-                    <Step n={1} done={!!qrImage}>O QR Code aparece acima — aguarde carregar</Step>
+                  {/* Passos QR */}
+                  <div className="bg-brand-elevated rounded-2xl p-4 space-y-2.5">
+                    <p className="text-xs font-bold text-brand-text">Como conectar via QR Code:</p>
+                    <Step n={1} done={!!qrImage}>QR Code aparece acima — aguarde carregar</Step>
                     <Step n={2} done={false}>No celular, abra o <strong>WhatsApp</strong></Step>
-                    <Step n={3} done={false}>Toque nos <strong>3 pontos ⋮</strong> (Android) ou <strong>Ajustes ⚙️</strong> (iPhone)</Step>
-                    <Step n={4} done={false}>Selecione <strong>"Dispositivos conectados"</strong> → <strong>"Conectar dispositivo"</strong></Step>
-                    <Step n={5} done={false}>Aponte a câmera para o QR Code acima e confirme</Step>
+                    <Step n={3} done={false}>
+                      Toque em <strong>3 pontos ⋮</strong> (Android) ou <strong>Ajustes ⚙️</strong> (iPhone)
+                    </Step>
+                    <Step n={4} done={false}>
+                      Selecione <strong>"Dispositivos conectados"</strong> → <strong>"Conectar dispositivo"</strong>
+                    </Step>
+                    <Step n={5} done={false}>Aponte a câmera para o QR acima e confirme</Step>
+                  </div>
+
+                  {/* Dica mobile — só relevante no QR */}
+                  <div className="flex items-start gap-2 bg-blue-400/5 border border-blue-400/15 rounded-xl px-3 py-2.5">
+                    <span className="text-sm mt-0.5">📱</span>
+                    <p className="text-[11px] text-brand-muted leading-relaxed">
+                      <strong className="text-brand-text">No celular?</strong>{' '}
+                      Abra o ZapScript no computador para escanear o QR.
+                      No Android use <strong className="text-brand-text">tela dividida</strong>: browser no topo + WhatsApp embaixo.
+                    </p>
                   </div>
                 </>
               )}
 
-              {/* Dica: mobile */}
-              <div className="flex items-start gap-2 bg-blue-400/5 border border-blue-400/15 rounded-xl px-3 py-2.5">
-                <span className="text-base mt-0.5">📱</span>
-                <p className="text-[11px] text-brand-muted leading-relaxed">
-                  <strong className="text-brand-text">Está no celular?</strong> Abra o ZapScript em um computador para escanear o QR com mais facilidade.
-                  No Android, você também pode usar <strong className="text-brand-text">tela dividida</strong>: browser no topo + WhatsApp embaixo.
-                </p>
-              </div>
-
-              {/* Dica de segurança */}
-              <div className="flex items-start gap-2 bg-amber-400/5 border border-amber-400/15 rounded-xl px-3 py-2.5">
-                <span className="text-base mt-0.5">💡</span>
+              {/* Dica de segurança — sempre visível */}
+              <div className="flex items-start gap-2 bg-brand-elevated border border-brand-border/60 rounded-xl px-3 py-2.5">
+                <span className="text-sm mt-0.5">🔒</span>
                 <p className="text-[11px] text-brand-muted leading-relaxed">
                   O ZapScript funciona como um <strong className="text-brand-text">dispositivo adicional</strong> — igual ao WhatsApp Web.
-                  Seu WhatsApp permanece normal no celular.
+                  Seu WhatsApp permanece intacto no celular.
                 </p>
               </div>
             </>
