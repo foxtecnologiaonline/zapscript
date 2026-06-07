@@ -54,6 +54,6 @@ COPY --from=builder /app/apps/worker/node_modules/.prisma        ./apps/worker/n
 COPY --from=builder /app/apps/worker/node_modules/@prisma/client ./apps/worker/node_modules/@prisma/client
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD node -e "const Redis=require('ioredis');const r=new Redis(process.env.REDIS_URL||'redis://localhost:6379',{maxRetriesPerRequest:1});r.ping().then(()=>r.quit()).then(()=>process.exit(0)).catch(()=>process.exit(1))" || exit 1
+  CMD node -e "const Redis=require('/app/apps/worker/node_modules/ioredis');const r=new Redis(process.env.REDIS_URL||'redis://localhost:6379',{maxRetriesPerRequest:1});r.ping().then(()=>r.quit()).then(()=>process.exit(0)).catch(()=>process.exit(1))" || exit 1
 
 CMD ["node", "apps/worker/dist/index.js"]
