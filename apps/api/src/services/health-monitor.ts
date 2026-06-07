@@ -71,12 +71,12 @@ async function checkRedis(): Promise<CheckResult & { alertMsg?: string; suggesti
   try {
     await redis.ping();
     const latencyMs = Date.now() - t0;
-    const slow = latencyMs > 250;
+    const slow = latencyMs > 600; // Upstash free tier no US → Brasil: latência normal 150-400ms
     return {
       ok: true,
       latencyMs,
       alertMsg:   slow ? `⚠️ Redis lento: ${latencyMs}ms` : undefined,
-      suggestion: slow ? 'Redis (Upstash) com latência alta — verificar plano e região configurada' : undefined,
+      suggestion: slow ? 'Redis (Upstash) com latência muito alta — considerar plano pago ou região BR' : undefined,
     };
   } catch (e: any) {
     return {
@@ -160,16 +160,14 @@ async function checkWhatsApp(): Promise<
     }
 
     // Verificar mismatch DB vs Evolution real (apenas os "connected" no banco)
+    // Nota: mismatch é log-only — não vira alerta WhatsApp pois pode ser instabilidade momentânea
     const connectedNumbers = numbers.filter((n: any) => n.status === 'connected');
     for (const n of connectedNumbers) {
       try {
         const state = await getConnectionState(n.zapiInstanceId);
         if (state !== 'open') {
           mismatches.push({ id: n.id, phoneNumber: n.phoneNumber, evolutionState: state });
-          alertMsgs.push(
-            `⚠️ Número ${n.phoneNumber || n.id} — banco diz CONNECTED mas Evolution reportou "${state || 'null'}". ` +
-            `Pode ser instabilidade momentânea. Será resolvido automaticamente se persistir.`
-          );
+          // NÃO adiciona a alertMsgs — mismatch resolve via webhook connection.update automaticamente
           // NÃO desconectar automaticamente — desconexão real vem via webhook (connection.update)
         }
       } catch (e: any) {
@@ -177,11 +175,7 @@ async function checkWhatsApp(): Promise<
       }
     }
 
-    if (mismatches.length > 0) {
-      suggestions.push('Se o mismatch persistir nas próximas verificações, o número pode precisar ser reconectado manualmente');
-    }
-
-    return { ok: mismatches.length === 0, connected, mismatches, alertMsgs, suggestions };
+    return { ok: true, connected, mismatches, alertMsgs, suggestions };
   } catch (e: any) {
     return { ok: false, connected: 0, mismatches, error: e.message, alertMsgs: [`⚠️ Erro ao verificar WhatsApp: ${e.message}`], suggestions };
   }

@@ -108,7 +108,7 @@ export async function markChatAsUnread(
     );
 
     logger.info(`[Evolution] Conversa marcada como não lida: ${clean}`);
-  } catch (err: any) {
-    logger.warn(`[Evolution] Não foi possível marcar como não lido: ${err.message}`);
+  } catch {
+    // Silencioso — markChatAsUnread é best-effort, endpoint nem sempre suportado
   }
 }
