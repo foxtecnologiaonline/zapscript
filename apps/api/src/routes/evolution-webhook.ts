@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected } from '../services/whatsapp-notify';
 import { storeQr } from '../lib/qrStore';
 import { io } from '../index';
-import { getUserPlan } from '../lib/planGate';
+
 
 export default async function evolutionWebhookRoutes(app: FastifyInstance) {
 
@@ -202,10 +202,7 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
         const remotePhone  = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, '');
         if (!selfPhone || remotePhone !== selfPhone) return; // áudio enviado para outra pessoa — ignorar
 
-        const plan = await getUserPlan(selfNumber.userId);
-        if (plan !== 'executive') return; // Notas de Voz apenas no plano Executive
-
-        app.log.info({ instance: instName }, '[Evolution] 🎤 Nota pessoal de voz (Executive)');
+        app.log.info({ instance: instName }, '[Evolution] 🎤 Nota pessoal de voz');
 
         transcriptionQueue.add('transcribe-evolution', {
           userId:       selfNumber.userId,
