@@ -5,26 +5,25 @@ declare global {
 }
 
 // ── PgBouncer compatibility ─────────────────────────────────────────────────────
-// Supabase usa PgBouncer em modo transação (porta 6543). Prisma usa prepared
-// statements por padrão, o que causa "prepared statement does not exist" (PG-26000)
-// quando conexões são reutilizadas pelo pool. A flag ?pgbouncer=true desativa isso.
+// Supabase Pooler tem dois modos:
+//   • Transaction mode — porta 6543 — requer ?pgbouncer=true (sem prepared statements)
+//   • Session mode     — porta 5432 — compatível com Prisma nativo, conexões persistentes
 //
-// Garantimos aqui em código: se o DATABASE_URL não incluir a flag, adicionamos.
-// Isso evita que um env var mal configurado derrube o dashboard em produção.
+// Para servidores persistentes (Fastify/Node long-running), session mode é preferível:
+// mantém conexões abertas, elimina overhead de handshake por query, menor latência.
+// Só adicionamos pgbouncer=true se a URL usar a porta 6543 (transaction mode).
 function buildDatasourceUrl(): string | undefined {
   const url = process.env.DATABASE_URL;
   if (!url) return undefined;
-  if (url.includes('pgbouncer=true')) return url; // já OK
 
+  // Session mode (porta 5432 no pooler ou direct): não precisa de pgbouncer=true
+  const isSessionMode = !url.includes(':6543') && !url.includes('pgbouncer=true');
+  if (isSessionMode) return url;
+
+  // Transaction mode (porta 6543): garantir pgbouncer=true
+  if (url.includes('pgbouncer=true')) return url;
   const separator = url.includes('?') ? '&' : '?';
-  const patched = `${url}${separator}pgbouncer=true`;
-  if (process.env.NODE_ENV === 'production') {
-    console.warn(
-      '[Prisma] ⚠️  DATABASE_URL sem ?pgbouncer=true — adicionado automaticamente. ' +
-      'Adicione ?pgbouncer=true à URL do pooler Supabase (porta 6543) no Render para remover este aviso.'
-    );
-  }
-  return patched;
+  return `${url}${separator}pgbouncer=true`;
 }
 
 const datasourceUrl = buildDatasourceUrl();
