@@ -143,14 +143,16 @@ export async function setWebhook(name: string, webhookUrl: string): Promise<bool
       method:  'POST',
       headers: evolutionHeaders(),
       body: JSON.stringify({
-        url:      webhookUrl,
-        byEvents: false,
-        base64:   false,
-        events: [
-          'MESSAGES_UPSERT',
-          'CONNECTION_UPDATE',
-          'QRCODE_UPDATED',
-        ],
+        webhook: {
+          url:      webhookUrl,
+          byEvents: false,
+          base64:   false,
+          events: [
+            'MESSAGES_UPSERT',
+            'CONNECTION_UPDATE',
+            'QRCODE_UPDATED',
+          ],
+        },
       }),
       signal: AbortSignal.timeout(8_000),
     });
