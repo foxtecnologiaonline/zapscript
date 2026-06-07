@@ -1,0 +1,83 @@
+version: '3.9'
+
+# ── ZapScript — Produção (Vultr São Paulo) ────────────────────────────────────
+# Uso:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Pré-requisito: /opt/zapscript/.env preenchido
+
+services:
+
+  api:
+    image: ghcr.io/foxtecnologiaonline/zapscript-api:latest
+    container_name: zapscript-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3001"   # só loopback — Nginx faz o proxy externo
+    env_file: /opt/zapscript/.env
+    networks:
+      - zapscript
+    healthcheck:
+      test: ["CMD", "node", "-e",
+        "require('http').get('http://localhost:3001/health',(r)=>{process.exit(r.statusCode===200?0:1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  worker:
+    image: ghcr.io/foxtecnologiaonline/zapscript-worker:latest
+    container_name: zapscript-worker
+    restart: unless-stopped
+    env_file: /opt/zapscript/.env
+    environment:
+      API_URL: http://api:3001   # comunicação interna Docker
+    networks:
+      - zapscript
+    depends_on:
+      api:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  evolution:
+    image: atendai/evolution-api:latest
+    container_name: evolution-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"   # só loopback
+    environment:
+      SERVER_URL: https://api.zapscript.me
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      DATABASE_ENABLED: "false"
+      REDIS_ENABLED: "false"
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      DEL_INSTANCE: "false"
+      QRCODE_LIMIT: "10"
+    volumes:
+      - evolution_data:/evolution/instances
+    networks:
+      - zapscript
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
+
+volumes:
+  evolution_data:
+    driver: local
+
+networks:
+  zapscript:
+    driver: bridge

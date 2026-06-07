@@ -1,45 +1,65 @@
-name: Deploy to Render
+name: Build & Deploy → Vultr São Paulo
 
-# Dispara a cada push no master (branch real do projeto) e manualmente
 on:
   push:
-    branches: [ master ]
+    branches: [master]
     paths:
-      - 'apps/**'
-      - 'packages/**'
-      - 'render.yaml'
+      - 'apps/api/**'
+      - 'apps/worker/**'
+      - 'packages/database/**'
       - '.github/workflows/deploy.yml'
-  workflow_dispatch:   # Permite acionar manualmente pelo GitHub Actions UI
+  workflow_dispatch:
 
 jobs:
-  deploy-api:
-    name: Deploy API
+  build:
+    name: Build & Push Docker Images
     runs-on: ubuntu-latest
-    steps:
-      - name: Trigger Render deploy — API
-        # RENDER_DEPLOY_HOOK_API: GitHub → Settings → Secrets → Actions
-        # Valor: URL de deploy hook do serviço API no Render
-        # Render → zapscript-api → Settings → Deploy Hook → copiar URL
-        run: |
-          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_API }}" ]; then
-            echo "⚠️  RENDER_DEPLOY_HOOK_API não configurado. Pulando."
-          else
-            echo "🚀 Disparando deploy da API..."
-            curl --fail-with-body -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_API }}"
-            echo "✅ Deploy da API solicitado."
-          fi
+    permissions:
+      contents: read
+      packages: write
 
-  deploy-worker:
-    name: Deploy Worker
-    runs-on: ubuntu-latest
     steps:
-      - name: Trigger Render deploy — Worker
-        # RENDER_DEPLOY_HOOK_WORKER: mesma coisa para o serviço zapscript-worker
-        run: |
-          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_WORKER }}" ]; then
-            echo "⚠️  RENDER_DEPLOY_HOOK_WORKER não configurado. Pulando."
-          else
-            echo "🚀 Disparando deploy do Worker..."
-            curl --fail-with-body -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_WORKER }}"
-            echo "✅ Deploy do Worker solicitado."
-          fi
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push — API
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: ghcr.io/foxtecnologiaonline/zapscript-api:latest
+
+      - name: Build e push — Worker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/worker/Dockerfile
+          push: true
+          tags: ghcr.io/foxtecnologiaonline/zapscript-worker:latest
+
+  deploy:
+    name: Deploy Vultr São Paulo
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: SSH → pull e restart
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VULTR_HOST }}
+          username: root
+          key: ${{ secrets.VULTR_SSH_KEY }}
+          script: |
+            cd /opt/zapscript
+            docker compose pull api worker
+            docker compose up -d --no-deps api worker
+            docker image prune -f
+            echo "✅ Deploy $(date '+%Y-%m-%d %H:%M:%S BRT')"

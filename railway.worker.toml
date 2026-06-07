@@ -1,7 +1,0 @@
-[build]
-builder = "dockerfile"
-dockerfilePath = "apps/worker/Dockerfile"
-
-[deploy]
-startCommand = "node apps/worker/dist/index.js"
-restartPolicyType = "always"
