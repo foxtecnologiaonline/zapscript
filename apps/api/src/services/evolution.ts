@@ -144,6 +144,7 @@ export async function setWebhook(name: string, webhookUrl: string): Promise<bool
       headers: evolutionHeaders(),
       body: JSON.stringify({
         webhook: {
+          enabled:  true,
           url:      webhookUrl,
           byEvents: false,
           base64:   false,
