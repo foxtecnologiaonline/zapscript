@@ -512,12 +512,13 @@ export default function TranscricoesPage() {
   const [dateFrom, setDateFrom]             = useState('');
   const [dateTo, setDateTo]                 = useState('');
   const [sortOrder, setSortOrder]           = useState('date_desc');
-  const [filterSource, setFilterSource]     = useState('');
+  const [filterSource, setFilterSource]     = useState('whatsapp-evolution');
 
   /* — Page UI state — */
-  const [pageTab, setPageTab]                     = useState<'transcricoes' | 'notas' | 'uploads'>('transcricoes');
+  const [pageTab, setPageTab]                     = useState<'whatsapp' | 'enviados' | 'notas'>('whatsapp');
   const [showFilterDrawer, setShowFilterDrawer]   = useState(false);
   const [showSortMenu, setShowSortMenu]           = useState(false);
+  const [whatsappCount, setWhatsappCount]         = useState(0);
   const [voiceCount, setVoiceCount]               = useState(0);
   const [uploadCount, setUploadCount]             = useState(0);
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
@@ -568,6 +569,9 @@ export default function TranscricoesPage() {
       .then(s => { if (s.shouldShow) setNpsVisible(true); })
       .catch(() => null);
     // Badges de contagem para as tabs
+    api.get<{ items: any[]; total: number }>('/transcriptions?limit=1&source=whatsapp-evolution')
+      .then(r => setWhatsappCount(r.total || 0))
+      .catch(() => null);
     api.get<{ items: any[]; total: number }>('/transcriptions?limit=1&source=voice-note')
       .then(r => setVoiceCount(r.total || 0))
       .catch(() => null);
@@ -612,10 +616,13 @@ export default function TranscricoesPage() {
   }
 
   function clearFilters() {
+    const src = pageTab === 'whatsapp' ? 'whatsapp-evolution'
+              : pageTab === 'enviados' ? 'manual'
+              : 'voice-note';
     setSearch(''); setFilterTag(''); setFilterLang(''); setFilterContact('');
-    setDateFrom(''); setDateTo(''); setSortOrder('date_desc'); setFilterSource('');
+    setDateFrom(''); setDateTo(''); setSortOrder('date_desc'); setFilterSource(src);
     setOffset(0);
-    load('', 0, '', '', '', '', '', 'date_desc', '');
+    load('', 0, '', '', '', '', '', 'date_desc', src);
   }
 
   // Limpa filtros ativos mantendo tab e ordenação atuais
@@ -626,10 +633,12 @@ export default function TranscricoesPage() {
     load('', 0, '', '', '', '', '', sortOrder, filterSource);
   }
 
-  // Alterna entre abas Transcrições / Notas de Voz / Áudios Enviados
-  function switchPageTab(tab: 'transcricoes' | 'notas' | 'uploads') {
+  // Alterna entre abas WhatsApp / Enviados / Notas de Voz
+  function switchPageTab(tab: 'whatsapp' | 'enviados' | 'notas') {
     setPageTab(tab);
-    const src = tab === 'notas' ? 'voice-note' : tab === 'uploads' ? 'manual' : '';
+    const src = tab === 'whatsapp' ? 'whatsapp-evolution'
+              : tab === 'enviados' ? 'manual'
+              : 'voice-note';
     setFilterSource(src);
     setSearch('');
     setOffset(0);
@@ -870,9 +879,9 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
           <h1 className="text-xl sm:text-2xl font-bold" style={{ color: 'rgb(var(--color-text))' }}>Transcrições</h1>
           <p className="text-sm mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
             {loading ? 'Carregando…'
-              : pageTab === 'notas'    ? `${total.toLocaleString('pt-BR')} nota${total !== 1 ? 's' : ''} de voz`
-              : pageTab === 'uploads'  ? `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} enviado${total !== 1 ? 's' : ''}`
-              : `${total.toLocaleString('pt-BR')} transcrição${total !== 1 ? 'ões' : ''}`}
+              : pageTab === 'whatsapp' ? `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} do WhatsApp`
+              : pageTab === 'enviados' ? `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} enviado${total !== 1 ? 's' : ''}`
+              : `${total.toLocaleString('pt-BR')} nota${total !== 1 ? 's' : ''} de voz`}
           </p>
         </div>
         <button
@@ -899,7 +908,9 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
             <input
               className={`input pl-10 pr-4 py-3 w-full text-sm rounded-xl ${!canSearch ? 'opacity-60 cursor-not-allowed' : ''}`}
               placeholder={canSearch
-                ? (pageTab === 'notas' ? 'Buscar nota de voz...' : pageTab === 'uploads' ? 'Buscar por nome do arquivo ou texto…' : 'Buscar por contato, texto ou resumo…')
+                ? (pageTab === 'notas'    ? 'Buscar nota de voz…'
+                  : pageTab === 'enviados' ? 'Buscar por nome do arquivo ou texto…'
+                  : 'Buscar por contato, texto ou resumo…')
                 : '🔒 Busca disponível no plano Pro'}
               value={search}
               onChange={e => canSearch && setSearch(e.target.value)}
@@ -1095,12 +1106,33 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgb(var(--color-border))' }}>
         <button
           type="button"
-          onClick={() => switchPageTab('transcricoes')}
+          onClick={() => switchPageTab('whatsapp')}
           className="flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium transition-all"
-          style={pageTab === 'transcricoes'
+          style={pageTab === 'whatsapp'
             ? { background: 'rgb(var(--color-primary))', color: '#030d06' }
             : { color: 'rgb(var(--color-text-muted))' }}>
-          📋 Transcrições
+          💬 WhatsApp
+          {whatsappCount > 0 && pageTab !== 'whatsapp' && (
+            <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ background: 'rgba(13,150,104,.15)', color: 'rgb(var(--color-primary))' }}>
+              {whatsappCount}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => switchPageTab('enviados')}
+          className="flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium transition-all"
+          style={pageTab === 'enviados'
+            ? { background: 'rgb(var(--color-primary))', color: '#030d06' }
+            : { color: 'rgb(var(--color-text-muted))' }}>
+          📁 Enviados
+          {uploadCount > 0 && pageTab !== 'enviados' && (
+            <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ background: 'rgba(13,150,104,.15)', color: 'rgb(var(--color-primary))' }}>
+              {uploadCount}
+            </span>
+          )}
         </button>
         <button
           type="button"
@@ -1114,21 +1146,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
             <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
               style={{ background: 'rgba(13,150,104,.15)', color: 'rgb(var(--color-primary))' }}>
               {voiceCount}
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => switchPageTab('uploads')}
-          className="flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium transition-all"
-          style={pageTab === 'uploads'
-            ? { background: 'rgb(var(--color-primary))', color: '#030d06' }
-            : { color: 'rgb(var(--color-text-muted))' }}>
-          📁 Áudios Enviados
-          {uploadCount > 0 && pageTab !== 'uploads' && (
-            <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-              style={{ background: 'rgba(13,150,104,.15)', color: 'rgb(var(--color-primary))' }}>
-              {uploadCount}
             </span>
           )}
         </button>
@@ -1185,25 +1202,31 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
             <p className="font-semibold text-brand-text mb-1">
               {hasFilters
                 ? 'Nenhuma transcrição encontrada'
-                : pageTab === 'uploads' ? 'Nenhum áudio enviado ainda'
-                : pageTab === 'notas'   ? 'Nenhuma nota de voz ainda'
-                : 'Nenhuma transcrição ainda'}
+                : pageTab === 'whatsapp' ? 'Nenhum áudio do WhatsApp ainda'
+                : pageTab === 'enviados' ? 'Nenhum áudio enviado ainda'
+                : 'Nenhuma nota de voz ainda'}
             </p>
             <p className="text-sm text-brand-muted mb-5">
               {hasFilters
                 ? 'Tente ajustar os filtros ou limpar a busca.'
-                : pageTab === 'uploads'
-                  ? 'Envie um arquivo de áudio pelo site para transcrever.'
-                  : 'Envie um áudio do WhatsApp ou faça upload para começar.'
+                : pageTab === 'whatsapp'
+                  ? 'Conecte um número e envie um áudio no WhatsApp para transcrever automaticamente.'
+                  : pageTab === 'enviados'
+                    ? 'Envie um arquivo de áudio pelo site para transcrever.'
+                    : 'Use a seção Notas de Voz para gravar e transcrever mensagens.'
               }
             </p>
             {hasFilters ? (
               <button type="button" onClick={clearFilters} className="btn-ghost text-sm px-5 py-2.5">
                 Limpar filtros
               </button>
+            ) : pageTab === 'whatsapp' ? (
+              <a href="/dashboard/numeros" className="btn-primary text-sm px-6 py-2.5 inline-flex items-center gap-2">
+                💬 Conectar número
+              </a>
             ) : (
               <button type="button" onClick={() => setShowUpload(true)} className="btn-primary text-sm px-6 py-2.5">
-                {pageTab === 'uploads' ? '📁 Enviar primeiro áudio' : '🎙️ Enviar primeiro áudio'}
+                📁 Enviar áudio
               </button>
             )}
           </div>
