@@ -472,7 +472,7 @@ Gere apenas o documento, sem explicações adicionais.`;
   });
 
   // ── POST /transcriptions/voice-note — gravação do browser ────────
-  // Disponível para todos os planos com saldo.
+  // Exclusivo do plano Executive.
   // Após transcrição, envia resultado de volta ao número WhatsApp do próprio usuário (se conectado).
   app.post('/voice-note', {
     ...auth,
@@ -480,10 +480,16 @@ Gere apenas o documento, sem explicações adicionais.`;
   }, async (req: any, reply) => {
     const userId = req.user.sub;
 
+    // Verificar plano — exclusivo Executive
+    const plan = await getUserPlan(userId);
+    if (plan !== 'executive') {
+      return reply.code(403).send({ error: 'Notas de Voz são exclusivas do plano Executive.' });
+    }
+
     // Verificar saldo de minutos
     const balance = await prisma.minuteBalance.findUnique({ where: { userId } });
     if (!balance || balance.availableMinutes < 0.1) {
-      return reply.code(402).send({ error: 'Saldo de minutos insuficiente. Faça upgrade do plano.' });
+      return reply.code(402).send({ error: 'Saldo de minutos insuficiente.' });
     }
 
     // Receber arquivo via multipart

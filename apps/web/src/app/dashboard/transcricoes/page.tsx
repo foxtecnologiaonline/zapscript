@@ -1059,6 +1059,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   const canFilters      = PLAN_FILTERS.includes(planName);
   const canSearch       = PLAN_SEARCH.includes(planName);
   const canExport       = planName === 'executive';
+  const canVoiceNotes   = planName === 'executive';
   const hasFilters      = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource);
   const hasActiveFilters = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo);
   const tagsChanged     = JSON.stringify(editTags) !== JSON.stringify(selected?.tags || []);
@@ -1115,28 +1116,39 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         </div>
         {pageTab === 'notas' ? (
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => setShowVoiceRecorder(true)}
-              className="btn-primary text-sm px-4 py-2.5 flex items-center gap-2">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M12 2a3 3 0 013 3v7a3 3 0 01-6 0V5a3 3 0 013-3z"/>
-                <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/>
-              </svg>
-              <span className="hidden sm:inline">Gravar nota</span>
-              <span className="sm:hidden">Gravar</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowUpload(true)}
-              className="text-sm px-3 py-2.5 rounded-xl border flex items-center gap-1.5 flex-shrink-0 transition-colors"
-              style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}
-              title="Enviar arquivo de áudio">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-              <span className="hidden sm:inline text-xs">Upload</span>
-            </button>
+            {canVoiceNotes ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowVoiceRecorder(true)}
+                  className="btn-primary text-sm px-4 py-2.5 flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <path d="M12 2a3 3 0 013 3v7a3 3 0 01-6 0V5a3 3 0 013-3z"/>
+                    <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/>
+                  </svg>
+                  <span className="hidden sm:inline">Gravar nota</span>
+                  <span className="sm:hidden">Gravar</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowUpload(true)}
+                  className="text-sm px-3 py-2.5 rounded-xl border flex items-center gap-1.5 flex-shrink-0 transition-colors"
+                  style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}
+                  title="Enviar arquivo de áudio">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <span className="hidden sm:inline text-xs">Upload</span>
+                </button>
+              </>
+            ) : (
+              <a href="/dashboard/plano"
+                className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl border transition-colors flex-shrink-0"
+                style={{ borderColor: 'rgba(245,158,11,.35)', color: '#f59e0b', background: 'rgba(245,158,11,.07)' }}>
+                🔒
+                <span className="hidden sm:inline">Executive</span>
+              </a>
+            )}
           </div>
         ) : (
           <button
@@ -1398,7 +1410,13 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
             ? { background: 'rgb(var(--color-primary))', color: '#030d06' }
             : { color: 'rgb(var(--color-text-muted))' }}>
           🎙️ Notas de Voz
-          {voiceCount > 0 && pageTab !== 'notas' && (
+          {!canVoiceNotes && (
+            <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded"
+              style={{ background: 'rgba(245,158,11,.15)', color: '#f59e0b' }}>
+              Exec
+            </span>
+          )}
+          {canVoiceNotes && voiceCount > 0 && pageTab !== 'notas' && (
             <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
               style={{ background: 'rgba(13,150,104,.15)', color: 'rgb(var(--color-primary))' }}>
               {voiceCount}
@@ -1469,7 +1487,9 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                   ? 'Conecte um número e envie um áudio no WhatsApp para transcrever automaticamente.'
                   : pageTab === 'enviados'
                     ? 'Envie um arquivo de áudio pelo site para transcrever.'
-                    : 'Use a seção Notas de Voz para gravar e transcrever mensagens.'
+                    : canVoiceNotes
+                      ? 'Grave uma nota diretamente no browser. A transcrição é enviada ao seu WhatsApp.'
+                      : 'Grave áudios para si mesmo e receba a transcrição no WhatsApp.'
               }
             </p>
             {hasFilters ? (
@@ -1481,9 +1501,17 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                 💬 Conectar número
               </a>
             ) : pageTab === 'notas' ? (
-              <button type="button" onClick={() => setShowVoiceRecorder(true)} className="btn-primary text-sm px-6 py-2.5 flex items-center gap-2 mx-auto">
-                🎤 Gravar primeira nota
-              </button>
+              canVoiceNotes ? (
+                <button type="button" onClick={() => setShowVoiceRecorder(true)} className="btn-primary text-sm px-6 py-2.5 flex items-center gap-2 mx-auto">
+                  🎤 Gravar primeira nota
+                </button>
+              ) : (
+                <a href="/dashboard/plano"
+                  className="inline-flex items-center gap-2 text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors"
+                  style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>
+                  🔒 Disponível no plano Executive →
+                </a>
+              )
             ) : (
               <button type="button" onClick={() => setShowUpload(true)} className="btn-primary text-sm px-6 py-2.5">
                 📁 Enviar áudio
