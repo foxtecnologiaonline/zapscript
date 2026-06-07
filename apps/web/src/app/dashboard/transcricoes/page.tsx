@@ -515,10 +515,11 @@ export default function TranscricoesPage() {
   const [filterSource, setFilterSource]     = useState('');
 
   /* — Page UI state — */
-  const [pageTab, setPageTab]                     = useState<'transcricoes' | 'notas'>('transcricoes');
+  const [pageTab, setPageTab]                     = useState<'transcricoes' | 'notas' | 'uploads'>('transcricoes');
   const [showFilterDrawer, setShowFilterDrawer]   = useState(false);
   const [showSortMenu, setShowSortMenu]           = useState(false);
   const [voiceCount, setVoiceCount]               = useState(0);
+  const [uploadCount, setUploadCount]             = useState(0);
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
 
   /* — Detail modal state — */
@@ -566,9 +567,12 @@ export default function TranscricoesPage() {
     api.get<any>('/nps/status')
       .then(s => { if (s.shouldShow) setNpsVisible(true); })
       .catch(() => null);
-    // Badge de contagem para a tab Notas de Voz
+    // Badges de contagem para as tabs
     api.get<{ items: any[]; total: number }>('/transcriptions?limit=1&source=voice-note')
       .then(r => setVoiceCount(r.total || 0))
+      .catch(() => null);
+    api.get<{ items: any[]; total: number }>('/transcriptions?limit=1&source=manual')
+      .then(r => setUploadCount(r.total || 0))
       .catch(() => null);
   }, []);
 
@@ -622,10 +626,10 @@ export default function TranscricoesPage() {
     load('', 0, '', '', '', '', '', sortOrder, filterSource);
   }
 
-  // Alterna entre abas Transcrições / Notas de Voz
-  function switchPageTab(tab: 'transcricoes' | 'notas') {
+  // Alterna entre abas Transcrições / Notas de Voz / Áudios Enviados
+  function switchPageTab(tab: 'transcricoes' | 'notas' | 'uploads') {
     setPageTab(tab);
-    const src = tab === 'notas' ? 'voice-note' : '';
+    const src = tab === 'notas' ? 'voice-note' : tab === 'uploads' ? 'manual' : '';
     setFilterSource(src);
     setSearch('');
     setOffset(0);
@@ -866,7 +870,9 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
           <h1 className="text-xl sm:text-2xl font-bold" style={{ color: 'rgb(var(--color-text))' }}>Transcrições</h1>
           <p className="text-sm mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
             {loading ? 'Carregando…'
-              : `${total.toLocaleString('pt-BR')} ${pageTab === 'notas' ? `nota${total !== 1 ? 's' : ''}` : `transcrição${total !== 1 ? 'ões' : ''}`}`}
+              : pageTab === 'notas'    ? `${total.toLocaleString('pt-BR')} nota${total !== 1 ? 's' : ''} de voz`
+              : pageTab === 'uploads'  ? `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} enviado${total !== 1 ? 's' : ''}`
+              : `${total.toLocaleString('pt-BR')} transcrição${total !== 1 ? 'ões' : ''}`}
           </p>
         </div>
         <button
@@ -893,7 +899,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
             <input
               className={`input pl-10 pr-4 py-3 w-full text-sm rounded-xl ${!canSearch ? 'opacity-60 cursor-not-allowed' : ''}`}
               placeholder={canSearch
-                ? (pageTab === 'notas' ? 'Buscar nota de voz...' : 'Buscar por contato, texto ou resumo…')
+                ? (pageTab === 'notas' ? 'Buscar nota de voz...' : pageTab === 'uploads' ? 'Buscar por nome do arquivo ou texto…' : 'Buscar por contato, texto ou resumo…')
                 : '🔒 Busca disponível no plano Pro'}
               value={search}
               onChange={e => canSearch && setSearch(e.target.value)}
@@ -1111,6 +1117,21 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
             </span>
           )}
         </button>
+        <button
+          type="button"
+          onClick={() => switchPageTab('uploads')}
+          className="flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium transition-all"
+          style={pageTab === 'uploads'
+            ? { background: 'rgb(var(--color-primary))', color: '#030d06' }
+            : { color: 'rgb(var(--color-text-muted))' }}>
+          📁 Áudios Enviados
+          {uploadCount > 0 && pageTab !== 'uploads' && (
+            <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ background: 'rgba(13,150,104,.15)', color: 'rgb(var(--color-primary))' }}>
+              {uploadCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* ── FILTER DRAWER ───────────────────────────────────────────────── */}
@@ -1162,12 +1183,18 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               </svg>
             </div>
             <p className="font-semibold text-brand-text mb-1">
-              {hasFilters ? 'Nenhuma transcrição encontrada' : 'Nenhuma transcrição ainda'}
+              {hasFilters
+                ? 'Nenhuma transcrição encontrada'
+                : pageTab === 'uploads' ? 'Nenhum áudio enviado ainda'
+                : pageTab === 'notas'   ? 'Nenhuma nota de voz ainda'
+                : 'Nenhuma transcrição ainda'}
             </p>
             <p className="text-sm text-brand-muted mb-5">
               {hasFilters
                 ? 'Tente ajustar os filtros ou limpar a busca.'
-                : 'Envie um áudio do WhatsApp ou faça upload para começar.'
+                : pageTab === 'uploads'
+                  ? 'Envie um arquivo de áudio pelo site para transcrever.'
+                  : 'Envie um áudio do WhatsApp ou faça upload para começar.'
               }
             </p>
             {hasFilters ? (
@@ -1176,7 +1203,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               </button>
             ) : (
               <button type="button" onClick={() => setShowUpload(true)} className="btn-primary text-sm px-6 py-2.5">
-                🎙️ Enviar primeiro áudio
+                {pageTab === 'uploads' ? '📁 Enviar primeiro áudio' : '🎙️ Enviar primeiro áudio'}
               </button>
             )}
           </div>
