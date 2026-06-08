@@ -47,7 +47,8 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       planName:            sub?.plan.name  || 'free',
       planLabel:           sub?.plan.label || 'Free',
       planStatus:          sub?.status || 'active',
-      renewAt:             sub?.currentPeriodEnd?.toISOString() ?? null,
+      // Fallback: se currentPeriodEnd não estiver setado (ex.: tester/admin), usa balance.resetAt
+      renewAt:             sub?.currentPeriodEnd?.toISOString() ?? balance?.resetAt?.toISOString() ?? null,
       refCode:             user?.refCode ?? null,
     };
   });

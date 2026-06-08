@@ -523,19 +523,29 @@ function PlanoContent() {
             </span>
           </div>
 
-          {/* Data de renovação */}
-          {stats.renewAt && stats.planName !== 'free' && (
-            <div className="flex items-center gap-1.5 text-xs mb-4"
-              style={{ color: 'rgb(var(--color-text-muted))' }}>
-              <span>🔄</span>
-              <span>
-                Renova em{' '}
-                <strong style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                  {new Date(stats.renewAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                </strong>
-              </span>
-            </div>
-          )}
+          {/* Data de renovação + dias restantes */}
+          {stats.renewAt && stats.planName !== 'free' && (() => {
+            const daysLeft = Math.ceil((new Date(stats.renewAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            const urgent   = daysLeft <= 7;
+            return (
+              <div className="flex items-center gap-1.5 text-xs mb-4"
+                style={{ color: 'rgb(var(--color-text-muted))' }}>
+                <span>🔄</span>
+                <span>
+                  Renova em{' '}
+                  <strong style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                    {new Date(stats.renewAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                  </strong>
+                  {' · '}
+                  <span style={{ color: urgent ? '#f87171' : 'rgb(var(--color-text-muted))' }}>
+                    {daysLeft > 0
+                      ? `${daysLeft} dia${daysLeft !== 1 ? 's' : ''} restante${daysLeft !== 1 ? 's' : ''}`
+                      : 'Vence hoje'}
+                  </span>
+                </span>
+              </div>
+            );
+          })()}
 
           <div className="flex justify-between text-xs mb-2" style={{ color: 'rgb(var(--color-text-secondary))' }}>
             <span>Minutos usados este mês</span>
