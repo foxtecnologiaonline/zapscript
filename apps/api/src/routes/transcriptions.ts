@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
+import ws from 'ws';
 import { prisma } from '../lib/prisma';
 import { transcriptionQueue } from '../services/queue';
 import { decryptStr, decryptArr } from '../services/encryption';
@@ -13,7 +14,11 @@ function getSupabase() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
   if (!url || !key) return null;
-  return createClient(url, key);
+  // Node.js 20 não tem WebSocket nativo — passar ws como transport
+  return createClient(url, key, {
+    realtime: { transport: ws as any },
+    auth:     { persistSession: false, autoRefreshToken: false },
+  });
 }
 
 /**

@@ -4,6 +4,7 @@ import { Worker, Job } from 'bullmq';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
+import ws from 'ws';
 import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { convertToMp3 } from './services/audio';
@@ -22,7 +23,12 @@ function getSupabaseClient() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
   if (!url || !key) return null;
-  return createClient(url, key);
+  // Node.js 20 não tem WebSocket nativo — passar ws como transport
+  // Usamos Supabase apenas para Storage, Realtime é desabilitado
+  return createClient(url, key, {
+    realtime: { transport: ws as any },
+    auth:     { persistSession: false, autoRefreshToken: false },
+  });
 }
 
 /**
