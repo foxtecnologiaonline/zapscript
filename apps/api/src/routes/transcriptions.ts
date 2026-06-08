@@ -48,6 +48,142 @@ const PLAN_AI_FEAT = ['executive'];          // reply sugerida + doc (Executive)
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// ── Laudo Jurídico — HTML imprimível ─────────────────────────────────────────
+function buildJuridicalPdfHtml(t: any, transcriptText: string): string {
+  const createdAt = new Date(t.createdAt);
+  const dateStr   = createdAt.toLocaleString('pt-BR', {
+    day: '2-digit', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    timeZone: 'America/Sao_Paulo',
+  });
+  const totalSec  = Math.round(t.durationSec);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const durStr = h > 0 ? `${h}h ${m}min ${s}s` : `${m}min ${s}s`;
+
+  const LANG: Record<string, string> = {
+    pt: 'Português (Brasil)', 'pt-BR': 'Português (Brasil)',
+    en: 'Inglês (English)', es: 'Espanhol (Español)',
+    fr: 'Francês (Français)', de: 'Alemão (Deutsch)',
+    it: 'Italiano', ja: 'Japonês', zh: 'Mandarim',
+  };
+  const language = LANG[t.language] || t.language.toUpperCase();
+  const docId    = t.id.toUpperCase();
+  const shortId  = t.id.slice(0, 8).toUpperCase();
+
+  const esc = (v: string) => (v || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Highlight timestamps [MM:SS] e [HH:MM:SS] em verde
+  const body = esc(transcriptText)
+    .replace(/\[(\d{2}:\d{2}(?::\d{2})?)\]/g, '<span class="ts">[$1]</span>');
+
+  const now = new Date().toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    timeZone: 'America/Sao_Paulo',
+  });
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Laudo de Transcrição — ${shortId}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Times New Roman',Times,serif;font-size:12pt;line-height:1.55;color:#111;background:#fff;padding:2.5cm 3cm}
+.no-print{background:#0a5c3e;color:#fff;padding:10px 20px;margin:-2.5cm -3cm 2cm;font-family:Arial,sans-serif;font-size:11pt;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.no-print a{color:#6ee7b7;font-weight:bold;text-decoration:none;white-space:nowrap}
+.no-print a:hover{text-decoration:underline}
+.header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #0a5c3e;padding-bottom:12pt;margin-bottom:16pt}
+.brand{font-family:Arial,sans-serif}
+.brand-name{font-size:20pt;font-weight:900;color:#0a5c3e;letter-spacing:-1pt}
+.brand-name em{color:#333;font-style:normal}
+.brand-sub{font-size:8.5pt;color:#666;margin-top:2pt}
+.doc-ref{text-align:right;font-family:'Courier New',monospace;font-size:9pt;color:#555}
+.doc-ref strong{font-size:10pt;color:#111;display:block;letter-spacing:1pt}
+h1{font-family:Arial,sans-serif;font-size:13.5pt;font-weight:900;text-align:center;letter-spacing:2.5pt;text-transform:uppercase;margin-bottom:3pt}
+h2.sub{font-family:Arial,sans-serif;font-size:9.5pt;font-weight:400;text-align:center;color:#555;margin-bottom:18pt}
+hr.div{border:none;border-top:1px solid #ccc;margin:14pt 0}
+table.meta{width:100%;border-collapse:collapse;margin-bottom:16pt;font-family:Arial,sans-serif;font-size:10pt}
+table.meta td{padding:5pt 9pt;border:1px solid #ccc;vertical-align:top;line-height:1.45}
+table.meta td:first-child{background:#f3f3f3;font-weight:700;width:38%;font-size:9.5pt;color:#333}
+.box{font-family:Arial,sans-serif;font-size:9pt;color:#2c2c2c;border-left:4pt solid #0a5c3e;padding:9pt 13pt;margin-bottom:18pt;background:#f4fbf7;line-height:1.65}
+.box strong{color:#0a5c3e}
+.sec{font-family:Arial,sans-serif;font-size:9.5pt;font-weight:900;text-transform:uppercase;letter-spacing:1.5pt;border-bottom:1px solid #bbb;padding-bottom:4pt;margin-bottom:11pt}
+.transcript{font-family:'Courier New',monospace;font-size:10pt;line-height:2;white-space:pre-wrap;background:#fafafa;border:1px solid #ddd;padding:14pt 16pt}
+.ts{color:#0a5c3e;font-weight:700;letter-spacing:.5pt}
+.footer{margin-top:24pt;padding-top:9pt;border-top:1px solid #ccc;font-family:Arial,sans-serif;font-size:8.5pt;color:#888;display:flex;justify-content:space-between;gap:12px}
+.end{text-align:center;color:#ccc;font-size:8.5pt;font-family:Arial,sans-serif;margin-top:10pt;letter-spacing:2pt}
+@media print{
+  .no-print{display:none!important}
+  body{padding:2cm 2.5cm}
+  @page{margin:2cm 2.5cm;size:A4 portrait}
+}
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <span>📄 Pressione <strong>Ctrl+P</strong> (ou <strong>⌘P</strong>) → "Salvar como PDF" — ou clique ao lado</span>
+  <a href="javascript:window.print()">🖨️ Imprimir / Salvar PDF</a>
+</div>
+
+<div class="header">
+  <div class="brand">
+    <div class="brand-name">Zap<em>Script</em></div>
+    <div class="brand-sub">Plataforma de Transcrição Automática · zapscript.me</div>
+  </div>
+  <div class="doc-ref">
+    <strong>${shortId}</strong>
+    Protocolo do Documento
+  </div>
+</div>
+
+<h1>Laudo de Transcrição Literal de Áudio</h1>
+<h2 class="sub">Documento gerado eletronicamente para fins de arquivo, comprovação e uso probatório</h2>
+
+<hr class="div">
+
+<table class="meta">
+  <tr><td>Número do Protocolo</td><td><span style="font-family:monospace;font-size:10pt">${docId}</span></td></tr>
+  <tr><td>Data e Hora da Transcrição</td><td>${dateStr} (Horário de Brasília)</td></tr>
+  <tr><td>Duração Total do Áudio</td><td>${durStr}</td></tr>
+  <tr><td>Idioma Detectado</td><td>${language}</td></tr>
+  <tr><td>Origem</td><td>Upload manual — ZapScript Dashboard</td></tr>
+  <tr><td>Tecnologia</td><td>Whisper ASR — Groq whisper-large-v3-turbo (alta precisão)</td></tr>
+  <tr><td>Marcação Temporal</td><td>Por segmento de fala — formato [MM:SS] referenciado ao início do áudio</td></tr>
+  <tr><td>Emitido por</td><td>ZapScript — Plataforma de Transcrição Automática (zapscript.me)</td></tr>
+</table>
+
+<div class="box">
+  <strong>Declaração de Autenticidade:</strong> A presente transcrição foi produzida automaticamente pela plataforma
+  <strong>ZapScript</strong> por meio de modelo de reconhecimento de fala de nível profissional (Whisper / Groq),
+  reproduzindo fielmente o conteúdo auditivo do arquivo de origem.
+  As marcações temporais no formato <span style="font-family:monospace;color:#0a5c3e">[MM:SS]</span> localizam
+  cada segmento de fala no áudio de referência.
+  O documento possui protocolo único rastreável (<span style="font-family:monospace">${shortId}</span>).
+  Para uso em processos judiciais formais, recomenda-se cotejo com o arquivo de áudio original.
+</div>
+
+<div class="sec">Conteúdo Transcrito</div>
+<div class="transcript">${body}</div>
+
+<div class="footer">
+  <span>ZapScript — Transcrição Automática de Áudio · zapscript.me</span>
+  <span>Gerado em: ${now} (Horário de Brasília)</span>
+</div>
+<div class="end">· · · Fim do Documento · · ·</div>
+
+<script>
+const b = document.querySelector('.no-print');
+if (b) b.style.display = 'flex';
+</script>
+</body>
+</html>`;
+}
+
 export default async function transcriptionRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
 
@@ -448,6 +584,54 @@ Gere apenas o documento, sem explicações adicionais.`;
         data:  { tags: tags.map((t: string) => t.trim()) },
       });
       return { ...updated, tags: updated.tags };
+    }
+  );
+
+  // ── GET /transcriptions/:id/juridical-pdf ────────────────────────────
+  // Laudo jurídico em HTML imprimível (Ctrl+P → Salvar como PDF).
+  // Disponível para todos os planos que têm upload manual.
+  app.get<{ Params: { id: string } }>(
+    '/:id/juridical-pdf', auth, async (req: any, reply) => {
+      const userId = req.user.sub;
+      const t = await prisma.transcription.findFirst({
+        where: { id: req.params.id, userId, source: 'manual' },
+      });
+      if (!t) return reply.code(404).send({ error: 'Transcrição não encontrada (apenas uploads manuais)' });
+
+      const transcriptText = decryptStr(t.originalText);
+      const html = buildJuridicalPdfHtml(t, transcriptText);
+
+      reply
+        .header('Content-Type', 'text/html; charset=utf-8')
+        .header('Content-Disposition', `inline; filename="laudo-${t.id.slice(0, 8).toUpperCase()}.pdf"`);
+      return reply.send(html);
+    }
+  );
+
+  // ── GET /transcriptions/:id/audio-download ────────────────────────────
+  // Retorna signed URL para download do MP3 gerado no upload manual.
+  // Válido por 10 minutos.
+  app.get<{ Params: { id: string } }>(
+    '/:id/audio-download', auth, async (req: any, reply) => {
+      const userId = req.user.sub;
+      const t = await prisma.transcription.findFirst({
+        where: { id: req.params.id, userId, source: 'manual' },
+      });
+      if (!t) return reply.code(404).send({ error: 'Transcrição não encontrada' });
+
+      const sb = getSupabase();
+      if (!sb) return reply.code(503).send({ error: 'Storage não disponível' });
+
+      const audioPath = `${userId}/${t.id}.mp3`;
+      const { data, error } = await sb.storage
+        .from('audio-juridical')
+        .createSignedUrl(audioPath, 600); // 10 minutos
+
+      if (error || !data?.signedUrl) {
+        return reply.code(404).send({ error: 'Áudio não disponível para este registro.' });
+      }
+
+      return reply.redirect(data.signedUrl);
     }
   );
 

@@ -13,6 +13,7 @@ interface Transcription {
   language: string;
   tags: string[];
   createdAt: string;
+  source: string;  // 'whatsapp-evolution' | 'manual' | 'voice-note' | 'whatsapp-meta' | etc.
   number: { displayName: string | null; phoneNumber: string } | null;
 }
 
@@ -1044,6 +1045,58 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
     a.click(); URL.revokeObjectURL(a.href);
   }
 
+  /* ── Laudo Jurídico — Upload Manual ──────────────────────────────────── */
+
+  async function openJuridicalPdf(t: Transcription) {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('zs_token') : null;
+    const base  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const url   = `${base}/transcriptions/${t.id}/juridical-pdf`;
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) { alert('Laudo não disponível. Tente novamente.'); return; }
+      const html = await res.text();
+      const w = window.open('', '_blank');
+      if (w) { w.document.write(html); w.document.close(); }
+    } catch {
+      alert('Erro ao gerar laudo. Verifique sua conexão.');
+    }
+  }
+
+  async function downloadJuridicalAudio(t: Transcription) {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('zs_token') : null;
+    const base  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const url   = `${base}/transcriptions/${t.id}/audio-download`;
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        redirect: 'follow',
+      });
+      if (!res.ok) {
+        if (res.status === 404) {
+          alert('Áudio não disponível para download.\n\nNota: o áudio MP3 só é salvo em transcrições realizadas após a versão 2.4. Transcrições antigas não possuem o arquivo.');
+        } else {
+          alert('Erro ao baixar áudio. Tente novamente.');
+        }
+        return;
+      }
+      // Redireciona para signed URL — browser faz o download
+      const blob = await res.blob();
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob),
+        download: `audio-${t.id.slice(0, 8)}.mp3`,
+      });
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      alert('Erro ao baixar áudio. Verifique sua conexão.');
+    }
+  }
+
+  async function openJuridicalPdfAndDownloadAudio(t: Transcription) {
+    // Dispara ambos em paralelo — PDF abre em nova aba, áudio faz download
+    await Promise.allSettled([openJuridicalPdf(t), downloadJuridicalAudio(t)]);
+  }
+
   function downloadGeneratedDoc(t: Transcription) {
     if (!generatedDoc) return;
     const label = DOC_TYPES.find(d => d.value === generatedDoc.type)?.label || generatedDoc.type;
@@ -1842,10 +1895,35 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               {/* ── TAB: ORIGINAL TEXT ──────────────────────────────────── */}
               {activeTab === 'original' && (
                 <div>
+                  {/* Badge informativo para uploads manuais com marcação temporal */}
+                  {selected.source === 'manual' && /\[\d{2}:\d{2}/.test(selected.originalText) && (
+                    <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg"
+                      style={{ background: 'rgba(10,92,62,.08)', border: '1px solid rgba(10,92,62,.15)' }}>
+                      <span className="text-sm">⏱</span>
+                      <p className="text-[11px]" style={{ color: 'rgb(var(--color-primary))' }}>
+                        <strong>Transcrição com marcação temporal</strong> — cada linha mostra o instante [MM:SS] no áudio original.
+                      </p>
+                    </div>
+                  )}
                   <div className="bg-brand-elevated rounded-xl px-4 py-4 mb-3">
-                    <p className="text-sm text-brand-text-secondary leading-relaxed whitespace-pre-wrap">
-                      &ldquo;{selected.originalText}&rdquo;
-                    </p>
+                    {selected.source === 'manual' && /\[\d{2}:\d{2}/.test(selected.originalText) ? (
+                      /* Texto com timestamps destacados para uploads manuais */
+                      <pre className="text-sm leading-relaxed whitespace-pre-wrap font-mono"
+                        style={{ color: 'rgb(var(--color-text-secondary))' }}
+                        dangerouslySetInnerHTML={{
+                          __html: selected.originalText
+                            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                            .replace(
+                              /\[(\d{2}:\d{2}(?::\d{2})?)\]/g,
+                              '<span style="color:rgb(var(--color-primary));font-weight:700;letter-spacing:.3px">[$1]</span>'
+                            ),
+                        }}
+                      />
+                    ) : (
+                      <p className="text-sm text-brand-text-secondary leading-relaxed whitespace-pre-wrap">
+                        &ldquo;{selected.originalText}&rdquo;
+                      </p>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -1884,42 +1962,125 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
 
               {/* ── TAB: EXPORTAR ───────────────────────────────────────── */}
               {activeTab === 'exportar' && selected && (
-                planName === 'executive' ? (
-                  <div className="py-4">
-                    <p className="text-xs text-brand-muted mb-4">Exportar esta transcrição individualmente:</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { fn: () => exportSinglePdf(selected),  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
-                        { fn: () => exportSingleDocx(selected), icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
-                        { fn: () => exportSingleCsv(selected),  icon: '📊', label: 'CSV',  sub: 'Planilhas, dados'  },
-                        { fn: () => exportSingleXls(selected),  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
-                      ].map(({ fn, icon, label, sub }) => (
-                        <button key={label} type="button" onClick={fn}
-                          className="flex flex-col items-center gap-1.5 py-4 rounded-xl border border-brand-border/50 hover:border-brand-primary/40 hover:bg-brand-primary/5 transition-colors">
-                          <span className="text-xl">{icon}</span>
-                          <span className="text-sm font-semibold text-brand-text">{label}</span>
-                          <span className="text-[10px] text-brand-muted">{sub}</span>
+                <div className="py-4 space-y-5">
+
+                  {/* ── Seção: Laudo Jurídico (apenas upload manual) ──────── */}
+                  {selected.source === 'manual' && (
+                    <div>
+                      {/* Header da seção jurídica */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-base">⚖️</span>
+                        <div>
+                          <p className="text-xs font-semibold text-brand-text">Laudo Jurídico</p>
+                          <p className="text-[10px] text-brand-muted leading-tight">
+                            Transcrição literal com marcação temporal — aceita em processos legais
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Botão: PDF Jurídico */}
+                        <button
+                          type="button"
+                          onClick={() => openJuridicalPdf(selected)}
+                          className="flex flex-col items-center gap-1.5 py-4 rounded-xl transition-colors"
+                          style={{
+                            border: '1px solid rgba(10,92,62,.3)',
+                            background: 'rgba(10,92,62,.06)',
+                          }}
+                          onMouseEnter={e => {
+                            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(10,92,62,.12)';
+                          }}
+                          onMouseLeave={e => {
+                            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(10,92,62,.06)';
+                          }}>
+                          <span className="text-xl">📄</span>
+                          <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>PDF Jurídico</span>
+                          <span className="text-[10px] text-brand-muted">Laudo com timestamps</span>
                         </button>
-                      ))}
+
+                        {/* Botão: Áudio + PDF */}
+                        <button
+                          type="button"
+                          onClick={() => openJuridicalPdfAndDownloadAudio(selected)}
+                          className="flex flex-col items-center gap-1.5 py-4 rounded-xl transition-colors"
+                          style={{
+                            border: '1px solid rgba(10,92,62,.3)',
+                            background: 'rgba(10,92,62,.06)',
+                          }}
+                          onMouseEnter={e => {
+                            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(10,92,62,.12)';
+                          }}
+                          onMouseLeave={e => {
+                            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(10,92,62,.06)';
+                          }}>
+                          <span className="text-xl">🎵</span>
+                          <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>Áudio + PDF</span>
+                          <span className="text-[10px] text-brand-muted">MP3 + laudo juntos</span>
+                        </button>
+                      </div>
+
+                      {/* Nota informativa */}
+                      <div className="mt-2 px-3 py-2 rounded-lg"
+                        style={{ background: 'rgba(10,92,62,.05)', border: '1px solid rgba(10,92,62,.12)' }}>
+                        <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(var(--color-primary),.6)' }}>
+                          O laudo inclui: protocolo único, data/hora (horário de Brasília), tecnologia utilizada, declaração de autenticidade e transcrição literal com marcação <strong>[MM:SS]</strong>. O MP3 original fica armazenado para evidência.
+                        </p>
+                      </div>
+
+                      {/* Separador antes dos exports padrão (se Executive) */}
+                      {planName === 'executive' && (
+                        <div className="flex items-center gap-2 mt-5 mb-1">
+                          <div className="flex-1 h-px" style={{ background: 'rgba(var(--color-border),.4)' }} />
+                          <span className="text-[10px] text-brand-muted">Outros formatos</span>
+                          <div className="flex-1 h-px" style={{ background: 'rgba(var(--color-border),.4)' }} />
+                        </div>
+                      )}
                     </div>
-                    <p className="text-[10px] text-brand-muted mt-4 text-center">
-                      Para exportar todas as transcrições do mês, use o botão <b>Exportar</b> na lista.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <div className="text-3xl mb-3">🔒</div>
-                    <p className="font-semibold text-brand-text mb-1">Plano Executive</p>
-                    <p className="text-sm text-brand-muted mb-3 max-w-xs">
-                      Exporte em PDF, DOCX, CSV e XLS individualmente ou em massa.
-                    </p>
-                    <a href="/dashboard/plano"
-                      className="text-xs font-bold px-4 py-2 rounded-full"
-                      style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.25)' }}>
-                      Ver plano Executive →
-                    </a>
-                  </div>
-                )
+                  )}
+
+                  {/* ── Seção: Exports padrão (Executive) ────────────────── */}
+                  {planName === 'executive' ? (
+                    <div>
+                      {selected.source !== 'manual' && (
+                        <p className="text-xs text-brand-muted mb-4">Exportar esta transcrição individualmente:</p>
+                      )}
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { fn: () => exportSinglePdf(selected),  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
+                          { fn: () => exportSingleDocx(selected), icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
+                          { fn: () => exportSingleCsv(selected),  icon: '📊', label: 'CSV',  sub: 'Planilhas, dados'  },
+                          { fn: () => exportSingleXls(selected),  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
+                        ].map(({ fn, icon, label, sub }) => (
+                          <button key={label} type="button" onClick={fn}
+                            className="flex flex-col items-center gap-1.5 py-4 rounded-xl border border-brand-border/50 hover:border-brand-primary/40 hover:bg-brand-primary/5 transition-colors">
+                            <span className="text-xl">{icon}</span>
+                            <span className="text-sm font-semibold text-brand-text">{label}</span>
+                            <span className="text-[10px] text-brand-muted">{sub}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-brand-muted mt-4 text-center">
+                        Para exportar todas as transcrições do mês, use o botão <b>Exportar</b> na lista.
+                      </p>
+                    </div>
+                  ) : selected.source !== 'manual' ? (
+                    /* Upsell para não-Executive em transcrições não-manuais */
+                    <div className="flex flex-col items-center justify-center py-6 text-center">
+                      <div className="text-3xl mb-3">🔒</div>
+                      <p className="font-semibold text-brand-text mb-1">Plano Executive</p>
+                      <p className="text-sm text-brand-muted mb-3 max-w-xs">
+                        Exporte em PDF, DOCX, CSV e XLS individualmente ou em massa.
+                      </p>
+                      <a href="/dashboard/plano"
+                        className="text-xs font-bold px-4 py-2 rounded-full"
+                        style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.25)' }}>
+                        Ver plano Executive →
+                      </a>
+                    </div>
+                  ) : null}
+
+                </div>
               )}
             </div>
 

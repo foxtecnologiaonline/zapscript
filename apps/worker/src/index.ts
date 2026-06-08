@@ -77,8 +77,21 @@ const groq = process.env.GROQ_API_KEY
   ? new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' })
   : null;
 
-// Prompt que melhora acurácia do Whisper em PT-BR (termos comuns em áudios de WhatsApp)
+// Prompt padrão (WhatsApp — coloquial)
 const PT_BR_PROMPT = 'Transcrição em português brasileiro. Áudio de WhatsApp com linguagem coloquial.';
+
+// Prompt jurídico (upload manual — transcrição literal fiel)
+const PT_BR_JURIDICAL_PROMPT = 'Transcrição literal e fiel em português brasileiro. Reproduzir exatamente o que foi dito, sem correções ou omissões.';
+
+// Segmento de fala retornado pelo Whisper verbose_json
+interface WhisperSegment {
+  start:  number;
+  end:    number;
+  text:   string;
+}
+
+/** Bucket Supabase Storage para MP3s de laudos jurídicos (permanente) */
+const AUDIO_JURIDICAL_BUCKET = 'audio-juridical';
 
 // ─────────────────────────────────────────────────────────────────
 //  SHARED HELPERS — usados em ambos os pipelines
@@ -128,6 +141,94 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
   const language    = (result as any).language || 'pt';
   logger.info(`[Whisper] OpenAI whisper-1 — ${durationSec}s — lang:${language}`);
   return { text, durationSec, language };
+}
+
+/**
+ * Versão estendida de transcribeBuffer para uploads manuais (modo jurídico).
+ * Usa prompt de transcrição literal e retorna os segments do Whisper.
+ * Segments permitem gerar transcrições com marcação temporal precisa.
+ */
+async function transcribeBufferFull(mp3Buffer: Buffer): Promise<{
+  text: string;
+  durationSec: number;
+  language: string;
+  segments: WhisperSegment[];
+}> {
+  const audioFile = new File([mp3Buffer], 'audio.mp3', { type: 'audio/mpeg' });
+
+  const parseSegments = (raw: any[]): WhisperSegment[] =>
+    (raw || []).map(s => ({
+      start: typeof s.start === 'number' ? s.start : 0,
+      end:   typeof s.end   === 'number' ? s.end   : 0,
+      text:  (s.text || '').trim(),
+    })).filter(s => s.text.length > 0);
+
+  // ── Primário: Groq ────────────────────────────────────────────────────
+  if (groq) {
+    try {
+      const result = await groq.audio.transcriptions.create({
+        file:            audioFile,
+        model:           'whisper-large-v3-turbo',
+        language:        'pt',
+        response_format: 'verbose_json',
+        prompt:          PT_BR_JURIDICAL_PROMPT,
+      } as any);
+      const text = result.text?.trim();
+      if (!text) throw new Error('Groq Whisper retornou texto vazio');
+      const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
+      const language    = (result as any).language || 'pt';
+      const segments    = parseSegments((result as any).segments);
+      logger.info(`[Whisper] Groq juridical — ${durationSec}s — ${segments.length} segmentos`);
+      return { text, durationSec, language, segments };
+    } catch (err: any) {
+      logger.warn(`[Whisper] Groq juridical falhou, OpenAI fallback: ${err.message}`);
+    }
+  }
+
+  // ── Fallback: OpenAI whisper-1 ────────────────────────────────────────
+  const result = await openai.audio.transcriptions.create({
+    file:            audioFile,
+    model:           'whisper-1',
+    language:        'pt',
+    response_format: 'verbose_json',
+    prompt:          PT_BR_JURIDICAL_PROMPT,
+  } as any);
+  const text = result.text?.trim();
+  if (!text) throw new Error('Whisper retornou texto vazio');
+  const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
+  const language    = (result as any).language || 'pt';
+  const segments    = parseSegments((result as any).segments);
+  logger.info(`[Whisper] OpenAI juridical — ${durationSec}s — ${segments.length} segmentos`);
+  return { text, durationSec, language, segments };
+}
+
+/**
+ * Constrói transcrição com marcação temporal a partir dos segmentos do Whisper.
+ *
+ * Formato: "  N  [MM:SS] Texto do segmento."
+ * (N = número de linha, [HH:MM:SS] para áudios ≥ 1h)
+ *
+ * Cada linha representa um segmento de fala distinto — ideal para uso jurídico
+ * pois permite localizar qualquer trecho no áudio de referência pelo timestamp.
+ */
+function buildTimestampedTranscript(segments: WhisperSegment[], totalDuration: number): string {
+  const useHours = totalDuration >= 3600;
+
+  const fmt = (sec: number): string => {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    if (useHours) {
+      return `[${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}]`;
+    }
+    return `[${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}]`;
+  };
+
+  if (!segments.length) return '';
+
+  return segments
+    .map((seg, i) => `${String(i + 1).padStart(4, ' ')}  ${fmt(seg.start)}  ${seg.text}`)
+    .join('\n');
 }
 
 /**
@@ -599,12 +700,12 @@ function buildMessage(
 async function processManualJob(job: Job) {
   const { numberId, userId, audioBase64, storageKey, filename } = job.data;
 
-  log(job, `📥 Upload manual: ${filename}`);
+  log(job, `📥 Upload manual (jurídico): ${filename}`);
 
   let mp3Buffer: Buffer | null = null;
 
   try {
-    // PASSO 1: Verificar saldo (estimativa: cobra 1 minuto por arquivo)
+    // PASSO 1: Verificar saldo
     const balance = await prisma.minuteBalance.findUnique({ where: { userId } });
     if (!balance || balance.availableMinutes < 0.1) {
       log(job, '⚠️  Saldo insuficiente');
@@ -623,43 +724,66 @@ async function processManualJob(job: Job) {
       log(job, `✅ Buffer: ${(rawBuffer.length / 1024).toFixed(0)} KB`);
     }
 
-    // Limite absoluto de segurança antes da conversão (100MB)
     if (rawBuffer.length > 100 * 1024 * 1024) {
       log(job, `⚠️ Arquivo excede limite absoluto de 100MB`);
       return { skipped: true, reason: 'file_too_large' };
     }
 
-    // PASSO 3: Converter para MP3 (aceita OGG, MP3, M4A, WAV, WebM)
-    // FFmpeg comprime para 64kbps — arquivo de 50MB raw vira ~2-5MB MP3
+    // PASSO 3: Converter para MP3 64kbps
     log(job, '🔄 Convertendo para MP3...');
     mp3Buffer = await convertToMp3(rawBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
 
-    // PASSO 3.5: Validar MP3 resultante (Whisper aceita até 25MB)
-    const MAX_MP3_BYTES = 25 * 1024 * 1024;
-    if (mp3Buffer.length > MAX_MP3_BYTES) {
-      log(job, `⚠️ MP3 pós-conversão ainda grande: ${(mp3Buffer.length / 1024 / 1024).toFixed(1)}MB > 25MB`);
+    if (mp3Buffer.length > 25 * 1024 * 1024) {
+      log(job, `⚠️ MP3 pós-conversão > 25MB`);
       return { skipped: true, reason: 'file_too_large_after_compression' };
     }
 
-    // PASSO 4: Transcrever com Whisper (Groq primary / OpenAI fallback)
-    log(job, '🎙️  Whisper API (PT-BR)...');
-    const { text: originalText, durationSec, language: detectedLanguage } = await transcribeBuffer(mp3Buffer);
-    log(job, `✅ ${durationSec}s — lang:${detectedLanguage} — "${originalText.substring(0, 60)}..."`);
+    // PASSO 4: Transcrever em modo JURÍDICO (retorna segments com timestamps)
+    log(job, '🎙️  Whisper — modo jurídico com marcação temporal...');
+    const { text: rawText, durationSec, language: detectedLanguage, segments } =
+      await transcribeBufferFull(mp3Buffer);
+    log(job, `✅ ${durationSec}s — lang:${detectedLanguage} — ${segments.length} segmentos`);
 
-    // PASSO 5: Resumo com Claude (com tradução automática se idioma ≠ PT-BR)
+    // PASSO 5: Montar transcrição com marcação temporal [MM:SS] por segmento
+    const timestampedText = segments.length > 0
+      ? buildTimestampedTranscript(segments, durationSec)
+      : rawText; // fallback: texto puro se Whisper não retornar segmentos
+    log(job, `✅ Transcrição com ${segments.length} segmentos temporais`);
+
+    // PASSO 6: Resumo com Claude (gerado a partir do texto puro — sem os timestamps)
     log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(originalText, detectedLanguage);
+    const bullets = await generateBullets(rawText, detectedLanguage);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
-    // PASSO 6: Salvar e debitar (atomicamente) — duração real do Whisper
+    // PASSO 7: Salvar transcrição (originalText = texto com marcação temporal)
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId, numberId, contactPhone: 'manual',
-      durationSec, originalText, bullets, source: 'manual',
+      durationSec, originalText: timestampedText, bullets, source: 'manual',
     });
 
-    log(job, `✅ Upload manual concluído`);
+    // PASSO 8: Salvar MP3 permanente para download jurídico (best-effort)
+    // Caminho determinístico: audio-juridical/{userId}/{transcriptionId}.mp3
+    try {
+      const sb = getSupabaseClient();
+      if (sb && mp3Buffer) {
+        await sb.storage.createBucket(AUDIO_JURIDICAL_BUCKET, { public: false }).catch(() => null);
+        const audioPath = `${userId}/${transcription.id}.mp3`;
+        const { error: uploadErr } = await sb.storage
+          .from(AUDIO_JURIDICAL_BUCKET)
+          .upload(audioPath, mp3Buffer, { contentType: 'audio/mpeg', upsert: false });
+        if (uploadErr) {
+          log(job, `⚠️ Falha ao salvar MP3 jurídico: ${uploadErr.message}`);
+        } else {
+          log(job, `✅ MP3 jurídico salvo: ${AUDIO_JURIDICAL_BUCKET}/${audioPath}`);
+        }
+      }
+    } catch (audioSaveErr: any) {
+      log(job, `⚠️ Falha ao salvar MP3 jurídico (non-fatal): ${audioSaveErr.message}`);
+    }
+
+    log(job, `✅ Upload manual jurídico concluído — ${transcription.id}`);
     return { transcriptionId: transcription.id };
 
   } catch (err) {
@@ -667,7 +791,6 @@ async function processManualJob(job: Job) {
     throw err;
   } finally {
     mp3Buffer?.fill(0);
-    // Limpar arquivo temporário do Supabase Storage (sempre, mesmo em erro)
     if (storageKey) {
       await deleteFromStorage(storageKey);
       log(job, `🗑️ Temp storage removido: ${storageKey}`);
