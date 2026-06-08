@@ -311,11 +311,17 @@ export default async function authRoutes(app: FastifyInstance) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
-        // Detectar especificamente e-mail não confirmado (mensagem do Supabase)
-        const isUnconfirmed = error.message?.toLowerCase().includes('email not confirmed')
-          || error.message?.toLowerCase().includes('email_not_confirmed');
+        // Detectar e-mail não confirmado via error.code (novo comportamento Supabase ≥2.x)
+        // ou via message (comportamento antigo). Supabase agora retorna 'invalid_credentials'
+        // para email não confirmado (para evitar enumeração) — precisamos verificar via admin.
+        const errCode    = (error as any).code as string | undefined;
+        const errMessage = error.message?.toLowerCase() ?? '';
 
-        if (isUnconfirmed) {
+        const isUnconfirmedByCode = errCode === 'email_not_confirmed';
+        const isUnconfirmedByMsg  = errMessage.includes('email not confirmed')
+          || errMessage.includes('email_not_confirmed');
+
+        if (isUnconfirmedByCode || isUnconfirmedByMsg) {
           return reply.code(403).send({
             error: 'E-mail não confirmado. Verifique sua caixa de entrada ou solicite um novo link de ativação.',
             needsVerification: true,
@@ -323,7 +329,29 @@ export default async function authRoutes(app: FastifyInstance) {
           });
         }
 
-        logger.warn(`[Auth] Login falhou para ${email}: ${error.message}`);
+        // Supabase mudou comportamento: agora retorna 'invalid_credentials' TAMBÉM para
+        // usuários não-confirmados (evita enumeração). Usamos Prisma para distinguir:
+        // se o usuário existe localmente mas emailVerified=false → email não confirmado.
+        if (errCode === 'invalid_credentials' || errMessage.includes('invalid login credentials')) {
+          try {
+            const localUser = await prisma.user.findUnique({
+              where:  { email: email.toLowerCase() },
+              select: { emailVerified: true },
+            });
+            if (localUser && !localUser.emailVerified) {
+              logger.info(`[Auth] Login bloqueado — e-mail não confirmado (Prisma): ${email}`);
+              return reply.code(403).send({
+                error: 'E-mail não confirmado. Verifique sua caixa de entrada ou solicite um novo link de ativação.',
+                needsVerification: true,
+                code: 'EMAIL_NOT_CONFIRMED',
+              });
+            }
+          } catch (lookupErr: any) {
+            logger.warn(`[Auth] Falha no lookup Prisma para ${email}: ${lookupErr.message}`);
+          }
+        }
+
+        logger.warn(`[Auth] Login falhou para ${email}: code=${errCode} msg=${error.message}`);
         return reply.code(401).send({ error: 'Credenciais inválidas' });
       }
 
