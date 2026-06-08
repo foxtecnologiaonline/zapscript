@@ -1,9 +1,43 @@
 import { FastifyInstance } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
+import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../lib/prisma';
 import { transcriptionQueue } from '../services/queue';
 import { decryptStr, decryptArr } from '../services/encryption';
 import { getUserPlan, requirePlan } from '../lib/planGate';
+
+// ── Supabase Storage para áudios temporários ──────────────────────
+const AUDIO_TEMP_BUCKET = 'audio-temp';
+
+function getSupabase() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+}
+
+/**
+ * Faz upload do buffer de áudio para o Supabase Storage (bucket audio-temp).
+ * Retorna a storage key (caminho dentro do bucket).
+ * Usado para evitar o limite de 10MB do Upstash no payload dos jobs.
+ */
+async function uploadAudioToStorage(buffer: Buffer, userId: string, filename: string): Promise<string> {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error('Supabase não configurado (SUPABASE_URL / SUPABASE_SERVICE_KEY)');
+
+  const ext = filename.includes('.') ? filename.substring(filename.lastIndexOf('.')).toLowerCase() : '.bin';
+  const key = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
+
+  // Cria bucket se não existir (idempotente — ignora erro se já existe)
+  await supabase.storage.createBucket(AUDIO_TEMP_BUCKET, { public: false }).catch(() => null);
+
+  const { error } = await supabase.storage.from(AUDIO_TEMP_BUCKET).upload(key, buffer, {
+    contentType: 'application/octet-stream',
+    upsert: false,
+  });
+  if (error) throw new Error(`Supabase Storage upload falhou: ${error.message}`);
+  return key;
+}
 
 // Planos com acesso a cada feature
 const PLAN_SEARCH  = ['pro', 'executive'];
@@ -467,13 +501,27 @@ Gere apenas o documento, sem explicações adicionais.`;
       return reply.code(400).send({ error: 'Adicione ao menos um número WhatsApp no painel antes de enviar áudios manualmente.' });
     }
 
+    // ── Upload para Supabase Storage (evita limite 10MB do Upstash) ──
+    // Para arquivos grandes, armazenamos no Storage e passamos só a key.
+    // Fallback base64 apenas se Supabase não estiver configurado E arquivo < 7MB.
+    let storageKey: string | null = null;
+    try {
+      storageKey = await uploadAudioToStorage(buffer, userId, filename);
+    } catch (storErr: any) {
+      if (buffer.length > 7 * 1024 * 1024) {
+        // Arquivo grande E Supabase falhou → não conseguimos processar
+        return reply.code(500).send({ error: 'Erro ao armazenar áudio temporariamente. Tente novamente.' });
+      }
+      // Arquivo pequeno (<7MB) → fallback base64 (OK para Upstash)
+    }
+
     // Enfileirar job de transcrição manual
     await transcriptionQueue.add('transcribe-manual', {
       userId,
-      numberId:    number.id,
-      audioBase64: buffer.toString('base64'),
+      numberId: number.id,
       filename,
-      source:      'manual',
+      source:   'manual',
+      ...(storageKey ? { storageKey } : { audioBase64: buffer.toString('base64') }),
     }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } });
 
     return reply.code(202).send({ queued: true, message: 'Áudio enfileirado. A transcrição chegará em instantes.' });
@@ -488,10 +536,10 @@ Gere apenas o documento, sem explicações adicionais.`;
   }, async (req: any, reply) => {
     const userId = req.user.sub;
 
-    // Verificar plano — exclusivo Executive
+    // Verificar plano — Pro+ (Pro e Executive)
     const plan = await getUserPlan(userId);
-    if (plan !== 'executive') {
-      return reply.code(403).send({ error: 'Notas de Voz são exclusivas do plano Executive.' });
+    if (plan === 'free') {
+      return reply.code(403).send({ error: 'Notas de Voz estão disponíveis nos planos Pro e Executive.' });
     }
 
     // Verificar saldo de minutos
@@ -524,14 +572,24 @@ Gere apenas o documento, sem explicações adicionais.`;
     // Se não tem número conectado, aceita mesmo assim (salva sem envio WhatsApp)
     const fallbackNumber = number ?? await prisma.whatsappNumber.findFirst({ where: { userId } });
 
+    // Upload para Supabase Storage (evita limite 10MB do Upstash)
+    let vnStorageKey: string | null = null;
+    try {
+      vnStorageKey = await uploadAudioToStorage(buffer, userId, filename);
+    } catch (storErr: any) {
+      if (buffer.length > 7 * 1024 * 1024) {
+        return reply.code(500).send({ error: 'Erro ao armazenar nota de voz. Tente novamente.' });
+      }
+    }
+
     await transcriptionQueue.add('transcribe-voice-note', {
       userId,
       numberId:     fallbackNumber?.id,
       instanceName: number?.zapiInstanceId ?? null,
       selfPhone:    number?.phoneNumber    ?? null,
-      audioBase64:  buffer.toString('base64'),
       filename,
       source:       'voice-note',
+      ...(vnStorageKey ? { storageKey: vnStorageKey } : { audioBase64: buffer.toString('base64') }),
     }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } });
 
     return reply.code(202).send({ queued: true, message: 'Nota de voz enfileirada. A transcrição chegará em instantes.' });

@@ -196,10 +196,11 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       // Ignorar grupos
       if (remoteJid.includes('@g.us')) return;
 
-      // ── Notas Pessoais de Voz (Executive) ─────────────────────────────────
-      // Ativado SOMENTE quando o usuário envia um áudio para o próprio número
+      // ── Notas Pessoais de Voz (Pro+) ──────────────────────────────────────
+      // Ativado quando o usuário envia um áudio para o próprio número
       // (chat "Eu mesmo" / Saved Messages do WhatsApp).
       // Condição: fromMe=true E remoteJid == número próprio do usuário.
+      // Disponível para planos Pro e Executive.
       if (fromMe) {
         const isAudio = AUDIO_TYPES.has(messageType)
           || (messageType === 'documentMessage' && isAudioDocument(msg?.message?.documentMessage))
@@ -215,11 +216,11 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
         const remotePhone  = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, '');
         if (!selfPhone || remotePhone !== selfPhone) return; // áudio enviado para outra pessoa — ignorar
 
-        // Notas de Voz são exclusivas do plano Executive
+        // Notas de Voz disponíveis para Pro e Executive (não Free)
         const plan = await getUserPlan(selfNumber.userId);
-        if (plan !== 'executive') return;
+        if (plan === 'free') return;
 
-        app.log.info({ instance: instName }, '[Evolution] 🎤 Nota pessoal de voz (Executive)');
+        app.log.info({ instance: instName, plan }, '[Evolution] 🎤 Nota pessoal de voz (Pro+)');
 
         transcriptionQueue.add('transcribe-evolution', {
           userId:       selfNumber.userId,

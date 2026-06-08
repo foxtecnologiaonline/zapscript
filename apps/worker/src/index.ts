@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { Worker, Job } from 'bullmq';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+import { createClient } from '@supabase/supabase-js';
 import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { convertToMp3 } from './services/audio';
@@ -13,6 +14,43 @@ import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encry
 import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
+
+// ── Supabase Storage — download/delete de áudios temporários ─────────────────
+const AUDIO_TEMP_BUCKET = 'audio-temp';
+
+function getSupabaseClient() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+}
+
+/**
+ * Baixa o buffer de áudio do Supabase Storage usando a storage key.
+ * Chamado pelo worker quando o job contém `storageKey` em vez de `audioBase64`.
+ */
+async function downloadFromStorage(storageKey: string): Promise<Buffer> {
+  const sb = getSupabaseClient();
+  if (!sb) throw new Error('Supabase não configurado no worker (SUPABASE_URL / SUPABASE_SERVICE_KEY)');
+
+  const { data, error } = await sb.storage.from(AUDIO_TEMP_BUCKET).download(storageKey);
+  if (error) throw new Error(`Supabase Storage download falhou: ${error.message}`);
+
+  const arrayBuf = await data.arrayBuffer();
+  return Buffer.from(arrayBuf);
+}
+
+/**
+ * Remove arquivo temporário do Supabase Storage após processamento.
+ * Fire-and-forget — falha silenciosa para não afetar o pipeline.
+ */
+async function deleteFromStorage(storageKey: string): Promise<void> {
+  try {
+    const sb = getSupabaseClient();
+    if (!sb) return;
+    await sb.storage.from(AUDIO_TEMP_BUCKET).remove([storageKey]);
+  } catch { /* non-fatal */ }
+}
 
 /** Escapa HTML para templates de e-mail (C1 — evita HTML injection via nome do usuário) */
 function escHtml(s: string | null | undefined): string {
@@ -559,7 +597,7 @@ function buildMessage(
 //  PIPELINE B — Uploads manuais do dashboard (source: 'manual')
 // ─────────────────────────────────────────────────────────────────
 async function processManualJob(job: Job) {
-  const { numberId, userId, audioBase64, filename } = job.data;
+  const { numberId, userId, audioBase64, storageKey, filename } = job.data;
 
   log(job, `📥 Upload manual: ${filename}`);
 
@@ -573,10 +611,17 @@ async function processManualJob(job: Job) {
       return { skipped: true, reason: 'insufficient_balance' };
     }
 
-    // PASSO 2: Decodificar base64 → buffer
-    log(job, '📦 Decodificando arquivo...');
-    const rawBuffer = Buffer.from(audioBase64, 'base64');
-    log(job, `✅ Buffer: ${(rawBuffer.length / 1024).toFixed(0)} KB`);
+    // PASSO 2: Obter buffer — Supabase Storage (preferido) ou base64 (fallback)
+    let rawBuffer: Buffer;
+    if (storageKey) {
+      log(job, `☁️ Baixando do Supabase Storage: ${storageKey}`);
+      rawBuffer = await downloadFromStorage(storageKey);
+      log(job, `✅ Baixado: ${(rawBuffer.length / 1024).toFixed(0)} KB`);
+    } else {
+      log(job, '📦 Decodificando base64...');
+      rawBuffer = Buffer.from(audioBase64, 'base64');
+      log(job, `✅ Buffer: ${(rawBuffer.length / 1024).toFixed(0)} KB`);
+    }
 
     // Limite absoluto de segurança antes da conversão (100MB)
     if (rawBuffer.length > 100 * 1024 * 1024) {
@@ -622,6 +667,11 @@ async function processManualJob(job: Job) {
     throw err;
   } finally {
     mp3Buffer?.fill(0);
+    // Limpar arquivo temporário do Supabase Storage (sempre, mesmo em erro)
+    if (storageKey) {
+      await deleteFromStorage(storageKey);
+      log(job, `🗑️ Temp storage removido: ${storageKey}`);
+    }
   }
 }
 
@@ -805,7 +855,7 @@ async function processTwilioJob(job: Job) {
 //  Transcreve e envia resultado ao próprio número WhatsApp do usuário.
 // ─────────────────────────────────────────────────────────────────
 async function processVoiceNoteUploadJob(job: Job) {
-  const { userId, numberId, instanceName, selfPhone, audioBase64, filename } = job.data;
+  const { userId, numberId, instanceName, selfPhone, audioBase64, storageKey, filename } = job.data;
 
   log(job, `🎤 Nota de voz (browser): ${filename || 'nota'}`);
 
@@ -819,10 +869,17 @@ async function processVoiceNoteUploadJob(job: Job) {
       return { skipped: true, reason: 'insufficient_balance' };
     }
 
-    // PASSO 2: Decodificar base64 → buffer
-    log(job, '📦 Decodificando...');
-    const rawBuffer = Buffer.from(audioBase64, 'base64');
-    log(job, `✅ Buffer: ${(rawBuffer.length / 1024).toFixed(0)} KB`);
+    // PASSO 2: Obter buffer — Supabase Storage (preferido) ou base64 (fallback)
+    let rawBuffer: Buffer;
+    if (storageKey) {
+      log(job, `☁️ Baixando do Supabase Storage: ${storageKey}`);
+      rawBuffer = await downloadFromStorage(storageKey);
+      log(job, `✅ Baixado: ${(rawBuffer.length / 1024).toFixed(0)} KB`);
+    } else {
+      log(job, '📦 Decodificando base64...');
+      rawBuffer = Buffer.from(audioBase64, 'base64');
+      log(job, `✅ Buffer: ${(rawBuffer.length / 1024).toFixed(0)} KB`);
+    }
 
     if (rawBuffer.length > 100 * 1024 * 1024) {
       return { skipped: true, reason: 'file_too_large' };
@@ -907,6 +964,11 @@ async function processVoiceNoteUploadJob(job: Job) {
     throw err;
   } finally {
     mp3Buffer?.fill(0);
+    // Limpar arquivo temporário do Supabase Storage (sempre, mesmo em erro)
+    if (storageKey) {
+      await deleteFromStorage(storageKey);
+      log(job, `🗑️ Temp storage removido: ${storageKey}`);
+    }
   }
 }
 

@@ -254,7 +254,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                     </div>
                     <div>
                       <p className="text-xs font-bold text-brand-text">Conectar pelo número</p>
-                      <p className="text-[10px] text-brand-muted">Método recomendado — sem avisos do WhatsApp</p>
+                      <p className="text-[10px] text-brand-muted">Método recomendado — mais rápido e confiável</p>
                     </div>
                   </div>
 
@@ -276,6 +276,13 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                       <div className="flex items-center justify-center gap-1.5 text-xs text-brand-muted mt-4">
                         <Spinner size={3} />
                         Aguardando você digitar no WhatsApp…
+                      </div>
+                      {/* Aviso de localização — servidor nos EUA */}
+                      <div className="mt-4 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-left">
+                        <p className="text-[10px] text-amber-400/80 leading-relaxed">
+                          <strong className="text-amber-400">📍 O WhatsApp pode indicar "Boston, EUA"</strong> — é normal.
+                          Nossos servidores ficam nos EUA. Basta <strong>confirmar a conexão</strong> normalmente.
+                        </p>
                       </div>
                     </div>
                   ) : (

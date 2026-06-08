@@ -1069,7 +1069,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   const canFilters      = PLAN_FILTERS.includes(planName);
   const canSearch       = PLAN_SEARCH.includes(planName);
   const canExport       = planName === 'executive';
-  const canVoiceNotes   = planName === 'executive';
+  const canVoiceNotes   = planName === 'pro' || planName === 'executive';
   const hasFilters      = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource);
   const hasActiveFilters = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo);
   const tagsChanged     = JSON.stringify(editTags) !== JSON.stringify(selected?.tags || []);
@@ -1156,7 +1156,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                 className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl border transition-colors flex-shrink-0"
                 style={{ borderColor: 'rgba(245,158,11,.35)', color: '#f59e0b', background: 'rgba(245,158,11,.07)' }}>
                 🔒
-                <span className="hidden sm:inline">Executive</span>
+                <span className="hidden sm:inline">Pro</span>
               </a>
             )}
           </div>
@@ -1520,7 +1520,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                 <a href="/dashboard/plano"
                   className="inline-flex items-center gap-2 text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors"
                   style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>
-                  🔒 Disponível no plano Executive →
+                  🔒 Disponível no plano Pro →
                 </a>
               )
             ) : (
