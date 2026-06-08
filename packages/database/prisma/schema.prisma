@@ -13,7 +13,8 @@ model User {
   email                       String          @unique
   name                        String?
   phone                       String?                   // Celular de contato (opcional)
-  document                    String?         @unique   // CPF ou CNPJ
+  document                    String?                   // CPF/CNPJ (AES-256-GCM encrypted)
+  documentHash                String?         @unique   // HMAC-SHA256 blind index (busca de duplicata)
   emailVerified               Boolean         @default(false)
   refCode                     String          @unique @default(cuid())
   referredBy                  String?

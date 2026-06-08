@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
 import { logger } from '../lib/logger';
 import { validateRequest, registerSchema, loginSchema } from '../lib/validation';
+import { encryptStr, decryptStr, documentHash as computeDocHash } from '../services/encryption';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -532,7 +533,7 @@ export default async function authRoutes(app: FastifyInstance) {
   // ── GET /auth/me ──────────────────────────────────────────────────────────
   // C3: Retornar apenas campos necessários ao frontend (sem metadados internos de compliance)
   app.get('/me', { preHandler: [(app as any).authenticate] }, async (req: any) => {
-    return prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where:  { id: req.user.sub },
       select: {
         id:               true,
@@ -569,6 +570,9 @@ export default async function authRoutes(app: FastifyInstance) {
         },
       },
     });
+    if (!user) return null;
+    // C2: decriptar document (AES-256-GCM) antes de retornar ao frontend
+    return { ...user, document: decryptStr(user.document) || null };
   });
 
   // ── PUT /auth/profile ─────────────────────────────────────────────────────
@@ -602,14 +606,19 @@ export default async function authRoutes(app: FastifyInstance) {
           return reply.code(400).send({ error: 'CPF deve ter 11 dígitos, CNPJ deve ter 14 dígitos.' });
         }
 
-        // Verificar duplicata
-        const existing = await prisma.user.findFirst({ where: { document: clean, NOT: { id: userId } } });
+        // C2: Verificar duplicata via blind index HMAC (sem comparar plaintext no DB)
+        const hash = computeDocHash(clean);
+        const existing = await prisma.user.findFirst({ where: { documentHash: hash, NOT: { id: userId } } });
         if (existing) {
           return reply.code(400).send({ error: 'CPF/CNPJ já cadastrado em outra conta.' });
         }
 
-        const updated = await prisma.user.update({ where: { id: userId }, data: { document: clean } });
-        return { updated: true, user: updated };
+        // C2: Armazenar CPF/CNPJ criptografado (AES-256-GCM) + blind index (HMAC-SHA256)
+        const updated = await prisma.user.update({
+          where: { id: userId },
+          data:  { document: encryptStr(clean), documentHash: hash },
+        });
+        return { updated: true, user: { ...updated, document: clean } };
       }
 
       return { updated: false, user };

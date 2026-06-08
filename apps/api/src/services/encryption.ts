@@ -71,6 +71,15 @@ export function decryptStr(enc: string | null | undefined): string {
 }
 
 /**
+ * Blind index para CPF/CNPJ — HMAC-SHA256 determinístico com a chave AES.
+ * Permite busca de unicidade no DB sem armazenar o CPF em plaintext.
+ * Sempre produz o mesmo hash para o mesmo input (diferente do AES-GCM com IV aleatório).
+ */
+export function documentHash(cpfCnpj: string): string {
+  return crypto.createHmac('sha256', KEY).update(cpfCnpj).digest('hex');
+}
+
+/**
  * Decripta um array de strings criptografado por encryptArr no worker.
  * Retorna array vazio se falhar.
  */

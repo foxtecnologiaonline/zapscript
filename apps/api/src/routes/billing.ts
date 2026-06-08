@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
+import { decryptStr } from '../services/encryption';
 
 /** Escapa HTML para evitar injeção em templates de e-mail (C1) */
 function escHtml(s: string | null | undefined): string {
@@ -89,7 +90,8 @@ async function getOrCreateCustomer(user: {
   const existing = searchData?.data?.[0];
   if (existing?.id) return existing.id as string;
 
-  const doc = user.document?.replace(/\D/g, '') || undefined;
+  // C2: decriptar CPF/CNPJ (AES-256-GCM) antes de enviar ao Asaas
+  const doc = decryptStr(user.document)?.replace(/\D/g, '') || undefined;
   const createRes = await asaas('/customers', {
     method: 'POST',
     body: JSON.stringify({
@@ -214,7 +216,7 @@ function buildHolderInfo(user: any, billingAddress?: any) {
   return {
     name:          user.name || 'Usuário',
     email:         user.email,
-    cpfCnpj:       user.document?.replace(/\D/g, '') || undefined,
+    cpfCnpj:       decryptStr(user.document)?.replace(/\D/g, '') || undefined,
     postalCode:    billingAddress?.postalCode?.replace(/\D/g, '') || undefined,
     addressNumber: billingAddress?.addressNumber || undefined,
     mobilePhone:   user.phone?.replace(/\D/g, '') || undefined,
