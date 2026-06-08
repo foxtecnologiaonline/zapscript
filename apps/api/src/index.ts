@@ -395,13 +395,17 @@ async function runAutoMigrations() {
     `ALTER TABLE "UsageLog" ALTER COLUMN "transcriptionId" DROP NOT NULL`,
     `ALTER TABLE "UsageLog" DROP CONSTRAINT IF EXISTS "UsageLog_transcriptionId_fkey"`,
     `ALTER TABLE "UsageLog" ADD CONSTRAINT "UsageLog_transcriptionId_fkey" FOREIGN KEY ("transcriptionId") REFERENCES "Transcription"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+    // C2: Criptografia CPF/CNPJ — adiciona blind index documentHash e remove unique de document
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "documentHash" TEXT`,
+    `DROP INDEX IF EXISTS "User_document_key"`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "User_documentHash_key" ON "User"("documentHash")`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
       app.log.warn(`[AutoMigration] ${e.message}`)
     );
   }
-  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers)');
+  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt)');
 }
 
 async function start() {
