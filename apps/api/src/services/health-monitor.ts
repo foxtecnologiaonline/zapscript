@@ -48,12 +48,12 @@ async function checkDb(): Promise<CheckResult & { alertMsg?: string; suggestion?
   try {
     await prisma.$queryRaw`SELECT 1`;
     const latencyMs = Date.now() - t0;
-    const slow = latencyMs > 400;
+    const slow = latencyMs > 2000; // Alerta apenas quando realmente crítico (>2s)
     return {
       ok: true,
       latencyMs,
-      alertMsg:   slow ? `⚠️ Banco de dados lento: ${latencyMs}ms` : undefined,
-      suggestion: slow ? 'Latência alta no DB — verificar conexões ativas no Supabase/PgBouncer e índices de queries lentas' : undefined,
+      alertMsg:   slow ? `⚠️ Banco de dados muito lento: ${latencyMs}ms (>2s)` : undefined,
+      suggestion: slow ? `Latência crítica no DB (${latencyMs}ms) — verificar conexões ativas no Supabase, índices e load do servidor` : undefined,
     };
   } catch (e: any) {
     return {
