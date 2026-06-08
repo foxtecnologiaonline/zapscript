@@ -2,6 +2,14 @@ import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { logger } from '../lib/logger';
 
+// Suprime o aviso de eviction policy do BullMQ quando o Redis (Upstash free tier)
+// usa "optimistic-volatile" em vez de "noeviction". Não é um erro — é limitação do plano.
+const _origWarn = console.warn.bind(console);
+console.warn = (...args: any[]) => {
+  if (typeof args[0] === 'string' && args[0].includes('Eviction policy is')) return;
+  _origWarn(...args);
+};
+
 const redisUrl = process.env.REDIS_URL;
 
 if (!redisUrl) {

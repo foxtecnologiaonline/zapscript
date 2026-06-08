@@ -1,6 +1,14 @@
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
+// Suprime o aviso de eviction policy do BullMQ (Upstash free tier usa optimistic-volatile).
+// Não é um erro — é limitação conhecida do plano gratuito. Não afeta o funcionamento.
+const _origWarn = console.warn.bind(console);
+console.warn = (...args: any[]) => {
+  if (typeof args[0] === 'string' && args[0].includes('Eviction policy is')) return;
+  _origWarn(...args);
+};
+
 // ── Redis do worker com retry resiliente ──────────────────────────────────────
 export const redis = new Redis(process.env.REDIS_URL!, {
   maxRetriesPerRequest: null,  // obrigatório para BullMQ Worker

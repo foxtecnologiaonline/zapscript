@@ -295,7 +295,7 @@ app.register(import('./routes/evolution-webhook'), { prefix: '/webhook/evolution
 if (process.env.WHATSAPP_API_TOKEN) {
   app.log.info('✅ WhatsApp Cloud API webhook registrado com token');
 } else {
-  app.log.warn('⚠️ WHATSAPP_API_TOKEN não configurado - envio desabilitado, recebimento ativo');
+  app.log.info('ℹ️ WHATSAPP_API_TOKEN não configurado — usando Evolution API (esperado)');
 }
 
 app.get('/health', async (req, reply) => {
@@ -443,7 +443,7 @@ async function start() {
       app.log.info('✅ Usando WhatsApp Cloud API (Meta) oficial');
       // Não precisa reconectar sessões - webhook recebe mensagens automaticamente
     } else {
-      app.log.warn('⚠️ WHATSAPP_API_TOKEN não configurado');
+      app.log.info('ℹ️ WHATSAPP_API_TOKEN não configurado — modo Evolution API');
     }
 
     // Comentado: reconexão de Baileys já não é necessária

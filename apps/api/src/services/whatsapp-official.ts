@@ -34,7 +34,7 @@ class WhatsAppOfficialAPI {
     this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
 
     if (!this.apiToken || !this.phoneNumberId) {
-      logger.warn('[WhatsApp] ⚠️ Missing WHATSAPP_API_TOKEN or WHATSAPP_PHONE_NUMBER_ID');
+      logger.debug('[WhatsApp] WHATSAPP_API_TOKEN não configurado — usando Evolution API');
     }
   }
 
