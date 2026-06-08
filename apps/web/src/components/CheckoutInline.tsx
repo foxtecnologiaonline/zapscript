@@ -9,15 +9,20 @@ import { api } from '@/lib/api';
    ───────────────────────────────────────────────────────── */
 
 interface Props {
-  planName:      'pro' | 'executive';
-  planLabel:     string;
-  planPrice:     string;
-  planFeats:     string[];
-  isUpgrade?:    boolean;
-  billingCycle?: 'monthly' | 'yearly';
-  onSuccess:     (planName: string) => void;
-  onCancel:      () => void;
+  planName:   'pro' | 'executive';
+  planLabel:  string;
+  planPrice:  string;
+  planFeats:  string[];
+  isUpgrade?: boolean;
+  onSuccess:  (planName: string) => void;
+  onCancel:   () => void;
 }
+
+/* ── Preços anuais (10% off) ── */
+const CHECKOUT_YEARLY: Record<string, { annual: string; monthlyEq: string; annualNum: number }> = {
+  pro:       { annual: 'R$322,92', monthlyEq: 'R$26,91/mês', annualNum: 322.92 },
+  executive: { annual: 'R$538,92', monthlyEq: 'R$44,91/mês', annualNum: 538.92 },
+};
 
 type Method = 'pix' | 'pix_auto' | 'credit_card' | 'debit_card' | 'google_pay' | 'apple_pay' | 'paypal';
 
@@ -381,14 +386,19 @@ function normalizeApiError(err: any): string {
    Componente principal
    ══════════════════════════════════════════════════════ */
 export default function CheckoutInline({
-  planName, planLabel, planPrice, planFeats, isUpgrade = false, billingCycle = 'monthly', onSuccess, onCancel,
+  planName, planLabel, planPrice, planFeats, isUpgrade = false, onSuccess, onCancel,
 }: Props) {
-  const [method,      setMethod]      = useState<Method>('pix');
-  const [step,        setStep]        = useState<1|2|3>(2);
-  const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState('');
-  const [pixData,     setPixData]     = useState<PixData | null>(null);
-  const [hasApplePay, setHasApplePay] = useState(false);
+  const [method,        setMethod]        = useState<Method>('pix');
+  const [step,          setStep]          = useState<1|2|3>(2);
+  const [loading,       setLoading]       = useState(false);
+  const [error,         setError]         = useState('');
+  const [pixData,       setPixData]       = useState<PixData | null>(null);
+  const [hasApplePay,   setHasApplePay]   = useState(false);
+  const [billingCycle,  setBillingCycle]  = useState<'monthly' | 'yearly'>('monthly');
+
+  const isYearly    = billingCycle === 'yearly';
+  const yearlyInfo  = CHECKOUT_YEARLY[planName];
+  const displayPrice = isYearly ? yearlyInfo?.annual ?? planPrice : planPrice;
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'ApplePaySession' in window) {
@@ -549,19 +559,64 @@ export default function CheckoutInline({
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
-            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgb(var(--color-text-secondary))' }}>{planPrice}</span>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgb(var(--color-text-secondary))' }}>{displayPrice}</span>
             <span style={{ fontSize: 11, color: 'rgb(var(--color-text-muted))' }}>
-              {billingCycle === 'yearly' ? '/ano' : '/mês'}
+              {isYearly ? '/ano' : '/mês'}
             </span>
           </div>
-          {billingCycle === 'yearly' && (
-            <div style={{ fontSize: 9, color: 'rgb(var(--color-primary))', fontWeight: 700 }}>10% de desconto</div>
+          {isYearly && yearlyInfo && (
+            <div style={{ fontSize: 9, color: 'rgb(var(--color-primary))', fontWeight: 700 }}>
+              {yearlyInfo.monthlyEq} · 10% off
+            </div>
           )}
         </div>
       </div>
 
       {/* Checkout body */}
       <div style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.2)', borderTop: 'none', borderRadius: '0 0 14px 14px', overflow: 'hidden' }}>
+
+        {/* ── Toggle Mensal / Anual ── */}
+        <div style={{ padding: '14px 16px', background: 'rgba(var(--color-primary)/.04)', borderBottom: '1px solid rgba(var(--color-primary)/.12)' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'rgb(var(--color-text-muted))', marginBottom: 8 }}>
+            CICLO DE COBRANÇA
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {(['monthly', 'yearly'] as const).map(cycle => {
+              const active = billingCycle === cycle;
+              return (
+                <button
+                  key={cycle}
+                  onClick={() => { setBillingCycle(cycle); setPixData(null); setError(''); }}
+                  style={{
+                    flex: 1, padding: '9px 12px', borderRadius: 10, cursor: 'pointer',
+                    border: `1.5px solid ${active ? 'rgb(var(--color-primary))' : 'rgba(var(--color-primary)/.2)'}`,
+                    background: active ? 'rgba(var(--color-primary)/.12)' : 'transparent',
+                    color: active ? 'rgb(var(--color-primary))' : 'rgb(var(--color-text-muted))',
+                    boxShadow: active ? '0 0 0 2px rgba(var(--color-primary)/.15)' : 'none',
+                    transition: 'all 0.15s',
+                    textAlign: 'left' as const,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>
+                    {cycle === 'monthly' ? '📅 Mensal' : '📆 Anual'}
+                    {cycle === 'yearly' && (
+                      <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, background: 'rgb(var(--color-primary))', color: '#fff', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle' }}>
+                        10% OFF
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 10, color: active ? 'rgba(var(--color-primary)/.8)' : 'rgb(var(--color-text-muted))', marginTop: 2 }}>
+                    {cycle === 'monthly'
+                      ? planPrice + '/mês'
+                      : yearlyInfo
+                        ? `${yearlyInfo.monthlyEq} · ${yearlyInfo.annual}/ano`
+                        : planPrice + '/mês'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* ── Seletor de método ── */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, padding: '13px 15px', background: 'rgb(var(--color-bg))', borderBottom: '1px solid rgb(var(--color-border))' }}>

@@ -388,7 +388,6 @@ function PlanoContent() {
   const [stats, setStats]             = useState<Stats | null>(null);
   const [user, setUser]               = useState<User | null>(null);
   const [loading, setLoading]         = useState(true);
-  const [billingCycle, setBillingCycle]     = useState<'monthly' | 'yearly'>('monthly');
   const [checkoutPlan, setCheckoutPlan]     = useState<string | null>(null);  // plano com checkout inline aberto
   const [docModal, setDocModal]             = useState<string | null>(null);
   const [showTable, setShowTable]           = useState(false);
@@ -573,39 +572,6 @@ function PlanoContent() {
         {currentPlan === 'free' ? 'Fazer upgrade' : 'Mudar plano'}
       </h2>
 
-      {/* ── Toggle Mensal / Anual ── */}
-      <div className="flex items-center justify-center mb-5">
-        <div className="inline-flex p-1 rounded-xl gap-0.5"
-          style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgb(var(--color-border))' }}>
-          <button
-            onClick={() => setBillingCycle('monthly')}
-            className="px-5 py-1.5 rounded-lg text-xs font-bold transition-all"
-            style={{
-              background: billingCycle === 'monthly' ? 'rgb(var(--color-primary))' : 'transparent',
-              color: billingCycle === 'monthly' ? '#030d06' : 'rgb(var(--color-text-muted))',
-            }}>
-            Mensal
-          </button>
-          <button
-            onClick={() => setBillingCycle('yearly')}
-            className="inline-flex items-center gap-1.5 px-5 py-1.5 rounded-lg text-xs font-bold transition-all"
-            style={{
-              background: billingCycle === 'yearly' ? 'rgb(var(--color-primary))' : 'transparent',
-              color: billingCycle === 'yearly' ? '#030d06' : 'rgb(var(--color-text-muted))',
-            }}>
-            Anual
-            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black leading-none"
-              style={{
-                background: billingCycle === 'yearly' ? 'rgba(0,0,0,.18)' : 'rgba(16,185,129,.15)',
-                color: billingCycle === 'yearly' ? '#030d06' : 'rgb(var(--color-primary))',
-                border: billingCycle === 'yearly' ? 'none' : '1px solid rgba(16,185,129,.3)',
-              }}>
-              10% off
-            </span>
-          </button>
-        </div>
-      </div>
-
       <div className="flex flex-col gap-4">
         {displayedPlans.map(plan => {
           const isCurrent    = currentPlan === plan.name;
@@ -651,29 +617,10 @@ function PlanoContent() {
                   <div className="text-xs font-light mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.desc}</div>
                 </div>
                 <div className="text-right">
-                  {billingCycle === 'yearly' && plan.name !== 'free' && PLAN_PRICES_YEARLY[plan.name] ? (
-                    <>
-                      <div className="flex items-baseline gap-0.5 justify-end">
-                        <span className="font-display font-bold text-2xl tracking-tight" style={{ color: priceCol }}>
-                          {PLAN_PRICES_YEARLY[plan.name].monthlyDisplay}
-                        </span>
-                        <span className="text-xs font-light" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 justify-end mt-0.5">
-                        <span className="text-xs line-through" style={{ color: 'rgb(var(--color-text-muted))', opacity: 0.5 }}>{plan.price}</span>
-                        <span className="text-[10px] font-bold" style={{ color: 'rgb(var(--color-primary))' }}>
-                          {PLAN_PRICES_YEARLY[plan.name].annualDisplay}/ano
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-display font-bold text-2xl tracking-tight" style={{ color: priceCol }}>
-                        {plan.price}
-                      </span>
-                      <span className="text-xs font-light ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
-                    </>
-                  )}
+                  <span className="font-display font-bold text-2xl tracking-tight" style={{ color: priceCol }}>
+                    {plan.price}
+                  </span>
+                  <span className="text-xs font-light ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
                 </div>
               </div>
 
@@ -866,12 +813,6 @@ function PlanoContent() {
       {/* ── Checkout inline Asaas ── */}
       {checkoutPlan && checkoutPlan !== 'free' && (() => {
         const plan = PLANS.find(p => p.name === checkoutPlan) ?? { label: checkoutPlan, price: '', per: '/mês', feats: [] as string[] };
-        const isYearly  = billingCycle === 'yearly';
-        const yearlyInfo = PLAN_PRICES_YEARLY[checkoutPlan];
-        const checkoutPrice = isYearly && yearlyInfo ? yearlyInfo.annualDisplay : plan.price;
-        const checkoutSub   = isYearly && yearlyInfo
-          ? `${yearlyInfo.monthlyDisplay}/mês · Cobrado anualmente (${yearlyInfo.annualDisplay}) — 10% off`
-          : `${plan.price}/mês · Cancele a qualquer momento`;
         return (
           <div
             className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 overflow-y-auto"
@@ -886,24 +827,17 @@ function PlanoContent() {
                 <div className="mb-5">
                   <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
                     {currentPlan !== 'free' ? `Upgrade para ${plan.label}` : `Assinar plano ${plan.label}`}
-                    {isYearly && (
-                      <span className="ml-2 text-[10px] font-black px-2 py-0.5 rounded-full align-middle"
-                        style={{ background: 'rgba(16,185,129,.15)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.3)' }}>
-                        Anual
-                      </span>
-                    )}
                   </h3>
                   <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                    {checkoutSub}
+                    Escolha mensal ou anual · Cancele a qualquer momento
                   </p>
                 </div>
                 <CheckoutInline
                   planName={checkoutPlan as 'pro' | 'executive'}
                   planLabel={plan.label}
-                  planPrice={checkoutPrice}
+                  planPrice={plan.price}
                   planFeats={plan.feats}
                   isUpgrade={currentPlan !== 'free'}
-                  billingCycle={billingCycle}
                   onSuccess={handleCheckoutSuccess}
                   onCancel={() => setCheckoutPlan(null)}
                 />
