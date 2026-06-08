@@ -408,6 +408,63 @@ async function runAutoMigrations() {
   app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt)');
 }
 
+/**
+ * C2: Migração de dados — criptografa CPF/CNPJ plaintext existentes no banco.
+ * Idempotente: pula registros já criptografados (formato iv:tag:hex) ou sem CPF.
+ * Roda automaticamente no startup — não requer acesso manual ao servidor.
+ */
+async function runDocumentEncryptionMigration() {
+  try {
+    const { encryptStr, documentHash } = await import('./services/encryption');
+
+    // Buscar apenas usuários com document plaintext (documentHash null = ainda não migrado)
+    const users = await prisma.user.findMany({
+      where:  { document: { not: null }, documentHash: null },
+      select: { id: true, document: true },
+    });
+
+    if (users.length === 0) {
+      app.log.info('[DataMigration] ✅ CPF/CNPJ: nenhum registro plaintext pendente');
+      return;
+    }
+
+    app.log.info(`[DataMigration] 🔐 Criptografando ${users.length} CPF/CNPJ...`);
+    let ok = 0, fail = 0;
+
+    for (const user of users) {
+      try {
+        const clean = user.document!.replace(/\D/g, '');
+        const hash  = documentHash(clean);
+
+        // Verificar conflito de hash antes de salvar (CPF duplicado no banco legado)
+        const conflict = await prisma.user.findFirst({
+          where: { documentHash: hash, NOT: { id: user.id } },
+          select: { id: true },
+        });
+        if (conflict) {
+          app.log.warn(`[DataMigration] CPF duplicado (${user.id} x ${conflict.id}) — pulando`);
+          fail++;
+          continue;
+        }
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data:  { document: encryptStr(clean), documentHash: hash },
+        });
+        ok++;
+      } catch (e: any) {
+        app.log.warn(`[DataMigration] Erro em ${user.id}: ${e.message}`);
+        fail++;
+      }
+    }
+
+    app.log.info(`[DataMigration] ✅ CPF/CNPJ: ${ok} criptografados, ${fail} erros`);
+  } catch (e: any) {
+    // Não bloqueia o startup se a migração falhar
+    app.log.warn(`[DataMigration] Falha na migração de CPF/CNPJ: ${e.message}`);
+  }
+}
+
 async function start() {
   try {
     // ── C1: Validações de startup — fail-fast em produção ───────────────────
@@ -441,6 +498,7 @@ async function start() {
     }
 
     await runAutoMigrations();
+    await runDocumentEncryptionMigration();
     await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' });
 
     // ── Sync automático Evolution API — re-aplica webhooks e auto-reconecta ──
