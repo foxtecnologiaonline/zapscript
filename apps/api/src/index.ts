@@ -203,7 +203,7 @@ app.register(rateLimit, {
     retryAfter: context.after,
   }),
 } as any);
-app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB max
+app.register(multipart, { limits: { fileSize: 200 * 1024 * 1024 } }); // 200MB — Executive plan
 
 // ── Swagger/OpenAPI Documentation — somente em desenvolvimento ─────────────
 if (process.env.NODE_ENV !== 'production') {

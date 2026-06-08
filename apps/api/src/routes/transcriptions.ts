@@ -438,19 +438,27 @@ Gere apenas o documento, sem explicações adicionais.`;
       return reply.code(402).send({ error: 'Saldo de minutos insuficiente. Faça upgrade do plano.' });
     }
 
+    // Limite de tamanho por plano
+    const uploadPlan = await getUserPlan(userId);
+    const maxBytes   = uploadPlan === 'executive' ? 200 * 1024 * 1024 : 50 * 1024 * 1024;
+    const maxLabel   = uploadPlan === 'executive' ? '200MB' : '50MB';
+
     // Receber arquivo via multipart
     const data   = await req.file();
     if (!data) return reply.code(400).send({ error: 'Arquivo não recebido' });
 
     const buffer   = await data.toBuffer();
     const filename = data.filename || 'audio.ogg';
-    const allowed  = ['.ogg','.opus','.mp3','.mp4','.m4a','.wav','.webm','.mpeg'];
+    const allowed  = [
+      '.ogg','.opus','.mp3','.mp4','.m4a','.wav','.webm','.mpeg',
+      '.aac','.flac','.wma','.amr','.3gp','.aiff','.aif',
+    ];
     const ext      = filename.substring(filename.lastIndexOf('.')).toLowerCase();
     if (!allowed.includes(ext)) {
       return reply.code(400).send({ error: `Formato não suportado. Use: ${allowed.join(', ')}` });
     }
-    if (buffer.length > 50 * 1024 * 1024) {
-      return reply.code(400).send({ error: 'Arquivo muito grande. Máximo: 50MB' });
+    if (buffer.length > maxBytes) {
+      return reply.code(400).send({ error: `Arquivo muito grande. Máximo: ${maxLabel}` });
     }
 
     // Buscar qualquer número do usuário (conectado ou não) para associar a transcrição

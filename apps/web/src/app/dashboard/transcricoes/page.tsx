@@ -17,8 +17,13 @@ interface Transcription {
 }
 
 /* ─── Constants ───────────────────────────────────────────────────────────── */
-const ALLOWED_EXT = ['.ogg', '.opus', '.mp3', '.mp4', '.m4a', '.wav', '.webm', '.mpeg'];
-const MAX_MB      = 50;
+const ALLOWED_EXT = [
+  '.ogg', '.opus', '.mp3', '.mp4', '.m4a', '.wav', '.webm', '.mpeg',
+  '.aac', '.flac', '.wma', '.amr', '.3gp', '.aiff', '.aif',
+];
+// Limite de tamanho por plano (MB) — Executive tem 200MB, demais 50MB
+const MAX_MB_DEFAULT   = 50;
+const MAX_MB_EXECUTIVE = 200;
 const LIMIT       = 20;
 
 const PLAN_HISTORY = ['pro', 'executive'];
@@ -411,7 +416,8 @@ function VoiceRecorderModal({ onClose, onDone }: { onClose: () => void; onDone: 
 }
 
 /** Upload audio modal */
-function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function UploadModal({ onClose, onDone, planName }: { onClose: () => void; onDone: () => void; planName: string }) {
+  const maxMb                     = planName === 'executive' ? MAX_MB_EXECUTIVE : MAX_MB_DEFAULT;
   const inputRef                  = useRef<HTMLInputElement>(null);
   const [file, setFile]           = useState<File | null>(null);
   const [dragging, setDragging]   = useState(false);
@@ -422,7 +428,7 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   function validateFile(f: File): string {
     const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase();
     if (!ALLOWED_EXT.includes(ext)) return `Formato inválido. Use: ${ALLOWED_EXT.join(', ')}`;
-    if (f.size > MAX_MB * 1024 * 1024) return `Arquivo muito grande. Máximo ${MAX_MB}MB.`;
+    if (f.size > maxMb * 1024 * 1024) return `Arquivo muito grande. Máximo ${maxMb}MB.`;
     return '';
   }
 
@@ -469,7 +475,11 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
           <div>
             <h2 className="font-bold text-base text-brand-text">Enviar áudio para transcrição</h2>
             <p className="text-xs text-brand-muted mt-0.5">
-              OGG · OPUS · MP3 · MP4 · M4A · WAV · WEBM — máx. {MAX_MB}MB
+              MP3 · M4A · AAC · OGG · WAV · FLAC · WMA · AMR e outros — máx.{' '}
+              <span className={planName === 'executive' ? 'text-amber-400 font-semibold' : ''}>
+                {maxMb}MB
+              </span>
+              {planName === 'executive' && <span className="ml-1 text-[10px] text-amber-400/70">(Executive)</span>}
             </p>
           </div>
           <button
@@ -509,7 +519,7 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
               <input
                 ref={inputRef}
                 type="file"
-                accept={ALLOWED_EXT.join(',')}
+                accept={`audio/*,${ALLOWED_EXT.join(',')}`}
                 className="hidden"
                 onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f); }}
               />
@@ -1674,6 +1684,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         <UploadModal
           onClose={() => setShowUpload(false)}
           onDone={() => { setOffset(0); load('', 0, '', '', '', '', '', 'date_desc', filterSource); }}
+          planName={planName}
         />
       )}
 
