@@ -255,10 +255,12 @@ function parseFallbackLines(raw: string, count: number): string[] {
  * se houver saldo suficiente (previne race condition).
  */
 async function saveTranscription(params: {
-  userId: string; numberId: string; contactPhone: string; contactName?: string;
+  userId: string; numberId: string | null; contactPhone: string; contactName?: string;
   durationSec: number; originalText: string; bullets: string[]; source: string;
 }) {
   const { userId, numberId, contactPhone, contactName, durationSec, originalText, bullets, source } = params;
+  // Garantir que numberId seja null (não 'unknown') para não violar FK do Prisma
+  const safeNumberId = (numberId && numberId !== 'unknown') ? numberId : null;
   const durationMin = Math.round((durationSec / 60) * 100) / 100;
 
   const transcription = await prisma.$transaction(async (tx) => {
@@ -278,19 +280,26 @@ async function saveTranscription(params: {
     const encBullets = encryptArr(bullets);
 
     const transcr = await tx.transcription.create({
-      data: { userId, numberId, contactPhone: encPhone, contactName: contactName ?? null, durationSec, originalText: encText, summaryBullets: encBullets, confidenceScore: 99.0, source },
+      data: { userId, numberId: safeNumberId, contactPhone: encPhone, contactName: contactName ?? null, durationSec, originalText: encText, summaryBullets: encBullets, confidenceScore: 99.0, source },
     });
 
-    await Promise.all([
-      tx.whatsappNumber.update({
-        where: { id: numberId },
-        data:  { messageCount: { increment: 1 }, minutesUsed: { increment: durationMin }, lastMessageAt: new Date() },
-      }),
+    const ops: Promise<any>[] = [
       tx.usageLog.create({
         data: { userId, transcriptionId: transcr.id, minutesUsed: durationMin },
       }),
-    ]);
+    ];
 
+    // Atualizar contadores do número só se tivermos um numberId válido
+    if (safeNumberId) {
+      ops.push(
+        tx.whatsappNumber.update({
+          where: { id: safeNumberId },
+          data:  { messageCount: { increment: 1 }, minutesUsed: { increment: durationMin }, lastMessageAt: new Date() },
+        })
+      );
+    }
+
+    await Promise.all(ops);
     return transcr;
   });
 
@@ -847,7 +856,7 @@ async function processVoiceNoteUploadJob(job: Job) {
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId,
-      numberId:     whatsappNumber?.id ?? numberId ?? 'unknown',
+      numberId:     whatsappNumber?.id ?? (numberId && numberId !== 'unknown' ? numberId : null),
       contactPhone: 'voice-note',
       contactName:  'Nota de Voz',
       durationSec,
