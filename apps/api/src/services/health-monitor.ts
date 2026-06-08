@@ -241,11 +241,22 @@ async function notifyAdmin(report: HealthReport, log: any): Promise<void> {
   if (!adminPhone) return;
 
   try {
+    // ADMIN_INSTANCE_NAME: instância dedicada do admin (env var obrigatória para notificações).
+    // Sem ela, o sistema usaria o número de um cliente aleatório — não fazer isso.
+    const adminInstanceName = process.env.ADMIN_INSTANCE_NAME;
+    if (!adminInstanceName) {
+      log.warn('[Health Monitor] ADMIN_INSTANCE_NAME não configurado — notificação admin desabilitada');
+      return;
+    }
+
     const number = await (prisma as any).whatsappNumber.findFirst({
-      where:  { status: 'connected', zapiInstanceId: { not: null } },
+      where:  { zapiInstanceId: adminInstanceName, status: 'connected' },
       select: { zapiInstanceId: true },
     });
-    if (!number) return;
+    if (!number) {
+      log.warn(`[Health Monitor] Instância admin "${adminInstanceName}" não encontrada ou desconectada`);
+      return;
+    }
 
     const icon = report.status === 'critical' ? '🔴' : '⚠️';
     const lines = [
