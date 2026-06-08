@@ -891,6 +891,81 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // POST /admin/tickets/:id/reply — responder ticket por e-mail e fechar
+  app.post<{ Params: { id: string }; Body: { message: string; close?: boolean } }>(
+    '/tickets/:id/reply',
+    { preHandler: [adminAuth], schema: { body: { type: 'object', required: ['message'] } } },
+    async (req, reply) => {
+      const { id }      = req.params;
+      const { message, close = true } = req.body;
+      if (!message?.trim()) return reply.code(400).send({ error: 'Mensagem é obrigatória.' });
+
+      const ticket = await prisma.supportTicket.findUnique({ where: { id } });
+      if (!ticket) return reply.code(404).send({ error: 'Ticket não encontrado.' });
+
+      try {
+        await sendEmail(
+          ticket.email,
+          `Re: [Suporte ZapScript] ${ticket.description.slice(0, 60)}`,
+          `<p>Olá, <strong>${ticket.name}</strong>!</p>
+<p>A equipe ZapScript respondeu ao seu chamado:</p>
+<blockquote style="border-left:3px solid #10b981;padding:12px 16px;background:#f0fdf4;color:#065f46;margin:16px 0">
+  ${message.replace(/\n/g, '<br>')}
+</blockquote>
+<p style="color:#6b7280;font-size:12px">
+  Sua mensagem original: <em>${ticket.description.slice(0, 200)}${ticket.description.length > 200 ? '…' : ''}</em>
+</p>
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0">
+<p style="color:#9ca3af;font-size:12px">
+  ZapScript Suporte · <a href="https://zapscript.me" style="color:#10b981">zapscript.me</a>
+</p>`,
+        );
+      } catch (err: any) {
+        app.log.error({ ticketId: id, err: err.message }, '[Admin] Erro ao enviar e-mail de resposta');
+        return reply.code(502).send({ error: `Falha ao enviar e-mail: ${err.message}` });
+      }
+
+      const newStatus = close ? 'closed' : 'in_progress';
+      const updated = await prisma.supportTicket.update({ where: { id }, data: { status: newStatus } });
+      return { ok: true, status: newStatus, ticket: updated };
+    }
+  );
+
+  // POST /admin/users/:id/anonymize — anonimizar dados do usuário (LGPD)
+  app.post<{ Params: { id: string } }>(
+    '/users/:id/anonymize',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { id } = req.params;
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+      if (user.pseudonymizedAt) return reply.code(409).send({ error: 'Usuário já foi anonimizado.' });
+
+      const anonId   = `anon_${id.slice(0, 8)}`;
+      const anonEmail = `${anonId}@deleted.local`;
+
+      await prisma.user.update({
+        where: { id },
+        data:  {
+          name:              '[Removido]',
+          email:             anonEmail,
+          document:          null,
+          phone:             null,
+          pseudonymizedAt:   new Date(),
+          deletedAt:         user.deletedAt ?? null,
+        },
+      });
+
+      // Supabase Auth: desabilitar conta
+      try {
+        await (app as any).supabase?.auth?.admin?.updateUserById?.(id, { ban_duration: '87600h' });
+      } catch {}
+
+      app.log.info({ adminAction: 'anonymize', userId: id }, '[Admin] Usuário anonimizado (LGPD)');
+      return { ok: true, message: `Dados de ${id} anonimizados com sucesso.` };
+    }
+  );
+
   // GET /admin/errors — log de erros do sistema
   app.get<{ Querystring: { limit?: string } }>(
     '/errors',
@@ -1525,7 +1600,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       const { userIds, action, value } = req.body;
       if (!Array.isArray(userIds) || userIds.length === 0) return reply.code(400).send({ error: 'userIds é obrigatório.' });
       if (userIds.length > 100)  return reply.code(400).send({ error: 'Máximo 100 usuários por ação em lote.' });
-      const allowed = ['add-minutes', 'set-plan', 'ban', 'unban'];
+      const allowed = ['add-minutes', 'set-plan', 'ban', 'unban', 'anonymize', 'export-data'];
       if (!allowed.includes(action)) return reply.code(400).send({ error: `Ação inválida. Use: ${allowed.join(', ')}` });
 
       let affected = 0;
@@ -1566,6 +1641,19 @@ export default async function adminRoutes(app: FastifyInstance) {
 
           } else if (action === 'unban') {
             await prisma.user.update({ where: { id: userId }, data: { deletedAt: null } });
+
+          } else if (action === 'anonymize') {
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            if (!user) throw new Error('Usuário não encontrado');
+            if (user.pseudonymizedAt) throw new Error('Já anonimizado');
+            await prisma.user.update({
+              where: { id: userId },
+              data:  { name: '[Removido]', email: `anon_${userId.slice(0,8)}@deleted.local`, document: null, pseudonymizedAt: new Date() },
+            });
+
+          } else if (action === 'export-data') {
+            // Log da solicitação — operacional LGPD
+            app.log.info({ adminAction: 'lgpd-export-request', userId }, '[Admin] Solicitação de exportação LGPD registrada');
           }
           affected++;
         } catch (e: any) {

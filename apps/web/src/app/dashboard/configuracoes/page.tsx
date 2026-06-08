@@ -107,7 +107,7 @@ export default function ConfiguracoesPage() {
         <div className="card rounded-2xl p-6 mb-5">
           <h2 className="font-bold text-sm mb-1 text-brand-text">Indicar Amigos</h2>
           <p className="text-xs text-brand-muted mb-3">
-            Compartilhe seu link. Quando alguém se cadastrar, vocês dois ganham <strong className="text-brand-primary">+15 minutos</strong> de bônus.
+            Compartilhe seu link. Quando alguém se cadastrar, vocês dois ganham <strong className="text-brand-primary">+10 minutos</strong> de bônus.
           </p>
           <div className="flex gap-2">
             <input

@@ -9,7 +9,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     const today  = new Date(); today.setHours(0, 0, 0, 0);
     const month  = new Date(); month.setDate(1); month.setHours(0, 0, 0, 0);
 
-    const [todayCount, monthCount, totalCount, balance, activeNumbers, avgConf, sub] = await Promise.all([
+    const [todayCount, monthCount, totalCount, balance, activeNumbers, avgConf, sub, user] = await Promise.all([
       prisma.transcription.count({ where: { userId, createdAt: { gte: today } } }),
       prisma.transcription.count({ where: { userId, createdAt: { gte: month } } }),
       prisma.transcription.count({ where: { userId } }),
@@ -23,6 +23,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
         where:   { userId },
         include: { plan: true },
       }),
+      prisma.user.findUnique({ where: { id: userId }, select: { refCode: true } }),
     ]);
 
     const minutesTotal  = sub?.plan.minutesPerMonth || 0;
@@ -46,6 +47,8 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       planName:            sub?.plan.name  || 'free',
       planLabel:           sub?.plan.label || 'Free',
       planStatus:          sub?.status || 'active',
+      renewAt:             sub?.currentPeriodEnd?.toISOString() ?? null,
+      refCode:             user?.refCode ?? null,
     };
   });
 }

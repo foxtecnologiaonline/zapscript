@@ -51,8 +51,9 @@ async function markProcessed(paymentId: string): Promise<void> {
 }
 
 /* ── Preços ── */
-const PLAN_PRICES: Record<string, number> = { pro: 29.90, executive: 49.90 };
-const PLAN_LABELS: Record<string, string>  = { pro: 'Pro', executive: 'Executive' };
+const PLAN_PRICES:        Record<string, number> = { pro: 29.90,  executive: 49.90  };
+const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 322.92, executive: 538.92 }; // x12 com 10% off
+const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive' };
 
 /* ── Data de hoje no formato Asaas (YYYY-MM-DD) ── */
 function todayStr(): string {
@@ -63,7 +64,7 @@ function todayStr(): string {
    Formato:  "<userId>|<planName>"           — assinatura normal
              "<userId>|<planName>|upgrade"   — cobrança de proration upgrade
 */
-function encodeRef(userId: string, planName: string, type?: 'upgrade'): string {
+function encodeRef(userId: string, planName: string, type?: 'upgrade' | 'yearly'): string {
   return type ? `${userId}|${planName}|${type}` : `${userId}|${planName}`;
 }
 function decodeRef(ref: string | undefined): { userId: string; planName: string; type?: string } | null {
@@ -108,6 +109,7 @@ async function activatePlan(userId: string, planName: string, opts: {
   asaasCustomerId?:     string | null;
   paymentMethod?:       string | null;
   paymentId?:           string;
+  yearly?:              boolean;
 }): Promise<void> {
   // A6: Buscar plano e sub existente em paralelo para evitar drift de ciclo de cobrança
   const [plan, existingSub] = await Promise.all([
@@ -122,7 +124,8 @@ async function activatePlan(userId: string, planName: string, opts: {
   const base = existingSub?.currentPeriodEnd && existingSub.currentPeriodEnd > now
     ? existingSub.currentPeriodEnd
     : now;
-  const nextPeriod = new Date(base.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const cycleDays  = opts.yearly ? 365 : 30;
+  const nextPeriod = new Date(base.getTime() + cycleDays * 24 * 60 * 60 * 1000);
 
   await prisma.$transaction([
     prisma.subscription.upsert({
@@ -227,14 +230,15 @@ export default async function billingRoutes(app: FastifyInstance) {
       const v = validateRequest(billingCheckoutSchema)(req.body);
       if (!v.valid) return reply.code(400).send({ error: v.error });
 
-      const { planName, paymentMethod, card, billingAddress } = v.data;
-      const userId = req.user.sub;
+      const { planName, paymentMethod, card, billingAddress, billingCycle } = v.data;
+      const userId  = req.user.sub;
+      const isYearly = billingCycle === 'yearly';
 
       if (isCardMethod(paymentMethod) && !card) {
         return reply.code(400).send({ error: 'Dados do cartão são obrigatórios.' });
       }
 
-      const price = PLAN_PRICES[planName];
+      const price = isYearly ? PLAN_PRICES_YEARLY[planName] : PLAN_PRICES[planName];
       if (!price) return reply.code(400).send({ error: 'Plano inválido' });
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -263,9 +267,9 @@ export default async function billingRoutes(app: FastifyInstance) {
         billingType:       toAsaasBillingType(paymentMethod),
         value:             price,
         nextDueDate:       todayStr(),
-        cycle:             'MONTHLY',
-        description:       `ZapScript ${PLAN_LABELS[planName]} — Assinatura mensal`,
-        externalReference: encodeRef(userId, planName),
+        cycle:             isYearly ? 'YEARLY' : 'MONTHLY',
+        description:       `ZapScript ${PLAN_LABELS[planName]} — Assinatura ${isYearly ? 'anual' : 'mensal'}`,
+        externalReference: isYearly ? encodeRef(userId, planName, 'yearly') : encodeRef(userId, planName),
       };
 
       if (isCardMethod(paymentMethod) && card) {
@@ -312,8 +316,9 @@ export default async function billingRoutes(app: FastifyInstance) {
             asaasSubscriptionId: sub.id,
             asaasCustomerId,
             paymentMethod,
+            yearly: isYearly,
           });
-          app.log.info(`Checkout cartão aprovado: userId=${userId} plan=${planName} method=${paymentMethod}`);
+          app.log.info(`Checkout cartão aprovado: userId=${userId} plan=${planName} method=${paymentMethod} cycle=${isYearly ? 'yearly' : 'monthly'}`);
           return { status: 'active', planName };
         }
         return reply.code(402).send({ status: 'declined', error: 'Cartão não aprovado. Verifique os dados e tente novamente.' });
@@ -763,18 +768,19 @@ export default async function billingRoutes(app: FastifyInstance) {
         app.log.info(`Upgrade via webhook: userId=${userId} plan=${planName}`);
 
       } else {
-        // ── Pagamento de assinatura normal ──
-        // Buscar asaasSubscriptionId da sub no banco (para garantir que está salvo)
+        // ── Pagamento de assinatura normal (mensal ou anual) ──
         const subInDb = await prisma.subscription.findUnique({ where: { userId } }).catch(() => null);
         const asaasSubId = payment.subscription || subInDb?.asaasSubscriptionId || null;
+        const isYearlyWebhook = type === 'yearly';
 
         await activatePlan(userId, planName, {
           asaasSubscriptionId: asaasSubId,
           asaasCustomerId:     payment.customer || subInDb?.asaasCustomerId || null,
           paymentMethod:       payment.billingType === 'CREDIT_CARD' ? 'credit_card' : payment.billingType === 'DEBIT_CARD' ? 'debit_card' : 'pix',
           paymentId:           payment.id,
+          yearly:              isYearlyWebhook,
         });
-        app.log.info(`Pagamento confirmado: userId=${userId} plan=${planName}`);
+        app.log.info(`Pagamento confirmado: userId=${userId} plan=${planName} cycle=${isYearlyWebhook ? 'yearly' : 'monthly'}`);
       }
 
       return reply.send({ received: true });

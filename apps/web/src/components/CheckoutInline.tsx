@@ -9,13 +9,14 @@ import { api } from '@/lib/api';
    ───────────────────────────────────────────────────────── */
 
 interface Props {
-  planName:   'pro' | 'executive';
-  planLabel:  string;
-  planPrice:  string;
-  planFeats:  string[];
-  isUpgrade?: boolean;
-  onSuccess:  (planName: string) => void;
-  onCancel:   () => void;
+  planName:      'pro' | 'executive';
+  planLabel:     string;
+  planPrice:     string;
+  planFeats:     string[];
+  isUpgrade?:    boolean;
+  billingCycle?: 'monthly' | 'yearly';
+  onSuccess:     (planName: string) => void;
+  onCancel:      () => void;
 }
 
 type Method = 'pix' | 'pix_auto' | 'credit_card' | 'debit_card' | 'google_pay' | 'apple_pay' | 'paypal';
@@ -380,7 +381,7 @@ function normalizeApiError(err: any): string {
    Componente principal
    ══════════════════════════════════════════════════════ */
 export default function CheckoutInline({
-  planName, planLabel, planPrice, planFeats, isUpgrade = false, onSuccess, onCancel,
+  planName, planLabel, planPrice, planFeats, isUpgrade = false, billingCycle = 'monthly', onSuccess, onCancel,
 }: Props) {
   const [method,      setMethod]      = useState<Method>('pix');
   const [step,        setStep]        = useState<1|2|3>(2);
@@ -412,6 +413,7 @@ export default function CheckoutInline({
       const res = await api.post<any>(endpoint, {
         [isUpgrade ? 'targetPlan' : 'planName']: planName,
         paymentMethod: method, // 'credit_card' ou 'debit_card'
+        billingCycle,
         card: {
           holderName:  card.holderName,
           number:      card.number.replace(/\s/g, ''),
@@ -446,6 +448,7 @@ export default function CheckoutInline({
       const res = await api.post<any>(endpoint, {
         [isUpgrade ? 'targetPlan' : 'planName']: planName,
         paymentMethod: backendMethod,
+        billingCycle,
       });
       if (res.switched || res.status === 'active') {
         setStep(3);
@@ -544,9 +547,16 @@ export default function CheckoutInline({
             </span>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'rgb(var(--color-text-secondary))' }}>{planPrice}</span>
-          <span style={{ fontSize: 11, color: 'rgb(var(--color-text-muted))' }}>/mês</span>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgb(var(--color-text-secondary))' }}>{planPrice}</span>
+            <span style={{ fontSize: 11, color: 'rgb(var(--color-text-muted))' }}>
+              {billingCycle === 'yearly' ? '/ano' : '/mês'}
+            </span>
+          </div>
+          {billingCycle === 'yearly' && (
+            <div style={{ fontSize: 9, color: 'rgb(var(--color-primary))', fontWeight: 700 }}>10% de desconto</div>
+          )}
         </div>
       </div>
 
@@ -612,7 +622,7 @@ export default function CheckoutInline({
               onSubmit={handleCardSubmit}
               loading={loading}
               error={error}
-              submitLabel={`${isUpgrade ? 'Confirmar upgrade' : 'Assinar'} — ${planPrice}/mês`}
+              submitLabel={`${isUpgrade ? 'Confirmar upgrade' : 'Assinar'} — ${planPrice}/${billingCycle === 'yearly' ? 'ano' : 'mês'}`}
             />
           )}
 

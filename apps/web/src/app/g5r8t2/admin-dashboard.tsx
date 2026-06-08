@@ -118,6 +118,137 @@ interface DashFn {
 /* ══════════════════════════════════════════════════════════
    COMPONENTE PRINCIPAL DO PAINEL
 ══════════════════════════════════════════════════════════ */
+
+/* ── TicketSupportSection — seção Suporte completa ─────────────── */
+function TicketSupportSection({
+  tickets, ticketTotal, ticketStatus, ticketOffset, subLoading, token,
+  onStatusChange, onFilterChange, onPage, notify,
+}: {
+  tickets: any[]; ticketTotal: number; ticketStatus: string; ticketOffset: number;
+  subLoading: boolean; token: string;
+  onStatusChange: (id: string, s: string) => void;
+  onFilterChange: (s: string) => void;
+  onPage: (o: number) => void;
+  notify: (t: string, type?: 'ok' | 'err' | 'warn') => void;
+}) {
+  const [replyId, setReplyId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [replyLoading, setReplyLoading] = useState(false);
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+
+  async function sendReply(ticketId: string, closeAfter: boolean) {
+    if (!replyText.trim()) return;
+    setReplyLoading(true);
+    try {
+      const res = await fetch(`${API}/sys/g5r8t2/tickets/${ticketId}/reply`, {
+        method: 'POST',
+        headers: h,
+        body: JSON.stringify({ message: replyText.trim(), close: closeAfter }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro ao enviar resposta');
+      notify(`✅ Resposta enviada por e-mail${closeAfter ? ' · Ticket fechado' : ''}`, 'ok');
+      setReplyId(null);
+      setReplyText('');
+      onStatusChange(ticketId, closeAfter ? 'closed' : 'in_progress');
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally {
+      setReplyLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1.5 flex-wrap">
+        {([['', 'Todos'], ['open', 'Abertos'], ['in_progress', 'Em andamento'], ['closed', 'Fechados']] as [string, string][]).map(([v, label]) => (
+          <button key={v}
+            onClick={() => onFilterChange(v)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+              ticketStatus === v
+                ? 'bg-[rgba(16,185,129,.12)] text-[#10b981] border-[rgba(16,185,129,.2)]'
+                : 'border-transparent text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-[rgba(16,185,129,.08)] flex items-center justify-between">
+          <span className="text-xs font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide">
+            {ticketTotal} ticket(s) de suporte
+          </span>
+          <span className="text-[10px] text-[rgba(16,185,129,.3)]">Clique em "Responder" para enviar e-mail ao usuário</span>
+        </div>
+        {subLoading ? (
+          <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando...</div>
+        ) : tickets.length === 0 ? (
+          <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">✅ Nenhum ticket encontrado</div>
+        ) : tickets.map((t: any) => (
+          <div key={t.id} className="border-b border-[rgba(16,185,129,.05)] last:border-0">
+            <div className="px-5 py-4 hover:bg-[rgba(16,185,129,.02)]">
+              <div className="flex items-start justify-between gap-4 mb-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-bold text-[#d1fae5]">{t.name}</span>
+                  <span className="text-xs text-[rgba(16,185,129,.5)]">{maskEmail(t.email)}</span>
+                  <Badge label={t.category} cls="text-blue-400 bg-blue-400/10 border-blue-400/20" />
+                  <Badge label={STATUS_LABEL[t.status] || t.status} cls={STATUS_CLS[t.status]} />
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <span className="text-[10px] text-[rgba(16,185,129,.3)]">{fmtFull(t.createdAt)}</span>
+                  {t.status !== 'closed' && (
+                    <>
+                      <Btn variant="ghost" onClick={() => { setReplyId(replyId === t.id ? null : t.id); setReplyText(''); }}>
+                        {replyId === t.id ? '✕' : '✉ Responder'}
+                      </Btn>
+                      <Btn variant="ghost" onClick={() => onStatusChange(t.id, t.status === 'open' ? 'in_progress' : 'closed')}>
+                        {t.status === 'open' ? '▶ Atender' : '✓ Fechar'}
+                      </Btn>
+                    </>
+                  )}
+                </div>
+              </div>
+              <p className="text-sm text-[rgba(16,185,129,.6)] line-clamp-3">{t.description}</p>
+            </div>
+            {/* Inline reply form */}
+            {replyId === t.id && (
+              <div className="px-5 pb-4 bg-[rgba(16,185,129,.025)] border-t border-[rgba(16,185,129,.08)]">
+                <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-2 pt-3">
+                  ✉️ Resposta por e-mail → {t.email}
+                </div>
+                <textarea
+                  rows={4}
+                  value={replyText}
+                  onChange={e => setReplyText(e.target.value)}
+                  placeholder="Olá! Obrigado por entrar em contato..."
+                  className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)] resize-none mb-2"
+                />
+                <div className="flex gap-2">
+                  <Btn variant="primary" disabled={replyLoading || !replyText.trim()}
+                    onClick={() => sendReply(t.id, true)} cls="flex-1 justify-center text-xs py-1.5">
+                    {replyLoading ? '⟳ Enviando...' : '📧 Enviar e fechar ticket'}
+                  </Btn>
+                  <Btn variant="ghost" disabled={replyLoading || !replyText.trim()}
+                    onClick={() => sendReply(t.id, false)} cls="flex-1 justify-center text-xs py-1.5">
+                    📤 Enviar e manter aberto
+                  </Btn>
+                  <Btn variant="ghost" disabled={replyLoading}
+                    onClick={() => { setReplyId(null); setReplyText(''); }} cls="text-xs py-1.5">
+                    Cancelar
+                  </Btn>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <Pagination offset={ticketOffset} total={ticketTotal} loading={subLoading} onPage={onPage} />
+    </div>
+  );
+}
+
 /* ── PlanosPanel — gerenciar configuração dos planos ────────────── */
 function PlanosPanel({ apiBase, token, notify }: { apiBase: string; token: string; notify: (t: string, type?: 'ok'|'err'|'warn') => void }) {
   const [plans,       setPlans]       = useState<any[]>([]);
@@ -629,11 +760,10 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
         {/* Tabs */}
         <div className="flex gap-1.5 mb-6 bg-[#0d1c19] border border-[rgba(16,185,129,.08)] rounded-xl p-1.5 w-fit">
           {([
-            ['overview',   '📊', 'Visão Geral'],
+            ['overview',   '📊', 'Dashboard'],
             ['users',      '👥', 'Usuários'],
-            ['tickets',    '🎫', 'Tickets'],
+            ['tickets',    '🎧', 'Suporte'],
             ['testers',    '🧪', 'Testers'],
-            ['planos',     '📋', 'Planos'],
             ['monitoring',  '🖥️', 'Monitoramento'],
             ['financeiro',  '💰', 'Financeiro'],
             ['campanhas',   '📣', 'Campanhas'],
@@ -706,6 +836,9 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                 </div>
               </div>
             </div>
+
+            {/* Gestão de Planos — integrada ao Dashboard */}
+            <PlanosPanel apiBase={API} token={token} notify={notify} />
           </div>
         )}
 
@@ -734,6 +867,10 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                       <option value="set-plan">🔄 Mudar plano</option>
                       <option value="ban">🚫 Banir</option>
                       <option value="unban">✅ Desbanir</option>
+                      <optgroup label="── LGPD ──">
+                        <option value="anonymize">🔒 Anonimizar dados (LGPD)</option>
+                        <option value="export-data">📋 Solicitar exportação (LGPD)</option>
+                      </optgroup>
                     </select>
                     {(bulkAction === 'add-minutes' || bulkAction === 'set-plan') && (
                       <input
@@ -821,57 +958,20 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           </div>
         )}
 
-        {/* ═══ TICKETS ═══ */}
+        {/* ═══ SUPORTE (TICKETS) ═══ */}
         {tab === 'tickets' && (
-          <div className="space-y-4">
-            <div className="flex gap-1.5">
-              {([['', 'Todos'], ['open', 'Abertos'], ['in_progress', 'Em andamento'], ['closed', 'Fechados']] as [string, string][]).map(([v, label]) => (
-                <button key={v}
-                  onClick={() => { setTicketStatus(v); setTicketOffset(0); loadTickets(v, 0); }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
-                    ticketStatus === v
-                      ? 'bg-[rgba(16,185,129,.12)] text-[#10b981] border-[rgba(16,185,129,.2)]'
-                      : 'border-transparent text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'
-                  }`}>
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-[rgba(16,185,129,.08)] text-xs font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide">
-                {ticketTotal} ticket(s)
-              </div>
-              {subLoading ? (
-                <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando...</div>
-              ) : tickets.length === 0 ? (
-                <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">✅ Nenhum ticket encontrado</div>
-              ) : tickets.map((t: any) => (
-                <div key={t.id} className="px-5 py-4 border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.02)]">
-                  <div className="flex items-start justify-between gap-4 mb-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-bold text-[#d1fae5]">{t.name}</span>
-                      <span className="text-xs text-[rgba(16,185,129,.5)]">{maskEmail(t.email)}</span>
-                      <Badge label={t.category} cls="text-blue-400 bg-blue-400/10 border-blue-400/20" />
-                      <Badge label={STATUS_LABEL[t.status] || t.status} cls={STATUS_CLS[t.status]} />
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className="text-[10px] text-[rgba(16,185,129,.3)]">{fmtFull(t.createdAt)}</span>
-                      {t.status !== 'closed' && (
-                        <Btn variant="ghost" onClick={() => updateTicketStatus(t.id, t.status === 'open' ? 'in_progress' : 'closed')}>
-                          {t.status === 'open' ? '▶ Atender' : '✓ Fechar'}
-                        </Btn>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-sm text-[rgba(16,185,129,.6)] line-clamp-2">{t.description}</p>
-                </div>
-              ))}
-            </div>
-
-            <Pagination offset={ticketOffset} total={ticketTotal} loading={subLoading}
-              onPage={o => { setTicketOffset(o); loadTickets(ticketStatus, o); }} />
-          </div>
+          <TicketSupportSection
+            tickets={tickets}
+            ticketTotal={ticketTotal}
+            ticketStatus={ticketStatus}
+            ticketOffset={ticketOffset}
+            subLoading={subLoading}
+            token={ctx.token}
+            onStatusChange={updateTicketStatus}
+            onFilterChange={(s) => { setTicketStatus(s); setTicketOffset(0); loadTickets(s, 0); }}
+            onPage={(o) => { setTicketOffset(o); loadTickets(ticketStatus, o); }}
+            notify={notify}
+          />
         )}
 
         {/* ═══ TESTERS ═══ */}

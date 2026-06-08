@@ -17,6 +17,8 @@ interface Stats {
   planName: string;   // slug: 'free' | 'pro' | 'ultra' | 'executive'
   planLabel: string;  // exibível: 'Grátis' | 'Pro' | 'Ultra' | 'Executive'
   planStatus: string;
+  refCode: string | null;
+  renewAt: string | null;
 }
 
 export default function DashboardPage() {
@@ -179,23 +181,43 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {/* Compartilhar */}
+        {/* Indicação com link pessoal */}
         <div className="card p-5">
-          <div className="font-bold text-sm mb-2 text-brand-text">Indique o ZapScript</div>
-          <p className="text-xs text-brand-text-secondary mb-4 leading-relaxed">
-            Conhece alguém que recebe muitos áudios no WhatsApp? Compartilhe o ZapScript!
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-lg">🎁</span>
+            <div className="font-bold text-sm text-brand-text">Indique o ZapScript</div>
+          </div>
+          <p className="text-xs text-brand-text-secondary mb-3 leading-relaxed">
+            Indique um amigo e <strong className="text-brand-primary">vocês dois ganham +10 min</strong> de bônus quando ele se cadastrar.
           </p>
+          {stats?.refCode && (
+            <div className="flex gap-2 mb-3">
+              <input
+                readOnly
+                className="field-input flex-1 font-mono text-xs"
+                value={`zapscript.me/cadastro?ref=${stats.refCode}`}
+              />
+              <button
+                className="btn-primary text-xs px-3 py-2 flex-shrink-0"
+                onClick={() => {
+                  navigator.clipboard.writeText(`https://zapscript.me/cadastro?ref=${stats.refCode}`);
+                }}>
+                Copiar
+              </button>
+            </div>
+          )}
           <button
             onClick={() => {
-              const msg = `Eu uso o ZapScript para transcrever áudios do WhatsApp automaticamente com IA — economizo muito tempo! Você pode criar uma conta gratuita em zapscript.me`;
+              const link = `https://zapscript.me/cadastro?ref=${stats?.refCode ?? ''}`;
+              const msg  = `Eu uso o ZapScript para transcrever áudios do WhatsApp automaticamente com IA — e você ganha 10 minutos grátis ao se cadastrar pelo meu link: ${link}`;
               if (navigator.share) {
-                navigator.share({ text: msg, url: 'https://zapscript.me' }).catch(() => {});
+                navigator.share({ text: msg, url: link }).catch(() => {});
               } else {
-                navigator.clipboard.writeText(msg + ' — https://zapscript.me');
+                navigator.clipboard.writeText(msg);
               }
             }}
-            className="btn-primary w-full text-center text-xs py-2.5">
-            📤 Compartilhar com amigos
+            className="btn-ghost w-full text-center text-xs py-2">
+            📤 Compartilhar link
           </button>
         </div>
 

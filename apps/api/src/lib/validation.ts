@@ -85,6 +85,7 @@ const billingAddressSchema = z.object({
 export const billingCheckoutSchema = z.object({
   planName:       z.enum(['pro', 'executive'], { errorMap: () => ({ message: 'Plano inválido. Use pro ou executive.' }) }),
   paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
+  billingCycle:   z.enum(['monthly', 'yearly']).default('monthly'),
   card:           cardSchema.optional(),   // obrigatório se paymentMethod === 'credit_card' | 'debit_card'
   billingAddress: billingAddressSchema,
 });
