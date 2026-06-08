@@ -68,6 +68,17 @@ export default async function internalRoutes(app: FastifyInstance) {
 
   // POST /internal/emit — Worker emite evento Socket.IO para o frontend
   // Permite notificar o dashboard em tempo real quando uma transcrição é concluída.
+  // H4: Whitelist de eventos permitidos — evita injeção de eventos arbitrários
+  const ALLOWED_EVENTS = new Set([
+    'transcription_ready',
+    'audio_received',
+    'number:connected',
+    'number:disconnected',
+    'qr:updated',
+    'balance:updated',
+    'plan:changed',
+  ]);
+
   app.post<{ Body: { userId: string; event: string; data?: any } }>(
     '/emit',
     { preHandler: [verifyToken], config: { rateLimit: { max: 500, timeWindow: '1 minute' } } },
@@ -75,6 +86,11 @@ export default async function internalRoutes(app: FastifyInstance) {
       const { userId, event, data } = req.body;
       if (!userId || !event) {
         return reply.code(400).send({ error: 'userId e event são obrigatórios' });
+      }
+      // Rejeitar eventos fora da whitelist
+      if (!ALLOWED_EVENTS.has(event)) {
+        app.log.warn({ event, userId }, '[Internal] Tentativa de emit com evento não autorizado');
+        return reply.code(400).send({ error: `Evento '${event}' não permitido.` });
       }
       // Emite para a sala do usuário — apenas o socket autenticado desse usuário recebe
       io.to(`user:${userId}`).emit(event, data ?? {});

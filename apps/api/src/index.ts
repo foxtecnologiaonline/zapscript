@@ -31,6 +31,9 @@ const app = Fastify({
   logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' },
   disableRequestLogging: false,
   ignoreTrailingSlash: true,
+  // M9: Trust proxy (Nginx/Vercel) para rate limiting usar IP real do cliente via X-Forwarded-For
+  // Sem isso, todos os requests aparecem como vindos do IP do proxy (mesmo IP → rate limit ineficaz)
+  trustProxy: true,
 });
 
 // Ignorar ECONNRESET no servidor HTTP (clientes que fecham conexão — comportamento normal)
@@ -415,6 +418,20 @@ async function start() {
       }
       if (!process.env.JWT_SECRET) {
         app.log.error('[Startup] FATAL: JWT_SECRET não configurado.');
+        process.exit(1);
+      }
+      // H6: Variáveis críticas de autenticação interna
+      if (!process.env.ADMIN_TOKEN) {
+        app.log.error('[Startup] FATAL: ADMIN_TOKEN não configurado — painel administrativo inacessível.');
+        process.exit(1);
+      }
+      if (!process.env.INTERNAL_TOKEN) {
+        app.log.error('[Startup] FATAL: INTERNAL_TOKEN não configurado — worker não consegue comunicar com a API.');
+        process.exit(1);
+      }
+      // H6: Encryption key
+      if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY.length !== 64) {
+        app.log.error('[Startup] FATAL: ENCRYPTION_KEY inválida. Deve ter 64 caracteres hex.');
         process.exit(1);
       }
     }

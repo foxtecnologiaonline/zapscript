@@ -28,6 +28,29 @@ export function middleware(req: NextRequest) {
   // Controla informações de referrer enviadas ao navegar
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
+  // Permissions-Policy — desabilita APIs sensíveis não usadas pelo app
+  res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+
+  // Content-Security-Policy (M2) — bloqueia XSS e injeção de recursos externos
+  // 'unsafe-inline' necessário para estilos inline usados pelo Next.js e componentes de UI
+  // supabase.co e zapscript.me são os domínios externos legítimos
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.zapscript.me';
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://*.supabase.co';
+  res.headers.set(
+    'Content-Security-Policy',
+    [
+      `default-src 'self'`,
+      `script-src 'self' 'unsafe-inline' 'unsafe-eval'`,           // Next.js requer unsafe-eval em dev; inline p/ hydration
+      `style-src 'self' 'unsafe-inline'`,                          // estilos inline são amplamente usados
+      `img-src 'self' data: blob: https:`,                         // QR codes (data:), imagens externas
+      `connect-src 'self' ${apiUrl} ${supabaseUrl} wss: https:`,  // API, Supabase, WebSocket
+      `font-src 'self' data:`,
+      `frame-ancestors 'none'`,                                    // equiv. X-Frame-Options: DENY
+      `base-uri 'self'`,
+      `form-action 'self'`,
+    ].join('; ')
+  );
+
   // Impede que scrapers e IA rastejem páginas internas
   const { pathname } = req.nextUrl;
   if (

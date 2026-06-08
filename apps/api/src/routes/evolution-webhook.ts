@@ -19,9 +19,21 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
     const secret         = (req.query as any)?.secret as string | undefined
                         || req.headers['x-evolution-secret'] as string | undefined;
     const expectedSecret = process.env.EVOLUTION_WEBHOOK_SECRET;
-    if (expectedSecret && secret !== expectedSecret) {
-      app.log.warn('[Evolution] Secret inválido — requisição rejeitada');
-      return reply.code(401).send({ error: 'Unauthorized' });
+    if (expectedSecret) {
+      // Timing-safe comparison para evitar timing attack (H2)
+      const ok = secret
+        ? (() => {
+            try {
+              const a = Buffer.from(secret);
+              const b = Buffer.from(expectedSecret);
+              return a.length === b.length && require('crypto').timingSafeEqual(a, b);
+            } catch { return false; }
+          })()
+        : false;
+      if (!ok) {
+        app.log.warn('[Evolution] Secret inválido — requisição rejeitada');
+        return reply.code(401).send({ error: 'Unauthorized' });
+      }
     }
 
     // Responder 200 imediatamente — Evolution reenvia se não receber resposta rápida

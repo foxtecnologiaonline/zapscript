@@ -81,6 +81,12 @@ function emailWrapper(
 </html>`;
 }
 
+/** Escapa caracteres HTML para evitar injeção em templates de e-mail (C1) */
+function escHtml(s: string | null | undefined): string {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 export default async function authRoutes(app: FastifyInstance) {
 
   // ── POST /auth/register ───────────────────────────────────────────────────
@@ -232,7 +238,7 @@ export default async function authRoutes(app: FastifyInstance) {
             'Confirme seu e-mail — ZapScript',
             emailWrapper('✉️', 'Confirme seu e-mail', `
               <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 8px">
-                Olá${name ? `, <strong style="color:#6ee7b7">${name}</strong>` : ''}!
+                Olá${name ? `, <strong style="color:#6ee7b7">${escHtml(name)}</strong>` : ''}!
               </p>
               <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 6px">
                 Sua conta ZapScript foi criada. Falta apenas <strong style="color:#6ee7b7">um passo</strong>:

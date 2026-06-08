@@ -2,6 +2,12 @@ import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
+
+/** Escapa HTML para evitar injeção em templates de e-mail (C1) */
+function escHtml(s: string | null | undefined): string {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 import { calculateProration } from '../lib/proration';
 import { validateRequest, billingCheckoutSchema, billingUpgradeSchema } from '../lib/validation';
 import { invalidatePlanCache } from '../lib/planGate';
@@ -634,7 +640,8 @@ export default async function billingRoutes(app: FastifyInstance) {
 
   // ── GET /billing/sync ─────────────────────────────────
   // Fallback: verifica status no Asaas e ativa se pago
-  app.get('/sync', auth, async (req: any) => {
+  // H3: Rate limit dedicado — evita polling abusivo de status de pagamento
+  app.get('/sync', { ...auth, config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (req: any) => {
     const userId = req.user.sub;
     const sub = await prisma.subscription.findUnique({
       where: { userId }, include: { plan: true },
@@ -803,7 +810,7 @@ export default async function billingRoutes(app: FastifyInstance) {
 
         if (failedUser?.email) {
           const APP_URL   = process.env.APP_URL || 'https://zapscript.me';
-          const firstName = failedUser.name?.split(' ')[0] || 'você';
+          const firstName = escHtml(failedUser.name?.split(' ')[0] || 'você');
           const html = `
             <div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
               <div style="font-size:22px;font-weight:bold;margin-bottom:16px">⚠️ Pagamento pendente</div>

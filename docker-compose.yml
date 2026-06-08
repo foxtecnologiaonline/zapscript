@@ -25,9 +25,14 @@ services:
   redis:
     image: redis:7-alpine
     container_name: zapscript-redis
-    command: redis-server --appendonly yes
+    # M5: Redis com senha mesmo em dev — evita acesso não autorizado em ambientes compartilhados
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD:-zapscript_dev_redis_2024}
+      --bind 127.0.0.1 0.0.0.0
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:

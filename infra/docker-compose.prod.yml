@@ -58,7 +58,7 @@ services:
       SERVER_URL: https://api.zapscript.me
       AUTHENTICATION_TYPE: apikey
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
-      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"    # M6: não expor API key via GET /fetchInstances
       DATABASE_ENABLED: "false"
       REDIS_ENABLED: "false"
       WEBHOOK_GLOBAL_ENABLED: "false"

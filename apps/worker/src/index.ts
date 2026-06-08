@@ -14,6 +14,12 @@ import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
+/** Escapa HTML para templates de e-mail (C1 — evita HTML injection via nome do usuário) */
+function escHtml(s: string | null | undefined): string {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 // Validate required API keys at startup — fail fast with clear message
 if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.startsWith('sk-proj-...')) {
   console.error('[Worker] FATAL: OPENAI_API_KEY não configurada. Configure no Render.com e redeploy.');
@@ -351,7 +357,7 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
           body: `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
             <div style="font-size:22px;font-weight:bold;margin-bottom:16px">📊 Metade dos minutos usados</div>
             <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
-              Olá${userRecord.name ? `, <strong>${userRecord.name}</strong>` : ''}!<br><br>
+              Olá${userRecord.name ? `, <strong>${escHtml(userRecord.name)}</strong>` : ''}!<br><br>
               Você já usou <strong>50% dos seus minutos</strong> do mês. Ainda há bastante — mas vale a pena ficar de olho.<br><br>
               Se quiser ampliar sua capacidade antes de chegar ao limite, acesse seus planos:
             </div>
@@ -366,7 +372,7 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
           body: `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
             <div style="font-size:22px;font-weight:bold;margin-bottom:16px">⚠️ Seus minutos estão quase no limite</div>
             <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
-              Olá${userRecord.name ? `, <strong>${userRecord.name}</strong>` : ''}!<br><br>
+              Olá${userRecord.name ? `, <strong>${escHtml(userRecord.name)}</strong>` : ''}!<br><br>
               Você usou <strong>80% dos seus minutos</strong> — restam apenas 20%. Quando zerar, as transcrições são pausadas até o próximo ciclo.<br><br>
               Faça upgrade agora para não perder nenhum áudio importante:
             </div>
@@ -381,7 +387,7 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
           body: `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
             <div style="font-size:22px;font-weight:bold;margin-bottom:16px">🔴 Seus minutos acabaram</div>
             <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
-              Olá${userRecord.name ? `, <strong>${userRecord.name}</strong>` : ''}!<br><br>
+              Olá${userRecord.name ? `, <strong>${escHtml(userRecord.name)}</strong>` : ''}!<br><br>
               Você atingiu <strong>100% dos seus minutos</strong> deste mês. As transcrições estão <strong>pausadas</strong> até o próximo ciclo ou até você fazer upgrade.<br><br>
               Para voltar a transcrever agora mesmo:
             </div>
@@ -1170,7 +1176,7 @@ async function resetExpiredMinutes() {
         // Notificação por e-mail
         if (sub.user.email) {
           const APP_URL = process.env.APP_URL || 'https://zapscript.me';
-          const firstName = sub.user.name?.split(' ')[0] || 'você';
+          const firstName = escHtml(sub.user.name?.split(' ')[0] || 'você');
           const html = `
             <div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
               <div style="font-size:22px;font-weight:bold;margin-bottom:16px">🔴 Sua assinatura foi cancelada</div>
