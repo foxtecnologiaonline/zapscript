@@ -41,10 +41,10 @@ export function middleware(req: NextRequest) {
     [
       `default-src 'self'`,
       `script-src 'self' 'unsafe-inline' 'unsafe-eval'`,           // Next.js requer unsafe-eval em dev; inline p/ hydration
-      `style-src 'self' 'unsafe-inline'`,                          // estilos inline são amplamente usados
-      `img-src 'self' data: blob: https:`,                         // QR codes (data:), imagens externas
-      `connect-src 'self' ${apiUrl} ${supabaseUrl} wss: https:`,  // API, Supabase, WebSocket
-      `font-src 'self' data:`,
+      `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`, // estilos inline + Google Fonts
+      `img-src 'self' data: blob: https:`,                            // QR codes (data:), imagens externas
+      `connect-src 'self' ${apiUrl} ${supabaseUrl} wss: https:`,     // API, Supabase, WebSocket
+      `font-src 'self' data: https://fonts.gstatic.com`,             // fontes locais + Google Fonts CDN
       `frame-ancestors 'none'`,                                    // equiv. X-Frame-Options: DENY
       `base-uri 'self'`,
       `form-action 'self'`,
