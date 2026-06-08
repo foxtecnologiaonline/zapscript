@@ -277,11 +277,11 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                         <Spinner size={3} />
                         Aguardando você digitar no WhatsApp…
                       </div>
-                      {/* Aviso de localização — servidor nos EUA */}
+                      {/* Aviso de localização — IP de datacenter */}
                       <div className="mt-4 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-left">
                         <p className="text-[10px] text-amber-400/80 leading-relaxed">
-                          <strong className="text-amber-400">📍 O WhatsApp pode indicar "Boston, EUA"</strong> — é normal.
-                          Nossos servidores ficam nos EUA. Basta <strong>confirmar a conexão</strong> normalmente.
+                          <strong className="text-amber-400">📍 O WhatsApp pode indicar uma localização suspeita</strong> — é normal em plataformas de automação.
+                          O aviso ocorre porque IPs de servidores cloud são identificados pelo WhatsApp independente do país. Basta <strong>confirmar a conexão</strong>.
                         </p>
                       </div>
                     </div>
@@ -396,9 +396,9 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                           O WhatsApp pode exibir "Suspeita de golpe"
                         </p>
                         <p className="text-[10px] text-brand-muted mt-0.5 leading-relaxed">
-                          É normal — nossos servidores ficam nos EUA.
+                          É normal em plataformas de automação — o WhatsApp identifica IPs de servidores cloud independente do país.
                           Basta <strong className="text-brand-text">ignorar e confirmar</strong>.
-                          Para evitar o aviso, use o <strong className="text-brand-text">código por número</strong>.
+                          Para reduzir o aviso, prefira o <strong className="text-brand-text">código por número</strong>.
                         </p>
                       </div>
                     </div>

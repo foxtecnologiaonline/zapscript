@@ -1901,7 +1901,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                       style={{ background: 'rgba(10,92,62,.08)', border: '1px solid rgba(10,92,62,.15)' }}>
                       <span className="text-sm">⏱</span>
                       <p className="text-[11px]" style={{ color: 'rgb(var(--color-primary))' }}>
-                        <strong>Transcrição com marcação temporal</strong> — cada linha mostra o instante [MM:SS] no áudio original.
+                        <strong>Transcrição literal com marcação temporal</strong> — cada linha indica o instante [MM:SS] no áudio. Use a aba <strong>Exportar</strong> para gerar o PDF.
                       </p>
                     </div>
                   )}
@@ -1964,22 +1964,22 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               {activeTab === 'exportar' && selected && (
                 <div className="py-4 space-y-5">
 
-                  {/* ── Seção: Laudo Jurídico (apenas upload manual) ──────── */}
+                  {/* ── Seção: Transcrição Profissional (apenas upload manual) ── */}
                   {selected.source === 'manual' && (
                     <div>
-                      {/* Header da seção jurídica */}
+                      {/* Header da seção */}
                       <div className="flex items-center gap-2 mb-3">
-                        <span className="text-base">⚖️</span>
+                        <span className="text-base">📋</span>
                         <div>
-                          <p className="text-xs font-semibold text-brand-text">Laudo Jurídico</p>
+                          <p className="text-xs font-semibold text-brand-text">Transcrição Profissional</p>
                           <p className="text-[10px] text-brand-muted leading-tight">
-                            Transcrição literal com marcação temporal — aceita em processos legais
+                            Formato literal com marcação temporal — protocolo rastreável
                           </p>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2">
-                        {/* Botão: PDF Jurídico */}
+                        {/* Botão: PDF */}
                         <button
                           type="button"
                           onClick={() => openJuridicalPdf(selected)}
@@ -1995,8 +1995,8 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                             (e.currentTarget as HTMLButtonElement).style.background = 'rgba(10,92,62,.06)';
                           }}>
                           <span className="text-xl">📄</span>
-                          <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>PDF Jurídico</span>
-                          <span className="text-[10px] text-brand-muted">Laudo com timestamps</span>
+                          <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>PDF</span>
+                          <span className="text-[10px] text-brand-muted">Com marcação temporal</span>
                         </button>
 
                         {/* Botão: Áudio + PDF */}
@@ -2016,7 +2016,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                           }}>
                           <span className="text-xl">🎵</span>
                           <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>Áudio + PDF</span>
-                          <span className="text-[10px] text-brand-muted">MP3 + laudo juntos</span>
+                          <span className="text-[10px] text-brand-muted">MP3 + transcrição</span>
                         </button>
                       </div>
 
@@ -2024,7 +2024,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                       <div className="mt-2 px-3 py-2 rounded-lg"
                         style={{ background: 'rgba(10,92,62,.05)', border: '1px solid rgba(10,92,62,.12)' }}>
                         <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(var(--color-primary),.6)' }}>
-                          O laudo inclui: protocolo único, data/hora (horário de Brasília), tecnologia utilizada, declaração de autenticidade e transcrição literal com marcação <strong>[MM:SS]</strong>. O MP3 original fica armazenado para evidência.
+                          O documento inclui: protocolo único, data/hora (horário de Brasília), tecnologia utilizada e transcrição literal com marcação <strong>[MM:SS]</strong>. O áudio MP3 original fica armazenado separadamente.
                         </p>
                       </div>
 

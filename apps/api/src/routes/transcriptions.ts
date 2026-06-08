@@ -48,7 +48,7 @@ const PLAN_AI_FEAT = ['executive'];          // reply sugerida + doc (Executive)
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ── Laudo Jurídico — HTML imprimível ─────────────────────────────────────────
+// ── Transcrição Profissional — HTML imprimível ───────────────────────────────
 function buildJuridicalPdfHtml(t: any, transcriptText: string): string {
   const createdAt = new Date(t.createdAt);
   const dateStr   = createdAt.toLocaleString('pt-BR', {
@@ -89,7 +89,7 @@ function buildJuridicalPdfHtml(t: any, transcriptText: string): string {
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Laudo de Transcrição — ${shortId}</title>
+<title>Transcrição de Áudio — ${shortId}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Times New Roman',Times,serif;font-size:12pt;line-height:1.55;color:#111;background:#fff;padding:2.5cm 3cm}
@@ -141,8 +141,8 @@ table.meta td:first-child{background:#f3f3f3;font-weight:700;width:38%;font-size
   </div>
 </div>
 
-<h1>Laudo de Transcrição Literal de Áudio</h1>
-<h2 class="sub">Documento gerado eletronicamente para fins de arquivo, comprovação e uso probatório</h2>
+<h1>Transcrição Literal de Áudio</h1>
+<h2 class="sub">Documento gerado eletronicamente com marcação temporal — adequado para arquivo, comprovação e fins probatórios</h2>
 
 <hr class="div">
 
@@ -158,13 +158,12 @@ table.meta td:first-child{background:#f3f3f3;font-weight:700;width:38%;font-size
 </table>
 
 <div class="box">
-  <strong>Declaração de Autenticidade:</strong> A presente transcrição foi produzida automaticamente pela plataforma
-  <strong>ZapScript</strong> por meio de modelo de reconhecimento de fala de nível profissional (Whisper / Groq),
-  reproduzindo fielmente o conteúdo auditivo do arquivo de origem.
-  As marcações temporais no formato <span style="font-family:monospace;color:#0a5c3e">[MM:SS]</span> localizam
-  cada segmento de fala no áudio de referência.
-  O documento possui protocolo único rastreável (<span style="font-family:monospace">${shortId}</span>).
-  Para uso em processos judiciais formais, recomenda-se cotejo com o arquivo de áudio original.
+  <strong>Origem e Integridade:</strong> Esta transcrição foi gerada automaticamente pela plataforma
+  <strong>ZapScript</strong> com uso de modelo de reconhecimento de fala de nível profissional (Whisper / Groq),
+  reproduzindo o conteúdo auditivo do arquivo de origem sem edições ou correções.
+  As marcações temporais no formato <span style="font-family:monospace;color:#0a5c3e">[MM:SS]</span> indicam o instante
+  de início de cada segmento de fala no áudio de referência.
+  Identificação única do documento: <span style="font-family:monospace">${shortId}</span>.
 </div>
 
 <div class="sec">Conteúdo Transcrito</div>
@@ -603,7 +602,7 @@ Gere apenas o documento, sem explicações adicionais.`;
 
       reply
         .header('Content-Type', 'text/html; charset=utf-8')
-        .header('Content-Disposition', `inline; filename="laudo-${t.id.slice(0, 8).toUpperCase()}.pdf"`);
+        .header('Content-Disposition', `inline; filename="transcricao-${t.id.slice(0, 8).toUpperCase()}.pdf"`);
       return reply.send(html);
     }
   );
