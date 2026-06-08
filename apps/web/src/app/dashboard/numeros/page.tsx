@@ -710,26 +710,28 @@ export default function NumerosPage() {
 
               {/* Ações */}
               {n.status === 'connected' ? (
-                <div className="flex gap-2">
+                <div className="space-y-2">
+                  {/* Desconectar — ação principal */}
                   <button onClick={() => handleDisconnect(n.id)}
-                    className="btn-ghost flex-1 justify-center text-xs py-2">
+                    className="btn-ghost w-full justify-center text-xs py-2">
                     ⏹ Desconectar
                   </button>
+                  {/* Remover dispositivo — ação destrutiva */}
                   {confirmDelete === n.id ? (
-                    <div className="flex gap-1">
+                    <div className="flex gap-2">
                       <button onClick={() => handleDelete(n.id)} disabled={deleting}
-                        className="text-xs px-2 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors">
-                        {deleting ? '...' : 'Confirmar'}
+                        className="flex-1 text-xs px-3 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors font-medium">
+                        {deleting ? 'Removendo...' : 'Confirmar remoção'}
                       </button>
                       <button onClick={() => setConfirmDelete(null)}
-                        className="text-xs px-2 py-1.5 rounded-lg border border-brand-border text-brand-muted">
+                        className="text-xs px-3 py-2 rounded-lg border border-brand-border text-brand-muted hover:text-brand-text transition-colors">
                         Cancelar
                       </button>
                     </div>
                   ) : (
                     <button onClick={() => setConfirmDelete(n.id)}
-                      className="text-xs px-3 py-2 rounded-lg border border-red-400/15 text-brand-muted hover:text-red-400 hover:border-red-400/30 transition-colors">
-                      🗑
+                      className="w-full text-xs px-3 py-2 rounded-lg border border-red-400/20 text-red-400/60 hover:text-red-400 hover:border-red-400/40 hover:bg-red-400/5 transition-colors">
+                      🗑 Remover dispositivo
                     </button>
                   )}
                 </div>
@@ -744,18 +746,18 @@ export default function NumerosPage() {
                   {confirmDelete === n.id ? (
                     <div className="flex gap-2">
                       <button onClick={() => handleDelete(n.id)} disabled={deleting}
-                        className="flex-1 text-[11px] px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors">
+                        className="flex-1 text-xs px-3 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors font-medium">
                         {deleting ? 'Removendo...' : 'Confirmar remoção'}
                       </button>
                       <button onClick={() => setConfirmDelete(null)}
-                        className="text-[11px] px-3 py-1.5 rounded-lg border border-brand-border text-brand-muted">
+                        className="text-xs px-3 py-2 rounded-lg border border-brand-border text-brand-muted hover:text-brand-text transition-colors">
                         Cancelar
                       </button>
                     </div>
                   ) : (
                     <button onClick={() => setConfirmDelete(n.id)}
-                      className="w-full text-[11px] px-3 py-1 rounded-lg border border-red-400/10 text-red-400/50 hover:text-red-400 hover:border-red-400/30 transition-colors">
-                      Remover dispositivo
+                      className="w-full text-xs px-3 py-2 rounded-lg border border-red-400/20 text-red-400/60 hover:text-red-400 hover:border-red-400/40 hover:bg-red-400/5 transition-colors">
+                      🗑 Remover dispositivo
                     </button>
                   )}
                 </div>

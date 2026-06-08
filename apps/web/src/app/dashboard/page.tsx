@@ -132,10 +132,32 @@ export default function DashboardPage() {
                   background: 'linear-gradient(90deg, rgba(var(--color-primary-light),1), rgb(var(--color-primary)))',
                 }} />
             </div>
-            <div className="flex justify-between text-[10px] text-brand-muted mb-4">
+            <div className="flex justify-between text-[10px] text-brand-muted mb-3">
               <span>{stats.minutesPct}% usado</span>
               <span>{stats.minutesAvailable.toFixed(1)} min restantes</span>
             </div>
+            {/* Renovação — só planos pagos */}
+            {stats.renewAt && stats.planName !== 'free' && (() => {
+              const today    = new Date(); today.setHours(0,0,0,0);
+              const renew    = new Date(stats.renewAt); renew.setHours(0,0,0,0);
+              const daysLeft = Math.round((renew.getTime() - today.getTime()) / (1000*60*60*24));
+              const urgent   = daysLeft <= 7;
+              return (
+                <div className={`flex items-center gap-1.5 text-[10px] mb-3 px-2 py-1.5 rounded-lg ${urgent ? 'bg-red-400/8 text-red-400' : 'bg-brand-elevated text-brand-muted'}`}>
+                  <span>🔄</span>
+                  <span>
+                    Renova em{' '}
+                    <strong className={urgent ? 'text-red-400' : 'text-brand-text-secondary'}>
+                      {renew.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                    </strong>
+                    {' · '}
+                    <span className={urgent ? 'font-semibold' : ''}>
+                      {daysLeft > 0 ? `${daysLeft} dia${daysLeft !== 1 ? 's' : ''}` : 'Vence hoje'}
+                    </span>
+                  </span>
+                </div>
+              );
+            })()}
             <Link href="/dashboard/plano" className="btn-primary block w-full text-center text-sm py-2">
               {stats.planName === 'free' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
             </Link>

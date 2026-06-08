@@ -524,7 +524,9 @@ function PlanoContent() {
 
           {/* Data de renovação + dias restantes */}
           {stats.renewAt && stats.planName !== 'free' && (() => {
-            const daysLeft = Math.ceil((new Date(stats.renewAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            const _today = new Date(); _today.setHours(0,0,0,0);
+            const _renew = new Date(stats.renewAt); _renew.setHours(0,0,0,0);
+            const daysLeft = Math.round((_renew.getTime() - _today.getTime()) / (1000 * 60 * 60 * 24));
             const urgent   = daysLeft <= 7;
             return (
               <div className="flex items-center gap-1.5 text-xs mb-4"

@@ -1174,7 +1174,8 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               </svg>
             </div>
             <input
-              className={`input pl-10 pr-4 py-3 w-full text-sm rounded-xl ${!canSearch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`input pr-4 py-3 w-full text-sm rounded-xl ${!canSearch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              style={{ paddingLeft: '2.5rem' }}
               placeholder={canSearch
                 ? (pageTab === 'notas'    ? 'Buscar nota de voz…'
                   : pageTab === 'enviados' ? 'Buscar por nome do arquivo ou texto…'
