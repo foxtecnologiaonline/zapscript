@@ -792,7 +792,7 @@ function PlanoContent() {
       )}
 
       {/* ── Faturas / Histórico de pagamentos ── */}
-      {currentPlan !== 'free' && (
+      {stats && currentPlan !== 'free' && (
         <div className="mt-8">
           <h2 className="font-display font-bold text-base mb-4">Histórico de Pagamentos</h2>
           <div className="card rounded-2xl overflow-hidden">
