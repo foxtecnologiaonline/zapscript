@@ -669,13 +669,15 @@ Gere apenas o documento, sem explicações adicionais.`;
       return reply.code(402).send({ error: 'Saldo de minutos insuficiente. Faça upgrade do plano.' });
     }
 
-    // Limite de tamanho por plano: Free=50MB, Pro=100MB, Executive=200MB
+    // Upload de áudio no site — funcionalidade exclusiva Pro
     const uploadPlan = await getUserPlan(userId);
+    if (!requirePlan(uploadPlan, ['pro', 'pro-tester', 'executive'], reply)) return;
+
+    // Limite de tamanho por plano: Pro=100MB, Executive=200MB
     const maxBytes   = uploadPlan === 'executive' ? 200 * 1024 * 1024
-                     : uploadPlan === 'pro'       ? 100 * 1024 * 1024
-                     :                              50  * 1024 * 1024;
+                     :                              100 * 1024 * 1024;
     const maxLabel   = uploadPlan === 'executive' ? '200MB'
-                     : uploadPlan === 'pro'       ? '100MB'
+                     :                              '100MB'
                      :                              '50MB';
 
     // Receber arquivo via multipart
