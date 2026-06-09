@@ -44,12 +44,12 @@ async function uploadAudioToStorage(buffer: Buffer, userId: string, filename: st
   return key;
 }
 
-// Planos com acesso a cada feature
+// Planos com acesso a cada feature (Pro inclui todas as features do Executive)
 const PLAN_SEARCH  = ['pro', 'executive'];
-const PLAN_EXPORT  = ['executive']; // Exportação exclusiva do plano Executive
+const PLAN_EXPORT  = ['pro', 'executive'];   // Exportação disponível para Pro+
 const PLAN_TAGS    = ['pro', 'executive'];   // tags abertas para Pro+
-const PLAN_LANG    = ['executive'];
-const PLAN_AI_FEAT = ['executive'];          // reply sugerida + doc (Executive)
+const PLAN_LANG    = ['pro', 'executive'];   // filtro por idioma para Pro+
+const PLAN_AI_FEAT = ['pro', 'executive'];   // reply sugerida + doc para Pro+
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -661,10 +661,14 @@ Gere apenas o documento, sem explicações adicionais.`;
       return reply.code(402).send({ error: 'Saldo de minutos insuficiente. Faça upgrade do plano.' });
     }
 
-    // Limite de tamanho por plano
+    // Limite de tamanho por plano: Free=50MB, Pro=100MB, Executive=200MB
     const uploadPlan = await getUserPlan(userId);
-    const maxBytes   = uploadPlan === 'executive' ? 200 * 1024 * 1024 : 50 * 1024 * 1024;
-    const maxLabel   = uploadPlan === 'executive' ? '200MB' : '50MB';
+    const maxBytes   = uploadPlan === 'executive' ? 200 * 1024 * 1024
+                     : uploadPlan === 'pro'       ? 100 * 1024 * 1024
+                     :                              50  * 1024 * 1024;
+    const maxLabel   = uploadPlan === 'executive' ? '200MB'
+                     : uploadPlan === 'pro'       ? '100MB'
+                     :                              '50MB';
 
     // Receber arquivo via multipart
     const data   = await req.file();

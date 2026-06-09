@@ -23,8 +23,9 @@ const ALLOWED_EXT = [
   '.ogg', '.opus', '.mp3', '.mp4', '.m4a', '.wav', '.webm', '.mpeg',
   '.aac', '.flac', '.wma', '.amr', '.3gp', '.aiff', '.aif',
 ];
-// Limite de tamanho por plano (MB) — Executive tem 200MB, demais 50MB
+// Limite de tamanho por plano (MB) — Free=50MB, Pro=100MB, Executive=200MB
 const MAX_MB_DEFAULT   = 50;
+const MAX_MB_PRO       = 100;
 const MAX_MB_EXECUTIVE = 200;
 const LIMIT       = 20;
 
@@ -419,7 +420,9 @@ function VoiceRecorderModal({ onClose, onDone }: { onClose: () => void; onDone: 
 
 /** Upload audio modal */
 function UploadModal({ onClose, onDone, planName }: { onClose: () => void; onDone: () => void; planName: string }) {
-  const maxMb                     = planName === 'executive' ? MAX_MB_EXECUTIVE : MAX_MB_DEFAULT;
+  const maxMb = planName === 'executive' ? MAX_MB_EXECUTIVE
+              : planName === 'pro'       ? MAX_MB_PRO
+              :                           MAX_MB_DEFAULT;
   const inputRef                  = useRef<HTMLInputElement>(null);
   const [file, setFile]           = useState<File | null>(null);
   const [dragging, setDragging]   = useState(false);
@@ -478,10 +481,9 @@ function UploadModal({ onClose, onDone, planName }: { onClose: () => void; onDon
             <h2 className="font-bold text-base text-brand-text">Enviar áudio para transcrição</h2>
             <p className="text-xs text-brand-muted mt-0.5">
               MP3 · M4A · AAC · OGG · WAV · FLAC · WMA · AMR e outros — máx.{' '}
-              <span className={planName === 'executive' ? 'text-amber-400 font-semibold' : ''}>
+              <span className={planName === 'pro' || planName === 'executive' ? 'font-semibold' : ''}>
                 {maxMb}MB
               </span>
-              {planName === 'executive' && <span className="ml-1 text-[10px] text-amber-400/70">(Executive)</span>}
             </p>
           </div>
           <button
@@ -1129,7 +1131,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   const canHistory      = PLAN_HISTORY.includes(planName);
   const canFilters      = PLAN_FILTERS.includes(planName);
   const canSearch       = PLAN_SEARCH.includes(planName);
-  const canExport       = planName === 'executive';
+  const canExport       = planName === 'pro' || planName === 'executive';
   const canVoiceNotes   = planName === 'pro' || planName === 'executive';
   const hasFilters      = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource);
   const hasActiveFilters = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo);
@@ -2084,8 +2086,8 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                         </p>
                       </div>
 
-                      {/* Separador antes dos exports padrão (se Executive) */}
-                      {planName === 'executive' && (
+                      {/* Separador antes dos exports padrão (Pro+) */}
+                      {canExport && (
                         <div className="flex items-center gap-2 mt-5 mb-1">
                           <div className="flex-1 h-px" style={{ background: 'rgba(var(--color-border),.4)' }} />
                           <span className="text-[10px] text-brand-muted">Outros formatos</span>
@@ -2095,8 +2097,8 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                     </div>
                   )}
 
-                  {/* ── Seção: Exports padrão (Executive) ────────────────── */}
-                  {planName === 'executive' ? (
+                  {/* ── Seção: Exports padrão (Pro+) ─────────────────────── */}
+                  {canExport ? (
                     <div>
                       {selected.source !== 'manual' && (
                         <p className="text-xs text-brand-muted mb-4">Exportar esta transcrição individualmente:</p>
@@ -2121,17 +2123,17 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                       </p>
                     </div>
                   ) : selected.source !== 'manual' ? (
-                    /* Upsell para não-Executive em transcrições não-manuais */
+                    /* Upsell para Free em transcrições não-manuais */
                     <div className="flex flex-col items-center justify-center py-6 text-center">
                       <div className="text-3xl mb-3">🔒</div>
-                      <p className="font-semibold text-brand-text mb-1">Plano Executive</p>
+                      <p className="font-semibold text-brand-text mb-1">Disponível no plano Pro</p>
                       <p className="text-sm text-brand-muted mb-3 max-w-xs">
                         Exporte em PDF, DOCX, CSV e XLS individualmente ou em massa.
                       </p>
                       <a href="/dashboard/plano"
                         className="text-xs font-bold px-4 py-2 rounded-full"
-                        style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.25)' }}>
-                        Ver plano Executive →
+                        style={{ background: 'rgba(var(--color-primary)/.12)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(var(--color-primary)/.25)' }}>
+                        Assinar Pro →
                       </a>
                     </div>
                   ) : null}

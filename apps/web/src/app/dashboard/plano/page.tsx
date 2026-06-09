@@ -788,8 +788,31 @@ function PlanoContent() {
             {invoicesLoading ? (
               <div className="py-8 text-center text-sm text-brand-muted">Carregando faturas…</div>
             ) : invoices.length === 0 ? (
-              <div className="py-8 text-center text-sm text-brand-muted">
-                Nenhuma fatura encontrada. Os pagamentos aparecerão aqui após confirmação.
+              <div className="py-6 px-5">
+                {/* Assinatura ativa (ativada pelo admin ou via webhook ainda não processado) */}
+                <div className="flex items-start gap-3 p-4 rounded-xl mb-4"
+                  style={{ background: 'rgba(var(--color-primary)/.06)', border: '1px solid rgba(var(--color-primary)/.15)' }}>
+                  <span className="text-xl">✅</span>
+                  <div>
+                    <p className="text-sm font-semibold text-brand-text">
+                      Plano {stats.planLabel} ativo
+                    </p>
+                    {stats.renewAt && (() => {
+                      const _today = new Date(); _today.setHours(0,0,0,0);
+                      const _renew = new Date(stats.renewAt); _renew.setHours(0,0,0,0);
+                      const daysLeft = Math.round((_renew.getTime() - _today.getTime()) / (1000 * 60 * 60 * 24));
+                      const renewStr = new Date(stats.renewAt + 'T12:00:00').toLocaleDateString('pt-BR');
+                      return (
+                        <p className="text-xs text-brand-muted mt-0.5">
+                          {daysLeft > 0 ? `Renova em ${daysLeft} dia${daysLeft !== 1 ? 's' : ''} — ${renewStr}` : `Renovou em ${renewStr}`}
+                        </p>
+                      );
+                    })()}
+                  </div>
+                </div>
+                <p className="text-xs text-brand-muted text-center">
+                  Faturas de pagamento aparecerão aqui após confirmação via Asaas.
+                </p>
               </div>
             ) : (
               <div className="divide-y divide-brand-border/30">

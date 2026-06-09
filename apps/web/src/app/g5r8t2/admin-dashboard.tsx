@@ -757,26 +757,28 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           </Btn>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1.5 mb-6 bg-[#0d1c19] border border-[rgba(16,185,129,.08)] rounded-xl p-1.5 w-fit">
-          {([
-            ['overview',   '📊', 'Dashboard'],
-            ['users',      '👥', 'Usuários'],
-            ['tickets',    '🎧', 'Suporte'],
-            ['testers',    '🧪', 'Testers'],
-            ['monitoring',  '🖥️', 'Monitoramento'],
-            ['financeiro',  '💰', 'Financeiro'],
-            ['campanhas',   '📣', 'Campanhas'],
-          ] as [Tab, string, string][]).map(([t, icon, label]) => (
-            <button key={t} onClick={() => goTab(t)}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                tab === t
-                  ? 'bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.2)]'
-                  : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'
-              }`}>
-              <span>{icon}</span>{label}
-            </button>
-          ))}
+        {/* Tabs — responsivo mobile */}
+        <div className="overflow-x-auto mb-6 -mx-2 px-2">
+          <div className="flex gap-1.5 bg-[#0d1c19] border border-[rgba(16,185,129,.08)] rounded-xl p-1.5 w-max min-w-full sm:w-fit sm:min-w-0">
+            {([
+              ['overview',   '📊', 'Dashboard'],
+              ['users',      '👥', 'Usuários'],
+              ['tickets',    '🎧', 'Suporte'],
+              ['testers',    '🧪', 'Testers'],
+              ['monitoring',  '🖥️', 'Monitoramento'],
+              ['financeiro',  '💰', 'Financeiro'],
+              ['campanhas',   '📣', 'Campanhas'],
+            ] as [Tab, string, string][]).map(([t, icon, label]) => (
+              <button key={t} onClick={() => goTab(t)}
+                className={`whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                  tab === t
+                    ? 'bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.2)]'
+                    : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'
+                }`}>
+                <span>{icon}</span><span className="hidden sm:inline">{label}</span><span className="sm:hidden">{label.split(' ')[0]}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ═══ VISÃO GERAL ═══ */}
@@ -1314,7 +1316,8 @@ function QueuePanel({ apiBase, token }: { apiBase: string; token: string }) {
   const [open, setOpen]       = useState(false);
   const [loading, setLoading] = useState(false);
   const [data, setData]       = useState<any>(null);
-  const [retrying, setRetrying] = useState(false);
+  const [retrying, setRetrying]   = useState(false);
+  const [clearing, setClearing]   = useState(false);
 
   async function load() {
     setLoading(true);
@@ -1342,6 +1345,21 @@ function QueuePanel({ apiBase, token }: { apiBase: string; token: string }) {
     finally { setRetrying(false); }
   }
 
+  async function clearFailed() {
+    if (!confirm(`Deseja remover permanentemente TODOS os jobs falhos da fila?`)) return;
+    setClearing(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/queue/clear-failed`, {
+        method: 'POST',
+        headers: { 'x-admin-token': token },
+      });
+      const r = await res.json();
+      alert(`🗑️ ${r.cleared} jobs falhos removidos`);
+      load();
+    } catch (e: any) { alert('Erro: ' + e.message); }
+    finally { setClearing(false); }
+  }
+
   const counts = data?.queue?.counts;
   const hasFailed = counts?.failed > 0;
 
@@ -1362,10 +1380,16 @@ function QueuePanel({ apiBase, token }: { apiBase: string; token: string }) {
               {loading ? '⟳ Carregando...' : '↻ Atualizar'}
             </button>
             {hasFailed && (
-              <button type="button" onClick={retryFailed} disabled={retrying}
-                className="text-xs bg-amber-400/10 border border-amber-400/20 text-amber-400 px-3 py-1.5 rounded-lg hover:bg-amber-400/20 disabled:opacity-40 transition-colors">
-                {retrying ? '⟳' : '🔁 Re-tentar todos os falhos'}
-              </button>
+              <>
+                <button type="button" onClick={retryFailed} disabled={retrying}
+                  className="text-xs bg-amber-400/10 border border-amber-400/20 text-amber-400 px-3 py-1.5 rounded-lg hover:bg-amber-400/20 disabled:opacity-40 transition-colors">
+                  {retrying ? '⟳' : '🔁 Re-tentar todos os falhos'}
+                </button>
+                <button type="button" onClick={clearFailed} disabled={clearing}
+                  className="text-xs bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1.5 rounded-lg hover:bg-red-500/20 disabled:opacity-40 transition-colors">
+                  {clearing ? '⟳' : '🗑️ Limpar fila de falhos'}
+                </button>
+              </>
             )}
           </div>
 

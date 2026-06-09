@@ -1200,6 +1200,28 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── POST /admin/queue/clear-failed — remove todos os jobs falhos da fila ──────
+  app.post(
+    '/queue/clear-failed',
+    { preHandler: [adminAuth] },
+    async (_req, reply) => {
+      try {
+        const q = new Queue('transcriptions', { connection: redis as any });
+        const failedJobs = await q.getFailed(0, 999);
+        let cleared = 0;
+        for (const job of failedJobs) {
+          await job.remove().catch(() => null);
+          cleared++;
+        }
+        await q.close();
+        app.log.info(`[Admin] ${cleared} jobs falhos removidos da fila`);
+        return reply.send({ ok: true, cleared });
+      } catch (err: any) {
+        return reply.code(500).send({ error: err.message });
+      }
+    }
+  );
+
   // ── GET /admin/audit-numbers — auditoria de isolamento de números WhatsApp ──
   // Verifica se há números misturados entre usuários (mesmo zapiInstanceId em múltiplos usuários)
   // e retorna o estado completo de todos os números para diagnóstico.
