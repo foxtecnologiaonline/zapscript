@@ -46,11 +46,11 @@ const PLANS = [
   {
     name:  'pro',
     label: 'Pro',
-    price: 'R$29,90',
+    price: 'R$39,90',
     per:   '/mês',
     desc:  'Para profissionais',
     feats: [
-      '100 min/mês',
+      '200 min/mês',
       '2 números WhatsApp',
       '🎙️ Transcrição automática',
       '🖥️ Transcrição de áudios no site',
@@ -58,6 +58,8 @@ const PLANS = [
       '📋 Histórico de transcrições',
       '📅 Filtros por data e contato',
       '🔍 Busca por transcrição',
+      '🎤 Notas Pessoais de Voz',
+      '🔒 Modo Privado de transcrição',
     ],
     excl:  [],
     pop:   false,
@@ -90,13 +92,13 @@ const PLANS = [
 
 /* ── Preços anuais (x12 × 0.90) ── */
 const PLAN_PRICES_YEARLY: Record<string, { monthlyDisplay: string; annualDisplay: string }> = {
-  pro:       { monthlyDisplay: 'R$26,91', annualDisplay: 'R$322,92' },
+  pro:       { monthlyDisplay: 'R$35,91', annualDisplay: 'R$430,92' },
   executive: { monthlyDisplay: 'R$44,91', annualDisplay: 'R$538,92' },
 };
 
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                        vals: ['20', '100', '300'] },
+  { feature: 'Minutos/mês',                        vals: ['20', '200', '300'] },
   { feature: 'Números WhatsApp',                   vals: ['1', '2', '3'] },
   { feature: '🎙️ Transcrição automática',           vals: [true, true, true] },
   { feature: '🖥️ Transcrição no site (upload)',     vals: [true, true, true] },
@@ -104,9 +106,9 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: '📋 Histórico de transcrições',        vals: [false, true, true] },
   { feature: '📅 Filtros por data e contato',       vals: [false, true, true] },
   { feature: '🔍 Busca por transcrição',             vals: [false, true, true] },
+  { feature: '🎤 Notas Pessoais de Voz',             vals: [false, true, true] },
+  { feature: '🔒 Modo Privado de transcrição',       vals: [false, true, true] },
   { feature: '📤 Exportação PDF/DOCX/CSV/XLS',      vals: [false, false, true] },
-  { feature: '🎤 Notas Pessoais de Voz',             vals: [false, false, true] },
-  { feature: '🔒 Modo Privado de transcrição',       vals: [false, false, true] },
 ];
 
 // Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento

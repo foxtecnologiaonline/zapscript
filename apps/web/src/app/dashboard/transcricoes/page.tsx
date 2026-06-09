@@ -1477,8 +1477,8 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
           🎙️ Notas de Voz
           {!canVoiceNotes && (
             <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded"
-              style={{ background: 'rgba(245,158,11,.15)', color: '#f59e0b' }}>
-              Exec
+              style={{ background: 'rgba(59,130,246,.15)', color: '#3b82f6' }}>
+              Pro
             </span>
           )}
           {canVoiceNotes && voiceCount > 0 && pageTab !== 'notas' && (

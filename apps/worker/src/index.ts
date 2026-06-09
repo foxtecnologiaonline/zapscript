@@ -1060,9 +1060,12 @@ async function processVoiceNoteUploadJob(job: Job) {
       return { skipped: true, reason: 'file_too_large' };
     }
 
-    // PASSO 3: Converter para MP3
-    log(job, '🔄 Convertendo para MP3...');
-    mp3Buffer = await convertToMp3(rawBuffer);
+    // PASSO 3: Converter para MP3 (passa extensão do filename para FFmpeg detectar o formato)
+    const vnExt = filename
+      ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase().replace(/[^a-z0-9]/g, '')
+      : undefined;
+    log(job, `🔄 Convertendo para MP3 (formato: ${vnExt || 'auto'})...`);
+    mp3Buffer = await convertToMp3(rawBuffer, vnExt || undefined);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
 
     if (mp3Buffer.length > 25 * 1024 * 1024) {
