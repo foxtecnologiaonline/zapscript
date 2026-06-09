@@ -263,6 +263,11 @@ export default async function adminRoutes(app: FastifyInstance) {
         const plan = await prisma.plan.findUnique({ where: { name: planName } });
         if (!plan) return reply.code(400).send({ error: `Plano "${planName}" não encontrado.` });
 
+        // Para planos pagos: resetAt = data de aquisição + 30 dias
+        const nextPeriod = planName !== 'free'
+          ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+          : null;
+
         ops.push(
           prisma.subscription.update({
             where: { userId: id },
@@ -270,14 +275,24 @@ export default async function adminRoutes(app: FastifyInstance) {
               planId:              plan.id,
               status:              planName === 'free' ? 'canceled' : 'active',
               asaasSubscriptionId: planName === 'free' ? null : undefined,
-              currentPeriodEnd:    planName === 'free' ? null : undefined,
+              currentPeriodEnd:    planName === 'free' ? null : nextPeriod,
             },
           }),
-          // ao trocar plano, minutos são resetados para a cota do novo plano
-          // (a menos que 'minutes' seja passado junto, que vai sobrescrever abaixo)
-          prisma.minuteBalance.update({
-            where: { userId: id },
-            data:  { availableMinutes: plan.minutesPerMonth, lastAlertSent: null },
+          // ao trocar plano: minutos resetados para cota do novo plano
+          // resetAt ancorado na data de aquisição (próximos usuários Pro)
+          prisma.minuteBalance.upsert({
+            where:  { userId: id },
+            create: {
+              userId,
+              availableMinutes: plan.minutesPerMonth,
+              resetAt:          nextPeriod ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              lastAlertSent:    null,
+            },
+            update: {
+              availableMinutes: plan.minutesPerMonth,
+              lastAlertSent:    null,
+              ...(nextPeriod ? { resetAt: nextPeriod } : {}),
+            },
           }),
         );
       }

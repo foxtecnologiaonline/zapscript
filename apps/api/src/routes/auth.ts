@@ -182,11 +182,13 @@ export default async function authRoutes(app: FastifyInstance) {
             },
           });
           // Novo usuário recebe bônus de 10 min extra se vier via referral
+          // resetAt ancorando no createdAt do usuário (ciclos de 30 dias a partir do cadastro)
+          const freeResetAt = new Date(u.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000);
           await tx.minuteBalance.create({
             data: {
               userId:           u.id,
               availableMinutes: plan.minutesPerMonth + (referrer ? REFERRAL_BONUS_MINUTES : 0),
-              resetAt:          testerInvite ? oneYearFromNow : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              resetAt:          testerInvite ? oneYearFromNow : freeResetAt,
             },
           });
           // Referrer também ganha bônus de 10 min por indicar
