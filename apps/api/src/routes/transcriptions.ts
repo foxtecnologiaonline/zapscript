@@ -797,7 +797,7 @@ Gere apenas o documento, sem explicações adicionais.`;
   });
 
   // ── GET /transcriptions/queue/status — contagem de jobs na fila do usuário ──
-  app.get('/queue/status', { ...auth }, async (req: any, reply) => {
+  app.get('/queue/status', { ...auth }, async (req: any, _reply) => {
     const userId = req.user.sub;
     try {
       const [failedJobs, waitingJobs, activeJobs] = await Promise.all([

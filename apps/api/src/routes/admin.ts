@@ -283,7 +283,7 @@ export default async function adminRoutes(app: FastifyInstance) {
           prisma.minuteBalance.upsert({
             where:  { userId: id },
             create: {
-              userId,
+              userId:           id,
               availableMinutes: plan.minutesPerMonth,
               resetAt:          nextPeriod ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
               lastAlertSent:    null,
