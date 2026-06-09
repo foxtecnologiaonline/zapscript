@@ -786,6 +786,10 @@ export default function TranscricoesPage() {
   /* — Plan — */
   const [planName, setPlanName]             = useState('free');
 
+  /* — Failed queue — */
+  const [failedCount, setFailedCount]       = useState(0);
+  const [clearingFailed, setClearingFailed] = useState(false);
+
   /* — NPS — */
   const [npsVisible, setNpsVisible]         = useState(false);
   const [npsScore, setNpsScore]             = useState<number | null>(null);
@@ -805,6 +809,9 @@ export default function TranscricoesPage() {
   useEffect(() => {
     api.get<any>('/auth/me')
       .then(u => setPlanName(u.subscription?.plan?.name || 'free'))
+      .catch(() => null);
+    api.get<{ failed: number; waiting: number; active: number }>('/transcriptions/queue/status')
+      .then(s => setFailedCount(s.failed || 0))
       .catch(() => null);
     api.get<any>('/nps/status')
       .then(s => { if (s.shouldShow) setNpsVisible(true); })
@@ -1273,6 +1280,39 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
           </div>
         )}
       </form>
+
+      {/* ── FAILED QUEUE BANNER ─────────────────────────────────────────── */}
+      {failedCount > 0 && (
+        <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-xl"
+          style={{ background: 'rgba(239,68,68,.06)', border: '1px solid rgba(239,68,68,.2)' }}>
+          <div className="flex items-center gap-2.5">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgb(239,68,68)" strokeWidth="2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              {failedCount} transcrição{failedCount !== 1 ? 'ões' : ''} falharam na fila e não foram processadas.
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={clearingFailed}
+            onClick={async () => {
+              setClearingFailed(true);
+              try {
+                await api.post('/transcriptions/queue/clear-failed', {});
+                setFailedCount(0);
+              } catch {
+                // silencia
+              } finally {
+                setClearingFailed(false);
+              }
+            }}
+            className="text-xs font-semibold flex-shrink-0 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+            style={{ background: 'rgba(239,68,68,.15)', color: 'rgb(239,68,68)' }}>
+            {clearingFailed ? 'Limpando…' : 'Limpar fila'}
+          </button>
+        </div>
+      )}
 
       {/* ── ACTIONS ROW ─────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">

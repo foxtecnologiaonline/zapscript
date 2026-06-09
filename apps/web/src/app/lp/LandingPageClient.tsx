@@ -70,26 +70,27 @@ const PLANS = [
     price: 'R$0',
     period: '/mês',
     highlight: false,
-    features: ['30 min de transcrição/mês', '1 número conectado', 'Resumo por IA', 'Histórico 7 dias'],
+    features: ['20 min de transcrição/mês', '1 número conectado', 'Transcrição automática', 'Resumo por IA'],
     cta: 'Começar Grátis',
   },
   {
     name: 'Pro',
-    price: 'R$29,90',
+    price: 'R$39,90',
     period: '/mês',
     highlight: true,
     badge: 'Mais popular',
-    features: ['200 min de transcrição/mês', '3 números conectados', 'Resumo por IA avançado', 'Histórico ilimitado', 'Alertas de consumo'],
+    features: [
+      '200 min de transcrição/mês',
+      '2 números conectados',
+      'Transcrição automática + áudios no site',
+      'Resumo por IA',
+      'Histórico completo',
+      'Notas Pessoais de Voz',
+      'Modo Privado de transcrição',
+    ],
     cta: 'Assinar Pro',
   },
-  {
-    name: 'Executive',
-    price: 'R$49,90',
-    period: '/mês',
-    highlight: false,
-    features: ['500 min de transcrição/mês', '5 números conectados', 'Modo Privado', 'Webhook + API', 'Exportação CSV/PDF', 'Notas de voz pessoais'],
-    cta: 'Assinar Executive',
-  },
+  // Executive: plano legacy — não exibido na landing page
 ];
 
 /* ── Componente principal ───────────────────────────────────────────── */
@@ -331,7 +332,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
         <div className="max-w-3xl mx-auto">
           <h2 className="text-2xl font-bold text-white text-center mb-3">Planos simples e transparentes</h2>
           <p className="text-brand-muted text-center mb-10">Comece grátis. Faça upgrade quando quiser.</p>
-          <div className="grid sm:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-2 gap-4 max-w-xl mx-auto">
             {PLANS.map(plan => (
               <div
                 key={plan.name}
@@ -369,6 +370,15 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
                 </Link>
               </div>
             ))}
+          </div>
+          {/* Empresas teaser */}
+          <div className="max-w-xl mx-auto mt-4 rounded-2xl border border-white/10 bg-white/3 px-5 py-4 flex items-center justify-between gap-3">
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-widest text-brand-muted">Em breve</span>
+              <p className="font-bold text-white">🏢 Plano Empresas</p>
+              <p className="text-xs text-brand-muted mt-0.5">Multi-usuário · Webhook · Para times e agências</p>
+            </div>
+            <span className="shrink-0 text-xs border border-white/15 text-brand-muted rounded-full px-3 py-1">Em breve</span>
           </div>
           <p className="text-center text-brand-muted text-xs mt-6">
             Pagamento via PIX ou cartão de crédito · Cancele quando quiser · Sem fidelidade

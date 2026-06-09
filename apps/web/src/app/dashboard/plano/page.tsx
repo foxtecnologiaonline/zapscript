@@ -112,6 +112,7 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
 ];
 
 // Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento
+interface MinutePkg { id: string; minutes: number; priceBrl: number; label: string; desc: string }
 
 function formatDocument(val: string): string {
   const n = val.replace(/\D/g, '').slice(0, 14);
@@ -399,6 +400,15 @@ function PlanoContent() {
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const justUpgraded = searchParams.get('upgrade') === 'success';
 
+  /* — Minute packages — */
+  const [minutePkgs, setMinutePkgs]             = useState<MinutePkg[]>([]);
+  const [pkgModal, setPkgModal]                 = useState<MinutePkg | null>(null);
+  const [pkgMethod, setPkgMethod]               = useState<'pix' | 'credit_card'>('pix');
+  const [pkgLoading, setPkgLoading]             = useState(false);
+  const [pkgPixData, setPkgPixData]             = useState<{ qrCode: string | null; copyPaste: string | null } | null>(null);
+  const [pkgCopied, setPkgCopied]               = useState(false);
+  const [pkgSuccess, setPkgSuccess]             = useState(false);
+
   useEffect(() => {
     // Se veio da página de sucesso, sincroniza com Asaas antes de carregar
     const doLoad = () => Promise.all([
@@ -421,6 +431,10 @@ function PlanoContent() {
     } else {
       doLoad();
     }
+    // Carregar pacotes de minutos
+    api.get<{ packages: MinutePkg[] }>('/billing/minute-packages')
+      .then(r => setMinutePkgs(r.packages || []))
+      .catch(() => null);
   }, []);
 
   // Abre o checkout inline para o plano
@@ -828,6 +842,161 @@ function PlanoContent() {
                 })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Pacotes de minutos avulsos ────────────────────────────────────── */}
+      {minutePkgs.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-3">
+            <h2 className="font-bold text-sm" style={{ color: 'rgb(var(--color-text))' }}>⏱️ Comprar minutos avulsos</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              Créditos extras sem alterar seu plano. Não expiram no reset mensal.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {minutePkgs.map(pkg => (
+              <button
+                key={pkg.id}
+                type="button"
+                onClick={() => { setPkgModal(pkg); setPkgPixData(null); setPkgSuccess(false); setPkgMethod('pix'); }}
+                className="text-left rounded-2xl p-4 border transition-all hover:border-brand-primary/40"
+                style={{ background: 'rgb(var(--color-surface))', borderColor: 'rgb(var(--color-border))' }}>
+                <div className="font-display font-bold text-lg" style={{ color: 'rgb(var(--color-text))' }}>
+                  {pkg.minutes}<span className="text-xs font-normal ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>min</span>
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{pkg.desc}</div>
+                <div className="font-bold text-sm mt-2" style={{ color: 'rgb(var(--color-primary))' }}>
+                  {pkg.priceBrl.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de compra de pacote */}
+      {pkgModal && !pkgSuccess && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setPkgModal(null)}>
+          <div className="w-full max-w-sm rounded-2xl p-6"
+            style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-border)/.6)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="font-bold text-base">Comprar {pkgModal.label}</h3>
+                <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{pkgModal.desc}</p>
+              </div>
+              <span className="font-bold text-xl" style={{ color: 'rgb(var(--color-primary))' }}>
+                {pkgModal.priceBrl.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+            </div>
+
+            {/* Método de pagamento */}
+            {!pkgPixData && (
+              <>
+                <div className="flex gap-2 mb-5">
+                  {(['pix', 'credit_card'] as const).map(m => (
+                    <button key={m} type="button"
+                      onClick={() => setPkgMethod(m)}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all"
+                      style={{
+                        background:   pkgMethod === m ? 'rgba(var(--color-primary)/.1)' : 'transparent',
+                        borderColor:  pkgMethod === m ? 'rgb(var(--color-primary))' : 'rgb(var(--color-border))',
+                        color:        pkgMethod === m ? 'rgb(var(--color-primary))' : 'rgb(var(--color-text-muted))',
+                      }}>
+                      {m === 'pix' ? '⚡ PIX' : '💳 Cartão'}
+                    </button>
+                  ))}
+                </div>
+                {pkgMethod === 'credit_card' && (
+                  <p className="text-xs text-center mb-4" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                    Pagamento com cartão: entre em contato via suporte para finalizar.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  disabled={pkgLoading}
+                  onClick={async () => {
+                    if (pkgMethod === 'credit_card') { alert('Para pagamento no cartão, acione o suporte.'); return; }
+                    setPkgLoading(true);
+                    try {
+                      const res = await api.post<any>('/billing/buy-minutes', { packageId: pkgModal.id, paymentMethod: 'pix' });
+                      if (res.qrCode || res.copyPaste) {
+                        setPkgPixData({ qrCode: res.qrCode, copyPaste: res.copyPaste });
+                      } else if (res.status === 'active') {
+                        setPkgSuccess(true);
+                      }
+                    } catch (err: any) {
+                      alert(err.message || 'Erro ao gerar cobrança. Tente novamente.');
+                    } finally {
+                      setPkgLoading(false);
+                    }
+                  }}
+                  className="w-full py-3 rounded-2xl text-sm font-bold text-white transition-all disabled:opacity-50"
+                  style={{ background: 'rgb(var(--color-primary))' }}>
+                  {pkgLoading ? 'Gerando cobrança…' : pkgMethod === 'pix' ? '⚡ Pagar com PIX' : '💳 Pagar com Cartão'}
+                </button>
+              </>
+            )}
+
+            {/* PIX QR Code */}
+            {pkgPixData && (
+              <div className="text-center">
+                <p className="text-sm font-semibold mb-3" style={{ color: 'rgb(var(--color-text))' }}>
+                  PIX gerado! Escaneie ou copie o código:
+                </p>
+                {pkgPixData.qrCode && (
+                  <img src={`data:image/png;base64,${pkgPixData.qrCode}`} alt="QR Code PIX"
+                    className="w-40 h-40 mx-auto rounded-xl mb-3 border"
+                    style={{ borderColor: 'rgb(var(--color-border))' }} />
+                )}
+                {pkgPixData.copyPaste && (
+                  <div className="rounded-xl p-3 mb-3 text-left break-all text-xs font-mono"
+                    style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))' }}>
+                    {pkgPixData.copyPaste.slice(0, 60)}…
+                  </div>
+                )}
+                <button type="button"
+                  onClick={() => { navigator.clipboard.writeText(pkgPixData.copyPaste || ''); setPkgCopied(true); setTimeout(() => setPkgCopied(false), 2000); }}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold mb-2 transition-all"
+                  style={{ background: 'rgba(var(--color-primary)/.1)', color: 'rgb(var(--color-primary))' }}>
+                  {pkgCopied ? '✓ Copiado!' : '📋 Copiar código PIX'}
+                </button>
+                <p className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                  Após o pagamento, os minutos serão creditados automaticamente em até 1 minuto.
+                </p>
+              </div>
+            )}
+
+            <button type="button" onClick={() => setPkgModal(null)}
+              className="w-full mt-3 py-2 text-xs text-center transition-colors"
+              style={{ color: 'rgb(var(--color-text-muted))' }}>
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de sucesso do pacote */}
+      {pkgModal && pkgSuccess && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => { setPkgModal(null); setPkgSuccess(false); }}>
+          <div className="w-full max-w-xs rounded-2xl p-8 text-center"
+            style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-primary)/.3)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="text-4xl mb-4">🎉</div>
+            <h3 className="font-bold text-base mb-1" style={{ color: 'rgb(var(--color-text))' }}>
+              +{pkgModal.minutes} minutos creditados!
+            </h3>
+            <p className="text-xs mb-5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              Seu saldo foi atualizado. Use à vontade!
+            </p>
+            <button type="button" onClick={() => { setPkgModal(null); setPkgSuccess(false); window.location.reload(); }}
+              className="btn-primary w-full py-2.5 text-sm font-semibold">
+              Fechar
+            </button>
           </div>
         </div>
       )}

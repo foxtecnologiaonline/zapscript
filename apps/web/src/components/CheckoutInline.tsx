@@ -20,7 +20,7 @@ interface Props {
 
 /* ── Preços anuais (10% off) ── */
 const CHECKOUT_YEARLY: Record<string, { annual: string; monthlyEq: string; annualNum: number }> = {
-  pro:       { annual: 'R$322,92', monthlyEq: 'R$26,91/mês', annualNum: 322.92 },
+  pro:       { annual: 'R$430,92', monthlyEq: 'R$35,91/mês', annualNum: 430.92 },
   executive: { annual: 'R$538,92', monthlyEq: 'R$44,91/mês', annualNum: 538.92 },
 };
 

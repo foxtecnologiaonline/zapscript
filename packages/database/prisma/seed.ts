@@ -23,11 +23,11 @@ async function main() {
     {
       name:            'pro',
       label:           'Pro',
-      minutesPerMonth: 100,
+      minutesPerMonth: 200,
       maxNumbers:      2,
-      priceBrl:        29.90,
+      priceBrl:        39.90,
       features:        JSON.stringify([
-        '100 min/mês',
+        '200 min/mês',
         '2 números WhatsApp',
         'Transcrição automática',
         'Transcrição de áudios no site',
@@ -35,6 +35,9 @@ async function main() {
         'Histórico completo de transcrições',
         'Filtros por data e contato',
         'Busca no histórico',
+        'Notas Pessoais de Voz',
+        'Modo Privado de transcrição',
+        'Transcrição profissional (PDF)',
       ]),
     },
     {
@@ -55,6 +58,7 @@ async function main() {
         'Exportação PDF · DOCX · CSV · XLS',
         'Notas Pessoais de Voz',
         'Modo Privado de transcrição',
+        'Webhook personalizado',
       ]),
     },
   ];
@@ -74,7 +78,7 @@ async function main() {
     console.log(`  ✓ ${plan.label} — R$${plan.priceBrl.toFixed(2)}/mês, ${plan.minutesPerMonth} min`);
   }
 
-  console.log('✅ Planos v3.0: Grátis (R$0/20min), Pro (R$29,90/100min), Executive (R$49,90/300min)');
+  console.log('✅ Planos v4.0: Grátis (R$0/20min), Pro (R$39,90/200min), Executive (R$49,90/300min)');
 }
 
 main()

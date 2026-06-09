@@ -58,9 +58,16 @@ async function markProcessed(paymentId: string): Promise<void> {
 }
 
 /* ── Preços ── */
-const PLAN_PRICES:        Record<string, number> = { pro: 29.90,  executive: 49.90  };
-const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 322.92, executive: 538.92 }; // x12 com 10% off
+const PLAN_PRICES:        Record<string, number> = { pro: 39.90,  executive: 49.90  };
+const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 430.92, executive: 538.92 }; // x12 com 10% off
 const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive' };
+
+/* ── Pacotes de minutos avulsos ── */
+export const MINUTE_PACKAGES = [
+  { id: 'pkg_60',  minutes: 60,  priceBrl: 24.90, label: '60 minutos',  desc: 'Ideal para uso pontual' },
+  { id: 'pkg_120', minutes: 120, priceBrl: 44.90, label: '120 minutos', desc: 'Mais custo-benefício' },
+  { id: 'pkg_300', minutes: 300, priceBrl: 99.90, label: '300 minutos', desc: 'Melhor valor por minuto' },
+] as const;
 
 /* ── Data de hoje no formato Asaas (YYYY-MM-DD) ── */
 function todayStr(): string {
@@ -68,10 +75,11 @@ function todayStr(): string {
 }
 
 /* ── externalReference encoding ──
-   Formato:  "<userId>|<planName>"           — assinatura normal
-             "<userId>|<planName>|upgrade"   — cobrança de proration upgrade
+   Formato:  "<userId>|<planName>"              — assinatura normal
+             "<userId>|<planName>|upgrade"      — cobrança de proration upgrade
+             "<userId>|pkg_minutes|<N>"         — pacote de minutos avulso (N = minutos)
 */
-function encodeRef(userId: string, planName: string, type?: 'upgrade' | 'yearly'): string {
+function encodeRef(userId: string, planName: string, type?: 'upgrade' | 'yearly' | string): string {
   return type ? `${userId}|${planName}|${type}` : `${userId}|${planName}`;
 }
 function decodeRef(ref: string | undefined): { userId: string; planName: string; type?: string } | null {
@@ -79,6 +87,9 @@ function decodeRef(ref: string | undefined): { userId: string; planName: string;
   const parts = ref.split('|');
   if (parts.length < 2) return null;
   return { userId: parts[0], planName: parts[1], type: parts[2] };
+}
+function encodeMinutePackageRef(userId: string, minutes: number): string {
+  return `${userId}|pkg_minutes|${minutes}`;
 }
 
 /* ── Buscar ou criar cliente no Asaas ── */
@@ -744,6 +755,21 @@ export default async function billingRoutes(app: FastifyInstance) {
 
       const { userId, planName, type } = decoded;
 
+      // ── Pacote de minutos avulso ──────────────────────────────────────────
+      if (planName === 'pkg_minutes') {
+        const minutes = parseInt(type || '0', 10);
+        if (!minutes || isNaN(minutes)) {
+          app.log.error({ ref: payment.externalReference }, 'pkg_minutes: quantidade inválida');
+          return reply.send({ received: true });
+        }
+        await prisma.minuteBalance.updateMany({
+          where: { userId },
+          data:  { availableMinutes: { increment: minutes } },
+        });
+        app.log.info(`Pacote de minutos creditado: userId=${userId} +${minutes}min`);
+        return reply.send({ received: true });
+      }
+
       if (type === 'upgrade') {
         // ── Cobrança de proration do upgrade aprovada ──
         const sub = await prisma.subscription.findUnique({ where: { userId } }).catch(() => null);
@@ -845,4 +871,83 @@ export default async function billingRoutes(app: FastifyInstance) {
     app.log.info(`Asaas webhook ignorado: ${eventType}`);
     return reply.send({ received: true });
   });
+
+  // ── GET /billing/minute-packages — lista pacotes disponíveis ─────────────
+  app.get('/minute-packages', async (_req, reply) => {
+    return reply.send({ packages: MINUTE_PACKAGES });
+  });
+
+  // ── POST /billing/buy-minutes — compra pacote de minutos avulso ──────────
+  app.post<{ Body: { packageId: string; paymentMethod: string; card?: any; billingAddress?: any } }>(
+    '/buy-minutes',
+    { ...auth, config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } },
+    async (req: any, reply) => {
+      const userId = req.user.sub;
+      const { packageId, paymentMethod, card, billingAddress } = req.body as any;
+
+      const pkg = MINUTE_PACKAGES.find(p => p.id === packageId);
+      if (!pkg) return reply.code(400).send({ error: 'Pacote inválido. Use pkg_60, pkg_120 ou pkg_300.' });
+
+      // Buscar ou criar cliente Asaas
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, name: true },
+      });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      let asaasCustomerId: string;
+      const sub = await prisma.subscription.findUnique({ where: { userId } });
+      if (sub?.asaasCustomerId) {
+        asaasCustomerId = sub.asaasCustomerId;
+      } else {
+        const custRes = await asaas('/customers', {
+          method: 'POST',
+          body:   JSON.stringify({ name: user.name || user.email, email: user.email, externalReference: userId }),
+        }).then(r => r.json()) as any;
+        asaasCustomerId = custRes.id;
+      }
+
+      // Criar cobrança única (não assinatura)
+      const exRef  = encodeMinutePackageRef(userId, pkg.minutes);
+      const desc   = `ZapScript — ${pkg.label} (pacote avulso)`;
+
+      if (paymentMethod === 'pix') {
+        const pix = await asaas('/payments', {
+          method: 'POST',
+          body: JSON.stringify({
+            customer: asaasCustomerId, billingType: 'PIX',
+            value: pkg.priceBrl, dueDate: todayStr(),
+            description: desc, externalReference: exRef,
+          }),
+        }).then(r => r.json()) as any;
+        if (pix.errors?.length) return reply.code(400).send({ error: pix.errors[0]?.description || 'Erro ao criar cobrança PIX.' });
+        const pixKey = await asaas(`/payments/${pix.id}/pixQrCode`).then(r => r.json()) as any;
+        return { status: 'pending', paymentId: pix.id, qrCode: pixKey?.encodedImage || null, copyPaste: pixKey?.payload || null };
+
+      } else if (paymentMethod === 'credit_card') {
+        const charge = await asaas('/payments', {
+          method: 'POST',
+          body: JSON.stringify({
+            customer: asaasCustomerId, billingType: 'CREDIT_CARD',
+            value: pkg.priceBrl, dueDate: todayStr(),
+            description: desc, externalReference: exRef,
+            creditCard: card, creditCardHolderInfo: billingAddress,
+          }),
+        }).then(r => r.json()) as any;
+        if (charge.errors?.length) return reply.code(400).send({ error: charge.errors[0]?.description || 'Erro no cartão.' });
+
+        if (charge.status === 'CONFIRMED' || charge.status === 'RECEIVED') {
+          await prisma.minuteBalance.updateMany({
+            where: { userId },
+            data:  { availableMinutes: { increment: pkg.minutes } },
+          });
+          return { status: 'active', minutes: pkg.minutes, paymentId: charge.id };
+        }
+        return { status: charge.status.toLowerCase(), paymentId: charge.id };
+
+      } else {
+        return reply.code(400).send({ error: 'Método de pagamento não suportado. Use pix ou credit_card.' });
+      }
+    },
+  );
 }

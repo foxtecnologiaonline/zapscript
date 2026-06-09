@@ -260,7 +260,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Em quais idiomas funciona?',
-    a: 'O ZapScript transcreve áudios em qualquer idioma suportado pelo Whisper (português, inglês, espanhol e mais de 50 idiomas). No plano Executive, os resumos são automaticamente traduzidos para o português do Brasil.',
+    a: 'O ZapScript transcreve áudios em qualquer idioma suportado pelo Whisper (português, inglês, espanhol e mais de 50 idiomas). Os resumos são exibidos no idioma detectado do áudio.',
   },
 ];
 
@@ -386,10 +386,10 @@ const PLANS = [
     cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
   },
   {
-    name: 'pro', label: 'Pro', price: 'R$29,90', per: '/mês',
+    name: 'pro', label: 'Pro', price: 'R$39,90', per: '/mês',
     desc: 'Para profissionais',
     feats: [
-      '100 min/mês',
+      '200 min/mês',
       '2 números WhatsApp',
       '🎙️ Transcrição automática',
       '🖥️ Transcrição de áudios no site',
@@ -397,45 +397,41 @@ const PLANS = [
       '📋 Histórico de transcrições',
       '📅 Filtros por data e contato',
       '🔍 Busca por transcrição',
-    ],
-    excl: [],
-    cta: 'Assinar Pro', href: '/cadastro', popular: false, accent: '#3b82f6' as string | null,
-  },
-  {
-    name: 'executive', label: 'Executive', price: 'R$49,90', per: '/mês',
-    desc: 'Para uso profissional e privacidade total',
-    feats: [
-      '300 min/mês',
-      '3 números WhatsApp',
-      '🎙️ Transcrição automática',
-      '🖥️ Transcrição de áudios no site',
-      '✨ Resumo com IA',
-      '📋 Histórico de transcrições',
-      '📅 Filtros por data e contato',
-      '🔍 Busca por transcrição',
-      '📤 Exportação PDF · DOCX · CSV · XLS',
       '🎤 Notas Pessoais de Voz',
       '🔒 Modo Privado de transcrição',
     ],
     excl: [],
-    cta: 'Assinar Executive', href: '/cadastro', popular: true, accent: null as string | null,
+    cta: 'Assinar Pro', href: '/cadastro', popular: true, accent: '#3b82f6' as string | null,
+  },
+  // Executive: legacy plan — mantido no sistema mas não exibido na LP
+  {
+    name: 'executive', label: 'Executive', price: 'R$49,90', per: '/mês',
+    desc: 'Para uso profissional e privacidade total',
+    feats: [
+      '300 min/mês', '3 números WhatsApp',
+      '🎙️ Transcrição automática', '🖥️ Transcrição de áudios no site',
+      '✨ Resumo com IA', '📋 Histórico de transcrições',
+      '📤 Exportação PDF · DOCX · CSV · XLS',
+      '🎤 Notas Pessoais de Voz', '🔒 Modo Privado de transcrição',
+    ],
+    excl: [],
+    cta: 'Assinar Executive', href: '/cadastro', popular: false, accent: null as string | null,
   },
 ];
 
 /* ── Tabela comparativa ── */
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                        vals: ['20', '100', '300'] },
-  { feature: 'Números WhatsApp',                   vals: ['1', '2', '3'] },
-  { feature: '🎙️ Transcrição automática',           vals: [true, true, true] },
-  { feature: '🖥️ Transcrição no site (upload)',     vals: [true, true, true] },
-  { feature: '✨ Resumo com IA',                    vals: [true, true, true] },
-  { feature: '📋 Histórico de transcrições',        vals: [false, true, true] },
-  { feature: '📅 Filtros por data e contato',       vals: [false, true, true] },
-  { feature: '🔍 Busca por transcrição',             vals: [false, true, true] },
-  { feature: '📤 Exportação PDF/DOCX/CSV/XLS',      vals: [false, false, true] },
-  { feature: '🎤 Notas Pessoais de Voz',             vals: [false, false, true] },
-  { feature: '🔒 Modo Privado de transcrição',       vals: [false, false, true] },
+  { feature: 'Minutos/mês',                        vals: ['20', '200'] },
+  { feature: 'Números WhatsApp',                   vals: ['1', '2'] },
+  { feature: '🎙️ Transcrição automática',           vals: [true, true] },
+  { feature: '🖥️ Transcrição no site (upload)',     vals: [true, true] },
+  { feature: '✨ Resumo com IA',                    vals: [true, true] },
+  { feature: '📋 Histórico de transcrições',        vals: [false, true] },
+  { feature: '📅 Filtros por data e contato',       vals: [false, true] },
+  { feature: '🔍 Busca por transcrição',             vals: [false, true] },
+  { feature: '🎤 Notas Pessoais de Voz',             vals: [false, true] },
+  { feature: '🔒 Modo Privado de transcrição',       vals: [false, true] },
 ];
 
 export default function HomePage() {
@@ -642,9 +638,9 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* Cards */}
+          {/* Cards — apenas Free e Pro (Executive mantido em legacy) */}
           <div className="flex flex-col gap-4">
-            {PLANS.map((plan, i) => {
+            {PLANS.filter(p => p.name !== 'executive').map((plan, i) => {
               const borderCol = plan.popular
                 ? 'rgb(var(--color-primary))'
                 : plan.accent ? plan.accent + '55' : 'rgb(var(--color-border))';
@@ -723,7 +719,7 @@ export default function HomePage() {
                   <thead>
                     <tr style={{ background: 'rgb(var(--color-surface-elevated))' }}>
                       <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'rgb(var(--color-text-muted))' }}>Recurso</th>
-                      {PLANS.map(p => (
+                      {PLANS.filter(p => p.name !== 'executive').map(p => (
                         <th key={p.name} className="px-3 py-3 text-[11px] font-bold text-center"
                           style={{ color: p.popular ? 'rgb(var(--color-primary))' : p.accent || 'rgb(var(--color-text-secondary))' }}>
                           {p.label}

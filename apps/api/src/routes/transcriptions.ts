@@ -783,4 +783,38 @@ Gere apenas o documento, sem explicações adicionais.`;
 
     return reply.code(202).send({ queued: true, message: 'Nota de voz enfileirada. A transcrição chegará em instantes.' });
   });
+
+  // ── GET /transcriptions/queue/status — contagem de jobs na fila do usuário ──
+  app.get('/queue/status', { ...auth }, async (req: any, reply) => {
+    const userId = req.user.sub;
+    try {
+      const [failedJobs, waitingJobs, activeJobs] = await Promise.all([
+        transcriptionQueue.getFailed(),
+        transcriptionQueue.getWaiting(),
+        transcriptionQueue.getActive(),
+      ]);
+      const myFailed  = failedJobs.filter(j  => j.data?.userId === userId).length;
+      const myWaiting = waitingJobs.filter(j  => j.data?.userId === userId).length;
+      const myActive  = activeJobs.filter(j   => j.data?.userId === userId).length;
+      return { failed: myFailed, waiting: myWaiting, active: myActive };
+    } catch (err) {
+      app.log.error(err, 'queue/status error');
+      return { failed: 0, waiting: 0, active: 0 };
+    }
+  });
+
+  // ── POST /transcriptions/queue/clear-failed — remove jobs com falha do usuário ──
+  app.post('/queue/clear-failed', { ...auth }, async (req: any, reply) => {
+    const userId = req.user.sub;
+    try {
+      const failedJobs = await transcriptionQueue.getFailed();
+      const mine       = failedJobs.filter(j => j.data?.userId === userId);
+      await Promise.all(mine.map(j => j.remove()));
+      app.log.info(`queue/clear-failed: removidos ${mine.length} jobs para userId=${userId}`);
+      return reply.send({ removed: mine.length });
+    } catch (err) {
+      app.log.error(err, 'queue/clear-failed error');
+      return reply.code(500).send({ error: 'Erro ao limpar fila. Tente novamente.' });
+    }
+  });
 }
