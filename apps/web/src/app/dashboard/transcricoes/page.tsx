@@ -29,9 +29,9 @@ const MAX_MB_PRO       = 100;
 const MAX_MB_EXECUTIVE = 200;
 const LIMIT       = 20;
 
-const PLAN_HISTORY = ['pro', 'executive'];
-const PLAN_FILTERS = ['pro', 'executive'];
-const PLAN_SEARCH  = ['pro', 'executive'];
+const PLAN_HISTORY = ['pro', 'pro-tester', 'executive'];
+const PLAN_FILTERS = ['pro', 'pro-tester', 'executive'];
+const PLAN_SEARCH  = ['pro', 'pro-tester', 'executive'];
 
 const SORT_OPTIONS = [
   { value: 'date_desc',    label: 'Data — Mais recente', icon: '📅' },
@@ -420,9 +420,9 @@ function VoiceRecorderModal({ onClose, onDone }: { onClose: () => void; onDone: 
 
 /** Upload audio modal */
 function UploadModal({ onClose, onDone, planName }: { onClose: () => void; onDone: () => void; planName: string }) {
-  const maxMb = planName === 'executive' ? MAX_MB_EXECUTIVE
-              : planName === 'pro'       ? MAX_MB_PRO
-              :                           MAX_MB_DEFAULT;
+  const maxMb = planName === 'executive'                          ? MAX_MB_EXECUTIVE
+              : (planName === 'pro' || planName === 'pro-tester') ? MAX_MB_PRO
+              :                                                      MAX_MB_DEFAULT;
   const inputRef                  = useRef<HTMLInputElement>(null);
   const [file, setFile]           = useState<File | null>(null);
   const [dragging, setDragging]   = useState(false);
@@ -1131,8 +1131,8 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   const canHistory      = PLAN_HISTORY.includes(planName);
   const canFilters      = PLAN_FILTERS.includes(planName);
   const canSearch       = PLAN_SEARCH.includes(planName);
-  const canExport       = planName === 'pro' || planName === 'executive';
-  const canVoiceNotes   = planName === 'pro' || planName === 'executive';
+  const canExport       = planName === 'pro' || planName === 'pro-tester' || planName === 'executive';
+  const canVoiceNotes   = planName === 'pro' || planName === 'pro-tester' || planName === 'executive';
   const hasFilters      = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource);
   const hasActiveFilters = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo);
   const tagsChanged     = JSON.stringify(editTags) !== JSON.stringify(selected?.tags || []);

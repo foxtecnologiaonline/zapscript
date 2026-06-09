@@ -696,8 +696,8 @@ export default function NumerosPage() {
                 </div>
               </div>
 
-              {/* Modo Privado — Executive+ */}
-              {planName === 'executive' ? (
+              {/* Modo Privado — Pro+ */}
+              {(planName === 'pro' || planName === 'pro-tester' || planName === 'executive') ? (
                 <div className="flex items-center justify-between bg-brand-elevated rounded-xl px-3 py-2.5 mb-3 gap-2">
                   <div>
                     <div className="text-xs font-semibold text-brand-text flex items-center gap-1.5">

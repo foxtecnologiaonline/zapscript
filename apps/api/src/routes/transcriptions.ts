@@ -44,12 +44,12 @@ async function uploadAudioToStorage(buffer: Buffer, userId: string, filename: st
   return key;
 }
 
-// Planos com acesso a cada feature (Pro inclui todas as features do Executive)
-const PLAN_SEARCH  = ['pro', 'executive'];
-const PLAN_EXPORT  = ['pro', 'executive'];   // Exportação disponível para Pro+
-const PLAN_TAGS    = ['pro', 'executive'];   // tags abertas para Pro+
-const PLAN_LANG    = ['pro', 'executive'];   // filtro por idioma para Pro+
-const PLAN_AI_FEAT = ['pro', 'executive'];   // reply sugerida + doc para Pro+
+// Planos com acesso a cada feature (pro-tester tem paridade total com pro)
+const PLAN_SEARCH  = ['pro', 'pro-tester', 'executive'];
+const PLAN_EXPORT  = ['pro', 'pro-tester', 'executive'];   // Exportação disponível para Pro+
+const PLAN_TAGS    = ['pro', 'pro-tester', 'executive'];   // tags abertas para Pro+
+const PLAN_LANG    = ['pro', 'pro-tester', 'executive'];   // filtro por idioma para Pro+
+const PLAN_AI_FEAT = ['pro', 'pro-tester', 'executive'];   // reply sugerida + doc para Pro+
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
