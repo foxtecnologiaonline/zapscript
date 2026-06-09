@@ -62,8 +62,8 @@ const PLANS = [
       '🔒 Modo Privado de transcrição',
     ],
     excl:  [],
-    pop:   false,
-    accent: '#3b82f6' as string | null,
+    pop:   true,
+    accent: null as string | null,
   },
   {
     name:  'executive',
@@ -481,7 +481,8 @@ function PlanoContent() {
   const currentPlan = stats?.planName || 'free';
   const PLAN_ORDER: Record<string, number> = { free: 0, pro: 1, executive: 2 };
   const currentPlanOrder = PLAN_ORDER[currentPlan] ?? 0;
-  const displayedPlans = PLANS; // Free · Pro · Executive — sempre visíveis
+  // Exibir apenas Free e Pro — Executive continua suportado para usuários existentes
+  const displayedPlans = PLANS.filter(p => p.name !== 'executive');
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl">
@@ -571,154 +572,199 @@ function PlanoContent() {
         </div>
       )}
 
-      {/* ── Planos ── */}
-      <h2 className="font-display font-bold text-base mb-4">
-        {currentPlan === 'free' ? 'Fazer upgrade' : 'Mudar plano'}
-      </h2>
+      {/* ── Planos — Spotlight Pro Layout ── */}
+      {currentPlan === 'free' && (
+        <h2 className="font-display font-bold text-base mb-4">Fazer upgrade</h2>
+      )}
+      {currentPlan === 'pro' && (
+        <h2 className="font-display font-bold text-base mb-4">Seu plano</h2>
+      )}
 
-      <div className="flex flex-col gap-4">
-        {displayedPlans.map(plan => {
-          const isCurrent    = currentPlan === plan.name;
-          const planOrder    = PLAN_ORDER[plan.name] ?? 0;
-          const isInferior   = planOrder < currentPlanOrder;
-          const isFree       = plan.name === 'free';
-          const isDisabled   = isCurrent || isInferior || isFree;
-          const borderCol    = plan.pop
-            ? 'rgb(var(--color-primary))'
-            : isCurrent
-            ? 'rgba(var(--color-primary)/.4)'
-            : isInferior ? 'rgba(var(--color-border)/.3)'
-            : plan.accent ? plan.accent + '55' : 'rgb(var(--color-border))';
-          const priceCol = isInferior
-            ? 'rgb(var(--color-text-muted))'
-            : plan.pop
-            ? 'rgb(var(--color-primary))'
-            : plan.accent || 'rgb(var(--color-text))';
+      {currentPlan === 'executive' ? (
+        /* Usuários Executive: manter plano existente, mostrar status */
+        <div className="rounded-2xl p-4 mb-4 text-sm"
+          style={{ background: 'rgba(var(--color-primary)/.06)', border: '1px solid rgba(var(--color-primary)/.2)', color: 'rgb(var(--color-text-secondary))' }}>
+          <span className="font-bold" style={{ color: 'rgb(var(--color-primary))' }}>Plano Executive ativo.</span>{' '}
+          Você tem acesso completo a todos os recursos. Em breve, novos planos serão apresentados.
+        </div>
+      ) : currentPlan === 'pro' ? (
+        /* Usuários Pro: card de plano atual compacto */
+        <div className="relative rounded-2xl p-5 mb-0" style={{
+          background: 'rgb(var(--color-surface-elevated))',
+          border: '1.5px solid rgb(var(--color-primary))',
+          boxShadow: '0 0 0 1px rgba(var(--color-primary)/.15), var(--shadow-glow)',
+        }}>
+          <span className="absolute -top-3 right-4 text-[10px] font-bold px-3 py-0.5 rounded-full"
+            style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.4)', color: 'rgb(var(--color-primary))' }}>
+            Plano atual
+          </span>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-display font-bold text-base">Pro</div>
+              <div className="text-xs font-light mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Para profissionais</div>
+            </div>
+            <div className="text-right">
+              <span className="font-display font-bold text-2xl tracking-tight" style={{ color: 'rgb(var(--color-primary))' }}>R$39,90</span>
+              <span className="text-xs font-light ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês</span>
+            </div>
+          </div>
+          <ul className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5">
+            {PLANS.find(p => p.name === 'pro')!.feats.map(f => (
+              <li key={f} className="flex items-center gap-1.5 text-xs" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>{f}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        /* Usuários Free: comparativo rápido + Pro como herói */
+        <div className="space-y-3">
 
-          return (
-            <div key={plan.name} className={`relative rounded-2xl p-5 border transition-all ${isInferior ? 'opacity-50' : ''}`}
-              style={{
-                background:  plan.pop && !isInferior ? 'rgb(var(--color-surface-elevated))' : 'rgb(var(--color-surface))',
-                borderColor: borderCol,
-                boxShadow:   plan.pop && !isInferior ? '0 0 0 1px rgba(var(--color-primary)/.2), var(--shadow-glow)' : 'var(--shadow-sm)',
-              }}>
-              {plan.pop && !isInferior && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-white text-[10px] font-black px-3 py-0.5 rounded-full uppercase tracking-wider"
-                  style={{ background: 'rgb(var(--color-primary))' }}>
-                  ⭐ Mais popular
-                </span>
-              )}
-              {isCurrent && (
-                <span className="absolute -top-3 right-4 text-[10px] font-bold px-3 py-0.5 rounded-full"
-                  style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.4)', color: 'rgb(var(--color-primary))' }}>
-                  Plano atual
-                </span>
-              )}
-
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="font-display font-bold text-base">{plan.label}</div>
-                  <div className="text-xs font-light mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.desc}</div>
-                </div>
-                <div className="text-right">
-                  <span className="font-display font-bold text-2xl tracking-tight" style={{ color: priceCol }}>
-                    {plan.price}
-                  </span>
-                  <span className="text-xs font-light ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
-                </div>
+          {/* Free — card compacto de contexto */}
+          <div className="rounded-xl px-4 py-3 flex items-center justify-between"
+            style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))' }}>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(var(--color-primary)/.1)', color: 'rgb(var(--color-primary))' }}>
+                Atual
+              </span>
+              <div>
+                <span className="text-sm font-bold">Free</span>
+                <span className="text-xs ml-2" style={{ color: 'rgb(var(--color-text-muted))' }}>20min · 1 número · básico</span>
               </div>
+            </div>
+            <span className="font-bold text-sm" style={{ color: 'rgb(var(--color-text-muted))' }}>R$0</span>
+          </div>
 
-              <ul className="space-y-1.5 mb-1">
-                {plan.feats.map(f => (
+          {/* Pro — card herói */}
+          <div className="relative rounded-2xl p-5 pt-7"
+            style={{
+              background: 'rgb(var(--color-surface-elevated))',
+              border: '2px solid rgb(var(--color-primary))',
+              boxShadow: '0 0 0 1px rgba(var(--color-primary)/.15), var(--shadow-glow)',
+            }}>
+            <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[11px] font-black px-4 py-1 rounded-full uppercase tracking-wider"
+              style={{ background: 'rgb(var(--color-primary))', color: '#030d06' }}>
+              ⭐ Mais completo
+            </span>
+
+            {/* Preço + nome */}
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="font-display font-bold text-xl">Pro</div>
+                <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Para profissionais que precisam de mais</div>
+              </div>
+              <div className="text-right">
+                <div className="font-display font-black text-3xl tracking-tight leading-none" style={{ color: 'rgb(var(--color-primary))' }}>
+                  R$39,90
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês · cancele quando quiser</div>
+              </div>
+            </div>
+
+            {/* Stats rápidos */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {[
+                { val: '200', label: 'min/mês', icon: '⏱' },
+                { val: '2', label: 'números WhatsApp', icon: '📱' },
+              ].map(s => (
+                <div key={s.label} className="rounded-xl p-3 text-center"
+                  style={{ background: 'rgba(var(--color-primary)/.06)', border: '1px solid rgba(var(--color-primary)/.15)' }}>
+                  <div className="font-black text-2xl" style={{ color: 'rgb(var(--color-primary))' }}>{s.val}</div>
+                  <div className="text-[11px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Features: o que você ganha */}
+            <div className="mb-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                Tudo do Free, mais:
+              </p>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-4">
+                {[
+                  '📋 Histórico de transcrições',
+                  '📅 Filtros por data e contato',
+                  '🔍 Busca por transcrição',
+                  '🎤 Notas Pessoais de Voz',
+                  '🔒 Modo Privado',
+                  '📄 Transcrição profissional PDF',
+                ].map(f => (
                   <li key={f} className="flex items-center gap-2 text-xs" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                    <span style={{ color: plan.pop && !isInferior ? 'rgb(var(--color-primary))' : plan.accent || 'rgb(var(--color-primary))' }}>✓</span>{f}
-                  </li>
-                ))}
-                {plan.excl.map(f => (
-                  <li key={f} className="flex items-center gap-2 text-xs" style={{ color: 'rgb(var(--color-text-muted))', opacity: .35 }}>
-                    <span>✗</span>{f}
+                    <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>{f}
                   </li>
                 ))}
               </ul>
-
-              <button
-                disabled={isDisabled || previewLoading}
-                onClick={!isDisabled ? () => upgrade(plan.name) : undefined}
-                className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold transition-all"
-                style={{
-                  background: isDisabled
-                    ? 'rgba(var(--color-surface-elevated))'
-                    : plan.pop ? 'rgb(var(--color-primary))'
-                    : plan.accent || 'transparent',
-                  color: isDisabled
-                    ? 'rgb(var(--color-text-muted))'
-                    : plan.pop ? '#030d06'
-                    : plan.accent ? '#fff' : 'rgb(var(--color-primary))',
-                  border: (plan.pop || plan.accent) && !isDisabled ? 'none' : '1.5px solid rgb(var(--color-border))',
-                  cursor: isDisabled ? 'not-allowed' : 'pointer',
-                  boxShadow: plan.pop && !isDisabled ? 'rgba(var(--color-primary)/.25) 0 4px 14px' : 'none',
-                  opacity: isDisabled && !isCurrent && !isInferior ? 0.7 : 1,
-                }}>
-                {isCurrent         ? 'Plano atual' :
-                 isFree            ? 'Gratuito' :
-                 isInferior        ? 'Plano inferior' :
-                 previewLoading    ? 'Calculando...' :
-                 currentPlan !== 'free' ? '↑ Fazer upgrade' :
-                 'Assinar agora'}
-              </button>
             </div>
-          );
-        })}
-      </div>
 
-      {/* Toggle comparativo */}
-      <button
-        onClick={() => setShowTable(v => !v)}
-        className="w-full mt-4 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2"
-        style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))', background: 'transparent' }}>
-        {showTable ? 'Ocultar comparativo ↑' : 'Comparar todos os recursos ↓'}
-      </button>
+            {/* CTA */}
+            <button
+              disabled={previewLoading}
+              onClick={() => upgrade('pro')}
+              className="w-full mt-5 py-3.5 rounded-xl text-sm font-black tracking-wide transition-all disabled:opacity-50"
+              style={{
+                background: 'rgb(var(--color-primary))',
+                color: '#030d06',
+                boxShadow: 'rgba(var(--color-primary)/.35) 0 6px 20px',
+              }}>
+              {previewLoading ? 'Calculando...' : 'Assinar Pro por R$39,90/mês →'}
+            </button>
 
-      {showTable && (
-        <div className="mt-3 rounded-2xl overflow-hidden" style={{ border: '1px solid rgb(var(--color-border))' }}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[380px]" style={{ borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'rgb(var(--color-surface-elevated))' }}>
-                  <th className="text-left px-4 py-2.5 font-semibold" style={{ color: 'rgb(var(--color-text-muted))' }}>Recurso</th>
-                  {displayedPlans.map(p => (
-                    <th key={p.name} className="px-2 py-2.5 font-bold text-center"
-                      style={{ color: p.pop ? 'rgb(var(--color-primary))' : p.accent || 'rgb(var(--color-text-secondary))' }}>
-                      {p.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {TABLE_ROWS.map((row, ri) => (
-                  <tr key={ri} style={{ borderTop: '1px solid rgb(var(--color-border-light))' }}>
-                    <td className="px-4 py-2.5 font-medium" style={{ color: 'rgb(var(--color-text-secondary))' }}>{row.feature}</td>
-                    {row.vals.slice(0, displayedPlans.length).map((v, vi) => (
-                      <td key={vi} className="px-2 py-2.5 text-center">
-                        {typeof v === 'boolean' ? (
-                          v ? <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>
-                            : <span style={{ color: 'rgb(var(--color-text-muted))', opacity: .4 }}>✗</span>
-                        ) : (
-                          <span className="font-mono font-bold" style={{ color: 'rgb(var(--color-text))' }}>{v}</span>
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.6)' }}>
+              🔒 Pix ou cartão · Cancele a qualquer momento
+            </p>
           </div>
         </div>
       )}
 
-      <p className="text-xs text-center mt-4" style={{ color: 'rgb(var(--color-text-muted))' }}>
-        Pagamentos processados com segurança pela Asaas. Cancele a qualquer momento.
-      </p>
+      {/* Toggle comparativo — apenas para usuários Free */}
+      {currentPlan === 'free' && (
+        <>
+          <button
+            onClick={() => setShowTable(v => !v)}
+            className="w-full mt-4 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2"
+            style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))', background: 'transparent' }}>
+            {showTable ? 'Ocultar comparativo ↑' : 'Ver comparativo completo ↓'}
+          </button>
+
+          {showTable && (
+            <div className="mt-3 rounded-2xl overflow-hidden" style={{ border: '1px solid rgb(var(--color-border))' }}>
+              <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'rgb(var(--color-surface-elevated))' }}>
+                    <th className="text-left px-4 py-2.5 font-semibold" style={{ color: 'rgb(var(--color-text-muted))' }}>Recurso</th>
+                    <th className="px-3 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-text-muted))' }}>Free</th>
+                    <th className="px-3 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-primary))' }}>Pro</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {TABLE_ROWS.map((row, ri) => (
+                    <tr key={ri} style={{ borderTop: '1px solid rgb(var(--color-border-light))' }}>
+                      <td className="px-4 py-2.5 font-medium" style={{ color: 'rgb(var(--color-text-secondary))' }}>{row.feature}</td>
+                      {row.vals.slice(0, 2).map((v, vi) => (
+                        <td key={vi} className="px-3 py-2.5 text-center">
+                          {typeof v === 'boolean' ? (
+                            v ? <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>
+                              : <span style={{ color: 'rgb(var(--color-text-muted))', opacity: .4 }}>✗</span>
+                          ) : (
+                            <span className="font-mono font-bold" style={{ color: vi === 1 ? 'rgb(var(--color-primary))' : 'rgb(var(--color-text))' }}>{v}</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {currentPlan !== 'free' && (
+        <p className="text-xs text-center mt-4" style={{ color: 'rgb(var(--color-text-muted))' }}>
+          Pagamentos processados com segurança pela Asaas. Cancele a qualquer momento.
+        </p>
+      )}
 
       {/* ── Faturas / Histórico de pagamentos ── */}
       {currentPlan !== 'free' && (
@@ -786,31 +832,21 @@ function PlanoContent() {
         </div>
       )}
 
-      {/* Em breve */}
-      <div className="mt-8 rounded-2xl p-5" style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(16,185,129,.15)' }}>
-        <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-[11px] font-bold mb-4"
-          style={{ background: 'rgba(16,185,129,.08)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
-          🚀 EM BREVE
-        </div>
-        <h3 className="font-display font-bold text-base leading-snug mb-1">
-          Mais poder para seus áudios
-        </h3>
-        <p className="text-xs font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-          + funcionalidades, + produtividade, + organização, + ZapScript
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            { icon: '👥', label: 'Resumo de Grupos' },
-            { icon: '✅', label: 'Tarefas e Planner de áudios' },
-            { icon: '🗓️', label: 'Organização e Calendário' },
-            { icon: '🔗', label: 'Integração com Sistemas' },
-          ].map((f, i) => (
-            <div key={i} className="flex items-center gap-2 text-xs rounded-xl px-3 py-2.5"
-              style={{ background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-text-muted))' }}>
-              <span>{f.icon}</span>
-              <span>{f.label}</span>
-            </div>
-          ))}
+      {/* Empresas — Em breve teaser */}
+      <div className="mt-6 rounded-2xl p-4 flex items-center gap-4"
+        style={{ background: 'rgb(var(--color-surface))', border: '1px dashed rgba(var(--color-border)/.6)' }}>
+        <div className="text-2xl flex-shrink-0">🏢</div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-sm font-bold">Plano Empresas</span>
+            <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider"
+              style={{ background: 'rgba(var(--color-primary)/.1)', color: 'rgb(var(--color-primary))' }}>
+              Em breve
+            </span>
+          </div>
+          <p className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
+            Multi-usuário · Webhook personalizado · Integrações avançadas · Para times e agências
+          </p>
         </div>
       </div>
 
