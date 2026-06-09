@@ -83,11 +83,44 @@ const groq = process.env.GROQ_API_KEY
   ? new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' })
   : null;
 
-// Prompt padrão (WhatsApp — coloquial)
-const PT_BR_PROMPT = 'Transcrição em português brasileiro. Áudio de WhatsApp com linguagem coloquial.';
+// ── Prompts para Whisper ────────────────────────────────────────────────────
+// IMPORTANTE: o prompt do Whisper NÃO é uma instrução — é uma amostra de
+// estilo que orienta vocabulário e formatação. Frases imperativas como
+// "Reproduzir exatamente o que foi dito" causam alucinação: quando o áudio
+// é silencioso ou ininteligível, o Whisper "preenche" com o texto do prompt.
+// Usar frases curtas e naturais que soem como fala real em PT-BR.
 
-// Prompt jurídico (upload manual — transcrição literal fiel)
-const PT_BR_JURIDICAL_PROMPT = 'Transcrição literal e fiel em português brasileiro. Reproduzir exatamente o que foi dito, sem correções ou omissões.';
+// Priming coloquial para áudios de WhatsApp
+const PT_BR_PROMPT = 'Tá bom, então. Deixa eu te falar uma coisa.';
+
+// Priming formal/neutro para uploads manuais
+const PT_BR_JURIDICAL_PROMPT = 'Bom dia. Então, o que aconteceu foi o seguinte.';
+
+// ── Detecção de alucinação do Whisper ───────────────────────────────────────
+// Retorna true se o texto for provavelmente alucinado (prompt repetido,
+// saída suspeitamente curta para a duração do áudio, padrões repetitivos).
+function isWhisperHallucination(text: string, durationSec: number): boolean {
+  if (!text || text.length < 3) return true;
+
+  // Padrões conhecidos de alucinação do Whisper
+  const HALLUCINATION_PATTERNS = [
+    /reproduzir exatamente o que foi dito/i,
+    /transcrição literal e fiel/i,
+    /transcrição em português brasileiro/i,
+    /sem correções ou omissões/i,
+    /thank you for watching/i,
+    /thanks for watching/i,
+    /please subscribe/i,
+  ];
+  if (HALLUCINATION_PATTERNS.some(p => p.test(text))) return true;
+
+  // Texto excessivamente curto para a duração (< 2 palavras por minuto de áudio)
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const minWords  = Math.floor(durationSec / 60) * 2;
+  if (durationSec > 30 && wordCount < Math.max(minWords, 3)) return true;
+
+  return false;
+}
 
 // Segmento de fala retornado pelo Whisper verbose_json
 interface WhisperSegment {
@@ -126,6 +159,9 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
       if (!text) throw new Error('Groq Whisper retornou texto vazio');
       const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
       const language    = (result as any).language || 'pt';
+      if (isWhisperHallucination(text, durationSec)) {
+        throw new Error(`Groq retornou alucinação (prompt repetido) — tentando OpenAI`);
+      }
       logger.info(`[Whisper] Groq whisper-large-v3-turbo — ${durationSec}s — lang:${language}`);
       return { text, durationSec, language };
     } catch (err: any) {
@@ -145,6 +181,9 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
   if (!text) throw new Error('Whisper retornou texto vazio');
   const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
   const language    = (result as any).language || 'pt';
+  if (isWhisperHallucination(text, durationSec)) {
+    throw new Error('Whisper retornou alucinação — áudio possivelmente silencioso ou corrompido');
+  }
   logger.info(`[Whisper] OpenAI whisper-1 — ${durationSec}s — lang:${language}`);
   return { text, durationSec, language };
 }
@@ -183,7 +222,10 @@ async function transcribeBufferFull(mp3Buffer: Buffer): Promise<{
       if (!text) throw new Error('Groq Whisper retornou texto vazio');
       const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
       const language    = (result as any).language || 'pt';
-      const segments    = parseSegments((result as any).segments);
+      if (isWhisperHallucination(text, durationSec)) {
+        throw new Error('Groq retornou alucinação — tentando OpenAI');
+      }
+      const segments = parseSegments((result as any).segments);
       logger.info(`[Whisper] Groq juridical — ${durationSec}s — ${segments.length} segmentos`);
       return { text, durationSec, language, segments };
     } catch (err: any) {
@@ -203,7 +245,10 @@ async function transcribeBufferFull(mp3Buffer: Buffer): Promise<{
   if (!text) throw new Error('Whisper retornou texto vazio');
   const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
   const language    = (result as any).language || 'pt';
-  const segments    = parseSegments((result as any).segments);
+  if (isWhisperHallucination(text, durationSec)) {
+    throw new Error('Whisper retornou alucinação — áudio possivelmente silencioso ou ininteligível');
+  }
+  const segments = parseSegments((result as any).segments);
   logger.info(`[Whisper] OpenAI juridical — ${durationSec}s — ${segments.length} segmentos`);
   return { text, durationSec, language, segments };
 }
