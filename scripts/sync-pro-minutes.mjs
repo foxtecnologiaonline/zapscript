@@ -19,8 +19,10 @@ const require = createRequire(import.meta.url);
 const { Client } = require('../scripts_temp/node_modules/pg/lib/index.js');
 
 const DRY_RUN    = process.argv.includes('--dry-run');
-const DB_URL     = 'postgresql://postgres.iqesoqtqnzczlnvoqwnp:ntPY9hMRwAmlK6zO@aws-1-sa-east-1.pooler.supabase.com:6543/postgres';
-const PRO_MINUTES = 200;  // minutos do plano Pro
+// ⚠️ Banco correto de produção (US West, sqqmusijaovhtiufbzsa) — mesma URL do zapscript.env
+const DB_URL     = 'postgresql://postgres.sqqmusijaovhtiufbzsa:691393%40rfts@aws-1-us-west-2.pooler.supabase.com:5432/postgres';
+const PRO_MINUTES     = 200;  // minutos do plano Pro (será atualizado de 150)
+const EXEC_MINUTES    = 300;  // minutos do plano Executive
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -45,7 +47,7 @@ function fmt(d) {
 async function main() {
   const client = new Client({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
   await client.connect();
-  console.log(`✅ Conectado ao banco de produção (SP)${DRY_RUN ? ' — MODO DRY RUN' : ''}\n`);
+  console.log(`✅ Conectado ao banco de produção (US West)${DRY_RUN ? ' — MODO DRY RUN' : ''}\n`);
 
   // ── PASSO 0: Garantir que o plano Pro está com 200 min ──────────────────────
   const { rows: planRows } = await client.query(`
@@ -126,7 +128,8 @@ async function main() {
     `, [user.userId, cycleStart]);
 
     const minutesUsed   = parseFloat(usageRows[0]?.minutesUsed || 0);
-    const newAvailable  = Math.max(0, PRO_MINUTES - minutesUsed);
+    const planLimit     = user.planName === 'executive' ? EXEC_MINUTES : PRO_MINUTES;
+    const newAvailable  = Math.max(0, planLimit - minutesUsed);
     const oldAvailable  = parseFloat(user.availableMinutes || 0);
 
     console.log(
