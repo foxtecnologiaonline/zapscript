@@ -1,69 +1,194 @@
+# render.yaml — ZapScript Blueprint v2
+# Documentação: https://render.com/docs/blueprint-spec
+#
+# COMO USAR:
+#   1. https://dashboard.render.com → "New" → "Blueprint"
+#   2. Conectar este repositório GitHub
+#   3. Render cria os 3 serviços automaticamente
+#   4. Configurar as variáveis marcadas "sync: false" no Environment de cada serviço
+#   5. Cada push na branch "master" faz deploy automático
+#
+# CUSTO ESTIMADO:
+#   3 serviços × $7/mês (Starter) = ~$21/mês
+#   Plano Free dorme após 15 min de inatividade — NÃO usar em produção
+
 services:
-  # ── API (Fastify + Socket.IO) ────────────────────────────────
+
+  # ── API (Fastify + Socket.IO) ─────────────────────────────────────────────
   - type: web
     name: zapscript-api
     runtime: node
-    rootDir: apps/api
-    buildCommand: npm install && npm run build
-    startCommand: npx prisma migrate deploy --schema=../../packages/database/prisma/schema.prisma && node dist/index.js
+    # Sem rootDir → Render usa a raiz do repo; o build acessa packages/database
+    buildCommand: cd apps/api && npm ci && npm run build
+    startCommand: >
+      cd apps/api &&
+      npx prisma migrate deploy
+        --schema=../../packages/database/prisma/schema.prisma &&
+      node dist/index.js
+    region: oregon
+    plan: starter
+    branch: master
+    nodeVersion: 20
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3001
-      # Set these in the Render dashboard (Environment tab):
-      # DATABASE_URL        — Supabase pooler URL (?pgbouncer=true&connection_limit=1)
-      # DIRECT_URL          — Supabase direct URL (port 5432, no pgbouncer) — required for prisma migrate
-      # REDIS_URL           — Upstash Redis URL (rediss://...)
-      # JWT_SECRET          — 64+ char random string
-      # ENCRYPTION_KEY      — exactly 64 hex characters (32 bytes)
-      # SUPABASE_URL        — https://xxx.supabase.co
-      # SUPABASE_SERVICE_KEY — service_role key from Supabase
-      # APP_URL             — https://zapscript.me
-      # ASAAS_API_KEY       — Asaas API key
-      # ASAAS_WEBHOOK_TOKEN — token for Asaas webhook verification
-      # INTERNAL_TOKEN      — shared secret with worker
-      # ADMIN_TOKEN         — admin panel access token
-      # MONITOR_TOKEN       — monitor agent token
-      # SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS (optional, for emails)
-      # SUPPORT_EMAIL       — where support tickets go (optional)
-      # EVOLUTION_API_URL   — https://<vps-ip-ou-dominio>:8080 (Evolution API no Hostinger VPS)
-      # EVOLUTION_API_KEY   — chave da Evolution API
-      # ADMIN_WHATSAPP      — número do admin para alertas (ex: 5534991790254)
-      #
-      # ── Scaling notes ──────────────────────────────────────────────────────────
-      # Para escalar o API para N pods (numInstances: N), o Socket.IO Redis adapter
-      # já está configurado (usa REDIS_URL). Ative com:
-      #   scaling:
-      #     minInstances: 1
-      #     maxInstances: 3   # aumentar conforme demanda
-      # O Worker (BullMQ) já é multi-instância safe — pode ter múltiplos pods sem config extra.
+      # Render define PORT automaticamente — a API lê process.env.PORT || 3001
 
-  # ── Web (Next.js) ────────────────────────────────────────────
-  - type: web
-    name: zapscript-web
-    runtime: docker
-    dockerfilePath: apps/web/Dockerfile
-    envVars:
-      - key: NODE_ENV
-        value: production
-      # NEXT_PUBLIC_API_URL — https://zapscript-api.onrender.com (ou domínio customizado)
+      # ── Banco de dados ──────────────────────────────────────────────────────
+      # DATABASE_URL: connection pooler do Supabase
+      #   postgresql://postgres.SEU_PROJECT:SENHA@aws-1-sa-east-1.pooler.supabase.com:6543/postgres
+      - key: DATABASE_URL
+        sync: false
+      # DIRECT_URL: conexão direta para migrations (sem pooler)
+      #   postgresql://postgres:SENHA@db.SEU_PROJECT.supabase.co:5432/postgres
+      - key: DIRECT_URL
+        sync: false
 
-  # ── Worker (BullMQ + Whisper + Claude) ──────────────────────
+      # ── Redis (Upstash) ─────────────────────────────────────────────────────
+      # rediss://default:SENHA@lasting-spider-XXXXX.upstash.io:6379
+      - key: REDIS_URL
+        sync: false
+
+      # ── Autenticação / Segurança ────────────────────────────────────────────
+      - key: JWT_SECRET
+        sync: false          # string aleatória 64+ chars
+      - key: ENCRYPTION_KEY
+        sync: false          # exatamente 64 hex chars (32 bytes)
+      - key: INTERNAL_TOKEN
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: INTERNAL_API_SECRET
+        sync: false
+
+      # ── URLs da aplicação ───────────────────────────────────────────────────
+      - key: APP_URL
+        sync: false          # ex: https://zapscript.me (ou domínio Render)
+      - key: API_URL
+        sync: false          # ex: https://zapscript-api.onrender.com
+
+      # ── Supabase Storage ────────────────────────────────────────────────────
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+
+      # ── Evolution API (WhatsApp) ────────────────────────────────────────────
+      - key: EVOLUTION_API_URL
+        sync: false
+      - key: EVOLUTION_API_KEY
+        sync: false
+      - key: EVOLUTION_WEBHOOK_SECRET
+        sync: false
+
+      # ── Pagamentos Asaas ────────────────────────────────────────────────────
+      - key: ASAAS_API_KEY
+        sync: false
+      - key: ASAAS_BASE_URL
+        value: https://api.asaas.com/v3
+      - key: ASAAS_WEBHOOK_TOKEN
+        sync: false
+
+      # ── E-mail (Resend) ─────────────────────────────────────────────────────
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SUPPORT_EMAIL
+        sync: false
+
+      # ── Suporte / Admin ─────────────────────────────────────────────────────
+      - key: ADMIN_NOTIFY_PHONE
+        sync: false
+      - key: UPSTASH_REDIS_URL
+        sync: false          # mesmo valor de REDIS_URL
+
+
+  # ── Worker (BullMQ + Whisper + Claude) ────────────────────────────────────
   - type: worker
     name: zapscript-worker
     runtime: node
-    rootDir: apps/worker
-    buildCommand: npm install && npm run build
-    startCommand: node dist/index.js
+    buildCommand: cd apps/worker && npm ci && npm run build
+    startCommand: cd apps/worker && node dist/index.js
+    region: oregon
+    plan: starter
+    branch: master
+    nodeVersion: 20
     envVars:
       - key: NODE_ENV
         value: production
-      # Set these in the Render dashboard (Environment tab):
-      # DATABASE_URL        — same Supabase pooler connection string
-      # REDIS_URL           — same Upstash Redis URL
-      # OPENAI_API_KEY      — OpenAI key (for Whisper transcription)
-      # ANTHROPIC_API_KEY   — Anthropic key (for Claude bullets)
-      # INTERNAL_TOKEN      — same as API's INTERNAL_TOKEN
-      # API_URL             — https://zapscript.onrender.com
+
+      # ── Banco de dados ──────────────────────────────────────────────────────
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+
+      # ── Redis ───────────────────────────────────────────────────────────────
+      - key: REDIS_URL
+        sync: false
+
+      # ── Segurança ───────────────────────────────────────────────────────────
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: INTERNAL_TOKEN
+        sync: false
+
+      # ── IA / Transcrição ────────────────────────────────────────────────────
+      - key: GROQ_API_KEY
+        sync: false          # whisper-large-v3-turbo
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+      # ── Evolution API ───────────────────────────────────────────────────────
+      - key: EVOLUTION_API_URL
+        sync: false
+      - key: EVOLUTION_API_KEY
+        sync: false
+      - key: EVOLUTION_WEBHOOK_SECRET
+        sync: false
+
+      # ── Configurações ───────────────────────────────────────────────────────
+      - key: WORKER_CONCURRENCY
+        value: "4"
+      - key: WORKER_LOCK_MINUTES
+        value: "10"
+      - key: API_URL
+        sync: false          # para callbacks internos
+
+
+  # ── Web (Next.js) ──────────────────────────────────────────────────────────
+  - type: web
+    name: zapscript-web
+    runtime: node
+    rootDir: apps/web        # app standalone — não usa packages/database
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    region: oregon
+    plan: starter
+    branch: master
+    nodeVersion: 20
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_APP_NAME
+        value: ZapScript
+
+      # IMPORTANTE: NEXT_PUBLIC_* precisam estar definidas ANTES do build
+      # (o Next.js as incorpora no bundle durante 'next build')
+
+      # ── API pública ─────────────────────────────────────────────────────────
+      - key: NEXT_PUBLIC_API_URL
+        sync: false          # ex: https://zapscript-api.onrender.com
+      - key: NEXT_PUBLIC_BASE_URL
+        sync: false          # ex: https://zapscript.me (ou domínio Render)
+
+      # ── Supabase Storage (acesso direto do browser) ─────────────────────────
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
