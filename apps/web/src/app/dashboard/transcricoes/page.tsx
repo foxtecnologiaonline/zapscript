@@ -856,7 +856,8 @@ export default function TranscricoesPage() {
     }
   }, []); // eslint-disable-line
 
-  useEffect(() => { load(); }, []); // eslint-disable-line
+  // Carrega com source da tab ativa (whatsapp-evolution por padrão)
+  useEffect(() => { load('', 0, '', '', '', '', '', 'date_desc', 'whatsapp-evolution'); }, []); // eslint-disable-line
 
   /* ── Handlers ──────────────────────────────────────────────────────────── */
   function handleSearch(e: React.FormEvent) {

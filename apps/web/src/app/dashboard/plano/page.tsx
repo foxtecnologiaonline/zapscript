@@ -578,11 +578,15 @@ function PlanoContent() {
               {stats.minutesUsed} / {stats.minutesTotal} min
             </span>
           </div>
-          <div className="h-1.5 rounded-full overflow-hidden mb-1" style={{ background: 'rgb(var(--color-surface-elevated))' }}>
-            <div className="h-full rounded-full transition-all"
+          <div className="h-2 rounded-full overflow-hidden mb-1" style={{ background: 'rgb(var(--color-surface-elevated))' }}>
+            <div className="h-full rounded-full transition-all duration-500"
               style={{
                 width: `${Math.min(stats.minutesPct, 100)}%`,
-                background: 'linear-gradient(90deg, rgb(var(--color-primary-light)), rgb(var(--color-primary)))',
+                background: stats.minutesPct >= 90
+                  ? 'linear-gradient(90deg, #f87171, #ef4444)'
+                  : stats.minutesPct >= 70
+                    ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
+                    : 'linear-gradient(90deg, rgb(var(--color-primary-light)), rgb(var(--color-primary)))',
               }} />
           </div>
           <div className="flex justify-between text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
@@ -818,7 +822,8 @@ function PlanoContent() {
                   </div>
                 </div>
                 <p className="text-xs text-brand-muted text-center">
-                  Faturas de pagamento aparecerão aqui após confirmação via Asaas.
+                  Faturas aparecerão aqui conforme os pagamentos forem processados.
+                  Pagamentos anteriores ou realizados fora do sistema não são exibidos.
                 </p>
               </div>
             ) : (

@@ -125,11 +125,15 @@ export default function DashboardPage() {
             </div>
             <div className="text-2xl font-black text-brand-primary leading-none">{stats.minutesUsed}</div>
             <div className="text-xs text-brand-muted mb-3">de {stats.minutesTotal} minutos usados</div>
-            <div className="h-1.5 bg-brand-elevated rounded-full overflow-hidden mb-1">
-              <div className="h-full rounded-full transition-all"
+            <div className="h-2 bg-brand-elevated rounded-full overflow-hidden mb-1">
+              <div className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${stats.minutesPct}%`,
-                  background: 'linear-gradient(90deg, rgba(var(--color-primary-light),1), rgb(var(--color-primary)))',
+                  background: stats.minutesPct >= 90
+                    ? 'linear-gradient(90deg, #f87171, #ef4444)'
+                    : stats.minutesPct >= 70
+                      ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
+                      : 'linear-gradient(90deg, rgba(var(--color-primary-light),1), rgb(var(--color-primary)))',
                 }} />
             </div>
             <div className="flex justify-between text-[10px] text-brand-muted mb-3">
