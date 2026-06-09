@@ -61,5 +61,8 @@ jobs:
             cd /opt/zapscript
             docker compose pull api worker
             docker compose up -d --no-deps api worker
+            echo "⏳ Aguardando API inicializar..."
+            sleep 10
+            docker compose exec -T api npx prisma migrate deploy
             docker image prune -f
             echo "✅ Deploy $(date '+%Y-%m-%d %H:%M:%S BRT')"
