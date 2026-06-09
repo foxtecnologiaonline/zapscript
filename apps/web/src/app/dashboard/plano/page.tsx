@@ -114,6 +114,13 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
 // Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento
 interface MinutePkg { id: string; minutes: number; priceBrl: number; label: string; desc: string }
 
+// Pacotes hardcoded como fallback (se API falhar, a seção ainda aparece)
+const DEFAULT_MINUTE_PKGS: MinutePkg[] = [
+  { id: 'pkg_60',  minutes: 60,  priceBrl: 24.90, label: '60 minutos',  desc: 'Ideal para uso pontual' },
+  { id: 'pkg_120', minutes: 120, priceBrl: 44.90, label: '120 minutos', desc: 'Mais custo-benefício'  },
+  { id: 'pkg_300', minutes: 300, priceBrl: 99.90, label: '300 minutos', desc: 'Melhor valor por minuto' },
+];
+
 function formatDocument(val: string): string {
   const n = val.replace(/\D/g, '').slice(0, 14);
   if (n.length <= 11) {
@@ -401,7 +408,7 @@ function PlanoContent() {
   const justUpgraded = searchParams.get('upgrade') === 'success';
 
   /* — Minute packages — */
-  const [minutePkgs, setMinutePkgs]             = useState<MinutePkg[]>([]);
+  const [minutePkgs, setMinutePkgs]             = useState<MinutePkg[]>(DEFAULT_MINUTE_PKGS);
   const [pkgModal, setPkgModal]                 = useState<MinutePkg | null>(null);
   const [pkgMethod, setPkgMethod]               = useState<'pix' | 'credit_card'>('pix');
   const [pkgLoading, setPkgLoading]             = useState(false);

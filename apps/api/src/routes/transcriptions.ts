@@ -226,7 +226,15 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     // ── Where base ────────────────────────────────────
     const where: any = { userId };
     if (numberId) where.numberId = numberId === 'none' ? null : numberId;
-    if (source)   where.source   = source;
+    if (source) {
+      // 'whatsapp-evolution' agrupa todos os provedores de WhatsApp recebidos
+      // (inclui registros antigos com source='whatsapp' — o default do schema)
+      if (source === 'whatsapp-evolution') {
+        where.source = { in: ['whatsapp', 'whatsapp-evolution', 'whatsapp-zapi', 'whatsapp-meta', 'whatsapp-twilio'] };
+      } else {
+        where.source = source;
+      }
+    }
 
     // Filtro por data (todos os planos)
     if (dateFrom || dateTo) {
