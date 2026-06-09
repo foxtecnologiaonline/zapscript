@@ -154,6 +154,7 @@ table.meta td:first-child{background:#f3f3f3;font-weight:700;width:38%;font-size
 <table class="meta">
   <tr><td>Número do Protocolo</td><td><span style="font-family:monospace;font-size:10pt">${docId}</span></td></tr>
   <tr><td>Data e Hora da Transcrição</td><td>${dateStr} (Horário de Brasília)</td></tr>
+  <tr><td>Arquivo de Origem</td><td><span style="font-family:monospace;font-size:10pt">${esc(t.filename || '—')}</span></td></tr>
   <tr><td>Duração Total do Áudio</td><td>${durStr}</td></tr>
   <tr><td>Idioma Detectado</td><td>${language}</td></tr>
   <tr><td>Origem</td><td>Upload manual — ZapScript Dashboard</td></tr>

@@ -109,6 +109,7 @@ model Transcription {
   numberId        String?
   contactPhone    String
   contactName     String?
+  filename        String?                                // Nome original do arquivo (uploads manuais)
   durationSec     Float
   originalText    String
   summaryBullets  Json

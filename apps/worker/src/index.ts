@@ -446,9 +446,9 @@ function parseFallbackLines(raw: string, count: number): string[] {
  */
 async function saveTranscription(params: {
   userId: string; numberId: string | null; contactPhone: string; contactName?: string;
-  durationSec: number; originalText: string; bullets: string[]; source: string;
+  filename?: string; durationSec: number; originalText: string; bullets: string[]; source: string;
 }) {
-  const { userId, numberId, contactPhone, contactName, durationSec, originalText, bullets, source } = params;
+  const { userId, numberId, contactPhone, contactName, filename, durationSec, originalText, bullets, source } = params;
   // Garantir que numberId seja null (não 'unknown') para não violar FK do Prisma
   const safeNumberId = (numberId && numberId !== 'unknown') ? numberId : null;
   const durationMin = Math.round((durationSec / 60) * 100) / 100;
@@ -470,7 +470,7 @@ async function saveTranscription(params: {
     const encBullets = encryptArr(bullets);
 
     const transcr = await tx.transcription.create({
-      data: { userId, numberId: safeNumberId, contactPhone: encPhone, contactName: contactName ?? null, durationSec, originalText: encText, summaryBullets: encBullets, confidenceScore: 99.0, source },
+      data: { userId, numberId: safeNumberId, contactPhone: encPhone, contactName: contactName ?? null, filename: filename ?? null, durationSec, originalText: encText, summaryBullets: encBullets, confidenceScore: 99.0, source },
     });
 
     const ops: Promise<any>[] = [
@@ -811,6 +811,7 @@ async function processManualJob(job: Job) {
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId, numberId, contactPhone: 'manual',
+      filename: filename || null,
       durationSec, originalText: timestampedText, bullets, source: 'manual',
     });
 

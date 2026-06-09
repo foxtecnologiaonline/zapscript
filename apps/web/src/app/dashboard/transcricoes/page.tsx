@@ -14,6 +14,7 @@ interface Transcription {
   tags: string[];
   createdAt: string;
   source: string;  // 'whatsapp-evolution' | 'manual' | 'voice-note' | 'whatsapp-meta' | etc.
+  filename: string | null;  // nome original do arquivo (apenas uploads manuais)
   number: { displayName: string | null; phoneNumber: string } | null;
 }
 
@@ -1587,11 +1588,14 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
           /* Card list */
           <div className="divide-y divide-brand-border/30">
             {items.map(t => {
-              const displayName = t.contactName || t.contactPhone;
+              const isManual    = t.source === 'manual';
+              const displayName = isManual
+                ? (t.filename ? t.filename : 'Upload manual')
+                : (t.contactName || t.contactPhone);
               const preview = t.summaryBullets?.[0] || t.originalText;
-              const numberLabel = t.number
-                ? (t.number.displayName || t.number.phoneNumber)
-                : 'Número removido';
+              const numberLabel = isManual
+                ? '📁 Upload manual'
+                : (t.number ? (t.number.displayName || t.number.phoneNumber) : 'Número removido');
               const showLang = !isPortuguese(t.language);
 
               return (
@@ -1770,16 +1774,28 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
 
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 min-w-0">
-                  <Avatar name={selected.contactName || selected.contactPhone} />
+                  <Avatar name={selected.source === 'manual' ? '📁' : (selected.contactName || selected.contactPhone)} />
                   <div className="min-w-0">
                     <div className="font-bold text-brand-text truncate leading-tight">
-                      {selected.contactName || selected.contactPhone}
+                      {selected.source === 'manual'
+                        ? (selected.filename || 'Upload manual')
+                        : (selected.contactName || selected.contactPhone)}
                     </div>
+                    {/* Filename abaixo do nome para uploads manuais */}
+                    {selected.source === 'manual' && selected.filename && (
+                      <div className="text-[10px] font-mono mt-0.5 truncate"
+                        style={{ color: 'rgba(var(--color-primary),.7)' }}
+                        title={selected.filename}>
+                        📁 {selected.filename}
+                      </div>
+                    )}
                     <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mt-0.5">
                       <span className="text-[11px] text-brand-muted truncate">
-                        {selected.number
-                          ? (selected.number.displayName || selected.number.phoneNumber)
-                          : 'Número removido'}
+                        {selected.source === 'manual'
+                          ? 'Upload manual'
+                          : (selected.number
+                            ? (selected.number.displayName || selected.number.phoneNumber)
+                            : 'Número removido')}
                       </span>
                       <span className="text-brand-border text-[10px]">·</span>
                       <span className="text-[11px] text-brand-muted whitespace-nowrap">
