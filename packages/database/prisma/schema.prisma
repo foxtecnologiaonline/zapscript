@@ -95,6 +95,11 @@ model WhatsappNumber {
   zapiInstanceId   String?          // sem @unique — múltiplos usuários podem compartilhar a mesma instância Z-API
   zapiToken        String?          // Token da instância Z-API criada dinamicamente
   privateMode      Boolean          @default(false)  // Modo privado: transcrição enviada ao próprio número
+  // ── WhatsApp Cloud API oficial (Embedded Signup) ──
+  connectionType   String           @default("evolution")  // 'evolution' (automação) | 'official' (Meta Cloud API)
+  wabaId           String?          // WhatsApp Business Account ID do cliente
+  metaPhoneId      String?          // phone_number_id da Meta — chave de roteamento do webhook
+  metaAccessToken  String?          // token por número (criptografado); opcional — fluxo padrão usa META_SYSTEM_USER_TOKEN
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -102,6 +107,7 @@ model WhatsappNumber {
 
   @@index([userId])             // A2: listagem de números por usuário
   @@index([zapiInstanceId])     // A2: busca de instância em webhook (hot path)
+  @@index([metaPhoneId])        // roteamento do webhook Meta multi-tenant (hot path)
 }
 
 model Transcription {

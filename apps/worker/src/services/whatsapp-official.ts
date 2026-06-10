@@ -4,14 +4,28 @@ import { logger } from '../lib/logger';
 const META_API_URL = 'https://graph.facebook.com/v18.0';
 
 /**
- * Baixar áudio da Meta API e retornar como Buffer
+ * Token efetivo da Meta para um número.
+ * Modelo Tech Provider (System User token único) com fallback ao token legado global.
+ * `perNumberToken` é opcional (descriptografado) — usado se um dia houver token por número.
  */
-export async function downloadAudioFromMeta(mediaId: string): Promise<Buffer> {
-  const apiToken = process.env.WHATSAPP_API_TOKEN;
-
-  if (!apiToken) {
-    throw new Error('WHATSAPP_API_TOKEN não configurado');
+function resolveMetaToken(perNumberToken?: string | null): string {
+  const token =
+    perNumberToken ||
+    process.env.META_SYSTEM_USER_TOKEN ||
+    process.env.WHATSAPP_API_TOKEN;
+  if (!token) {
+    throw new Error('Nenhum token Meta configurado (META_SYSTEM_USER_TOKEN / WHATSAPP_API_TOKEN)');
   }
+  return token;
+}
+
+/**
+ * Baixar áudio da Meta API e retornar como Buffer.
+ * @param mediaId  ID da mídia recebida no webhook
+ * @param token    token por número (opcional); cai para System User / global
+ */
+export async function downloadAudioFromMeta(mediaId: string, token?: string | null): Promise<Buffer> {
+  const apiToken = resolveMetaToken(token);
 
   // Primeiro, obter URL de download do media ID
   logger.info(`[Meta] Obtendo URL para mídia ${mediaId}`);
@@ -48,18 +62,27 @@ export async function downloadAudioFromMeta(mediaId: string): Promise<Buffer> {
 }
 
 /**
- * Enviar mensagem de texto via Meta API
+ * Enviar mensagem de texto via Meta API.
+ * @param phoneNumber   destinatário
+ * @param text          corpo
+ * @param phoneNumberId phone_number_id do remetente (por número); cai para o global
+ * @param token         token por número (opcional); cai para System User / global
  */
-export async function sendMessageToMeta(phoneNumber: string, text: string): Promise<string> {
-  const apiToken = process.env.WHATSAPP_API_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+export async function sendMessageToMeta(
+  phoneNumber: string,
+  text: string,
+  phoneNumberId?: string | null,
+  token?: string | null
+): Promise<string> {
+  const apiToken = resolveMetaToken(token);
+  const fromPhoneId = phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
 
-  if (!apiToken || !phoneNumberId) {
-    throw new Error('WHATSAPP_API_TOKEN ou WHATSAPP_PHONE_NUMBER_ID não configurado');
+  if (!fromPhoneId) {
+    throw new Error('phone_number_id ausente (parâmetro ou WHATSAPP_PHONE_NUMBER_ID)');
   }
 
   const response = await axios.post(
-    `${META_API_URL}/${phoneNumberId}/messages`,
+    `${META_API_URL}/${fromPhoneId}/messages`,
     {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',

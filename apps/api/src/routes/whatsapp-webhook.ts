@@ -93,7 +93,9 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
       const messages   = value.messages  || [];
       const contacts   = value.contacts  || [];
       const statuses   = value.statuses  || [];
-      // Número da conta Business que recebeu as mensagens (metadata do webhook Meta)
+      // Identificadores da conta Business que recebeu as mensagens (metadata do webhook Meta).
+      // phone_number_id é a chave estável de roteamento multi-tenant; display_phone_number é fallback legado.
+      const metaPhoneId   = value.metadata?.phone_number_id as string | undefined;
       const businessPhone = value.metadata?.display_phone_number as string | undefined;
 
       // ─────────────────────────────────
@@ -102,6 +104,29 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
       for (const status of statuses) {
         app.log.info(`[WhatsApp] Status de ${status.recipient_id}: ${status.status}`);
       }
+
+      // ─────────────────────────────────
+      // Roteamento: encontrar o número/usuário pelo phone_number_id (Meta) ou
+      // pelo display_phone_number (fallback). Constante para todas as mensagens deste change.
+      // ─────────────────────────────────
+      let whatsappNumber = null as Awaited<ReturnType<typeof prisma.whatsappNumber.findFirst>> | null;
+      if (metaPhoneId) {
+        whatsappNumber = await prisma.whatsappNumber.findFirst({
+          where: { metaPhoneId } as any,
+        });
+      }
+      if (!whatsappNumber && businessPhone) {
+        const cleanBusiness = businessPhone.replace(/\D/g, '');
+        whatsappNumber = await prisma.whatsappNumber.findFirst({
+          where: { phoneNumber: cleanBusiness },
+        });
+      }
+      if (!whatsappNumber) {
+        app.log.warn(`[WhatsApp] Conta Business não registrada (phone_number_id=${metaPhoneId}, display=${businessPhone})`);
+        return;
+      }
+      const userId   = whatsappNumber.userId;
+      const numberId = whatsappNumber.id;
 
       // ─────────────────────────────────
       // Processar mensagens recebidas
@@ -115,25 +140,6 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
 
         app.log.info(`[WhatsApp] Mensagem de ${senderName} (${senderPhone}) - tipo: ${msg.type}`);
 
-        // Encontrar conta do usuário pelo número Business que recebeu a mensagem
-        const cleanBusiness = businessPhone?.replace(/\D/g, '');
-        if (!cleanBusiness) {
-          app.log.warn('[WhatsApp] display_phone_number ausente no webhook — mensagem ignorada');
-          return;
-        }
-
-        const whatsappNumber = await prisma.whatsappNumber.findFirst({
-          where: { phoneNumber: cleanBusiness },
-          include: { user: true },
-        });
-
-        if (!whatsappNumber) {
-          app.log.warn(`[WhatsApp] Conta Business ${businessPhone} não registrada no sistema`);
-          return;
-        }
-
-        const userId = whatsappNumber.userId;
-
         // ─────────────────────────────────
         // Processar áudio
         // ─────────────────────────────────
@@ -146,6 +152,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
             'transcribe-official',
             {
               userId,
+              numberId,
               senderPhone,
               senderName,
               mediaId: audio.id,

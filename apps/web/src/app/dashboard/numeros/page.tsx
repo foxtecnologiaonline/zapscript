@@ -13,6 +13,7 @@ interface WNumber {
   connectedAt: string | null;
   createdAt: string;
   privateMode: boolean;
+  connectionType?: string;  // 'evolution' (automação) | 'official' (Meta Cloud API)
 }
 
 // ── Spinner inline ────────────────────────────────────────────────────────────
@@ -496,6 +497,13 @@ export default function NumerosPage() {
   const [deleting, setDeleting]             = useState(false);
   const [connectNumber, setConnectNumber]   = useState<WNumber | null>(null);
   const [liveQr, setLiveQr]                = useState<string | null>(null);
+  const [metaLoading, setMetaLoading]       = useState(false);
+
+  // WhatsApp oficial (Embedded Signup) — só aparece quando configurado no ambiente
+  const META_APP_ID   = process.env.NEXT_PUBLIC_META_APP_ID;
+  const META_CONFIG_ID = process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID;
+  const officialEnabled = !!(META_APP_ID && META_CONFIG_ID);
+  const sessionInfoRef = useRef<{ wabaId?: string; phoneNumberId?: string }>({});
 
   const loadNumbers = useCallback(async () => {
     setLoading(true); setError('');
@@ -534,6 +542,75 @@ export default function NumerosPage() {
       loadNumbers();
     } catch (err: any) { setError(err.message); }
     finally { setAdding(false); }
+  }
+
+  // ── WhatsApp oficial: carregar FB SDK + capturar dados da sessão ──────────────
+  useEffect(() => {
+    if (!officialEnabled) return;
+
+    // Captura wabaId/phoneNumberId emitidos pelo Embedded Signup via postMessage
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') return;
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (data?.type === 'WA_EMBEDDED_SIGNUP' && data?.event === 'FINISH') {
+          sessionInfoRef.current = {
+            wabaId: data.data?.waba_id,
+            phoneNumberId: data.data?.phone_number_id,
+          };
+        }
+      } catch { /* mensagens não-JSON são ignoradas */ }
+    };
+    window.addEventListener('message', onMessage);
+
+    // Inicializa o SDK (uma vez)
+    (window as any).fbAsyncInit = function () {
+      (window as any).FB?.init({ appId: META_APP_ID, autoLogAppEvents: true, xfbml: true, version: 'v18.0' });
+    };
+    if (!document.getElementById('facebook-jssdk')) {
+      const js = document.createElement('script');
+      js.id = 'facebook-jssdk';
+      js.src = 'https://connect.facebook.net/en_US/sdk.js';
+      js.async = true; js.defer = true;
+      document.body.appendChild(js);
+    } else if ((window as any).FB) {
+      (window as any).fbAsyncInit();
+    }
+
+    return () => window.removeEventListener('message', onMessage);
+  }, [officialEnabled, META_APP_ID]);
+
+  async function handleMetaSignup() {
+    const FB = (window as any).FB;
+    if (!FB) { setError('SDK do Facebook ainda carregando, tente novamente em instantes.'); return; }
+    setMetaLoading(true); setError('');
+    sessionInfoRef.current = {};
+
+    FB.login((response: any) => {
+      const code = response?.authResponse?.code;
+      if (!code) { setMetaLoading(false); setError('Conexão cancelada.'); return; }
+
+      // Pequeno atraso para garantir que o postMessage com waba_id/phone já chegou
+      setTimeout(async () => {
+        try {
+          await api.post('/numbers/meta-signup', {
+            code,
+            wabaId: sessionInfoRef.current.wabaId,
+            phoneNumberId: sessionInfoRef.current.phoneNumberId,
+          });
+          loadNumbers();
+        } catch (err: any) {
+          setError(err.message || 'Falha ao conectar WhatsApp oficial.');
+        } finally {
+          setMetaLoading(false);
+        }
+      }, 500);
+    }, {
+      config_id: META_CONFIG_ID,
+      response_type: 'code',
+      override_default_response_type: true,
+      extras: { setup: {}, featureType: '', sessionInfoVersion: '2' },
+    });
   }
 
   async function handleDisconnect(id: string) {
@@ -587,6 +664,28 @@ export default function NumerosPage() {
           {socketOk ? 'Tempo real' : 'Modo polling'}
         </div>
       </div>
+
+      {/* ── WhatsApp oficial (Embedded Signup) ── */}
+      {officialEnabled && (
+        <div className="card p-4 sm:p-5 mb-5 border-green-500/20 bg-green-500/[0.03]">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-brand-text flex items-center gap-1.5">
+                ✅ WhatsApp Business oficial
+              </p>
+              <p className="text-xs text-brand-muted mt-1">
+                Conexão via API oficial da Meta — mais estável, sem QR Code. Recomendado para uso profissional.
+              </p>
+            </div>
+            <button
+              onClick={handleMetaSignup}
+              disabled={metaLoading}
+              className="btn-primary px-4 py-2.5 text-sm whitespace-nowrap flex items-center gap-2">
+              {metaLoading ? <Spinner size={4} /> : <><span>✅</span> Conectar oficial</>}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Formulário de adição ── */}
       <div className="card p-4 sm:p-5 mb-5">
@@ -674,10 +773,19 @@ export default function NumerosPage() {
               {/* Cabeçalho do card */}
               <div className="flex items-start justify-between mb-3 gap-2">
                 <div className="min-w-0">
-                  <div className="font-bold text-sm text-brand-text truncate">{n.displayName || 'Dispositivo'}</div>
+                  <div className="font-bold text-sm text-brand-text truncate flex items-center gap-1.5">
+                    {n.displayName || 'Dispositivo'}
+                  </div>
                   <div className="text-xs text-brand-muted font-mono mt-0.5">
                     {n.phoneNumber !== 'pending' ? `+${n.phoneNumber}` : 'Aguardando conexão'}
                   </div>
+                  <span className={`inline-block mt-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                    n.connectionType === 'official'
+                      ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                      : 'bg-brand-elevated text-brand-muted border border-brand-border'
+                  }`}>
+                    {n.connectionType === 'official' ? '✅ Oficial' : '⚙️ Automação'}
+                  </span>
                 </div>
                 <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border flex-shrink-0 ${statusColor(n.status)}`}>
                   {statusLabel(n.status)}

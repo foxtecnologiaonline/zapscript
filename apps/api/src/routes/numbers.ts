@@ -13,6 +13,12 @@ import {
   setWebhook,
 } from '../services/evolution';
 import { getQr } from '../lib/qrStore';
+import {
+  exchangeCodeForToken,
+  subscribeWabaToApp,
+  registerPhoneNumber,
+  getWabaPhoneNumbers,
+} from '../services/meta-embedded-signup';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -49,6 +55,7 @@ export default async function numberRoutes(app: FastifyInstance) {
         connectedAt:  true,
         createdAt:    true,
         privateMode:  true,
+        connectionType: true,
       } as any,
     });
   });
@@ -422,4 +429,86 @@ export default async function numberRoutes(app: FastifyInstance) {
       return reply.code(500).send({ error: err.message || 'Erro ao deletar número.' });
     }
   });
+
+  // ── POST /numbers/meta-signup ──────────────────────────────────────────────
+  // Conclui o Embedded Signup oficial (Meta Cloud API / Tech Provider).
+  // O frontend envia o `code` (OAuth) e o `wabaId` retornados pelo FB SDK.
+  // Aqui: troca o code, assina a WABA ao app, registra o(s) número(s) e persiste
+  // connectionType='official' com wabaId/metaPhoneId. NÃO afeta números Evolution.
+  app.post<{ Body: { code: string; wabaId: string; phoneNumberId?: string } }>(
+    '/meta-signup', auth, async (req: any, reply) => {
+      const userId = req.user.sub;
+      const { code, wabaId, phoneNumberId } = req.body || {};
+
+      if (!code || !wabaId) {
+        return reply.code(400).send({ error: 'code e wabaId são obrigatórios.' });
+      }
+      if (!process.env.META_APP_ID && !process.env.WHATSAPP_APP_ID) {
+        return reply.code(503).send({ error: 'WhatsApp oficial não configurado no servidor (META_APP_ID).' });
+      }
+
+      // Limite de números do plano (admin é isento)
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user?.isAdmin) {
+        const sub = await prisma.subscription.findUnique({ where: { userId }, include: { plan: true } });
+        const count = await prisma.whatsappNumber.count({ where: { userId } });
+        if (sub && count >= sub.plan.maxNumbers) {
+          return reply.code(403).send({
+            error: `Limite de ${sub.plan.maxNumbers} número(s) atingido. Faça upgrade do plano.`,
+          });
+        }
+      }
+
+      try {
+        // 1. Troca o code (valida o onboarding; token do cliente não é persistido no modelo System User)
+        await exchangeCodeForToken(code);
+
+        // 2. Assina nosso app à WABA para receber os webhooks dela
+        await subscribeWabaToApp(wabaId);
+
+        // 3. Descobre os números da WABA (ou usa o phoneNumberId informado)
+        const phones = await getWabaPhoneNumbers(wabaId);
+        const selected = phoneNumberId
+          ? phones.filter((p) => p.id === phoneNumberId)
+          : phones;
+        if (selected.length === 0) {
+          return reply.code(404).send({ error: 'Nenhum número encontrado nesta conta WhatsApp Business.' });
+        }
+
+        // 4. Registra e persiste cada número (upsert por metaPhoneId)
+        const saved: any[] = [];
+        for (const ph of selected) {
+          await registerPhoneNumber(ph.id);
+          const cleanPhone = ph.display_phone_number.replace(/\D/g, '');
+
+          const existing = await prisma.whatsappNumber.findFirst({
+            where: { userId, metaPhoneId: ph.id } as any,
+          });
+
+          const data: any = {
+            userId,
+            displayName: ph.verified_name || cleanPhone,
+            phoneNumber: cleanPhone,
+            connectionType: 'official',
+            wabaId,
+            metaPhoneId: ph.id,
+            status: 'connected',
+            connectedAt: new Date(),
+          };
+
+          const number = existing
+            ? await prisma.whatsappNumber.update({ where: { id: existing.id }, data })
+            : await prisma.whatsappNumber.create({ data });
+          saved.push({ id: number.id, phoneNumber: cleanPhone, metaPhoneId: ph.id });
+        }
+
+        app.log.info(`[Meta Signup] ✅ ${saved.length} número(s) oficiais conectados (user=${userId}, waba=${wabaId})`);
+        return reply.code(201).send({ ok: true, numbers: saved });
+
+      } catch (err: any) {
+        app.log.error({ err: err.message, userId, wabaId }, '[Meta Signup] Falha no onboarding oficial');
+        return reply.code(502).send({ error: err.message || 'Falha ao conectar WhatsApp oficial.' });
+      }
+    }
+  );
 }

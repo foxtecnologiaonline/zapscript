@@ -884,7 +884,7 @@ async function processManualJob(job: Job) {
 //  PIPELINE C — WhatsApp Cloud API (Meta official)
 // ─────────────────────────────────────────────────────────────────
 async function processOfficialWhatsAppJob(job: Job) {
-  const { userId, senderPhone, senderName, mediaId, messageId } = job.data;
+  const { userId, senderPhone, senderName, mediaId, messageId, numberId } = job.data;
   const durationMin = 1; // Estimativa padrão
 
   log(job, `📥 WhatsApp Cloud API: ${senderName} (${senderPhone})`);
@@ -892,20 +892,29 @@ async function processOfficialWhatsAppJob(job: Job) {
   let mp3Buffer: Buffer | null = null;
 
   try {
-    // PASSO 1: Verificar saldo + buscar numberId real do usuário
-    const [balance, firstNumber] = await Promise.all([
+    // PASSO 1: Verificar saldo + buscar o número (específico do webhook, ou o primeiro do usuário)
+    const [balance, targetNumber] = await Promise.all([
       prisma.minuteBalance.findUnique({ where: { userId } }),
-      prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+      numberId
+        ? prisma.whatsappNumber.findUnique({ where: { id: numberId } })
+        : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
     ]);
+
+    // Credenciais por número (modelo multi-tenant); token cai para System User / global
+    const metaPhoneId = targetNumber?.metaPhoneId ?? null;
+    const metaToken = targetNumber?.metaAccessToken ? decryptStr(targetNumber.metaAccessToken) : null;
+
     if (!balance || balance.availableMinutes < durationMin) {
       log(job, '⚠️  Saldo insuficiente — notificando usuário');
       await sendMessageToMeta(
         senderPhone,
-        '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.'
+        '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.',
+        metaPhoneId,
+        metaToken
       );
       return { skipped: true, reason: 'insufficient_balance' };
     }
-    if (!firstNumber) {
+    if (!targetNumber) {
       log(job, '⚠️  Usuário sem número cadastrado');
       return { skipped: true, reason: 'no_number' };
     }
@@ -913,7 +922,7 @@ async function processOfficialWhatsAppJob(job: Job) {
 
     // PASSO 2: Baixar áudio da Meta API
     log(job, '⬇️  Baixando áudio da Meta API...');
-    const audioBuffer = await downloadAudioFromMeta(mediaId);
+    const audioBuffer = await downloadAudioFromMeta(mediaId, metaToken);
     log(job, `✅ Baixado: ${(audioBuffer.length / 1024).toFixed(0)} KB`);
 
     // PASSO 3: Converter para MP3
@@ -935,14 +944,14 @@ async function processOfficialWhatsAppJob(job: Job) {
     // PASSO 6: Enviar resposta no WhatsApp
     log(job, '📤 Enviando resposta via Meta API...');
     const message = buildMessage(bullets, originalText, { contactName: senderName, durationSec });
-    await sendMessageToMeta(senderPhone, message);
+    await sendMessageToMeta(senderPhone, message, metaPhoneId, metaToken);
     log(job, '✅ Mensagem enviada');
 
     // PASSO 7: Salvar transcrição e debitar minutos — duração real do Whisper
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId,
-      numberId:     firstNumber.id,
+      numberId:     targetNumber.id,
       contactPhone: senderPhone,
       contactName:  senderName,
       durationSec,
@@ -955,7 +964,7 @@ async function processOfficialWhatsAppJob(job: Job) {
     return { transcriptionId: transcription.id };
   } catch (err) {
     log(job, `❌ Erro: ${(err as Error).message}`);
-    // Tentar notificar usuário do erro
+    // Tentar notificar usuário do erro (best-effort; sem creds por número aqui)
     try {
       await sendMessageToMeta(senderPhone, '❌ Erro ao processar seu áudio. Tente novamente.');
     } catch (notifyErr: any) {
