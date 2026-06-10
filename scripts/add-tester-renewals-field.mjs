@@ -1,8 +1,9 @@
-import { createRequire } from 'module';
+﻿import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { Client } = require('../scripts_temp/node_modules/pg/lib/index.js');
 
-const DB_URL = 'postgresql://postgres.sqqmusijaovhtiufbzsa:691393%40rfts@aws-1-us-west-2.pooler.supabase.com:5432/postgres';
+const DB_URL = process.env.DATABASE_URL;
+if (!DB_URL) { console.error('Defina DATABASE_URL no ambiente antes de rodar este script.'); process.exit(1); }
 const client = new Client({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
 await client.connect();
 
