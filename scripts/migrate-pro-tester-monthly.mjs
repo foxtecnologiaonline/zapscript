@@ -1,16 +1,19 @@
 /**
  * migrate-pro-tester-monthly.mjs
  *
- * Migra usuários Pro Tester EXISTENTES para o modelo de ciclo mensal:
- *   0. Garante que o plano 'pro-tester' está com 200 min, R$0, 2 números
- *   1. Re-ancora MinuteBalance.resetAt no ciclo MENSAL a partir do createdAt
- *      (antes ficava em +365 dias — impedia o reset mensal e a contagem das 12 isenções)
- *   2. availableMinutes = max(0, 200 - minutos usados neste ciclo) — preserva o já consumido
- *   3. Subscription.currentPeriodEnd = NULL  → dashboard cai no resetAt mensal;
- *      isenção de pagamento controlada por testerRenewalsUsed (máx 12, tratada pelo cron)
+ * Modelo de 2 planos (Free/Pro). Testers ficam no plano Pro com isTester=true e
+ * recebem 12 meses de isenção de mensalidade (sem cobrança nesse período).
  *
- * Itens da spec: ciclo mensal a partir do cadastro, isenção 12 meses, 200 min com
- * desconto dos minutos já usados no ciclo.
+ * Migra usuários com isTester=true para o ciclo mensal correto:
+ *   0. Confirma que o plano 'pro' está com 200 min
+ *   1. Garante que o tester está no plano 'pro' (sem cobrança: asaasSubscriptionId=null)
+ *   2. Re-ancora MinuteBalance.resetAt no ciclo MENSAL a partir do createdAt
+ *      (antes ficava em +365 dias — impedia o reset mensal e a contagem das 12 isenções)
+ *   3. availableMinutes = max(0, 200 - minutos usados neste ciclo) — preserva o já consumido
+ *   4. Subscription.currentPeriodEnd = NULL → dashboard mostra a renovação mensal (resetAt);
+ *      a isenção de 12 meses é controlada por testerRenewalsUsed (máx 12, tratada pelo cron)
+ *
+ * Não mexe em usuários no plano 'executive' (legado superior).
  *
  * Uso:
  *   node scripts/migrate-pro-tester-monthly.mjs              (aplica)
@@ -24,7 +27,6 @@ const { Client } = require('../scripts_temp/node_modules/pg/lib/index.js');
 const DRY_RUN = process.argv.includes('--dry-run');
 const DB_URL  = process.env.DATABASE_URL;
 if (!DB_URL) { console.error('Defina DATABASE_URL no ambiente antes de rodar este script.'); process.exit(1); }
-const PT_MINUTES = 200;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -51,35 +53,21 @@ async function main() {
   await client.connect();
   console.log(`✅ Conectado ao banco${DRY_RUN ? ' — MODO DRY RUN' : ''}\n`);
 
-  // ── PASSO 0: Garantir plano pro-tester com 200 min ──────────────────────────
-  const { rows: planRows } = await client.query(`
-    SELECT id, name, "minutesPerMonth", "priceBrl", "maxNumbers"
-    FROM "Plan" WHERE name = 'pro-tester'
+  // ── PASSO 0: Confirmar plano pro ────────────────────────────────────────────
+  const { rows: [proPlan] } = await client.query(`
+    SELECT id, name, "minutesPerMonth" FROM "Plan" WHERE name = 'pro'
   `);
-  const ptPlan = planRows[0];
-  if (!ptPlan) {
-    console.error('❌ Plano pro-tester não encontrado. Rode primeiro o endpoint admin /upgrade-pro-tester (ele faz o upsert do plano).');
-    process.exit(1);
-  }
-  const needsPlanFix = ptPlan.minutesPerMonth !== PT_MINUTES;
-  console.log(`📋 Plano pro-tester: ${ptPlan.minutesPerMonth} min → ${needsPlanFix ? `${PT_MINUTES} ⚠️ ATUALIZAR` : `${PT_MINUTES} ✓`}`);
-  if (!DRY_RUN && needsPlanFix) {
-    await client.query(`
-      UPDATE "Plan"
-      SET "minutesPerMonth" = $1, "priceBrl" = 0, "maxNumbers" = 2
-      WHERE name = 'pro-tester'
-    `, [PT_MINUTES]);
-    console.log(`  ✅ Plano pro-tester atualizado para ${PT_MINUTES} min\n`);
-  } else {
-    console.log('');
-  }
+  if (!proPlan) { console.error('❌ Plano pro não encontrado.'); process.exit(1); }
+  const PRO_MINUTES = proPlan.minutesPerMonth;
+  console.log(`📋 Plano Pro: ${PRO_MINUTES} min (id=${proPlan.id})\n`);
 
-  // ── PASSO 1: Buscar usuários no plano pro-tester ────────────────────────────
+  // ── PASSO 1: Buscar usuários isTester (exceto executive) ────────────────────
   const { rows: users } = await client.query(`
     SELECT
       u.id              AS "userId",
       u.email,
       u."createdAt",
+      p.name            AS "planName",
       sub.id            AS "subId",
       sub."currentPeriodEnd",
       sub."testerRenewalsUsed",
@@ -89,19 +77,20 @@ async function main() {
       mb."resetAt"
     FROM "User" u
     JOIN "Subscription" sub ON sub."userId" = u.id
-    JOIN "Plan" p           ON p.id = sub."planId"
+    LEFT JOIN "Plan" p      ON p.id = sub."planId"
     LEFT JOIN "MinuteBalance" mb ON mb."userId" = u.id
-    WHERE p.name = 'pro-tester'
+    WHERE u."isTester" = true AND u."deletedAt" IS NULL
+      AND (p.name IS NULL OR p.name <> 'executive')
     ORDER BY u."createdAt"
   `);
 
-  console.log(`📋 ${users.length} usuário(s) Pro Tester\n`);
+  console.log(`📋 ${users.length} usuário(s) tester (isTester=true)\n`);
   console.log(
-    `${'Email'.padEnd(40)} ${'Ciclo início'.padEnd(13)} ${'Usado'.padEnd(8)} ${'Restará'.padEnd(8)} ${'Antes'.padEnd(8)} ${'Renov.'.padEnd(7)} Reset em`
+    `${'Email'.padEnd(40)} ${'Plano'.padEnd(8)} ${'Ciclo início'.padEnd(13)} ${'Usado'.padEnd(8)} ${'Restará'.padEnd(8)} ${'Antes'.padEnd(8)} ${'Renov.'.padEnd(7)} Reset em`
   );
-  console.log('─'.repeat(120));
+  console.log('─'.repeat(125));
 
-  let created = 0, updated = 0, subFixed = 0;
+  let planFixed = 0, created = 0, updated = 0, subFixed = 0;
 
   for (const u of users) {
     const resetAt    = nextResetFromCreatedAt(u.createdAt);
@@ -114,17 +103,31 @@ async function main() {
     `, [u.userId, cycleStart]);
 
     const used         = parseFloat(minutesUsed || 0);
-    const newAvailable = Math.max(0, PT_MINUTES - used);
+    const newAvailable = Math.max(0, PRO_MINUTES - used);
     const oldAvailable = parseFloat(u.availableMinutes || 0);
     const renewals     = u.testerRenewalsUsed ?? 0;
+    const onPro        = u.planName === 'pro';
 
     console.log(
-      `${u.email.padEnd(40)} ${fmt(cycleStart).padEnd(13)} ` +
+      `${u.email.padEnd(40)} ${(u.planName || '?').padEnd(8)} ${fmt(cycleStart).padEnd(13)} ` +
       `${used.toFixed(1).padEnd(8)} ${newAvailable.toFixed(1).padEnd(8)} ` +
       `${oldAvailable.toFixed(1).padEnd(8)} ${String(renewals + '/12').padEnd(7)} ${fmt(resetAt)}`
     );
 
     if (DRY_RUN) continue;
+
+    // ── Subscription: garante plano pro, sem cobrança, ciclo mensal ───────────
+    await client.query(`
+      UPDATE "Subscription"
+      SET "planId"              = $1,
+          status                = 'active',
+          "asaasSubscriptionId" = NULL,
+          "currentPeriodEnd"    = NULL,
+          "updatedAt"           = NOW()
+      WHERE id = $2
+    `, [proPlan.id, u.subId]);
+    if (!onPro) planFixed++;
+    if (u.currentPeriodEnd !== null) subFixed++;
 
     // ── MinuteBalance: re-ancora resetAt mensal + saldo descontando o usado ────
     if (!u.mbId) {
@@ -147,24 +150,14 @@ async function main() {
       `, [newAvailable, used, resetAt, u.userId]);
       updated++;
     }
-
-    // ── Subscription: zerar currentPeriodEnd (ciclo mensal via resetAt) ────────
-    if (u.currentPeriodEnd !== null) {
-      await client.query(`
-        UPDATE "Subscription"
-        SET "currentPeriodEnd" = NULL, "updatedAt" = NOW()
-        WHERE id = $1
-      `, [u.subId]);
-      subFixed++;
-    }
   }
 
-  console.log('\n' + '─'.repeat(120));
+  console.log('\n' + '─'.repeat(125));
   if (DRY_RUN) {
     console.log('\n⚠️  DRY RUN — nenhuma alteração aplicada.\n');
   } else {
     console.log(`\n✅ Concluído!`);
-    console.log(`   Plano pro-tester:           ${needsPlanFix ? `${PT_MINUTES} min ✓` : 'já correto'}`);
+    console.log(`   Planos ajustados → pro:     ${planFixed}`);
     console.log(`   MinuteBalance criados:      ${created}`);
     console.log(`   MinuteBalance atualizados:  ${updated}`);
     console.log(`   currentPeriodEnd zerados:   ${subFixed}`);

@@ -795,29 +795,16 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // POST /admin/testers/upgrade-pro-tester — migra todos os testers para plano Pro-Tester
+  // POST /admin/testers/upgrade-pro-tester — coloca todos os testers no plano Pro (isento via isTester)
+  // Modelo de 2 planos (Free/Pro): testers ficam no Pro com isTester=true; a isenção de 12 meses
+  // é controlada por testerRenewalsUsed (máx 12), não por um plano separado.
   app.post(
     '/testers/upgrade-pro-tester',
     { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (_req, _reply) => {
-      // Garante que o plano pro-tester existe e está em 200 min (espelha o Pro)
-      const PT_MINUTES = 200;
-      const ptPlan = await prisma.plan.upsert({
-        where:  { name: 'pro-tester' },
-        update: { minutesPerMonth: PT_MINUTES, maxNumbers: 2, priceBrl: 0 },
-        create: {
-          name:            'pro-tester',
-          label:           'Pro Tester',
-          minutesPerMonth: PT_MINUTES,
-          maxNumbers:      2,
-          priceBrl:        0,   // gratuito — plano interno
-          features:        JSON.stringify([
-            '200 min/mês', '2 números WhatsApp', 'Transcrição automática',
-            'Ponto chave IA', 'Busca full-text', 'Exportação CSV',
-            'Tags', 'Tradução automática', 'Webhook personalizado', 'Modo privado',
-          ]),
-        },
-      });
+      const proPlan = await prisma.plan.findUnique({ where: { name: 'pro' } });
+      if (!proPlan) return { error: 'Plano pro não configurado. Rode o seed.' };
+      const PRO_MINUTES = proPlan.minutesPerMonth;
 
       const testers = await prisma.user.findMany({
         where: { isTester: true, deletedAt: null },
@@ -839,28 +826,28 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       for (const u of testers) {
         const currentPlan = u.subscription?.plan?.name;
-        // Não faz downgrade de quem tem executive (plano superior)
+        // Não faz downgrade de quem tem executive (plano superior legado)
         if (currentPlan === 'executive') {
           skipped++;
-          results.push({ email: u.email, from: currentPlan, to: 'pro-tester', action: 'skipped (já executive)' });
+          results.push({ email: u.email, from: currentPlan, to: 'pro', action: 'skipped (já executive)' });
           continue;
         }
 
-        // Aplicar os 200 min do Pro Tester PRESERVANDO os minutos já usados neste ciclo:
-        // novo saldo = 200 − (minutos do plano antigo − saldo atual)
-        const oldPlanMin   = u.subscription?.plan?.minutesPerMonth ?? 0;
-        const oldAvailable = u.balance?.availableMinutes ?? PT_MINUTES;
+        // Aplicar os minutos do Pro PRESERVANDO os já usados neste ciclo:
+        // novo saldo = PRO − (minutos do plano antigo − saldo atual)
+        const oldPlanMin    = u.subscription?.plan?.minutesPerMonth ?? 0;
+        const oldAvailable  = u.balance?.availableMinutes ?? PRO_MINUTES;
         const usedThisCycle = Math.max(0, oldPlanMin - oldAvailable);
-        const newAvailable  = Math.max(0, Math.min(PT_MINUTES, PT_MINUTES - usedThisCycle));
+        const newAvailable  = Math.max(0, Math.min(PRO_MINUTES, PRO_MINUTES - usedThisCycle));
         const resetAt       = nextMonthlyAnchor(u.createdAt);
 
         await prisma.$transaction([
           prisma.subscription.update({
             where: { userId: u.id },
             data: {
-              planId:              ptPlan.id,
+              planId:              proPlan.id,
               status:              'active',
-              asaasSubscriptionId: null,
+              asaasSubscriptionId: null,   // tester não paga durante a isenção
               currentPeriodEnd:    null,   // ciclo mensal via balance.resetAt
             },
           }),
@@ -875,8 +862,8 @@ export default async function adminRoutes(app: FastifyInstance) {
         results.push({
           email: u.email,
           from: currentPlan || '?',
-          to: 'pro-tester',
-          action: `upgraded (saldo ${newAvailable}/${PT_MINUTES} min, usado ${usedThisCycle})`,
+          to: 'pro',
+          action: `upgraded (saldo ${newAvailable}/${PRO_MINUTES} min, usado ${usedThisCycle})`,
         });
       }
 

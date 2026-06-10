@@ -142,8 +142,9 @@ export default async function authRoutes(app: FastifyInstance) {
       });
       if (error) return reply.code(400).send({ error: error.message });
 
-      // Buscar plano adequado — testers entram no plano Pro Tester (200 min, gratuito por 12 meses)
-      const planName = testerInvite ? 'pro-tester' : 'free';
+      // Buscar plano adequado — testers entram no plano Pro com isTester=true
+      // (isenção de 12 meses controlada por testerRenewalsUsed; modelo de 2 planos Free/Pro)
+      const planName = testerInvite ? 'pro' : 'free';
       const plan = await prisma.plan.findUnique({ where: { name: planName } });
       if (!plan) return reply.code(500).send({ error: 'Planos não configurados. Rode o seed.' });
 
