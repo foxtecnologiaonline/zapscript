@@ -45,7 +45,7 @@ async function uploadAudioToStorage(buffer: Buffer, userId: string, filename: st
 }
 
 // Planos com acesso a cada feature (pro-tester tem paridade total com pro)
-const PLAN_SEARCH  = ['pro', 'pro-tester', 'executive'];
+const PLAN_SEARCH  = ['free', 'pro', 'pro-tester', 'executive']; // busca liberada para todos os planos
 const PLAN_EXPORT  = ['pro', 'pro-tester', 'executive'];   // Exportação disponível para Pro+
 const PLAN_TAGS    = ['pro', 'pro-tester', 'executive'];   // tags abertas para Pro+
 const PLAN_LANG    = ['pro', 'pro-tester', 'executive'];   // filtro por idioma para Pro+

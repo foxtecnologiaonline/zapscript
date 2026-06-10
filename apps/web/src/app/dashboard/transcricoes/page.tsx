@@ -29,9 +29,9 @@ const MAX_MB_PRO       = 100;
 const MAX_MB_EXECUTIVE = 200;
 const LIMIT       = 20;
 
-const PLAN_HISTORY = ['pro', 'pro-tester', 'executive'];
-const PLAN_FILTERS = ['pro', 'pro-tester', 'executive'];
-const PLAN_SEARCH  = ['pro', 'pro-tester', 'executive'];
+const PLAN_HISTORY = ['free', 'pro', 'pro-tester', 'executive'];
+const PLAN_FILTERS = ['free', 'pro', 'pro-tester', 'executive'];
+const PLAN_SEARCH  = ['free', 'pro', 'pro-tester', 'executive'];
 
 const SORT_OPTIONS = [
   { value: 'date_desc',    label: 'Data — Mais recente', icon: '📅' },

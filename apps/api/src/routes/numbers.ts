@@ -113,7 +113,7 @@ export default async function numberRoutes(app: FastifyInstance) {
 
       if (req.body.privateMode !== undefined) {
         const plan = await getUserPlan(userId);
-        if (!requirePlan(plan, ['pro', 'executive'], reply)) return;
+        if (!requirePlan(plan, ['pro', 'pro-tester', 'executive'], reply)) return;
         data.privateMode = Boolean(req.body.privateMode);
       }
 

@@ -12,26 +12,26 @@ const DB_URL = 'postgresql://postgres.sqqmusijaovhtiufbzsa:691393%40rfts@aws-1-u
 const FREE_FEATURES = [
   '20 min/mês',
   '1 número WhatsApp',
-  'Transcrição automática',
-  'Resumo com IA',
-  'Histórico de transcrições',
-  'Filtros por data e contato',
+  '🎙️ Transcrição automática',
+  '✨ Resumo com IA',
+  '📋 Histórico de transcrições',
+  '📅 Filtros por data e contato',
+  '🔍 Busca por transcrição',
 ];
 
 const PRO_FEATURES = [
   '200 min/mês',
   '2 números WhatsApp',
-  'Transcrição automática',
-  'Resumo com IA',
-  'Histórico de transcrições',
-  'Filtros por data e contato',
-  'Upload de áudio no site',
-  'Busca por transcrição',
-  'Notas Pessoais de Voz',
-  'Modo Privado de transcrição',
-  'Exportação PDF · DOCX · CSV · XLS',
-  'Múltiplos idiomas (filtro)',
-  'Tags e categorização',
+  '🎙️ Transcrição automática',
+  '🖥️ Transcrição de áudios no site',
+  '✨ Resumo com IA',
+  '📋 Histórico de transcrições',
+  '📅 Filtros por data e contato',
+  '🔍 Busca por transcrição',
+  '📤 Exportar áudios em PDF, Docx, Csv e Excel',
+  '📄 Transcrição Profissional (PDF com marcação temporal)',
+  '🎤 Notas Pessoais de Voz',
+  '🔒 Modo Privado de transcrição',
 ];
 
 const EXECUTIVE_FEATURES = [
@@ -55,9 +55,10 @@ await client.connect();
 console.log('✅ Conectado\n');
 
 const plans = [
-  { name: 'free',      features: FREE_FEATURES },
-  { name: 'pro',       features: PRO_FEATURES },
-  { name: 'executive', features: EXECUTIVE_FEATURES },
+  { name: 'free',       features: FREE_FEATURES },
+  { name: 'pro',        features: PRO_FEATURES },
+  { name: 'pro-tester', features: PRO_FEATURES }, // espelha o Pro
+  { name: 'executive',  features: EXECUTIVE_FEATURES },
 ];
 
 for (const p of plans) {
