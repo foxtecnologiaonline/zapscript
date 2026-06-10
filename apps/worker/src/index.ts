@@ -114,10 +114,26 @@ function isWhisperHallucination(text: string, durationSec: number): boolean {
   ];
   if (HALLUCINATION_PATTERNS.some(p => p.test(text))) return true;
 
-  // Texto excessivamente curto para a duração (< 2 palavras por minuto de áudio)
   const wordCount = text.split(/\s+/).filter(Boolean).length;
+
+  // Texto excessivamente curto para a duração (< 2 palavras por minuto de áudio)
   const minWords  = Math.floor(durationSec / 60) * 2;
   if (durationSec > 30 && wordCount < Math.max(minWords, 3)) return true;
+
+  // Densidade impossível de fala: humano fala ~2–3 palavras/seg (rápido ~4).
+  // Áudio de 2s com 50 palavras (25 p/seg) é alucinação clássica do Whisper em
+  // ruído/silêncio. Margem generosa de 6 p/seg + piso absoluto de 8 palavras
+  // para não penalizar respostas curtas e legítimas ("Socorro!", "Tá bom, valeu").
+  const maxPlausibleWords = Math.max(8, durationSec * 6);
+  if (wordCount > maxPlausibleWords) return true;
+
+  // Repetição patológica: mesma palavra/frase curta repetida muitas vezes
+  // (ex.: "obrigado obrigado obrigado…"), outro padrão típico de alucinação.
+  if (wordCount >= 8) {
+    const words  = text.toLowerCase().split(/\s+/).filter(Boolean);
+    const unique = new Set(words).size;
+    if (unique / words.length < 0.35) return true;
+  }
 
   return false;
 }
@@ -153,6 +169,7 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
         model:           'whisper-large-v3-turbo',
         language:        'pt',
         response_format: 'verbose_json',
+        temperature:     0,   // determinístico — reduz alucinação em ruído/silêncio
         prompt:          PT_BR_PROMPT,
       } as any);
       const text = result.text?.trim();
@@ -175,6 +192,7 @@ async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; dura
     model:           'whisper-1',
     language:        'pt',
     response_format: 'verbose_json',
+    temperature:     0,   // determinístico — reduz alucinação em ruído/silêncio
     prompt:          PT_BR_PROMPT,
   } as any);
   const text = result.text?.trim();
@@ -216,6 +234,7 @@ async function transcribeBufferFull(mp3Buffer: Buffer): Promise<{
         model:           'whisper-large-v3-turbo',
         language:        'pt',
         response_format: 'verbose_json',
+        temperature:     0,   // determinístico — reduz alucinação em ruído/silêncio
         prompt:          PT_BR_JURIDICAL_PROMPT,
       } as any);
       const text = result.text?.trim();
@@ -239,6 +258,7 @@ async function transcribeBufferFull(mp3Buffer: Buffer): Promise<{
     model:           'whisper-1',
     language:        'pt',
     response_format: 'verbose_json',
+    temperature:     0,   // determinístico — reduz alucinação em ruído/silêncio
     prompt:          PT_BR_JURIDICAL_PROMPT,
   } as any);
   const text = result.text?.trim();
@@ -333,10 +353,18 @@ Regras:
 - Sem artigos desnecessários, sem "então", "né", "tipo"
 - Responda apenas com a frase. Sem "• ", sem prefixo, sem explicação.
 
+CRÍTICO — fidelidade ao conteúdo:
+- NUNCA adicione, invente ou suponha informação que não está no áudio.
+- NÃO dramatize, NÃO intensifique, NÃO interprete intenção ou urgência.
+- Se o áudio é muito curto (1-3 palavras), repita-o quase literal, sem inflar.
+- Use apenas o que foi dito. Nada de adjetivos ou contexto que não esteja na fala.
+
 Exemplos:
 "então a reunião das 10 foi remarcada pra 14h na sala 2" → Reunião remarcada: 14h sala 2
 "queria saber se você pode me ajudar com o relatório até sexta" → Relatório: ajuda necessária até sexta
-"só passando pra avisar que o pedido chegou" → Pedido chegou`;
+"só passando pra avisar que o pedido chegou" → Pedido chegou
+"Socorro!" → Socorro!
+"oi, tudo bem?" → Oi, tudo bem?`;
 
     userMsg = `Em até 10 palavras:\n\n${originalText}`;
 
@@ -361,9 +389,10 @@ Exemplos:
     try {
       const res = await claude.messages.create({
         model,
-        max_tokens: 200,
-        system:     systemMsg,
-        messages:   [{ role: 'user', content: userMsg }],
+        max_tokens:  200,
+        temperature: 0,   // determinístico — evita embelezamento/dramatização
+        system:      systemMsg,
+        messages:    [{ role: 'user', content: userMsg }],
       });
       const raw     = (res.content[0] as any).text?.trim() || '';
       const bullets = mode === 'tldr' ? parseTldr(raw) : parseBullets(raw, count);
@@ -379,8 +408,9 @@ Exemplos:
   // ── Tentativa 2: OpenAI gpt-4o-mini ──────────────────────────────────────
   try {
     const res = await openai.chat.completions.create({
-      model:      'gpt-4o-mini',
-      max_tokens: 200,
+      model:       'gpt-4o-mini',
+      max_tokens:  200,
+      temperature: 0,   // determinístico — evita embelezamento/dramatização
       messages: [
         { role: 'system', content: systemMsg },
         { role: 'user',   content: userMsg   },

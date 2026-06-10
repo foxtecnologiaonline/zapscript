@@ -142,13 +142,12 @@ export default async function authRoutes(app: FastifyInstance) {
       });
       if (error) return reply.code(400).send({ error: error.message });
 
-      // Buscar plano adequado
-      const planName = testerInvite ? 'pro' : 'free';
+      // Buscar plano adequado — testers entram no plano Pro Tester (200 min, gratuito por 12 meses)
+      const planName = testerInvite ? 'pro-tester' : 'free';
       const plan = await prisma.plan.findUnique({ where: { name: planName } });
       if (!plan) return reply.code(500).send({ error: 'Planos não configurados. Rode o seed.' });
 
       const now = new Date();
-      const oneYearFromNow = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
 
       // Criar User + Subscription + MinuteBalance em transação atômica
       // Se falhar: rollback do usuário Supabase para evitar conta órfã (autenticada mas sem dados)
@@ -178,17 +177,21 @@ export default async function authRoutes(app: FastifyInstance) {
               userId:          u.id,
               planId:          plan.id,
               status:          'active',
-              currentPeriodEnd: testerInvite ? oneYearFromNow : undefined,
+              // Tester e free seguem ciclo mensal — renovação a partir de balance.resetAt
+              // (a isenção do tester é controlada por testerRenewalsUsed, máx 12 renovações)
+              currentPeriodEnd: undefined,
             },
           });
           // Novo usuário recebe bônus de 10 min extra se vier via referral
           // resetAt ancorando no createdAt do usuário (ciclos de 30 dias a partir do cadastro)
-          const freeResetAt = new Date(u.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+          // Tester e free seguem o MESMO ciclo mensal — a isenção do tester (12 meses)
+          // é controlada pelo contador testerRenewalsUsed no cron de renovação.
+          const cycleResetAt = new Date(u.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000);
           await tx.minuteBalance.create({
             data: {
               userId:           u.id,
               availableMinutes: plan.minutesPerMonth + (referrer ? REFERRAL_BONUS_MINUTES : 0),
-              resetAt:          testerInvite ? oneYearFromNow : freeResetAt,
+              resetAt:          cycleResetAt,
             },
           });
           // Referrer também ganha bônus de 10 min por indicar

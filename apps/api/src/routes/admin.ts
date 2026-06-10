@@ -800,18 +800,19 @@ export default async function adminRoutes(app: FastifyInstance) {
     '/testers/upgrade-pro-tester',
     { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (_req, _reply) => {
-      // Garante que o plano pro-tester existe (upsert)
+      // Garante que o plano pro-tester existe e está em 200 min (espelha o Pro)
+      const PT_MINUTES = 200;
       const ptPlan = await prisma.plan.upsert({
         where:  { name: 'pro-tester' },
-        update: {},
+        update: { minutesPerMonth: PT_MINUTES, maxNumbers: 2, priceBrl: 0 },
         create: {
           name:            'pro-tester',
           label:           'Pro Tester',
-          minutesPerMonth: 150,
+          minutesPerMonth: PT_MINUTES,
           maxNumbers:      2,
           priceBrl:        0,   // gratuito — plano interno
           features:        JSON.stringify([
-            '150 min/mês', '2 números WhatsApp', 'Transcrição automática',
+            '200 min/mês', '2 números WhatsApp', 'Transcrição automática',
             'Ponto chave IA', 'Busca full-text', 'Exportação CSV',
             'Tags', 'Tradução automática', 'Webhook personalizado', 'Modo privado',
           ]),
@@ -820,8 +821,17 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       const testers = await prisma.user.findMany({
         where: { isTester: true, deletedAt: null },
-        include: { subscription: { include: { plan: true } } },
+        include: { subscription: { include: { plan: true } }, balance: true },
       });
+
+      // Próximo vencimento mensal ancorado no cadastro: createdAt + k*30 dias, no futuro
+      const nextMonthlyAnchor = (createdAt: Date): Date => {
+        const DAY = 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        let next = createdAt.getTime() + 30 * DAY;
+        while (next <= now) next += 30 * DAY;
+        return new Date(next);
+      };
 
       let upgraded = 0;
       let skipped  = 0;
@@ -829,12 +839,20 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       for (const u of testers) {
         const currentPlan = u.subscription?.plan?.name;
-        // Não faz downgrade de quem já tem executive
-        if (currentPlan === 'executive' || currentPlan === 'pro-tester') {
+        // Não faz downgrade de quem tem executive (plano superior)
+        if (currentPlan === 'executive') {
           skipped++;
-          results.push({ email: u.email, from: currentPlan, to: 'pro-tester', action: `skipped (já ${currentPlan})` });
+          results.push({ email: u.email, from: currentPlan, to: 'pro-tester', action: 'skipped (já executive)' });
           continue;
         }
+
+        // Aplicar os 200 min do Pro Tester PRESERVANDO os minutos já usados neste ciclo:
+        // novo saldo = 200 − (minutos do plano antigo − saldo atual)
+        const oldPlanMin   = u.subscription?.plan?.minutesPerMonth ?? 0;
+        const oldAvailable = u.balance?.availableMinutes ?? PT_MINUTES;
+        const usedThisCycle = Math.max(0, oldPlanMin - oldAvailable);
+        const newAvailable  = Math.max(0, Math.min(PT_MINUTES, PT_MINUTES - usedThisCycle));
+        const resetAt       = nextMonthlyAnchor(u.createdAt);
 
         await prisma.$transaction([
           prisma.subscription.update({
@@ -843,17 +861,23 @@ export default async function adminRoutes(app: FastifyInstance) {
               planId:              ptPlan.id,
               status:              'active',
               asaasSubscriptionId: null,
-              currentPeriodEnd:    null,
+              currentPeriodEnd:    null,   // ciclo mensal via balance.resetAt
             },
           }),
-          prisma.minuteBalance.update({
-            where: { userId: u.id },
-            data:  { availableMinutes: ptPlan.minutesPerMonth, lastAlertSent: null },
+          prisma.minuteBalance.upsert({
+            where:  { userId: u.id },
+            create: { userId: u.id, availableMinutes: newAvailable, resetAt, lastAlertSent: null },
+            update: { availableMinutes: newAvailable, resetAt, lastAlertSent: null },
           }),
         ]);
 
         upgraded++;
-        results.push({ email: u.email, from: currentPlan || '?', to: 'pro-tester', action: 'upgraded' });
+        results.push({
+          email: u.email,
+          from: currentPlan || '?',
+          to: 'pro-tester',
+          action: `upgraded (saldo ${newAvailable}/${PT_MINUTES} min, usado ${usedThisCycle})`,
+        });
       }
 
       return { total: testers.length, upgraded, skipped, results };
