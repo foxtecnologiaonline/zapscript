@@ -20,11 +20,4 @@ WHERE  mb."userId"          = s."userId"
   AND  p."name"             = 'pro'
   AND  mb."availableMinutes" < 200;
 
--- 3. Atualizar cota mensal (minutesPerMonth) para subscrições Pro ativas
---    (usado pelo worker de reset mensal como referência)
-UPDATE "Subscription" s
-SET    "minutesPerMonth" = 200
-FROM   "Plan" p
-WHERE  p.id        = s."planId"
-  AND  p."name"   = 'pro'
-  AND  s."status" IN ('active', 'ACTIVE', 'trialing', 'TRIALING');
+-- Subscription não tem coluna minutesPerMonth — worker lê de Plan diretamente.
