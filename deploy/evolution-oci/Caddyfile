@@ -1,0 +1,5 @@
+# SSL automático (Let's Encrypt). O domínio vem da variável DOMAIN do .env.
+# Pré-requisitos: registro DNS A de {DOMAIN} apontando para o IP do VPS e portas 80/443 abertas.
+{$DOMAIN} {
+	reverse_proxy evolution-api:8080
+}
