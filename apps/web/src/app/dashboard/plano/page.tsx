@@ -11,6 +11,10 @@ interface Stats {
   planLabel: string;  // exibível: 'Grátis' | 'Pro' | 'Ultra' | 'Executive'
   planStatus: string;
   renewAt: string | null;
+  isTester: boolean;
+  testerCreatedAt: string | null;
+  testerRenewalsUsed: number;
+  testerRenewalsTotal: number;
 }
 
 interface User {
@@ -405,6 +409,7 @@ function PlanoContent() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [invoices, setInvoices]               = useState<any[]>([]);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [invoicesMeta, setInvoicesMeta]       = useState<{ isTester?: boolean; testerRenewalsUsed?: number; testerRenewalsTotal?: number }>({});
   const justUpgraded = searchParams.get('upgrade') === 'success';
 
   /* — Minute packages — */
@@ -426,8 +431,11 @@ function PlanoContent() {
       setUser(u);
       // Sempre tenta carregar faturas (plano pode ter sido ativado por webhook recente)
       setInvoicesLoading(true);
-      api.get<{ invoices: any[] }>('/billing/invoices')
-        .then(r => setInvoices(r.invoices || []))
+      api.get<{ invoices: any[]; isTester?: boolean; testerRenewalsUsed?: number; testerRenewalsTotal?: number }>('/billing/invoices')
+        .then(r => {
+          setInvoices(r.invoices || []);
+          setInvoicesMeta({ isTester: r.isTester, testerRenewalsUsed: r.testerRenewalsUsed, testerRenewalsTotal: r.testerRenewalsTotal });
+        })
         .catch(() => null)
         .finally(() => setInvoicesLoading(false));
     }).finally(() => setLoading(false));
@@ -791,13 +799,22 @@ function PlanoContent() {
         </p>
       )}
 
-      {/* ── Faturas / Histórico de pagamentos ── */}
+      {/* ── Faturas / Histórico de renovações ── */}
       {stats && currentPlan !== 'free' && (
         <div className="mt-8">
-          <h2 className="font-display font-bold text-base mb-4">Histórico de Pagamentos</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display font-bold text-base">Histórico de Renovações</h2>
+            {/* Badge de isenções Tester restantes */}
+            {invoicesMeta.isTester && invoicesMeta.testerRenewalsTotal != null && (
+              <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-semibold"
+                style={{ background: 'rgba(var(--color-primary)/.1)', border: '1px solid rgba(var(--color-primary)/.2)', color: 'rgb(var(--color-primary))' }}>
+                🎁 {(invoicesMeta.testerRenewalsTotal ?? 12) - (invoicesMeta.testerRenewalsUsed ?? 0)} isenções restantes
+              </div>
+            )}
+          </div>
           <div className="card rounded-2xl overflow-hidden">
             {invoicesLoading ? (
-              <div className="py-8 text-center text-sm text-brand-muted">Carregando faturas…</div>
+              <div className="py-8 text-center text-sm text-brand-muted">Carregando renovações…</div>
             ) : invoices.length === 0 ? (
               <div className="py-6 px-5">
                 {/* Assinatura ativa (ativada pelo admin ou via webhook ainda não processado) */}
@@ -822,8 +839,7 @@ function PlanoContent() {
                   </div>
                 </div>
                 <p className="text-xs text-brand-muted text-center">
-                  Faturas aparecerão aqui conforme os pagamentos forem processados.
-                  Pagamentos anteriores ou realizados fora do sistema não são exibidos.
+                  Renovações aparecerão aqui conforme os ciclos mensais forem completados.
                 </p>
               </div>
             ) : (
@@ -841,25 +857,45 @@ function PlanoContent() {
                     REFUNDED:             { label: 'Reembolsado',   color: 'text-brand-muted' },
                     PARTIALLY_REFUNDED:   { label: 'Reemb. parcial',color: 'text-brand-muted' },
                     CANCELED:             { label: 'Cancelado',     color: 'text-brand-muted' },
+                    TESTER_EXEMPT:        { label: 'Isenção Tester', color: 'text-emerald-400' },
+                    TESTER_UPCOMING:      { label: 'Isenta',         color: 'text-brand-muted' },
                   };
                   const st = statusMap[inv.status] || { label: inv.statusLabel || inv.status, color: inv.statusColor || 'text-brand-muted' };
                   const date = inv.paymentDate || inv.dueDate;
                   const dateStr = date
                     ? new Date(date + 'T12:00:00').toLocaleDateString('pt-BR')
                     : '—';
-                  const brl = (v: number) => v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                  const brl = (v: number) => v != null ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—';
                   return (
-                    <div key={inv.id} className="flex items-center justify-between px-5 py-3.5 gap-4">
+                    <div key={inv.id} className={`flex items-center justify-between px-5 py-3.5 gap-4 ${inv.isUpcoming ? 'opacity-60' : ''}`}>
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-brand-text truncate">
-                          {inv.description || 'Assinatura ZapScript'}
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium text-brand-text truncate">
+                            {inv.description || 'Assinatura ZapScript'}
+                          </div>
+                          {inv.isTesterExempt && !inv.isUpcoming && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                              style={{ background: 'rgba(var(--color-primary)/.12)', color: 'rgb(var(--color-primary))' }}>
+                              🎁 Tester
+                            </span>
+                          )}
+                          {inv.isUpcoming && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                              style={{ background: 'rgba(148,163,184,.1)', color: 'rgb(var(--color-text-muted))' }}>
+                              Próxima
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-brand-muted mt-0.5">{dateStr}</div>
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0">
                         <span className={`text-xs font-semibold ${st.color}`}>{st.label}</span>
                         <span className="text-sm font-bold" style={{ color: 'rgb(var(--color-text))' }}>
-                          {brl(inv.value)}
+                          {inv.isTesterExempt ? (
+                            <span style={{ color: 'rgb(var(--color-primary))' }}>Grátis</span>
+                          ) : (
+                            brl(inv.value)
+                          )}
                         </span>
                         {inv.invoiceUrl && (
                           <a

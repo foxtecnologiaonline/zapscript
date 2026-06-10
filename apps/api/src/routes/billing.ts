@@ -606,8 +606,65 @@ export default async function billingRoutes(app: FastifyInstance) {
   // ── GET /billing/invoices ─────────────────────────────
   app.get('/invoices', auth, async (req: any) => {
     const userId = req.user.sub;
-    const sub = await prisma.subscription.findUnique({ where: { userId } });
-    if (!sub?.asaasCustomerId) return { invoices: [] };
+    const [sub, user] = await Promise.all([
+      prisma.subscription.findUnique({ where: { userId }, include: { plan: true } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { isTester: true, createdAt: true } }),
+    ]);
+
+    // Tester sem assinatura Asaas → gerar histórico sintético de renovações isentas
+    if (user?.isTester && !sub?.asaasCustomerId) {
+      const renewalsUsed = sub?.testerRenewalsUsed ?? 0;
+      const createdAt    = user.createdAt;
+      const invoices     = [];
+
+      for (let i = 0; i < renewalsUsed; i++) {
+        const renewDate = new Date(createdAt);
+        renewDate.setDate(renewDate.getDate() + (i + 1) * 30);
+        invoices.push({
+          id:          `tester-renewal-${i + 1}`,
+          value:       0,
+          status:      'TESTER_EXEMPT',
+          statusLabel: 'Isenção Tester',
+          statusColor: 'text-emerald-400',
+          dueDate:     renewDate.toISOString().slice(0, 10),
+          paymentDate: renewDate.toISOString().slice(0, 10),
+          invoiceUrl:  null,
+          billingType: 'TESTER',
+          description: `ZapScript Pro — Renovação ${i + 1}/12 (Isenção Tester)`,
+          isTesterExempt: true,
+        });
+      }
+
+      // Próximas renovações futuras (até completar 12)
+      const remaining = 12 - renewalsUsed;
+      if (remaining > 0) {
+        const nextRenewDate = new Date(createdAt);
+        nextRenewDate.setDate(nextRenewDate.getDate() + (renewalsUsed + 1) * 30);
+        invoices.push({
+          id:          `tester-next-renewal`,
+          value:       0,
+          status:      'TESTER_UPCOMING',
+          statusLabel: `Isenta (${remaining} restante${remaining !== 1 ? 's' : ''})`,
+          statusColor: 'text-brand-muted',
+          dueDate:     nextRenewDate.toISOString().slice(0, 10),
+          paymentDate: null,
+          invoiceUrl:  null,
+          billingType: 'TESTER',
+          description: `ZapScript Pro — Próxima renovação (Isenção Tester ${renewalsUsed + 1}/12)`,
+          isTesterExempt: true,
+          isUpcoming:  true,
+        });
+      }
+
+      return {
+        invoices: invoices.reverse(), // mais recente primeiro
+        isTester: true,
+        testerRenewalsUsed:  renewalsUsed,
+        testerRenewalsTotal: 12,
+      };
+    }
+
+    if (!sub?.asaasCustomerId) return { invoices: [], isTester: false };
 
     try {
       const res  = await asaas(`/payments?customer=${sub.asaasCustomerId}&limit=12&offset=0`);
@@ -644,10 +701,10 @@ export default async function billingRoutes(app: FastifyInstance) {
         };
       });
 
-      return { invoices };
+      return { invoices, isTester: false };
     } catch (err) {
       app.log.error({ err }, 'Erro ao buscar faturas Asaas');
-      return { invoices: [] };
+      return { invoices: [], isTester: false };
     }
   });
 

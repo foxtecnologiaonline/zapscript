@@ -18,3 +18,4 @@ setup-implementacao.ps1
 # Logs
 *.log
 npm-debug.log*
+.vercel

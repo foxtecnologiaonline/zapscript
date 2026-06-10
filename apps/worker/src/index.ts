@@ -1476,7 +1476,12 @@ async function resetExpiredMinutes() {
     logger.info(`[Cron] Resetando minutos de ${toReset.length} usuário(s)...`);
 
     for (const balance of toReset) {
-      const minutesPerMonth = balance.user.subscription?.plan?.minutesPerMonth ?? 0;
+      const sub              = balance.user.subscription;
+      const minutesPerMonth  = sub?.plan?.minutesPerMonth ?? 0;
+      const isTester         = balance.user.isTester;
+      const renewalsUsed     = sub?.testerRenewalsUsed ?? 0;
+      const MAX_TESTER_RENEW = 12;
+
       // Ancorar o próximo reset na data original (resetAt atual + 30 dias),
       // não em "agora + 30 dias" — garante ciclo mensal a partir do dia do cadastro/pagamento
       const nextReset = new Date(balance.resetAt.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -1485,6 +1490,36 @@ async function resetExpiredMinutes() {
         where: { id: balance.id },
         data:  { availableMinutes: minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
       });
+
+      // Rastrear renovação tester (até 12 isenções)
+      if (isTester && sub?.id && renewalsUsed < MAX_TESTER_RENEW) {
+        await prisma.subscription.update({
+          where: { id: sub.id },
+          data:  { testerRenewalsUsed: { increment: 1 } },
+        });
+        const remaining = MAX_TESTER_RENEW - renewalsUsed - 1;
+        logger.info(`[Cron] Tester ${balance.user.email} — renovação #${renewalsUsed + 1}/12 (${remaining} restante(s))`);
+
+        if (remaining === 0) {
+          // Última isenção usada — notificar sobre conversão
+          const APP_URL = process.env.API_URL?.replace('/api', '') || 'https://zapscript.me';
+          sendEmail(balance.user.email, '🎁 ZapScript — Sua avaliação gratuita está chegando ao fim',
+            `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+              <div style="font-size:22px;font-weight:bold;margin-bottom:16px">🎁 Obrigado por ser Tester!</div>
+              <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
+                Você usou todas as suas <strong>12 renovações gratuitas</strong> como Tester.<br><br>
+                Para continuar com o <strong>Plano Pro (200 min/mês)</strong>, assine agora com desconto exclusivo.
+              </div>
+              <div style="margin:24px 0;text-align:center">
+                <a href="${APP_URL}/dashboard/plano" style="background:#10b981;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Assinar Pro →</a>
+              </div>
+              <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+            </div>`
+          ).catch(() => null);
+        }
+      } else if (isTester && sub?.id && renewalsUsed >= MAX_TESTER_RENEW) {
+        logger.info(`[Cron] Tester ${balance.user.email} — 12 isenções esgotadas (renovações: ${renewalsUsed})`);
+      }
 
       logger.info(`[Cron] ${balance.user.email} → ${minutesPerMonth} min (próximo reset: ${nextReset.toISOString()})`);
     }

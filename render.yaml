@@ -151,6 +151,12 @@ services:
       - key: EVOLUTION_WEBHOOK_SECRET
         sync: false
 
+      # ── Supabase Storage (necessário para Notas de Voz) ────────────────────
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+
       # ── Configurações ───────────────────────────────────────────────────────
       - key: WORKER_CONCURRENCY
         value: "4"

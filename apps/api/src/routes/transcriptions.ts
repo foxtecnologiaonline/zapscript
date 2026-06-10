@@ -674,11 +674,8 @@ Gere apenas o documento, sem explicações adicionais.`;
     if (!requirePlan(uploadPlan, ['pro', 'pro-tester', 'executive'], reply)) return;
 
     // Limite de tamanho por plano: Pro=100MB, Executive=200MB
-    const maxBytes   = uploadPlan === 'executive' ? 200 * 1024 * 1024
-                     :                              100 * 1024 * 1024;
-    const maxLabel   = uploadPlan === 'executive' ? '200MB'
-                     :                              '100MB'
-                     :                              '50MB';
+    const maxBytes   = uploadPlan === 'executive' ? 200 * 1024 * 1024 : 100 * 1024 * 1024;
+    const maxLabel   = uploadPlan === 'executive' ? '200MB' : '100MB';
 
     // Receber arquivo via multipart
     const data   = await req.file();

@@ -133,7 +133,7 @@ export default function DashboardPage() {
                     ? 'linear-gradient(90deg, #f87171, #ef4444)'
                     : stats.minutesPct >= 70
                       ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
-                      : 'linear-gradient(90deg, rgba(var(--color-primary-light),1), rgb(var(--color-primary)))',
+                      : 'linear-gradient(90deg, rgba(var(--color-primary),.45), rgb(var(--color-primary)))',
                 }} />
             </div>
             <div className="flex justify-between text-[10px] text-brand-muted mb-3">
