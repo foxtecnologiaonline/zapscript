@@ -278,7 +278,7 @@ export default async function billingRoutes(app: FastifyInstance) {
         where:  { userId },
         create: { userId, planId: freePlan?.id ?? '', asaasCustomerId, paymentMethod, status: 'pending' },
         update: { asaasCustomerId, paymentMethod, status: 'pending' },
-      }).catch(e => app.log.warn({ err: e.message, userId }, '[Checkout] M2: Falha ao salvar subscription pendente — estado pode ficar inconsistente'));
+      }).catch((e: any) => app.log.warn({ err: e.message, userId }, '[Checkout] M2: Falha ao salvar subscription pendente — estado pode ficar inconsistente'));
 
       // ── Montar body da assinatura ──
       const subBody: Record<string, any> = {
