@@ -1,9 +1,12 @@
-# Evolution API — stack completa para VPS (Oracle OCI, São Paulo/Vinhedo).
+# Evolution API — stack completa para VPS (testado em Vultr São Paulo).
 # Segredos vêm do arquivo .env ao lado (copie de .env.example). NÃO comite o .env.
 # Subir: docker compose up -d   ·   Logs: docker compose logs -f
+# IMPORTANTE: usar a imagem evoapicloud/evolution-api (repo mantido). O antigo
+# atendai/evolution-api:latest está parado há ~16 meses e o Baileys desatualizado
+# entra em loop de reconexão sem gerar QR. Por isso EVO_VERSION=latest aqui.
 services:
   evolution-api:
-    image: atendai/evolution-api:${EVO_VERSION}
+    image: evoapicloud/evolution-api:${EVO_VERSION}
     restart: always
     depends_on:
       - postgres

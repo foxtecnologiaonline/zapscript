@@ -1,0 +1,43 @@
+# Stack ENXUTA p/ TESTE em VM de baixa RAM (~500MB-1GB, ex.: micro x86 Always Free).
+# Só Evolution + Caddy. SEM Postgres/Redis: cache local, sem persistência.
+# Objetivo único: conectar um número e ver se o aviso de fraude some com IP BR.
+# NÃO use em produção — para produção use docker-compose.yml numa VM A1 (12GB).
+services:
+  evolution-api:
+    image: evoapicloud/evolution-api:${EVO_VERSION}
+    restart: always
+    environment:
+      - SERVER_URL=https://${DOMAIN}
+      - AUTHENTICATION_API_KEY=${AUTHENTICATION_API_KEY}
+      - DATABASE_ENABLED=false
+      - CACHE_REDIS_ENABLED=false
+      - CACHE_LOCAL_ENABLED=true
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evo-net
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - evolution-api
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - evo-net
+
+volumes:
+  evolution_instances:
+  caddy_data:
+  caddy_config:
+
+networks:
+  evo-net:
