@@ -114,7 +114,7 @@ describe('GET /admin/stats', () => {
   it('calcula MRR pro + executive corretamente', async () => {
     (prisma.user.count as jest.Mock).mockResolvedValue(2);
     (prisma.subscription.findMany as jest.Mock).mockResolvedValue([
-      { plan: { name: 'pro' } },       // R$29.90
+      { plan: { name: 'pro' } },       // R$39.90
       { plan: { name: 'executive' } }, // R$49.90
     ]);
     (prisma.subscription.groupBy as jest.Mock).mockResolvedValue([

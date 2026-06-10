@@ -2730,7 +2730,7 @@ O plano Pro resolve de vez:
 📤 Exportação em CSV para organizar tudo
 📱 Conecte até 3 números simultâneos
 
-Tudo por R$29,90/mês — menos que uma pizza. Cancele quando quiser.
+Tudo por R$39,90/mês — menos que uma pizza. Cancele quando quiser.
 
 👉 Fazer upgrade: https://zapscript.me/dashboard/plano
 

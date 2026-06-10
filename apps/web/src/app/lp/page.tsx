@@ -58,7 +58,7 @@ const META: Record<string, { title: string; description: string }> = {
   },
   b2b: {
     title:       'Transcrição de Áudios WhatsApp para Empresas — ZapScript',
-    description: 'Equipes de vendas e atendimento perdem horas com áudios. ZapScript transcreve e resume tudo automaticamente. Planos a partir de R$29,90/mês.',
+    description: 'Equipes de vendas e atendimento perdem horas com áudios. ZapScript transcreve e resume tudo automaticamente. Planos a partir de R$39,90/mês.',
   },
   problema: {
     title:       'Para de Ouvir Áudios do WhatsApp — Leia o Texto em Segundos — ZapScript',

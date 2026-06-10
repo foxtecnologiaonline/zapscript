@@ -522,7 +522,7 @@ export const POSTS: BlogPost[] = [
 <h2>Como implementar transcrição de áudio no WhatsApp da sua empresa</h2>
 
 <h3>Opção 1: Para profissionais individuais e pequenas empresas</h3>
-<p>O <strong>ZapScript</strong> é ideal: conecta seu número pessoal ou comercial, transcreve automaticamente tudo que chega e disponibiliza histórico pesquisável. Plano Pro a partir de R$29,90/mês.</p>
+<p>O <strong>ZapScript</strong> é ideal: conecta seu número pessoal ou comercial, transcreve automaticamente tudo que chega e disponibiliza histórico pesquisável. Plano Pro a partir de R$39,90/mês.</p>
 
 <h3>Opção 2: Para empresas com múltiplos atendentes</h3>
 <p>Combine o ZapScript com o webhook personalizado (disponível no plano Executive). Cada transcrição é enviada automaticamente para seu CRM, Zapier, Make ou qualquer sistema via API. Assim, o histórico do cliente é atualizado em tempo real, sem intervenção manual.</p>
