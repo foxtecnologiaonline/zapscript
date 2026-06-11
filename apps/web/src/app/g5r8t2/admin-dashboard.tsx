@@ -857,36 +857,36 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
               <Btn variant="ghost" cls="px-5">Buscar</Btn>
             </form>
 
+            {/* Barra de ações em lote — fora da <table> (div não é filho válido de table) */}
+            {selectedUsers.size > 0 && (
+              <div className="px-4 py-3 rounded-xl bg-[rgba(16,185,129,.08)] border border-[rgba(16,185,129,.2)] flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-[#10b981]">{selectedUsers.size} selecionado(s)</span>
+                <select value={bulkAction} onChange={e => setBulkAction(e.target.value)}
+                  className="text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded px-2 py-1 text-[#d1fae5] outline-none">
+                  <option value="add-minutes">± Adicionar minutos</option>
+                  <option value="set-plan">🔄 Mudar plano</option>
+                  <option value="ban">🚫 Banir</option>
+                  <option value="unban">✅ Desbanir</option>
+                  <optgroup label="── LGPD ──">
+                    <option value="anonymize">🔒 Anonimizar dados (LGPD)</option>
+                    <option value="export-data">📋 Solicitar exportação (LGPD)</option>
+                  </optgroup>
+                </select>
+                {(bulkAction === 'add-minutes' || bulkAction === 'set-plan') && (
+                  <input
+                    value={bulkValue} onChange={e => setBulkValue(e.target.value)}
+                    placeholder={bulkAction === 'add-minutes' ? 'Minutos (ex: 60)' : 'Plano (ex: pro)'}
+                    className="text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded px-2 py-1 text-[#d1fae5] outline-none w-36" />
+                )}
+                <Btn variant="primary" disabled={bulkLoading} onClick={executeBulkAction} cls="text-xs py-1 px-3">
+                  {bulkLoading ? '⟳' : '▶ Executar'}
+                </Btn>
+                <Btn variant="ghost" onClick={() => setSelectedUsers(new Set())} cls="text-xs py-1 px-2">✕ Cancelar</Btn>
+              </div>
+            )}
+
             <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-x-auto">
               <table className="w-full min-w-[820px]">
-                {/* Barra de ações em lote */}
-                {selectedUsers.size > 0 && (
-                  <div className="px-4 py-3 bg-[rgba(16,185,129,.08)] border-b border-[rgba(16,185,129,.15)] flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold text-[#10b981]">{selectedUsers.size} selecionado(s)</span>
-                    <select value={bulkAction} onChange={e => setBulkAction(e.target.value)}
-                      className="text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded px-2 py-1 text-[#d1fae5] outline-none">
-                      <option value="add-minutes">± Adicionar minutos</option>
-                      <option value="set-plan">🔄 Mudar plano</option>
-                      <option value="ban">🚫 Banir</option>
-                      <option value="unban">✅ Desbanir</option>
-                      <optgroup label="── LGPD ──">
-                        <option value="anonymize">🔒 Anonimizar dados (LGPD)</option>
-                        <option value="export-data">📋 Solicitar exportação (LGPD)</option>
-                      </optgroup>
-                    </select>
-                    {(bulkAction === 'add-minutes' || bulkAction === 'set-plan') && (
-                      <input
-                        value={bulkValue} onChange={e => setBulkValue(e.target.value)}
-                        placeholder={bulkAction === 'add-minutes' ? 'Minutos (ex: 60)' : 'Plano (ex: pro)'}
-                        className="text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded px-2 py-1 text-[#d1fae5] outline-none w-36" />
-                    )}
-                    <Btn variant="primary" disabled={bulkLoading} onClick={executeBulkAction} cls="text-xs py-1 px-3">
-                      {bulkLoading ? '⟳' : '▶ Executar'}
-                    </Btn>
-                    <Btn variant="ghost" onClick={() => setSelectedUsers(new Set())} cls="text-xs py-1 px-2">✕ Cancelar</Btn>
-                  </div>
-                )}
-
                 <thead>
                   <tr className="border-b border-[rgba(16,185,129,.08)]">
                     <th className="px-3 py-3">
