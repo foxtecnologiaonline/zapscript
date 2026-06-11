@@ -9,7 +9,7 @@ export default function AdminPage() {
   const [token, setToken]     = useState('');
   const [auth, setAuth]       = useState(false);
   const [stats, setStats]     = useState<any>(null);
-  const [tab, setTab]         = useState<Tab>('overview');
+  const [tab, setTab]         = useState<Tab>('dashboard');
   const [loading, setLoading] = useState(false);
   const [subLoading, setSubLoading] = useState(false);
   const [loginErr, setLoginErr]     = useState('');
@@ -25,7 +25,7 @@ export default function AdminPage() {
   // Tickets
   const [tickets, setTickets]           = useState<any[]>([]);
   const [ticketTotal, setTicketTotal]   = useState(0);
-  const [ticketStatus, setTicketStatus] = useState('');
+  const [ticketStatus, setTicketStatus] = useState('open');
   const [ticketOffset, setTicketOffset] = useState(0);
 
   // Plans
@@ -139,10 +139,12 @@ export default function AdminPage() {
 
   function goTab(t: Tab) {
     setTab(t);
-    if (t === 'users'   && users.length === 0)   loadUsers('', 0);
-    if (t === 'tickets' && tickets.length === 0) loadTickets('', 0);
-    if (t === 'testers') loadInvites();
-    // 'monitoring' e 'financeiro' carregam dados internamente em seus componentes
+    if (t === 'usuarios') {
+      if (users.length === 0) loadUsers('', 0);
+      loadInvites(); // seção Testers foi unificada em Usuários
+    }
+    if (t === 'suporte' && tickets.length === 0) loadTickets(ticketStatus || 'open', 0);
+    // 'metas', 'monitoramento', 'comunicacao' e 'financeiro' carregam dados internamente em seus componentes
   }
 
   async function syncPlans() {

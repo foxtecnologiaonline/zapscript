@@ -1,8 +1,8 @@
 'use client';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 
 /* ── Tipos ─────────────────────────────────────────────── */
-export type Tab = 'overview' | 'users' | 'tickets' | 'testers' | 'monitoring' | 'financeiro' | 'campanhas' | 'planos';
+export type Tab = 'dashboard' | 'metas' | 'suporte' | 'monitoramento' | 'comunicacao' | 'usuarios' | 'financeiro';
 
 /* ── Constantes ────────────────────────────────────────── */
 const API  = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -761,13 +761,13 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
         <div className="overflow-x-auto mb-6 -mx-2 px-2">
           <div className="flex gap-1.5 bg-[#0d1c19] border border-[rgba(16,185,129,.08)] rounded-xl p-1.5 w-max min-w-full sm:w-fit sm:min-w-0">
             {([
-              ['overview',   '📊', 'Dashboard'],
-              ['users',      '👥', 'Usuários'],
-              ['tickets',    '🎧', 'Suporte'],
-              ['testers',    '🧪', 'Testers'],
-              ['monitoring',  '🖥️', 'Monitoramento'],
-              ['financeiro',  '💰', 'Financeiro'],
-              ['campanhas',   '📣', 'Campanhas'],
+              ['dashboard',     '📊', 'Dashboard'],
+              ['metas',         '🎯', 'Metas'],
+              ['suporte',       '🎧', 'Suporte'],
+              ['monitoramento', '🖥️', 'Monitoramento'],
+              ['comunicacao',   '📣', 'Comunicação'],
+              ['usuarios',      '👥', 'Usuários'],
+              ['financeiro',    '💰', 'Financeiro'],
             ] as [Tab, string, string][]).map(([t, icon, label]) => (
               <button key={t} onClick={() => goTab(t)}
                 className={`whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
@@ -781,22 +781,31 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           </div>
         </div>
 
-        {/* ═══ VISÃO GERAL ═══ */}
-        {tab === 'overview' && stats && (
+        {/* ═══ DASHBOARD — 1 card mais importante de cada aba ═══ */}
+        {tab === 'dashboard' && stats && (
           <div className="space-y-5">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <KpiCard icon="👥" title="Usuários totais" value={stats.users.total} sub={`+${stats.users.today} hoje`} />
-              <KpiCard icon="🎙️" title="Transcrições" value={stats.transcriptions.total} sub={`+${stats.transcriptions.today} hoje`} />
-              <KpiCard icon="⏱️" title="Minutos processados" value={(stats.minutes.total || 0).toFixed(0)} sub={`${(stats.minutes.today || 0).toFixed(1)} min hoje`} />
-              <KpiCard icon="🎫" title="Tickets abertos" value={stats.tickets.open} sub={`${stats.tickets.total} total`} color="#fbbf24" />
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <KpiCard icon="💰" title="MRR" value={brl(stats.mrr || 0)} sub="receita mensal recorrente" color="#a78bfa" />
-              <KpiCard icon="💳" title="Pagantes ativos" value={stats.conversion?.paid || 0} sub={`${(stats.conversion?.rate || 0).toFixed(1)}% conv. · ${stats.conversion?.testers || 0} tester(s)`} color="#34d399" />
-              <KpiCard icon="📈" title="Novos este mês" value={stats.users.month}
+            <div className="text-xs text-[rgba(16,185,129,.4)]">Resumo executivo — o indicador-chave de cada área. Clique para abrir.</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {/* 🎯 Metas → novos cadastros no mês */}
+              <KpiCard icon="🎯" title="Metas · Cadastros no mês" value={stats.users.month}
                 sub={`${growth >= 0 ? '▲' : '▼'} ${Math.abs(growth)} vs mês anterior`}
-                color={growth >= 0 ? '#10b981' : '#f87171'} />
-              <KpiCard icon="📱" title="WhatsApp conectados" value={stats.whatsapp?.connected || 0} sub={`${stats.whatsapp?.total || 0} cadastrados`} color="#60a5fa" />
+                color={growth >= 0 ? '#10b981' : '#f87171'} onClick={() => goTab('metas')} />
+              {/* 🎧 Suporte → tickets abertos */}
+              <KpiCard icon="🎧" title="Suporte · Tickets abertos" value={stats.tickets.open}
+                sub={`${stats.tickets.total} no total`} color="#fbbf24" onClick={() => goTab('suporte')} />
+              {/* 🖥️ Monitoramento → WhatsApp conectados */}
+              <KpiCard icon="🖥️" title="Monitoramento · WhatsApp" value={`${stats.whatsapp?.connected || 0}/${stats.whatsapp?.total || 0}`}
+                sub="números conectados" color="#60a5fa" onClick={() => goTab('monitoramento')} />
+              {/* 📣 Comunicação → transcrições processadas */}
+              <KpiCard icon="📣" title="Comunicação · Transcrições" value={stats.transcriptions.total}
+                sub={`+${stats.transcriptions.today} hoje`} color="#34d399" onClick={() => goTab('comunicacao')} />
+              {/* 👥 Usuários → base total */}
+              <KpiCard icon="👥" title="Usuários · Base total" value={stats.users.total}
+                sub={`+${stats.users.today} hoje · ${stats.conversion?.testers || 0} tester(s)`} onClick={() => goTab('usuarios')} />
+              {/* 💰 Financeiro → MRR */}
+              <KpiCard icon="💰" title="Financeiro · MRR" value={brl(stats.mrr || 0)}
+                sub={`${stats.conversion?.paid || 0} pagantes · ${(stats.conversion?.rate || 0).toFixed(1)}% conv.`}
+                color="#a78bfa" onClick={() => goTab('financeiro')} />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -838,14 +847,16 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                 </div>
               </div>
             </div>
-
-            {/* Gestão de Planos — integrada ao Dashboard */}
-            <PlanosPanel apiBase={API} token={token} notify={notify} />
           </div>
         )}
 
-        {/* ═══ USUÁRIOS ═══ */}
-        {tab === 'users' && (
+        {/* ═══ METAS — atuais semanais e mensais ═══ */}
+        {tab === 'metas' && (
+          <MetasTab apiBase={API} token={token} notify={notify} />
+        )}
+
+        {/* ═══ USUÁRIOS (lista sintética + seção Testers) ═══ */}
+        {tab === 'usuarios' && (
           <div className="space-y-4">
             <form onSubmit={e => { e.preventDefault(); setUserOffset(0); loadUsers(userSearch, 0); }}
               className="flex gap-2">
@@ -961,7 +972,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
         )}
 
         {/* ═══ SUPORTE (TICKETS) ═══ */}
-        {tab === 'tickets' && (
+        {tab === 'suporte' && (
           <TicketSupportSection
             tickets={tickets}
             ticketTotal={ticketTotal}
@@ -976,9 +987,14 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           />
         )}
 
-        {/* ═══ TESTERS ═══ */}
-        {tab === 'testers' && (
-          <div className="space-y-5">
+        {/* ═══ SEÇÃO TESTERS (dentro de Usuários) ═══ */}
+        {tab === 'usuarios' && (
+          <div className="space-y-5 mt-8">
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+              <span className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wider">🧪 Testers</span>
+              <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+            </div>
             {/* ── Painel: Base de Testers + Upgrade Executive ── */}
             <TesterUpgradePanel token={ctx.token} notify={fn.notify} />
 
@@ -1121,19 +1137,19 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
         )}
 
         {/* ═══ MONITORAMENTO ═══ */}
-        {tab === 'monitoring' && (
+        {tab === 'monitoramento' && (
           <div className="space-y-5">
-            {/* Gráfico de transcrições por hora */}
-            <HourlyChart apiBase={API} token={token} />
-
-            {/* Uptime histórico */}
-            <UptimeHistory apiBase={API} token={token} />
-
-            {/* Saúde dos Serviços */}
+            {/* Monitor Saúde — sintético por serviço (clique abre analítico) */}
             <ServicesHealth apiBase={API} token={token} />
+
+            {/* Histórico de Uptime */}
+            <UptimeHistory apiBase={API} token={token} />
 
             {/* Monitor de Saúde (histórico horário) */}
             <HealthMonitorPanel apiBase={API} token={token} />
+
+            {/* Gráfico de transcrições por hora */}
+            <HourlyChart apiBase={API} token={token} />
 
             {/* Monitor de Fila */}
             <QueuePanel apiBase={API} token={token} />
@@ -1176,23 +1192,40 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           </div>
         )}
 
-        {/* ═══ PLANOS ═══ */}
-        {tab === 'planos' && (
-          <PlanosPanel apiBase={API} token={token} notify={notify} />
+        {/* ═══ COMUNICAÇÃO / MARKETING ═══ */}
+        {tab === 'comunicacao' && (
+          <div className="space-y-8">
+            {/* Seção Comunicação — campanhas por tipo/segmento, filtros, utilização */}
+            <div className="space-y-5">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-[#d1fae5]">📣 Comunicação</span>
+                <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+              </div>
+              <CampanhasTab apiBase={API} token={token} notify={notify} />
+            </div>
+
+            {/* Seção Propaganda — mensuração de propagandas e ações */}
+            <div className="space-y-5">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-[#d1fae5]">📢 Propaganda</span>
+                <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+              </div>
+              <PropagandaPanel apiBase={API} token={token} notify={notify} />
+            </div>
+          </div>
         )}
 
         {/* ═══ FINANCEIRO ═══ */}
         {tab === 'financeiro' && (
           <div className="space-y-5">
+            {/* Custos, receita, margem, DRE, lucro — com inputs persistidos */}
+            <FinanceiroPanel apiBase={API} token={token} notify={notify} stats={stats} />
             <MRRCohort   apiBase={API} token={token} />
             <ChurnRisk   apiBase={API} token={token} />
             <NPSPanel    apiBase={API} token={token} />
+            {/* Gestão de Planos */}
+            <PlanosPanel apiBase={API} token={token} notify={notify} />
           </div>
-        )}
-
-        {/* ═══ CAMPANHAS ═══ */}
-        {tab === 'campanhas' && (
-          <CampanhasTab apiBase={API} token={token} notify={notify} />
         )}
 
       </div>
@@ -1225,15 +1258,18 @@ function Badge({ label, cls }: { label: string; cls?: string }) {
   );
 }
 
-function KpiCard({ title, value, sub, color = '#10b981', icon }: {
-  title: string; value: string | number; sub: string; color?: string; icon?: string;
+function KpiCard({ title, value, sub, color = '#10b981', icon, onClick }: {
+  title: string; value: string | number; sub: string; color?: string; icon?: string; onClick?: () => void;
 }) {
+  const clickable = !!onClick;
   return (
-    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5 hover:border-[rgba(16,185,129,.18)] transition-colors">
+    <div onClick={onClick}
+      className={`bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5 transition-colors ${clickable ? 'cursor-pointer hover:border-[rgba(16,185,129,.35)] hover:bg-[rgba(16,185,129,.03)]' : 'hover:border-[rgba(16,185,129,.18)]'}`}>
       {icon && <div className="text-2xl mb-2">{icon}</div>}
       <div className="text-xs text-[rgba(16,185,129,.4)] font-medium mb-2">{title}</div>
       <div className="text-2xl font-black leading-none mb-1" style={{ color }}>{value}</div>
       <div className="text-xs text-[rgba(16,185,129,.35)]">{sub}</div>
+      {clickable && <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-2">abrir →</div>}
     </div>
   );
 }
@@ -3184,6 +3220,349 @@ Equipe ZapScript`,
         </div>
       )}
 
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   METAS — atuais semanais/mensais + metas (targets) editáveis
+══════════════════════════════════════════════════════════ */
+function MetasTab({ apiBase, token, notify }: {
+  apiBase: string; token: string; notify: (t: string, ty?: 'ok' | 'err' | 'warn') => void;
+}) {
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+  const [data, setData]       = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [edit, setEdit]       = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const [targets, setTargets] = useState<any>({ week: {}, month: {} });
+
+  async function load() {
+    setLoading(true);
+    try {
+      const d = await (await fetch(`${apiBase}/sys/g5r8t2/metas`, { headers: h })).json();
+      setData(d);
+      setTargets(d.targets || { week: {}, month: {} });
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  async function saveTargets() {
+    setSaving(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/alert-config`, {
+        method: 'POST', headers: h, body: JSON.stringify({ 'metas.targets': targets }),
+      });
+      if (!res.ok) throw new Error('Falha ao salvar');
+      notify('✅ Metas salvas', 'ok');
+      setEdit(false);
+      load();
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setSaving(false); }
+  }
+
+  const fields: [string, string, boolean][] = [
+    ['cadastros',   'Cadastros',   false],
+    ['ativacoes',   'Ativações',   false],
+    ['assinaturas', 'Assinaturas', false],
+    ['receita',     'Receita',     true],
+  ];
+
+  function Period({ id, label }: { id: 'week' | 'month'; label: string }) {
+    const actual = data?.[id]?.actual || {};
+    const tgt    = targets?.[id] || {};
+    return (
+      <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">
+        <div className="text-sm font-bold text-[#d1fae5] mb-4">{label}</div>
+        <div className="space-y-4">
+          {fields.map(([key, lbl, isMoney]) => {
+            const a   = Number(actual[key] || 0);
+            const t   = Number(tgt[key] || 0);
+            const pct = t > 0 ? Math.min(Math.round((a / t) * 100), 100) : 0;
+            const fmtV = (v: number) => isMoney ? brl(v) : String(v);
+            return (
+              <div key={key}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs text-[rgba(16,185,129,.6)]">{lbl}</span>
+                  {edit ? (
+                    <input type="number" value={tgt[key] ?? ''} placeholder="meta"
+                      onChange={e => setTargets((p: any) => ({ ...p, [id]: { ...p[id], [key]: e.target.value === '' ? undefined : Number(e.target.value) } }))}
+                      className="w-24 text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded px-2 py-1 text-[#d1fae5] outline-none text-right" />
+                  ) : (
+                    <span className="text-sm font-bold text-[#d1fae5]">
+                      {fmtV(a)} {t > 0 && <span className="text-xs text-[rgba(16,185,129,.4)] font-normal">/ {fmtV(t)}</span>}
+                    </span>
+                  )}
+                </div>
+                {!edit && t > 0 && <ProgressBar pct={pct} />}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) return <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando metas...</div>;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-xs text-[rgba(16,185,129,.4)]">Acompanhamento de metas — valores reais do período vs. metas definidas.</div>
+        {edit ? (
+          <div className="flex gap-2">
+            <Btn variant="primary" onClick={saveTargets} disabled={saving}>{saving ? '⟳' : '💾 Salvar metas'}</Btn>
+            <Btn variant="ghost" onClick={() => { setEdit(false); setTargets(data?.targets || { week: {}, month: {} }); }}>Cancelar</Btn>
+          </div>
+        ) : (
+          <Btn variant="ghost" onClick={() => setEdit(true)}>✏️ Definir metas</Btn>
+        )}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <Period id="week"  label="📅 Semanal" />
+        <Period id="month" label="🗓️ Mensal" />
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   PROPAGANDA — registro e mensuração de propagandas/ações
+══════════════════════════════════════════════════════════ */
+function PropagandaPanel({ apiBase, token, notify }: {
+  apiBase: string; token: string; notify: (t: string, ty?: 'ok' | 'err' | 'warn') => void;
+}) {
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+  const [items, setItems]     = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [form, setForm]       = useState<any>({ nome: '', canal: '', publicoAlvo: '', custo: '', retornoQtd: '', retornoValor: '' });
+
+  async function load() {
+    setLoading(true);
+    try {
+      const d = await (await fetch(`${apiBase}/sys/g5r8t2/alert-config`, { headers: h })).json();
+      setItems(Array.isArray(d['marketing.propaganda']) ? d['marketing.propaganda'] : []);
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  async function persist(next: any[]) {
+    setSaving(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/alert-config`, {
+        method: 'POST', headers: h, body: JSON.stringify({ 'marketing.propaganda': next }),
+      });
+      if (!res.ok) throw new Error('Falha ao salvar');
+      setItems(next);
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setSaving(false); }
+  }
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.nome.trim()) { notify('Informe o nome da ação', 'warn'); return; }
+    const entry = {
+      id:           Date.now().toString(36),
+      nome:         form.nome.trim(),
+      canal:        form.canal.trim(),
+      publicoAlvo:  form.publicoAlvo.trim(),
+      custo:        Number(form.custo) || 0,
+      retornoQtd:   Number(form.retornoQtd) || 0,
+      retornoValor: Number(form.retornoValor) || 0,
+      data:         new Date().toISOString(),
+    };
+    await persist([entry, ...items]);
+    setForm({ nome: '', canal: '', publicoAlvo: '', custo: '', retornoQtd: '', retornoValor: '' });
+    notify('✅ Ação registrada', 'ok');
+  }
+
+  async function remove(id: string) {
+    if (!confirm('Excluir esta ação?')) return;
+    await persist(items.filter(i => i.id !== id));
+    notify('🗑 Removida', 'ok');
+  }
+
+  const totals = items.reduce((a, i) => ({
+    custo:        a.custo + (i.custo || 0),
+    retornoQtd:   a.retornoQtd + (i.retornoQtd || 0),
+    retornoValor: a.retornoValor + (i.retornoValor || 0),
+  }), { custo: 0, retornoQtd: 0, retornoValor: 0 });
+  const roi = totals.custo > 0 ? ((totals.retornoValor - totals.custo) / totals.custo) * 100 : null;
+
+  const inp = "bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]";
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard icon="💸" title="Custo total" value={brl(totals.custo)} sub={`${items.length} ação(ões)`} color="#f87171" />
+        <KpiCard icon="👥" title="Retorno (qtd)" value={totals.retornoQtd} sub="conversões / leads" color="#60a5fa" />
+        <KpiCard icon="💰" title="Retorno (valor)" value={brl(totals.retornoValor)} sub="receita atribuída" color="#34d399" />
+        <KpiCard icon="📈" title="ROI" value={roi === null ? '—' : `${roi.toFixed(0)}%`} sub="retorno sobre custo" color={roi !== null && roi >= 0 ? '#10b981' : '#f87171'} />
+      </div>
+
+      <form onSubmit={add} className="bg-[#0d1c19] border border-[rgba(16,185,129,.12)] rounded-xl p-5 space-y-3">
+        <div className="text-sm font-bold text-[#d1fae5]">➕ Registrar propaganda / ação</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <input className={inp} placeholder="Nome (ex: Anúncio Instagram)" value={form.nome} onChange={e => setForm((f: any) => ({ ...f, nome: e.target.value }))} required />
+          <input className={inp} placeholder="Canal (ex: Meta Ads)" value={form.canal} onChange={e => setForm((f: any) => ({ ...f, canal: e.target.value }))} />
+          <input className={inp} placeholder="Público-alvo" value={form.publicoAlvo} onChange={e => setForm((f: any) => ({ ...f, publicoAlvo: e.target.value }))} />
+          <input className={inp} type="number" step="0.01" placeholder="Custo (R$)" value={form.custo} onChange={e => setForm((f: any) => ({ ...f, custo: e.target.value }))} />
+          <input className={inp} type="number" placeholder="Retorno (qtd)" value={form.retornoQtd} onChange={e => setForm((f: any) => ({ ...f, retornoQtd: e.target.value }))} />
+          <input className={inp} type="number" step="0.01" placeholder="Retorno (R$)" value={form.retornoValor} onChange={e => setForm((f: any) => ({ ...f, retornoValor: e.target.value }))} />
+        </div>
+        <Btn variant="primary" cls="w-full justify-center py-2.5" disabled={saving}>{saving ? '⟳ Salvando...' : '➕ Adicionar'}</Btn>
+      </form>
+
+      <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-x-auto">
+        <table className="w-full min-w-[720px]">
+          <thead>
+            <tr className="border-b border-[rgba(16,185,129,.08)]">
+              {['Ação', 'Canal', 'Público', 'Custo', 'Ret. Qtd', 'Ret. Valor', 'ROI', ''].map(c => (
+                <th key={c} className="px-4 py-3 text-left text-[10px] font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide whitespace-nowrap">{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={8} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando...</td></tr>
+            ) : items.length === 0 ? (
+              <tr><td colSpan={8} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhuma ação registrada</td></tr>
+            ) : items.map(i => {
+              const r = i.custo > 0 ? ((i.retornoValor - i.custo) / i.custo) * 100 : null;
+              return (
+                <tr key={i.id} className="border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.02)]">
+                  <td className="px-4 py-3 text-xs text-[#d1fae5] font-semibold">{i.nome}<div className="text-[10px] text-[rgba(16,185,129,.3)]">{fmt(i.data)}</div></td>
+                  <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)]">{i.canal || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)]">{i.publicoAlvo || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-red-400/80 font-mono">{brl(i.custo)}</td>
+                  <td className="px-4 py-3 text-xs text-blue-400 font-mono text-right">{i.retornoQtd}</td>
+                  <td className="px-4 py-3 text-xs text-green-400 font-mono">{brl(i.retornoValor)}</td>
+                  <td className={`px-4 py-3 text-xs font-bold font-mono ${r === null ? 'text-[rgba(16,185,129,.3)]' : r >= 0 ? 'text-green-400' : 'text-red-400'}`}>{r === null ? '—' : `${r.toFixed(0)}%`}</td>
+                  <td className="px-4 py-3"><Btn variant="danger" onClick={() => remove(i.id)}>🗑</Btn></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   FINANCEIRO — custos, receita, margem, DRE, lucro
+══════════════════════════════════════════════════════════ */
+function FinanceiroPanel({ apiBase, token, notify, stats }: {
+  apiBase: string; token: string; notify: (t: string, ty?: 'ok' | 'err' | 'warn') => void; stats: any;
+}) {
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+  const [custos, setCustos] = useState<{ custoFixo: number; custoVariavel: number }>({ custoFixo: 0, custoVariavel: 0 });
+  const [draft, setDraft]   = useState<{ custoFixo: string; custoVariavel: string }>({ custoFixo: '', custoVariavel: '' });
+  const [edit, setEdit]     = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const d = await (await fetch(`${apiBase}/sys/g5r8t2/alert-config`, { headers: h })).json();
+      const c = d['financeiro.custos'] || {};
+      const next = { custoFixo: Number(c.custoFixo) || 0, custoVariavel: Number(c.custoVariavel) || 0 };
+      setCustos(next);
+      setDraft({ custoFixo: String(next.custoFixo), custoVariavel: String(next.custoVariavel) });
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  async function save() {
+    setSaving(true);
+    const next = { custoFixo: Number(draft.custoFixo) || 0, custoVariavel: Number(draft.custoVariavel) || 0 };
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/alert-config`, {
+        method: 'POST', headers: h, body: JSON.stringify({ 'financeiro.custos': next }),
+      });
+      if (!res.ok) throw new Error('Falha ao salvar');
+      setCustos(next); setEdit(false);
+      notify('✅ Custos salvos', 'ok');
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setSaving(false); }
+  }
+
+  const receita       = Number(stats?.mrr) || 0;
+  const custoTotal    = custos.custoFixo + custos.custoVariavel;
+  const margemContrib = receita - custos.custoVariavel;
+  const lucro         = receita - custoTotal;
+  const margemPct     = receita > 0 ? (lucro / receita) * 100 : 0;
+
+  const inp = "w-32 text-sm bg-[#132621] border border-[rgba(16,185,129,.2)] rounded px-2 py-1 text-[#d1fae5] outline-none text-right";
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard icon="💰" title="Receita (MRR)" value={brl(receita)} sub="recorrente mensal" color="#34d399" />
+        <KpiCard icon="💸" title="Custo do mês" value={brl(custoTotal)} sub={`fixo ${brl(custos.custoFixo)} · var ${brl(custos.custoVariavel)}`} color="#f87171" />
+        <KpiCard icon="🧮" title="Margem" value={`${margemPct.toFixed(0)}%`} sub="lucro / receita" color={margemPct >= 0 ? '#10b981' : '#f87171'} />
+        <KpiCard icon="📊" title="Lucro do mês" value={brl(lucro)} sub={lucro >= 0 ? 'resultado positivo' : 'resultado negativo'} color={lucro >= 0 ? '#10b981' : '#f87171'} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-sm font-bold text-[#d1fae5]">Custos</div>
+            {edit ? (
+              <div className="flex gap-2">
+                <Btn variant="primary" onClick={save} disabled={saving}>{saving ? '⟳' : '💾 Salvar'}</Btn>
+                <Btn variant="ghost" onClick={() => { setEdit(false); setDraft({ custoFixo: String(custos.custoFixo), custoVariavel: String(custos.custoVariavel) }); }}>Cancelar</Btn>
+              </div>
+            ) : <Btn variant="ghost" onClick={() => setEdit(true)}>✏️ Editar</Btn>}
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-[rgba(16,185,129,.6)]">Custo fixo (mensal)</span>
+              {edit ? <input className={inp} type="number" step="0.01" value={draft.custoFixo} onChange={e => setDraft(d => ({ ...d, custoFixo: e.target.value }))} />
+                    : <span className="text-sm font-bold text-[#d1fae5]">{brl(custos.custoFixo)}</span>}
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-[rgba(16,185,129,.6)]">Custo variável (mensal)</span>
+              {edit ? <input className={inp} type="number" step="0.01" value={draft.custoVariavel} onChange={e => setDraft(d => ({ ...d, custoVariavel: e.target.value }))} />
+                    : <span className="text-sm font-bold text-[#d1fae5]">{brl(custos.custoVariavel)}</span>}
+            </div>
+            <div className="pt-2 border-t border-[rgba(16,185,129,.08)] flex items-center justify-between">
+              <span className="text-xs text-[rgba(16,185,129,.6)]">Risco × Retorno</span>
+              <span className="text-xs font-bold text-[#d1fae5]">
+                {custos.custoFixo > 0 ? `${(lucro / custos.custoFixo).toFixed(2)}× ` : '— '}
+                <span className="text-[10px] text-[rgba(16,185,129,.4)] font-normal">(lucro / custo fixo)</span>
+              </span>
+            </div>
+          </div>
+          {loading && <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-3">Carregando custos...</div>}
+        </div>
+
+        <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">
+          <div className="text-sm font-bold text-[#d1fae5] mb-4">DRE mensal</div>
+          <div className="space-y-2">
+            {([
+              ['Receita bruta (MRR)', receita, '#34d399'],
+              ['(−) Custo variável', -custos.custoVariavel, '#f87171'],
+              ['= Margem de contribuição', margemContrib, '#d1fae5'],
+              ['(−) Custo fixo', -custos.custoFixo, '#f87171'],
+            ] as [string, number, string][]).map(([lbl, val, color]) => (
+              <div key={lbl} className="flex items-center justify-between">
+                <span className="text-xs text-[rgba(16,185,129,.6)]">{lbl}</span>
+                <span className="font-mono text-sm" style={{ color }}>{brl(val)}</span>
+              </div>
+            ))}
+            <div className="pt-2 border-t border-[rgba(16,185,129,.12)] flex items-center justify-between">
+              <span className="text-xs font-bold text-[#d1fae5]">= Lucro líquido</span>
+              <span className="font-mono text-base font-black" style={{ color: lucro >= 0 ? '#10b981' : '#f87171' }}>{brl(lucro)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

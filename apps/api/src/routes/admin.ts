@@ -1927,6 +1927,59 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── #11 Metas — atuais semanais e mensais ───────────────
+  // Cadastros, Ativações (1ª transcrição), Assinaturas pagas e Receita
+  // no período. As METAS (targets) ficam em /alert-config sob a chave
+  // "metas.targets" → { week: {...}, month: {...} }.
+  app.get('/metas', { preHandler: [adminAuth] }, async () => {
+    const now        = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // início da semana (segunda-feira 00:00, horário local do servidor)
+    const weekStart  = new Date(now); weekStart.setHours(0, 0, 0, 0);
+    const dow        = (weekStart.getDay() + 6) % 7; // 0 = segunda
+    weekStart.setDate(weekStart.getDate() - dow);
+
+    async function actuals(since: Date) {
+      const [cadastros, activationRows, paidSubs] = await Promise.all([
+        prisma.user.count({ where: { createdAt: { gte: since } } }),
+        prisma.$queryRaw<{ c: number }[]>`
+          SELECT COUNT(*)::int AS c FROM (
+            SELECT "userId", MIN("createdAt") AS first
+            FROM "Transcription" GROUP BY "userId"
+          ) t WHERE t.first >= ${since}
+        `,
+        prisma.subscription.findMany({
+          where:   { createdAt: { gte: since }, status: 'active' },
+          include: { plan: { select: { priceBrl: true } }, user: { select: { isTester: true } } },
+        }),
+      ]);
+      const paying    = paidSubs.filter((s: any) => s.plan.priceBrl > 0 && !s.user.isTester);
+      const assinaturas = paying.length;
+      const receita     = Math.round(paying.reduce((a: number, s: any) => a + s.plan.priceBrl, 0) * 100) / 100;
+      return {
+        cadastros,
+        ativacoes:   Number(activationRows[0]?.c || 0),
+        assinaturas,
+        receita,
+      };
+    }
+
+    const [week, month] = await Promise.all([actuals(weekStart), actuals(monthStart)]);
+
+    // targets opcionais salvos via /alert-config
+    let targets: any = null;
+    try {
+      const row = await (prisma as any).adminAlertConfig.findUnique({ where: { key: 'metas.targets' } });
+      targets = row?.value ?? null;
+    } catch { /* sem targets ainda */ }
+
+    return {
+      week:  { since: weekStart,  actual: week },
+      month: { since: monthStart, actual: month },
+      targets,
+    };
+  });
+
   // ═══════════════════════════════════════════════════════
   //  MENSAGENS INDIVIDUAIS & CAMPANHAS
   // ═══════════════════════════════════════════════════════
