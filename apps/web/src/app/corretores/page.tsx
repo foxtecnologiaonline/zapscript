@@ -28,6 +28,13 @@ const variant: Variant = {
     { icon: '⚡', title: 'Responda mais rápido', desc: 'Leia a intenção do cliente em segundos e responda na frente da concorrência — quem responde primeiro fecha.' },
     { icon: '🔍', title: 'Tudo pesquisável', desc: 'Histórico de todos os áudios transcritos, pesquisável por bairro, valor ou nome do cliente. Nada se perde.' },
   ],
+  faqs: [
+    { q: 'Como o ZapScript ajuda corretores de imóveis?', a: 'Quando o cliente manda um áudio descrevendo o imóvel que procura, o ZapScript transcreve e resume automaticamente: tipo de imóvel, número de quartos, faixa de preço e bairro. Você lê em segundos em vez de ouvir 5 minutos, e responde mais rápido.' },
+    { q: 'Funciona com vários clientes ao mesmo tempo?', a: 'Sim. Todos os áudios recebidos no seu número conectado são transcritos automaticamente e ficam organizados no histórico, pesquisáveis por nome do cliente, bairro ou valor. Nenhum lead se perde.' },
+    { q: 'Preciso encaminhar o áudio para algum bot?', a: 'Não. Você conecta seu número via QR code uma única vez e a transcrição acontece em segundo plano, automaticamente, para cada áudio que chega. Nada é instalado no celular.' },
+    { q: 'Meus contatos de clientes ficam seguros?', a: 'Sim. Todas as transcrições são criptografadas com AES-256-GCM, servidores em São Paulo e conformidade total com a LGPD. O áudio não é armazenado — apenas o texto.' },
+    { q: 'Quanto custa para começar?', a: 'Grátis. O plano Free inclui 20 minutos de transcrição por mês, sem cartão de crédito. Para volume maior, o plano Pro (R$39,90/mês) oferece 200 minutos e 2 números conectados.' },
+  ],
 };
 
 export default function CorretoresPage() {

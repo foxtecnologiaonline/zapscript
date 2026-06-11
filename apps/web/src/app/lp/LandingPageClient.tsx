@@ -12,6 +12,8 @@ export interface Variant {
   /** Nicho (opcional) — quando presente, renderiza a seção "Feito para …". */
   audience?: string;                                          // ex: 'corretores de imóveis'
   pains?:    { icon: string; title: string; desc: string }[]; // 3 dores específicas
+  /** FAQ específico do nicho (opcional) — substitui o FAQ genérico + gera schema.org. */
+  faqs?:     { q: string; a: string }[];
 }
 
 /* ── FAQ Accordion ──────────────────────────────────────────────────── */
@@ -38,11 +40,11 @@ const FAQS = [
   },
 ];
 
-function FAQAccordion() {
+function FAQAccordion({ items }: { items: { q: string; a: string }[] }) {
   const [open, setOpen] = useState<number | null>(null);
   return (
     <div className="space-y-3">
-      {FAQS.map((faq, i) => (
+      {items.map((faq, i) => (
         <div
           key={i}
           className="border border-white/10 rounded-xl overflow-hidden bg-white/3"
@@ -108,8 +110,21 @@ const PLANS = [
 
 /* ── Componente principal ───────────────────────────────────────────── */
 export default function LandingPageClient({ variant }: { variant: Variant }) {
+  const faqs = variant.faqs ?? FAQS;
+  const faqJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map(f => ({
+      '@type': 'Question',
+      name: f.q,
+      acceptedAnswer: { '@type': 'Answer', text: f.a },
+    })),
+  };
+
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+      {/* Schema.org FAQPage — rich snippets no Google */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
 
       {/* ── Header mínimo — sem distrações ──────────────────────── */}
       <header className="border-b border-white/5 bg-brand-bg/95 backdrop-blur-sm sticky top-0 z-50">
@@ -438,7 +453,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
       <section className="py-16 px-4">
         <div className="max-w-2xl mx-auto">
           <h2 className="text-2xl font-bold text-white text-center mb-10">Perguntas frequentes</h2>
-          <FAQAccordion />
+          <FAQAccordion items={faqs} />
         </div>
       </section>
 

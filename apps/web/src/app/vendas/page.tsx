@@ -28,6 +28,13 @@ const variant: Variant = {
     { icon: '🎯', title: 'Intenção de compra clara', desc: 'O resumo extrai o que o lead quer: produto, orçamento e urgência. Você já responde com a oferta certa.' },
     { icon: '📈', title: 'Nenhum lead esquecido', desc: 'Histórico pesquisável de todos os áudios. Acompanhe cada oportunidade sem ouvir tudo de novo.' },
   ],
+  faqs: [
+    { q: 'Como o ZapScript ajuda quem trabalha com vendas?', a: 'Leads frequentemente mandam áudio perguntando preço, condição e disponibilidade. O ZapScript transcreve e resume cada áudio na hora, destacando a intenção de compra — produto, orçamento e urgência — para você responder rápido e com a oferta certa.' },
+    { q: 'Por que a velocidade de resposta importa tanto?', a: 'Em vendas, quem responde primeiro geralmente fecha. Cada áudio que fica sem ser ouvido é uma oportunidade esfriando. Com a transcrição automática, você lê a intenção do lead em segundos em vez de parar tudo para ouvir minutos de áudio.' },
+    { q: 'Consigo acompanhar todos os leads que mandaram áudio?', a: 'Sim. Todas as transcrições ficam salvas e pesquisáveis por nome, produto ou data. Você acompanha cada oportunidade sem precisar reouvir os áudios.' },
+    { q: 'Funciona para a minha equipe de atendimento?', a: 'O plano Pro permite conectar 2 números. Um plano Empresas multi-usuário (com webhook para integrar ao CRM) está a caminho, ideal para times de vendas e atendimento.' },
+    { q: 'Quanto custa para começar?', a: 'Grátis. O plano Free inclui 20 minutos de transcrição por mês, sem cartão de crédito. O plano Pro (R$39,90/mês) oferece 200 minutos e 2 números conectados.' },
+  ],
 };
 
 export default function VendasPage() {
