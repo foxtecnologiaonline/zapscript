@@ -9,6 +9,9 @@ export interface Variant {
   sub:      string;
   cta:      string;
   ctaHref:  string;
+  /** Nicho (opcional) — quando presente, renderiza a seção "Feito para …". */
+  audience?: string;                                          // ex: 'corretores de imóveis'
+  pains?:    { icon: string; title: string; desc: string }[]; // 3 dores específicas
 }
 
 /* ── FAQ Accordion ──────────────────────────────────────────────────── */
@@ -222,6 +225,39 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
           </div>
         </div>
       </section>
+
+      {/* ════════════════════════════════════════════════════════════
+          NICHO — "Feito para …" (só renderiza se variant.pains existir)
+      ════════════════════════════════════════════════════════════ */}
+      {variant.audience && variant.pains && variant.pains.length > 0 && (
+        <section className="py-14 px-4">
+          <div className="max-w-3xl mx-auto text-center">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
+              Feito para <span className="text-brand-primary">{variant.audience}</span>
+            </h2>
+            <p className="text-brand-muted mb-10 max-w-xl mx-auto">
+              Seu dia já tem áudio demais. Veja como o ZapScript resolve a sua rotina.
+            </p>
+            <div className="grid sm:grid-cols-3 gap-4 text-left">
+              {variant.pains.map(({ icon, title, desc }) => (
+                <div key={title} className="bg-white/5 border border-white/10 rounded-2xl p-6">
+                  <div className="text-3xl mb-3">{icon}</div>
+                  <h3 className="font-semibold text-white mb-1.5 text-sm">{title}</h3>
+                  <p className="text-brand-muted text-xs leading-relaxed">{desc}</p>
+                </div>
+              ))}
+            </div>
+            <Link
+              href={variant.ctaHref}
+              className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-base px-8 py-3.5 rounded-2xl hover:opacity-90 active:scale-95 transition-all mt-10"
+              style={{ boxShadow: '0 0 30px rgba(16,185,129,0.3)' }}
+            >
+              {variant.cta}
+              <span>→</span>
+            </Link>
+          </div>
+        </section>
+      )}
 
       {/* ════════════════════════════════════════════════════════════
           PROVA SOCIAL — números
