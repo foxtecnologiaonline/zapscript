@@ -1808,7 +1808,10 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Erro');
       setMsgResult(d);
-      onAction('✅ Mensagem enviada!', 'ok');
+      onAction(
+        d.ok ? '✅ Mensagem enviada!' : '⚠️ Não foi possível enviar — veja os detalhes',
+        d.ok ? 'ok' : 'warn',
+      );
     } catch (e: any) { onAction(`❌ ${e.message}`, 'err'); }
     finally { setMsgSending(false); }
   }
@@ -2627,6 +2630,13 @@ function CampanhasTab({ apiBase, token, notify }: {
   const [includeFree, setFree]            = useState(false);
   const [hasDocument, setHasDocument]     = useState(false);
 
+  // Modo de seleção: por filtro automático OU escolha manual de usuários
+  const [mode, setMode]             = useState<'filter' | 'manual'>('filter');
+  const [userQuery, setUserQuery]   = useState('');
+  const [userResults, setUserResults] = useState<any[]>([]);
+  const [searching, setSearching]   = useState(false);
+  const [selected, setSelected]     = useState<Record<string, string>>({}); // id -> email
+
   // Mensagem
   const [channel, setChannel]   = useState<'whatsapp' | 'email' | 'both'>('email');
   const [message, setMessage]   = useState('');
@@ -2646,6 +2656,10 @@ function CampanhasTab({ apiBase, token, notify }: {
   }
 
   function buildFilters() {
+    // Modo manual: ignora todos os filtros e usa apenas os usuários escolhidos.
+    if (mode === 'manual') {
+      return { userIds: Object.keys(selected) };
+    }
     return {
       plans:            plans.length > 0 ? plans : undefined,
       minDaysInactive:  minDaysInactive ? Number(minDaysInactive) : undefined,
@@ -2655,6 +2669,34 @@ function CampanhasTab({ apiBase, token, notify }: {
       includeFree:      includeFree || undefined,
       hasDocument:      hasDocument || undefined,
     };
+  }
+
+  async function searchCampaignUsers() {
+    if (!userQuery.trim()) { setUserResults([]); return; }
+    setSearching(true);
+    try {
+      const res = await fetch(
+        `${apiBase}/sys/g5r8t2/users?search=${encodeURIComponent(userQuery.trim())}&limit=25`,
+        { headers: h },
+      );
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro na busca');
+      setUserResults(d.users || []);
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function toggleSelectedUser(id: string, email: string) {
+    setSelected(prev => {
+      const next = { ...prev };
+      if (next[id]) delete next[id]; else next[id] = email;
+      return next;
+    });
+    setPreview(null);
+    setResult(null);
   }
 
   // ── Templates de campanha prontos ────────────────────────────────────────────
@@ -2791,6 +2833,13 @@ Equipe ZapScript`,
   ] as const;
 
   async function doPreview() {
+    // Guarda crítica: em modo manual sem ninguém selecionado, o backend
+    // trataria userIds vazio como "sem seleção" e cairia no filtro de todos
+    // os pagantes. Bloqueamos aqui para evitar envio acidental em massa.
+    if (mode === 'manual' && Object.keys(selected).length === 0) {
+      notify('Selecione ao menos um usuário', 'warn');
+      return;
+    }
     setPreviewing(true); setPreview(null); setResult(null);
     try {
       const res = await fetch(`${apiBase}/sys/g5r8t2/campaigns/preview`, {
@@ -2805,6 +2854,9 @@ Equipe ZapScript`,
 
   async function doSend() {
     if (!message.trim()) { notify('❌ Digite a mensagem', 'err'); return; }
+    if (mode === 'manual' && Object.keys(selected).length === 0) {
+      notify('Selecione ao menos um usuário', 'warn'); return;
+    }
     setSending(true); setConfirmSend(false); setResult(null);
     try {
       const res = await fetch(`${apiBase}/sys/g5r8t2/campaigns/send`, {
@@ -2860,7 +2912,24 @@ Equipe ZapScript`,
 
       {/* Filtros de segmentação */}
       <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">
-        <div className="text-sm font-bold text-[#d1fae5] mb-4">🎯 Segmentação</div>
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+          <div className="text-sm font-bold text-[#d1fae5]">🎯 Segmentação</div>
+          <div className="flex gap-1 bg-[#132621] rounded-lg p-1 border border-[rgba(16,185,129,.1)]">
+            {([['filter', '🎯 Por filtro'], ['manual', '👤 Selecionar usuários']] as const).map(([m, label]) => (
+              <button key={m} type="button"
+                onClick={() => { setMode(m); setPreview(null); setResult(null); setConfirmSend(false); }}
+                className={`text-[11px] px-3 py-1 rounded-md font-semibold transition-colors ${
+                  mode === m
+                    ? 'bg-[rgba(16,185,129,.15)] text-[#10b981]'
+                    : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {mode === 'filter' && (
         <div className="space-y-4">
 
           {/* Planos */}
@@ -2902,10 +2971,78 @@ Equipe ZapScript`,
             ))}
           </div>
 
-          <Btn variant="ghost" disabled={previewing} onClick={doPreview} cls="px-5">
-            {previewing ? '⟳ Calculando...' : '🔍 Calcular destinatários'}
-          </Btn>
         </div>
+        )}
+
+        {/* Seleção manual de usuários */}
+        {mode === 'manual' && (
+          <div className="space-y-3">
+            <p className="text-[10px] text-[rgba(16,185,129,.4)]">
+              Busque por e-mail ou nome e marque exatamente quem deve receber. Os filtros automáticos são ignorados neste modo.
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={userQuery}
+                onChange={e => setUserQuery(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') searchCampaignUsers(); }}
+                placeholder="Buscar por e-mail ou nome..."
+                className="flex-1 bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
+              />
+              <Btn variant="ghost" disabled={searching} onClick={searchCampaignUsers} cls="px-4">
+                {searching ? '⟳' : '🔍 Buscar'}
+              </Btn>
+            </div>
+
+            {/* Selecionados */}
+            {Object.keys(selected).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mr-1">
+                  {Object.keys(selected).length} selecionado(s):
+                </span>
+                {Object.entries(selected).map(([id, email]) => (
+                  <span key={id} className="flex items-center gap-1.5 text-[10px] bg-[rgba(16,185,129,.12)] border border-[rgba(16,185,129,.25)] text-[#10b981] rounded-full pl-2.5 pr-1.5 py-1">
+                    {maskEmail(email)}
+                    <button type="button" onClick={() => toggleSelectedUser(id, email)} className="hover:text-red-400">✕</button>
+                  </span>
+                ))}
+                <button type="button" onClick={() => { setSelected({}); setPreview(null); setResult(null); }}
+                  className="text-[10px] text-red-400/70 hover:text-red-400 px-2">limpar tudo</button>
+              </div>
+            )}
+
+            {/* Resultados da busca */}
+            {userResults.length > 0 && (
+              <div className="max-h-60 overflow-auto rounded-lg border border-[rgba(16,185,129,.1)] divide-y divide-[rgba(16,185,129,.06)]">
+                {userResults.map((u: any) => {
+                  const isSel = !!selected[u.id];
+                  const plan = u.subscription?.plan?.name || u.plan || 'free';
+                  return (
+                    <button key={u.id} type="button" onClick={() => toggleSelectedUser(u.id, u.email)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
+                        isSel ? 'bg-[rgba(16,185,129,.08)]' : 'hover:bg-[rgba(16,185,129,.04)]'
+                      }`}>
+                      <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] shrink-0 ${
+                        isSel ? 'bg-[#10b981] border-[#10b981] text-[#011a12]' : 'border-[rgba(16,185,129,.3)]'
+                      }`}>{isSel ? '✓' : ''}</span>
+                      <span className="flex-1 text-xs text-[#d1fae5] truncate">{u.email}</span>
+                      <Badge label={plan} cls={PLAN_CLS[plan] || PLAN_CLS.free} />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {userQuery && !searching && userResults.length === 0 && (
+              <p className="text-[10px] text-[rgba(16,185,129,.4)]">Nenhum usuário encontrado — ajuste a busca e tente de novo.</p>
+            )}
+          </div>
+        )}
+
+        <Btn variant="ghost" disabled={previewing} onClick={doPreview} cls="px-5 mt-4">
+          {previewing ? '⟳ Calculando...'
+            : mode === 'manual'
+              ? `🔍 Confirmar ${Object.keys(selected).length} selecionado(s)`
+              : '🔍 Calcular destinatários'}
+        </Btn>
 
         {/* Resultado do preview */}
         {preview && (
@@ -2921,7 +3058,7 @@ Equipe ZapScript`,
                   <div key={i} className="flex items-center gap-3 text-xs">
                     <span className="text-[rgba(16,185,129,.6)]">{maskEmail(u.email)}</span>
                     <Badge label={u.plan} cls={PLAN_CLS[u.plan] || PLAN_CLS.free} />
-                    {u.hasWhatsapp && <span className="text-[10px] text-green-400">📱 WA</span>}
+                    {u.hasPhone && <span className="text-[10px] text-green-400">📱 WA</span>}
                   </div>
                 ))}
                 {preview.total > preview.sample.length && (

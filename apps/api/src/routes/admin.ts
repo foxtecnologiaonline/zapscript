@@ -1969,12 +1969,15 @@ export default async function adminRoutes(app: FastifyInstance) {
           results.whatsapp = { ok: false, error: 'Usuário não tem número WhatsApp conectado.' };
         } else {
           try {
-            // Usa número remetente do admin (mesmo dos convites)
+            // Usa o número remetente oficial do admin (o mesmo dos convites),
+            // nunca um número de cliente aleatório.
             const sender = await prisma.whatsappNumber.findFirst({
-              where:  { status: 'connected', zapiInstanceId: { not: null } },
+              where:  { status: 'connected', phoneNumber: INVITE_SENDER_PHONE, zapiInstanceId: { not: null } },
               select: { zapiInstanceId: true },
             });
-            if (!sender?.zapiInstanceId) throw new Error('Nenhum número admin conectado para envio.');
+            if (!sender?.zapiInstanceId) {
+              throw new Error(`Número remetente ${INVITE_SENDER_PHONE} não está conectado. Conecte-o no painel antes de enviar.`);
+            }
             await sendText(sender.zapiInstanceId, number.phoneNumber, message.trim());
             results.whatsapp = { ok: true, phone: number.phoneNumber };
           } catch (e: any) {
@@ -2002,7 +2005,9 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       app.log.info({ userId: id, channel }, '[Admin] Mensagem individual enviada');
       const anyOk = Object.values(results).some((r: any) => r.ok);
-      return reply.code(anyOk ? 200 : 502).send({ ok: anyOk, results });
+      // Sempre 200: a requisição foi processada. O status de entrega por canal
+      // (sucesso/falha + motivo) vai no corpo `results` para a UI exibir.
+      return reply.send({ ok: anyOk, results });
     }
   );
 
@@ -2017,6 +2022,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       includeTesters?:  boolean;
       includeFree?:     boolean;
       hasDocument?:     boolean;    // apenas usuários com CNPJ/CPF cadastrado (empresas)
+      userIds?:         string[];   // seleção manual de destinatários
     };
   }>(
     '/campaigns/preview',
@@ -2044,6 +2050,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       includeTesters?:  boolean;
       includeFree?:     boolean;
       hasDocument?:     boolean;    // apenas usuários com CNPJ/CPF cadastrado (empresas)
+      userIds?:         string[];   // seleção manual de destinatários
       channel:          'whatsapp' | 'email' | 'both';
       message:          string;
       subject?:         string;
@@ -2063,9 +2070,9 @@ export default async function adminRoutes(app: FastifyInstance) {
       if (users.length === 0) return reply.send({ ok: true, sent: 0, failed: 0, message: 'Nenhum usuário corresponde aos filtros.' });
       if (users.length > 1000) return reply.code(400).send({ error: `Campanha limitada a 1000 destinatários. Filtros retornaram ${users.length}.` });
 
-      // Número remetente admin (para WhatsApp)
+      // Número remetente oficial do admin (mesmo dos convites), nunca um cliente.
       const sender = await prisma.whatsappNumber.findFirst({
-        where:  { status: 'connected', zapiInstanceId: { not: null } },
+        where:  { status: 'connected', phoneNumber: INVITE_SENDER_PHONE, zapiInstanceId: { not: null } },
         select: { zapiInstanceId: true },
       });
 
@@ -2125,7 +2132,22 @@ async function getCampaignRecipients(filters: {
   includeTesters?:  boolean;
   includeFree?:     boolean;
   hasDocument?:     boolean;
+  userIds?:         string[];   // seleção manual — quando presente, ignora os demais filtros
 }) {
+  const RECIPIENT_INCLUDE = {
+    subscription: { include: { plan: { select: { name: true } } } },
+    numbers:      { where: { status: 'connected' }, select: { phoneNumber: true, zapiInstanceId: true }, take: 1 },
+    transcriptions: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { createdAt: true } },
+  };
+
+  // Seleção manual de destinatários: retorna exatamente os usuários escolhidos.
+  if (filters.userIds && filters.userIds.length > 0) {
+    return prisma.user.findMany({
+      where:   { id: { in: filters.userIds.slice(0, 1100) }, deletedAt: null },
+      include: RECIPIENT_INCLUDE,
+    });
+  }
+
   const since14d = filters.minDaysInactive
     ? new Date(Date.now() - filters.minDaysInactive * 86_400_000)
     : null;
@@ -2137,11 +2159,7 @@ async function getCampaignRecipients(filters: {
       isTester:       filters.includeTesters ? undefined : false,
       document:       filters.hasDocument === true ? { not: null } : undefined,
     },
-    include: {
-      subscription: { include: { plan: { select: { name: true } } } },
-      numbers:      { where: { status: 'connected' }, select: { phoneNumber: true, zapiInstanceId: true }, take: 1 },
-      transcriptions: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
-    },
+    include: RECIPIENT_INCLUDE,
     take: 1100, // hard cap
   });
 
