@@ -2,11 +2,22 @@
 import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { track, trackOnce } from '@/lib/analytics';
 
 function SuccessContent() {
   const router      = useRouter();
   const searchParams = useSearchParams();
   const plan        = searchParams.get('plan') || '';
+  const ref         = searchParams.get('ref') || searchParams.get('payment') || '';
+  const value       = Number(searchParams.get('value')) || undefined;
+
+  // Conversão "assinatura" — dispara 1x por referência de pagamento (evita
+  // duplo-disparo em refresh). Sem ref, dispara direto (página é one-shot).
+  useEffect(() => {
+    const params = value != null ? { value, currency: 'BRL', transactionId: ref || undefined } : undefined;
+    if (ref) trackOnce(`sub_${ref}`, 'subscribe', params);
+    else     track('subscribe', params);
+  }, [ref, value]);
 
   // Redirecionar para /dashboard/plano após 5 segundos
   useEffect(() => {

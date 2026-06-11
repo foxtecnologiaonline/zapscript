@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { track } from '@/lib/analytics';
 
 function CadastroForm() {
   const router       = useRouter();
@@ -68,6 +69,7 @@ function CadastroForm() {
         ...(referralCode ? { referralCode } : {}),
       });
       setUserEmail(form.email);
+      track('signup');
       setDone(true);
     } catch (err: any) {
       setError(err.message || 'Erro ao criar conta.');

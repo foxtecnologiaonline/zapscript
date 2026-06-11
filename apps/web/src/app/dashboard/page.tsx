@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { trackOnce } from '@/lib/analytics';
 import OnboardingBanner from './OnboardingBanner';
 
 interface Stats {
@@ -28,7 +29,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     api.get<Stats>('/dashboard/stats')
-      .then(s => setStats(s))
+      .then(s => {
+        setStats(s);
+        // Ativação = usuário já realizou ao menos 1 transcrição. Dispara 1x por navegador.
+        if ((s?.transcriptionsTotal ?? 0) >= 1) trackOnce('activation', 'activation');
+      })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, []);
