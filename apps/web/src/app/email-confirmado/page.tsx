@@ -50,7 +50,7 @@ export default function EmailConfirmadoPage() {
     <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4">
       <div className="w-full max-w-sm text-center">
         <div className="bg-brand-surface rounded-2xl p-8"
-          style={{ border: '1px solid rgba(var(--color-primary), .15)' }}>
+          style={{ border: '1px solid rgba(var(--color-primary)/.15)' }}>
           <div className="w-16 h-16 rounded-full bg-brand-primary/10 flex items-center justify-center mx-auto mb-4">
             <span className="text-3xl">✅</span>
           </div>

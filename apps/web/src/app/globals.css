@@ -121,7 +121,7 @@ html, body {
 .dashboard-avatar  { background-color: rgb(6 95 70); }
 
 .bg-brand-primary          { background-color: rgb(var(--color-primary)); }
-.bg-brand-primary-light\/60 { background-color: rgba(var(--color-primary-light), .6); }
+.bg-brand-primary-light\/60 { background-color: rgba(var(--color-primary-light)/.6); }
 
 .shadow-glow-green { box-shadow: var(--shadow-glow); }
 .shadow-small  { box-shadow: var(--shadow-sm); }
@@ -214,7 +214,7 @@ html, body {
 .field-input {
   width: 100%;
   background: rgb(var(--color-surface-elevated));
-  border: 1px solid rgba(var(--color-primary), .15);
+  border: 1px solid rgba(var(--color-primary)/.15);
   border-radius: 0.5rem;
   padding: 0.625rem 1rem;
   font-size: 0.875rem;
@@ -222,7 +222,7 @@ html, body {
   outline: none;
   transition: border-color 0.15s;
 }
-.field-input:focus     { border-color: rgba(var(--color-primary), .4); }
+.field-input:focus     { border-color: rgba(var(--color-primary)/.4); }
 .field-input::placeholder { color: rgb(var(--color-text-muted)); }
 .field-input:disabled  { opacity: 0.45; cursor: not-allowed; }
 
@@ -238,7 +238,7 @@ html, body {
   outline: none;
   transition: border-color 0.15s;
 }
-.input:focus       { border-color: rgba(var(--color-primary), .4); }
+.input:focus       { border-color: rgba(var(--color-primary)/.4); }
 .input::placeholder { color: rgb(var(--color-text-muted)); }
 
 /* ── Ghost / outline button ── */
@@ -256,7 +256,7 @@ html, body {
 }
 .btn-ghost:hover:not(:disabled) {
   color: rgb(var(--color-text));
-  border-color: rgba(var(--color-primary), .3);
+  border-color: rgba(var(--color-primary)/.3);
   background: rgb(var(--color-surface));
 }
 .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -264,7 +264,7 @@ html, body {
 /* ── Modal / dialog panel ── */
 .modal-panel {
   background: rgb(var(--color-surface));
-  border: 1px solid rgba(var(--color-primary), .2);
+  border: 1px solid rgba(var(--color-primary)/.2);
   border-radius: 1rem;
   padding: 1.5rem;
   box-shadow: var(--shadow-xl);
@@ -273,7 +273,7 @@ html, body {
 /* ── Inner content block (inside cards / modals) ── */
 .inner-block {
   background: rgb(var(--color-surface-elevated));
-  border: 1px solid rgba(var(--color-primary), .1);
+  border: 1px solid rgba(var(--color-primary)/.1);
   border-radius: 0.75rem;
   padding: 1rem;
 }
@@ -345,7 +345,7 @@ html, body {
   border-left: 3px solid rgb(var(--color-primary));
   margin: 1.5rem 0;
   padding: 1rem 1.25rem;
-  background: rgba(var(--color-primary), 0.06);
+  background: rgba(var(--color-primary)/0.06);
   border-radius: 0 0.5rem 0.5rem 0;
   font-style: italic;
 }
@@ -360,7 +360,7 @@ html, body {
   display: block;
 }
 .prose-blog thead th {
-  background: rgba(var(--color-primary), 0.1);
+  background: rgba(var(--color-primary)/0.1);
   color: rgb(var(--color-text));
   font-weight: 600;
   text-align: left;
@@ -376,7 +376,7 @@ html, body {
 .prose-blog tbody tr:hover { background: rgba(255,255,255,.03); }
 
 .prose-blog code {
-  background: rgba(var(--color-primary), 0.1);
+  background: rgba(var(--color-primary)/0.1);
   color: rgb(var(--color-primary));
   padding: 0.15em 0.4em;
   border-radius: 0.3rem;

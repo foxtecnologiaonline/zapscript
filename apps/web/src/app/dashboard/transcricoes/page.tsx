@@ -1669,9 +1669,9 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                         <span
                           className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
                           style={{
-                            background: 'rgba(var(--color-primary),.1)',
+                            background: 'rgba(var(--color-primary)/.1)',
                             color: 'rgb(var(--color-primary))',
-                            border: '1px solid rgba(var(--color-primary),.2)',
+                            border: '1px solid rgba(var(--color-primary)/.2)',
                           }}>
                           🎙 {fmtDur(t.durationSec)}
                         </span>
@@ -1827,7 +1827,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                     {/* Filename abaixo do nome para uploads manuais */}
                     {selected.source === 'manual' && selected.filename && (
                       <div className="text-[10px] font-mono mt-0.5 truncate"
-                        style={{ color: 'rgba(var(--color-primary),.7)' }}
+                        style={{ color: 'rgba(var(--color-primary)/.7)' }}
                         title={selected.filename}>
                         📁 {selected.filename}
                       </div>
@@ -2082,7 +2082,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                       {/* Nota informativa */}
                       <div className="mt-2 px-3 py-2 rounded-lg"
                         style={{ background: 'rgba(10,92,62,.05)', border: '1px solid rgba(10,92,62,.12)' }}>
-                        <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(var(--color-primary),.6)' }}>
+                        <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(var(--color-primary)/.6)' }}>
                           O documento inclui: protocolo único, data/hora (horário de Brasília), tecnologia utilizada e transcrição literal com marcação <strong>[MM:SS]</strong>. O áudio MP3 original fica armazenado separadamente.
                         </p>
                       </div>
@@ -2090,9 +2090,9 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                       {/* Separador antes dos exports padrão (Pro+) */}
                       {canExport && (
                         <div className="flex items-center gap-2 mt-5 mb-1">
-                          <div className="flex-1 h-px" style={{ background: 'rgba(var(--color-border),.4)' }} />
+                          <div className="flex-1 h-px" style={{ background: 'rgba(var(--color-border)/.4)' }} />
                           <span className="text-[10px] text-brand-muted">Outros formatos</span>
-                          <div className="flex-1 h-px" style={{ background: 'rgba(var(--color-border),.4)' }} />
+                          <div className="flex-1 h-px" style={{ background: 'rgba(var(--color-border)/.4)' }} />
                         </div>
                       )}
                     </div>

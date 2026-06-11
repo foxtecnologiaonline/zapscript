@@ -85,7 +85,7 @@ function CadastroForm() {
       <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm text-center">
           <div className="bg-brand-surface rounded-2xl p-8"
-            style={{ border: '1px solid rgba(var(--color-primary), .15)' }}>
+            style={{ border: '1px solid rgba(var(--color-primary)/.15)' }}>
             <div className="w-16 h-16 rounded-full bg-brand-primary/10 flex items-center justify-center mx-auto mb-4">
               <span className="text-3xl">📧</span>
             </div>
@@ -140,7 +140,7 @@ function CadastroForm() {
         </div>
 
         <div className="bg-brand-surface rounded-2xl p-5 sm:p-7"
-          style={{ border: '1px solid rgba(var(--color-primary), .10)' }}>
+          style={{ border: '1px solid rgba(var(--color-primary)/.10)' }}>
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Nome completo</label>

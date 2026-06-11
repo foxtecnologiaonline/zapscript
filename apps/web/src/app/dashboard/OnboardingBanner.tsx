@@ -229,7 +229,7 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
                   <div className="flex-1 h-px mx-1.5" style={{
                     background: s.done
                       ? 'rgba(16,185,129,.4)'
-                      : 'rgba(var(--color-border),.6)',
+                      : 'rgba(var(--color-border)/.6)',
                   }} />
                 )}
               </div>
@@ -267,7 +267,7 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
           </div>
 
           {/* Accordion de ajuda */}
-          <div className="mt-4 border-t pt-3" style={{ borderColor: 'rgba(var(--color-border),.5)' }}>
+          <div className="mt-4 border-t pt-3" style={{ borderColor: 'rgba(var(--color-border)/.5)' }}>
             <button
               onClick={() => setOpenHelp(h => !h)}
               className="flex items-center gap-1.5 text-xs font-medium text-brand-text-secondary hover:text-brand-text transition-colors"
@@ -286,7 +286,7 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
               <div className="mt-3 space-y-1.5">
                 {TROUBLESHOOT.map((item, i) => (
                   <div key={i} className="rounded-xl overflow-hidden"
-                    style={{ background: 'rgba(var(--color-surface-elevated),1)', border: '1px solid rgba(var(--color-border-light),.8)' }}>
+                    style={{ background: 'rgba(var(--color-surface-elevated)/1)', border: '1px solid rgba(var(--color-border-light)/.8)' }}>
                     <button
                       onClick={() => setOpenFaq(openFaq === i ? null : i)}
                       className="w-full flex items-center justify-between px-4 py-3 text-left gap-3"
@@ -330,7 +330,7 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
             className="fixed inset-y-0 right-0 z-50 w-full max-w-sm flex flex-col overflow-hidden"
             style={{
               background: 'rgb(var(--color-surface))',
-              borderLeft: '1px solid rgba(var(--color-border),.8)',
+              borderLeft: '1px solid rgba(var(--color-border)/.8)',
               animation: 'slideInRight .22s cubic-bezier(.4,0,.2,1) both',
             }}
           >
@@ -366,7 +366,7 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
                         background: integration === int.id
                           ? 'rgba(16,185,129,.08)'
                           : 'rgb(var(--color-surface-elevated))',
-                        border: `1px solid ${integration === int.id ? 'rgba(16,185,129,.3)' : 'rgba(var(--color-border-light),1)'}`,
+                        border: `1px solid ${integration === int.id ? 'rgba(16,185,129,.3)' : 'rgba(var(--color-border-light)/1)'}`,
                       }}
                     >
                       <div className="flex items-center justify-between gap-2">

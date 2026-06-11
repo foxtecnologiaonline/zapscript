@@ -76,7 +76,7 @@ export default function RedefinirSenhaPage() {
       <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4">
         <div className="w-full max-w-sm text-center">
           <div className="bg-brand-surface rounded-2xl p-8"
-            style={{ border: '1px solid rgba(var(--color-primary), .15)' }}>
+            style={{ border: '1px solid rgba(var(--color-primary)/.15)' }}>
             <span className="text-3xl block mb-4">🎉</span>
             <h2 className="text-xl font-bold text-brand-primary mb-2">Senha redefinida!</h2>
             <p className="text-sm text-brand-text-secondary mb-6">
@@ -105,7 +105,7 @@ export default function RedefinirSenhaPage() {
         </div>
 
         <div className="bg-brand-surface rounded-2xl p-7"
-          style={{ border: '1px solid rgba(var(--color-primary), .10)' }}>
+          style={{ border: '1px solid rgba(var(--color-primary)/.10)' }}>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">Nova senha</label>

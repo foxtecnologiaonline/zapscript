@@ -68,7 +68,7 @@ export default function ConvitePage() {
         </div>
 
         {/* Card principal */}
-        <div className="bg-brand-surface rounded-2xl p-4 sm:p-8" style={{ border: '1px solid rgba(var(--color-primary), .15)' }}>
+        <div className="bg-brand-surface rounded-2xl p-4 sm:p-8" style={{ border: '1px solid rgba(var(--color-primary)/.15)' }}>
 
           {/* Selo Tester */}
           <div className="flex justify-center mb-3 sm:mb-5">
