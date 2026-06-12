@@ -702,6 +702,32 @@ function fmtPhone(phone: string): string {
   return phone;
 }
 
+// Teto seguro de caracteres por mensagem do WhatsApp. Mensagens muito acima
+// disso podem ser rejeitadas/truncadas pelo provedor; quebramos em partes.
+const WHATSAPP_LIMIT = 4000;
+
+/**
+ * Divide um texto em partes de no máximo `firstMax` (1ª parte) / `restMax` (demais),
+ * cortando preferencialmente em fim de frase e, na falta, no último espaço —
+ * nunca no meio de uma palavra.
+ */
+function splitText(text: string, firstMax: number, restMax: number): string[] {
+  const chunks: string[] = [];
+  let rest = text.trim();
+  let max  = firstMax;
+  while (rest.length > max) {
+    let cut = rest.lastIndexOf('. ', max);              // preferir fim de frase
+    if (cut < max * 0.6) cut = rest.lastIndexOf(' ', max); // senão, último espaço
+    if (cut <= 0) cut = max;                            // sem espaço → corte duro
+    else cut += 1;                                      // inclui o '.'/espaço no chunk atual
+    chunks.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+    max  = restMax;
+  }
+  if (rest.length > 0) chunks.push(rest);
+  return chunks.length > 0 ? chunks : [''];
+}
+
 /**
  * Formata mensagem de resposta para o WhatsApp.
  *
@@ -723,7 +749,7 @@ function buildMessage(
   bullets:      string[],
   originalText: string,
   opts: { contactName?: string | null; durationSec?: number; isPrivate?: boolean; senderPhone?: string } = {},
-): string {
+): string[] {
   const { contactName, durationSec, isPrivate, senderPhone } = opts;
 
   const mode    = audioMode(originalText); // 'tldr' | 'bullets'
@@ -758,20 +784,27 @@ function buildMessage(
     ? `\n\n📋 *Resumo*\n${bullets.map(b => `• ${b}`).join('\n')}`
     : '';
 
-  // ── Transcrição (truncar se longa) ──
-  const MAX_CHARS = 600;
-  const truncated = originalText.length > MAX_CHARS
-    ? originalText.slice(0, MAX_CHARS).trimEnd() + '…'
-    : originalText;
-  const transcSection = `\n\n📝 *Transcrição*\n${truncated}`;
-
   // ── Rodapé ──
   const replyLink = isPrivate && senderPhone
     ? `\n\n↩️ Responder: wa.me/${senderPhone.replace(/\D/g, '')}`
     : '';
   const footer = `${replyLink}\n\n_ZapScript.me_ ⚡`;
 
-  return header + pontoSection + transcSection + footer;
+  // ── Transcrição COMPLETA, dividida em mensagens se exceder o teto do WhatsApp ──
+  // A 1ª mensagem carrega cabeçalho + resumo + início da transcrição; as demais
+  // continuam a transcrição. O rodapé fica só na última. Nada é truncado.
+  const transcHeader = `\n\n📝 *Transcrição*\n`;
+  const contHeader   = `📝 *Transcrição (cont.)*\n`;
+  const head         = header + pontoSection + transcHeader;
+
+  const firstBudget = Math.max(500, WHATSAPP_LIMIT - head.length - footer.length);
+  const restBudget  = Math.max(500, WHATSAPP_LIMIT - contHeader.length - footer.length);
+  const parts       = splitText(originalText, firstBudget, restBudget);
+
+  const messages = parts.map((part, i) => (i === 0 ? head + part : contHeader + part));
+  // Rodapé apenas na última mensagem (evita repetir a assinatura em cada parte)
+  messages[messages.length - 1] += footer;
+  return messages;
 }
 
 
@@ -934,8 +967,8 @@ async function processOfficialWhatsAppJob(job: Job) {
 
     // PASSO 6: Enviar resposta no WhatsApp
     log(job, '📤 Enviando resposta via Meta API...');
-    const message = buildMessage(bullets, originalText, { contactName: senderName, durationSec });
-    await sendMessageToMeta(senderPhone, message);
+    const messages = buildMessage(bullets, originalText, { contactName: senderName, durationSec });
+    for (const m of messages) await sendMessageToMeta(senderPhone, m);
     log(job, '✅ Mensagem enviada');
 
     // PASSO 7: Salvar transcrição e debitar minutos — duração real do Whisper
@@ -1021,8 +1054,8 @@ async function processTwilioJob(job: Job) {
 
     // PASSO 6: Enviar resposta via Twilio
     log(job, '📤 Enviando resposta via Twilio...');
-    const message = buildMessage(bullets, originalText, { contactName: senderName, durationSec });
-    await sendMessageViaTwilio(senderPhone, twilioFrom, message);
+    const messages = buildMessage(bullets, originalText, { contactName: senderName, durationSec });
+    for (const m of messages) await sendMessageViaTwilio(senderPhone, twilioFrom, m);
     log(job, '✅ Mensagem enviada');
 
     // PASSO 7: Salvar transcrição e debitar minutos
@@ -1129,15 +1162,15 @@ async function processEvolutionJob(job: Job) {
                         && whatsappNumber.phoneNumber !== 'pending';
     const targetPhone = isPrivate ? whatsappNumber.phoneNumber! : senderPhone;
 
-    const message = buildMessage(bullets, originalText, {
+    const messages = buildMessage(bullets, originalText, {
       contactName: senderName,
       durationSec,
       isPrivate,
       senderPhone,
     });
 
-    await sendMessageViaEvolution(instName, targetPhone, message);
-    log(job, `✅ Mensagem enviada ${isPrivate ? `(🔒 privado → ${targetPhone})` : 'na conversa'}`);
+    for (const m of messages) await sendMessageViaEvolution(instName, targetPhone, m);
+    log(job, `✅ ${messages.length} mensagem(ns) enviada(s) ${isPrivate ? `(🔒 privado → ${targetPhone})` : 'na conversa'}`);
 
     // PASSO 6.5: Marcar conversa como não lida
     await markChatAsUnread(instName, senderPhone);
