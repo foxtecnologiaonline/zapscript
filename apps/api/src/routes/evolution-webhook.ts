@@ -195,8 +195,11 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       // Ignorar grupos
       if (remoteJid.includes('@g.us')) return;
 
-      // Ignorar mensagens enviadas pelo próprio número (fromMe)
-      if (fromMe) return;
+      // NÃO retornamos cedo em fromMe: áudios que o usuário encaminha para o
+      // PRÓPRIO número (self-chat) devem ser transcritos (Feature 1). O filtro
+      // de self-chat acontece abaixo, após resolver o número conectado, e só
+      // áudio passa — respostas de texto do próprio bot caem no guard !isAudio
+      // logo adiante, evitando loop.
 
       // Extrair número limpo do remetente
       const senderPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, '');
@@ -226,6 +229,21 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
         return;
       }
 
+      // ── Metadados de encaminhamento/origem (Feature 1) ────────────────────
+      // O contextInfo fica no nó do áudio/documento. `forwardingScore`>0 indica
+      // encaminhamento; `participant` traz o remetente original APENAS quando a
+      // mensagem é uma citação — num forward puro o WhatsApp não expõe a origem.
+      const audioNode = msg?.message?.audioMessage
+                      ?? msg?.message?.pttMessage
+                      ?? msg?.message?.documentMessage
+                      ?? msg?.message?.documentWithCaptionMessage?.message?.documentMessage;
+      const ctx        = audioNode?.contextInfo ?? msg?.contextInfo;
+      const forwarded  = (ctx?.forwardingScore ?? 0) > 0 || ctx?.isForwarded === true;
+      const originJid  = ctx?.participant ?? null;
+      const originPhone = originJid
+        ? String(originJid).replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, '')
+        : null;
+
       // ── Encontrar número e usuário pelo nome da instância ─────────────────
       let whatsappNumber = await findNumber(true);  // status=connected
 
@@ -247,6 +265,21 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
         return;
       }
 
+      // ── Gate de self-chat para fromMe (Feature 1) ─────────────────────────
+      // Áudios enviados pelo próprio usuário só são processados quando vão para
+      // o PRÓPRIO número (conversa "Você"). Áudios que o usuário manda a
+      // terceiros são ignorados (privacidade + custo).
+      const ownDigits = String(whatsappNumber.phoneNumber ?? '').replace(/\D/g, '');
+      const isSelfNote = fromMe === true;
+      if (isSelfNote) {
+        const isSelfChat = !!ownDigits && ownDigits !== 'pending' && senderPhone === ownDigits;
+        if (!isSelfChat) {
+          log.info(`[Evolution] ↪️  Áudio fromMe para terceiro — ignorado`);
+          return;
+        }
+        log.info(`[Evolution] 📝 Self-note: áudio encaminhado ao próprio número${forwarded ? ' (encaminhado)' : ''}${originPhone ? ` de ${originPhone}` : ''}`);
+      }
+
       log.info(`[Evolution] 🔊 Áudio de ${senderName} (${durationHint}s) → enfileirando job`);
 
       await transcriptionQueue.add(
@@ -262,6 +295,9 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
           durationHint,
           messageId,
           source: 'whatsapp-evolution',
+          isSelfNote,                           // Feature 1: áudio para o próprio número
+          forwarded,                            // selo de encaminhamento
+          originPhone,                          // remetente original (só via citação)
         },
         {
           jobId:    messageId,

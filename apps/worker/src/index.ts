@@ -748,9 +748,17 @@ function splitText(text: string, firstMax: number, restMax: number): string[] {
 function buildMessage(
   bullets:      string[],
   originalText: string,
-  opts: { contactName?: string | null; durationSec?: number; isPrivate?: boolean; senderPhone?: string } = {},
+  opts: {
+    contactName?: string | null;
+    durationSec?: number;
+    isPrivate?: boolean;
+    senderPhone?: string;
+    isSelfNote?: boolean;       // áudio que o usuário encaminhou para o próprio número
+    forwarded?: boolean;        // veio com selo de encaminhamento (forwardingScore)
+    originPhone?: string | null;// remetente original (só existe via mensagem citada)
+  } = {},
 ): string[] {
-  const { contactName, durationSec, isPrivate, senderPhone } = opts;
+  const { contactName, durationSec, isPrivate, senderPhone, isSelfNote, forwarded, originPhone } = opts;
 
   const mode    = audioMode(originalText); // 'tldr' | 'bullets'
   const hasName = contactName && contactName !== 'manual' && contactName.trim().length > 0;
@@ -766,7 +774,15 @@ function buildMessage(
   // Modo TLDR: frase integrada na mesma linha do cabeçalho → menos blocos, mais direto
   // Modo Bullets: cabeçalho simples + seção 📋 separada abaixo
   let header: string;
-  if (isPrivate && senderPhone) {
+  if (isSelfNote) {
+    // Áudio encaminhado/enviado pelo usuário ao próprio número (self-chat).
+    // Origem só aparece quando o WhatsApp expõe `participant` (mensagem citada);
+    // num encaminhamento puro o remetente original não vem — mostramos só o selo.
+    const label    = forwarded ? '🔁 *Áudio encaminhado*' : '🎙️ *Sua nota de voz*';
+    const origin   = originPhone ? ` de *${fmtPhone(originPhone)}*` : '';
+    const tldrLine = tldr ? `\n→ ${tldr}` : '';
+    header = `${label}${origin}${durStr ? ` • ${durStr}` : ''}${tldrLine}`;
+  } else if (isPrivate && senderPhone) {
     const namePart  = hasName ? `*${contactName}*` : `*${fmtPhone(senderPhone)}*`;
     const phoneLine = `📱 ${fmtPhone(senderPhone)}${durStr ? ` · ${durStr}` : ''}`;
     const tldrLine  = tldr ? `\n↯ ${tldr}` : '';
@@ -785,8 +801,10 @@ function buildMessage(
     : '';
 
   // ── Rodapé ──
-  const replyLink = isPrivate && senderPhone
-    ? `\n\n↩️ Responder: wa.me/${senderPhone.replace(/\D/g, '')}`
+  // Modo privado responde ao remetente; self-note responde à origem quando ela existir.
+  const replyTarget = isPrivate ? senderPhone : (isSelfNote ? originPhone : null);
+  const replyLink = replyTarget
+    ? `\n\n↩️ Responder: wa.me/${replyTarget.replace(/\D/g, '')}`
     : '';
   const footer = `${replyLink}\n\n_ZapScript.me_ ⚡`;
 
@@ -1155,9 +1173,15 @@ async function processEvolutionJob(job: Job) {
     // PASSO 6: Enviar resposta via Evolution API
     log(job, '📤 Enviando resposta via Evolution API...');
 
+    // Self-note: áudio que o usuário encaminhou para o próprio número (self-chat).
+    // Nesse caso a resposta volta ao próprio chat (senderPhone == número conectado)
+    // e NÃO aplicamos modo privado (cabeçalho dedicado de nota/encaminhado).
+    const isSelfNote  = job.data.isSelfNote === true;
+
     // Modo privado (Executive): envia ao próprio número; inclui link de resposta no cabeçalho.
-    // Guard: phoneNumber deve estar resolvido (≠ 'pending').
-    const isPrivate   = whatsappNumber.privateMode === true
+    // Guard: phoneNumber deve estar resolvido (≠ 'pending'). Desativado em self-notes.
+    const isPrivate   = !isSelfNote
+                        && whatsappNumber.privateMode === true
                         && !!whatsappNumber.phoneNumber
                         && whatsappNumber.phoneNumber !== 'pending';
     const targetPhone = isPrivate ? whatsappNumber.phoneNumber! : senderPhone;
@@ -1167,6 +1191,9 @@ async function processEvolutionJob(job: Job) {
       durationSec,
       isPrivate,
       senderPhone,
+      isSelfNote,
+      forwarded:   job.data.forwarded === true,
+      originPhone: (job.data.originPhone as string | undefined) ?? null,
     });
 
     for (const m of messages) await sendMessageViaEvolution(instName, targetPhone, m);
