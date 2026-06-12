@@ -31,7 +31,6 @@ const PRO_FEATURES = [
   '🔍 Busca por transcrição',
   '📤 Exportar áudios em PDF, Docx, Csv e Excel',
   '📄 Transcrição Profissional (PDF com marcação temporal)',
-  '🎤 Notas Pessoais de Voz',
   '🔒 Modo Privado de transcrição',
 ];
 
@@ -45,7 +44,6 @@ const EXECUTIVE_FEATURES = [
   'Upload de áudio no site',
   'Busca por transcrição',
   'Exportação PDF · DOCX · CSV · XLS',
-  'Notas Pessoais de Voz',
   'Modo Privado de transcrição',
   'Múltiplos idiomas (filtro)',
   'Tags e categorização',

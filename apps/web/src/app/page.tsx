@@ -401,7 +401,6 @@ const PLANS = [
       '🔍 Busca por transcrição',
       '📤 Exportar áudios em PDF, Docx, Csv e Excel',
       '📄 Transcrição Profissional (PDF com marcação temporal)',
-      '🎤 Notas Pessoais de Voz',
       '🔒 Modo Privado de transcrição',
     ],
     excl: [],
@@ -416,7 +415,7 @@ const PLANS = [
       '🎙️ Transcrição automática', '🖥️ Transcrição de áudios no site',
       '✨ Resumo com IA', '📋 Histórico de transcrições',
       '📤 Exportação PDF · DOCX · CSV · XLS',
-      '🎤 Notas Pessoais de Voz', '🔒 Modo Privado de transcrição',
+      '🔒 Modo Privado de transcrição',
     ],
     excl: [],
     cta: 'Assinar Executive', href: '/cadastro', popular: false, accent: null as string | null,
@@ -436,7 +435,6 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: '🖥️ Transcrição no site (upload)',     vals: [false, true] },
   { feature: '📤 Exportar áudios (PDF/Docx/Csv/Excel)', vals: [false, true] },
   { feature: '📄 Transcrição Profissional (PDF)',    vals: [false, true] },
-  { feature: '🎤 Notas Pessoais de Voz',             vals: [false, true] },
   { feature: '🔒 Modo Privado de transcrição',       vals: [false, true] },
 ];
 

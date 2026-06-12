@@ -212,7 +212,7 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
     const dateTo   = req.query.dateTo?.trim();     // YYYY-MM-DD
     const contact  = req.query.contact?.trim();    // nome ou telefone
     const sort     = req.query.sort || 'date_desc'; // date_desc | date_asc | contact | contact_desc
-    const source   = req.query.source?.trim();     // voice-note | whatsapp | manual
+    const source   = req.query.source?.trim();     // whatsapp | manual
 
     const plan = await getUserPlan(userId);
 
@@ -725,74 +725,6 @@ Gere apenas o documento, sem explicações adicionais.`;
     }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } });
 
     return reply.code(202).send({ queued: true, message: 'Áudio enfileirado. A transcrição chegará em instantes.' });
-  });
-
-  // ── POST /transcriptions/voice-note — gravação do browser ────────
-  // Exclusivo do plano Executive.
-  // Após transcrição, envia resultado de volta ao número WhatsApp do próprio usuário (se conectado).
-  app.post('/voice-note', {
-    ...auth,
-    config: { rateLimit: { max: 20, timeWindow: '5 minutes' } },
-  }, async (req: any, reply) => {
-    const userId = req.user.sub;
-
-    // Verificar plano — Pro+ (Pro e Executive)
-    const plan = await getUserPlan(userId);
-    if (plan === 'free') {
-      return reply.code(403).send({ error: 'Notas de Voz estão disponíveis nos planos Pro e Executive.' });
-    }
-
-    // Verificar saldo de minutos
-    const balance = await prisma.minuteBalance.findUnique({ where: { userId } });
-    if (!balance || balance.availableMinutes < 0.1) {
-      return reply.code(402).send({ error: 'Saldo de minutos insuficiente.' });
-    }
-
-    // Receber arquivo via multipart
-    const data = await req.file();
-    if (!data) return reply.code(400).send({ error: 'Arquivo não recebido' });
-
-    const buffer   = await data.toBuffer();
-    const filename = data.filename || 'nota.webm';
-    const allowed  = ['.ogg', '.opus', '.mp3', '.mp4', '.m4a', '.wav', '.webm', '.mpeg'];
-    const ext      = filename.substring(filename.lastIndexOf('.')).toLowerCase();
-    if (!allowed.includes(ext) && !filename.includes('blob')) {
-      // webm gravado pelo browser pode vir sem extensão — aceitar
-    }
-    if (buffer.length > 50 * 1024 * 1024) {
-      return reply.code(400).send({ error: 'Arquivo muito grande. Máximo: 50MB' });
-    }
-
-    // Buscar número conectado do usuário (para envio de volta via WhatsApp)
-    const number = await prisma.whatsappNumber.findFirst({
-      where: { userId, status: 'connected' },
-      orderBy: { connectedAt: 'desc' },
-    });
-
-    // Se não tem número conectado, aceita mesmo assim (salva sem envio WhatsApp)
-    const fallbackNumber = number ?? await prisma.whatsappNumber.findFirst({ where: { userId } });
-
-    // Upload para Supabase Storage (evita limite 10MB do Upstash)
-    let vnStorageKey: string | null = null;
-    try {
-      vnStorageKey = await uploadAudioToStorage(buffer, userId, filename);
-    } catch (storErr: any) {
-      if (buffer.length > 7 * 1024 * 1024) {
-        return reply.code(500).send({ error: 'Erro ao armazenar nota de voz. Tente novamente.' });
-      }
-    }
-
-    await transcriptionQueue.add('transcribe-voice-note', {
-      userId,
-      numberId:     fallbackNumber?.id,
-      instanceName: number?.zapiInstanceId ?? null,
-      selfPhone:    number?.phoneNumber    ?? null,
-      filename,
-      source:       'voice-note',
-      ...(vnStorageKey ? { storageKey: vnStorageKey } : { audioBase64: buffer.toString('base64') }),
-    }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } });
-
-    return reply.code(202).send({ queued: true, message: 'Nota de voz enfileirada. A transcrição chegará em instantes.' });
   });
 
   // ── GET /transcriptions/queue/status — contagem de jobs na fila do usuário ──

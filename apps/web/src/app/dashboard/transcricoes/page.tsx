@@ -13,7 +13,7 @@ interface Transcription {
   language: string;
   tags: string[];
   createdAt: string;
-  source: string;  // 'whatsapp-evolution' | 'manual' | 'voice-note' | 'whatsapp-meta' | etc.
+  source: string;  // 'whatsapp-evolution' | 'manual' | 'whatsapp-meta' | etc.
   filename: string | null;  // nome original do arquivo (apenas uploads manuais)
   number: { displayName: string | null; phoneNumber: string } | null;
 }
@@ -186,234 +186,6 @@ function TagInput({ tags, onChange, disabled }: {
       {disabled && tags.length === 0 && (
         <span className="text-xs text-brand-muted italic px-1">Sem tags</span>
       )}
-    </div>
-  );
-}
-
-/* ─── VoiceRecorderModal ────────────────────────────────────────────────────── */
-function VoiceRecorderModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  type RecState = 'idle' | 'recording' | 'stopped' | 'uploading' | 'done' | 'error';
-  const [state, setState]       = useState<RecState>('idle');
-  const [elapsed, setElapsed]   = useState(0);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [audioUrl, setAudioUrl]   = useState<string | null>(null);
-  const [error, setError]         = useState('');
-
-  const mrRef     = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
-  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  function fmtTime(s: number) {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-  }
-
-  async function startRecording() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-          ? 'audio/webm'
-          : '';
-      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      mrRef.current = mr;
-      chunksRef.current = [];
-
-      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
-        setAudioBlob(blob);
-        setAudioUrl(URL.createObjectURL(blob));
-        stream.getTracks().forEach(t => t.stop());
-        setState('stopped');
-      };
-
-      mr.start(100);
-      setState('recording');
-      setElapsed(0);
-      timerRef.current = setInterval(() => setElapsed(p => p + 1), 1000);
-    } catch {
-      setError('Não foi possível acessar o microfone. Verifique as permissões do navegador.');
-      setState('error');
-    }
-  }
-
-  function stopRecording() {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    mrRef.current?.stop();
-  }
-
-  function resetRecording() {
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-    setAudioBlob(null); setAudioUrl(null); setElapsed(0); setError('');
-    setState('idle');
-  }
-
-  async function submitRecording() {
-    if (!audioBlob) return;
-    setState('uploading');
-    try {
-      const ext = audioBlob.type.includes('ogg') ? '.ogg' : '.webm';
-      const fd  = new FormData();
-      fd.append('file', audioBlob, `nota-${Date.now()}${ext}`);
-      await api.postFormData('/transcriptions/voice-note', fd);
-      setState('done');
-      setTimeout(() => { onDone(); onClose(); }, 2200);
-    } catch (err: any) {
-      setError(err.message || 'Erro ao enviar nota. Tente novamente.');
-      setState('stopped');
-    }
-  }
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { stopRecording(); onClose(); } };
-    window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('keydown', onKey); if (timerRef.current) clearInterval(timerRef.current); };
-  }, [onClose]); // eslint-disable-line
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={() => { if (state !== 'recording') onClose(); }}>
-      <div className="bg-brand-surface w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5 sm:p-6 shadow-2xl"
-        onClick={e => e.stopPropagation()}>
-
-        {/* Drag handle mobile */}
-        <div className="w-10 h-1 bg-brand-border rounded-full mx-auto mb-5 sm:hidden" />
-
-        <div className="flex items-start justify-between mb-5">
-          <div>
-            <h2 className="font-bold text-base text-brand-text">🎤 Gravar nota de voz</h2>
-            <p className="text-xs text-brand-muted mt-0.5">A transcrição será enviada ao seu WhatsApp</p>
-          </div>
-          <button onClick={onClose} disabled={state === 'recording'}
-            className="text-brand-muted hover:text-brand-text p-1 rounded-lg transition-colors disabled:opacity-30"
-            aria-label="Fechar">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {state === 'done' ? (
-          <div className="text-center py-8">
-            <div className="w-16 h-16 rounded-full bg-brand-primary/10 border-2 border-brand-primary/30 flex items-center justify-center mx-auto mb-4">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: 'rgb(var(--color-primary))' }}>
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-            <p className="font-semibold text-brand-text">Nota enviada!</p>
-            <p className="text-xs text-brand-muted mt-1">A transcrição chegará no seu WhatsApp em instantes.</p>
-          </div>
-
-        ) : state === 'error' && !audioBlob ? (
-          <div className="text-center py-8">
-            <div className="text-4xl mb-3">🎙️</div>
-            <p className="text-sm text-red-400 mb-4">{error}</p>
-            <button type="button" onClick={() => { setError(''); setState('idle'); }}
-              className="btn-ghost text-sm px-5 py-2.5">Tentar novamente</button>
-          </div>
-
-        ) : (
-          <>
-            {/* Visualização de estado */}
-            <div className="flex flex-col items-center py-6 gap-4">
-              {/* Círculo animado */}
-              <div className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all ${
-                state === 'recording'
-                  ? 'bg-red-500/15 border-2 border-red-500/40'
-                  : 'bg-brand-elevated border-2 border-brand-border'
-              }`}>
-                {state === 'recording' && (
-                  <span className="absolute inset-0 rounded-full bg-red-500/20 animate-ping" />
-                )}
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
-                  style={{ color: state === 'recording' ? '#ef4444' : 'rgb(var(--color-primary))' }}>
-                  <path d="M12 2a3 3 0 013 3v7a3 3 0 01-6 0V5a3 3 0 013-3z"/>
-                  <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/>
-                </svg>
-              </div>
-
-              {/* Timer */}
-              <span className={`text-3xl font-mono font-bold tabular-nums ${
-                state === 'recording' ? 'text-red-400' : 'text-brand-text'
-              }`}>
-                {fmtTime(elapsed)}
-              </span>
-
-              {/* Status */}
-              <span className="text-xs text-brand-muted">
-                {state === 'idle'      && 'Clique em Gravar para começar'}
-                {state === 'recording' && '● Gravando... clique em Parar'}
-                {state === 'stopped'   && 'Gravação pronta — ouça antes de enviar'}
-                {state === 'uploading' && 'Enviando para transcrição…'}
-              </span>
-            </div>
-
-            {/* Player de preview */}
-            {audioUrl && state === 'stopped' && (
-              <div className="mb-4 px-2">
-                <audio controls src={audioUrl} className="w-full h-10" />
-              </div>
-            )}
-
-            {/* Erros */}
-            {error && (
-              <div className="text-red-400 text-xs bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2 mb-4">
-                {error}
-              </div>
-            )}
-
-            {/* Botões */}
-            <div className="flex gap-2">
-              {state === 'idle' && (
-                <button type="button" onClick={startRecording}
-                  className="btn-primary flex-1 py-3 text-sm flex items-center justify-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-current" />
-                  Gravar
-                </button>
-              )}
-
-              {state === 'recording' && (
-                <button type="button" onClick={stopRecording}
-                  className="flex-1 py-3 text-sm font-semibold rounded-xl border-2 border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="4" y="4" width="16" height="16" rx="2"/>
-                  </svg>
-                  Parar
-                </button>
-              )}
-
-              {state === 'stopped' && (
-                <>
-                  <button type="button" onClick={resetRecording}
-                    className="btn-ghost py-2.5 px-4 text-sm flex-shrink-0">
-                    ↺ Regravar
-                  </button>
-                  <button type="button" onClick={submitRecording}
-                    className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-2">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                      <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-                    </svg>
-                    Transcrever
-                  </button>
-                </>
-              )}
-
-              {state === 'uploading' && (
-                <button disabled className="btn-primary flex-1 py-2.5 text-sm opacity-60 flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                  </svg>
-                  Enviando…
-                </button>
-              )}
-            </div>
-          </>
-        )}
-      </div>
     </div>
   );
 }
@@ -757,11 +529,10 @@ export default function TranscricoesPage() {
   const [filterSource, setFilterSource]     = useState('whatsapp-evolution');
 
   /* — Page UI state — */
-  const [pageTab, setPageTab]                     = useState<'whatsapp' | 'enviados' | 'notas'>('whatsapp');
+  const [pageTab, setPageTab]                     = useState<'whatsapp' | 'enviados'>('whatsapp');
   const [showFilterDrawer, setShowFilterDrawer]   = useState(false);
   const [showSortMenu, setShowSortMenu]           = useState(false);
   const [whatsappCount, setWhatsappCount]         = useState(0);
-  const [voiceCount, setVoiceCount]               = useState(0);
   const [uploadCount, setUploadCount]             = useState(0);
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
 
@@ -781,7 +552,6 @@ export default function TranscricoesPage() {
 
   /* — Upload & export — */
   const [showUpload, setShowUpload]               = useState(false);
-  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [exporting, setExporting]                 = useState(false);
   const [showExportMenu, setShowExportMenu]       = useState(false);
 
@@ -821,9 +591,6 @@ export default function TranscricoesPage() {
     // Badges de contagem para as tabs
     api.get<{ items: any[]; total: number }>('/transcriptions?limit=1&source=whatsapp-evolution')
       .then(r => setWhatsappCount(r.total || 0))
-      .catch(() => null);
-    api.get<{ items: any[]; total: number }>('/transcriptions?limit=1&source=voice-note')
-      .then(r => setVoiceCount(r.total || 0))
       .catch(() => null);
     api.get<{ items: any[]; total: number }>('/transcriptions?limit=1&source=manual')
       .then(r => setUploadCount(r.total || 0))
@@ -867,9 +634,7 @@ export default function TranscricoesPage() {
   }
 
   function clearFilters() {
-    const src = pageTab === 'whatsapp' ? 'whatsapp-evolution'
-              : pageTab === 'enviados' ? 'manual'
-              : 'voice-note';
+    const src = pageTab === 'whatsapp' ? 'whatsapp-evolution' : 'manual';
     setSearch(''); setFilterTag(''); setFilterLang(''); setFilterContact('');
     setDateFrom(''); setDateTo(''); setSortOrder('date_desc'); setFilterSource(src);
     setOffset(0);
@@ -884,12 +649,10 @@ export default function TranscricoesPage() {
     load('', 0, '', '', '', '', '', sortOrder, filterSource);
   }
 
-  // Alterna entre abas WhatsApp / Enviados / Notas de Voz
-  function switchPageTab(tab: 'whatsapp' | 'enviados' | 'notas') {
+  // Alterna entre abas WhatsApp / Enviados
+  function switchPageTab(tab: 'whatsapp' | 'enviados') {
     setPageTab(tab);
-    const src = tab === 'whatsapp' ? 'whatsapp-evolution'
-              : tab === 'enviados' ? 'manual'
-              : 'voice-note';
+    const src = tab === 'whatsapp' ? 'whatsapp-evolution' : 'manual';
     setFilterSource(src);
     setSearch('');
     setOffset(0);
@@ -1133,7 +896,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   const canFilters      = PLAN_FILTERS.includes(planName);
   const canSearch       = PLAN_SEARCH.includes(planName);
   const canExport       = planName === 'pro' || planName === 'pro-tester' || planName === 'executive';
-  const canVoiceNotes   = planName === 'pro' || planName === 'pro-tester' || planName === 'executive';
   const hasFilters      = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource);
   const hasActiveFilters = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo);
   const tagsChanged     = JSON.stringify(editTags) !== JSON.stringify(selected?.tags || []);
@@ -1184,58 +946,19 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
           <p className="text-sm mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
             {loading ? 'Carregando…'
               : pageTab === 'whatsapp' ? `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} do WhatsApp`
-              : pageTab === 'enviados' ? `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} enviado${total !== 1 ? 's' : ''}`
-              : `${total.toLocaleString('pt-BR')} nota${total !== 1 ? 's' : ''} de voz`}
+              : `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} enviado${total !== 1 ? 's' : ''}`}
           </p>
         </div>
-        {pageTab === 'notas' ? (
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {canVoiceNotes ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowVoiceRecorder(true)}
-                  className="btn-primary text-sm px-4 py-2.5 flex items-center gap-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                    <path d="M12 2a3 3 0 013 3v7a3 3 0 01-6 0V5a3 3 0 013-3z"/>
-                    <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/>
-                  </svg>
-                  <span className="hidden sm:inline">Gravar nota</span>
-                  <span className="sm:hidden">Gravar</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowUpload(true)}
-                  className="text-sm px-3 py-2.5 rounded-xl border flex items-center gap-1.5 flex-shrink-0 transition-colors"
-                  style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}
-                  title="Enviar arquivo de áudio">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
-                  <span className="hidden sm:inline text-xs">Upload</span>
-                </button>
-              </>
-            ) : (
-              <a href="/dashboard/plano"
-                className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl border transition-colors flex-shrink-0"
-                style={{ borderColor: 'rgba(245,158,11,.35)', color: '#f59e0b', background: 'rgba(245,158,11,.07)' }}>
-                🔒
-                <span className="hidden sm:inline">Pro</span>
-              </a>
-            )}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setShowUpload(true)}
-            className="btn-primary text-sm px-4 py-2.5 flex items-center gap-2 flex-shrink-0">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-            </svg>
-            <span className="hidden sm:inline">Enviar áudio</span>
-            <span className="sm:hidden">Enviar</span>
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setShowUpload(true)}
+          className="btn-primary text-sm px-4 py-2.5 flex items-center gap-2 flex-shrink-0">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          <span className="hidden sm:inline">Enviar áudio</span>
+          <span className="sm:hidden">Enviar</span>
+        </button>
       </div>
 
       {/* ── HERO SEARCH ─────────────────────────────────────────────────── */}
@@ -1251,8 +974,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               className={`input pr-4 py-3 w-full text-sm rounded-xl ${!canSearch ? 'opacity-60 cursor-not-allowed' : ''}`}
               style={{ paddingLeft: '2.5rem' }}
               placeholder={canSearch
-                ? (pageTab === 'notas'    ? 'Buscar nota de voz…'
-                  : pageTab === 'enviados' ? 'Buscar por nome do arquivo ou texto…'
+                ? (pageTab === 'enviados' ? 'Buscar por nome do arquivo ou texto…'
                   : 'Buscar por contato, texto ou resumo…')
                 : '🔒 Busca disponível no plano Pro'}
               value={search}
@@ -1510,27 +1232,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
             </span>
           )}
         </button>
-        <button
-          type="button"
-          onClick={() => switchPageTab('notas')}
-          className="flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium transition-all"
-          style={pageTab === 'notas'
-            ? { background: 'rgb(var(--color-primary))', color: '#030d06' }
-            : { color: 'rgb(var(--color-text-muted))' }}>
-          🎙️ Notas de Voz
-          {!canVoiceNotes && (
-            <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded"
-              style={{ background: 'rgba(59,130,246,.15)', color: '#3b82f6' }}>
-              Pro
-            </span>
-          )}
-          {canVoiceNotes && voiceCount > 0 && pageTab !== 'notas' && (
-            <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-              style={{ background: 'rgba(13,150,104,.15)', color: 'rgb(var(--color-primary))' }}>
-              {voiceCount}
-            </span>
-          )}
-        </button>
       </div>
 
       {/* ── FILTER DRAWER ───────────────────────────────────────────────── */}
@@ -1585,19 +1286,14 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               {hasFilters
                 ? 'Nenhuma transcrição encontrada'
                 : pageTab === 'whatsapp' ? 'Nenhum áudio do WhatsApp ainda'
-                : pageTab === 'enviados' ? 'Nenhum áudio enviado ainda'
-                : 'Nenhuma nota de voz ainda'}
+                : 'Nenhum áudio enviado ainda'}
             </p>
             <p className="text-sm text-brand-muted mb-5">
               {hasFilters
                 ? 'Tente ajustar os filtros ou limpar a busca.'
                 : pageTab === 'whatsapp'
                   ? 'Conecte um número e envie um áudio no WhatsApp para transcrever automaticamente.'
-                  : pageTab === 'enviados'
-                    ? 'Envie um arquivo de áudio pelo site para transcrever.'
-                    : canVoiceNotes
-                      ? 'Grave uma nota diretamente no browser. A transcrição é enviada ao seu WhatsApp.'
-                      : 'Grave áudios para si mesmo e receba a transcrição no WhatsApp.'
+                  : 'Envie um arquivo de áudio pelo site para transcrever.'
               }
             </p>
             {hasFilters ? (
@@ -1608,18 +1304,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               <a href="/dashboard/numeros" className="btn-primary text-sm px-6 py-2.5 inline-flex items-center gap-2">
                 💬 Conectar número
               </a>
-            ) : pageTab === 'notas' ? (
-              canVoiceNotes ? (
-                <button type="button" onClick={() => setShowVoiceRecorder(true)} className="btn-primary text-sm px-6 py-2.5 flex items-center gap-2 mx-auto">
-                  🎤 Gravar primeira nota
-                </button>
-              ) : (
-                <a href="/dashboard/plano"
-                  className="inline-flex items-center gap-2 text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors"
-                  style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.3)' }}>
-                  🔒 Disponível no plano Pro →
-                </a>
-              )
             ) : (
               <button type="button" onClick={() => setShowUpload(true)} className="btn-primary text-sm px-6 py-2.5">
                 📁 Enviar áudio
@@ -1785,14 +1469,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
           onClose={() => setShowUpload(false)}
           onDone={() => { setOffset(0); load('', 0, '', '', '', '', '', 'date_desc', filterSource); }}
           planName={planName}
-        />
-      )}
-
-      {/* ── VOICE RECORDER MODAL ───────────────────────────────────────── */}
-      {showVoiceRecorder && (
-        <VoiceRecorderModal
-          onClose={() => setShowVoiceRecorder(false)}
-          onDone={() => { setOffset(0); load('', 0, '', '', '', '', '', 'date_desc', 'voice-note'); }}
         />
       )}
 

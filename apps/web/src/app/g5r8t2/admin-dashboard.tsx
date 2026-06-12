@@ -2830,7 +2830,6 @@ O plano Executive foi feito para quem usa de verdade:
 💎 300 minutos/mês (o triplo do Pro)
 🔒 Modo Privado: transcrição enviada só para você, não para o remetente
 📤 Exportação em PDF, DOCX, CSV e XLS
-🎤 Notas Pessoais de Voz (transcreva seus próprios áudios)
 📱 Até 3 números simultâneos
 
 Por apenas R$20,00/mês a mais — ou seja, R$49,90 total.

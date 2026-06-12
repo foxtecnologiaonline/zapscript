@@ -100,7 +100,6 @@ const PLANS = [
       'Histórico, filtros e busca',
       'Exportar áudios em PDF, Docx, Csv e Excel',
       'Transcrição Profissional (PDF com marcação temporal)',
-      'Notas Pessoais de Voz',
       'Modo Privado de transcrição',
     ],
     cta: 'Assinar Pro',

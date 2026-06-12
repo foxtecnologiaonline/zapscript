@@ -75,7 +75,6 @@ async function main() {
       '📋 Histórico de transcrições',
       '📅 Filtros por data e contato',
       '🔍 Busca por transcrição',
-      '🎤 Notas Pessoais de Voz',
       '🔇 Modo Privado (2 números)',
       '📤 Exportação PDF · DOCX · CSV · XLS',
       '🌐 Múltiplos idiomas',

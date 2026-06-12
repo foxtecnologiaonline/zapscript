@@ -4,7 +4,6 @@ import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected } from '../services/whatsapp-notify';
 import { storeQr } from '../lib/qrStore';
 import { io } from '../index';
-import { getUserPlan } from '../lib/planGate';
 
 
 export default async function evolutionWebhookRoutes(app: FastifyInstance) {
@@ -196,47 +195,8 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       // Ignorar grupos
       if (remoteJid.includes('@g.us')) return;
 
-      // ── Notas Pessoais de Voz (Pro+) ──────────────────────────────────────
-      // Ativado quando o usuário envia um áudio para o próprio número
-      // (chat "Eu mesmo" / Saved Messages do WhatsApp).
-      // Condição: fromMe=true E remoteJid == número próprio do usuário.
-      // Disponível para planos Pro e Executive.
-      if (fromMe) {
-        const isAudio = AUDIO_TYPES.has(messageType)
-          || (messageType === 'documentMessage' && isAudioDocument(msg?.message?.documentMessage))
-          || messageType === 'documentWithCaptionMessage';
-
-        if (!isAudio) return; // ignorar mensagens não-áudio próprias
-
-        const selfNumber = await findNumber(false);
-        if (!selfNumber) return;
-
-        // Verificar se o áudio foi enviado para o próprio número (chat pessoal)
-        const selfPhone    = (selfNumber.phoneNumber || '').replace(/\D/g, '');
-        const remotePhone  = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, '');
-        if (!selfPhone || remotePhone !== selfPhone) return; // áudio enviado para outra pessoa — ignorar
-
-        // Notas de Voz disponíveis para Pro e Executive (não Free)
-        const plan = await getUserPlan(selfNumber.userId);
-        if (plan === 'free') return;
-
-        app.log.info({ instance: instName, plan }, '[Evolution] 🎤 Nota pessoal de voz (Pro+)');
-
-        transcriptionQueue.add('transcribe-evolution', {
-          userId:       selfNumber.userId,
-          numberId:     selfNumber.id,
-          instanceName: instName,
-          senderPhone:  selfPhone,
-          senderName:   'Nota de Voz',
-          messageKey:   key,
-          messageData:  msg,
-          durationHint: msg?.message?.audioMessage?.seconds ?? msg?.message?.pttMessage?.seconds ?? 0,
-          messageId,
-          source:       'voice-note',
-        }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
-
-        return;
-      }
+      // Ignorar mensagens enviadas pelo próprio número (fromMe)
+      if (fromMe) return;
 
       // Extrair número limpo do remetente
       const senderPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, '');

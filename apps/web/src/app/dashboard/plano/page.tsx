@@ -64,7 +64,6 @@ const PLANS = [
       '🔍 Busca por transcrição',
       '📤 Exportar áudios em PDF, Docx, Csv e Excel',
       '📄 Transcrição Profissional (PDF com marcação temporal)',
-      '🎤 Notas Pessoais de Voz',
       '🔒 Modo Privado de transcrição',
     ],
     excl:  [],
@@ -87,7 +86,6 @@ const PLANS = [
       '🖥️ Upload de áudio no site',
       '🔍 Busca por transcrição',
       '📤 Exportação PDF · DOCX · CSV · XLS',
-      '🎤 Notas Pessoais de Voz',
       '🔒 Modo Privado de transcrição',
     ],
     excl:  [],
@@ -114,7 +112,6 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: '🖥️ Transcrição de áudios no site',    vals: [false, true] },
   { feature: '📤 Exportar áudios (PDF/Docx/Csv/Excel)', vals: [false, true] },
   { feature: '📄 Transcrição Profissional (PDF)',    vals: [false, true] },
-  { feature: '🎤 Notas Pessoais de Voz',             vals: [false, true] },
   { feature: '🔒 Modo Privado de transcrição',       vals: [false, true] },
 ];
 
@@ -722,7 +719,6 @@ function PlanoContent() {
                   '📋 Histórico de transcrições',
                   '📅 Filtros por data e contato',
                   '🔍 Busca por transcrição',
-                  '🎤 Notas Pessoais de Voz',
                   '🔒 Modo Privado',
                   '📄 Transcrição profissional PDF',
                 ].map(f => (
