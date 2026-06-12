@@ -47,14 +47,6 @@ const SORT_LABELS: Record<string, string> = {
   contact_desc: 'Contato Z → A',
 };
 
-const DOC_TYPES = [
-  { value: 'resumo',     label: 'Resumo Executivo'    },
-  { value: 'ata',        label: 'Ata de Reunião'      },
-  { value: 'email',      label: 'E-mail Profissional' },
-  { value: 'briefing',   label: 'Briefing'            },
-  { value: 'combinados', label: 'Combinados'          },
-];
-
 const LANG_FLAG: Record<string, string> = {
   pt: '🇧🇷', 'pt-BR': '🇧🇷', en: '🇺🇸', es: '🇪🇸',
   fr: '🇫🇷', de: '🇩🇪', it: '🇮🇹', ja: '🇯🇵',
@@ -107,7 +99,7 @@ function isPortuguese(lang: string): boolean {
   return lang === 'pt' || lang === 'pt-BR' || lang === '';
 }
 
-type ModalTab = 'resumo' | 'original' | 'ia' | 'exportar';
+type ModalTab = 'resumo' | 'original' | 'exportar';
 
 /* ─── Sub-components ───────────────────────────────────────────────────────── */
 
@@ -539,16 +531,7 @@ export default function TranscricoesPage() {
   /* — Detail modal state — */
   const [selected, setSelected]             = useState<Transcription | null>(null);
   const [activeTab, setActiveTab]           = useState<ModalTab>('resumo');
-  const [editTags, setEditTags]             = useState<string[]>([]);
-  const [savingTags, setSavingTags]         = useState(false);
   const [copied, setCopied]                 = useState(false);
-
-  /* — IA features state — */
-  const [suggestedReplies, setSuggestedReplies] = useState<string[] | null>(null);
-  const [loadingReplies, setLoadingReplies]     = useState(false);
-  const [generatedDoc, setGeneratedDoc]         = useState<{ type: string; content: string } | null>(null);
-  const [loadingDoc, setLoadingDoc]             = useState(false);
-  const [docType, setDocType]                   = useState('resumo');
 
   /* — Upload & export — */
   const [showUpload, setShowUpload]               = useState(false);
@@ -661,9 +644,6 @@ export default function TranscricoesPage() {
 
   function openDetail(t: Transcription) {
     setSelected(t);
-    setEditTags(t.tags || []);
-    setSuggestedReplies(null);
-    setGeneratedDoc(null);
     setActiveTab('resumo');
   }
 
@@ -681,48 +661,6 @@ export default function TranscricoesPage() {
     setItems(i => i.filter(t => t.id !== id));
     setTotal(t => t - 1);
     if (selected?.id === id) setSelected(null);
-  }
-
-  async function saveTags() {
-    if (!selected) return;
-    setSavingTags(true);
-    try {
-      await api.patch(`/transcriptions/${selected.id}/tags`, { tags: editTags });
-      setItems(prev => prev.map(t => t.id === selected.id ? { ...t, tags: editTags } : t));
-      setSelected(prev => prev ? { ...prev, tags: editTags } : null);
-    } catch (err: any) {
-      alert(err.message || 'Erro ao salvar tags.');
-    } finally {
-      setSavingTags(false);
-    }
-  }
-
-  async function loadSuggestedReplies(t: Transcription) {
-    setSuggestedReplies(null);
-    setLoadingReplies(true);
-    try {
-      const res = await api.get<{ replies: string[] }>(`/transcriptions/${t.id}/suggest-reply`);
-      setSuggestedReplies(res.replies || []);
-    } catch (err: any) {
-      alert(err.message || 'Erro ao gerar sugestões.');
-    } finally {
-      setLoadingReplies(false);
-    }
-  }
-
-  async function generateDocument(t: Transcription, type: string) {
-    setGeneratedDoc(null);
-    setLoadingDoc(true);
-    try {
-      const res = await api.post<{ content: string; docType: string }>(
-        `/transcriptions/${t.id}/generate-document`, { docType: type }
-      );
-      setGeneratedDoc({ type, content: res.content });
-    } catch (err: any) {
-      alert(err.message || 'Erro ao gerar documento.');
-    } finally {
-      setLoadingDoc(false);
-    }
   }
 
   async function handleExport(format: 'csv' | 'xls' | 'pdf' | 'docx' = 'csv') {
@@ -871,15 +809,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
     await Promise.allSettled([openJuridicalPdf(t), downloadJuridicalAudio(t)]);
   }
 
-  function downloadGeneratedDoc(t: Transcription) {
-    if (!generatedDoc) return;
-    const label = DOC_TYPES.find(d => d.value === generatedDoc.type)?.label || generatedDoc.type;
-    const html = `<html><head><meta charset="utf-8"/><style>body{font-family:Arial,sans-serif;font-size:12px;margin:2cm;line-height:1.7;white-space:pre-wrap}</style></head><body><h2>${label} — ${t.contactName || t.contactPhone}</h2>\n\n${generatedDoc.content}</body></html>`;
-    const blob = new Blob([html], { type: 'application/msword;charset=utf-8' });
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${generatedDoc.type}-${t.id.slice(0, 8)}.docx` });
-    a.click(); URL.revokeObjectURL(a.href);
-  }
-
   async function submitNps() {
     if (npsScore == null) return;
     setNpsSubmitting(true);
@@ -898,7 +827,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   const canExport       = planName === 'pro' || planName === 'pro-tester' || planName === 'executive';
   const hasFilters      = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource);
   const hasActiveFilters = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo);
-  const tagsChanged     = JSON.stringify(editTags) !== JSON.stringify(selected?.tags || []);
 
   const totalPages = Math.ceil(total / LIMIT);
   const currentPage = Math.floor(offset / LIMIT) + 1;
@@ -1552,7 +1480,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                 {([
                   ['resumo',   '✨ Resumo'],
                   ['original', '📝 Texto'],
-                  ['ia',       '🤖 IA'],
                   ['exportar', '📤 Exportar'],
                 ] as [ModalTab, string][]).map(([tab, label]) => (
                   <button
@@ -1567,13 +1494,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                         : 'border-transparent text-brand-muted hover:text-brand-text'
                     }`}>
                     {label}
-                    {tab === 'ia' && (
-                      <span
-                        className="text-[9px] font-bold px-1 py-0.5 rounded leading-none"
-                        style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
-                        Em breve
-                      </span>
-                    )}
                   </button>
                 ))}
               </div>
@@ -1604,26 +1524,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                   ) : (
                     <p className="text-sm text-brand-muted italic py-2">Sem resumo disponível.</p>
                   )}
-
-                  {/* Tags section — Em breve */}
-                  <div className="pt-2">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest">
-                        🏷️ Tags
-                      </span>
-                      <span
-                        className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                        style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
-                        Em breve
-                      </span>
-                    </div>
-                    <div className="rounded-xl p-3 text-center"
-                      style={{ background: 'rgba(var(--color-primary)/.04)', border: '1px solid rgba(var(--color-primary)/.1)' }}>
-                      <p className="text-xs text-brand-muted">
-                        Tags e categorias chegando em breve para todos os planos pagos.
-                      </p>
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -1672,28 +1572,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                   </button>
                 </div>
               )}
-
-              {/* ── TAB: IA ─────────────────────────────────────────────── */}
-              {activeTab === 'ia' && (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <div
-                    className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-2xl"
-                    style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.15)' }}>
-                    🚀
-                  </div>
-                  <p className="font-semibold text-brand-text mb-1">Recursos de IA em desenvolvimento</p>
-                  <p className="text-sm text-brand-muted mb-2 max-w-xs">
-                    Respostas sugeridas, atas, e-mails e muito mais chegam em breve para todos os planos pagos.
-                  </p>
-                  <span className="text-[11px] font-bold px-3 py-1 rounded-full"
-                    style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
-                    Em breve
-                  </span>
-                </div>
-              )}
-
-              {/* ── PLACEHOLDER for removed IA code (keep for future restore) ── */}
-              {/* (IA tab content rendered above) */}
 
               {/* ── TAB: EXPORTAR ───────────────────────────────────────── */}
               {activeTab === 'exportar' && selected && (
