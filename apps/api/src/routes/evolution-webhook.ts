@@ -53,6 +53,17 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
   const AUDIO_MIME_PREFIXES = ['audio/'];
   const AUDIO_EXTENSIONS    = ['.mp3', '.m4a', '.ogg', '.opus', '.wav', '.aac', '.flac', '.amr'];
 
+  // Compara dois telefones com tolerância ao 9º dígito brasileiro: além da
+  // igualdade exata, considera iguais quando os últimos 8 dígitos batem (o "core"
+  // do número, sem DDD/9). Evita falso-negativo quando um lado tem 13 e o outro 12.
+  function samePhone(a: string, b: string): boolean {
+    const da = (a || '').replace(/\D/g, '');
+    const db = (b || '').replace(/\D/g, '');
+    if (!da || !db) return false;
+    if (da === db) return true;
+    return da.length >= 8 && db.length >= 8 && da.slice(-8) === db.slice(-8);
+  }
+
   function isAudioDocument(doc: any): boolean {
     if (!doc) return false;
     if (typeof doc.mimetype === 'string' && AUDIO_MIME_PREFIXES.some(p => doc.mimetype.startsWith(p))) return true;
@@ -71,6 +82,13 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
     const event        = body.event;          // 'connection.update', 'messages.upsert', 'qrcode.updated'
     const instName     = body.instance;       // nome da instância (ex: 'zs-abc123')
     const data         = body.data;
+    // JID do DONO da instância (o número conectado). Evolution envia em `sender`
+    // no topo do body. É a fonte mais confiável para detectar self-chat, pois NÃO
+    // depende de whatsappNumber.phoneNumber (que é opcional e costuma vir vazio).
+    const ownerJid     = body.sender ?? data?.owner ?? null;
+    const ownerDigits  = ownerJid
+      ? String(ownerJid).replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, '')
+      : '';
 
     log.info({ event, instance: instName }, '[Evolution] Evento recebido');
 
@@ -265,16 +283,32 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
         return;
       }
 
+      // ── Backfill do phoneNumber a partir do JID do dono ───────────────────
+      // phoneNumber é opcional na criação e costuma vir vazio. Quando o webhook
+      // expõe o dono da instância (ownerDigits), gravamos no banco — habilita o
+      // modo privado e o auto-preenchimento do pairing code, e torna o self-chat
+      // detectável mesmo sem `body.sender` em eventos futuros.
+      const storedDigits = String(whatsappNumber.phoneNumber ?? '').replace(/\D/g, '');
+      if (ownerDigits && ownerDigits !== 'pending' && storedDigits !== ownerDigits) {
+        prisma.whatsappNumber.update({
+          where: { id: whatsappNumber.id },
+          data:  { phoneNumber: ownerDigits },
+        }).then(() => log.info(`[Evolution] ☎️  phoneNumber sincronizado (${whatsappNumber!.id}) ← ${ownerDigits}`))
+          .catch(() => null);
+      }
+
       // ── Gate de self-chat para fromMe (Feature 1) ─────────────────────────
       // Áudios enviados pelo próprio usuário só são processados quando vão para
       // o PRÓPRIO número (conversa "Você"). Áudios que o usuário manda a
       // terceiros são ignorados (privacidade + custo).
-      const ownDigits = String(whatsappNumber.phoneNumber ?? '').replace(/\D/g, '');
+      // Fonte primária = ownerDigits (JID do dono no webhook); fallback = phoneNumber
+      // do banco. Comparação tolerante ao 9º dígito BR via samePhone().
       const isSelfNote = fromMe === true;
       if (isSelfNote) {
-        const isSelfChat = !!ownDigits && ownDigits !== 'pending' && senderPhone === ownDigits;
+        const selfRef    = ownerDigits || storedDigits;
+        const isSelfChat = !!selfRef && selfRef !== 'pending' && samePhone(senderPhone, selfRef);
         if (!isSelfChat) {
-          log.info(`[Evolution] ↪️  Áudio fromMe para terceiro — ignorado`);
+          log.info(`[Evolution] ↪️  Áudio fromMe para terceiro — ignorado (sender=${senderPhone}, dono=${selfRef || 'desconhecido'})`);
           return;
         }
         log.info(`[Evolution] 📝 Self-note: áudio encaminhado ao próprio número${forwarded ? ' (encaminhado)' : ''}${originPhone ? ` de ${originPhone}` : ''}`);

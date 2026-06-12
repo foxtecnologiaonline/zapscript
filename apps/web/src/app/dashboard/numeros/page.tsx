@@ -66,8 +66,9 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
   // Detecta telefone fixo: 10 dígitos = DDD(2) + 8 dígitos (sem o "9" do celular)
   const isLandline = phoneInput.replace(/\D/g, '').length === 10;
 
-  const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrPollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoReqRef = useRef(false);  // garante auto-solicitação do código só 1×
 
   // Iniciar conexão ao abrir o modal
   useEffect(() => {
@@ -185,6 +186,19 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
     return code.length >= 8 ? `${code.slice(0, 4)}-${code.slice(4, 8)}` : code;
   }
 
+  // Auto-gerar o código assim que a conexão fica pronta, quando já conhecemos o
+  // número (reconexão / phoneNumber sincronizado pelo backend). Assim o cliente
+  // vê o PAIRING CODE de imediato — QR só se ele clicar em "Gerar QR Code".
+  useEffect(() => {
+    if (phase !== 'ready' || connectMode !== 'phone') return;
+    if (autoReqRef.current || pairingCode || requesting) return;
+    if (phoneInput.replace(/\D/g, '').length >= 10) {
+      autoReqRef.current = true;
+      handleRequestCode();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, connectMode]);
+
   return (
     <div
       className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
@@ -277,6 +291,13 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                         <Spinner size={3} />
                         Aguardando você digitar no WhatsApp…
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => { setConnectMode('qr'); setPairingCode(null); setPhoneError(''); setQrImage(null); }}
+                        className="mt-3 text-[11px] text-brand-muted hover:text-brand-text underline underline-offset-2 transition-colors"
+                      >
+                        Prefere escanear? Gerar QR Code
+                      </button>
                       {/* Aviso de localização — IP de datacenter */}
                       <div className="mt-4 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-left">
                         <p className="text-[10px] text-amber-400/80 leading-relaxed">
@@ -331,13 +352,13 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                         {requesting ? <><Spinner size={4} /> Gerando código…</> : '📲 Solicitar código de conexão'}
                       </button>
 
-                      {/* Fallback discreto para QR */}
+                      {/* Alternativa — QR Code (opt-in explícito) */}
                       <button
                         type="button"
                         onClick={() => { setConnectMode('qr'); setPhoneError(''); setQrImage(null); }}
-                        className="w-full text-center text-[11px] text-brand-muted hover:text-brand-text transition-colors py-1"
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-brand-border text-brand-text-secondary text-xs font-semibold hover:border-brand-primary/40 hover:text-brand-text transition-colors"
                       >
-                        🔳 Prefiro escanear QR Code
+                        🔳 Gerar QR Code
                       </button>
                     </div>
                   )}
