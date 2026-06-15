@@ -14,28 +14,27 @@ const STORAGE_KEY = 'zs_onboarding_dismissed';
 /* ── Erros e soluções ─────────────────────────────────────────── */
 const TROUBLESHOOT = [
   {
-    q: 'QR Code não aparece na tela',
+    q: 'O código de conexão não aparece',
     a: [
-      'Verifique se a URL da Evolution API está correta — ex: https://evolution.seudominio.com (sem barra no final).',
-      'Confirme que a porta está aberta e acessível pela internet (padrão: 8080).',
-      'Teste a URL no navegador: deve retornar um JSON. Se der erro de conexão, o servidor não está acessível.',
-      'Se estiver usando ngrok ou túnel, certifique-se de que ele está ativo.',
+      'Aguarde alguns segundos — o código de 8 dígitos é gerado automaticamente ao abrir a conexão.',
+      'Se não aparecer, feche e abra a janela de conexão novamente.',
+      'Você também pode tocar em "Gerar QR Code" e escanear com a câmera do WhatsApp.',
+    ],
+  },
+  {
+    q: 'O WhatsApp mostra "localização suspeita"',
+    a: [
+      'É normal e esperado em plataformas de automação — basta confirmar a conexão.',
+      'O aviso acontece porque o WhatsApp identifica IPs de servidores em nuvem, independente do país.',
+      'Sua conexão é segura: nenhuma mensagem sua é lida além dos áudios que você envia para transcrever.',
     ],
   },
   {
     q: 'Conectei o número mas o áudio não chega',
     a: [
-      'O webhook é configurado automaticamente ao clicar em "Conectar". Verifique se o status aparece como "Conectado" (verde) no painel de Números.',
-      'Se o número já estava em uso em outro sistema (ex: outro chatbot), o webhook pode ter sido sobrescrito. Reconecte clicando no botão "Reconectar".',
-      'Certifique-se de enviar o áudio para o número cadastrado, não para outro.',
-    ],
-  },
-  {
-    q: 'Erro "Unauthorized" ou "API Key inválida"',
-    a: [
-      'A API Key informada está incorreta. Copie-a novamente do painel da sua Evolution API (normalmente em Configurações → API Key).',
-      'Se estiver usando Evolution local, a key padrão está nas variáveis de ambiente da instalação (arquivo .env: AUTHENTICATION_API_KEY).',
-      'A key é case-sensitive — verifique maiúsculas e minúsculas.',
+      'Confirme que o status aparece como "Conectado" (verde) no painel de Números.',
+      'Envie o áudio para o MESMO número que você conectou — não para outro contato.',
+      'Se ainda não chegar, clique em "Reconectar" no painel de Números.',
     ],
   },
   {
@@ -57,68 +56,36 @@ const TROUBLESHOOT = [
   {
     q: 'Status fica em "Conectando..." sem avançar',
     a: [
-      'A Evolution API pode estar demorando para criar a instância. Aguarde até 30 segundos e recarregue a página.',
-      'Verifique os logs da sua Evolution API — pode haver um erro de permissão ou de banco de dados.',
-      'Se o problema persistir, delete a instância no painel da Evolution e reconecte pelo ZapScript.',
+      'Aguarde até 30 segundos e recarregue a página.',
+      'Confirme que você digitou o código completo no WhatsApp do celular.',
+      'Se o problema persistir, clique em "Reconectar" ou fale com o suporte: suporte@zapscript.me',
     ],
   },
 ];
 
-/* ── Passos do drawer (Evolution API — recomendado) ─────────────── */
-const STEPS_EVOLUTION = [
+/* ── Passo a passo (fluxo único e guiado) ───────────────────────────
+   O ZapScript já hospeda toda a infraestrutura. O usuário NÃO escolhe
+   provedor nem informa URL/API Key — apenas conecta o WhatsApp dele. */
+const STEPS = [
   {
     num: '1',
-    title: 'Tenha uma Evolution API rodando',
-    body: 'Você precisa de uma instância da Evolution API acessível pela internet. Pode ser no seu próprio servidor (VPS, Railway, Render) ou em um serviço gerenciado.',
-    link: { label: 'Ver como instalar a Evolution API →', href: 'https://doc.evolution-api.com', external: true },
+    title: 'Abra "Números" e clique em "Conectar novo número"',
+    body: 'Dê um nome para identificar o aparelho (ex: "Meu WhatsApp" ou "Comercial"). Só isso — sem configuração técnica.',
   },
   {
     num: '2',
-    title: 'Anote a URL e a API Key',
-    body: 'URL: o endereço onde a Evolution está rodando (ex: https://evolution.seudominio.com). API Key: encontrada nas configurações da Evolution (variável AUTHENTICATION_API_KEY).',
+    title: 'Pegue seu código de conexão',
+    body: 'Um código de 8 dígitos aparece automaticamente na tela. Se preferir, toque em "Gerar QR Code" para escanear.',
   },
   {
     num: '3',
-    title: 'Acesse "Números" no menu lateral',
-    body: 'Clique em "Conectar novo número", informe a URL e a API Key da Evolution, escolha um nome para identificar este número e clique em Conectar.',
+    title: 'No celular, conecte o aparelho',
+    body: 'Abra o WhatsApp → Configurações → Aparelhos conectados → Conectar um aparelho → "Conectar com número de telefone" e digite o código.',
   },
   {
     num: '4',
-    title: 'Escaneie o QR Code',
-    body: 'Abra o WhatsApp no celular → Configurações → Aparelhos conectados → Conectar um aparelho. Aponte a câmera para o QR Code que aparecerá na tela.',
-  },
-  {
-    num: '5',
     title: 'Pronto! Envie um áudio de teste',
-    body: 'Envie um áudio de qualquer duração para o número cadastrado. Em segundos você receberá a transcrição e o resumo de volta na mesma conversa.',
-  },
-];
-
-/* ── Tipos de integração ─────────────────────────────────────────── */
-const INTEGRATIONS = [
-  {
-    id: 'evolution',
-    icon: '⚡',
-    name: 'Evolution API',
-    badge: 'Recomendado',
-    badgeColor: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
-    desc: 'Gratuito, open-source, roda no seu servidor. Mais flexível.',
-  },
-  {
-    id: 'official',
-    icon: '✅',
-    name: 'WhatsApp Oficial (Meta)',
-    badge: 'Pago',
-    badgeColor: 'text-blue-400 bg-blue-400/10 border-blue-400/20',
-    desc: 'API oficial do WhatsApp Business. Requer aprovação da Meta.',
-  },
-  {
-    id: 'twilio',
-    icon: '📡',
-    name: 'Twilio',
-    badge: 'Pago',
-    badgeColor: 'text-purple-400 bg-purple-400/10 border-purple-400/20',
-    desc: 'Plataforma de comunicação. Precisa de conta Twilio ativa.',
+    body: 'Mande um áudio de qualquer duração para o número conectado. Em segundos você recebe a transcrição e o resumo de volta na mesma conversa.',
   },
 ];
 
@@ -133,7 +100,6 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
   const [drawerOpen,   setDrawerOpen]   = useState(false);
   const [openFaq,      setOpenFaq]      = useState<number | null>(null);
   const [openHelp,     setOpenHelp]     = useState(false);
-  const [integration,  setIntegration]  = useState('evolution');
 
   /* Lê dismiss do localStorage */
   useEffect(() => {
@@ -351,105 +317,33 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
             {/* Conteúdo scrollável */}
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
 
-              {/* Escolha de integração */}
+              {/* Passo a passo único — sem escolhas */}
               <div>
-                <p className="text-xs font-semibold text-brand-text-secondary uppercase tracking-wide mb-2">
-                  Tipo de integração
+                <p className="text-xs font-semibold text-brand-text-secondary uppercase tracking-wide mb-3">
+                  Passo a passo
                 </p>
-                <div className="space-y-2">
-                  {INTEGRATIONS.map(int => (
-                    <button
-                      key={int.id}
-                      onClick={() => setIntegration(int.id)}
-                      className="w-full text-left rounded-xl p-3 transition-all"
-                      style={{
-                        background: integration === int.id
-                          ? 'rgba(16,185,129,.08)'
-                          : 'rgb(var(--color-surface-elevated))',
-                        border: `1px solid ${integration === int.id ? 'rgba(16,185,129,.3)' : 'rgba(var(--color-border-light)/1)'}`,
-                      }}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">{int.icon}</span>
-                          <span className="text-xs font-semibold text-brand-text">{int.name}</span>
-                        </div>
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${int.badgeColor}`}>
-                          {int.badge}
-                        </span>
+                <div className="space-y-3">
+                  {STEPS.map((step, i) => (
+                    <div key={i} className="flex gap-3">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5"
+                        style={{ background: 'rgba(16,185,129,.15)', color: 'rgb(var(--color-primary))' }}>
+                        {step.num}
                       </div>
-                      <p className="text-[11px] text-brand-muted mt-1 pl-6">{int.desc}</p>
-                    </button>
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-brand-text mb-0.5">{step.title}</p>
+                        <p className="text-[11px] text-brand-text-secondary leading-relaxed">{step.body}</p>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
-
-              {/* Passos por tipo */}
-              {integration === 'evolution' && (
-                <div>
-                  <p className="text-xs font-semibold text-brand-text-secondary uppercase tracking-wide mb-3">
-                    Passo a passo — Evolution API
-                  </p>
-                  <div className="space-y-3">
-                    {STEPS_EVOLUTION.map((step, i) => (
-                      <div key={i} className="flex gap-3">
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5"
-                          style={{ background: 'rgba(16,185,129,.15)', color: 'rgb(var(--color-primary))' }}>
-                          {step.num}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-xs font-semibold text-brand-text mb-0.5">{step.title}</p>
-                          <p className="text-[11px] text-brand-text-secondary leading-relaxed">{step.body}</p>
-                          {step.link && (
-                            <a href={step.link.href} target="_blank" rel="noopener noreferrer"
-                              className="text-[11px] text-brand-primary hover:underline inline-flex items-center gap-1 mt-1">
-                              {step.link.label}
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
-                              </svg>
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {integration === 'official' && (
-                <div className="rounded-xl p-4 text-xs leading-relaxed space-y-2"
-                  style={{ background: 'rgba(59,130,246,.05)', border: '1px solid rgba(59,130,246,.15)' }}>
-                  <p className="font-semibold text-blue-400">WhatsApp Business API (Meta)</p>
-                  <p className="text-brand-text-secondary">Requer uma conta Meta Business verificada e aprovação da Meta para uso da API.</p>
-                  <ol className="space-y-1.5 text-brand-text-secondary list-none pl-0">
-                    <li className="flex gap-2"><span className="text-blue-400 flex-shrink-0">1.</span>Acesse developers.facebook.com e crie um app do tipo Business</li>
-                    <li className="flex gap-2"><span className="text-blue-400 flex-shrink-0">2.</span>Adicione o produto WhatsApp e configure o número de telefone</li>
-                    <li className="flex gap-2"><span className="text-blue-400 flex-shrink-0">3.</span>Obtenha o Phone Number ID e o Access Token</li>
-                    <li className="flex gap-2"><span className="text-blue-400 flex-shrink-0">4.</span>Informe os dados na tela de Números do ZapScript</li>
-                  </ol>
-                </div>
-              )}
-
-              {integration === 'twilio' && (
-                <div className="rounded-xl p-4 text-xs leading-relaxed space-y-2"
-                  style={{ background: 'rgba(139,92,246,.05)', border: '1px solid rgba(139,92,246,.15)' }}>
-                  <p className="font-semibold text-purple-400">Twilio — WhatsApp Sandbox / Business</p>
-                  <p className="text-brand-text-secondary">Requer conta Twilio ativa com o addon WhatsApp habilitado.</p>
-                  <ol className="space-y-1.5 text-brand-text-secondary list-none pl-0">
-                    <li className="flex gap-2"><span className="text-purple-400 flex-shrink-0">1.</span>Acesse console.twilio.com e vá em Messaging → WhatsApp</li>
-                    <li className="flex gap-2"><span className="text-purple-400 flex-shrink-0">2.</span>Obtenha o Account SID e o Auth Token nas configurações da conta</li>
-                    <li className="flex gap-2"><span className="text-purple-400 flex-shrink-0">3.</span>Copie o número WhatsApp no formato: +14155238886</li>
-                    <li className="flex gap-2"><span className="text-purple-400 flex-shrink-0">4.</span>Informe os dados na tela de Números do ZapScript</li>
-                  </ol>
-                </div>
-              )}
 
               {/* Dica de segurança */}
               <div className="rounded-xl px-4 py-3 text-xs"
                 style={{ background: 'rgba(16,185,129,.04)', border: '1px solid rgba(16,185,129,.1)' }}>
                 <p className="text-brand-muted leading-relaxed">
-                  🔒 <span className="font-semibold text-brand-primary">Suas credenciais são seguras.</span>
-                  {' '}API Keys são armazenadas criptografadas e nunca exibidas em texto puro após salvar.
+                  🔒 <span className="font-semibold text-brand-primary">Conexão segura.</span>
+                  {' '}O ZapScript cuida de toda a infraestrutura. Só transcrevemos os áudios que você envia — nenhuma outra mensagem é lida.
                 </p>
               </div>
             </div>
