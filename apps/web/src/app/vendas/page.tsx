@@ -5,11 +5,11 @@ export const metadata: Metadata = {
   title:       'Transcrição de Áudios do WhatsApp para Vendas e Atendimento — ZapScript',
   description: 'Cada áudio de lead não ouvido é uma venda perdida. O ZapScript transcreve e resume a intenção de compra de cada áudio automaticamente. Responda 3x mais rápido. Comece grátis.',
   keywords:    'responder áudio cliente whatsapp rápido, transcrição vendas whatsapp, áudio lead texto, atendimento whatsapp áudio',
-  alternates:  { canonical: 'https://zapscript.me/vendas' },
+  alternates:  { canonical: 'https://www.zapscript.me/vendas' },
   openGraph: {
     title:       'ZapScript para Vendas — Cada áudio de lead vira intenção de compra',
     description: 'Pare de perder vendas em áudios não ouvidos. Transcrição + resumo automático da intenção do lead. Comece grátis.',
-    url:         'https://zapscript.me/vendas',
+    url:         'https://www.zapscript.me/vendas',
     siteName:    'ZapScript',
     locale:      'pt_BR',
     type:        'website',

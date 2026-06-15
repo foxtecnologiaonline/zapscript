@@ -2756,7 +2756,7 @@ Sabe aquele áudio longo que você recebe no WhatsApp e fica com preguiça de ou
 
 Seu plano gratuito já vem com minutos prontos para usar. Não deixa expirar 😉
 
-👉 https://zapscript.me/dashboard
+👉 https://www.zapscript.me/dashboard
 
 Qualquer dúvida é só responder este e-mail — respondemos rápido.
 
@@ -2776,14 +2776,14 @@ Notamos que você criou sua conta mas ainda não conectou nenhum número de What
 A boa notícia: conectar é bem simples e leva menos de 60 segundos!
 
 Como fazer:
-1️⃣ Acesse: https://zapscript.me/dashboard/numeros
+1️⃣ Acesse: https://www.zapscript.me/dashboard/numeros
 2️⃣ Clique em "Adicionar número"
 3️⃣ Abra o WhatsApp no celular → Menu → Dispositivos conectados → Escanear QR code
 4️⃣ Pronto! A partir daí, todo áudio que você receber será transcrito automaticamente.
 
 Sem mensalidade agora, sem cartão de crédito. O plano gratuito já te dá minutos para experimentar.
 
-👉 Conectar agora: https://zapscript.me/dashboard/numeros
+👉 Conectar agora: https://www.zapscript.me/dashboard/numeros
 
 Qualquer dúvida, responda este e-mail — estamos aqui!
 
@@ -2810,7 +2810,7 @@ O plano Pro resolve de vez:
 
 Tudo por R$39,90/mês — menos que uma pizza. Cancele quando quiser.
 
-👉 Fazer upgrade: https://zapscript.me/dashboard/plano
+👉 Fazer upgrade: https://www.zapscript.me/dashboard/plano
 
 Não perca o ritmo que você já criou 💪
 
@@ -2834,7 +2834,7 @@ O plano Executive foi feito para quem usa de verdade:
 
 Por apenas R$20,00/mês a mais — ou seja, R$49,90 total.
 
-👉 Ver plano Executive: https://zapscript.me/dashboard/plano
+👉 Ver plano Executive: https://www.zapscript.me/dashboard/plano
 
 Se quiser conversar antes de decidir, é só responder este e-mail.
 
@@ -2859,7 +2859,7 @@ Por isso criamos o plano Executive — feito para empresas:
 
 Tudo por R$49,90/mês — sem taxa de implantação, sem fidelidade.
 
-👉 Ver plano Executive: https://zapscript.me/dashboard/plano
+👉 Ver plano Executive: https://www.zapscript.me/dashboard/plano
 
 Ou se preferir, me responda que conversamos sobre o que faz mais sentido para o seu caso.
 

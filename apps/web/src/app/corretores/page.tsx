@@ -5,11 +5,11 @@ export const metadata: Metadata = {
   title:       'Transcrição de Áudios do WhatsApp para Corretores de Imóveis — ZapScript',
   description: 'Cliente mandou áudio de 5 minutos descrevendo o imóvel? O ZapScript transforma cada áudio em ficha de texto + resumo automático. Feito para corretores. Grátis para começar.',
   keywords:    'transcrever áudio cliente imóvel, corretor whatsapp áudio, transcrição imobiliária, ficha imóvel áudio whatsapp',
-  alternates:  { canonical: 'https://zapscript.me/corretores' },
+  alternates:  { canonical: 'https://www.zapscript.me/corretores' },
   openGraph: {
     title:       'ZapScript para Corretores — Áudio do cliente vira ficha do imóvel',
     description: 'Pare de ouvir áudios longos de clientes. Transcrição automática + resumo da intenção de compra. Comece grátis.',
-    url:         'https://zapscript.me/corretores',
+    url:         'https://www.zapscript.me/corretores',
     siteName:    'ZapScript',
     locale:      'pt_BR',
     type:        'website',

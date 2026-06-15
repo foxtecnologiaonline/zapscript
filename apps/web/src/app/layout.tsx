@@ -11,8 +11,8 @@ export const metadata: Metadata = {
   },
   description: 'Transcrição automática, resumos inteligentes e etiquetas de prioridade para seus áudios do WhatsApp.',
   keywords:    'transcrição whatsapp, transcrição áudio, resumo áudio, ia, inteligência artificial, whatsapp, zapscript',
-  metadataBase: new URL('https://zapscript.me'),
-  authors:     [{ name: 'ZapScript', url: 'https://zapscript.me' }],
+  metadataBase: new URL('https://www.zapscript.me'),
+  authors:     [{ name: 'ZapScript', url: 'https://www.zapscript.me' }],
   creator:     'ZapScript',
   robots:      { index: true, follow: true },
   icons: {
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   openGraph: {
     title:       'ZapScript — Transcrição Inteligente de Áudios do WhatsApp',
     description: 'Transforme seus áudios do WhatsApp em textos, resumos e insights com IA. Comece grátis.',
-    url:         'https://zapscript.me',
+    url:         'https://www.zapscript.me',
     siteName:    'ZapScript',
     locale:      'pt_BR',
     type:        'website',

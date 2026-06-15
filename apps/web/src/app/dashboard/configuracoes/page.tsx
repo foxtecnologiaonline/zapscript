@@ -51,12 +51,12 @@ export default function ConfiguracoesPage() {
             <input
               className="field-input flex-1 font-mono text-xs"
               readOnly
-              value={`https://zapscript.me/cadastro?ref=${user.refCode}`}
+              value={`https://www.zapscript.me/cadastro?ref=${user.refCode}`}
             />
             <button
               className="btn-primary text-xs px-4 py-2 flex-shrink-0"
               onClick={() => {
-                navigator.clipboard.writeText(`https://zapscript.me/cadastro?ref=${user.refCode}`);
+                navigator.clipboard.writeText(`https://www.zapscript.me/cadastro?ref=${user.refCode}`);
               }}>
               Copiar
             </button>

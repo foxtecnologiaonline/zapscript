@@ -66,4 +66,4 @@ Disallow: /
 User-agent: YouBot
 Disallow: /
 
-Sitemap: https://zapscript.me/sitemap.xml
+Sitemap: https://www.zapscript.me/sitemap.xml

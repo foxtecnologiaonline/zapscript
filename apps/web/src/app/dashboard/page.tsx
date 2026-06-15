@@ -231,7 +231,7 @@ export default function DashboardPage() {
               <button
                 className="btn-primary text-xs px-3 py-2 flex-shrink-0"
                 onClick={() => {
-                  navigator.clipboard.writeText(`https://zapscript.me/cadastro?ref=${stats.refCode}`);
+                  navigator.clipboard.writeText(`https://www.zapscript.me/cadastro?ref=${stats.refCode}`);
                 }}>
                 Copiar
               </button>
@@ -239,7 +239,7 @@ export default function DashboardPage() {
           )}
           <button
             onClick={() => {
-              const link = `https://zapscript.me/cadastro?ref=${stats?.refCode ?? ''}`;
+              const link = `https://www.zapscript.me/cadastro?ref=${stats?.refCode ?? ''}`;
               const msg  = `Eu uso o ZapScript para transcrever áudios do WhatsApp automaticamente com IA — e você ganha 10 minutos grátis ao se cadastrar pelo meu link: ${link}`;
               if (navigator.share) {
                 navigator.share({ text: msg, url: link }).catch(() => {});

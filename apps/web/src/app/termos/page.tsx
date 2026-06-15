@@ -104,7 +104,7 @@ export default function TermosPage() {
         <p>A ZapScript não é afiliada, patrocinada ou endossada pelo WhatsApp ou Meta Platforms. O uso da plataforma deve estar em conformidade com os termos de serviço do WhatsApp.</p>
 
         <h2><span className="sn">04 /</span> Planos, Assinaturas e Reajuste <span className="legal-ref">Art. 46 e 51 CDC · Art. 317 CC</span></h2>
-        <p>O ZapScript opera exclusivamente no modelo de assinatura recorrente com renovação automática. Os planos, limites e valores vigentes estão disponíveis em <a href="https://zapscript.me/precos">zapscript.me/precos</a>.</p>
+        <p>O ZapScript opera exclusivamente no modelo de assinatura recorrente com renovação automática. Os planos, limites e valores vigentes estão disponíveis em <a href="https://www.zapscript.me/precos">zapscript.me/precos</a>.</p>
         <table className="table-legal">
           <thead><tr><th>Plano</th><th>Ciclo</th><th>Renovação</th><th>Cancelamento</th></tr></thead>
           <tbody>
@@ -225,7 +225,7 @@ export default function TermosPage() {
           <p>🔒 Privacidade / LGPD: <a href="mailto:privacidade@zapscript.me">privacidade@zapscript.me</a></p>
           <p>👤 <strong>Encarregado de Dados (DPO):</strong> Roberto Frattari Tulio Silva — <a href="mailto:privacidade@zapscript.me">privacidade@zapscript.me</a></p>
           <p>🏢 <strong>Controlador:</strong> FOX TecnologIA LTDA — CNPJ 66.586.436/0001-12</p>
-          <p>🌐 <a href="https://zapscript.me">zapscript.me</a></p>
+          <p>🌐 <a href="https://www.zapscript.me">zapscript.me</a></p>
         </div>
       </main>
 

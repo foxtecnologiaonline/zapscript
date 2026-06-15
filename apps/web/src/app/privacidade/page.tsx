@@ -94,7 +94,7 @@ export default function PrivacidadePage() {
           <p><strong className="legal-strong">Endereço:</strong> Rua João Alfredo, 152 – Nossa Senhora da Abadia – Uberaba/MG – CEP 38025-300, Brasil</p>
           <p><strong className="legal-strong">Encarregado de Proteção de Dados (Encarregado/DPO):</strong> Roberto Frattari Tulio Silva</p>
           <p><strong className="legal-strong">E-mail do Encarregado:</strong> <a href="mailto:privacidade@zapscript.me" className="legal-a">privacidade@zapscript.me</a></p>
-          <p><strong className="legal-strong">Site:</strong> <a href="https://zapscript.me" className="legal-a">zapscript.me</a> &nbsp;·&nbsp; <strong className="legal-strong">Atendimento:</strong> <a href="mailto:suporte@zapscript.me" className="legal-a">suporte@zapscript.me</a></p>
+          <p><strong className="legal-strong">Site:</strong> <a href="https://www.zapscript.me" className="legal-a">zapscript.me</a> &nbsp;·&nbsp; <strong className="legal-strong">Atendimento:</strong> <a href="mailto:suporte@zapscript.me" className="legal-a">suporte@zapscript.me</a></p>
         </div>
         <p className="legal-p">A ZapScript é uma plataforma SaaS de transcrição automatizada de áudios do WhatsApp, operada pela FOX TecnologIA, responsável pelo tratamento dos dados pessoais nos termos da LGPD.</p>
 
@@ -186,7 +186,7 @@ export default function PrivacidadePage() {
         <div className="box">
           <p><strong className="legal-strong">Como exercer seus direitos:</strong></p>
           <p>📧 E-mail: <a href="mailto:privacidade@zapscript.me" className="legal-a">privacidade@zapscript.me</a> — Prazo de resposta: <strong className="legal-strong">15 dias corridos</strong> (Art. 18 §5º LGPD).</p>
-          <p>🖥 Painel da conta: funcionalidades de acesso, correção e exclusão disponíveis em <a href="https://zapscript.me/dashboard" className="legal-a">zapscript.me/dashboard</a>.</p>
+          <p>🖥 Painel da conta: funcionalidades de acesso, correção e exclusão disponíveis em <a href="https://www.zapscript.me/dashboard" className="legal-a">zapscript.me/dashboard</a>.</p>
           <p>Em caso de insatisfação, você pode registrar reclamação junto à <strong className="legal-strong">ANPD</strong> em <a href="https://www.gov.br/anpd" target="_blank" rel="noopener noreferrer" className="legal-a">gov.br/anpd</a>.</p>
         </div>
 

@@ -6,11 +6,11 @@ export const metadata: Metadata = {
   title:       'Blog — Transcrição de Áudio WhatsApp, Dicas e Produtividade',
   description: 'Guias, comparativos e dicas sobre transcrição de áudio do WhatsApp com IA. Aprenda a economizar horas por dia com automação inteligente.',
   keywords:    'blog transcrição whatsapp, dicas produtividade whatsapp, ia transcrição audio, como transcrever audio whatsapp',
-  alternates:  { canonical: 'https://zapscript.me/blog' },
+  alternates:  { canonical: 'https://www.zapscript.me/blog' },
   openGraph: {
     title:       'Blog ZapScript — Transcrição de Áudio WhatsApp com IA',
     description: 'Guias, comparativos e dicas sobre transcrição de áudio do WhatsApp com IA.',
-    url:         'https://zapscript.me/blog',
+    url:         'https://www.zapscript.me/blog',
     type:        'website',
   },
 };

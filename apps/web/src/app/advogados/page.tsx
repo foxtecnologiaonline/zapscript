@@ -5,11 +5,11 @@ export const metadata: Metadata = {
   title:       'Transcrição de Áudios do WhatsApp para Advogados — ZapScript',
   description: 'Transforme o relato em áudio do cliente em texto pesquisável e organizado. Criptografia AES-256, conformidade LGPD, servidores no Brasil. Feito para advogados. Comece grátis.',
   keywords:    'transcrever áudio cliente whatsapp advogado, registro escrito relato cliente, transcrição jurídica whatsapp, advogado áudio cliente texto',
-  alternates:  { canonical: 'https://zapscript.me/advogados' },
+  alternates:  { canonical: 'https://www.zapscript.me/advogados' },
   openGraph: {
     title:       'ZapScript para Advogados — Relato do cliente em texto pesquisável',
     description: 'O relato em áudio do cliente vira texto organizado e seguro. Criptografia padrão bancário, LGPD. Comece grátis.',
-    url:         'https://zapscript.me/advogados',
+    url:         'https://www.zapscript.me/advogados',
     siteName:    'ZapScript',
     locale:      'pt_BR',
     type:        'website',

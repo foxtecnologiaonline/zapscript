@@ -83,7 +83,7 @@ export async function generateMetadata(
     openGraph: {
       title:       meta.title,
       description: meta.description,
-      url:         `https://zapscript.me/lp${key !== 'default' ? `?v=${key}` : ''}`,
+      url:         `https://www.zapscript.me/lp${key !== 'default' ? `?v=${key}` : ''}`,
       type:        'website',
       siteName:    'ZapScript',
     },

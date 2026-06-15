@@ -15,14 +15,14 @@ export async function generateMetadata(
   const post = getPost(params.slug);
   if (!post) return { title: 'Post não encontrado' };
 
-  const canonical = `https://zapscript.me/blog/${post.slug}`;
+  const canonical = `https://www.zapscript.me/blog/${post.slug}`;
 
   return {
     title:       post.title,
     description: post.description,
     keywords:    post.keywords.join(', '),
     alternates:  { canonical },
-    authors:     [{ name: 'ZapScript', url: 'https://zapscript.me' }],
+    authors:     [{ name: 'ZapScript', url: 'https://www.zapscript.me' }],
     openGraph: {
       title:           post.title,
       description:     post.description,
@@ -68,20 +68,20 @@ function ArticleJsonLd({ post }: { post: BlogPost }) {
     author: {
       '@type': 'Organization',
       name:    'ZapScript',
-      url:     'https://zapscript.me',
+      url:     'https://www.zapscript.me',
     },
     publisher: {
       '@type': 'Organization',
       name:    'ZapScript',
-      url:     'https://zapscript.me',
+      url:     'https://www.zapscript.me',
     },
     mainEntityOfPage: {
       '@type': 'WebPage',
-      '@id':   `https://zapscript.me/blog/${post.slug}`,
+      '@id':   `https://www.zapscript.me/blog/${post.slug}`,
     },
     keywords:          post.keywords.join(', '),
     inLanguage:        'pt-BR',
-    url:               `https://zapscript.me/blog/${post.slug}`,
+    url:               `https://www.zapscript.me/blog/${post.slug}`,
   };
 
   return (
@@ -98,9 +98,9 @@ function BreadcrumbJsonLd({ post }: { post: BlogPost }) {
     '@context': 'https://schema.org',
     '@type':    'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Início',  item: 'https://zapscript.me' },
-      { '@type': 'ListItem', position: 2, name: 'Blog',    item: 'https://zapscript.me/blog' },
-      { '@type': 'ListItem', position: 3, name: post.title, item: `https://zapscript.me/blog/${post.slug}` },
+      { '@type': 'ListItem', position: 1, name: 'Início',  item: 'https://www.zapscript.me' },
+      { '@type': 'ListItem', position: 2, name: 'Blog',    item: 'https://www.zapscript.me/blog' },
+      { '@type': 'ListItem', position: 3, name: post.title, item: `https://www.zapscript.me/blog/${post.slug}` },
     ],
   };
   return (

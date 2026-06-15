@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next';
 import { POSTS } from './blog/posts';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = 'https://zapscript.me';
+  const base = 'https://www.zapscript.me';
 
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: base,                priority: 1.0,  changeFrequency: 'weekly'  },
