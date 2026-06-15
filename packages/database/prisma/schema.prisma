@@ -95,6 +95,14 @@ model WhatsappNumber {
   zapiInstanceId   String?          // sem @unique — múltiplos usuários podem compartilhar a mesma instância Z-API
   zapiToken        String?          // Token da instância Z-API criada dinamicamente
   privateMode      Boolean          @default(false)  // Modo privado: transcrição enviada ao próprio número
+  // ── Conexão via API oficial da Meta (WhatsApp Cloud API / Embedded Signup) ──
+  // Usado apenas para o fluxo de App Review da Meta. Usuários reais seguem no Evolution.
+  provider           String         @default("evolution")  // 'evolution' | 'meta'
+  metaWabaId         String?                                // WhatsApp Business Account ID
+  metaPhoneNumberId  String?                                // Phone Number ID (Cloud API)
+  metaBusinessId     String?                                // Business Manager ID
+  metaAccessTokenEnc String?                                // Token de acesso AES-256-GCM (encryptStr)
+  metaTokenExpiresAt DateTime?                              // Expiração do token (se aplicável)
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)

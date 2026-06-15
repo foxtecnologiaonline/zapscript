@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
+import MetaEmbeddedSignup from './MetaEmbeddedSignup';
 
 interface WNumber {
   id: string;
@@ -794,6 +795,9 @@ export default function NumerosPage() {
           ))}
         </div>
       )}
+
+      {/* Conexão via API oficial da Meta (gated por env — só p/ App Review) */}
+      <MetaEmbeddedSignup />
 
       {/* Modal de conexão */}
       {connectNumber && (
