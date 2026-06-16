@@ -662,9 +662,6 @@ export default async function authRoutes(app: FastifyInstance) {
         refCode:          true,
         createdAt:        true,
         termsAcceptedAt:  true,
-        // Marcação de afiliado — usada no front para liberar o menu/página "Afiliados"
-        // (apenas afiliados aprovados têm acesso).
-        affiliate: { select: { status: true } },
         subscription: {
           select: {
             id:              true,
@@ -689,8 +686,23 @@ export default async function authRoutes(app: FastifyInstance) {
       },
     });
     if (!user) return null;
+
+    // Marcação de afiliado — usada no front para liberar o menu/página "Afiliados".
+    // Consulta isolada e tolerante a falhas: se a tabela/migração não existir
+    // (ou qualquer erro), degrada para "sem marcação" em vez de derrubar o /me.
+    let affiliate: { status: string } | null = null;
+    try {
+      const aff = await prisma.affiliate.findUnique({
+        where:  { userId: req.user.sub },
+        select: { status: true },
+      });
+      if (aff) affiliate = aff;
+    } catch (err: any) {
+      req.log?.warn(`[Auth] Falha ao ler marcação de afiliado (ignorada): ${err?.message}`);
+    }
+
     // C2: decriptar document (AES-256-GCM) antes de retornar ao frontend
-    return { ...user, document: decryptStr(user.document) || null };
+    return { ...user, document: decryptStr(user.document) || null, affiliate };
   });
 
   // ── PUT /auth/profile ─────────────────────────────────────────────────────

@@ -40,7 +40,7 @@ export function middleware(req: NextRequest) {
     'Content-Security-Policy',
     [
       `default-src 'self'`,
-      `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://connect.facebook.net`, // Next.js requer unsafe-eval em dev; inline p/ hydration; GA4/Ads + Meta Pixel
+      `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://www.google.com https://connect.facebook.net`, // Next.js requer unsafe-eval em dev; inline p/ hydration; GA4 + Google Ads (conversão/remarketing) + Meta Pixel
       `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`, // estilos inline + Google Fonts
       `img-src 'self' data: blob: https:`,                            // QR codes (data:), imagens externas
       `connect-src 'self' ${apiUrl} ${supabaseUrl} wss: https:`,     // API, Supabase, WebSocket

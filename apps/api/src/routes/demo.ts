@@ -89,15 +89,19 @@ export default async function demoRoutes(app: FastifyInstance) {
       const data = await req.file().catch(() => null);
       if (!data) return reply.code(400).send({ error: 'Envie um arquivo de áudio.' });
 
-      // E-mail (lead) — obrigatório para liberar o resultado
+      // Consumir o arquivo primeiro: só após drenar o stream do file os campos
+      // que vêm DEPOIS dele no corpo multipart ficam disponíveis em data.fields.
+      const buffer   = await data.toBuffer();
+      const filename = data.filename || 'audio.ogg';
+
+      // E-mail (lead) — obrigatório para liberar o resultado. Lido após o buffer
+      // para tolerar qualquer ordem dos campos no multipart.
       const email = (data.fields?.email?.value || '').toString().trim().toLowerCase();
       if (!email || !EMAIL_RE.test(email)) {
         return reply.code(400).send({ error: 'Informe um e-mail válido para ver o resultado.' });
       }
 
-      const buffer   = await data.toBuffer();
-      const filename = data.filename || 'audio.ogg';
-      const ext      = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+      const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
       if (!ALLOWED.includes(ext)) {
         return reply.code(400).send({ error: `Formato não suportado. Use: ${ALLOWED.join(', ')}` });
       }

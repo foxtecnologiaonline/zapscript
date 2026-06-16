@@ -42,8 +42,10 @@ function DemoTranscribe() {
     setLoading(true);
     try {
       const fd = new FormData();
-      fd.append('file', file);
+      // E-mail ANTES do arquivo: com multipart em streaming, o backend só
+      // enxerga campos que vêm antes do file ao chamar req.file().
       fd.append('email', email.trim().toLowerCase());
+      fd.append('file', file);
       const res = await api.postFormData<{ ok: boolean } & DemoResult>('/demo/transcribe', fd);
       setResult({ text: res.text, bullets: res.bullets || [], durationSec: res.durationSec });
     } catch (e: any) {
