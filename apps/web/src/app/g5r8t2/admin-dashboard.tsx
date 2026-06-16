@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 
 /* ── Tipos ─────────────────────────────────────────────── */
-export type Tab = 'dashboard' | 'metas' | 'suporte' | 'monitoramento' | 'comunicacao' | 'usuarios' | 'financeiro' | 'afiliados';
+export type Tab = 'dashboard' | 'metas' | 'suporte' | 'monitoramento' | 'comunicacao' | 'usuarios' | 'financeiro' | 'afiliados' | 'leads';
 
 /* ── Constantes ────────────────────────────────────────── */
 const API  = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -769,6 +769,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
               ['usuarios',      '👥', 'Usuários'],
               ['financeiro',    '💰', 'Financeiro'],
               ['afiliados',     '🤝', 'Afiliados'],
+              ['leads',         '📥', 'Leads'],
             ] as [Tab, string, string][]).map(([t, icon, label]) => (
               <button key={t} onClick={() => goTab(t)}
                 className={`whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
@@ -1235,6 +1236,12 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           </div>
         )}
 
+        {tab === 'leads' && (
+          <div className="space-y-5">
+            <LeadsPanel apiBase={API} token={token} notify={notify} />
+          </div>
+        )}
+
       </div>
 
       {/* Painel individual do usuário */}
@@ -1452,6 +1459,113 @@ function AffiliatesPanel({ apiBase, token, notify }: {
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+/* ── Leads da demo pública ("transcreva 1 áudio grátis") ── */
+function LeadsPanel({ apiBase, token, notify }: {
+  apiBase: string; token: string; notify: (t: string, type?: 'ok' | 'err' | 'warn') => void;
+}) {
+  const [leads, setLeads]   = useState<any[]>([]);
+  const [total, setTotal]   = useState(0);
+  const [uniqueEmails, setUniqueEmails] = useState(0);
+  const [q, setQ]           = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const hdr = { 'x-admin-token': token } as Record<string, string>;
+
+  const load = useCallback(async (search: string) => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/demo-leads?q=${encodeURIComponent(search)}`, { headers: hdr });
+      const d = await r.json();
+      setLeads(d.leads || []);
+      setTotal(d.total || 0);
+      setUniqueEmails(d.uniqueEmails || 0);
+    } catch { notify('Erro ao carregar leads', 'err'); }
+    finally { setLoading(false); }
+  }, [apiBase, token]);
+
+  useEffect(() => { load(''); }, [load]);
+
+  function exportCsv() {
+    if (!leads.length) { notify('Nada para exportar', 'warn'); return; }
+    const header = ['email', 'duracao_seg', 'ip', 'data'];
+    const rows = leads.map(l => [
+      l.email,
+      l.durationSec != null ? Math.round(l.durationSec) : '',
+      l.ip || '',
+      new Date(l.createdAt).toISOString(),
+    ]);
+    const esc = (v: any) => {
+      const s = String(v ?? '');
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = [header, ...rows].map(r => r.map(esc).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `leads-demo-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <KpiCard title="Leads (total)"  value={String(total)}        sub="" icon="📥" />
+        <KpiCard title="E-mails únicos" value={String(uniqueEmails)} sub="" icon="✉️" color="#6ee7b7" />
+        <KpiCard title="Exibindo"       value={String(leads.length)} sub="" icon="👁️" color="#a7f3d0" />
+      </div>
+
+      <div className="flex gap-2 flex-wrap items-center">
+        <input
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') load(q.trim().toLowerCase()); }}
+          placeholder="Filtrar por e-mail..."
+          className="flex-1 min-w-[180px] bg-[#0d1c19] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] placeholder:text-[rgba(16,185,129,.3)] outline-none focus:border-[rgba(16,185,129,.4)]"
+        />
+        <button onClick={() => load(q.trim().toLowerCase())}
+          className="px-4 py-2 rounded-lg text-xs font-semibold bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.2)] hover:bg-[rgba(16,185,129,.25)]">
+          Buscar
+        </button>
+        <button onClick={exportCsv} disabled={!leads.length}
+          className="px-4 py-2 rounded-lg text-xs font-semibold bg-[rgba(16,185,129,.1)] text-[#6ee7b7] border border-[rgba(16,185,129,.15)] hover:bg-[rgba(16,185,129,.2)] disabled:opacity-40">
+          ⬇ Exportar CSV
+        </button>
+      </div>
+
+      {loading ? <div className="text-[rgba(16,185,129,.4)] text-sm py-6">Carregando...</div> : (
+        leads.length === 0
+          ? <div className="text-[rgba(16,185,129,.4)] text-sm py-6 text-center">Nenhum lead {q ? 'para esse filtro' : 'ainda'}.</div>
+          : (
+            <div className="overflow-x-auto bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-[rgba(16,185,129,.4)] border-b border-[rgba(16,185,129,.08)]">
+                    <th className="px-4 py-2.5 font-medium">E-mail</th>
+                    <th className="px-4 py-2.5 font-medium">Áudio</th>
+                    <th className="px-4 py-2.5 font-medium">IP</th>
+                    <th className="px-4 py-2.5 font-medium">Data</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leads.map(l => (
+                    <tr key={l.id} className="border-t border-[rgba(16,185,129,.05)]">
+                      <td className="px-4 py-2.5 text-[#d1fae5]">{l.email}</td>
+                      <td className="px-4 py-2.5 text-[rgba(16,185,129,.6)]">{l.durationSec != null ? `${Math.round(l.durationSec)}s` : '—'}</td>
+                      <td className="px-4 py-2.5 text-[rgba(16,185,129,.4)] font-mono text-[11px]">{l.ip || '—'}</td>
+                      <td className="px-4 py-2.5 text-[rgba(16,185,129,.5)] text-[11px]">{new Date(l.createdAt).toLocaleString('pt-BR')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
       )}
     </div>
   );

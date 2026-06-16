@@ -2343,6 +2343,34 @@ export default async function adminRoutes(app: FastifyInstance) {
       return { ok: true };
     }
   );
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Leads da demo pública ("transcreva 1 áudio grátis" da landing page)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // GET /demo-leads?q=&limit= — lista leads (e-mail completo p/ contato) + totais
+  app.get<{ Querystring: { q?: string; limit?: string } }>(
+    '/demo-leads',
+    { preHandler: [adminAuth] },
+    async (req) => {
+      const q     = (req.query.q || '').trim().toLowerCase();
+      const limit = Math.min(Math.max(parseInt(req.query.limit || '1000', 10) || 1000, 1), 5000);
+      const where: any = q ? { email: { contains: q, mode: 'insensitive' } } : {};
+
+      const [leads, total, distinct] = await Promise.all([
+        prisma.demoLead.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          take:    limit,
+          select:  { id: true, email: true, ip: true, durationSec: true, createdAt: true },
+        }),
+        prisma.demoLead.count({ where }),
+        prisma.demoLead.findMany({ where, distinct: ['email'], select: { email: true } }),
+      ]);
+
+      return { leads, total, uniqueEmails: distinct.length };
+    }
+  );
 }
 
 /** Escapa HTML em templates de e-mail do admin. */
