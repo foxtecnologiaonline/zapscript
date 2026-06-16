@@ -162,6 +162,16 @@ io.on('connection', (socket: Socket) => {
     // Note: WhatsApp messages now come via webhooks (Meta Cloud API)
     // Socket.IO emits 'audio_received', 'text_received', etc. when messages arrive
   });
+
+  // Sala de notificações do painel de suporte — só para admins autenticados
+  socket.on('join:suporte', async () => {
+    const uid = socket.data.userId;
+    if (!uid) return;
+    const u = await prisma.user.findUnique({ where: { id: uid }, select: { isAdmin: true } }).catch(() => null);
+    if (!u?.isAdmin) { app.log.warn(`[Socket.IO] join:suporte negado para ${uid}`); return; }
+    socket.join('admin:suporte');
+    app.log.info(`[Socket.IO] admin ${uid} entrou em admin:suporte`);
+  });
 });
 
 app.register(cors, {
@@ -279,11 +289,14 @@ app.register(import('./routes/internal'),       { prefix: '/internal' });
 app.register(import('./routes/support'),        { prefix: '/support' });
 app.register(import('./routes/admin'),          { prefix: '/sys/g5r8t2' });
 app.register(import('./routes/admin-master'),   { prefix: '/sys/g5r8t2/master' });
+app.register(import('./routes/suporte-admin'),  { prefix: '/sys/g5r8t2/suporte' });
 app.register(import('./routes/invites'),         { prefix: '/invites' });
 app.register(import('./routes/privacy'),         { prefix: '/privacy' });
 app.register(import('./routes/webhook-config'),  { prefix: '/webhook-config' });
 app.register(import('./routes/nps'),             { prefix: '/nps' });
 app.register(import('./routes/meta-embedded'),   { prefix: '/meta' });
+app.register(import('./routes/affiliates'),      { prefix: '/affiliates' });
+app.register(import('./routes/demo'),            { prefix: '/demo' });
 
 // ── WhatsApp Webhook (Meta Cloud API) ──────────────────────
 // Registrar sempre — webhook precisa responder para validação mesmo sem token configurado
@@ -296,6 +309,10 @@ app.register(import('./routes/twilio-webhook'), { prefix: '/webhook/twilio' });
 // ── WhatsApp Webhook (Evolution API — dispositivo adicional) ────────────────
 // Cada usuário tem instância dedicada — sem compartilhamento entre usuários
 app.register(import('./routes/evolution-webhook'), { prefix: '/webhook/evolution' });
+
+// ── Agente de Suporte — WhatsApp Business (Meta Cloud API) ──────────────────
+// Número de atendimento ao cliente; mensagens → fila de aprovação no painel
+app.register(import('./routes/suporte-whatsapp'), { prefix: '/webhook/suporte/whatsapp' });
 if (process.env.WHATSAPP_API_TOKEN) {
   app.log.info('✅ WhatsApp Cloud API webhook registrado com token');
 } else {

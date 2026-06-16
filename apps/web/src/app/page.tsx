@@ -1,8 +1,198 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ThemeToggleButton } from '@/components/ThemeProvider';
+import { api } from '@/lib/api';
+
+/* ── Isca de topo de funil — "Transcreva 1 áudio grátis" ──
+   Upload de áudio + e-mail (lead) → POST /demo/transcribe.
+   Sem cadastro: o visitante prova o valor antes de criar conta. */
+const DEMO_ACCEPT = '.ogg,.opus,.mp3,.mp4,.m4a,.wav,.webm,.aac,.flac,audio/*';
+const DEMO_MAX_BYTES = 4 * 1024 * 1024;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type DemoResult = { text: string; bullets: string[]; durationSec: number };
+
+function DemoTranscribe() {
+  const [file, setFile]       = useState<File | null>(null);
+  const [email, setEmail]     = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [result, setResult]   = useState<DemoResult | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function pickFile(f: File | null) {
+    setError(null);
+    if (!f) { setFile(null); return; }
+    if (f.size > DEMO_MAX_BYTES) {
+      setError('Áudio muito grande para a demo (máx. 4MB / ~5 min). Crie sua conta para áudios maiores.');
+      setFile(null);
+      return;
+    }
+    setFile(f);
+  }
+
+  async function submit() {
+    setError(null);
+    if (!file) { setError('Escolha um arquivo de áudio.'); return; }
+    if (!EMAIL_RE.test(email.trim())) { setError('Informe um e-mail válido para ver o resultado.'); return; }
+
+    setLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('email', email.trim().toLowerCase());
+      const res = await api.postFormData<{ ok: boolean } & DemoResult>('/demo/transcribe', fd);
+      setResult({ text: res.text, bullets: res.bullets || [], durationSec: res.durationSec });
+    } catch (e: any) {
+      setError(e?.error || e?.message || 'Não foi possível transcrever agora. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function reset() {
+    setFile(null); setResult(null); setError(null); setEmail('');
+    if (inputRef.current) inputRef.current.value = '';
+  }
+
+  return (
+    <div className="rounded-3xl p-6 border"
+      style={{
+        background: 'rgb(var(--color-surface-elevated))',
+        borderColor: 'rgba(16,185,129,.25)',
+        boxShadow: 'var(--shadow-glow), var(--shadow-md)',
+      }}>
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: 'rgba(16,185,129,.15)', color: 'rgb(var(--color-primary))' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2a3 3 0 013 3v7a3 3 0 11-6 0V5a3 3 0 013-3z"/>
+            <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/>
+          </svg>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-primary))' }}>
+            Experimente agora · grátis
+          </p>
+          <h2 className="font-display font-bold text-xl tracking-tight leading-tight">
+            Transcreva 1 áudio em segundos
+          </h2>
+        </div>
+      </div>
+
+      {!result ? (
+        <>
+          <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+            Envie um áudio do seu WhatsApp e veja o texto + resumo na hora. Sem instalar nada, sem cadastro.
+          </p>
+
+          {/* Dropzone / file picker */}
+          <button type="button"
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files?.[0] || null); }}
+            className="w-full rounded-2xl px-4 py-6 mb-3 flex flex-col items-center gap-2 transition-all"
+            style={{
+              border: `1.5px dashed ${dragOver ? 'rgb(var(--color-primary))' : 'rgb(var(--color-border))'}`,
+              background: dragOver ? 'rgba(16,185,129,.06)' : 'rgb(var(--color-surface))',
+              cursor: 'pointer',
+            }}>
+            <span className="text-2xl">{file ? '🎧' : '📤'}</span>
+            <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-text))' }}>
+              {file ? file.name : 'Toque para escolher um áudio'}
+            </span>
+            <span className="text-[11px]" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              {file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : 'OGG, MP3, M4A, WAV… até 4MB'}
+            </span>
+          </button>
+          <input ref={inputRef} type="file" accept={DEMO_ACCEPT} className="hidden"
+            onChange={(e) => pickFile(e.target.files?.[0] || null)} />
+
+          {/* E-mail */}
+          <input type="email" inputMode="email" autoComplete="email"
+            value={email} onChange={(e) => setEmail(e.target.value)}
+            placeholder="Seu melhor e-mail"
+            className="w-full rounded-2xl px-4 py-3 mb-3 text-sm outline-none"
+            style={{
+              border: '1.5px solid rgb(var(--color-border))',
+              background: 'rgb(var(--color-surface))',
+              color: 'rgb(var(--color-text))',
+            }} />
+
+          {error && (
+            <p className="text-xs mb-3 px-1" style={{ color: '#f87171' }}>{error}</p>
+          )}
+
+          <button type="button" onClick={submit} disabled={loading}
+            className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2"
+            style={{ opacity: loading ? 0.7 : 1, cursor: loading ? 'wait' : 'pointer' }}>
+            {loading ? (
+              <>
+                <span className="inline-block w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                Transcrevendo…
+              </>
+            ) : (
+              <>
+                Transcrever grátis
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+              </>
+            )}
+          </button>
+          <p className="text-[10px] text-center mt-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
+            🔒 Seu áudio nunca é armazenado. Processado e descartado na hora.
+          </p>
+        </>
+      ) : (
+        <div style={{ animation: 'fadeInUp .4s ease both' }}>
+          {/* Transcrição */}
+          <p className="text-[11px] font-semibold mb-1.5" style={{ color: 'rgb(var(--color-primary))' }}>📝 Transcrição:</p>
+          <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgb(var(--color-text))' }}>
+            {result.text}
+          </p>
+
+          {/* Pontos-chave */}
+          {result.bullets.length > 0 && (
+            <div className="pt-3 mb-4 space-y-2" style={{ borderTop: '1px solid rgb(var(--color-border-light))' }}>
+              <p className="text-[11px] font-semibold mb-2" style={{ color: 'rgb(var(--color-primary))' }}>🎯 Pontos-chave:</p>
+              {result.bullets.map((b, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="flex-shrink-0 text-sm leading-none mt-0.5" style={{ color: 'rgb(var(--color-primary))' }}>✅</span>
+                  <span className="text-sm leading-relaxed" style={{ color: 'rgb(var(--color-text-secondary))' }}>{b}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Upsell */}
+          <div className="rounded-2xl p-4 mb-3" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(16,185,129,.2)' }}>
+            <p className="text-sm font-semibold mb-1" style={{ color: 'rgb(var(--color-text))' }}>
+              Gostou? Faça isso automático no seu WhatsApp.
+            </p>
+            <p className="text-xs font-light mb-3" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Conecte seu número e todo áudio vira texto e resumo sozinho. Comece grátis — 1º mês do Pro por R$ 19,90.
+            </p>
+            <Link href="/cadastro" className="btn-primary w-full py-3 text-sm font-semibold flex items-center justify-center gap-2">
+              Criar minha conta grátis
+            </Link>
+          </div>
+
+          <button type="button" onClick={reset}
+            className="w-full py-2.5 rounded-2xl text-sm font-semibold transition-all"
+            style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-secondary))', background: 'transparent' }}>
+            Transcrever outro áudio
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ══════════════════════════════════════════════════════
    Landing Page — Clone fiel do zapscript-audio.youware.app
@@ -10,32 +200,6 @@ import { ThemeToggleButton } from '@/components/ThemeProvider';
    Max-width: 430px (mobile-first)
    Cores, layout, textos e efeitos extraídos do HTML original
 ══════════════════════════════════════════════════════ */
-
-/* ── Rotating words ── */
-const ROTATING_WORDS = ['Textos', 'Resumos', 'Tarefas', 'Insights'];
-
-function RotatingText() {
-  const [idx, setIdx] = useState(0);
-  const [key, setKey] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => {
-      setIdx(i => (i + 1) % ROTATING_WORDS.length);
-      setKey(k => k + 1);
-    }, 2200);
-    return () => clearInterval(t);
-  }, []);
-  return (
-    <span className="inline-block overflow-hidden" style={{ verticalAlign: 'bottom' }}>
-      <span
-        key={key}
-        className="inline-block text-gradient font-bold"
-        style={{ animation: 'rotateWordIn .45s cubic-bezier(.4,0,.2,1) both' }}
-      >
-        {ROTATING_WORDS[idx]}
-      </span>
-    </span>
-  );
-}
 
 /* ── Chat Demo — Veja como funciona ── */
 const WAVE_HEIGHTS = [4,8,12,15,10,6,13,16,11,7,5,10,15,11,6,9,14,12,7,5,9,13];
@@ -313,7 +477,7 @@ const FEATURES = [
       </svg>
     ),
     iconBg: 'rgba(16,185,129,.15)', iconColor: 'rgb(52,211,153)',
-    title: 'Transcrição Instantânea',
+    title: 'Leia em segundos',
     desc: 'Converta áudios longos em texto em segundos com alta precisão.',
   },
   {
@@ -323,7 +487,7 @@ const FEATURES = [
       </svg>
     ),
     iconBg: 'rgba(245,158,11,.15)', iconColor: 'rgb(245,158,11)',
-    title: 'Ponto Chave',
+    title: 'Só o que importa',
     desc: 'Receba automaticamente o ponto principal de cada áudio — direto e objetivo.',
   },
   {
@@ -333,7 +497,7 @@ const FEATURES = [
       </svg>
     ),
     iconBg: 'rgba(16,185,129,.10)', iconColor: 'rgb(52,211,153)',
-    title: 'Privacidade',
+    title: 'Ninguém vê seu áudio',
     desc: 'Áudio nunca armazenado. Transcrições criptografadas no banco. Processamento via Whisper (OpenAI) e Claude (Anthropic).',
   },
 ];
@@ -438,6 +602,31 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: '🔒 Modo Privado de transcrição',       vals: [false, true] },
 ];
 
+/* ── Depoimentos (prova social) — ilustrativos ── */
+const TESTIMONIALS = [
+  {
+    text: 'Minha equipe recebia mais de 50 áudios por dia. Com o ZapScript, viramos texto em segundos. Triplicou nossa agilidade no atendimento ao cliente.',
+    name: 'Fernanda S.',
+    role: 'Advogada · São Paulo/SP',
+    initials: 'FS',
+    color: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+  },
+  {
+    text: 'Antes eu ouvia o mesmo áudio três vezes para não perder nada. Agora leio o resumo em 10 segundos e sigo em frente. Mudou minha rotina de vendas.',
+    name: 'Ricardo M.',
+    role: 'Consultor Comercial · Campinas/SP',
+    initials: 'RM',
+    color: 'linear-gradient(135deg,#0ea5e9,#0d9488)',
+  },
+  {
+    text: 'Trabalho com 4 executivos e cada um manda áudio o dia inteiro. O ZapScript organiza tudo em tópicos claros. Nunca mais perdi uma tarefa importante.',
+    name: 'Camila T.',
+    role: 'Assistente Executiva · Belo Horizonte/MG',
+    initials: 'CT',
+    color: 'linear-gradient(135deg,#10b981,#059669)',
+  },
+];
+
 export default function HomePage() {
   // Planos — tabela comparativa
   const [showTable, setShowTable] = useState(false);
@@ -471,23 +660,21 @@ export default function HomePage() {
               <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold"
                 style={{ background: 'rgba(var(--color-primary-light)/.6)', color: 'rgb(var(--color-primary))' }}>
                 <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'rgb(var(--color-primary))' }} />
-                Transcrição com IA
+                Leia em vez de ouvir
               </span>
             </div>
 
             {/* H1 */}
             <h1 className="font-display font-bold leading-[1.06] tracking-tight mb-3"
-              style={{ fontSize: 'clamp(30px, 8.5vw, 44px)', animation: 'fadeInUp .6s ease .25s both' }}>
-              <span className="text-brand-text">Transforme seus</span>{' '}
-              <span className="text-gradient">áudios</span>{' '}
-              <span className="text-brand-text">em</span>{' '}
-              <RotatingText />
+              style={{ fontSize: 'clamp(28px, 8vw, 42px)', animation: 'fadeInUp .6s ease .25s both' }}>
+              <span className="text-brand-text">Pare de ouvir áudio.</span>{' '}
+              <span className="text-gradient">Leia o resumo em 10 segundos.</span>
             </h1>
 
             {/* Subtitle */}
             <p className="text-[15px] leading-relaxed mb-5"
               style={{ color: 'rgb(var(--color-text-secondary))', animation: 'fadeInUp .6s ease .3s both' }}>
-              Transcrição automática e ponto chave para você não perder nada importante.
+              Todo áudio do seu WhatsApp vira texto e resumo, automaticamente. Você lê o que importa em segundos — sem fone, sem reouvir.
             </p>
 
             {/* ── CTAs ── */}
@@ -501,7 +688,7 @@ export default function HomePage() {
                 </p>
                 <Link href="/cadastro"
                   className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2">
-                  Começar Agora
+                  Quero ler em vez de ouvir
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M12 5l7 7-7 7"/>
                   </svg>
@@ -544,7 +731,7 @@ export default function HomePage() {
           <div className="w-full">
             <div className="glass rounded-3xl p-5 border shadow-medium flex justify-around items-center"
               style={{ borderColor: 'rgb(var(--color-border-light))' }}>
-              {[['10x', 'Mais rápido'], ['99%', 'Precisão'], ['PT-BR', 'Otimizado']].map(([val, lbl], i) => (
+              {[['10x', 'Mais rápido'], ['99%', 'Precisão'], ['+10h', 'Recuperadas/mês']].map(([val, lbl], i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
                   {i > 0 && <div style={{ width: 1, height: 40, background: 'rgb(var(--color-border))', marginRight: 20 }} />}
                   <div className="text-center">
@@ -555,6 +742,47 @@ export default function HomePage() {
               ))}
             </div>
           </div>
+        </section>
+
+        {/* ══ ISCA DE TOPO — Transcreva 1 áudio grátis ══ */}
+        <section className="px-5 pt-10" style={{ animation: 'fadeInUp .6s ease .45s both' }}>
+          <DemoTranscribe />
+        </section>
+
+        {/* ══ PROVA SOCIAL — Depoimentos (logo após a demo, antes do "como funciona") ══ */}
+        <section className="px-5 pt-12 pb-4">
+          <div className="mb-6">
+            <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>
+              Prova social
+            </span>
+            <h2 className="font-display text-2xl font-bold mt-2 leading-tight tracking-tight">
+              Profissionais que já leem em vez de ouvir
+            </h2>
+          </div>
+          <div className="flex flex-col gap-4">
+            {TESTIMONIALS.map((d, i) => (
+              <div key={i} className="card rounded-2xl p-5">
+                <p className="text-sm leading-relaxed mb-4 font-light"
+                  style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                  &ldquo;{d.text}&rdquo;
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                    style={{ background: d.color }}>
+                    {d.initials}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">{d.name}</p>
+                    <p className="text-[11px]" style={{ color: 'rgb(var(--color-text-muted))' }}>{d.role}</p>
+                  </div>
+                  <div className="ml-auto text-yellow-400 text-sm">★★★★★</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] mt-3 text-center" style={{ color: 'rgb(var(--color-text-muted))', opacity: 0.7 }}>
+            * Depoimentos ilustrativos, representativos de casos de uso reais do ZapScript.
+          </p>
         </section>
 
         {/* ══ COMO FUNCIONA — 3 passos ══ */}
@@ -783,61 +1011,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ══ DEPOIMENTOS ══ */}
-        <section className="px-5 pb-16">
-          <div className="mb-7">
-            <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>
-              Depoimentos
-            </span>
-            <h2 className="font-display text-3xl font-bold mt-2 leading-tight tracking-tight">
-              Quem já usa o ZapScript
-            </h2>
-          </div>
-          <div className="flex flex-col gap-4">
-            {[
-              {
-                text: 'Minha equipe recebia mais de 50 áudios por dia. Com o ZapScript, viramos texto em segundos. Triplicou nossa agilidade no atendimento ao cliente.',
-                name: 'Fernanda S.',
-                role: 'Advogada · São Paulo/SP',
-                initials: 'FS',
-                color: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-              },
-              {
-                text: 'Antes eu ouvia o mesmo áudio três vezes para não perder nada. Agora leio o resumo em 10 segundos e sigo em frente. Mudou minha rotina de vendas.',
-                name: 'Ricardo M.',
-                role: 'Consultor Comercial · Campinas/SP',
-                initials: 'RM',
-                color: 'linear-gradient(135deg,#0ea5e9,#0d9488)',
-              },
-              {
-                text: 'Trabalho com 4 executivos e cada um manda áudio o dia inteiro. O ZapScript organiza tudo em tópicos claros. Nunca mais perdi uma tarefa importante.',
-                name: 'Camila T.',
-                role: 'Assistente Executiva · Belo Horizonte/MG',
-                initials: 'CT',
-                color: 'linear-gradient(135deg,#10b981,#059669)',
-              },
-            ].map((d, i) => (
-              <div key={i} className="card rounded-2xl p-5">
-                <p className="text-sm leading-relaxed mb-4 font-light"
-                  style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                  "{d.text}"
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                    style={{ background: d.color }}>
-                    {d.initials}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold">{d.name}</p>
-                    <p className="text-[11px]" style={{ color: 'rgb(var(--color-text-muted))' }}>{d.role}</p>
-                  </div>
-                  <div className="ml-auto text-yellow-400 text-sm">★★★★★</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
         {/* ══ FAQ ══ */}
         <section className="px-5 pb-16">
           <div className="mb-7">
@@ -932,14 +1105,14 @@ export default function HomePage() {
               </svg>
             </div>
             <h2 className="font-display font-bold text-2xl mb-3 tracking-tight leading-tight">
-              Pronto para organizar sua vida?
+              Leia seu próximo áudio em vez de ouvir.
             </h2>
             <p className="text-base leading-relaxed mb-7 font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Comece gratuitamente e descubra como o ZapScript pode transformar sua produtividade.
+              Comece gratuitamente e recupere as horas que você perde ouvindo áudio no WhatsApp.
             </p>
             <Link href="/cadastro"
               className="btn-primary inline-flex items-center justify-center py-4 px-8 text-base gap-2">
-              Começar Gratuitamente
+              Transcrever grátis agora
             </Link>
           </div>
         </section>

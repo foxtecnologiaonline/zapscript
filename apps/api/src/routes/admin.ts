@@ -2174,6 +2174,181 @@ export default async function adminRoutes(app: FastifyInstance) {
       return { ok: true, sent, failed, total: users.length, errors: errors.slice(0, 20) };
     }
   );
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Programa de Afiliados — administração (aprovação + payout manual via Pix)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // GET /affiliates — lista afiliados (filtro por status) com estatísticas
+  app.get<{ Querystring: { status?: string } }>(
+    '/affiliates',
+    { preHandler: [adminAuth] },
+    async (req) => {
+      const { status } = req.query;
+      const where: any = {};
+      if (status && status !== 'all') where.status = status;
+
+      const affiliates = await prisma.affiliate.findMany({
+        where,
+        orderBy: { appliedAt: 'desc' },
+        include: {
+          user: { select: { email: true, name: true } },
+          _count: { select: { referrals: true } },
+        },
+      });
+
+      // Totais de comissão por afiliado
+      const ids = affiliates.map(a => a.id);
+      const grouped = ids.length
+        ? await prisma.affiliateCommission.groupBy({
+            by: ['affiliateId', 'status'],
+            where: { affiliateId: { in: ids } },
+            _sum: { commissionAmount: true },
+          })
+        : [];
+
+      const sumBy = (affId: string, st: string) =>
+        Math.round((grouped.find(g => g.affiliateId === affId && g.status === st)?._sum.commissionAmount || 0) * 100) / 100;
+
+      return {
+        affiliates: affiliates.map(a => ({
+          id:             a.id,
+          code:           a.code,
+          status:         a.status,
+          commissionType: a.commissionType,
+          email:          maskEmail(a.user.email),
+          name:           a.user.name,
+          pixKey:         a.pixKey,
+          pixKeyType:     a.pixKeyType,
+          payoutName:     a.payoutName,
+          audience:       a.audience,
+          referrals:      a._count.referrals,
+          pendingAmount:  sumBy(a.id, 'pending'),
+          paidAmount:     sumBy(a.id, 'paid'),
+          appliedAt:      a.appliedAt,
+          approvedAt:     a.approvedAt,
+          rejectedReason: a.rejectedReason,
+        })),
+      };
+    }
+  );
+
+  // POST /affiliates/:id/approve
+  app.post<{ Params: { id: string } }>(
+    '/affiliates/:id/approve',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const aff = await prisma.affiliate.findUnique({ where: { id: req.params.id }, include: { user: { select: { email: true, name: true } } } });
+      if (!aff) return reply.code(404).send({ error: 'Afiliado não encontrado.' });
+
+      await prisma.affiliate.update({
+        where: { id: aff.id },
+        data:  { status: 'approved', approvedAt: new Date(), rejectedReason: null },
+      });
+
+      // Aviso por e-mail (best-effort)
+      if (aff.user.email) {
+        const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+        sendEmail(
+          aff.user.email,
+          '🎉 Você foi aprovado como Afiliado ZapScript',
+          `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+            <div style="font-size:22px;font-weight:bold;margin-bottom:12px">🎉 Cadastro de afiliado aprovado!</div>
+            <p style="color:#a7f3d0;line-height:1.7">Olá, ${escHtmlAdmin(aff.user.name?.split(' ')[0] || 'parceiro(a)')}! Seu cadastro no Programa de Afiliados do ZapScript foi aprovado.</p>
+            <p style="color:#a7f3d0;line-height:1.7">Seu link de divulgação:<br><strong style="color:#10b981">${APP_URL}/?aff=${aff.code}</strong></p>
+            <div style="margin:24px 0;text-align:center">
+              <a href="${APP_URL}/dashboard/afiliado" style="background:#10b981;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Acessar painel de afiliado →</a>
+            </div>
+          </div>`,
+        ).catch(err => app.log.error({ err }, 'Erro ao enviar e-mail de aprovação de afiliado'));
+      }
+
+      app.log.info(`[Admin] Afiliado aprovado: ${aff.id} (${aff.code})`);
+      return { ok: true };
+    }
+  );
+
+  // POST /affiliates/:id/reject  { reason? }
+  app.post<{ Params: { id: string }; Body: { reason?: string } }>(
+    '/affiliates/:id/reject',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const aff = await prisma.affiliate.findUnique({ where: { id: req.params.id } });
+      if (!aff) return reply.code(404).send({ error: 'Afiliado não encontrado.' });
+
+      await prisma.affiliate.update({
+        where: { id: aff.id },
+        data:  { status: 'rejected', rejectedReason: req.body?.reason?.slice(0, 500) || 'Não especificado' },
+      });
+      app.log.info(`[Admin] Afiliado recusado: ${aff.id}`);
+      return { ok: true };
+    }
+  );
+
+  // GET /affiliates/commissions?status=pending — extrato global de comissões
+  app.get<{ Querystring: { status?: string } }>(
+    '/affiliates/commissions',
+    { preHandler: [adminAuth] },
+    async (req) => {
+      const { status } = req.query;
+      const where: any = {};
+      if (status && status !== 'all') where.status = status;
+
+      const commissions = await prisma.affiliateCommission.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take:    300,
+        include: {
+          affiliate: {
+            select: { code: true, pixKey: true, pixKeyType: true, payoutName: true, user: { select: { email: true, name: true } } },
+          },
+        },
+      });
+
+      return {
+        commissions: commissions.map(c => ({
+          id:               c.id,
+          affiliateCode:    c.affiliate.code,
+          affiliateName:    c.affiliate.payoutName || c.affiliate.user.name,
+          affiliateEmail:   maskEmail(c.affiliate.user.email),
+          pixKey:           c.affiliate.pixKey,
+          pixKeyType:       c.affiliate.pixKeyType,
+          saleAmount:       c.saleAmount,
+          commissionAmount: c.commissionAmount,
+          commissionType:   c.commissionType,
+          monthIndex:       c.monthIndex,
+          status:           c.status,
+          paidAt:           c.paidAt,
+          paidReference:    c.paidReference,
+          createdAt:        c.createdAt,
+        })),
+      };
+    }
+  );
+
+  // POST /affiliates/commissions/:id/mark-paid  { reference? }
+  app.post<{ Params: { id: string }; Body: { reference?: string } }>(
+    '/affiliates/commissions/:id/mark-paid',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const c = await prisma.affiliateCommission.findUnique({ where: { id: req.params.id } });
+      if (!c) return reply.code(404).send({ error: 'Comissão não encontrada.' });
+      if (c.status === 'paid') return { ok: true, alreadyPaid: true };
+
+      await prisma.affiliateCommission.update({
+        where: { id: c.id },
+        data:  { status: 'paid', paidAt: new Date(), paidReference: req.body?.reference?.slice(0, 200) || null },
+      });
+      app.log.info(`[Admin] Comissão marcada como paga: ${c.id} R$${c.commissionAmount}`);
+      return { ok: true };
+    }
+  );
+}
+
+/** Escapa HTML em templates de e-mail do admin. */
+function escHtmlAdmin(s: string | null | undefined): string {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ── Helper: monta lista de usuários para campanha ────────────────────────────

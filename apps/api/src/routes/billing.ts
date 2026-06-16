@@ -12,6 +12,7 @@ function escHtml(s: string | null | undefined): string {
 import { calculateProration } from '../lib/proration';
 import { validateRequest, billingCheckoutSchema, billingUpgradeSchema } from '../lib/validation';
 import { invalidatePlanCache } from '../lib/planGate';
+import { attributeAffiliateCommission } from '../lib/affiliate';
 
 /* ─────────────────────────────────────────────────────────
    ASAAS v3 — Billing Routes (Checkout Transparente)
@@ -1035,6 +1036,9 @@ export default async function billingRoutes(app: FastifyInstance) {
           yearly:              isYearlyWebhook,
         });
         app.log.info(`Pagamento confirmado: userId=${userId} plan=${planName} cycle=${isYearlyWebhook ? 'yearly' : 'monthly'}`);
+
+        // ── Programa de afiliados: atribuir comissão da venda (idempotente) ──
+        await attributeAffiliateCommission(userId, payment.id, payment.value ?? 0);
       }
 
       return reply.send({ received: true });

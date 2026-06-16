@@ -134,7 +134,7 @@ export default async function authRoutes(app: FastifyInstance) {
   // ── POST /auth/register ───────────────────────────────────────────────────
   app.post<{ Body: {
     email: string; password: string; name?: string; phone?: string; inviteCode?: string;
-    referralCode?: string;
+    referralCode?: string; affiliateCode?: string;
     cbTos?: boolean; cbContrato?: boolean; cbLgpd?: boolean; cbMarketing?: boolean; docVersion?: string;
   } }>(
     '/register',
@@ -144,7 +144,7 @@ export default async function authRoutes(app: FastifyInstance) {
       const v = validateRequest(registerSchema)(req.body);
       if (!v.valid) return reply.code(400).send({ error: v.error });
 
-      const { email, password, name, phone, inviteCode, referralCode, cbTos, cbContrato, cbLgpd, cbMarketing, docVersion } = req.body;
+      const { email, password, name, phone, inviteCode, referralCode, affiliateCode, cbTos, cbContrato, cbLgpd, cbMarketing, docVersion } = req.body;
       if (!email || !password) return reply.code(400).send({ error: 'email e password obrigatórios' });
       // Validar consentimentos obrigatórios (LGPD Art. 8º §1º)
       if (!cbTos)      return reply.code(400).send({ error: 'Aceite dos Termos de Serviço é obrigatório.' });
@@ -173,6 +173,19 @@ export default async function authRoutes(app: FastifyInstance) {
         referrer = await prisma.user.findUnique({ where: { refCode: referralCode }, select: { id: true } });
         // Referral inválido: não bloquear o cadastro, apenas ignorar
         if (!referrer) logger.warn(`[Auth] referralCode inválido: ${referralCode}`);
+      }
+
+      // Verificar código de afiliado (?ref=CODE) — vínculo monetário separado da indicação amigável.
+      // Registramos o vínculo independente do status do afiliado; a comissão só é gerada
+      // no pagamento se o afiliado estiver aprovado (ver lib/affiliate.ts).
+      let affiliate: any = null;
+      if (affiliateCode) {
+        affiliate = await prisma.affiliate.findUnique({
+          where:  { code: affiliateCode.trim().toUpperCase() },
+          select: { id: true, userId: true, status: true },
+        });
+        if (!affiliate) logger.warn(`[Auth] affiliateCode inválido: ${affiliateCode}`);
+        else if (affiliate.status === 'rejected') affiliate = null; // afiliado recusado não atribui
       }
 
       // Auto-login (Opção A): autoconfirma no Supabase apenas para liberar o
@@ -254,6 +267,12 @@ export default async function authRoutes(app: FastifyInstance) {
             await tx.testerInvite.update({
               where: { id: testerInvite.id },
               data:  { usedAt: now, usedBy: u.id },
+            });
+          }
+          // Vínculo de afiliado (sem auto-indicação)
+          if (affiliate && affiliate.userId !== u.id) {
+            await tx.affiliateReferral.create({
+              data: { affiliateId: affiliate.id, referredUserId: u.id, status: 'pending' },
             });
           }
         });

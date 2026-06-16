@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 
 /* ── Tipos ─────────────────────────────────────────────── */
-export type Tab = 'dashboard' | 'metas' | 'suporte' | 'monitoramento' | 'comunicacao' | 'usuarios' | 'financeiro';
+export type Tab = 'dashboard' | 'metas' | 'suporte' | 'monitoramento' | 'comunicacao' | 'usuarios' | 'financeiro' | 'afiliados';
 
 /* ── Constantes ────────────────────────────────────────── */
 const API  = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -768,6 +768,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
               ['comunicacao',   '📣', 'Comunicação'],
               ['usuarios',      '👥', 'Usuários'],
               ['financeiro',    '💰', 'Financeiro'],
+              ['afiliados',     '🤝', 'Afiliados'],
             ] as [Tab, string, string][]).map(([t, icon, label]) => (
               <button key={t} onClick={() => goTab(t)}
                 className={`whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
@@ -1228,6 +1229,12 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           </div>
         )}
 
+        {tab === 'afiliados' && (
+          <div className="space-y-5">
+            <AffiliatesPanel apiBase={API} token={token} notify={notify} />
+          </div>
+        )}
+
       </div>
 
       {/* Painel individual do usuário */}
@@ -1255,6 +1262,198 @@ function Badge({ label, cls }: { label: string; cls?: string }) {
     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${cls || 'text-gray-400 bg-gray-400/10 border-gray-400/20'}`}>
       {label}
     </span>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   PAINEL DE AFILIADOS (aprovação + payout manual via Pix)
+══════════════════════════════════════════════════════════ */
+const AFF_STATUS_CLS: Record<string, string> = {
+  pending:   'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+  approved:  'text-green-400 bg-green-400/10 border-green-400/20',
+  rejected:  'text-red-400 bg-red-400/10 border-red-400/20',
+  suspended: 'text-orange-400 bg-orange-400/10 border-orange-400/20',
+};
+const AFF_STATUS_LABEL: Record<string, string> = {
+  pending: 'Pendente', approved: 'Aprovado', rejected: 'Recusado', suspended: 'Suspenso',
+};
+const COMM_STATUS_CLS: Record<string, string> = {
+  pending:  'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+  paid:     'text-green-400 bg-green-400/10 border-green-400/20',
+  canceled: 'text-gray-400 bg-gray-400/10 border-gray-400/20',
+};
+
+function AffiliatesPanel({ apiBase, token, notify }: {
+  apiBase: string; token: string; notify: (t: string, type?: 'ok' | 'err' | 'warn') => void;
+}) {
+  const [view, setView]       = useState<'cadastros' | 'comissoes'>('cadastros');
+  const [affStatus, setAffStatus]   = useState('pending');
+  const [commStatus, setCommStatus] = useState('pending');
+  const [affiliates, setAffiliates] = useState<any[]>([]);
+  const [commissions, setCommissions] = useState<any[]>([]);
+  const [loading, setLoading]   = useState(false);
+
+  const hdr = { 'x-admin-token': token } as Record<string, string>;
+
+  const loadAffiliates = useCallback(async (status: string) => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates?status=${status}`, { headers: hdr });
+      const d = await r.json();
+      setAffiliates(d.affiliates || []);
+    } catch { notify('Erro ao carregar afiliados', 'err'); }
+    finally { setLoading(false); }
+  }, [apiBase, token]);
+
+  const loadCommissions = useCallback(async (status: string) => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates/commissions?status=${status}`, { headers: hdr });
+      const d = await r.json();
+      setCommissions(d.commissions || []);
+    } catch { notify('Erro ao carregar comissões', 'err'); }
+    finally { setLoading(false); }
+  }, [apiBase, token]);
+
+  useEffect(() => {
+    if (view === 'cadastros') loadAffiliates(affStatus);
+    else loadCommissions(commStatus);
+  }, [view, affStatus, commStatus, loadAffiliates, loadCommissions]);
+
+  async function approve(id: string) {
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates/${id}/approve`, { method: 'POST', headers: { ...hdr, 'Content-Type': 'application/json' }, body: '{}' });
+      if (!r.ok) throw new Error();
+      notify('Afiliado aprovado ✓', 'ok');
+      loadAffiliates(affStatus);
+    } catch { notify('Erro ao aprovar', 'err'); }
+  }
+  async function reject(id: string) {
+    const reason = window.prompt('Motivo da recusa (opcional):') ?? '';
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates/${id}/reject`, { method: 'POST', headers: { ...hdr, 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+      if (!r.ok) throw new Error();
+      notify('Afiliado recusado', 'warn');
+      loadAffiliates(affStatus);
+    } catch { notify('Erro ao recusar', 'err'); }
+  }
+  async function markPaid(id: string) {
+    const reference = window.prompt('Referência do pagamento Pix (ex.: ID/comprovante):') ?? '';
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates/commissions/${id}/mark-paid`, { method: 'POST', headers: { ...hdr, 'Content-Type': 'application/json' }, body: JSON.stringify({ reference }) });
+      if (!r.ok) throw new Error();
+      notify('Comissão marcada como paga ✓', 'ok');
+      loadCommissions(commStatus);
+    } catch { notify('Erro ao marcar pagamento', 'err'); }
+  }
+
+  const totalPending = commissions.filter(c => c.status === 'pending').reduce((s, c) => s + c.commissionAmount, 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Sub-abas */}
+      <div className="flex gap-2">
+        {([['cadastros', 'Cadastros'], ['comissoes', 'Comissões']] as [typeof view, string][]).map(([v, l]) => (
+          <button key={v} onClick={() => setView(v)}
+            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+              view === v ? 'bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.2)]' : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7] border border-transparent'
+            }`}>{l}</button>
+        ))}
+      </div>
+
+      {view === 'cadastros' && (
+        <>
+          <div className="flex gap-1.5 flex-wrap">
+            {['pending', 'approved', 'rejected', 'all'].map(s => (
+              <button key={s} onClick={() => setAffStatus(s)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${affStatus === s ? 'bg-[rgba(16,185,129,.15)] text-[#10b981]' : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'}`}>
+                {s === 'all' ? 'Todos' : (AFF_STATUS_LABEL[s] || s)}
+              </button>
+            ))}
+          </div>
+          {loading ? <div className="text-[rgba(16,185,129,.4)] text-sm py-6">Carregando...</div> : (
+            <div className="space-y-2">
+              {affiliates.length === 0 && <div className="text-[rgba(16,185,129,.4)] text-sm py-6 text-center">Nenhum afiliado nesse filtro.</div>}
+              {affiliates.map(a => (
+                <div key={a.id} className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4">
+                  <div className="flex items-start justify-between flex-wrap gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-[#d1fae5]">{a.name || a.email}</span>
+                        <Badge label={AFF_STATUS_LABEL[a.status] || a.status} cls={AFF_STATUS_CLS[a.status]} />
+                        <span className="text-[10px] font-mono text-[rgba(16,185,129,.5)] bg-[rgba(16,185,129,.08)] px-2 py-0.5 rounded">{a.code}</span>
+                      </div>
+                      <div className="text-[11px] text-[rgba(16,185,129,.4)] mt-1">{a.email} · {a.commissionType === 'onetime' ? 'Única 30%' : 'Recorrente 5%/mês'} · {a.referrals} indicação(ões)</div>
+                      {a.audience && <div className="text-[11px] text-[rgba(16,185,129,.35)] mt-1 italic">“{a.audience}”</div>}
+                      {(a.pixKey || a.payoutName) && <div className="text-[11px] text-[rgba(16,185,129,.4)] mt-1">Pix: {a.pixKey || '—'} {a.pixKeyType ? `(${a.pixKeyType})` : ''} · {a.payoutName || '—'}</div>}
+                      {a.rejectedReason && <div className="text-[11px] text-red-400/70 mt-1">Recusa: {a.rejectedReason}</div>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-xs text-[rgba(16,185,129,.4)]">A receber</div>
+                      <div className="text-sm font-bold text-yellow-400">{brl(a.pendingAmount || 0)}</div>
+                      <div className="text-[10px] text-[rgba(16,185,129,.35)]">pago {brl(a.paidAmount || 0)}</div>
+                    </div>
+                  </div>
+                  {a.status === 'pending' && (
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={() => approve(a.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.25)] hover:bg-[rgba(16,185,129,.25)]">Aprovar</button>
+                      <button onClick={() => reject(a.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-400/10 text-red-400 border border-red-400/20 hover:bg-red-400/20">Recusar</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {view === 'comissoes' && (
+        <>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex gap-1.5 flex-wrap">
+              {['pending', 'paid', 'all'].map(s => (
+                <button key={s} onClick={() => setCommStatus(s)}
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${commStatus === s ? 'bg-[rgba(16,185,129,.15)] text-[#10b981]' : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'}`}>
+                  {s === 'all' ? 'Todas' : s === 'pending' ? 'A pagar' : 'Pagas'}
+                </button>
+              ))}
+            </div>
+            {commStatus === 'pending' && <div className="text-xs text-[rgba(16,185,129,.5)]">Total a pagar: <strong className="text-yellow-400">{brl(totalPending)}</strong></div>}
+          </div>
+          {loading ? <div className="text-[rgba(16,185,129,.4)] text-sm py-6">Carregando...</div> : (
+            <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-wider text-[rgba(16,185,129,.4)] border-b border-[rgba(16,185,129,.08)]">
+                    <th className="px-4 py-2.5 font-medium">Data</th>
+                    <th className="px-4 py-2.5 font-medium">Afiliado</th>
+                    <th className="px-4 py-2.5 font-medium">Pix</th>
+                    <th className="px-4 py-2.5 font-medium">Comissão</th>
+                    <th className="px-4 py-2.5 font-medium">Tipo</th>
+                    <th className="px-4 py-2.5 font-medium">Status</th>
+                    <th className="px-4 py-2.5 font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {commissions.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-[rgba(16,185,129,.4)]">Nenhuma comissão.</td></tr>}
+                  {commissions.map(c => (
+                    <tr key={c.id} className="border-b border-[rgba(16,185,129,.05)]">
+                      <td className="px-4 py-2.5 text-[rgba(16,185,129,.5)]">{fmt(c.createdAt)}</td>
+                      <td className="px-4 py-2.5 text-[#d1fae5]">{c.affiliateName || c.affiliateEmail}<div className="text-[10px] font-mono text-[rgba(16,185,129,.4)]">{c.affiliateCode}</div></td>
+                      <td className="px-4 py-2.5 text-[rgba(16,185,129,.5)] text-xs">{c.pixKey || '—'}<div className="text-[10px] text-[rgba(16,185,129,.35)]">{c.pixKeyType || ''}</div></td>
+                      <td className="px-4 py-2.5 font-semibold text-[#d1fae5]">{brl(c.commissionAmount)}<div className="text-[10px] text-[rgba(16,185,129,.35)]">venda {brl(c.saleAmount)}</div></td>
+                      <td className="px-4 py-2.5 text-[rgba(16,185,129,.5)] text-xs">{c.commissionType === 'onetime' ? 'Única' : `Rec. ${c.monthIndex}/12`}</td>
+                      <td className="px-4 py-2.5"><Badge label={c.status === 'pending' ? 'A pagar' : c.status === 'paid' ? 'Pago' : 'Cancelada'} cls={COMM_STATUS_CLS[c.status]} /></td>
+                      <td className="px-4 py-2.5">{c.status === 'pending' && <button onClick={() => markPaid(c.id)} className="px-3 py-1 rounded-lg text-[11px] font-semibold bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.25)] hover:bg-[rgba(16,185,129,.25)] whitespace-nowrap">Marcar pago</button>}{c.status === 'paid' && c.paidReference && <span className="text-[10px] text-[rgba(16,185,129,.4)]">{c.paidReference}</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

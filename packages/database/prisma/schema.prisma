@@ -39,6 +39,9 @@ model User {
   supportTickets              SupportTicket[]
   webhookConfig               WebhookConfig?
   npsResponses                NpsResponse[]
+  supportAtendimentos         SupportAtendimento[]
+  affiliate                   Affiliate?
+  affiliateReferral           AffiliateReferral?  @relation("ReferredUser")
 }
 
 model Plan {
@@ -268,4 +271,156 @@ model AdminAlertConfig {
   key       String   @unique  // "queueMaxWaiting" | "errorRatePct" | "alertPhone" | "alertEmail"
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+// ── Agente de Suporte Inteligente ──────────────────────────────────────────
+// Cada atendimento = uma mensagem recebida + classificação + rascunho do agente,
+// aguardando aprovação humana antes de enviar pelo canal de origem.
+model SupportAtendimento {
+  id                String    @id @default(cuid())
+  canal             String    // 'whatsapp' | 'email' | 'chat'
+  status            String    @default("pending_approval") // pending_approval | sent | escalated | spam | resolved
+  categoria         String?   // duvida_produto | problema_tecnico | reclamacao | cancelamento | upgrade_plano | cobranca | elogio | spam | outro
+  prioridade        String?   // baixa | media | alta | urgente
+  sentimento        String?   // positivo | neutro | negativo | frustrado
+  confiancaResposta Int?      // 0–100
+  requerEscalacao   Boolean   @default(false)
+  topicos           String[]  @default([])
+
+  clienteNome       String?
+  clienteEmail      String?
+  clienteWhatsapp   String?
+  clienteUserId     String?
+
+  mensagemOriginal  String
+  rascunhoAgente    String?
+  respostaFinal     String?
+  editadoPeloAdmin  Boolean   @default(false)
+  instrucaoRevisao  String?
+
+  threadId          String?   // agrupa a conversa (canal + remetente)
+  canalExternoId    String?   // messageId externo (WhatsApp/email) — idempotência
+  contextoUsado     String?   // títulos/ids da base de conhecimento usados no rascunho
+  sugestaoFaq       String?   // título de novo tópico FAQ sugerido pelo agente
+
+  criadoEm          DateTime  @default(now())
+  aprovadoEm        DateTime?
+  enviadoEm         DateTime?
+  resolvidoEm       DateTime?
+
+  user              User?     @relation(fields: [clienteUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, prioridade])
+  @@index([canal, criadoEm])
+  @@index([threadId])
+  @@index([canalExternoId])
+}
+
+// Base de conhecimento (RAG). MVP: busca por palavra-chave. `embedding` (pgvector)
+// fica reservado para evolução — coluna criada como texto nulo até habilitar pgvector.
+model KnowledgeBase {
+  id               String   @id @default(cuid())
+  titulo           String
+  conteudo         String
+  categoria        String?
+  tags             String[] @default([])
+  canalOrigem      String?  // de qual atendimento/canal surgiu
+  atendimentoOrigemId String?
+  aprovadoPorAdmin Boolean  @default(true)
+  vezesUtilizado   Int      @default(0)
+  utilidadeMedia   Float    @default(0)
+  criadoEm         DateTime @default(now())
+  atualizadoEm     DateTime @updatedAt
+
+  @@index([categoria])
+}
+
+// ── Programa de Afiliados ───────────────────────────────────────────────────
+// Afiliado = usuário aprovado que divulga o ZapScript e ganha comissão por venda.
+// Decisões: cadastro requer aprovação do admin; o afiliado escolhe o modelo de
+// comissão (única de 30% do 1º pagamento OU recorrente de 5% nos primeiros 12 meses).
+// Pagamento = rastreado no sistema e quitado manualmente via Pix pelo admin.
+model Affiliate {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  code           String   @unique                  // código de divulgação (?ref=CODE)
+  status         String   @default("pending")      // pending | approved | rejected | suspended
+  commissionType String   @default("recurring")    // 'onetime' (30% 1º pgto) | 'recurring' (5% x12 meses)
+  pixKey         String?                            // chave Pix p/ recebimento (não é segredo financeiro crítico)
+  pixKeyType     String?                            // cpf | cnpj | email | phone | random
+  payoutName     String?                            // nome/razão social do recebedor
+  audience       String?                            // como pretende divulgar (texto do cadastro)
+  notes          String?                            // observações internas do admin
+  rejectedReason String?
+  appliedAt      DateTime @default(now())
+  approvedAt     DateTime?
+  approvedBy     String?                            // adminId que aprovou
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referrals      AffiliateReferral[]
+  commissions    AffiliateCommission[]
+
+  @@index([status])
+  @@index([code])
+}
+
+// Vínculo afiliado → usuário indicado (criado no cadastro do indicado).
+model AffiliateReferral {
+  id             String    @id @default(cuid())
+  affiliateId    String
+  referredUserId String    @unique                 // cada usuário é indicado por no máximo 1 afiliado
+  status         String    @default("pending")     // pending (cadastrou) | converted (já gerou venda)
+  convertedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  affiliate      Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  referredUser   User      @relation("ReferredUser", fields: [referredUserId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId])
+}
+
+// Comissão devida por uma venda atribuída ao afiliado.
+model AffiliateCommission {
+  id               String    @id @default(cuid())
+  affiliateId      String
+  referredUserId   String
+  paymentId        String                          // Asaas payment id (idempotência)
+  saleAmount       Float                           // valor da venda (mensalidade paga)
+  commissionAmount Float                           // valor da comissão devida
+  commissionType   String                          // 'onetime' | 'recurring'
+  monthIndex       Int       @default(1)           // recorrente: qual mês (1..12)
+  status           String    @default("pending")   // pending | paid | canceled
+  paidAt           DateTime?
+  paidReference    String?                         // comprovante/observação do Pix manual
+  createdAt        DateTime  @default(now())
+  affiliate        Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentId, affiliateId])
+  @@index([affiliateId, status])
+}
+
+// Leads capturados pela demo pública da landing page ("transcreva 1 áudio grátis").
+model DemoLead {
+  id          String   @id @default(cuid())
+  email       String
+  ip          String?
+  durationSec Float?
+  createdAt   DateTime @default(now())
+
+  @@index([email])
+  @@index([createdAt])
+}
+
+// Sugestões de novos tópicos de FAQ detectados pelo agente.
+model FaqSuggestion {
+  id                  String    @id @default(cuid())
+  tituloSugerido      String
+  conteudoSugerido    String
+  categoria           String?
+  atendimentoOrigemId String?
+  status              String    @default("pending") // pending | approved | ignored
+  criadoEm            DateTime  @default(now())
+  revisadoEm          DateTime?
+
+  @@index([status])
 }

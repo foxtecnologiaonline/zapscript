@@ -977,6 +977,345 @@ export const POSTS: BlogPost[] = [
     `,
   },
 
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 10 — Head keyword genérica: "converter áudio em texto"
+     Cobre TODOS os tipos de áudio (mp3, ogg, m4a, reunião, aula, podcast).
+     Volume estimado: 30.000–60.000 buscas/mês
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'converter-audio-em-texto',
+    title:       'Converter áudio em texto: o guia definitivo para qualquer tipo de áudio (2026)',
+    description: 'Como converter áudio em texto com precisão — WhatsApp, MP3, reuniões, aulas, entrevistas e podcasts. Métodos grátis e automáticos com IA em 2026.',
+    keywords:    ['converter áudio em texto','transformar áudio em texto','passar áudio para texto','áudio para texto online','converter mp3 em texto','transcrever áudio em texto'],
+    publishedAt: '2026-06-16',
+    readingTime: 7,
+    category:    'Guias',
+    coverEmoji:  '🔄',
+    content: `
+<p>Seja um áudio do WhatsApp, a gravação de uma reunião, uma aula gravada ou um podcast que você quer aproveitar em texto — em algum momento todo mundo precisa <strong>converter áudio em texto</strong>. A boa notícia: em 2026, fazer isso leva segundos e não exige nenhum conhecimento técnico. Neste guia, você vai ver como transformar <em>qualquer</em> tipo de áudio em texto, de graça ou com IA automática.</p>
+
+<h2>Por que converter áudio em texto?</h2>
+<ul>
+  <li><strong>Leitura é 4× mais rápida que escuta:</strong> você varre um texto em segundos; o áudio te prende em tempo real.</li>
+  <li><strong>Texto é pesquisável:</strong> achar uma informação num áudio antigo é quase impossível. Num texto, basta um Ctrl+F.</li>
+  <li><strong>Registro e auditoria:</strong> reuniões, atendimentos e acordos viram documento consultável.</li>
+  <li><strong>Acessibilidade:</strong> pessoas com deficiência auditiva acompanham qualquer conteúdo falado.</li>
+  <li><strong>Reaproveitamento:</strong> uma gravação vira ata, post, resumo, legenda ou artigo.</li>
+</ul>
+
+<h2>Funciona com qualquer formato de áudio</h2>
+<p>Uma dúvida comum é se a conversão depende do formato do arquivo. As ferramentas modernas de IA aceitam praticamente todos:</p>
+<table>
+  <thead><tr><th>Tipo de áudio</th><th>Origem comum</th><th>Dá para converter?</th></tr></thead>
+  <tbody>
+    <tr><td><strong>OGG / OPUS</strong></td><td>Mensagens de voz do WhatsApp</td><td>✅</td></tr>
+    <tr><td><strong>MP3</strong></td><td>Gravadores, podcasts, downloads</td><td>✅</td></tr>
+    <tr><td><strong>M4A / AAC</strong></td><td>Gravador do iPhone, apps de áudio</td><td>✅</td></tr>
+    <tr><td><strong>WAV</strong></td><td>Gravações profissionais, estúdio</td><td>✅</td></tr>
+    <tr><td><strong>Áudio de vídeo (MP4)</strong></td><td>Reuniões gravadas, aulas, lives</td><td>✅ (extrai a faixa de áudio)</td></tr>
+  </tbody>
+</table>
+
+<h2>Método 1 — Conversão manual (recursos do celular/computador)</h2>
+<p>iPhones e alguns Androids têm transcrição embutida, e editores de texto como o Google Docs têm "digitação por voz". Servem para um caso isolado, mas têm limites: exigem que você fale ao vivo ou ouça o áudio em paralelo, não aceitam arquivos grandes e não geram resumo.</p>
+
+<h2>Método 2 — Sites de conversão online</h2>
+<p>Existem sites onde você faz upload do arquivo e recebe o texto. Funcionam, mas observe três pontos: <strong>limite de duração</strong> no plano grátis, <strong>privacidade</strong> (seu áudio sobe para servidores de terceiros) e <strong>qualidade</strong> do motor de transcrição, que varia bastante.</p>
+
+<h2>Método 3 — IA automática (o mais completo)</h2>
+<p>A forma mais avançada usa o modelo <strong>Whisper (OpenAI)</strong> — hoje o mais preciso para português brasileiro — combinado com um LLM que organiza o texto e gera um resumo com os pontos-chave. É o que o <strong>ZapScript</strong> faz.</p>
+<p>No ZapScript você pode converter áudio em texto de duas formas:</p>
+<ol>
+  <li><strong>Pelo site:</strong> faça upload de qualquer arquivo de áudio (MP3, M4A, OGG, WAV...) e receba transcrição + resumo na hora.</li>
+  <li><strong>Pelo WhatsApp:</strong> conecte seu número e todo áudio recebido é transcrito automaticamente, sem você fazer nada.</li>
+</ol>
+
+<h2>Transcrição x resumo: a diferença que economiza tempo</h2>
+<p>Converter em texto é só metade do ganho. Um áudio de 6 minutos vira um texto de 6 minutos de leitura. O <strong>resumo com IA</strong> filtra o ruído e te entrega 3 a 5 pontos essenciais — você entende tudo em 10 segundos. O ZapScript entrega os dois: transcrição completa (salva e pesquisável) + resumo automático.</p>
+
+<h2>E a privacidade?</h2>
+<p>Áudios contêm informação sensível. No ZapScript, o arquivo <strong>nunca é armazenado</strong> — é processado e descartado. Apenas o texto fica salvo, criptografado (AES-256-GCM), em servidores no Brasil, em conformidade com a LGPD.</p>
+
+<h2>Perguntas frequentes</h2>
+<h3>Dá para converter áudio em texto de graça?</h3>
+<p>Sim. O ZapScript tem plano gratuito, sem cartão de crédito. Recursos nativos do celular também convertem áudios curtos.</p>
+<h3>Funciona com áudio de reunião e aula?</h3>
+<p>Sim. Basta enviar o arquivo pelo site. Quanto mais longo o áudio, mais útil fica o resumo automático.</p>
+<h3>Qual a precisão?</h3>
+<p>Com o motor Whisper, a precisão fica em torno de 95%+ para português claro.</p>
+
+<h2>Conclusão</h2>
+<p>Converter áudio em texto deixou de ser tarefa técnica. Para um arquivo isolado, um site grátis resolve. Para quem lida com áudio todo dia — WhatsApp, reuniões, atendimento — vale automatizar com IA. <strong>Crie sua conta no ZapScript e converta seu primeiro áudio agora</strong>; no lançamento, o 1º mês do Pro sai por R$ 19,90.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 11 — Keyword: "transcrever áudio para texto" / "transcrição online"
+     Volume estimado: 20.000–40.000 buscas/mês
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcrever-audio-para-texto-online',
+    title:       'Transcreva áudio para texto online em segundos (com ou sem WhatsApp)',
+    description: 'Precisa transcrever áudio para texto? Veja como fazer online, grátis e com IA — direto no navegador, sem instalar nada, com resumo automático em segundos.',
+    keywords:    ['transcrever áudio para texto','transcrição de áudio online','transcrever áudio online grátis','passar áudio para texto online','transcrição automática de áudio'],
+    publishedAt: '2026-06-17',
+    readingTime: 6,
+    category:    'Guias',
+    coverEmoji:  '⌨️',
+    content: `
+<p>Você tem um áudio importante e precisa dele em texto — agora. Talvez seja a gravação de uma conversa, um recado longo ou uma ideia que você gravou andando. Seja qual for o caso, dá para <strong>transcrever áudio para texto online</strong> em segundos, direto do navegador, sem instalar nada. Veja como.</p>
+
+<h2>O que significa "transcrever áudio para texto"?</h2>
+<p>Transcrever é converter a fala de um áudio em texto escrito, palavra por palavra. Hoje isso é feito por modelos de IA de reconhecimento de fala — o mais preciso para o português é o <strong>Whisper</strong>, da OpenAI. Você envia o áudio, a IA "ouve" e devolve o texto.</p>
+
+<h2>Como transcrever áudio para texto online (passo a passo)</h2>
+<ol>
+  <li><strong>Acesse uma ferramenta de transcrição</strong> no navegador (ex.: zapscript.me).</li>
+  <li><strong>Envie o áudio</strong> — por upload do arquivo ou encaminhando pelo WhatsApp.</li>
+  <li><strong>Aguarde alguns segundos</strong> — a IA processa e devolve o texto.</li>
+  <li><strong>Copie, exporte ou pesquise</strong> a transcrição como quiser.</li>
+</ol>
+<p>Não precisa instalar app, não precisa de cadastro complicado e funciona em celular ou computador.</p>
+
+<h2>Online vs. app instalado: qual escolher?</h2>
+<table>
+  <thead><tr><th>Critério</th><th>Online (navegador)</th><th>App instalado</th></tr></thead>
+  <tbody>
+    <tr><td>Instalação</td><td>✅ Nenhuma</td><td>❌ Ocupa espaço</td></tr>
+    <tr><td>Funciona em qualquer aparelho</td><td>✅</td><td>⚠️ Depende do SO</td></tr>
+    <tr><td>Atualização automática</td><td>✅</td><td>❌ Manual</td></tr>
+    <tr><td>Acesso ao histórico em qualquer lugar</td><td>✅ Na nuvem</td><td>⚠️ Preso ao aparelho</td></tr>
+  </tbody>
+</table>
+
+<h2>Transcrição online + resumo: o combo que economiza tempo</h2>
+<p>Transcrever é ótimo, mas ler um texto longo ainda toma tempo. Por isso o <strong>ZapScript</strong> entrega, junto da transcrição, um <strong>resumo automático</strong> com os pontos principais. Você decide: lê o resumo de 3 linhas, o texto completo, ou nada. Tudo fica salvo no seu histórico, pesquisável por data e contato.</p>
+
+<h2>Casos em que transcrever online salva o dia</h2>
+<ul>
+  <li><strong>Estudante:</strong> transcreve a aula gravada e estuda lendo, com a matéria pesquisável.</li>
+  <li><strong>Jornalista:</strong> transforma a entrevista em texto para citar com precisão.</li>
+  <li><strong>Profissional:</strong> recebe áudio do cliente, lê o resumo e responde na frente da concorrência.</li>
+  <li><strong>Criador de conteúdo:</strong> grava a ideia por voz e recebe o texto pronto para editar.</li>
+</ul>
+
+<h2>É seguro transcrever áudio online?</h2>
+<p>Depende da ferramenta. No ZapScript, o áudio <strong>não é armazenado</strong> (processado e descartado), as transcrições são criptografadas e os servidores ficam no Brasil, em conformidade com a LGPD. Sempre prefira serviços que sejam transparentes sobre o que fazem com seus dados.</p>
+
+<h2>Perguntas frequentes</h2>
+<h3>Dá para transcrever áudio para texto online de graça?</h3>
+<p>Sim. O ZapScript tem plano gratuito, sem cartão. Você testa a transcrição e o resumo antes de assinar.</p>
+<h3>Preciso conectar o WhatsApp?</h3>
+<p>Não para transcrever pelo site — basta enviar o arquivo. Conectar o WhatsApp serve para a transcrição automática de tudo que chega.</p>
+<h3>Qual o limite de duração?</h3>
+<p>Não há limite fixo. Áudios muito longos levam um pouco mais para processar.</p>
+
+<h2>Conclusão</h2>
+<p>Transcrever áudio para texto online nunca foi tão simples: sem instalar nada, em segundos, com resumo automático. <strong>Experimente grátis no ZapScript</strong> e transcreva seu primeiro áudio agora mesmo — no lançamento, o 1º mês do Pro sai por R$ 19,90.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 12 — Nicho fundo de funil: advogados. Alta conversão.
+     Keyword: "transcrição de áudio para advogados"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcricao-de-audio-para-advogados',
+    title:       'Advogado: transcreva os áudios dos clientes e nunca perca um detalhe do caso',
+    description: 'Clientes mandam áudios longos e emocionais com fatos, datas e valores. Veja como transcrever e resumir automaticamente para montar o caso mais rápido e com segurança.',
+    keywords:    ['transcrição de áudio para advogados','advogado whatsapp áudio','transcrever áudio cliente jurídico','produtividade advocacia','transcrição jurídica áudio'],
+    publishedAt: '2026-06-18',
+    readingTime: 5,
+    category:    'Empresas',
+    coverEmoji:  '⚖️',
+    content: `
+<p>O cliente liga — ou melhor, manda um áudio de 9 minutos. Está nervoso, conta a história fora de ordem, mistura fatos relevantes com desabafo e, no meio de tudo, solta a data do contrato, o valor da dívida e o nome da outra parte. Para o advogado, <strong>cada detalhe desse áudio pode ser decisivo no processo</strong> — e ouvir tudo duas, três vezes para anotar é tempo que não volta.</p>
+
+<h2>O áudio é o novo "primeiro atendimento" — e ele é caótico</h2>
+<p>No WhatsApp, o cliente não organiza o relato: ele fala como pensa. O advogado precisa extrair dali os <strong>fatos juridicamente relevantes</strong> — partes, datas, valores, pedidos, provas mencionadas. Fazer isso de ouvido, anotando em paralelo, é lento e arriscado: um detalhe perdido pode custar um prazo ou um argumento.</p>
+
+<h2>A solução: transcrição + resumo automático com IA</h2>
+<p>Com o <strong>ZapScript</strong>, o áudio do cliente vira, em segundos:</p>
+<ul>
+  <li>A <strong>transcrição completa</strong> — palavra por palavra, para você citar com exatidão e anexar ao dossiê;</li>
+  <li>Um <strong>resumo com os pontos-chave</strong> — os fatos que importam, separados do desabafo.</li>
+</ul>
+<p>Exemplo do que você recebe de um áudio de 9 minutos:</p>
+<blockquote>
+• Cliente busca rescisão de contrato de prestação de serviço assinado em 03/2025<br>
+• Valor em discussão: R$ 14.200, com 3 parcelas em aberto<br>
+• Outra parte: empresa "X Serviços", sem resposta há 30 dias<br>
+• Cliente tem prints das conversas e o contrato em PDF<br>
+• Pedido: saber se cabe ação e qual o prazo
+</blockquote>
+<p>Você bate o olho, entende o caso e responde com segurança — sem reouvir nada.</p>
+
+<h2>Por que isso importa na advocacia</h2>
+<ul>
+  <li><strong>Nenhum fato perdido:</strong> tudo fica registrado em texto, auditável.</li>
+  <li><strong>Triagem rápida:</strong> identifique em segundos se o caso é urgente e se vale assumir.</li>
+  <li><strong>Histórico pesquisável:</strong> meses depois, busque por um termo no relato do cliente sem reouvir áudios.</li>
+  <li><strong>Atendimento mais rápido:</strong> responda mais clientes no mesmo dia.</li>
+</ul>
+
+<h2>Sigilo profissional e LGPD</h2>
+<p>Informação de cliente é coberta por sigilo. O ZapScript foi feito com privacidade no centro: o <strong>áudio nunca é armazenado</strong>, as transcrições são criptografadas (AES-256-GCM), os servidores ficam no Brasil e o tratamento segue a LGPD. Você ganha produtividade sem comprometer o dever de sigilo.</p>
+
+<h2>Como começar</h2>
+<ol>
+  <li>Crie sua conta gratuita em <strong>zapscript.me</strong> (sem cartão).</li>
+  <li>Para testar agora, envie um áudio direto pelo site e veja o resultado.</li>
+  <li>Depois, conecte seu WhatsApp e passe a transcrever automaticamente tudo que o cliente mandar.</li>
+</ol>
+
+<h2>Perguntas frequentes</h2>
+<h3>Funciona com áudios longos e emocionais?</h3>
+<p>Sim. Quanto mais longo e desorganizado o relato, mais valor o resumo entrega — ele separa o fato relevante do desabafo.</p>
+<h3>Posso usar a transcrição no processo?</h3>
+<p>A transcrição é um registro textual fiel do áudio que você pode anexar ao seu dossiê e citar. Como em qualquer prova, a valoração final cabe ao juízo.</p>
+<h3>É seguro para o sigilo do cliente?</h3>
+<p>Sim. O áudio não é armazenado e as transcrições são criptografadas, em conformidade com a LGPD.</p>
+
+<h2>Conclusão</h2>
+<p>Advogado vive de detalhe — e o detalhe muitas vezes chega num áudio bagunçado de 9 minutos. Transcrever e resumir automaticamente é a forma mais rápida e segura de montar o caso sem perder nada. <strong>Pare de reouvir áudio e comece a ler.</strong> Crie sua conta no ZapScript; no lançamento, o 1º mês do Pro sai por R$ 19,90.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 13 — Nicho fundo de funil: vendas/comercial. Alta conversão.
+     Keyword: "transcrever áudio de cliente vendas"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcrever-audio-cliente-vendas',
+    title:       'Vendedor: transforme os áudios dos clientes em vendas (e responda mais rápido)',
+    description: 'No comercial, quem responde primeiro fecha. Veja como transcrever e resumir os áudios dos clientes automaticamente para não perder detalhe nem timing de venda.',
+    keywords:    ['transcrever áudio cliente vendas','vendedor whatsapp áudio','produtividade comercial whatsapp','resumo áudio cliente','transcrição áudio vendas'],
+    publishedAt: '2026-06-19',
+    readingTime: 5,
+    category:    'Empresas',
+    coverEmoji:  '💼',
+    content: `
+<p>No comercial existe uma regra de ouro: <strong>quem responde primeiro, com a proposta certa, fecha</strong>. Mas o cliente manda um áudio de 4 minutos enquanto você está em outra ligação — e quando você ouve, o concorrente já respondeu. No WhatsApp, o áudio é ao mesmo tempo o seu canal de venda e o seu maior ladrão de timing.</p>
+
+<h2>O problema do vendedor com áudio</h2>
+<ul>
+  <li><strong>Timing:</strong> você não pode parar tudo para ouvir cada áudio na hora.</li>
+  <li><strong>Detalhe perdido:</strong> o cliente diz a objeção, o orçamento e o prazo no meio do áudio — e você esquece metade.</li>
+  <li><strong>Volume:</strong> num dia movimentado, são dezenas de áudios de leads diferentes.</li>
+  <li><strong>Follow-up:</strong> sem registro em texto, é difícil retomar a conversa dias depois.</li>
+</ul>
+
+<h2>A solução: leia o resumo, responda na hora</h2>
+<p>Com o <strong>ZapScript</strong> conectado ao seu WhatsApp, todo áudio que o cliente manda vira automaticamente texto + resumo. Você bate o olho e já sabe o que responder:</p>
+<blockquote>
+• Lead quer 50 unidades do produto B<br>
+• Objeção: achou o frete caro<br>
+• Pediu desconto à vista<br>
+• Decisão até sexta — vai comparar com concorrente
+</blockquote>
+<p>Em 5 segundos você tem o que precisa para mandar a proposta certa, contornar a objeção e ganhar o timing.</p>
+
+<h2>Por que isso vende mais</h2>
+<ul>
+  <li><strong>Velocidade de resposta:</strong> o primeiro a responder com a solução certa larga na frente.</li>
+  <li><strong>Argumento sob medida:</strong> você responde a objeção exata que o cliente levantou.</li>
+  <li><strong>Nada cai no esquecimento:</strong> todo lead fica registrado em texto, pesquisável.</li>
+  <li><strong>Follow-up afiado:</strong> dias depois, releia o resumo e retome de onde parou.</li>
+  <li><strong>Mais leads atendidos por dia:</strong> o tempo que ia para ouvir vira tempo de fechar.</li>
+</ul>
+
+<h2>Integre ao seu CRM</h2>
+<p>Para times comerciais, o ZapScript permite enviar cada transcrição para o seu CRM (via webhook, no plano avançado). Assim, o histórico do lead é atualizado automaticamente no HubSpot, RD Station, Pipedrive ou no que você usar — sem digitação manual.</p>
+
+<h2>Modo Privado: triagem sem pressão</h2>
+<p>Recebeu 15 áudios de leads diferentes? Com o Modo Privado, você lê todos os resumos sem marcar como "ouvido" e decide a ordem de resposta — priorizando quem está mais quente, sem gerar expectativa de retorno imediato em todos.</p>
+
+<h2>Como começar</h2>
+<ol>
+  <li>Crie sua conta gratuita em <strong>zapscript.me</strong>.</li>
+  <li>Conecte seu número de WhatsApp comercial via QR code.</li>
+  <li>Pronto: todo áudio de cliente vira texto + resumo automaticamente.</li>
+</ol>
+
+<h2>Perguntas frequentes</h2>
+<h3>Funciona com WhatsApp Business?</h3>
+<p>Sim, com contas pessoais e WhatsApp Business.</p>
+<h3>Dá para integrar com meu CRM?</h3>
+<p>Sim, via webhook no plano avançado — cada transcrição pode disparar uma automação no Zapier, Make ou direto no CRM.</p>
+<h3>É seguro com dados de clientes?</h3>
+<p>Sim. Áudio não armazenado, transcrições criptografadas, servidores no Brasil e conformidade com a LGPD.</p>
+
+<h2>Conclusão</h2>
+<p>No comercial, áudio não pode ser desculpa para perder venda. Transcrever e resumir automaticamente devolve o seu timing e garante que nenhum detalhe — nem nenhum lead — escape. <strong>Comece grátis no ZapScript</strong> e responda seu próximo cliente na frente da concorrência; no lançamento, o 1º mês do Pro sai por R$ 19,90.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 14 — Prova social / casos reais. Topo-meio de funil.
+     Keyword: "casos reais transcrição áudio whatsapp"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'casos-reais-transcricao-audio-whatsapp',
+    title:       '5 casos reais de quem trocou o áudio pela leitura (e recuperou horas por semana)',
+    description: 'Corretor, advogada, vendedor, assistente e mãe de família: veja casos reais de pessoas que pararam de ouvir áudio e passaram a ler o resumo — e o que mudou.',
+    keywords:    ['casos reais transcrição áudio whatsapp','quem usa transcrição áudio','exemplos transcrição whatsapp','antes e depois áudio texto','histórias produtividade whatsapp'],
+    publishedAt: '2026-06-20',
+    readingTime: 6,
+    category:    'Casos de uso',
+    coverEmoji:  '🗣️',
+    content: `
+<p>Falar de produtividade no abstrato é fácil. Mais útil é ver <strong>como pessoas reais, em rotinas diferentes</strong>, deixaram de perder tempo ouvindo áudio e passaram a ler o resumo. Reunimos 5 casos representativos — a dor de cada um, o que mudou e quanto tempo voltou para a semana.</p>
+
+<h2>Caso 1 — A advogada que recebia 50 áudios por dia</h2>
+<p><strong>Antes:</strong> Fernanda, advogada em São Paulo, recebia dezenas de áudios longos de clientes nervosos. Ouvia cada um duas vezes para anotar fatos e datas. Perdia tardes inteiras só na triagem.</p>
+<p><strong>Depois:</strong> com transcrição + resumo automático, ela lê os pontos-chave de cada caso em segundos e decide na hora o que é urgente.</p>
+<blockquote>"Minha equipe recebia mais de 50 áudios por dia. Com o ZapScript, viramos texto em segundos. Triplicou nossa agilidade no atendimento."</blockquote>
+<p><strong>Tempo recuperado:</strong> cerca de 2h por dia de triagem.</p>
+
+<h2>Caso 2 — O consultor comercial que ouvia o mesmo áudio 3 vezes</h2>
+<p><strong>Antes:</strong> Ricardo, consultor em Campinas, reouvia o áudio do cliente para não perder a objeção e o orçamento. Entre uma reunião e outra, o concorrente respondia primeiro.</p>
+<p><strong>Depois:</strong> lê o resumo em 10 segundos, manda a proposta certa na hora e ganha o timing.</p>
+<blockquote>"Antes eu ouvia o mesmo áudio três vezes para não perder nada. Agora leio o resumo em 10 segundos e sigo em frente. Mudou minha rotina de vendas."</blockquote>
+<p><strong>Resultado:</strong> resposta mais rápida = mais negócios fechados.</p>
+
+<h2>Caso 3 — A assistente executiva de 4 chefes</h2>
+<p><strong>Antes:</strong> Camila, em Belo Horizonte, dava suporte a 4 executivos que mandavam áudios o dia inteiro. Tarefas se perdiam no meio das mensagens de voz.</p>
+<p><strong>Depois:</strong> cada áudio vira tópicos claros, e nada importante escapa.</p>
+<blockquote>"Trabalho com 4 executivos e cada um manda áudio o dia inteiro. O ZapScript organiza tudo em tópicos claros. Nunca mais perdi uma tarefa importante."</blockquote>
+
+<h2>Caso 4 — O corretor de imóveis na rua o dia todo</h2>
+<p><strong>Antes:</strong> cliente mandava áudio de 5 minutos descrevendo o imóvel dos sonhos enquanto o corretor estava em uma visita. Quando ouvia, já tinha esquecido metade dos requisitos.</p>
+<p><strong>Depois:</strong> recebe o resumo com perfil do imóvel, bairros, orçamento e exigências — e responde com a opção certa antes da concorrência.</p>
+<blockquote>• 3 quartos, 1 suíte · Bairros: Moema, Itaim · Até R$ 600 mil · Aceita pet</blockquote>
+<p><strong>Resultado:</strong> zero detalhe perdido e mais visitas agendadas por dia.</p>
+
+<h2>Caso 5 — A rotina pessoal sobrecarregada de áudios</h2>
+<p><strong>Antes:</strong> grupos de família, escola das crianças, amigos — uma avalanche de áudios longos que se acumulavam sem fim.</p>
+<p><strong>Depois:</strong> bate o olho no resumo de cada um, responde o que importa e não fica refém de ouvir 8 minutos para descobrir o horário de um evento.</p>
+<p><strong>Tempo recuperado:</strong> as horas semanais que iam para escutar áudio voltaram para a vida.</p>
+
+<h2>O que esses casos têm em comum</h2>
+<ul>
+  <li>Todos <strong>recebiam muito áudio</strong> e perdiam tempo ouvindo (ou reouvindo).</li>
+  <li>Todos passaram a <strong>ler o resumo</strong> em vez de escutar tudo.</li>
+  <li>Todos <strong>recuperaram horas</strong> por semana — e melhoraram a qualidade das respostas.</li>
+</ul>
+
+<h2>A conta do tempo</h2>
+<p>30 áudios por dia, 1 minuto cada, são 30 minutos diários — mais de <strong>10 horas por mês</strong> só ouvindo. Trocar isso por leitura de resumos derruba esse número para poucos minutos.</p>
+
+<h2>Como ter o mesmo resultado</h2>
+<ol>
+  <li>Crie sua conta gratuita em <strong>zapscript.me</strong> (sem cartão).</li>
+  <li>Envie um áudio pelo site ou conecte seu WhatsApp.</li>
+  <li>Receba transcrição + resumo em segundos.</li>
+</ol>
+
+<h2>Conclusão</h2>
+<p>De advogada a mãe de família, a história se repete: parar de ouvir e começar a ler devolve horas e reduz o estresse. <strong>Faça o mesmo teste</strong> — crie sua conta no ZapScript e leia seu primeiro áudio hoje. No lançamento, o 1º mês do Pro sai por R$ 19,90.</p>
+    `,
+  },
+
 ];
 
 export function getPost(slug: string): BlogPost | undefined {

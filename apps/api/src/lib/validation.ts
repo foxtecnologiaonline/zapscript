@@ -14,8 +14,9 @@ export const registerSchema = z.object({
   password:     z.string().min(8, 'Senha deve ter pelo menos 8 caracteres').max(128), // M1: min 6→8 (OWASP)
   name:         z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100).optional(),
   phone:        z.string().max(20).optional(),
-  inviteCode:   z.string().max(100).optional(),
-  referralCode: z.string().max(100).optional(),
+  inviteCode:    z.string().max(100).optional(),
+  referralCode:  z.string().max(100).optional(),
+  affiliateCode: z.string().max(100).optional(),
   cbTos:        z.boolean().optional(),
   cbContrato:   z.boolean().optional(),
   cbLgpd:       z.boolean().optional(),
