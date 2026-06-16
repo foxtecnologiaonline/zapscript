@@ -277,12 +277,38 @@ export default async function authRoutes(app: FastifyInstance) {
           }
         });
       } catch (txErr: any) {
-        // Transação Prisma falhou — remover usuário do Supabase para evitar conta órfã
-        logger.error(`[Auth] Transação Prisma falhou para ${email}: ${txErr.message}. Fazendo rollback Supabase...`);
-        await supabase.auth.admin.deleteUser(data.user!.id).catch((delErr: any) => {
-          logger.error(`[Auth] Falha ao remover usuário Supabase ${data.user!.id} após rollback: ${delErr.message}`);
+        // Classificar a falha. Erros transitórios/infra (banco indisponível, migração
+        // pendente, timeout de pool) NÃO indicam dados inválidos — o cadastro pode ser
+        // retentado. Distinguir disso evita um 500 genérico durante um incidente de banco.
+        const errCode = txErr?.code as string | undefined;
+        const TRANSIENT_DB_ERRORS = ['P1001', 'P1002', 'P1008', 'P1011', 'P1017', 'P2022', 'P2024', 'P2028', 'P2034'];
+        const isTransient = !!errCode && TRANSIENT_DB_ERRORS.includes(errCode);
+
+        logger.error(`[Auth] Transação Prisma falhou para ${email}: code=${errCode} msg=${txErr?.message}. Revertendo conta Supabase recém-criada...`);
+
+        // Rollback da conta recém-criada (sem dados): evita conta autenticável e órfã.
+        // É a conta DESTE cadastro que não completou — nunca uma conta existente.
+        // Se o delete falhar, logamos CRÍTICO com id+email para reconciliação manual
+        // (a conta pode ser recuperada via "Esqueci minha senha" ou removida no painel).
+        const rolledBack = await supabase.auth.admin.deleteUser(data.user!.id)
+          .then(() => true)
+          .catch((delErr: any) => {
+            logger.error(`[Auth] CRÍTICO: conta Supabase órfã NÃO removida — id=${data.user!.id} email=${email}: ${delErr.message}`);
+            return false;
+          });
+
+        if (isTransient) {
+          // 503 retornável: deixa claro que a conta NÃO foi criada e que basta tentar de novo.
+          return reply.code(503).send({
+            error: 'Estamos com instabilidade momentânea e sua conta não foi criada. Tente novamente em alguns instantes.',
+            retryable: true,
+          });
+        }
+        return reply.code(500).send({
+          error: rolledBack
+            ? 'Erro ao criar conta. Tente novamente em instantes.'
+            : 'Erro ao criar conta. Se já recebeu algum e-mail nosso, use "Esqueci minha senha"; caso contrário, tente novamente.',
         });
-        return reply.code(500).send({ error: 'Erro ao criar conta. Tente novamente em instantes.' });
       }
 
       // Enviar e-mail de verificação (link mágico próprio, token JWT purpose:verify-email)
