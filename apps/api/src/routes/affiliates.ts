@@ -1,6 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { genAffiliateCode, COMMISSION } from '../lib/affiliate';
+import { sendEmail } from '../lib/mailer';
+
+const PAYOUT_MIN = 50; // R$50 mínimo para solicitar saque
 
 /* ─────────────────────────────────────────────────────────
    Programa de Afiliados — rotas self-service (JWT)
@@ -160,6 +163,54 @@ export default async function affiliateRoutes(app: FastifyInstance) {
 
       const updated = await prisma.affiliate.update({ where: { userId }, data });
       return { ok: true, affiliate: { commissionType: updated.commissionType, pixKey: updated.pixKey, pixKeyType: updated.pixKeyType, payoutName: updated.payoutName } };
+    }
+  );
+
+  // ── POST /affiliates/me/payout-request — solicitar saque via Pix ─────────
+  app.post(
+    '/me/payout-request',
+    { ...auth, config: { rateLimit: { max: 3, timeWindow: '1 hour' } } },
+    async (req: any, reply) => {
+      const userId = req.user.sub;
+      const affiliate = await prisma.affiliate.findUnique({ where: { userId } });
+      if (!affiliate) return reply.code(404).send({ error: 'Cadastro de afiliado não encontrado.' });
+      if (affiliate.status !== 'approved') return reply.code(400).send({ error: 'Apenas afiliados aprovados podem solicitar saque.' });
+      if (!affiliate.pixKey) return reply.code(400).send({ error: 'Cadastre sua chave Pix antes de solicitar o saque.' });
+
+      const stats = await buildAffiliateStats(affiliate.id);
+      if (stats.pendingAmount < PAYOUT_MIN) {
+        return reply.code(400).send({
+          error: `Saldo mínimo para saque é R$${PAYOUT_MIN.toFixed(2)}. Seu saldo atual é R$${stats.pendingAmount.toFixed(2)}.`,
+        });
+      }
+
+      await prisma.affiliate.update({
+        where: { id: affiliate.id },
+        data:  { payoutRequestedAt: new Date() },
+      });
+
+      // Notificar admin por e-mail (best-effort)
+      const adminEmail = process.env.SUPPORT_EMAIL || process.env.SMTP_FROM?.replace(/.*<(.+)>/, '$1');
+      if (adminEmail) {
+        const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+        const amtFmt  = stats.pendingAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        sendEmail(
+          adminEmail,
+          `[ZapScript] Solicitação de saque — ${affiliate.code} (${amtFmt})`,
+          `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+            <div style="font-size:20px;font-weight:bold;margin-bottom:12px">💸 Solicitação de saque de afiliado</div>
+            <p><strong>Código:</strong> ${affiliate.code}</p>
+            <p><strong>Chave Pix:</strong> ${affiliate.pixKeyType?.toUpperCase()} — ${affiliate.pixKey}</p>
+            <p><strong>Nome:</strong> ${affiliate.payoutName || '—'}</p>
+            <p><strong>Saldo pendente:</strong> <span style="color:#10b981;font-size:18px">${amtFmt}</span></p>
+            <div style="margin:24px 0;text-align:center">
+              <a href="${APP_URL}/g5r8t2?tab=afiliados" style="background:#10b981;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Ver no painel admin →</a>
+            </div>
+          </div>`,
+        ).catch(() => {});
+      }
+
+      return { ok: true, message: 'Solicitação de saque registrada! Você receberá o Pix até o dia 15 do próximo mês.' };
     }
   );
 

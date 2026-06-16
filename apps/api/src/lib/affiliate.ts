@@ -1,5 +1,6 @@
 import { prisma } from './prisma';
 import { logger } from './logger';
+import { sendEmail } from './mailer';
 
 /* ─────────────────────────────────────────────────────────
    Programa de Afiliados — regras de comissão
@@ -90,6 +91,27 @@ export async function attributeAffiliateCommission(
     }
 
     logger.info(`[Afiliado] Comissão atribuída: aff=${aff.id} user=${referredUserId} R$${commissionAmount} (${aff.commissionType} m${monthIndex})`);
+
+    // Notificar afiliado por e-mail (best-effort)
+    const affUser = await prisma.user.findUnique({ where: { id: aff.userId }, select: { email: true, name: true } });
+    if (affUser?.email) {
+      const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+      const firstName = affUser.name?.split(' ')[0] || 'parceiro(a)';
+      const amtFmt = commissionAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      sendEmail(
+        affUser.email,
+        `💸 Você ganhou ${amtFmt} — um indicado assinou pelo seu link!`,
+        `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+          <div style="font-size:22px;font-weight:bold;margin-bottom:12px">💸 Nova comissão gerada!</div>
+          <p style="color:#a7f3d0;line-height:1.7">Olá, ${firstName}! Um dos seus indicados acabou de pagar a assinatura do ZapScript.</p>
+          <p style="color:#a7f3d0;line-height:1.7">Comissão gerada: <strong style="color:#10b981;font-size:20px">${amtFmt}</strong></p>
+          <p style="color:#6b7280;font-size:13px">Pagamentos via Pix até o dia 15 do mês seguinte (mínimo R$50,00 acumulado).</p>
+          <div style="margin:24px 0;text-align:center">
+            <a href="${APP_URL}/dashboard/afiliado" style="background:#10b981;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Ver extrato →</a>
+          </div>
+        </div>`,
+      ).catch(err => logger.error(`[Afiliado] Falha ao enviar e-mail de comissão: ${err?.message}`));
+    }
   } catch (err: any) {
     // Violação de unique (paymentId, affiliateId) = pagamento duplicado → ignorar
     if (err?.code === 'P2002') return;

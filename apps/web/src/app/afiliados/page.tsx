@@ -58,7 +58,7 @@ export default function AfiliadosLanding() {
           {[
             { n: '1', t: 'Cadastre-se', d: 'Solicite sua afiliação e escolha o modelo de comissão. A aprovação é rápida.' },
             { n: '2', t: 'Compartilhe', d: 'Divulgue seu link exclusivo nas redes, grupos e para sua audiência.' },
-            { n: '3', t: 'Receba via Pix', d: 'A cada assinatura paga pelo seu link, a comissão entra no seu extrato e é paga via Pix.' },
+            { n: '3', t: 'Receba via Pix', d: 'A cada assinatura paga pelo seu link, a comissão entra no seu extrato. Pagamentos via Pix até o dia 15 do mês seguinte (mínimo R$50,00).' },
           ].map(s => (
             <div key={s.n} className="rounded-2xl p-5 text-center" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
               <div className="w-9 h-9 rounded-full bg-brand-primary/15 text-brand-primary font-black flex items-center justify-center mx-auto mb-3">{s.n}</div>

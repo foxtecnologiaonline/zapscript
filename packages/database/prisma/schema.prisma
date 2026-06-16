@@ -353,8 +353,9 @@ model Affiliate {
   notes          String?                            // observações internas do admin
   rejectedReason String?
   appliedAt      DateTime @default(now())
-  approvedAt     DateTime?
-  approvedBy     String?                            // adminId que aprovou
+  approvedAt          DateTime?
+  approvedBy          String?                            // adminId que aprovou
+  payoutRequestedAt   DateTime?                          // última solicitação de saque do afiliado
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)

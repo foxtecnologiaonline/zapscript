@@ -2335,10 +2335,34 @@ export default async function adminRoutes(app: FastifyInstance) {
       if (!c) return reply.code(404).send({ error: 'Comissão não encontrada.' });
       if (c.status === 'paid') return { ok: true, alreadyPaid: true };
 
-      await prisma.affiliateCommission.update({
-        where: { id: c.id },
-        data:  { status: 'paid', paidAt: new Date(), paidReference: req.body?.reference?.slice(0, 200) || null },
+      const updated = await prisma.affiliateCommission.update({
+        where:   { id: c.id },
+        data:    { status: 'paid', paidAt: new Date(), paidReference: req.body?.reference?.slice(0, 200) || null },
+        include: { affiliate: { include: { user: { select: { email: true, name: true } } } } },
       });
+
+      // Notificar afiliado do pagamento (best-effort)
+      const userEmail = updated.affiliate.user.email;
+      if (userEmail) {
+        const APP_URL   = process.env.APP_URL || 'https://zapscript.me';
+        const firstName = updated.affiliate.user.name?.split(' ')[0] || 'parceiro(a)';
+        const amtFmt    = updated.commissionAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        sendEmail(
+          userEmail,
+          `🎉 Pix enviado! ${amtFmt} chegando na sua conta`,
+          `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+            <div style="font-size:22px;font-weight:bold;margin-bottom:12px">🎉 Pagamento realizado!</div>
+            <p style="color:#a7f3d0;line-height:1.7">Olá, ${escHtmlAdmin(firstName)}! Seu Pix de comissão foi enviado.</p>
+            <p style="color:#a7f3d0;line-height:1.7">Valor: <strong style="color:#10b981;font-size:20px">${amtFmt}</strong></p>
+            ${req.body?.reference ? `<p style="color:#6b7280;font-size:13px">Referência: ${escHtmlAdmin(req.body.reference)}</p>` : ''}
+            <p style="color:#6b7280;font-size:13px">Continue divulgando seu link para acumular mais comissões!</p>
+            <div style="margin:24px 0;text-align:center">
+              <a href="${APP_URL}/dashboard/afiliado" style="background:#10b981;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Ver extrato →</a>
+            </div>
+          </div>`,
+        ).catch(err => app.log.error({ err }, 'Erro ao enviar e-mail de pagamento de afiliado'));
+      }
+
       app.log.info(`[Admin] Comissão marcada como paga: ${c.id} R$${c.commissionAmount}`);
       return { ok: true };
     }
