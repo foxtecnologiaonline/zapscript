@@ -217,6 +217,58 @@ function TermsModal({ onAccepted }: { onAccepted: () => void }) {
   );
 }
 
+// ── Banner suave de verificação de e-mail (não-bloqueante) ───────────────────
+// Aparece quando o usuário ainda não confirmou o e-mail. A conta funciona
+// normalmente (Opção A); a verificação só é exigida na hora de assinar um plano.
+function EmailVerifyBanner({ email }: { email: string }) {
+  const [dismissed, setDismissed] = useState(false);
+  const [sending, setSending]     = useState(false);
+  const [sent, setSent]           = useState(false);
+
+  if (dismissed) return null;
+
+  async function resend() {
+    setSending(true);
+    try {
+      await api.post('/auth/resend-verification', {});
+      setSent(true);
+    } catch {
+      /* silencioso — banner é informativo */
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="px-4 sm:px-6 pt-3">
+      <div className="rounded-xl px-4 py-2.5 flex items-center gap-3 flex-wrap"
+        style={{ background: 'rgba(251,191,36,.08)', border: '1px solid rgba(251,191,36,.25)' }}>
+        <span className="text-base flex-shrink-0">📧</span>
+        <p className="text-xs flex-1 min-w-[180px]" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+          {sent ? (
+            <>Link reenviado para <strong>{email}</strong>. Confira sua caixa de entrada (e o spam).</>
+          ) : (
+            <>Confirme seu e-mail para liberar a assinatura de planos. Sua conta já está ativa.</>
+          )}
+        </p>
+        {!sent && (
+          <button onClick={resend} disabled={sending}
+            className="text-xs font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+            style={{ background: 'rgba(251,191,36,.15)', color: '#fbbf24' }}>
+            {sending ? 'Enviando...' : 'Reenviar link'}
+          </button>
+        )}
+        <button onClick={() => setDismissed(true)}
+          className="text-xs flex-shrink-0 transition-colors hover:opacity-70"
+          style={{ color: 'rgb(var(--color-text-muted))' }}
+          aria-label="Dispensar">
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname   = usePathname();
   const router     = useRouter();
@@ -312,7 +364,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )}
         </header>
 
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto">
+          {user && user.emailVerified === false && <EmailVerifyBanner email={user.email} />}
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -88,6 +88,47 @@ function escHtml(s: string | null | undefined): string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+/**
+ * Envia o e-mail de verificação (link mágico próprio).
+ * O link aponta para /verificar-email?token=<JWT purpose:verify-email>; ao abrir,
+ * o front chama POST /auth/verify-email e marca emailVerified=true.
+ * Best-effort: nunca derruba o fluxo de cadastro se o envio falhar.
+ */
+async function sendVerificationEmail(email: string, name: string | null | undefined, confirmLink: string) {
+  await sendEmail(
+    email,
+    'Confirme seu e-mail — ZapScript',
+    emailWrapper('✉️', 'Confirme seu e-mail', `
+      <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 8px">
+        Olá${name ? `, <strong style="color:#6ee7b7">${escHtml(name)}</strong>` : ''}!
+      </p>
+      <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 6px">
+        Sua conta já está ativa e você pode usar o ZapScript agora mesmo.
+        Confirme seu e-mail para liberar a <strong style="color:#6ee7b7">assinatura de planos pagos</strong>.
+      </p>
+
+      <div style="text-align:center;margin:24px 0">
+        <a href="${confirmLink}"
+           style="display:inline-block;background:#10b981;color:#ffffff;padding:16px 48px;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:0.2px;box-shadow:0 4px 24px rgba(16,185,129,.35)">
+          ✅ Confirmar meu e-mail
+        </a>
+      </div>
+
+      <p style="color:#4a7060;font-size:12px;text-align:center;margin:0 0 24px;line-height:1.6">
+        Botão não funcionou? Cole este link no navegador:<br>
+        <a href="${confirmLink}" style="color:rgba(16,185,129,.65);word-break:break-all;font-size:11px">${confirmLink}</a>
+      </p>
+
+      <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:12px;padding:16px 20px">
+        <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
+          ⏰ <strong style="color:#5d8a72">Este link expira em 7 dias.</strong>
+          Sua conta já vem com <strong style="color:#5d8a72">20 minutos grátis</strong> de transcrição, sem cartão de crédito.
+        </p>
+      </div>
+    `, 'Se você não criou uma conta no ZapScript, pode ignorar este e-mail com segurança.')
+  );
+}
+
 export default async function authRoutes(app: FastifyInstance) {
 
   // ── POST /auth/register ───────────────────────────────────────────────────
@@ -134,11 +175,13 @@ export default async function authRoutes(app: FastifyInstance) {
         if (!referrer) logger.warn(`[Auth] referralCode inválido: ${referralCode}`);
       }
 
-      // Criar no Supabase Auth sem confirmar e-mail automaticamente
+      // Auto-login (Opção A): autoconfirma no Supabase apenas para liberar o
+      // signInWithPassword; a verificação REAL de posse do e-mail é controlada
+      // por User.emailVerified (Prisma) e exigida só no momento da assinatura.
       const { data, error } = await supabase.auth.admin.createUser({
         email,
         password,
-        email_confirm: false,   // usuário deve confirmar via link no e-mail
+        email_confirm: true,
       });
       if (error) return reply.code(400).send({ error: error.message });
 
@@ -219,87 +262,30 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.code(500).send({ error: 'Erro ao criar conta. Tente novamente em instantes.' });
       }
 
-      // Gerar link de confirmação e enviar e-mail de boas-vindas
+      // Enviar e-mail de verificação (link mágico próprio, token JWT purpose:verify-email)
       try {
-        logger.info(`[Auth] Gerando link de confirmação para ${email} (redirectTo: ${APP_URL}/email-confirmado)`);
-
-        const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-          type:     'signup',           // 'signup' = link de confirmação de e-mail (não magiclink)
-          email,
-          password, // necessário para o tipo 'signup'
-          options:  { redirectTo: `${APP_URL}/email-confirmado` },
-        });
-
-        if (linkError) {
-          logger.error(`[Auth] generateLink falhou para ${email}: ${linkError.message}`);
-        } else if (!linkData?.properties?.action_link) {
-          logger.error(`[Auth] generateLink não retornou action_link para ${email}. linkData: ${JSON.stringify(linkData?.properties)}`);
-        } else {
-          logger.info(`[Auth] Link gerado com sucesso para ${email}. Enviando e-mail via sendEmail()...`);
-        }
-
-        if (linkData?.properties?.action_link) {
-          const confirmLink = linkData.properties.action_link;
-          await sendEmail(
-            email,
-            'Confirme seu e-mail — ZapScript',
-            emailWrapper('✉️', 'Confirme seu e-mail', `
-              <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 8px">
-                Olá${name ? `, <strong style="color:#6ee7b7">${escHtml(name)}</strong>` : ''}!
-              </p>
-              <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 6px">
-                Sua conta ZapScript foi criada. Falta apenas <strong style="color:#6ee7b7">um passo</strong>:
-                confirme seu e-mail para ativar o acesso.
-              </p>
-              <p style="color:#7aa898;font-size:14px;line-height:1.6;margin:0 0 28px">
-                Após a confirmação, você terá acesso imediato à plataforma.
-              </p>
-
-              <div style="text-align:center;margin:0 0 24px">
-                <a href="${confirmLink}"
-                   style="display:inline-block;background:#10b981;color:#ffffff;padding:16px 48px;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:0.2px;box-shadow:0 4px 24px rgba(16,185,129,.35)">
-                  ✅ Confirmar meu e-mail
-                </a>
-              </div>
-
-              <p style="color:#4a7060;font-size:12px;text-align:center;margin:0 0 24px;line-height:1.6">
-                Botão não funcionou? Cole este link no navegador:<br>
-                <a href="${confirmLink}" style="color:rgba(16,185,129,.65);word-break:break-all;font-size:11px">${confirmLink}</a>
-              </p>
-
-              <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:12px;padding:16px 20px">
-                <table cellpadding="0" cellspacing="0" border="0" style="width:100%">
-                  <tr>
-                    <td style="vertical-align:top;padding-right:10px;font-size:20px;line-height:1">🎁</td>
-                    <td>
-                      <p style="color:#6ee7b7;font-size:13px;font-weight:700;margin:0 0 4px">20 minutos grátis te esperam</p>
-                      <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
-                        Assim que confirmar, sua conta recebe <strong style="color:#5d8a72">20 minutos de transcrição</strong> sem cartão de crédito.
-                        Transcreva áudios do WhatsApp com IA em segundos.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-                <div style="height:1px;background:rgba(16,185,129,.08);margin:12px 0"></div>
-                <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
-                  ⏰ <strong style="color:#5d8a72">Este link expira em 24 horas.</strong>
-                  Após esse prazo, faça login e solicite um novo link de ativação.
-                </p>
-              </div>
-            `, 'Se você não criou uma conta no ZapScript, pode ignorar este e-mail com segurança.')
-          );
-        }
+        const verifyToken = app.jwt.sign(
+          { sub: data.user!.id, email, purpose: 'verify-email' },
+          { expiresIn: '7d' },
+        );
+        const confirmLink = `${APP_URL}/verificar-email?token=${encodeURIComponent(verifyToken)}`;
+        logger.info(`[Auth] Enviando e-mail de verificação para ${email}`);
+        await sendVerificationEmail(email, name, confirmLink);
       } catch (err: any) {
-        // Não falhar o cadastro se o envio de e-mail falhar
-        logger.error(`[Auth] Erro ao enviar e-mail de confirmação: ${err.message}`);
+        // Não falhar o cadastro se o envio de e-mail falhar — o usuário já está logado
+        logger.error(`[Auth] Erro ao enviar e-mail de verificação: ${err.message}`);
       }
 
+      // Auto-login (Opção A): emitir JWT na hora para o usuário ir direto ao dashboard
+      const token = app.jwt.sign({ sub: data.user!.id, email }, { expiresIn: '30d' });
       return reply.code(201).send({
-        needsVerification: true,
+        token,
+        user: { id: data.user!.id, email },
+        emailVerified: false,
         isTester: !!testerInvite,
         message: testerInvite
-          ? 'Conta Tester criada com Plano PRO por 1 ano! Verifique seu e-mail para ativar.'
-          : 'Conta criada! Verifique seu e-mail para ativar o acesso.',
+          ? 'Conta Tester criada com Plano PRO por 1 ano!'
+          : 'Conta criada! Você já pode usar o ZapScript.',
       });
     }
   );
@@ -361,21 +347,10 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.code(401).send({ error: 'Credenciais inválidas' });
       }
 
-      // Bloquear login se e-mail ainda não foi verificado (verificação dupla local)
-      if (!data.user.email_confirmed_at) {
-        return reply.code(403).send({
-          error: 'E-mail não confirmado. Verifique sua caixa de entrada ou solicite um novo link de ativação.',
-          needsVerification: true,
-          code: 'EMAIL_NOT_CONFIRMED',
-        });
-      }
-
-      // Atualizar emailVerified no banco (sync lazy)
-      await prisma.user.update({
-        where: { id: data.user.id },
-        data:  { emailVerified: true },
-      }).catch(() => { /* ignora se usuário não existir no Prisma */ });
-
+      // Opção A: o login NÃO exige e-mail verificado — o usuário acessa o Free
+      // normalmente. A verificação (User.emailVerified) é exigida apenas no
+      // checkout. Não sincronizamos emailVerified aqui, pois o login não prova
+      // posse do e-mail (a conta é autoconfirmada no Supabase no cadastro).
       const token = app.jwt.sign({ sub: data.user.id, email }, { expiresIn: '30d' });
       return { token, user: { id: data.user.id, email } };
     }
@@ -536,6 +511,63 @@ export default async function authRoutes(app: FastifyInstance) {
       }
 
       return { message: 'Senha redefinida com sucesso! Faça login com sua nova senha.' };
+    }
+  );
+
+  // ── POST /auth/verify-email ───────────────────────────────────────────────
+  // Confirma a posse do e-mail via link mágico (token JWT purpose:verify-email).
+  app.post<{ Body: { token: string } }>(
+    '/verify-email',
+    { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } },
+    async (req, reply) => {
+      const { token } = req.body;
+      if (!token) return reply.code(400).send({ error: 'Token obrigatório.' });
+
+      let payload: any;
+      try {
+        payload = (app as any).jwt.verify(token);
+      } catch {
+        return reply.code(400).send({ error: 'Link inválido ou expirado. Solicite um novo.' });
+      }
+      if (payload?.purpose !== 'verify-email' || !payload?.sub) {
+        return reply.code(400).send({ error: 'Link inválido.' });
+      }
+
+      await prisma.user.update({
+        where: { id: payload.sub },
+        data:  { emailVerified: true },
+      }).catch((err: any) => logger.warn(`[Auth] verify-email: usuário não encontrado (${payload.sub}): ${err.message}`));
+
+      logger.info(`[Auth] E-mail verificado: ${payload.sub}`);
+      return { verified: true };
+    }
+  );
+
+  // ── POST /auth/resend-verification ────────────────────────────────────────
+  // Reenvia o link mágico de verificação para o usuário autenticado (usado no
+  // banner do dashboard e no gate do checkout).
+  app.post(
+    '/resend-verification',
+    { preHandler: [(app as any).authenticate], config: { rateLimit: { max: 3, timeWindow: '10 minutes' } } },
+    async (req: any, reply) => {
+      const user = await prisma.user.findUnique({
+        where:  { id: req.user.sub },
+        select: { email: true, name: true, emailVerified: true },
+      });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+      if (user.emailVerified) return { alreadyVerified: true };
+
+      try {
+        const verifyToken = (app as any).jwt.sign(
+          { sub: req.user.sub, email: user.email, purpose: 'verify-email' },
+          { expiresIn: '7d' },
+        );
+        const confirmLink = `${APP_URL}/verificar-email?token=${encodeURIComponent(verifyToken)}`;
+        await sendVerificationEmail(user.email, user.name, confirmLink);
+      } catch (err: any) {
+        logger.error(`[Auth] Erro ao reenviar verificação: ${err.message}`);
+      }
+      return { sent: true };
     }
   );
 

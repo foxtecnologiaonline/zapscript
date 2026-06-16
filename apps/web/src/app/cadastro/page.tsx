@@ -55,7 +55,7 @@ function CadastroForm() {
 
     setLoading(true);
     try {
-      await api.post('/auth/register', {
+      const res = await api.post<{ token: string }>('/auth/register', {
         name:       form.name,
         email:      form.email,
         phone:      form.phone || undefined,
@@ -68,8 +68,16 @@ function CadastroForm() {
         ...(inviteCode   ? { inviteCode }   : {}),
         ...(referralCode ? { referralCode } : {}),
       });
-      setUserEmail(form.email);
       track('signup');
+      // Opção A: login automático — o usuário já entra usando o ZapScript.
+      // A verificação de e-mail e o CPF são exigidos só na assinatura.
+      if (res?.token) {
+        api.setToken(res.token);
+        router.push('/dashboard');
+        return;
+      }
+      // Fallback (caso a API não retorne token): mantém a tela de confirmação.
+      setUserEmail(form.email);
       setDone(true);
     } catch (err: any) {
       setError(err.message || 'Erro ao criar conta.');

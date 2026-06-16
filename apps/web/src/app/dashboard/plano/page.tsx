@@ -22,6 +22,7 @@ interface User {
   name: string | null;
   email: string;
   document: string | null;
+  emailVerified: boolean;
 }
 
 /* ── Planos ── */
@@ -397,6 +398,81 @@ function DocumentModal({
   );
 }
 
+/* ── Modal de verificação de e-mail (gate da assinatura) ── */
+function VerifyEmailModal({
+  email,
+  onCancel,
+}: {
+  email: string;
+  onCancel: () => void;
+}) {
+  const [sending, setSending] = useState(false);
+  const [sent, setSent]       = useState(false);
+  const [err, setErr]         = useState('');
+
+  async function resend() {
+    setSending(true);
+    setErr('');
+    try {
+      await api.post('/auth/resend-verification', {});
+      setSent(true);
+    } catch (e: any) {
+      setErr(e.message || 'Erro ao reenviar. Tente novamente em instantes.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-2xl p-6 text-center"
+        style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-primary)/.2)' }}
+        onClick={e => e.stopPropagation()}>
+
+        <div className="w-12 h-12 rounded-full bg-brand-primary/10 flex items-center justify-center mx-auto mb-3 text-2xl">
+          📧
+        </div>
+        <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
+          Confirme seu e-mail para assinar
+        </h3>
+        <p className="text-xs mt-2 leading-relaxed" style={{ color: 'rgb(var(--color-text-muted))' }}>
+          Para sua segurança, antes de assinar um plano precisamos confirmar que{' '}
+          <strong style={{ color: 'rgb(var(--color-text-secondary))' }}>{email}</strong> é seu.
+          Enviamos um link de confirmação — abra-o e clique em <strong>Confirmar meu e-mail</strong>.
+        </p>
+
+        {err && (
+          <div className="text-xs px-3 py-2 rounded-lg mt-4" style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', color: '#f87171' }}>
+            {err}
+          </div>
+        )}
+
+        {sent ? (
+          <div className="text-xs px-3 py-2 rounded-lg mt-4" style={{ background: 'rgba(34,197,94,.1)', border: '1px solid rgba(34,197,94,.2)', color: '#4ade80' }}>
+            ✓ Link reenviado! Verifique sua caixa de entrada (e o spam).
+          </div>
+        ) : (
+          <button onClick={resend} disabled={sending}
+            className="w-full btn-primary py-3 text-sm mt-5 disabled:opacity-50">
+            {sending ? 'Enviando...' : 'Reenviar link de confirmação'}
+          </button>
+        )}
+
+        <button onClick={onCancel}
+          className="w-full py-2 text-xs mt-2 transition-colors"
+          style={{ color: 'rgb(var(--color-text-muted))' }}>
+          Fechar
+        </button>
+
+        <p className="text-[10px] mt-3" style={{ color: 'rgba(var(--color-text-muted)/.6)' }}>
+          Já confirmou? Recarregue esta página e tente novamente.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function PlanoContent() {
   const searchParams = useSearchParams();
   const [stats, setStats]             = useState<Stats | null>(null);
@@ -404,6 +480,7 @@ function PlanoContent() {
   const [loading, setLoading]         = useState(true);
   const [checkoutPlan, setCheckoutPlan]     = useState<string | null>(null);  // plano com checkout inline aberto
   const [docModal, setDocModal]             = useState<string | null>(null);
+  const [verifyModal, setVerifyModal]       = useState(false);
   const [showTable, setShowTable]           = useState(false);
   const [upgradePreview, setUpgradePreview] = useState<UpgradePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -459,6 +536,11 @@ function PlanoContent() {
   }
 
   async function upgrade(planName: string) {
+    // Opção A: gate de assinatura — e-mail verificado vem antes do CPF/checkout.
+    if (!user?.emailVerified) {
+      setVerifyModal(true);
+      return;
+    }
     if (!user?.document) {
       setDocModal(planName);
       return;
@@ -1125,6 +1207,11 @@ function PlanoContent() {
           </div>
         );
       })()}
+
+      {/* Modal de verificação de e-mail (gate da assinatura) */}
+      {verifyModal && user && (
+        <VerifyEmailModal email={user.email} onCancel={() => setVerifyModal(false)} />
+      )}
 
       {/* Modal de CPF/CNPJ */}
       {docModal && (

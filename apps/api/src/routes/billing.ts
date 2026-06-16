@@ -263,6 +263,20 @@ export default async function billingRoutes(app: FastifyInstance) {
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) return reply.code(401).send({ error: 'Usuário não encontrado' });
 
+      // ── Gate da assinatura (Opção A): e-mail verificado + CPF/CNPJ ──
+      if (!user.emailVerified) {
+        return reply.code(403).send({
+          code:  'EMAIL_NOT_VERIFIED',
+          error: 'Confirme seu e-mail antes de assinar um plano.',
+        });
+      }
+      if (!user.document) {
+        return reply.code(400).send({
+          code:  'DOCUMENT_REQUIRED',
+          error: 'Informe seu CPF/CNPJ para assinar um plano.',
+        });
+      }
+
       // ── Criar/buscar cliente no Asaas ──
       let asaasCustomerId: string;
       try {
