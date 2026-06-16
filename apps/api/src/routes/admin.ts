@@ -2344,6 +2344,71 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // GET /affiliates/performance — resumo geral + ranking de desempenho por afiliado
+  app.get(
+    '/affiliates/performance',
+    { preHandler: [adminAuth] },
+    async () => {
+      const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
+
+      const [byStatus, affiliates, convertedGroup, commGroup] = await Promise.all([
+        prisma.affiliate.groupBy({ by: ['status'], _count: { _all: true } }),
+        prisma.affiliate.findMany({
+          where:  { status: 'approved' },
+          select: {
+            id: true, code: true, commissionType: true,
+            user: { select: { name: true, email: true } },
+            _count: { select: { referrals: true } },
+          },
+        }),
+        prisma.affiliateReferral.groupBy({ by: ['affiliateId'], where: { status: 'converted' }, _count: { _all: true } }),
+        prisma.affiliateCommission.groupBy({ by: ['affiliateId', 'status'], _sum: { commissionAmount: true } }),
+      ]);
+
+      const statusCount = (s: string) => byStatus.find(g => g.status === s)?._count._all || 0;
+      const convOf = (id: string) => convertedGroup.find(g => g.affiliateId === id)?._count._all || 0;
+      const sumOf  = (id: string, st: string) => round2(commGroup.find(g => g.affiliateId === id && g.status === st)?._sum.commissionAmount || 0);
+
+      const rows = affiliates.map(a => {
+        const referrals = a._count.referrals;
+        const converted = convOf(a.id);
+        const pending   = sumOf(a.id, 'pending');
+        const paid      = sumOf(a.id, 'paid');
+        return {
+          id:             a.id,
+          code:           a.code,
+          name:           a.user.name,
+          email:          maskEmail(a.user.email),
+          commissionType: a.commissionType,
+          referrals,
+          converted,
+          convRate:  referrals ? Math.round((converted / referrals) * 100) : 0,
+          pending,                    // saldo acumulado a pagar
+          paid,                       // total já pago
+          lifetime:  round2(pending + paid),
+        };
+      }).sort((x, y) => y.lifetime - x.lifetime);
+
+      const totalReferrals = rows.reduce((s, r) => s + r.referrals, 0);
+      const totalConverted = rows.reduce((s, r) => s + r.converted, 0);
+
+      return {
+        summary: {
+          total:          byStatus.reduce((s, g) => s + g._count._all, 0),
+          approved:       statusCount('approved'),
+          pending:        statusCount('pending'),   // solicitações aguardando autorização
+          rejected:       statusCount('rejected'),
+          totalReferrals,
+          totalConverted,
+          convRate:       totalReferrals ? Math.round((totalConverted / totalReferrals) * 100) : 0,
+          pendingPayout:  round2(rows.reduce((s, r) => s + r.pending, 0)),
+          paidLifetime:   round2(rows.reduce((s, r) => s + r.paid, 0)),
+        },
+        rows,
+      };
+    }
+  );
+
   // ══════════════════════════════════════════════════════════════════════════
   // Leads da demo pública ("transcreva 1 áudio grátis" da landing page)
   // ══════════════════════════════════════════════════════════════════════════

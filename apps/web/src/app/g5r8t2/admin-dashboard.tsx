@@ -1293,11 +1293,12 @@ const COMM_STATUS_CLS: Record<string, string> = {
 function AffiliatesPanel({ apiBase, token, notify }: {
   apiBase: string; token: string; notify: (t: string, type?: 'ok' | 'err' | 'warn') => void;
 }) {
-  const [view, setView]       = useState<'cadastros' | 'comissoes'>('cadastros');
+  const [view, setView]       = useState<'desempenho' | 'cadastros' | 'comissoes'>('desempenho');
   const [affStatus, setAffStatus]   = useState('pending');
   const [commStatus, setCommStatus] = useState('pending');
   const [affiliates, setAffiliates] = useState<any[]>([]);
   const [commissions, setCommissions] = useState<any[]>([]);
+  const [perf, setPerf]         = useState<{ summary: any; rows: any[] } | null>(null);
   const [loading, setLoading]   = useState(false);
 
   const hdr = { 'x-admin-token': token } as Record<string, string>;
@@ -1322,10 +1323,21 @@ function AffiliatesPanel({ apiBase, token, notify }: {
     finally { setLoading(false); }
   }, [apiBase, token]);
 
+  const loadPerformance = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates/performance`, { headers: hdr });
+      const d = await r.json();
+      setPerf({ summary: d.summary || {}, rows: d.rows || [] });
+    } catch { notify('Erro ao carregar desempenho', 'err'); }
+    finally { setLoading(false); }
+  }, [apiBase, token]);
+
   useEffect(() => {
-    if (view === 'cadastros') loadAffiliates(affStatus);
+    if (view === 'desempenho') loadPerformance();
+    else if (view === 'cadastros') loadAffiliates(affStatus);
     else loadCommissions(commStatus);
-  }, [view, affStatus, commStatus, loadAffiliates, loadCommissions]);
+  }, [view, affStatus, commStatus, loadAffiliates, loadCommissions, loadPerformance]);
 
   async function approve(id: string) {
     try {
@@ -1360,13 +1372,66 @@ function AffiliatesPanel({ apiBase, token, notify }: {
     <div className="space-y-4">
       {/* Sub-abas */}
       <div className="flex gap-2">
-        {([['cadastros', 'Cadastros'], ['comissoes', 'Comissões']] as [typeof view, string][]).map(([v, l]) => (
+        {([['desempenho', 'Desempenho'], ['cadastros', 'Cadastros'], ['comissoes', 'Comissões']] as [typeof view, string][]).map(([v, l]) => (
           <button key={v} onClick={() => setView(v)}
             className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
               view === v ? 'bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.2)]' : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7] border border-transparent'
             }`}>{l}</button>
         ))}
       </div>
+
+      {view === 'desempenho' && (
+        loading || !perf ? <div className="text-[rgba(16,185,129,.4)] text-sm py-6">Carregando...</div> : (
+          <div className="space-y-5">
+            {/* Resumo geral */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <KpiCard icon="👥" title="Afiliados aprovados" value={perf.summary.approved || 0}
+                sub={`${perf.summary.pending || 0} aguardando · ${perf.summary.total || 0} no total`} />
+              <KpiCard icon="🤝" title="Indicações" value={perf.summary.totalReferrals || 0}
+                sub={`${perf.summary.totalConverted || 0} convertidas · ${perf.summary.convRate || 0}% conversão`} color="#6ee7b7" />
+              <KpiCard icon="⏳" title="Saldo a pagar" value={brl(perf.summary.pendingPayout || 0)}
+                sub="comissões pendentes (Pix)" color="#facc15" />
+              <KpiCard icon="✅" title="Total já pago" value={brl(perf.summary.paidLifetime || 0)}
+                sub="comissões liquidadas" color="#34d399" />
+            </div>
+
+            {/* Ranking por afiliado */}
+            <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-wider text-[rgba(16,185,129,.4)] border-b border-[rgba(16,185,129,.08)]">
+                    <th className="px-4 py-2.5 font-medium">#</th>
+                    <th className="px-4 py-2.5 font-medium">Afiliado</th>
+                    <th className="px-4 py-2.5 font-medium">Tipo</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Indicações</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Conv.</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Taxa</th>
+                    <th className="px-4 py-2.5 font-medium text-right">A receber</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Pago</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {perf.rows.length === 0 && <tr><td colSpan={9} className="px-4 py-6 text-center text-[rgba(16,185,129,.4)]">Nenhum afiliado aprovado ainda.</td></tr>}
+                  {perf.rows.map((r, i) => (
+                    <tr key={r.id} className="border-b border-[rgba(16,185,129,.05)]">
+                      <td className="px-4 py-2.5 text-[rgba(16,185,129,.4)]">{i + 1}</td>
+                      <td className="px-4 py-2.5 text-[#d1fae5]">{r.name || r.email}<div className="text-[10px] font-mono text-[rgba(16,185,129,.4)]">{r.code}</div></td>
+                      <td className="px-4 py-2.5 text-[rgba(16,185,129,.5)] text-xs">{r.commissionType === 'onetime' ? 'Única 30%' : 'Rec. 5%/mês'}</td>
+                      <td className="px-4 py-2.5 text-right text-[#d1fae5]">{r.referrals}</td>
+                      <td className="px-4 py-2.5 text-right text-[#6ee7b7]">{r.converted}</td>
+                      <td className="px-4 py-2.5 text-right text-[rgba(16,185,129,.6)]">{r.convRate}%</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-yellow-400">{brl(r.pending)}</td>
+                      <td className="px-4 py-2.5 text-right text-[rgba(16,185,129,.5)]">{brl(r.paid)}</td>
+                      <td className="px-4 py-2.5 text-right font-bold text-[#34d399]">{brl(r.lifetime)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      )}
 
       {view === 'cadastros' && (
         <>
