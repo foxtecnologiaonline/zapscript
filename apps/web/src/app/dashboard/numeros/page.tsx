@@ -409,23 +409,6 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                     Voltar para código por número (recomendado)
                   </button>
 
-                  {/* Aviso de golpe — compacto, sem ser alarmante */}
-                  <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-2.5">
-                    <div className="flex items-start gap-2">
-                      <span className="text-sm flex-shrink-0 mt-0.5">⚠️</span>
-                      <div>
-                        <p className="text-[11px] font-semibold text-amber-400 leading-snug">
-                          O WhatsApp pode exibir "Suspeita de golpe"
-                        </p>
-                        <p className="text-[10px] text-brand-muted mt-0.5 leading-relaxed">
-                          É normal em plataformas de automação — o WhatsApp identifica IPs de servidores cloud independente do país.
-                          Basta <strong className="text-brand-text">ignorar e confirmar</strong>.
-                          Para reduzir o aviso, prefira o <strong className="text-brand-text">código por número</strong>.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
                   {/* QR */}
                   <div className="flex flex-col items-center justify-center bg-brand-elevated rounded-2xl p-5 gap-3">
                     {qrImage ? (

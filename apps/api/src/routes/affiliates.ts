@@ -65,9 +65,9 @@ export default async function affiliateRoutes(app: FastifyInstance) {
       },
       stats,
       rates: {
-        onetimeRate:        COMMISSION.ONETIME_RATE,
-        recurringRate:      COMMISSION.RECURRING_RATE,
-        recurringMaxMonths: COMMISSION.RECURRING_MAX_MONTHS,
+        monthlyRate: COMMISSION.MONTHLY_RATE,
+        yearlyRate:  COMMISSION.YEARLY_RATE,
+        payoutDays:  COMMISSION.PAYOUT_DAYS,
       },
     };
   });
@@ -112,7 +112,7 @@ export default async function affiliateRoutes(app: FastifyInstance) {
           userId,
           code,
           status:         'pending',
-          commissionType: commissionType || 'recurring',
+          commissionType: 'onetime', // modelo único: 50% mensal ou 20% anual
           pixKey:         pixKey?.trim() || null,
           pixKeyType:     pixKeyType || null,
           payoutName:     payoutName?.trim() || null,

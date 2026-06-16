@@ -1038,7 +1038,7 @@ export default async function billingRoutes(app: FastifyInstance) {
         app.log.info(`Pagamento confirmado: userId=${userId} plan=${planName} cycle=${isYearlyWebhook ? 'yearly' : 'monthly'}`);
 
         // ── Programa de afiliados: atribuir comissão da venda (idempotente) ──
-        await attributeAffiliateCommission(userId, payment.id, payment.value ?? 0);
+        await attributeAffiliateCommission(userId, payment.id, payment.value ?? 0, isYearlyWebhook);
       }
 
       return reply.send({ received: true });

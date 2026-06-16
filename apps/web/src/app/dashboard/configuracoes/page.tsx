@@ -66,7 +66,7 @@ export default function ConfiguracoesPage() {
       )}
 
       {/* Programa de Afiliados — solicitação do código (ponto de entrada do fluxo) */}
-      <AffiliateRequest />
+      <AffiliateRequest user={user} />
 
       {/* Zona de perigo */}
       <div className="card rounded-2xl p-6" style={{ borderColor: 'rgba(248,113,113,.15)' }}>

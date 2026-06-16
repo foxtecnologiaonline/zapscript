@@ -10,9 +10,9 @@ import { sendEmail } from './mailer';
    ───────────────────────────────────────────────────────── */
 
 export const COMMISSION = {
-  ONETIME_RATE:   0.30,
-  RECURRING_RATE: 0.05,
-  RECURRING_MAX_MONTHS: 12,
+  MONTHLY_RATE: 0.50, // 50% do 1º pagamento de plano mensal
+  YEARLY_RATE:  0.20, // 20% do 1º pagamento de plano anual
+  PAYOUT_DAYS:  [10, 25], // dias de pagamento (informativo para UI)
 } as const;
 
 function round2(n: number): number {
@@ -27,14 +27,15 @@ export function genAffiliateCode(): string {
 }
 
 /**
- * Atribui a comissão de uma venda (mensalidade paga) ao afiliado que indicou o usuário.
- * Chamado pelo webhook do Asaas em pagamentos de assinatura confirmados.
- * Silencioso e idempotente — nunca derruba o fluxo de pagamento.
+ * Atribui a comissão de uma venda ao afiliado que indicou o usuário.
+ * Regras: 50% do 1º pagamento mensal OU 20% do 1º pagamento anual (ambos únicos).
+ * Chamado pelo webhook do Asaas. Silencioso e idempotente.
  */
 export async function attributeAffiliateCommission(
   referredUserId: string,
   paymentId: string,
   saleAmount: number,
+  isYearly = false,
 ): Promise<void> {
   try {
     if (!saleAmount || saleAmount <= 0) return;
@@ -46,27 +47,17 @@ export async function attributeAffiliateCommission(
     if (!referral || !referral.affiliate) return;
 
     const aff = referral.affiliate;
-    if (aff.status !== 'approved') return; // só afiliados aprovados ganham comissão
+    if (aff.status !== 'approved') return;
 
-    // Comissões já geradas para este par afiliado→indicado
+    // Comissão é única por indicado (independente do ciclo)
     const prior = await prisma.affiliateCommission.count({
       where: { affiliateId: aff.id, referredUserId },
     });
+    if (prior > 0) return;
 
-    let commissionAmount: number;
-    let monthIndex: number;
-
-    if (aff.commissionType === 'onetime') {
-      if (prior > 0) return; // comissão única já paga
-      commissionAmount = round2(saleAmount * COMMISSION.ONETIME_RATE);
-      monthIndex = 1;
-    } else {
-      // recurring
-      if (prior >= COMMISSION.RECURRING_MAX_MONTHS) return; // limite de 12 meses atingido
-      commissionAmount = round2(saleAmount * COMMISSION.RECURRING_RATE);
-      monthIndex = prior + 1;
-    }
-
+    const rate           = isYearly ? COMMISSION.YEARLY_RATE : COMMISSION.MONTHLY_RATE;
+    const commissionType = isYearly ? 'annual' : 'monthly';
+    const commissionAmount = round2(saleAmount * rate);
     if (commissionAmount <= 0) return;
 
     await prisma.affiliateCommission.create({
@@ -76,8 +67,8 @@ export async function attributeAffiliateCommission(
         paymentId,
         saleAmount,
         commissionAmount,
-        commissionType: aff.commissionType,
-        monthIndex,
+        commissionType,
+        monthIndex:     1,
         status:         'pending',
       },
     });
@@ -90,7 +81,7 @@ export async function attributeAffiliateCommission(
       });
     }
 
-    logger.info(`[Afiliado] Comissão atribuída: aff=${aff.id} user=${referredUserId} R$${commissionAmount} (${aff.commissionType} m${monthIndex})`);
+    logger.info(`[Afiliado] Comissão atribuída: aff=${aff.id} user=${referredUserId} R$${commissionAmount} (${commissionType})`);
 
     // Notificar afiliado por e-mail (best-effort)
     const affUser = await prisma.user.findUnique({ where: { id: aff.userId }, select: { email: true, name: true } });
