@@ -5,14 +5,25 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
-const NAV = [
+// Item "Afiliados" é condicional: só entra para quem tem a marcação de afiliado
+// aprovado (user.affiliate.status === 'approved'). Ver buildNav().
+const NAV_BASE = [
   { href: '/dashboard',               icon: '🏠', label: 'Dashboard' },
   { href: '/dashboard/transcricoes',  icon: '📝', label: 'Transcrições' },
   { href: '/dashboard/numeros',       icon: '📱', label: 'Números' },
   { href: '/dashboard/plano',         icon: '💳', label: 'Plano' },
-  { href: '/dashboard/afiliado',      icon: '🤝', label: 'Afiliados' },
   { href: '/dashboard/configuracoes', icon: '⚙️', label: 'Configurações' },
 ];
+
+/** Monta o menu inserindo "Afiliados" antes de "Configurações" apenas para afiliados aprovados. */
+function buildNav(user: any) {
+  if (user?.affiliate?.status !== 'approved') return NAV_BASE;
+  const nav = [...NAV_BASE];
+  const idx = nav.findIndex(i => i.href === '/dashboard/configuracoes');
+  const afiliadoItem = { href: '/dashboard/afiliado', icon: '🤝', label: 'Afiliados' };
+  nav.splice(idx < 0 ? nav.length : idx, 0, afiliadoItem);
+  return nav;
+}
 
 const PLAN_COLORS: Record<string, string> = {
   free:      'text-[rgba(16,185,129,.4)]',
@@ -51,7 +62,7 @@ function NavContent({
 
       {/* Nav links */}
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-        {NAV.map(item => {
+        {buildNav(user).map(item => {
           const active = pathname === item.href;
           return (
             <Link

@@ -1,10 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
 /* ─────────────────────────────────────────────────────────
-   Painel do Afiliado — solicitar afiliação, link de indicação,
-   estatísticas e extrato de comissões. Pagamento via Pix manual.
+   Painel do Afiliado — EXCLUSIVO de afiliados aprovados.
+   A solicitação do código fica em Configurações; quem não tem a
+   marcação aprovada é redirecionado pra lá. Pagamento via Pix manual.
    ───────────────────────────────────────────────────────── */
 
 interface Affiliate {
@@ -43,24 +45,28 @@ const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', curren
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
 
 export default function AfiliadoPage() {
-  const [loading, setLoading]       = useState(true);
-  const [affiliate, setAffiliate]   = useState<Affiliate | null>(null);
-  const [stats, setStats]           = useState<Stats | null>(null);
-  const [rates, setRates]           = useState<Rates | null>(null);
+  const router = useRouter();
+  const [loading, setLoading]         = useState(true);
+  const [affiliate, setAffiliate]     = useState<Affiliate | null>(null);
+  const [stats, setStats]             = useState<Stats | null>(null);
+  const [rates, setRates]             = useState<Rates | null>(null);
   const [commissions, setCommissions] = useState<Commission[]>([]);
 
   async function load() {
     try {
       const data = await api.get<{ affiliate: Affiliate | null; stats?: Stats; rates?: Rates }>('/affiliates/me');
+      // Página exclusiva de aprovados — demais voltam para Configurações (onde solicitam/acompanham).
+      if (data.affiliate?.status !== 'approved') {
+        router.replace('/dashboard/configuracoes');
+        return;
+      }
       setAffiliate(data.affiliate);
       setStats(data.stats || null);
       setRates(data.rates || null);
-      if (data.affiliate?.status === 'approved') {
-        try {
-          const c = await api.get<{ commissions: Commission[] }>('/affiliates/commissions');
-          setCommissions(c.commissions || []);
-        } catch { /* sem comissões ainda */ }
-      }
+      try {
+        const c = await api.get<{ commissions: Commission[] }>('/affiliates/commissions');
+        setCommissions(c.commissions || []);
+      } catch { /* sem comissões ainda */ }
     } catch {
       /* não autenticado tratado pelo layout */
     } finally {
@@ -69,7 +75,7 @@ export default function AfiliadoPage() {
   }
   useEffect(() => { load(); }, []);
 
-  if (loading) {
+  if (loading || !affiliate) {
     return (
       <div className="p-6 sm:p-8">
         <div className="text-brand-primary text-sm animate-pulse">Carregando...</div>
@@ -84,169 +90,15 @@ export default function AfiliadoPage() {
           <span>🤝</span> Programa de Afiliados
         </h1>
         <p className="text-sm text-brand-muted mt-1">
-          Indique o ZapScript e ganhe comissão sobre cada assinatura paga.
+          Compartilhe seu link e ganhe comissão sobre cada assinatura paga.
         </p>
       </div>
 
-      {!affiliate && <ApplyForm rates={rates} onApplied={load} />}
-      {affiliate?.status === 'pending'  && <PendingCard affiliate={affiliate} />}
-      {affiliate?.status === 'rejected' && <RejectedCard affiliate={affiliate} />}
-      {affiliate?.status === 'suspended' && <SuspendedCard />}
-      {affiliate?.status === 'approved' && (
-        <ApprovedPanel
-          affiliate={affiliate} stats={stats} rates={rates}
-          commissions={commissions} onUpdated={load}
-        />
-      )}
+      <ApprovedPanel
+        affiliate={affiliate} stats={stats} rates={rates}
+        commissions={commissions} onUpdated={load}
+      />
     </div>
-  );
-}
-
-/* ── Cartão informativo de modelos de comissão ── */
-function CommissionInfo({ rates }: { rates: Rates | null }) {
-  const oneRate = rates ? Math.round(rates.onetimeRate * 100) : 30;
-  const recRate = rates ? Math.round(rates.recurringRate * 100) : 5;
-  const months  = rates?.recurringMaxMonths ?? 12;
-  return (
-    <div className="grid sm:grid-cols-2 gap-3 mb-5">
-      <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-        <div className="text-xs font-mono uppercase tracking-widest text-brand-muted mb-1">Modelo A</div>
-        <div className="text-2xl font-black text-brand-primary">{oneRate}%</div>
-        <p className="text-xs text-brand-text-secondary mt-1">comissão <strong>única</strong> sobre o primeiro pagamento de cada indicado.</p>
-      </div>
-      <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-        <div className="text-xs font-mono uppercase tracking-widest text-brand-muted mb-1">Modelo B</div>
-        <div className="text-2xl font-black text-brand-primary">{recRate}%/mês</div>
-        <p className="text-xs text-brand-text-secondary mt-1">comissão <strong>recorrente</strong> nos primeiros {months} meses de cada assinatura ativa.</p>
-      </div>
-    </div>
-  );
-}
-
-/* ── Formulário de solicitação ── */
-function ApplyForm({ rates, onApplied }: { rates: Rates | null; onApplied: () => void }) {
-  const [commissionType, setCommissionType] = useState<'onetime' | 'recurring'>('recurring');
-  const [pixKeyType, setPixKeyType] = useState('');
-  const [pixKey, setPixKey]         = useState('');
-  const [payoutName, setPayoutName] = useState('');
-  const [audience, setAudience]     = useState('');
-  const [loading, setLoading]       = useState(false);
-  const [error, setError]           = useState('');
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(''); setLoading(true);
-    try {
-      await api.post('/affiliates/apply', {
-        commissionType,
-        pixKey:     pixKey || undefined,
-        pixKeyType: pixKeyType || undefined,
-        payoutName: payoutName || undefined,
-        audience:   audience || undefined,
-      });
-      onApplied();
-    } catch (err: any) {
-      setError(err.message || 'Erro ao enviar cadastro.');
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div>
-      <CommissionInfo rates={rates} />
-      <form onSubmit={submit} className="rounded-2xl p-5 sm:p-6 space-y-4"
-        style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.12)' }}>
-        <div>
-          <label className="block text-xs font-semibold text-brand-text-secondary mb-2">Escolha seu modelo de comissão</label>
-          <div className="grid sm:grid-cols-2 gap-2">
-            {([
-              { v: 'recurring', t: 'Recorrente (5%/mês)', d: 'Renda passiva por até 12 meses' },
-              { v: 'onetime',   t: 'Única (30%)',         d: 'Comissão maior no 1º pagamento' },
-            ] as const).map(o => (
-              <button type="button" key={o.v} onClick={() => setCommissionType(o.v)}
-                className={`text-left rounded-xl p-3 border transition-all ${
-                  commissionType === o.v
-                    ? 'border-brand-primary bg-brand-primary/10'
-                    : 'border-white/10 hover:border-white/20'
-                }`}>
-                <div className="text-sm font-bold text-brand-text">{o.t}</div>
-                <div className="text-[11px] text-brand-muted">{o.d}</div>
-              </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-brand-muted/60 mt-1">O modelo só pode ser alterado antes da sua primeira comissão.</p>
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Tipo de chave Pix <span className="font-normal text-brand-muted">(opcional)</span></label>
-            <select className="field-input" value={pixKeyType} onChange={e => setPixKeyType(e.target.value)}>
-              <option value="">Selecione</option>
-              {PIX_TYPES.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Chave Pix</label>
-            <input className="field-input" value={pixKey} onChange={e => setPixKey(e.target.value)} placeholder="Para receber suas comissões" />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Nome do titular da chave <span className="font-normal text-brand-muted">(opcional)</span></label>
-          <input className="field-input" value={payoutName} onChange={e => setPayoutName(e.target.value)} placeholder="Nome completo / razão social" />
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Como você pretende divulgar? <span className="font-normal text-brand-muted">(opcional)</span></label>
-          <textarea className="field-input min-h-[72px]" value={audience} onChange={e => setAudience(e.target.value)}
-            placeholder="Ex.: Instagram com 5k seguidores de profissionais liberais; grupo de WhatsApp de contadores..." />
-          <p className="text-[10px] text-brand-muted/60 mt-1">Isso ajuda nossa equipe a aprovar seu cadastro mais rápido.</p>
-        </div>
-
-        {error && <div className="text-red-400 text-xs bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">{error}</div>}
-
-        <button type="submit" disabled={loading} className="btn-primary w-full py-3 text-sm disabled:opacity-50">
-          {loading ? 'Enviando...' : 'Quero ser afiliado →'}
-        </button>
-        <p className="text-center text-[11px] text-brand-muted">Seu cadastro passa por aprovação da nossa equipe.</p>
-      </form>
-    </div>
-  );
-}
-
-/* ── Estados de status ── */
-function StatusShell({ icon, bg, border, title, children }: any) {
-  return (
-    <div className="rounded-2xl p-6 text-center" style={{ background: bg, border: `1px solid ${border}` }}>
-      <div className="text-4xl mb-2">{icon}</div>
-      <h2 className="text-lg font-bold text-brand-text mb-1">{title}</h2>
-      <div className="text-sm text-brand-text-secondary">{children}</div>
-    </div>
-  );
-}
-function PendingCard({ affiliate }: { affiliate: Affiliate }) {
-  return (
-    <StatusShell icon="⏳" bg="rgba(251,191,36,.08)" border="rgba(251,191,36,.25)" title="Cadastro em análise">
-      Recebemos sua solicitação em <strong>{fmtDate(affiliate.appliedAt)}</strong>.<br />
-      Você receberá um e-mail assim que for aprovado e poderá começar a indicar.
-    </StatusShell>
-  );
-}
-function RejectedCard({ affiliate }: { affiliate: Affiliate }) {
-  return (
-    <StatusShell icon="🚫" bg="rgba(239,68,68,.08)" border="rgba(239,68,68,.25)" title="Cadastro não aprovado">
-      {affiliate.rejectedReason
-        ? <>Motivo: <strong>{affiliate.rejectedReason}</strong></>
-        : 'Seu cadastro não foi aprovado no momento.'}
-      <br />Dúvidas? Fale com o suporte.
-    </StatusShell>
-  );
-}
-function SuspendedCard() {
-  return (
-    <StatusShell icon="⚠️" bg="rgba(239,68,68,.08)" border="rgba(239,68,68,.25)" title="Afiliação suspensa">
-      Sua conta de afiliado está suspensa. Entre em contato com o suporte para regularizar.
-    </StatusShell>
   );
 }
 

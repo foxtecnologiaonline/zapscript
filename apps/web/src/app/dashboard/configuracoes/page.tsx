@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import AffiliateRequest from '@/components/AffiliateRequest';
 
 export default function ConfiguracoesPage() {
   const [user, setUser] = useState<any>(null);
@@ -63,6 +64,9 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
       )}
+
+      {/* Programa de Afiliados — solicitação do código (ponto de entrada do fluxo) */}
+      <AffiliateRequest />
 
       {/* Zona de perigo */}
       <div className="card rounded-2xl p-6" style={{ borderColor: 'rgba(248,113,113,.15)' }}>

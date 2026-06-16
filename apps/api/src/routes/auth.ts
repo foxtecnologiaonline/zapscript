@@ -662,6 +662,9 @@ export default async function authRoutes(app: FastifyInstance) {
         refCode:          true,
         createdAt:        true,
         termsAcceptedAt:  true,
+        // Marcação de afiliado — usada no front para liberar o menu/página "Afiliados"
+        // (apenas afiliados aprovados têm acesso).
+        affiliate: { select: { status: true } },
         subscription: {
           select: {
             id:              true,
