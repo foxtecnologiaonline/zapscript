@@ -633,6 +633,17 @@ export default function HomePage() {
   // Planos — tabela comparativa
   const [showTable, setShowTable] = useState(false);
 
+  // Persist affiliate code to localStorage so /cadastro can pick it up even after navigation
+  useEffect(() => {
+    const aff = new URLSearchParams(window.location.search).get('aff');
+    if (aff) {
+      try {
+        localStorage.setItem('zs_aff', aff);
+        localStorage.setItem('zs_aff_exp', String(Date.now() + 30 * 24 * 60 * 60 * 1000));
+      } catch {}
+    }
+  }, []);
+
 
   return (
     <div className="min-h-screen bg-mesh font-sans text-brand-text overflow-x-hidden">

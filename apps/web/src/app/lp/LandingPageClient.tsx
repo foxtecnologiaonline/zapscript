@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 /* ── Tipos ──────────────────────────────────────────────────────────── */
@@ -88,10 +88,10 @@ const PLANS = [
   },
   {
     name: 'Pro',
-    price: 'R$39,90',
-    period: '/mês',
+    price: 'R$19,90',
+    period: '/1º mês · depois R$39,90',
     highlight: true,
-    badge: 'Mais popular',
+    badge: 'Oferta de junho',
     features: [
       '200 min de transcrição/mês',
       '2 números conectados',
@@ -109,6 +109,17 @@ const PLANS = [
 
 /* ── Componente principal ───────────────────────────────────────────── */
 export default function LandingPageClient({ variant }: { variant: Variant }) {
+  // Persist affiliate code across navigation (30-day window)
+  useEffect(() => {
+    const aff = new URLSearchParams(window.location.search).get('aff');
+    if (aff) {
+      try {
+        localStorage.setItem('zs_aff', aff);
+        localStorage.setItem('zs_aff_exp', String(Date.now() + 30 * 24 * 60 * 60 * 1000));
+      } catch {}
+    }
+  }, []);
+
   const faqs = variant.faqs ?? FAQS;
   const faqJsonLd = {
     '@context': 'https://schema.org',

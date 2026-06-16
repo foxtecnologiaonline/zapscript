@@ -11,7 +11,15 @@ function CadastroForm() {
   const searchParams = useSearchParams();
   const inviteCode    = searchParams.get('invite') || '';
   const referralCode  = searchParams.get('ref')    || '';
-  const affiliateCode = searchParams.get('aff')    || '';
+  // Read aff from URL param first; fall back to localStorage (30-day cookie-like storage)
+  const affiliateCode = searchParams.get('aff') || (() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      const exp = Number(localStorage.getItem('zs_aff_exp') || '0');
+      if (Date.now() > exp) { localStorage.removeItem('zs_aff'); localStorage.removeItem('zs_aff_exp'); return ''; }
+      return localStorage.getItem('zs_aff') || '';
+    } catch { return ''; }
+  })();
   const [isTesterInvite, setIsTesterInvite] = useState(false);
 
   const [form, setForm]   = useState({ name: '', email: '', phone: '', password: '', confirm: '' });
@@ -75,6 +83,7 @@ function CadastroForm() {
       // A verificação de e-mail e o CPF são exigidos só na assinatura.
       if (res?.token) {
         api.setToken(res.token);
+        try { localStorage.removeItem('zs_aff'); localStorage.removeItem('zs_aff_exp'); } catch {}
         router.push('/dashboard');
         return;
       }
