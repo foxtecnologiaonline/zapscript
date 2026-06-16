@@ -74,6 +74,14 @@ services:
       - key: SUPABASE_SERVICE_KEY
         sync: false
 
+      # ── IA / Transcrição (demo pública /demo/transcribe + agente de suporte) ──
+      # A rota da demo roda NESTE serviço (API) e usa Groq Whisper + Claude.
+      # Sem estas chaves, /demo/transcribe responde 503. Mesmos valores do worker.
+      - key: GROQ_API_KEY
+        sync: false          # whisper-large-v3-turbo
+      - key: ANTHROPIC_API_KEY
+        sync: false          # claude-3-haiku (resumo da demo)
+
       # ── Evolution API (WhatsApp) ────────────────────────────────────────────
       - key: EVOLUTION_API_URL
         sync: false
