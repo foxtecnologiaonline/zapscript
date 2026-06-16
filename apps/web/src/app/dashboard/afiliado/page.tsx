@@ -27,7 +27,7 @@ interface Stats {
   referrals: number; converted: number; totalCommissions: number;
   pendingAmount: number; paidAmount: number;
 }
-interface Rates { onetimeRate: number; recurringRate: number; recurringMaxMonths: number; }
+interface Rates { monthlyRate: number; yearlyRate: number; payoutDays: number[]; }
 interface Commission {
   id: string; saleAmount: number; commissionAmount: number;
   commissionType: string; monthIndex: number;
@@ -143,12 +143,11 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
     }
   }
 
-  const modelLabel = affiliate.commissionType === 'onetime'
-    ? `Única ${rates ? Math.round(rates.onetimeRate * 100) : 30}%`
-    : `Recorrente ${rates ? Math.round(rates.recurringRate * 100) : 5}%/mês`;
-
-  const pendingAmount = stats?.pendingAmount ?? 0;
+  const pendingAmount   = stats?.pendingAmount ?? 0;
   const canRequestPayout = pendingAmount >= PAYOUT_MIN && !!affiliate.pixKey;
+
+  const pendingCount = commissions.filter(c => c.status === 'pending').length;
+  const paidCount    = commissions.filter(c => c.status === 'paid').length;
 
   const kitMessages = [
     {
@@ -174,7 +173,7 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
       <div className="rounded-2xl p-5" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.12)' }}>
         <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
           <span className="text-xs font-mono uppercase tracking-widest text-brand-muted">Seu link de indicação</span>
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary font-semibold">{modelLabel}</span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary font-semibold">50% mensal · 20% anual</span>
         </div>
         <div className="flex gap-2 flex-wrap">
           <input readOnly value={link} className="field-input flex-1 min-w-[200px] font-mono text-xs" onFocus={e => e.target.select()} />
@@ -189,10 +188,27 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
 
       {/* Estatísticas */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatBox label="Indicações"  value={String(stats?.referrals ?? 0)} />
-        <StatBox label="Converteram" value={String(stats?.converted ?? 0)} />
-        <StatBox label="A receber"   value={brl(stats?.pendingAmount ?? 0)} accent />
-        <StatBox label="Já pago"     value={brl(stats?.paidAmount ?? 0)} />
+        <StatBox
+          label="Indicações"
+          value={String(stats?.referrals ?? 0)}
+          sub="cadastros pelo seu link"
+        />
+        <StatBox
+          label="Assinantes"
+          value={String(stats?.converted ?? 0)}
+          sub={`de ${stats?.referrals ?? 0} indicados`}
+        />
+        <StatBox
+          label="A receber"
+          value={brl(stats?.pendingAmount ?? 0)}
+          sub={`${pendingCount} comissão${pendingCount !== 1 ? 'ões' : ''} pendente${pendingCount !== 1 ? 's' : ''}`}
+          accent
+        />
+        <StatBox
+          label="Já pago"
+          value={brl(stats?.paidAmount ?? 0)}
+          sub={`${paidCount} comissão${paidCount !== 1 ? 'ões' : ''} paga${paidCount !== 1 ? 's' : ''}`}
+        />
       </div>
 
       {/* Solicitar saque */}
@@ -279,7 +295,7 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
                     <td className="px-4 py-2.5 text-brand-text-secondary">{brl(c.saleAmount)}</td>
                     <td className="px-4 py-2.5 font-semibold text-brand-text">{brl(c.commissionAmount)}</td>
                     <td className="px-4 py-2.5 text-brand-muted text-xs">
-                      {c.commissionType === 'onetime' ? 'Única' : `Recorrente ${c.monthIndex}/12`}
+                      {c.commissionType === 'annual' ? 'Anual (20%)' : c.commissionType === 'monthly' ? 'Mensal (50%)' : 'Única'}
                     </td>
                     <td className="px-4 py-2.5"><CommStatus status={c.status} /></td>
                   </tr>
@@ -293,11 +309,12 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
   );
 }
 
-function StatBox({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function StatBox({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
     <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
       <div className="text-[10px] uppercase tracking-widest text-brand-muted">{label}</div>
-      <div className={`text-lg font-black mt-0.5 ${accent ? 'text-brand-primary' : 'text-brand-text'}`}>{value}</div>
+      <div className={`text-lg font-black mt-0.5 leading-tight ${accent ? 'text-brand-primary' : 'text-brand-text'}`}>{value}</div>
+      {sub && <div className="text-[10px] text-brand-muted mt-0.5 leading-snug">{sub}</div>}
     </div>
   );
 }
