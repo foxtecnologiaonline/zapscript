@@ -18,10 +18,10 @@ interface Props {
   onCancel:   () => void;
 }
 
-/* ── Preços anuais (10% off) ── */
+/* ── Preços anuais (20% off — 12× com desconto) ── */
 const CHECKOUT_YEARLY: Record<string, { annual: string; monthlyEq: string; annualNum: number }> = {
-  pro:       { annual: 'R$430,92', monthlyEq: 'R$35,91/mês', annualNum: 430.92 },
-  executive: { annual: 'R$538,92', monthlyEq: 'R$44,91/mês', annualNum: 538.92 },
+  pro:       { annual: 'R$383,04', monthlyEq: 'R$31,92/mês', annualNum: 383.04 },
+  executive: { annual: 'R$479,04', monthlyEq: 'R$39,92/mês', annualNum: 479.04 },
 };
 
 type Method = 'pix' | 'pix_auto' | 'credit_card' | 'debit_card' | 'google_pay' | 'apple_pay' | 'paypal';
@@ -566,7 +566,7 @@ export default function CheckoutInline({
           </div>
           {isYearly && yearlyInfo && (
             <div style={{ fontSize: 9, color: 'rgb(var(--color-primary))', fontWeight: 700 }}>
-              {yearlyInfo.monthlyEq} · 10% off
+              {yearlyInfo.monthlyEq} · 20% off
             </div>
           )}
         </div>
@@ -601,7 +601,7 @@ export default function CheckoutInline({
                     {cycle === 'monthly' ? '📅 Mensal' : '📆 Anual'}
                     {cycle === 'yearly' && (
                       <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, background: 'rgb(var(--color-primary))', color: '#fff', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle' }}>
-                        10% OFF
+                        20% OFF
                       </span>
                     )}
                   </div>

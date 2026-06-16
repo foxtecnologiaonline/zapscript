@@ -470,6 +470,16 @@ function parseFallbackLines(raw: string, count: number): string[] {
 }
 
 /**
+ * Saldo total disponível = pool do plano (availableMinutes) + saldo extra válido
+ * (extraMinutes, contabilizado só se extraExpiresAt ainda não passou).
+ */
+function availableTotal(balance: { availableMinutes: number; extraMinutes?: number | null; extraExpiresAt?: Date | null } | null): number {
+  if (!balance) return 0;
+  const extraValid = balance.extraExpiresAt && balance.extraExpiresAt > new Date() ? (balance.extraMinutes ?? 0) : 0;
+  return balance.availableMinutes + extraValid;
+}
+
+/**
  * Salva transcrição no banco e debita minutos atomicamente.
  * Usa transação interativa para garantir que o débito só ocorre
  * se houver saldo suficiente (previne race condition).
@@ -484,15 +494,28 @@ async function saveTranscription(params: {
   const durationMin = Math.round((durationSec / 60) * 100) / 100;
 
   const transcription = await prisma.$transaction(async (tx) => {
-    // Débito atômico: só desconta se tiver saldo suficiente
-    const balanceUpdate = await tx.minuteBalance.updateMany({
-      where: { userId, availableMinutes: { gte: durationMin } },
-      data:  { availableMinutes: { decrement: durationMin }, accumulatedMinutes: { increment: durationMin } },
-    });
+    // Débito em dois buckets: primeiro o pool do plano (availableMinutes), depois o
+    // saldo extra válido (extraMinutes, se não expirado). Dentro da transação para consistência.
+    const nowDebit = new Date();
+    const bal = await tx.minuteBalance.findUnique({ where: { userId } });
+    if (!bal) throw new Error('Saldo não encontrado no momento do débito');
 
-    if (balanceUpdate.count === 0) {
+    const extraValid = bal.extraExpiresAt && bal.extraExpiresAt > nowDebit ? bal.extraMinutes : 0;
+    const totalAvail = bal.availableMinutes + extraValid;
+    if (totalAvail + 1e-9 < durationMin) {
       throw new Error(`Saldo insuficiente no momento do débito (${durationMin.toFixed(2)} min)`);
     }
+
+    const fromPlan  = Math.min(bal.availableMinutes, durationMin);
+    const fromExtra = Math.round((durationMin - fromPlan) * 100) / 100;
+    await tx.minuteBalance.update({
+      where: { userId },
+      data: {
+        availableMinutes:   { decrement: fromPlan },
+        ...(fromExtra > 0 ? { extraMinutes: { decrement: fromExtra } } : {}),
+        accumulatedMinutes: { increment: durationMin },
+      },
+    });
 
     // Criptografar campos sensíveis antes de salvar
     const encPhone   = encryptStr(contactPhone);
@@ -839,7 +862,7 @@ async function processManualJob(job: Job) {
   try {
     // PASSO 1: Verificar saldo
     const balance = await prisma.minuteBalance.findUnique({ where: { userId } });
-    if (!balance || balance.availableMinutes < 0.1) {
+    if (!balance || availableTotal(balance) < 0.1) {
       log(job, '⚠️  Saldo insuficiente');
       return { skipped: true, reason: 'insufficient_balance' };
     }
@@ -948,7 +971,7 @@ async function processOfficialWhatsAppJob(job: Job) {
       prisma.minuteBalance.findUnique({ where: { userId } }),
       prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
     ]);
-    if (!balance || balance.availableMinutes < durationMin) {
+    if (!balance || availableTotal(balance) < durationMin) {
       log(job, '⚠️  Saldo insuficiente — notificando usuário');
       await sendMessageToMeta(
         senderPhone,
@@ -960,7 +983,7 @@ async function processOfficialWhatsAppJob(job: Job) {
       log(job, '⚠️  Usuário sem número cadastrado');
       return { skipped: true, reason: 'no_number' };
     }
-    log(job, `✅ Saldo OK: ${balance.availableMinutes.toFixed(1)} min`);
+    log(job, `✅ Saldo OK: ${availableTotal(balance).toFixed(1)} min`);
 
     // PASSO 2: Baixar áudio da Meta API
     log(job, '⬇️  Baixando áudio da Meta API...');
@@ -1035,7 +1058,7 @@ async function processTwilioJob(job: Job) {
       prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
     ]);
 
-    if (!balance || balance.availableMinutes < 1) {
+    if (!balance || availableTotal(balance) < 1) {
       log(job, '⚠️  Saldo insuficiente — notificando via Twilio');
       await sendMessageViaTwilio(
         senderPhone,
@@ -1128,8 +1151,8 @@ async function processEvolutionJob(job: Job) {
         : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
     ]);
 
-    if (balance.availableMinutes < 0.1) {
-      log(job, `⚠️  Saldo insuficiente: ${balance.availableMinutes.toFixed(2)} min — notificando`);
+    if (availableTotal(balance) < 0.1) {
+      log(job, `⚠️  Saldo insuficiente: ${availableTotal(balance).toFixed(2)} min — notificando`);
       if (instanceName) {
         await sendMessageViaEvolution(
           instanceName, senderPhone,
@@ -1142,7 +1165,7 @@ async function processEvolutionJob(job: Job) {
       log(job, '⚠️  Número não encontrado no banco');
       return { skipped: true, reason: 'no_number' };
     }
-    log(job, `✅ Saldo OK: ${balance.availableMinutes.toFixed(1)} min`);
+    log(job, `✅ Saldo OK: ${availableTotal(balance).toFixed(1)} min`);
 
     // PASSO 2: Baixar áudio via Evolution API (getBase64FromMediaMessage)
     const instName = instanceName ?? whatsappNumber.zapiInstanceId;
@@ -1410,9 +1433,18 @@ async function resetExpiredMinutes() {
       // não em "agora + 30 dias" — garante ciclo mensal a partir do dia do cadastro/pagamento
       const nextReset = new Date(balance.resetAt.getTime() + 30 * 24 * 60 * 60 * 1000);
 
+      // O reset mensal NÃO toca no saldo extra (minutos avulsos/indicação valem 60 dias).
+      // Apenas zera o extra se já tiver expirado, para manter o saldo exibido correto.
+      const extraExpired = balance.extraExpiresAt && balance.extraExpiresAt <= now;
+
       await prisma.minuteBalance.update({
         where: { id: balance.id },
-        data:  { availableMinutes: minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
+        data:  {
+          availableMinutes: minutesPerMonth,
+          resetAt:          nextReset,
+          lastAlertSent:    null,
+          ...(extraExpired ? { extraMinutes: 0, extraExpiresAt: null } : {}),
+        },
       });
 
       // Rastrear renovação tester (até 12 isenções)

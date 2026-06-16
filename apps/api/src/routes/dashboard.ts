@@ -32,6 +32,10 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     const minutesAvail  = Math.min(balance?.availableMinutes || 0, minutesTotal);
     const minutesUsed   = Math.max(0, minutesTotal - minutesAvail);
 
+    // Saldo extra (avulso/indicação) — só conta se ainda válido (não expirado)
+    const extraValid    = balance?.extraExpiresAt && balance.extraExpiresAt > new Date()
+      ? (balance.extraMinutes || 0) : 0;
+
     return {
       transcriptionsToday: todayCount,
       transcriptionsMonth: monthCount,
@@ -41,6 +45,8 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       minutesTotal,
       minutesPct:          minutesTotal > 0 ? Math.round((minutesUsed / minutesTotal) * 100) : 0,
       accumulatedMinutes:  +(balance?.accumulatedMinutes || 0).toFixed(1),
+      extraMinutes:        +extraValid.toFixed(1),
+      extraExpiresAt:      extraValid > 0 ? balance?.extraExpiresAt?.toISOString() ?? null : null,
       activeNumbers,
       avgConfidence:       +(avgConf._avg.confidenceScore || 99.1).toFixed(1),
       // planName = slug do plano ('free'|'pro'|'ultra'|'executive') — usado para gating

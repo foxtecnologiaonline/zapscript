@@ -74,6 +74,8 @@ model MinuteBalance {
   userId             String   @unique
   availableMinutes   Float    @default(0)
   accumulatedMinutes Float    @default(0)
+  extraMinutes       Float    @default(0)  // minutos avulsos/indicação — valem 60 dias, não resetam mensalmente
+  extraExpiresAt     DateTime?              // expiração do saldo extra (now + 60 dias na última recarga)
   resetAt            DateTime
   lastAlertSent      String?  // "50" | "80" | "100" — para evitar alertas duplicados
   createdAt          DateTime @default(now())

@@ -197,7 +197,9 @@ export default async function authRoutes(app: FastifyInstance) {
       // Se falhar: rollback do usuário Supabase para evitar conta órfã (autenticada mas sem dados)
       try {
         await prisma.$transaction(async (tx: any) => {
-          const REFERRAL_BONUS_MINUTES = 10;
+          // Indicação: ambos (indicador e novo usuário) ganham 15 min no bucket extra (valem 60 dias)
+          const REFERRAL_BONUS_MINUTES = 15;
+          const extraExpiry = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
 
           const u = await tx.user.create({
             data: {
@@ -226,23 +228,25 @@ export default async function authRoutes(app: FastifyInstance) {
               currentPeriodEnd: undefined,
             },
           });
-          // Novo usuário recebe bônus de 10 min extra se vier via referral
           // resetAt ancorando no createdAt do usuário (ciclos de 30 dias a partir do cadastro)
           // Tester e free seguem o MESMO ciclo mensal — a isenção do tester (12 meses)
           // é controlada pelo contador testerRenewalsUsed no cron de renovação.
+          // O bônus de indicação vai no bucket EXTRA (não reseta mensalmente; expira em 60 dias).
           const cycleResetAt = new Date(u.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000);
           await tx.minuteBalance.create({
             data: {
               userId:           u.id,
-              availableMinutes: plan.minutesPerMonth + (referrer ? REFERRAL_BONUS_MINUTES : 0),
+              availableMinutes: plan.minutesPerMonth,
+              extraMinutes:     referrer ? REFERRAL_BONUS_MINUTES : 0,
+              extraExpiresAt:   referrer ? extraExpiry : null,
               resetAt:          cycleResetAt,
             },
           });
-          // Referrer também ganha bônus de 10 min por indicar
+          // Indicador também ganha 15 min no bucket extra (valem 60 dias)
           if (referrer) {
             await tx.minuteBalance.update({
               where: { userId: referrer.id },
-              data:  { availableMinutes: { increment: REFERRAL_BONUS_MINUTES } },
+              data:  { extraMinutes: { increment: REFERRAL_BONUS_MINUTES }, extraExpiresAt: extraExpiry },
             });
           }
           // Marcar convite como usado

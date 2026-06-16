@@ -59,15 +59,41 @@ async function markProcessed(paymentId: string): Promise<void> {
 
 /* ── Preços ── */
 const PLAN_PRICES:        Record<string, number> = { pro: 39.90,  executive: 49.90  };
-const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 430.92, executive: 538.92 }; // x12 com 10% off
+const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 383.04, executive: 479.04 }; // x12 com 20% off
 const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive' };
 
-/* ── Pacotes de minutos avulsos ── */
+/* ── Promoção de lançamento: 1º mês de assinatura mensal Pro a R$19,90 (somente Junho/2026) ── */
+const JUNE_PROMO_PRICE = 19.90;
+function isJunePromoActive(): boolean {
+  const now = new Date();
+  return now.getUTCFullYear() === 2026 && now.getUTCMonth() === 5; // mês 5 = Junho (0-indexed)
+}
+
+/* ── Pacotes de minutos avulsos (valem 60 dias) ── */
 export const MINUTE_PACKAGES = [
-  { id: 'pkg_60',  minutes: 60,  priceBrl: 24.90, label: '60 minutos',  desc: 'Ideal para uso pontual' },
-  { id: 'pkg_120', minutes: 120, priceBrl: 44.90, label: '120 minutos', desc: 'Mais custo-benefício' },
-  { id: 'pkg_300', minutes: 300, priceBrl: 99.90, label: '300 minutos', desc: 'Melhor valor por minuto' },
+  { id: 'pkg_50',  minutes: 50,  priceBrl: 11.90, label: '50 minutos',  desc: 'Mais econômico' },
+  { id: 'pkg_100', minutes: 100, priceBrl: 19.90, label: '100 minutos', desc: 'Melhor valor' },
 ] as const;
+
+/* ── Validade do saldo extra (minutos avulsos / indicação) ── */
+const EXTRA_MINUTES_VALIDITY_DAYS = 60;
+export function extraMinutesExpiry(from: Date = new Date()): Date {
+  return new Date(from.getTime() + EXTRA_MINUTES_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
+}
+
+/* ── Creditar minutos extras (bucket de 60 dias) ──
+   Incrementa extraMinutes e renova a validade para now+60d. Não toca no pool do plano.
+   Idempotente do ponto de vista de saldo apenas se chamado uma vez por evento (proteção via processedWebhook). */
+export async function creditExtraMinutes(userId: string, minutes: number): Promise<void> {
+  if (!minutes || minutes <= 0) return;
+  const now    = new Date();
+  const expiry = extraMinutesExpiry(now);
+  await prisma.minuteBalance.upsert({
+    where:  { userId },
+    create: { userId, availableMinutes: 0, extraMinutes: minutes, extraExpiresAt: expiry, resetAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) },
+    update: { extraMinutes: { increment: minutes }, extraExpiresAt: expiry },
+  });
+}
 
 /* ── Data de hoje no formato Asaas (YYYY-MM-DD) ── */
 function todayStr(): string {
@@ -293,6 +319,130 @@ export default async function billingRoutes(app: FastifyInstance) {
         create: { userId, planId: freePlan?.id ?? '', asaasCustomerId, paymentMethod, status: 'pending' },
         update: { asaasCustomerId, paymentMethod, status: 'pending' },
       }).catch((e: any) => app.log.warn({ err: e.message, userId }, '[Checkout] M2: Falha ao salvar subscription pendente — estado pode ficar inconsistente'));
+
+      // ── Promoção de lançamento (Junho/2026): 1º mês a R$19,90 em assinaturas MENSAIS Pro ──
+      // Estratégia Asaas: cobrança avulsa do 1º mês no valor promocional + assinatura recorrente
+      // no valor cheio com 1º vencimento em +30 dias (a partir do 2º mês cobra o valor normal).
+      const promoActive = isJunePromoActive() && !isYearly && planName === 'pro';
+      if (promoActive) {
+        const nextDue  = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const remoteIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
+        const cardObj  = card ? {
+          holderName:  card.holderName.toUpperCase(),
+          number:      card.number.replace(/\s/g, ''),
+          expiryMonth: card.expiryMonth,
+          expiryYear:  card.expiryYear.length === 2 ? `20${card.expiryYear}` : card.expiryYear,
+          ccv:         card.ccv,
+        } : null;
+
+        if (isCardMethod(paymentMethod) && cardObj) {
+          // 1) Cobrança avulsa do 1º mês (valor promocional) no cartão
+          const firstCharge = await asaas('/payments', {
+            method: 'POST',
+            body: JSON.stringify({
+              customer:             asaasCustomerId,
+              billingType:          toAsaasBillingType(paymentMethod),
+              value:                JUNE_PROMO_PRICE,
+              dueDate:              todayStr(),
+              description:          `ZapScript ${PLAN_LABELS[planName]} — 1º mês promocional`,
+              externalReference:    encodeRef(userId, planName),
+              creditCard:           cardObj,
+              creditCardHolderInfo: buildHolderInfo(user, billingAddress),
+              remoteIp,
+            }),
+          }).then(r => r.json()) as any;
+
+          if (firstCharge?.errors?.length) {
+            return reply.code(402).send({ status: 'declined', error: firstCharge.errors[0]?.description || 'Cartão recusado.' });
+          }
+          if (firstCharge?.status !== 'CONFIRMED' && firstCharge?.status !== 'RECEIVED') {
+            return reply.code(402).send({ status: 'declined', error: 'Cartão não aprovado. Verifique os dados e tente novamente.' });
+          }
+
+          // 2) Assinatura recorrente no valor cheio, 1ª recorrência em +30 dias (reutiliza o cartão tokenizado)
+          const ccToken = firstCharge?.creditCard?.creditCardToken;
+          const subRes = await asaas('/subscriptions', {
+            method: 'POST',
+            body: JSON.stringify({
+              customer:          asaasCustomerId,
+              billingType:       toAsaasBillingType(paymentMethod),
+              value:             PLAN_PRICES[planName],
+              nextDueDate:       nextDue,
+              cycle:             'MONTHLY',
+              description:       `ZapScript ${PLAN_LABELS[planName]} — Assinatura mensal`,
+              externalReference: encodeRef(userId, planName),
+              ...(ccToken
+                ? { creditCardToken: ccToken }
+                : { creditCard: cardObj, creditCardHolderInfo: buildHolderInfo(user, billingAddress), remoteIp }),
+            }),
+          }).then(r => r.json()) as any;
+
+          await prisma.subscription.update({
+            where: { userId }, data: { asaasSubscriptionId: subRes?.id ?? null },
+          }).catch(() => null);
+
+          await activatePlan(userId, planName, {
+            asaasSubscriptionId: subRes?.id ?? null,
+            asaasCustomerId,
+            paymentMethod,
+          });
+          await markProcessed(firstCharge.id);
+          app.log.info(`Checkout promo Junho (cartão): userId=${userId} 1ºmês=${JUNE_PROMO_PRICE} recorrência=${PLAN_PRICES[planName]}`);
+          return { status: 'active', planName, promo: true };
+        }
+
+        // ── PIX promocional ──
+        // 1) Assinatura recorrente no valor cheio com 1º vencimento em +30 dias
+        const subRes = await asaas('/subscriptions', {
+          method: 'POST',
+          body: JSON.stringify({
+            customer:          asaasCustomerId,
+            billingType:       'PIX',
+            value:             PLAN_PRICES[planName],
+            nextDueDate:       nextDue,
+            cycle:             'MONTHLY',
+            description:       `ZapScript ${PLAN_LABELS[planName]} — Assinatura mensal`,
+            externalReference: encodeRef(userId, planName),
+          }),
+        }).then(r => r.json()) as any;
+        if (!subRes?.id) {
+          const errMsg = subRes?.errors?.[0]?.description || subRes?.message || 'Erro ao criar assinatura.';
+          app.log.error({ subRes }, 'Asaas subscription error (promo PIX)');
+          return reply.code(400).send({ error: errMsg });
+        }
+        await prisma.subscription.update({
+          where: { userId }, data: { asaasSubscriptionId: subRes.id },
+        }).catch(() => null);
+
+        // 2) Cobrança PIX avulsa do 1º mês promocional
+        const firstPix = await asaas('/payments', {
+          method: 'POST',
+          body: JSON.stringify({
+            customer:          asaasCustomerId,
+            billingType:       'PIX',
+            value:             JUNE_PROMO_PRICE,
+            dueDate:           todayStr(),
+            description:       `ZapScript ${PLAN_LABELS[planName]} — 1º mês promocional`,
+            externalReference: encodeRef(userId, planName),
+          }),
+        }).then(r => r.json()) as any;
+        if (firstPix?.errors?.length || !firstPix?.id) {
+          return reply.code(400).send({ error: firstPix?.errors?.[0]?.description || 'Erro ao gerar PIX.' });
+        }
+        const qrData = await asaas(`/payments/${firstPix.id}/pixQrCode`).then(r => r.json()) as any;
+        app.log.info(`Checkout promo Junho (PIX): userId=${userId} 1ºmês=${JUNE_PROMO_PRICE} recorrência=${PLAN_PRICES[planName]}`);
+        return {
+          status:         'pending_pix',
+          subscriptionId: subRes.id,
+          paymentId:      firstPix.id,
+          qrCode:         qrData?.payload      || null,
+          qrCodeUrl:      qrData?.encodedImage ? `data:image/png;base64,${qrData.encodedImage}` : null,
+          expiresAt:      qrData?.expirationDate || null,
+          planName,
+          amount:         JUNE_PROMO_PRICE,
+          promo:          true,
+        };
+      }
 
       // ── Montar body da assinatura ──
       const subBody: Record<string, any> = {
@@ -833,11 +983,9 @@ export default async function billingRoutes(app: FastifyInstance) {
           app.log.error({ ref: payment.externalReference }, 'pkg_minutes: quantidade inválida');
           return reply.send({ received: true });
         }
-        await prisma.minuteBalance.updateMany({
-          where: { userId },
-          data:  { availableMinutes: { increment: minutes } },
-        });
-        app.log.info(`Pacote de minutos creditado: userId=${userId} +${minutes}min`);
+        await creditExtraMinutes(userId, minutes);
+        await markProcessed(payment.id);
+        app.log.info(`Pacote de minutos creditado (extra/60d): userId=${userId} +${minutes}min`);
         return reply.send({ received: true });
       }
 
@@ -957,7 +1105,7 @@ export default async function billingRoutes(app: FastifyInstance) {
       const { packageId, paymentMethod, card, billingAddress } = req.body as any;
 
       const pkg = MINUTE_PACKAGES.find(p => p.id === packageId);
-      if (!pkg) return reply.code(400).send({ error: 'Pacote inválido. Use pkg_60, pkg_120 ou pkg_300.' });
+      if (!pkg) return reply.code(400).send({ error: 'Pacote inválido. Use pkg_50 ou pkg_100.' });
 
       // Buscar ou criar cliente Asaas
       const user = await prisma.user.findUnique({
@@ -1008,10 +1156,8 @@ export default async function billingRoutes(app: FastifyInstance) {
         if (charge.errors?.length) return reply.code(400).send({ error: charge.errors[0]?.description || 'Erro no cartão.' });
 
         if (charge.status === 'CONFIRMED' || charge.status === 'RECEIVED') {
-          await prisma.minuteBalance.updateMany({
-            where: { userId },
-            data:  { availableMinutes: { increment: pkg.minutes } },
-          });
+          await creditExtraMinutes(userId, pkg.minutes);
+          await markProcessed(charge.id); // evita crédito duplicado quando o webhook chegar
           return { status: 'active', minutes: pkg.minutes, paymentId: charge.id };
         }
         return { status: charge.status.toLowerCase(), paymentId: charge.id };
