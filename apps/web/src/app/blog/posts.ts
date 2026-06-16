@@ -747,6 +747,236 @@ export const POSTS: BlogPost[] = [
     `,
   },
 
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 6 — Nicho corretor. Keyword: "transcrição de áudio para corretores"
+     Fundo de funil, alta conversão.
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcricao-de-audio-para-corretores',
+    title:       'Corretor de imóveis: como não perder nenhum detalhe dos áudios dos clientes',
+    description: 'Cliente manda áudio de 5 minutos descrevendo o imóvel? Veja como transcrever e resumir automaticamente para responder mais rápido e fechar mais vendas.',
+    keywords:    ['transcrição de áudio para corretores','corretor de imóveis whatsapp','transcrever audio cliente imovel','produtividade corretor','resumo audio whatsapp corretor'],
+    publishedAt: '2026-06-12',
+    readingTime: 5,
+    category:    'Empresas',
+    coverEmoji:  '🏠',
+    content: `
+<p>Todo corretor conhece a cena: o cliente manda um áudio de 5 minutos descrevendo o imóvel dos sonhos — número de quartos, bairro, orçamento, "ah, e precisa aceitar pet" — e você está no meio de uma visita, sem poder ouvir. Quando finalmente escuta, esqueceu metade. <strong>E detalhe esquecido é venda perdida.</strong></p>
+
+<h2>O áudio é a moeda do corretor — e o seu maior ladrão de tempo</h2>
+<p>No mercado imobiliário, quase tudo chega por áudio: cliente, parceiro, construtora, síndico. O problema é que áudio não dá para consultar rápido, não dá para buscar uma palavra e exige sua atenção total no momento errado. Você acaba ouvindo a mesma mensagem duas, três vezes só para anotar os requisitos.</p>
+
+<h2>A solução: transcrição + resumo automático</h2>
+<p>Com o <strong>ZapScript</strong>, você encaminha o áudio do cliente e recebe, em segundos:</p>
+<ul>
+  <li>A <strong>transcrição completa</strong>, para consultar qualquer trecho;</li>
+  <li>Um <strong>resumo com os pontos-chave</strong> — perfil do imóvel, faixa de preço, região, exigências.</li>
+</ul>
+<p>Em vez de reouvir 5 minutos, você bate o olho no resumo:</p>
+<blockquote>
+• 3 quartos, sendo 1 suíte<br>
+• Bairros: Moema, Itaim, Vila Olímpia<br>
+• Orçamento até R$ 600 mil, aceita financiamento<br>
+• Tem 1 cachorro de porte médio (precisa aceitar pet)
+</blockquote>
+<p>Responde na hora, na frente da concorrência.</p>
+
+<h2>Por que isso fecha mais vendas</h2>
+<ul>
+  <li><strong>Velocidade de resposta:</strong> o primeiro corretor a responder com a opção certa larga na frente.</li>
+  <li><strong>Zero detalhe perdido:</strong> todo requisito fica registrado em texto.</li>
+  <li><strong>Histórico consultável:</strong> semanas depois, você busca o que o cliente pediu sem reouvir nada.</li>
+  <li><strong>Mais imóveis atendidos por dia:</strong> o tempo que você gastava ouvindo vira tempo de visita e negociação.</li>
+</ul>
+
+<h2>E a privacidade do cliente?</h2>
+<p>Informação de cliente é sensível. O ZapScript <strong>não armazena o áudio</strong>, criptografa as transcrições e processa em conformidade com a LGPD. Você ganha produtividade sem abrir mão do sigilo.</p>
+
+<h2>Comece hoje — sem nem conectar o WhatsApp</h2>
+<p>Para testar, você nem precisa conectar seu número: dá para <strong>enviar um áudio direto pelo site</strong> e ver o resultado na hora. Depois, conecte seu WhatsApp e passe a encaminhar tudo automaticamente.</p>
+
+<h2>Perguntas frequentes</h2>
+<h3>Funciona com áudios longos de clientes?</h3>
+<p>Sim, de qualquer duração. Quanto mais longo o áudio, mais útil o resumo com os pontos-chave.</p>
+
+<h3>Consigo buscar o que um cliente pediu semanas atrás?</h3>
+<p>Sim. As transcrições ficam salvas e pesquisáveis no seu histórico — diferente de um áudio, que você teria que reouvir inteiro.</p>
+
+<h2>Conclusão</h2>
+<p>Corretor vive de áudio, mas não precisa perder tempo com ele. Transcrever e resumir automaticamente é a forma mais rápida de responder o cliente com precisão e fechar mais negócios. <strong>Pare de ouvir áudio e comece a ler.</strong> Crie sua conta no ZapScript — no lançamento, o 1º mês do Pro sai por R$ 19,90.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 7 — Topo emocional. Keyword: "cansei de ouvir audio longo whatsapp"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'cansei-de-ouvir-audio-longo-no-whatsapp',
+    title:       'Cansado de ouvir áudio longo no WhatsApp? Existe um jeito de só ler',
+    description: 'Áudio de 5 minutos virou rotina no WhatsApp. Descubra como ler o resumo em vez de ouvir tudo — e recupere horas da sua semana.',
+    keywords:    ['cansei de ouvir audio whatsapp','audio longo whatsapp','odeio audio whatsapp','ler audio em vez de ouvir','transformar audio em texto whatsapp'],
+    publishedAt: '2026-06-13',
+    readingTime: 4,
+    category:    'Produtividade',
+    coverEmoji:  '😮‍💨',
+    content: `
+<p>Confessa: você já fingiu que ouviu um áudio inteiro só para não pedir para a pessoa repetir. Ou viu um áudio de "8:43" chegar e deixou para depois — e o "depois" nunca veio. Se áudio longo no WhatsApp te esgota, você não está sozinho. E tem solução.</p>
+
+<h2>O áudio longo virou uma epidemia</h2>
+<p>Mandar áudio é cômodo para quem fala. O problema é todo do outro lado: quem <strong>recebe</strong> precisa parar tudo, achar um lugar silencioso (ou colocar o fone) e ouvir em tempo real — sem poder pular, buscar ou reler. Texto você varre em segundos. Áudio te prende.</p>
+
+<h2>A conta que ninguém faz</h2>
+<p>Imagine 30 áudios por dia, com 1 minuto em média. São 30 minutos diários. Por semana, <strong>2h30</strong>. Por mês, <strong>mais de 10 horas</strong> — um dia útil inteiro, só ouvindo áudio. Multiplique por um ano e o número assusta.</p>
+
+<h2>A virada: ler o resumo em vez de ouvir tudo</h2>
+<p>E se, em vez de ouvir os 8 minutos, você lesse <strong>3 linhas</strong> com tudo que importa? É o que o <strong>ZapScript</strong> faz: você encaminha o áudio e recebe a transcrição completa <strong>e um resumo com os pontos principais</strong>. Você decide se lê o resumo, o texto inteiro ou nada — no seu tempo, em silêncio, sem fone, em qualquer lugar.</p>
+
+<h2>Como funciona na prática</h2>
+<ol>
+  <li>Crie sua conta grátis (leva 1 minuto);</li>
+  <li>Envie um áudio — pelo site ou encaminhando no WhatsApp;</li>
+  <li>Receba texto + resumo em segundos.</li>
+</ol>
+<p>Sem app complicado, sem exportar arquivo, sem curva de aprendizado.</p>
+
+<h2>Recupere seu tempo</h2>
+<p>As horas que você perde ouvindo áudio podiam ser trabalho, descanso ou família. Transcrever não é preguiça — é respeitar o seu tempo.</p>
+
+<h2>Conclusão</h2>
+<p>Chega de ouvir áudio longo. Teste o ZapScript de graça e leia seu primeiro áudio em segundos. No lançamento, o 1º mês do Pro sai por R$ 19,90.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 8 — Intenção comercial. Keyword: "transcrever audio whatsapp gratis vs pago"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcrever-audio-whatsapp-gratis-vs-pago',
+    title:       'Transcrever áudio do WhatsApp: grátis vs pago — qual vale a pena?',
+    description: 'Comparamos as opções gratuitas e pagas para transcrever áudio do WhatsApp. Precisão, privacidade e resumo com IA. Veja qual escolher para o seu caso.',
+    keywords:    ['transcrever audio whatsapp gratis','transcrição whatsapp paga ou gratis','vale a pena pagar transcrição audio','transcrição audio whatsapp preço','melhor custo beneficio transcrição whatsapp'],
+    publishedAt: '2026-06-14',
+    readingTime: 5,
+    category:    'Comparativos',
+    coverEmoji:  '💰',
+    content: `
+<p>Existe transcrição de áudio para todo bolso — inclusive de graça. Mas "grátis" tem letra miúda. Antes de escolher, veja o que cada opção realmente entrega em <strong>precisão, privacidade, resumo e velocidade</strong>.</p>
+
+<h2>As opções gratuitas</h2>
+<p>Recursos nativos do celular e apps com plano free conseguem transcrever áudios curtos. São úteis para um caso isolado, mas costumam ter limitações:</p>
+<ul>
+  <li><strong>Limite baixo</strong> de minutos ou de áudios por dia;</li>
+  <li><strong>Sem resumo</strong> — você recebe o texto cru, que num áudio longo ainda dá trabalho;</li>
+  <li><strong>Trabalho manual</strong> de exportar e importar o áudio;</li>
+  <li><strong>Privacidade incerta</strong> — nem sempre fica claro se o áudio é armazenado.</li>
+</ul>
+
+<h2>As opções pagas</h2>
+<p>Serviços pagos entregam mais precisão, sem limites práticos e, os melhores, com <strong>resumo automático</strong> e integração direta com o WhatsApp. O custo, no lançamento, é baixo: o ZapScript começa em <strong>R$ 19,90 no 1º mês</strong>.</p>
+
+<h2>Critérios que realmente importam</h2>
+<table>
+  <thead>
+    <tr><th>Critério</th><th>Por que importa</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Precisão</strong></td><td>Transcrição com erro te faz reouvir o áudio — perde o sentido.</td></tr>
+    <tr><td><strong>Resumo com IA</strong></td><td>É o que economiza tempo de verdade num áudio longo.</td></tr>
+    <tr><td><strong>Integração com WhatsApp</strong></td><td>Encaminhar é muito mais rápido que exportar/importar.</td></tr>
+    <tr><td><strong>Privacidade/LGPD</strong></td><td>Áudio não armazenado e dados criptografados.</td></tr>
+    <tr><td><strong>Velocidade</strong></td><td>Resultado em segundos, não em minutos.</td></tr>
+  </tbody>
+</table>
+
+<h2>Comparativo direto</h2>
+<table>
+  <thead>
+    <tr><th>Recurso</th><th>Grátis (nativo/apps)</th><th>ZapScript (pago)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Limite</td><td>Baixo</td><td>Generoso</td></tr>
+    <tr><td>Resumo com IA</td><td>❌</td><td>✅</td></tr>
+    <tr><td>Dentro do WhatsApp</td><td>❌ / parcial</td><td>✅</td></tr>
+    <tr><td>LGPD</td><td>Varia</td><td>✅</td></tr>
+    <tr><td>Custo</td><td>R$ 0</td><td>A partir de R$ 19,90/mês</td></tr>
+  </tbody>
+</table>
+
+<h2>Qual escolher?</h2>
+<p>Se você transcreve <strong>um áudio por mês</strong>, o grátis resolve. Se áudio faz parte do seu trabalho — corretor, vendedor, advogado, gestor —, o tempo que você economiza paga a assinatura no primeiro dia. E dá para testar de graça antes: o ZapScript tem plano gratuito, sem cartão.</p>
+
+<h2>Perguntas frequentes</h2>
+<h3>Vale a pena pagar por transcrição de áudio?</h3>
+<p>Para quem recebe muitos áudios, sim. A economia de tempo (horas por mês) supera com folga o custo da assinatura já no primeiro dia de uso.</p>
+
+<h3>Dá para testar antes de pagar?</h3>
+<p>Sim. O ZapScript tem plano gratuito, sem cartão de crédito. Você experimenta a transcrição e o resumo antes de decidir.</p>
+
+<h2>Conclusão</h2>
+<p>Grátis serve para uso esporádico; pago compensa para quem trabalha com áudio. Teste sem compromisso no ZapScript — se gostar, o 1º mês do Pro sai por R$ 19,90 no lançamento.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 9 — Confiança / LGPD. Keyword: "transcrição de audio com ia é segura"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcricao-de-audio-com-ia-e-segura',
+    title:       'Transcrição de áudio com IA é segura? O que você precisa saber sobre LGPD',
+    description: 'Seus áudios estão seguros ao usar transcrição com IA? Entenda privacidade, LGPD e como o ZapScript protege seus dados antes de transcrever qualquer áudio.',
+    keywords:    ['transcrição de audio com ia é segura','transcrição whatsapp lgpd','privacidade transcrição audio','transcrever audio é seguro','ia transcrição dados seguros'],
+    publishedAt: '2026-06-15',
+    readingTime: 5,
+    category:    'Guias',
+    coverEmoji:  '🛡️',
+    content: `
+<p>Antes de jogar o áudio de um cliente numa ferramenta de IA, vale a pergunta certa: <strong>isso é seguro?</strong> A resposta depende de como o serviço trata seus dados. Veja o que observar — e como uma boa ferramenta protege você.</p>
+
+<h2>A preocupação é legítima</h2>
+<p>Áudios contêm informação sensível: dados de clientes, valores, endereços, assuntos confidenciais. Usar qualquer serviço sem entender o que ele faz com esse conteúdo é um risco real — inclusive jurídico, por causa da <strong>LGPD (Lei Geral de Proteção de Dados)</strong>.</p>
+
+<h2>Como funciona a transcrição com IA</h2>
+<p>Em serviços sérios, o áudio é processado por modelos de IA especializados — como <strong>Whisper (OpenAI)</strong> para transcrição e <strong>Claude (Anthropic)</strong> para o resumo. O ponto crítico não é o modelo, e sim <strong>o que acontece com o áudio depois</strong>: ele é guardado? Quem tem acesso? É criptografado?</p>
+
+<h2>O que a LGPD exige</h2>
+<ul>
+  <li><strong>Base legal</strong> para tratar o dado (no caso, a execução do serviço que você contratou);</li>
+  <li><strong>Minimização</strong> — usar só o necessário e não reter além do preciso;</li>
+  <li><strong>Segurança</strong> — medidas técnicas como criptografia;</li>
+  <li><strong>Transparência</strong> — você saber o que é feito com seus dados.</li>
+</ul>
+
+<h2>Como o ZapScript protege seus dados</h2>
+<p>O ZapScript foi construído com privacidade no centro:</p>
+<ul>
+  <li><strong>O áudio nunca é armazenado</strong> — é processado e descartado;</li>
+  <li>As <strong>transcrições são criptografadas</strong> (AES-256-GCM);</li>
+  <li><strong>Conformidade com a LGPD</strong>, com consentimentos registrados;</li>
+  <li>Servidores no <strong>Brasil (São Paulo)</strong>;</li>
+  <li>Só são processados <strong>os áudios que você envia</strong> — nenhuma outra mensagem é lida.</li>
+</ul>
+
+<h2>Checklist de segurança antes de escolher uma ferramenta</h2>
+<ol>
+  <li>O áudio é armazenado? (O ideal é <strong>não</strong>.)</li>
+  <li>Os dados são criptografados?</li>
+  <li>A empresa é transparente sobre a LGPD?</li>
+  <li>Você consegue excluir seus dados quando quiser?</li>
+</ol>
+<p>Se a ferramenta não responde a essas perguntas com clareza, desconfie.</p>
+
+<h2>Perguntas frequentes</h2>
+<h3>Meus áudios ficam guardados em algum servidor?</h3>
+<p>No ZapScript, não. O áudio é processado para gerar a transcrição e descartado em seguida — apenas o texto, criptografado, fica disponível no seu histórico.</p>
+
+<h3>Usar IA para transcrever viola a LGPD?</h3>
+<p>Não, desde que haja base legal, segurança e transparência — exatamente o que o ZapScript oferece. O tratamento é feito para executar o serviço que você contratou.</p>
+
+<h2>Conclusão</h2>
+<p>Transcrição de áudio com IA pode ser perfeitamente segura — basta escolher um serviço que leve privacidade a sério. Transcreva em conformidade com a LGPD: crie sua conta no ZapScript e, no lançamento, garanta o 1º mês do Pro por R$ 19,90.</p>
+    `,
+  },
+
 ];
 
 export function getPost(slug: string): BlogPost | undefined {
