@@ -219,7 +219,7 @@ export default function DashboardPage() {
             <div className="font-bold text-sm text-brand-text">Indique o ZapScript</div>
           </div>
           <p className="text-xs text-brand-text-secondary mb-3 leading-relaxed">
-            Indique um amigo e <strong className="text-brand-primary">vocês dois ganham +10 min</strong> de bônus quando ele se cadastrar.
+            Indique um amigo e <strong className="text-brand-primary">ganhe 15 minutos grátis para você e sua indicação</strong> quando ele se cadastrar.
           </p>
           {stats?.refCode && (
             <div className="flex gap-2 mb-3">
@@ -240,7 +240,7 @@ export default function DashboardPage() {
           <button
             onClick={() => {
               const link = `https://www.zapscript.me/cadastro?ref=${stats?.refCode ?? ''}`;
-              const msg  = `Eu uso o ZapScript para transcrever áudios do WhatsApp automaticamente com IA — e você ganha 10 minutos grátis ao se cadastrar pelo meu link: ${link}`;
+              const msg  = `Eu uso o ZapScript para transcrever áudios do WhatsApp automaticamente com IA — e você ganha 15 minutos grátis ao se cadastrar pelo meu link: ${link}`;
               if (navigator.share) {
                 navigator.share({ text: msg, url: link }).catch(() => {});
               } else {

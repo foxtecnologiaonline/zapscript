@@ -2222,6 +2222,7 @@ export default async function adminRoutes(app: FastifyInstance) {
           pixKeyType:     a.pixKeyType,
           payoutName:     a.payoutName,
           audience:       a.audience,
+          notes:          a.notes,
           referrals:      a._count.referrals,
           pendingAmount:  sumBy(a.id, 'pending'),
           paidAmount:     sumBy(a.id, 'paid'),

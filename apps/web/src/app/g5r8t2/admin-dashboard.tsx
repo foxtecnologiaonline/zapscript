@@ -1456,6 +1456,7 @@ function AffiliatesPanel({ apiBase, token, notify }: {
                         <span className="text-[10px] font-mono text-[rgba(16,185,129,.5)] bg-[rgba(16,185,129,.08)] px-2 py-0.5 rounded">{a.code}</span>
                       </div>
                       <div className="text-[11px] text-[rgba(16,185,129,.4)] mt-1">{a.email} · {a.commissionType === 'onetime' ? 'Única 30%' : 'Recorrente 5%/mês'} · {a.referrals} indicação(ões)</div>
+                      {a.notes && <div className="text-[11px] text-[#6ee7b7] mt-1">📊 {a.notes}</div>}
                       {a.audience && <div className="text-[11px] text-[rgba(16,185,129,.35)] mt-1 italic">“{a.audience}”</div>}
                       {(a.pixKey || a.payoutName) && <div className="text-[11px] text-[rgba(16,185,129,.4)] mt-1">Pix: {a.pixKey || '—'} {a.pixKeyType ? `(${a.pixKeyType})` : ''} · {a.payoutName || '—'}</div>}
                       {a.rejectedReason && <div className="text-[11px] text-red-400/70 mt-1">Recusa: {a.rejectedReason}</div>}

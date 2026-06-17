@@ -75,14 +75,13 @@ export default function AffiliateRequest({ user }: { user: UserData | null }) {
           {/* Nenhuma solicitação ainda → botão de entrada */}
           {!affiliate && !showForm && (
             <>
-              <CommissionInfo />
               {blockMsg && (
                 <div className="mb-3 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-amber-400">
                   ⚠️ {blockMsg}
                 </div>
               )}
               <button onClick={handleOpen} className="btn-primary w-full py-3 text-sm">
-                Gerar Afiliação →
+                Solicitar Código de Afiliação →
               </button>
             </>
           )}
@@ -132,6 +131,7 @@ function ApplyForm({ user, onApplied, onCancel }: {
 }) {
   const [pixKeyType, setPixKeyType] = useState('');
   const [pixKey, setPixKey]         = useState('');
+  const [estimated, setEstimated]   = useState('');
   const [audience, setAudience]     = useState('');
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState('');
@@ -145,10 +145,11 @@ function ApplyForm({ user, onApplied, onCancel }: {
     setError(''); setLoading(true);
     try {
       await api.post('/affiliates/apply', {
-        pixKey:     pixKey.trim(),
+        pixKey:          pixKey.trim(),
         pixKeyType,
-        payoutName: user?.name || undefined,
-        audience:   audience || undefined,
+        payoutName:      user?.name || undefined,
+        estimatedVolume: estimated || undefined,
+        audience:        audience || undefined,
       });
       onApplied();
     } catch (err: any) {
@@ -159,6 +160,9 @@ function ApplyForm({ user, onApplied, onCancel }: {
 
   return (
     <form onSubmit={submit} className="space-y-4">
+      {/* Como funciona o programa (percentuais + data de pagamento) */}
+      <CommissionInfo />
+
       {/* Dados pré-preenchidos (somente leitura) */}
       <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
         <p className="text-[10px] font-mono uppercase tracking-widest text-brand-muted mb-2">Seus dados cadastrais</p>
@@ -198,6 +202,21 @@ function ApplyForm({ user, onApplied, onCancel }: {
             required
           />
         </div>
+      </div>
+
+      {/* Quantidade estimada de indicações */}
+      <div>
+        <label className="block text-xs font-semibold text-brand-text-secondary mb-1">
+          Quantidade estimada de indicações por mês <span className="font-normal text-brand-muted">(opcional)</span>
+        </label>
+        <select className="field-input" value={estimated} onChange={e => setEstimated(e.target.value)}>
+          <option value="">Selecione</option>
+          <option value="1-10">Até 10 por mês</option>
+          <option value="11-50">De 11 a 50 por mês</option>
+          <option value="51-100">De 51 a 100 por mês</option>
+          <option value="100+">Mais de 100 por mês</option>
+        </select>
+        <p className="text-[10px] text-brand-muted/60 mt-1">Quantas pessoas você pretende indicar mensalmente.</p>
       </div>
 
       {/* Como pretende divulgar */}

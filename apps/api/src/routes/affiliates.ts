@@ -75,13 +75,13 @@ export default async function affiliateRoutes(app: FastifyInstance) {
   // ── POST /affiliates/apply — solicitar afiliação (status pending) ────────
   app.post<{ Body: {
     commissionType?: string; pixKey?: string; pixKeyType?: string;
-    payoutName?: string; audience?: string;
+    payoutName?: string; audience?: string; estimatedVolume?: string;
   } }>(
     '/apply',
     { ...auth, config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } },
     async (req: any, reply) => {
       const userId = req.user.sub;
-      const { commissionType, pixKey, pixKeyType, payoutName, audience } = req.body || {};
+      const { commissionType, pixKey, pixKeyType, payoutName, audience, estimatedVolume } = req.body || {};
 
       // Já existe? Não recriar — retornar o atual.
       const existing = await prisma.affiliate.findUnique({ where: { userId } });
@@ -117,6 +117,10 @@ export default async function affiliateRoutes(app: FastifyInstance) {
           pixKeyType:     pixKeyType || null,
           payoutName:     payoutName?.trim() || null,
           audience:       audience?.trim() || null,
+          // Quantidade estimada de indicações/mês (guardada em notes p/ avaliação do time)
+          notes:          estimatedVolume?.trim()
+            ? `Estimativa: ${estimatedVolume.trim().slice(0, 40)}/mês`
+            : null,
         },
       });
 
