@@ -180,7 +180,7 @@ function DemoTranscribe() {
             <p className="text-xs font-light mb-3" style={{ color: 'rgb(var(--color-text-secondary))' }}>
               Conecte seu número e todo áudio vira texto e resumo sozinho. Comece grátis — 1º mês do Pro por R$ 19,90.
             </p>
-            <Link href="/cadastro" className="btn-primary w-full py-3 text-sm font-semibold flex items-center justify-center gap-2">
+            <Link href="/cadastro?plan=pro" className="btn-primary w-full py-3 text-sm font-semibold flex items-center justify-center gap-2">
               Criar minha conta grátis
             </Link>
           </div>
@@ -554,8 +554,8 @@ const PLANS = [
     cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
   },
   {
-    name: 'pro', label: 'Pro', price: 'R$39,90', per: '/mês',
-    desc: 'Para profissionais',
+    name: 'pro', label: 'Pro', price: 'R$19,90', per: '/1º mês',
+    desc: 'Oferta de junho · depois R$39,90',
     feats: [
       '200 min/mês',
       '2 números WhatsApp',
@@ -630,8 +630,10 @@ const TESTIMONIALS = [
 ];
 
 export default function HomePage() {
-  // Planos — tabela comparativa
-  const [showTable, setShowTable] = useState(false);
+  const [showTable, setShowTable] = useState(true);
+  const [waitlistEmail, setWaitlistEmail]     = useState('');
+  const [waitlistDone, setWaitlistDone]       = useState(false);
+  const [waitlistLoading, setWaitlistLoading] = useState(false);
 
   // Persist affiliate code to localStorage so /cadastro can pick it up even after navigation
   useEffect(() => {
@@ -645,8 +647,23 @@ export default function HomePage() {
   }, []);
 
 
+  const schemaOrg = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'ZapScript',
+    applicationCategory: 'ProductivityApplication',
+    operatingSystem: 'Web',
+    url: 'https://www.zapscript.me',
+    description: 'Transcrição automática de áudios do WhatsApp com IA. Texto + resumo em segundos.',
+    offers: [
+      { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Free' },
+      { '@type': 'Offer', price: '39.90', priceCurrency: 'BRL', name: 'Pro' },
+    ],
+  };
+
   return (
     <div className="min-h-screen bg-mesh font-sans text-brand-text overflow-x-hidden">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaOrg) }} />
 
       <div className="landing-inner relative z-10 w-full max-w-[430px] sm:max-w-[500px] mx-auto bg-mesh min-h-screen">
 
@@ -762,40 +779,29 @@ export default function HomePage() {
           <DemoTranscribe />
         </section>
 
-        {/* ══ PROVA SOCIAL — Depoimentos (logo após a demo, antes do "como funciona") ══ */}
+        {/* ══ PROVA SOCIAL — Stats numéricas ══ */}
         <section className="px-5 pt-12 pb-4">
-          <div className="mb-6">
+          <div className="mb-5">
             <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>
-              Prova social
+              Resultados reais
             </span>
             <h2 className="font-display text-2xl font-bold mt-2 leading-tight tracking-tight">
               Profissionais que já leem em vez de ouvir
             </h2>
           </div>
-          <div className="flex flex-col gap-4">
-            {TESTIMONIALS.map((d, i) => (
-              <div key={i} className="card rounded-2xl p-5">
-                <p className="text-sm leading-relaxed mb-4 font-light"
-                  style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                  &ldquo;{d.text}&rdquo;
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                    style={{ background: d.color }}>
-                    {d.initials}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold">{d.name}</p>
-                    <p className="text-[11px]" style={{ color: 'rgb(var(--color-text-muted))' }}>{d.role}</p>
-                  </div>
-                  <div className="ml-auto text-yellow-400 text-sm">★★★★★</div>
-                </div>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { n: '10x', label: 'Mais rápido', sub: 'que ouvir o áudio' },
+              { n: '99%', label: 'Precisão', sub: 'em português BR' },
+              { n: '+10h', label: 'Economizadas', sub: 'por mês, por usuário' },
+            ].map(({ n, label, sub }) => (
+              <div key={label} className="card rounded-2xl p-4 text-center">
+                <p className="font-display text-2xl font-bold" style={{ color: 'rgb(var(--color-primary))' }}>{n}</p>
+                <p className="text-xs font-semibold mt-1">{label}</p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{sub}</p>
               </div>
             ))}
           </div>
-          <p className="text-[10px] mt-3 text-center" style={{ color: 'rgb(var(--color-text-muted))', opacity: 0.7 }}>
-            * Depoimentos ilustrativos, representativos de casos de uso reais do ZapScript.
-          </p>
         </section>
 
         {/* ══ COMO FUNCIONA — 3 passos ══ */}
@@ -900,9 +906,9 @@ export default function HomePage() {
                     boxShadow:   plan.popular ? 'var(--shadow-glow), var(--shadow-md)' : 'var(--shadow-sm)',
                   }}>
                   {plan.popular && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-white text-[11px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wide whitespace-nowrap"
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-black text-[11px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wide whitespace-nowrap"
                       style={{ background: 'rgb(var(--color-primary))' }}>
-                      ⭐ Mais popular
+                      🔥 Oferta de junho
                     </div>
                   )}
                   <div className="flex items-start justify-between mb-4">
@@ -1004,10 +1010,10 @@ export default function HomePage() {
             <h3 className="font-display font-bold text-xl leading-snug mb-2">
               Mais poder para seus áudios
             </h3>
-            <p className="text-sm font-light mb-5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              + funcionalidades, + produtividade, + organização, + ZapScript
+            <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Novas funcionalidades chegando em breve. Quer ser o primeiro a saber?
             </p>
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-2 gap-2.5 mb-5">
               {[
                 { icon: '👥', label: 'Resumo de Grupos' },
                 { icon: '✅', label: 'Tarefas e Planner de áudios' },
@@ -1021,6 +1027,47 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
+            {/* Captura de e-mail — lista de espera */}
+            {waitlistDone ? (
+              <p className="text-sm font-semibold text-center" style={{ color: 'rgb(var(--color-primary))' }}>
+                ✓ Anotado! Você será o primeiro a saber.
+              </p>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={waitlistEmail}
+                  onChange={e => setWaitlistEmail(e.target.value)}
+                  placeholder="Seu melhor e-mail"
+                  className="flex-1 rounded-xl px-4 py-2.5 text-sm outline-none"
+                  style={{ border: '1.5px solid rgb(var(--color-border))', background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-text))' }}
+                  onKeyDown={e => { if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (!waitlistEmail.includes('@')) return;
+                    setWaitlistLoading(true);
+                    fetch(`${(process.env.NEXT_PUBLIC_API_URL||'').replace(/\/$/,'')}/demo/newsletter/interest`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email: waitlistEmail }),
+                    }).finally(() => { setWaitlistLoading(false); setWaitlistDone(true); });
+                  }}}
+                />
+                <button
+                  disabled={waitlistLoading || !waitlistEmail.includes('@')}
+                  onClick={() => {
+                    if (!waitlistEmail.includes('@')) return;
+                    setWaitlistLoading(true);
+                    fetch(`${(process.env.NEXT_PUBLIC_API_URL||'').replace(/\/$/,'')}/demo/newsletter/interest`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email: waitlistEmail }),
+                    }).finally(() => { setWaitlistLoading(false); setWaitlistDone(true); });
+                  }}
+                  className="btn-primary px-4 py-2.5 text-sm font-semibold whitespace-nowrap disabled:opacity-50">
+                  {waitlistLoading ? '...' : 'Me avise'}
+                </button>
+              </div>
+            )}
           </div>
         </section>
 

@@ -217,7 +217,7 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
           <div>
             <h3 className="text-sm font-bold text-brand-text">Solicitar saque via Pix</h3>
             <p className="text-xs text-brand-muted mt-0.5">
-              Pagamento até o dia 15 do mês seguinte · Mínimo R${PAYOUT_MIN.toFixed(2)}
+              Pagamentos via Pix nos dias 10 e 25 · Mínimo R${PAYOUT_MIN.toFixed(2)}
             </p>
           </div>
           <button

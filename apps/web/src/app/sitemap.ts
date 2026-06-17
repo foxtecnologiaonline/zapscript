@@ -10,6 +10,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/corretores`,priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/advogados`, priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/vendas`,    priority: 0.9,  changeFrequency: 'monthly' },
+    { url: `${base}/afiliados`,  priority: 0.7,  changeFrequency: 'monthly' },
+    { url: `${base}/vs/viratexto`, priority: 0.8, changeFrequency: 'monthly' },
     { url: `${base}/login`,     priority: 0.7,  changeFrequency: 'monthly' },
     { url: `${base}/blog`,      priority: 0.9,  changeFrequency: 'weekly'  },
     { url: `${base}/privacidade`, priority: 0.3, changeFrequency: 'yearly' },

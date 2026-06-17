@@ -502,7 +502,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
       {/* ── Footer mínimo ────────────────────────────────────────── */}
       <footer className="border-t border-white/5 py-6 px-4">
         <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-brand-muted">
-          <span>© 2026 ZapScript · FOX TecnologIA · CNPJ: XX.XXX.XXX/0001-XX</span>
+          <span>© 2026 ZapScript · FOX TecnologIA</span>
           <div className="flex items-center gap-4">
             <Link href="/privacidade" className="hover:text-white transition-colors">Privacidade</Link>
             <Link href="/termos" className="hover:text-white transition-colors">Termos</Link>

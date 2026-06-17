@@ -320,6 +320,28 @@ export default async function authRoutes(app: FastifyInstance) {
         const confirmLink = `${APP_URL}/verificar-email?token=${encodeURIComponent(verifyToken)}`;
         logger.info(`[Auth] Enviando e-mail de verificação para ${email}`);
         await sendVerificationEmail(email, name, confirmLink);
+
+        // E-mail de boas-vindas / ativação (best-effort, separado do de verificação)
+        const firstName = name?.split(' ')[0] || 'parceiro(a)';
+        sendEmail(
+          email,
+          `Bem-vindo ao ZapScript, ${firstName}! Conecte seu WhatsApp agora`,
+          `<div style="font-family:'DM Sans',sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:16px;border:1px solid rgba(16,185,129,.15)">
+            <div style="font-size:28px;font-weight:900;color:#10b981;margin-bottom:8px">⚡ ZapScript</div>
+            <h1 style="font-size:22px;font-weight:700;color:#fff;margin:0 0 12px">Sua conta está pronta, ${firstName}!</h1>
+            <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Agora conecte seu WhatsApp e comece a converter áudios em texto — leva menos de 2 minutos.</p>
+            <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:12px;padding:20px;margin-bottom:24px">
+              <p style="margin:0 0 12px;font-weight:600;color:#fff">Como ativar em 3 passos:</p>
+              <p style="margin:0 0 8px;color:#a7f3d0;font-size:14px">1️⃣ Acesse seu painel e vá em <strong>Números</strong></p>
+              <p style="margin:0 0 8px;color:#a7f3d0;font-size:14px">2️⃣ Clique em <strong>Conectar novo número</strong></p>
+              <p style="margin:0;color:#a7f3d0;font-size:14px">3️⃣ Escaneie o QR Code com seu WhatsApp — pronto! 🎉</p>
+            </div>
+            <div style="text-align:center;margin-bottom:24px">
+              <a href="${APP_URL}/dashboard/numeros" style="display:inline-block;background:#10b981;color:#04130c;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:800;font-size:16px">Conectar meu WhatsApp →</a>
+            </div>
+            <p style="color:#6b7280;font-size:12px;text-align:center">Dúvidas? Responda este e-mail ou fale em <a href="mailto:suporte@zapscript.me" style="color:#10b981">suporte@zapscript.me</a></p>
+          </div>`,
+        ).catch(() => {});
       } catch (err: any) {
         // Não falhar o cadastro se o envio de e-mail falhar — o usuário já está logado
         logger.error(`[Auth] Erro ao enviar e-mail de verificação: ${err.message}`);

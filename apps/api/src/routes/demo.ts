@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma';
+import { sendEmail } from '../lib/mailer';
 
 /* ─────────────────────────────────────────────────────────
    Demo pública da landing page — "transcreva 1 áudio grátis"
@@ -140,6 +141,27 @@ export default async function demoRoutes(app: FastifyInstance) {
         bullets,
         durationSec: Math.round(duration),
       };
+    }
+  );
+
+  // ── POST /demo/newsletter/interest — lista de espera para novas features ──
+  app.post<{ Body: { email?: string } }>(
+    '/newsletter/interest',
+    { config: { rateLimit: { max: 3, timeWindow: '10 minutes' } } },
+    async (req, reply) => {
+      const { email } = req.body || {};
+      if (!email || !EMAIL_RE.test(email.trim())) {
+        return reply.code(400).send({ error: 'E-mail inválido.' });
+      }
+      const adminEmail = process.env.SUPPORT_EMAIL || process.env.SMTP_FROM?.replace(/.*<(.+)>/, '$1');
+      if (adminEmail) {
+        sendEmail(
+          adminEmail,
+          `[ZapScript] Nova inscrição na lista de espera: ${email.trim()}`,
+          `<div style="font-family:sans-serif;padding:24px"><p>E-mail: <strong>${email.trim()}</strong></p><p>Fonte: seção "Em breve" da homepage</p></div>`,
+        ).catch(() => {});
+      }
+      return reply.code(200).send({ ok: true });
     }
   );
 }
