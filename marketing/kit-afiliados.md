@@ -16,294 +16,188 @@ https://zapscript.me/cadastro?aff=SEU_CODIGO
 
 ---
 
-## 1. WHATSAPP — MENSAGENS DIRETAS (1-1)
+## 1. WHATSAPP (1-1)
 
-**Mensagem curta (contato próximo):**
+**Formal:**
 ```
-Oi! Tô usando um app que transforma áudio do WhatsApp em texto + resumo automático com IA — sem precisar ouvir nada.
+Olá [nome], tudo bem?
 
-Tem plano grátis para testar (sem cartão):
+Gostaria de indicar uma ferramenta que tenho utilizado e que pode ser bastante útil para o seu dia a dia: o ZapScript.me.
+
+Ele conecta ao seu WhatsApp e converte em texto cada áudio recebido automaticamente — texto completo e resumo com IA em segundos. Sem instalar nada, sem salvar áudio.
+
+Há um plano gratuito com 20 minutos por mês, sem necessidade de cartão:
 👉 [SEU_LINK]
+
+Fico à disposição se tiver alguma dúvida.
 ```
 
-**Mensagem média (contato morno):**
+**Informal:**
 ```
 Oi [nome]! Tudo bem?
 
-Queria te indicar uma ferramenta que mudou meu dia a dia: o ZapScript.
+Queria te indicar uma ferramenta que mudou meu dia a dia: o ZapScript.me.
 
-Ele conecta no seu WhatsApp e transcreve cada áudio automaticamente — texto + resumo em segundos. Sem instalar nada, sem encaminhar para bot. Funciona sozinho.
+Ele funciona sozinho, converte em texto (e resume) todo áudio que você receber no WhatsApp automaticamente — texto + resumo com IA em segundos.
 
 Tem 20 min grátis por mês, sem cartão:
 👉 [SEU_LINK]
 
-Se você recebe muito áudio, vale muito a pena testar.
-```
-
-**Mensagem longa (contexto profissional):**
-```
-Oi [nome],
-
-Sei que você lida com muito áudio no WhatsApp no trabalho. Queria te indicar algo que uso e que fez diferença real.
-
-O ZapScript transcreve automaticamente todo áudio que chega no WhatsApp — texto completo + resumo com os pontos principais, em segundos. Não precisa fazer nada: conecta uma vez e ele funciona em background.
-
-✅ Sem instalar nada no celular
-✅ Funciona até quando você está em reunião
-✅ Histórico pesquisável de tudo que foi transcrito
-✅ Criptografia bancária, servidor no Brasil
-
-Tem plano grátis para começar (20 min/mês, sem cartão):
-👉 [SEU_LINK]
-
-Me conta se tiver dúvida!
+Se você recebe muito áudio, vai curtir bastante 😄
 ```
 
 ---
 
 ## 2. GRUPOS DE WHATSAPP
 
-**Mensagem para grupo de profissionais (curta):**
+**Formal:**
 ```
-Dica do dia 👇
+Bom dia, pessoal!
 
-ZapScript — transforma áudio do WhatsApp em texto + resumo automático com IA.
+Gostaria de compartilhar uma ferramenta que tenho utilizado e que pode ser útil para quem recebe muito áudio no WhatsApp:
 
-Aquele áudio de 3 min que você fica postergando? Lido em 10 segundos.
+*ZapScript.me* — converte automaticamente cada áudio em texto + resumo com IA, em segundos. Sem instalar nada no celular, sem salvar áudio nos servidores.
 
-🆓 20 min/mês grátis, sem cartão:
+✅ Funciona sozinho, sem precisar fazer nada
+✅ Texto completo + resumo com os pontos principais
+✅ Servidores no Brasil, conformidade com a LGPD
+✅ Plano gratuito com 20 min/mês, sem cartão
+
 👉 [SEU_LINK]
 ```
 
-**Mensagem para grupo de profissionais (completa):**
+**Informal:**
 ```
-Pessoal! 👋
+Pessoal! 👋 Dica boa aqui:
 
-Quero compartilhar uma ferramenta que tenho usado e que é diferente dos bots de transcrição que vocês já devem conhecer:
+*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.
 
-*ZapScript* 🎧➡️📝
+Aquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.
 
-Em vez de encaminhar cada áudio manualmente para um bot, o ZapScript conecta no seu número e transcreve *automaticamente* — texto completo + resumo com IA em segundos.
-
-✅ Nenhuma ação necessária (funciona sozinho)
-✅ Resumo inteligente dos pontos principais
-✅ Histórico pesquisável
-✅ Sem instalar nada no celular
-✅ Servidor no Brasil, LGPD, criptografia bancária
-
-🆓 Plano grátis com 20 min/mês (sem cartão):
+🆓 20 min/mês grátis, sem cartão:
 👉 [SEU_LINK]
 
 🔥 Pro com 200 min por R$19,90 no 1º mês (oferta junho)
 
-Valeu! Se tiver dúvida me chama 😊
-```
-
-**Mensagem para grupo de vendedores/corretores:**
-```
-Galera que vive no WhatsApp 👇
-
-Descobri uma ferramenta que tô usando todo dia:
-
-*ZapScript* — transcreve automaticamente todo áudio do WhatsApp em texto + resumo.
-
-Sem precisar ouvir nada. Sem encaminhar para bot.
-O cliente manda áudio de 5 min → você lê em 10 segundos.
-
-Pra quem trabalha com muito áudio no zap, é game changer.
-
-Grátis para testar:
-👉 [SEU_LINK]
+Valeu! 😄
 ```
 
 ---
 
 ## 3. LINKEDIN
 
-**Post pessoal (narrativa de uso):**
+**Formal:**
 ```
-Parei de ouvir áudio de WhatsApp no trabalho.
+Compartilhando uma ferramenta que tenho utilizado com resultado concreto na minha rotina:
 
-Não porque ignorei os clientes — mas porque o ZapScript faz isso por mim.
+O *ZapScript.me* converte automaticamente cada áudio do WhatsApp em texto completo + resumo com os pontos principais, em segundos. Sem instalar nada no celular, sem precisar fazer nenhuma ação.
 
-Ele conecta no meu WhatsApp e transcreve cada áudio automaticamente: texto completo + resumo com os pontos principais, em segundos. Funciona em background, sem eu precisar fazer nada.
+Para quem lida diariamente com muitos áudios — corretores, advogados, gestores, vendedores — o ganho de tempo é significativo.
 
-Para quem lida com muito áudio no dia a dia (corretores, advogados, vendedores, gestores), é uma das ferramentas mais práticas que já usei.
-
-Tem plano grátis com 20 min/mês — sem cartão de crédito:
+Plano gratuito disponível com 20 min/mês, sem cartão:
 👉 [SEU_LINK]
 
-#produtividade #IA #whatsapp #ferramentas
+#produtividade #ferramentas #IA #WhatsApp
 ```
 
-**Post com dado (engajamento alto):**
+**Informal:**
 ```
-Quantas horas você perde por semana ouvindo áudio de WhatsApp?
+Parei de ouvir áudio de WhatsApp no trabalho. De nenhum. 👀
 
-Fiz o cálculo: se você recebe 20 áudios/dia de 3 minutos cada, são 7 horas por semana só ouvindo mensagens.
+O ZapScript.me converte tudo em texto automaticamente — texto + resumo em segundos. Funciona sozinho, sem precisar fazer nada.
 
-Descobri o ZapScript — ele transcreve automaticamente cada áudio em texto + resumo. Você lê em segundos o que levaria minutos ouvindo.
+Para quem recebe muito áudio por dia, é um baita ganho de tempo.
 
-Resultado: zero áudio ouvido. Tudo lido.
-
-Grátis para começar:
+Tem plano grátis para testar:
 👉 [SEU_LINK]
 
-Você já usa alguma solução para isso? Comenta aí 👇
-
-#produtividade #IA #WhatsApp #tempolivre
-```
-
-**Comentário em posts de produtividade:**
-```
-Adicionando uma ferramenta que tem me ajudado muito com isso: o ZapScript.
-
-Ele transcreve automaticamente todos os áudios do WhatsApp — texto + resumo com IA, sem precisar encaminhar para bot. Funciona sozinho em background.
-
-Tem plano grátis: [SEU_LINK]
+#produtividade #IA #WhatsApp #dica
 ```
 
 ---
 
-## 4. INSTAGRAM E TIKTOK
+## 4. INSTAGRAM
 
-**Caption para post/reels:**
+**Formal:**
 ```
-POV: você para de ouvir áudio de WhatsApp para sempre 🎧➡️📝
+Ferramenta de IA que converte automaticamente áudios do WhatsApp em texto:
 
-O ZapScript conecta no seu número e transcreve tudo automaticamente.
-Texto + resumo com IA em segundos. Sem instalar nada.
+✅ Texto completo + resumo em segundos
+✅ Funciona sozinho, sem nenhuma ação necessária
+✅ 99% de precisão em português BR
+✅ Servidores no Brasil, conformidade com a LGPD
+✅ Plano gratuito com 20 min/mês, sem cartão
 
-Link na bio (ou no comentário 👇)
-20 min grátis por mês, sem cartão.
+🔗 [SEU_LINK] (link na bio)
 
-#whatsapp #produtividade #IA #hack #dica #tecno
+#produtividade #IA #WhatsApp #tecnologia #ferramentas
 ```
 
-**Story (texto para sticker de link):**
+**Informal:**
 ```
-Áudio de WhatsApp → Texto em segundos ⚡
+Se você também recebe um absurdo de áudio no WhatsApp todo dia… 👀
+
+Essa ferramenta converte tudo em texto automaticamente — resumo com IA em segundos. Funciona sozinho, sem precisar fazer nada.
+
 Grátis para testar 👇
+🔗 [SEU_LINK] (link na bio)
+
+#produtividade #IA #whatsapp #dica
 ```
 
 ---
 
-## 5. PARA INFLUENCERS E CRIADORES DE CONTEÚDO
+## 5. E-MAIL
 
-**DM para influencer de produtividade:**
+**Formal:**
 ```
-Oi [nome]!
+Assunto: Indicação — ZapScript.me, conversão automática de áudios do WhatsApp em texto
 
-Sou fã do seu conteúdo sobre produtividade.
+Prezado(a) [nome],
 
-Queria te apresentar o ZapScript — uma ferramenta que transcreve automaticamente áudios do WhatsApp com IA (texto + resumo em segundos). É diferente dos bots que pedem para encaminhar o áudio: funciona 100% automático em background.
+Entro em contato para indicar uma ferramenta que tenho utilizado com bons resultados: o ZapScript.me.
 
-Acho que seu público ia amar porque [razão específica].
+A plataforma conecta ao seu número do WhatsApp e converte automaticamente cada áudio recebido em texto completo + resumo com IA, em segundos. Funciona de forma autônoma, sem qualquer ação necessária da sua parte. O áudio é processado e descartado imediatamente — nada é armazenado.
 
-Se quiser testar:
-👉 [SEU_LINK] (tem demo sem cadastro)
-
-Se gostar e quiser divulgar, temos comissão de 50% sobre cada assinante indicado. Fico feliz em conversar mais.
-
-[seu nome]
-```
-
-**DM para site/blog:**
-```
-Oi [nome],
-
-Fui conferir o [nome do site] e vi que vocês cobrem ferramentas de produtividade.
-
-Quero indicar o ZapScript — startup brasileira que transcreve automaticamente áudios do WhatsApp com IA. Funciona diferente dos bots existentes (100% automático, sem encaminhar nada).
-
-Se tiver interesse em cobrir ou testar:
+Há um plano gratuito com 20 minutos por mês, sem necessidade de cartão de crédito:
 👉 [SEU_LINK]
 
+Fico à disposição para quaisquer dúvidas.
+
+Atenciosamente,
 [seu nome]
 ```
 
----
-
-## 6. E-MAIL / NEWSLETTER
-
-**E-mail para lista pessoal:**
+**Informal:**
 ```
-Assunto: A ferramenta que me fez parar de ouvir áudio de WhatsApp
+Assunto: Ferramenta que me fez parar de ouvir áudio de WhatsApp
 
 Oi [nome],
 
-Queria compartilhar uma ferramenta que tenho usado e que fez diferença real no meu dia a dia.
+Queria te indicar algo que tem funcionado muito bem pra mim.
 
-Se você recebe muitos áudios no WhatsApp — de clientes, equipe, família — provavelmente sabe o quanto isso consome tempo.
+O ZapScript.me converte automaticamente cada áudio que chega no WhatsApp em texto + resumo com IA, em segundos. Funciona sozinho — nem preciso abrir o app para ver o resultado.
 
-O ZapScript resolve isso de forma diferente: em vez de precisar encaminhar cada áudio para um bot, ele conecta no seu número e transcreve automaticamente. Texto + resumo com IA em segundos. Zero ação necessária.
-
-O que eu mais gosto:
-• Funciona em background (até quando estou em reunião)
-• Resumo com os pontos principais (não só o texto bruto)
-• Histórico pesquisável de tudo
-• Servidor no Brasil, LGPD, criptografia bancária
-
-Tem plano grátis com 20 min/mês, sem cartão de crédito:
+Tem plano grátis para testar (20 min/mês, sem cartão):
 👉 [SEU_LINK]
 
-E em junho o Pro está por R$19,90 no 1º mês (depois R$39,90).
-
-Me conta se você testar!
+Me conta se curtir!
 
 [seu nome]
 ```
 
 ---
 
-## 7. DADOS E ARGUMENTOS DE VENDA
+## BOAS PRÁTICAS
 
-Use estes dados nas suas comunicações:
+✅ Conta como você usa no dia a dia — autenticidade converte mais que propaganda.
+✅ Mande o link com contexto, não apenas o link solto.
+✅ Responda dúvidas dos contatos — cada dúvida respondida aumenta a conversão.
+✅ Compartilhe em momentos relevantes (quando alguém reclamar de áudio, por exemplo).
 
-| Dado | Valor |
-|------|-------|
-| Precisão PT-BR | 99% (Whisper OpenAI) |
-| Velocidade | Texto em segundos |
-| Economia média | +10h por mês, por usuário |
-| Plano grátis | 20 min/mês, sem cartão |
-| Pro (junho) | R$19,90 no 1º mês |
-| Pro regular | R$39,90/mês |
-| Servidores | São Paulo, Brasil |
-| Criptografia | AES-256-GCM (padrão bancário) |
-| Conformidade | LGPD completo |
+❌ Evite spam em grupos sem contexto.
+❌ Evite prometer algo que o produto não entrega.
 
 ---
 
-## 8. PERGUNTAS FREQUENTES QUE SEUS CONTATOS VÃO FAZER
-
-**"É seguro?"**
-> Sim. O áudio é processado e descartado imediatamente. Só o texto fica salvo, criptografado com AES-256 em servidor em São Paulo. Mesmo padrão dos bancos.
-
-**"Precisa instalar algo no celular?"**
-> Não. Funciona pelo site, você escaneia um QR Code (igual ao WhatsApp Web) e pronto.
-
-**"Como ele acessa meus áudios?"**
-> Ele funciona como um WhatsApp Web — conectado ao seu número. Quando chega um áudio, ele transcreve automaticamente.
-
-**"Tem como testar antes de pagar?"**
-> Sim! Plano grátis com 20 min/mês, sem cartão de crédito. Só criar conta.
-
-**"Já uso um bot para isso"**
-> A diferença é que o bot pede para você encaminhar cada áudio manualmente. O ZapScript faz tudo sozinho em background. Você não precisa lembrar de nada.
-
----
-
-## 9. BOAS PRÁTICAS
-
-✅ **Faça**: Conta como você usa no dia a dia — autenticidade converte mais que propaganda.
-✅ **Faça**: Mande o link com contexto, não apenas o link solto.
-✅ **Faça**: Responda dúvidas dos contatos — cada dúvida respondida aumenta a conversão.
-✅ **Faça**: Compartilhe em momentos relevantes (quando alguém reclamar de áudio, por exemplo).
-
-❌ **Evite**: Spam em grupos sem contexto.
-❌ **Evite**: Prometer algo que o produto não entrega.
-❌ **Evite**: Divulgar em grupos fora do perfil (ex: grupos de família sem contexto profissional).
-
----
-
-*Dúvidas sobre o programa de afiliados? Acesse zapscript.me/dashboard/afiliado ou escreva para roberto@zapscript.me*
+*Dúvidas? Acesse zapscript.me/dashboard/afiliado*
