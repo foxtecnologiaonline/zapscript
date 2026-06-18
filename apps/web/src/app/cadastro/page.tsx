@@ -20,7 +20,8 @@ function CadastroForm() {
   }, []);
   const [isTesterInvite, setIsTesterInvite] = useState(false);
 
-  const [form, setForm]   = useState({ name: '', email: '', password: '', confirm: '' });
+  const [form, setForm]   = useState({ name: '', email: '', password: '' });
+  const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const [done, setDone]       = useState(false);
@@ -53,8 +54,7 @@ function CadastroForm() {
       return;
     }
 
-    if (form.password !== form.confirm) { setError('As senhas não coincidem.'); return; }
-    if (form.password.length < 8)       { setError('Senha deve ter ao menos 8 caracteres.'); return; }
+    if (form.password.length < 8) { setError('Senha deve ter ao menos 8 caracteres.'); return; }
 
     setLoading(true);
     try {
@@ -114,7 +114,7 @@ function CadastroForm() {
                 Já confirmei — Fazer login
               </Link>
               <button
-                onClick={() => { setDone(false); setForm(f => ({ ...f, password: '', confirm: '' })); }}
+                onClick={() => { setDone(false); setForm(f => ({ ...f, password: '' })); }}
                 className="block w-full text-xs text-brand-muted hover:text-brand-primary transition-colors py-2">
                 Voltar e usar outro e-mail
               </button>
@@ -164,11 +164,37 @@ function CadastroForm() {
             </div>
             <div>
               <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Senha</label>
-              <input className="field-input" type="password" placeholder="Mínimo 8 caracteres" value={form.password} onChange={set('password')} required minLength={8}/>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Confirmar senha</label>
-              <input className="field-input" type="password" placeholder="Repita a senha" value={form.confirm} onChange={set('confirm')} required/>
+              <div className="relative">
+                <input
+                  className="field-input pr-10"
+                  type={showPwd ? 'text' : 'password'}
+                  placeholder="Mínimo 8 caracteres"
+                  value={form.password}
+                  onChange={set('password')}
+                  required
+                  minLength={8}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwd(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-brand-primary transition-colors"
+                  tabIndex={-1}
+                  aria-label={showPwd ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showPwd ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/>
+                      <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Consentimento unificado LGPD */}

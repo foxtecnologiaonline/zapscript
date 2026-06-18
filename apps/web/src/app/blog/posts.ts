@@ -1316,6 +1316,158 @@ export const POSTS: BlogPost[] = [
     `,
   },
 
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 5 — Nicho: advogados
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcrever-audio-whatsapp-advogados',
+    title:       'Como transcrever áudio do WhatsApp para advogados: guia prático 2026',
+    description: 'Advogados perdem horas ouvindo áudios de clientes. Veja como transcrever mensagens de voz do WhatsApp automaticamente e ganhar tempo no escritório.',
+    keywords:    ['transcrever audio whatsapp advogado','transcricao audio advocacia','whatsapp texto advogado','produtividade juridica','audio whatsapp escritorio advocacia'],
+    publishedAt: '2026-06-18',
+    readingTime: 6,
+    category:    'Nichos',
+    coverEmoji:  '⚖️',
+    content: `
+<p>Um advogado que atende 30 clientes por semana pode facilmente receber mais de 100 áudios no WhatsApp — dúvidas rápidas, atualizações de processo, pedidos de prazo. Ouvir cada um desses áudios individualmente consome horas que poderiam ir para petições, contratos e audiências. <strong>A transcrição automática de áudios resolve isso.</strong></p>
+
+<h2>Por que advogados perdem tanto tempo com áudio</h2>
+<p>O problema é estrutural. Clientes preferem falar a digitar — é mais rápido para eles, mas mais lento para você. Um áudio de 2 minutos carrega em média 280 palavras. Você leria isso em menos de 30 segundos. No modelo auditivo, você gasta 2 minutos. Multiplicado por 50 áudios por dia, isso representa quase 2 horas diárias <em>só ouvindo mensagens</em>.</p>
+
+<h2>O que muda com a transcrição automática</h2>
+<p>Quando você conecta seu número de WhatsApp a uma ferramenta de transcrição com IA, todo áudio recebido é convertido em texto automaticamente — sem nenhuma ação da sua parte. Você abre o WhatsApp e já encontra o texto transcrito + um resumo dos pontos principais.</p>
+
+<p>Na prática, isso significa:</p>
+<ul>
+  <li><strong>Triagem mais rápida</strong> — leia o resumo e decida se precisa responder agora ou depois.</li>
+  <li><strong>Documentação facilitada</strong> — copie o trecho relevante direto para o prontuário do cliente.</li>
+  <li><strong>Atendimento discreto</strong> — leia mensagens em audiências ou reuniões sem precisar de fone.</li>
+  <li><strong>Histórico pesquisável</strong> — busque por nome, data ou palavra-chave em vez de reouvir dezenas de áudios.</li>
+</ul>
+
+<h2>LGPD e confidencialidade: o que considerar</h2>
+<p>A preocupação com sigilo profissional é legítima. Na escolha de uma ferramenta, observe:</p>
+<ul>
+  <li><strong>Armazenamento de áudio:</strong> o arquivo de voz é descartado após a transcrição ou fica salvo nos servidores?</li>
+  <li><strong>Localização dos servidores:</strong> servidores no Brasil facilitam conformidade com a LGPD.</li>
+  <li><strong>Criptografia:</strong> o texto transcrito é armazenado de forma criptografada?</li>
+  <li><strong>Modo Privado:</strong> existe opção de receber o texto sem que ninguém mais na conversa veja?</li>
+</ul>
+
+<p>O <strong>ZapScript</strong> atende todos esses pontos: processa o áudio em memória e o descarta imediatamente, armazena apenas o texto transcrito com criptografia AES-256-GCM, opera com servidores no Brasil e oferece Modo Privado no Plano Pro — onde apenas você recebe o texto e o resumo.</p>
+
+<h2>Passo a passo: como começar</h2>
+<ol>
+  <li>Acesse <strong>zapscript.me</strong> e crie sua conta (plano gratuito, sem cartão).</li>
+  <li>No dashboard, conecte seu número de WhatsApp via QR Code.</li>
+  <li>Pronto. Todo áudio recebido passa a ser transcrito e resumido automaticamente.</li>
+</ol>
+
+<h2>Conclusão</h2>
+<p>Para advogados, tempo é o recurso mais escasso. Parar de ouvir áudio e começar a ler a transcrição é uma mudança simples que devolve horas reais toda semana. Teste gratuitamente em <strong>zapscript.me</strong> — no lançamento, o 1º mês do Plano Pro sai por R$ 19,90.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 6 — Nicho: corretores de imóveis
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcrever-audio-whatsapp-corretor-imoveis',
+    title:       'Transcrever áudio do WhatsApp para corretor de imóveis: economize 2h por dia',
+    description: 'Corretores recebem dezenas de áudios de clientes por dia. Veja como converter mensagens de voz em texto automaticamente e fechar mais negócios em menos tempo.',
+    keywords:    ['transcrever audio whatsapp corretor','audio texto corretor imoveis','whatsapp corretor imoveis','produtividade corretor','transcricao whatsapp imóveis'],
+    publishedAt: '2026-06-18',
+    readingTime: 5,
+    category:    'Nichos',
+    coverEmoji:  '🏠',
+    content: `
+<p>O corretor de imóveis moderno vive no WhatsApp. Clientes mandam áudio para perguntar sobre o imóvel, negociar valor, confirmar visita, tirar dúvida de documentação. Em um dia agitado, são 60, 80, até 100 áudios — muitos deles recebidos enquanto você está em atendimento presencial ou numa visita. <strong>Ouvir tudo isso leva horas. Ler leva minutos.</strong></p>
+
+<h2>O problema real de ouvir áudio no mercado imobiliário</h2>
+<p>Num mercado onde velocidade de resposta pode significar perder ou fechar um negócio, cada minuto conta. O cliente que não recebe resposta rápida liga para o concorrente. E você, preso ouvindo um áudio de 3 minutos que poderia ter lido em 20 segundos, perdeu a janela.</p>
+
+<p>Além disso, reouvir áudios para não perder detalhes — preço que o cliente aceitou, prazo de mudança, condições de financiamento — é outro ponto de atrito. Sem transcrição, essas informações ficam no áudio e exigem reouvir para consultar.</p>
+
+<h2>O que muda quando você transcreve automaticamente</h2>
+<ul>
+  <li><strong>Resposta mais rápida</strong> — leia o resumo do áudio em segundos, mesmo durante uma visita.</li>
+  <li><strong>Nunca perde um detalhe</strong> — condições negociadas ficam em texto, pesquisável por cliente.</li>
+  <li><strong>Atendimento discreto</strong> — leia mensagens de clientes sem tirar fone do bolso em reuniões.</li>
+  <li><strong>Histórico organizado</strong> — busque por nome do cliente ou palavra-chave em vez de reouvir áudios antigos.</li>
+</ul>
+
+<h2>Como funciona na prática</h2>
+<p>Ferramentas como o <strong>ZapScript</strong> conectam ao seu número de WhatsApp via QR Code e passam a transcrever cada áudio recebido automaticamente. Você não precisa fazer nada — o áudio chega, o texto aparece em segundos, com um resumo dos pontos principais.</p>
+
+<p>O áudio de voz é processado e descartado imediatamente (sem armazenamento). O texto fica salvo, criptografado, no seu histórico — pesquisável por data, contato e palavra-chave.</p>
+
+<h2>Passo a passo para começar</h2>
+<ol>
+  <li>Crie sua conta gratuita em <strong>zapscript.me</strong> (sem cartão de crédito).</li>
+  <li>Conecte seu número WhatsApp escaneando o QR Code no dashboard.</li>
+  <li>Pronto — os próximos áudios já chegam com texto + resumo automático.</li>
+</ol>
+
+<h2>Conclusão</h2>
+<p>Corretores que adotam transcrição automática ganham velocidade de resposta, organização e qualidade de atendimento. São 2 horas por dia devolvidas para o que realmente importa: fechar negócios. Teste gratuitamente em <strong>zapscript.me</strong> — 20 minutos/mês grátis, sem cartão.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 7 — Nicho: vendedores / SDR / CS
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcrever-audio-whatsapp-vendedores-sdr',
+    title:       'Como um SDR pode usar transcrição de áudio para não perder nenhum lead',
+    description: 'SDRs e vendedores perdem informações críticas em áudios de WhatsApp. Veja como a transcrição automática ajuda a registrar objeções, agendar follow-ups e fechar mais.',
+    keywords:    ['transcrever audio vendedor','whatsapp sdr vendas','transcricao whatsapp vendas','audio texto vendedor','produtividade vendas whatsapp'],
+    publishedAt: '2026-06-18',
+    readingTime: 6,
+    category:    'Nichos',
+    coverEmoji:  '📈',
+    content: `
+<p>Um SDR ativo troca dezenas de mensagens por dia. Clientes mandam áudio com objeções, com interesse, com condições para fechar — e essas informações precisam ser registradas, qualificadas e transformadas em próximo passo. Quando chegam em áudio, o risco de perder algum detalhe é alto. <strong>Transcrição automática elimina esse risco.</strong></p>
+
+<h2>Por que vendedores perdem leads por causa de áudio</h2>
+<p>O ciclo de vendas por WhatsApp tem um problema invisível: as informações mais importantes chegam em voz. O lead fala o budget, fala a objeção real, fala quando pode decidir — e tudo isso vai para dentro de um áudio de 90 segundos que você ouviu uma vez, anotou pela metade e não vai mais encontrar.</p>
+
+<p>Sem registro em texto:</p>
+<ul>
+  <li>Objeções não ficam documentadas para análise de padrão.</li>
+  <li>Follow-ups ficam dependentes de memória ou notas fragmentadas.</li>
+  <li>Informações de qualificação (budget, prazo, autoridade) se perdem.</li>
+  <li>Handoff para o closer é impreciso.</li>
+</ul>
+
+<h2>O que muda com transcrição automática</h2>
+<p>Quando você conecta seu WhatsApp ao <strong>ZapScript</strong>, cada áudio recebido é convertido automaticamente em texto + resumo com os pontos principais. Você lê em 10 segundos o que levaria 90 segundos de ouvido — e o texto fica salvo, pesquisável, pronto para copiar no CRM.</p>
+
+<p>Na prática para o processo comercial:</p>
+<ul>
+  <li><strong>Qualificação mais rápida</strong> — leia o resumo e já sabe se o lead é quente ou morno.</li>
+  <li><strong>Registro no CRM em segundos</strong> — copie o trecho relevante direto para o campo de notas.</li>
+  <li><strong>Objeções documentadas</strong> — acumule padrões de objeção por produto, segmento, persona.</li>
+  <li><strong>Handoff preciso</strong> — passe o áudio transcrito para o closer com contexto completo.</li>
+  <li><strong>Follow-up mais assertivo</strong> — releia o que o lead disse antes de ligar, sem precisar reouvir.</li>
+</ul>
+
+<h2>Exemplo real de uso</h2>
+<p>Um lead manda áudio: <em>"Olha, o produto me interessa, mas o preço tá acima do que a gente tinha orçado. A gente consegue algum desconto pra fechar esse mês?"</em></p>
+
+<p>Com transcrição, você lê isso em 5 segundos, identifica a objeção (preço), o gatilho (urgência do mês), e já vai para a resposta certa. Sem transcrição, você ouve, tenta lembrar, responde com menos precisão.</p>
+
+<h2>Como começar</h2>
+<ol>
+  <li>Acesse <strong>zapscript.me</strong> e crie uma conta gratuita.</li>
+  <li>Conecte seu número de WhatsApp via QR Code.</li>
+  <li>Cada áudio de lead que chegar já vem com texto + resumo automático.</li>
+</ol>
+
+<h2>Conclusão</h2>
+<p>SDRs e vendedores que documentam melhor fecham mais. Transcrição automática de áudio é a mudança de processo mais simples para quem opera pelo WhatsApp. Comece grátis em <strong>zapscript.me</strong> — 20 minutos/mês no plano free, sem cartão de crédito.</p>
+    `,
+  },
+
 ];
 
 export function getPost(slug: string): BlogPost | undefined {

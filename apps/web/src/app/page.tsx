@@ -1,474 +1,13 @@
-'use client';
-import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ThemeToggleButton } from '@/components/ThemeProvider';
-import { api } from '@/lib/api';
-import { captureAffiliateFromUrl } from '@/lib/affiliate';
-
-/* ── Isca de topo de funil — "Transcreva 1 áudio grátis" ──
-   Upload de áudio + e-mail (lead) → POST /demo/transcribe.
-   Sem cadastro: o visitante prova o valor antes de criar conta. */
-const DEMO_ACCEPT = '.ogg,.opus,.mp3,.mp4,.m4a,.wav,.webm,.aac,.flac,audio/*';
-const DEMO_MAX_BYTES = 4 * 1024 * 1024;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-type DemoResult = { text: string; bullets: string[]; durationSec: number };
-
-function DemoTranscribe() {
-  const [file, setFile]       = useState<File | null>(null);
-  const [email, setEmail]     = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
-  const [result, setResult]   = useState<DemoResult | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  function pickFile(f: File | null) {
-    setError(null);
-    if (!f) { setFile(null); return; }
-    if (f.size > DEMO_MAX_BYTES) {
-      setError('Áudio muito grande para a demo (máx. 4MB / ~5 min). Crie sua conta para áudios maiores.');
-      setFile(null);
-      return;
-    }
-    setFile(f);
-  }
-
-  async function submit() {
-    setError(null);
-    if (!file) { setError('Escolha um arquivo de áudio.'); return; }
-    if (!EMAIL_RE.test(email.trim())) { setError('Informe um e-mail válido para ver o resultado.'); return; }
-
-    setLoading(true);
-    try {
-      const fd = new FormData();
-      // E-mail ANTES do arquivo: com multipart em streaming, o backend só
-      // enxerga campos que vêm antes do file ao chamar req.file().
-      fd.append('email', email.trim().toLowerCase());
-      fd.append('file', file);
-      const res = await api.postFormData<{ ok: boolean } & DemoResult>('/demo/transcribe', fd);
-      setResult({ text: res.text, bullets: res.bullets || [], durationSec: res.durationSec });
-    } catch (e: any) {
-      setError(e?.error || e?.message || 'Não foi possível transcrever agora. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function reset() {
-    setFile(null); setResult(null); setError(null); setEmail('');
-    if (inputRef.current) inputRef.current.value = '';
-  }
-
-  return (
-    <div className="rounded-3xl p-6 border"
-      style={{
-        background: 'rgb(var(--color-surface-elevated))',
-        borderColor: 'rgba(16,185,129,.25)',
-        boxShadow: 'var(--shadow-glow), var(--shadow-md)',
-      }}>
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: 'rgba(16,185,129,.15)', color: 'rgb(var(--color-primary))' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2a3 3 0 013 3v7a3 3 0 11-6 0V5a3 3 0 013-3z"/>
-            <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/>
-          </svg>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-primary))' }}>
-            Experimente agora · grátis
-          </p>
-          <h2 className="font-display font-bold text-xl tracking-tight leading-tight">
-            Transcreva 1 áudio em segundos
-          </h2>
-        </div>
-      </div>
-
-      {!result ? (
-        <>
-          <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-            Envie um áudio do seu WhatsApp e veja o texto + resumo na hora. Sem instalar nada, sem cadastro.
-          </p>
-
-          {/* Dropzone / file picker */}
-          <button type="button"
-            onClick={() => inputRef.current?.click()}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files?.[0] || null); }}
-            className="w-full rounded-2xl px-4 py-6 mb-3 flex flex-col items-center gap-2 transition-all"
-            style={{
-              border: `1.5px dashed ${dragOver ? 'rgb(var(--color-primary))' : 'rgb(var(--color-border))'}`,
-              background: dragOver ? 'rgba(16,185,129,.06)' : 'rgb(var(--color-surface))',
-              cursor: 'pointer',
-            }}>
-            <span className="text-2xl">{file ? '🎧' : '📤'}</span>
-            <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-text))' }}>
-              {file ? file.name : 'Toque para escolher um áudio'}
-            </span>
-            <span className="text-[11px]" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              {file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : 'OGG, MP3, M4A, WAV… até 4MB'}
-            </span>
-          </button>
-          <input ref={inputRef} type="file" accept={DEMO_ACCEPT} className="hidden"
-            onChange={(e) => pickFile(e.target.files?.[0] || null)} />
-
-          {/* E-mail */}
-          <input type="email" inputMode="email" autoComplete="email"
-            value={email} onChange={(e) => setEmail(e.target.value)}
-            placeholder="Seu melhor e-mail"
-            className="w-full rounded-2xl px-4 py-3 mb-3 text-sm outline-none"
-            style={{
-              border: '1.5px solid rgb(var(--color-border))',
-              background: 'rgb(var(--color-surface))',
-              color: 'rgb(var(--color-text))',
-            }} />
-
-          {error && (
-            <p className="text-xs mb-3 px-1" style={{ color: '#f87171' }}>{error}</p>
-          )}
-
-          <button type="button" onClick={submit} disabled={loading}
-            className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2"
-            style={{ opacity: loading ? 0.7 : 1, cursor: loading ? 'wait' : 'pointer' }}>
-            {loading ? (
-              <>
-                <span className="inline-block w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                Transcrevendo…
-              </>
-            ) : (
-              <>
-                Transcrever grátis
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14M12 5l7 7-7 7"/>
-                </svg>
-              </>
-            )}
-          </button>
-          <p className="text-[10px] text-center mt-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
-            🔒 Seu áudio nunca é armazenado. Processado e descartado na hora.
-          </p>
-        </>
-      ) : (
-        <div style={{ animation: 'fadeInUp .4s ease both' }}>
-          {/* Transcrição */}
-          <p className="text-[11px] font-semibold mb-1.5" style={{ color: 'rgb(var(--color-primary))' }}>📝 Transcrição:</p>
-          <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgb(var(--color-text))' }}>
-            {result.text}
-          </p>
-
-          {/* Pontos-chave */}
-          {result.bullets.length > 0 && (
-            <div className="pt-3 mb-4 space-y-2" style={{ borderTop: '1px solid rgb(var(--color-border-light))' }}>
-              <p className="text-[11px] font-semibold mb-2" style={{ color: 'rgb(var(--color-primary))' }}>🎯 Pontos-chave:</p>
-              {result.bullets.map((b, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <span className="flex-shrink-0 text-sm leading-none mt-0.5" style={{ color: 'rgb(var(--color-primary))' }}>✅</span>
-                  <span className="text-sm leading-relaxed" style={{ color: 'rgb(var(--color-text-secondary))' }}>{b}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Upsell */}
-          <div className="rounded-2xl p-4 mb-3" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(16,185,129,.2)' }}>
-            <p className="text-sm font-semibold mb-1" style={{ color: 'rgb(var(--color-text))' }}>
-              Gostou? Faça isso automático no seu WhatsApp.
-            </p>
-            <p className="text-xs font-light mb-3" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Conecte seu número e todo áudio vira texto e resumo sozinho. Comece grátis — 1º mês do Pro por R$ 19,90.
-            </p>
-            <Link href="/cadastro?plan=pro" className="btn-primary w-full py-3 text-sm font-semibold flex items-center justify-center gap-2">
-              Criar minha conta grátis
-            </Link>
-          </div>
-
-          <button type="button" onClick={reset}
-            className="w-full py-2.5 rounded-2xl text-sm font-semibold transition-all"
-            style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-secondary))', background: 'transparent' }}>
-            Transcrever outro áudio
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════
-   Landing Page — Clone fiel do zapscript-audio.youware.app
-   Design: Space Grotesk + DM Sans | Dark theme padrão
-   Max-width: 430px (mobile-first)
-   Cores, layout, textos e efeitos extraídos do HTML original
-══════════════════════════════════════════════════════ */
-
-/* ── Chat Demo — Veja como funciona ── */
-const WAVE_HEIGHTS = [4,8,12,15,10,6,13,16,11,7,5,10,15,11,6,9,14,12,7,5,9,13];
-
-function ChatDemo() {
-  const [tab, setTab] = useState(0);
-  const [phase, setPhase] = useState<0|1|2>(0); // 0=audio, 1=typing, 2=result
-  const [bullets, setBullets] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const ex = EXAMPLES[tab];
-
-  useEffect(() => {
-    setPhase(0); setBullets(0); setPlaying(false);
-    if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
-    const ts = [
-      setTimeout(() => setPhase(1),   1800),
-      setTimeout(() => setPhase(2),   3600),
-      setTimeout(() => setBullets(1), 4700),
-      setTimeout(() => setBullets(2), 5500),
-      setTimeout(() => setBullets(3), 6300),
-      setTimeout(() => setBullets(4), 7100),
-    ];
-    return () => ts.forEach(clearTimeout);
-  }, [tab]);
-
-  function togglePlay() {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    if (playing) { window.speechSynthesis.cancel(); setPlaying(false); return; }
-    window.speechSynthesis.cancel();
-    const utt = new SpeechSynthesisUtterance(ex.transcript);
-    utt.lang = 'pt-BR'; utt.rate = 1.05;
-    utt.onend = () => setPlaying(false);
-    utt.onerror = () => setPlaying(false);
-    window.speechSynthesis.speak(utt);
-    setPlaying(true);
-  }
-
-  // Avatar iniciais
-  const initials = (s: string) => s.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
-
-  return (
-    <div>
-      {/* Section header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: 'rgba(16,185,129,.15)', color: 'rgb(var(--color-primary))' }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-            <path d="M12 2a3 3 0 013 3v7a3 3 0 11-6 0V5a3 3 0 013-3z"/>
-            <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/>
-          </svg>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-primary))' }}>Demo ao vivo</p>
-          <h2 className="font-display font-bold text-2xl tracking-tight">Veja como funciona</h2>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-2 mb-4">
-        {EXAMPLES.map((e, i) => (
-          <button key={i} onClick={() => setTab(i)}
-            className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
-            style={{
-              border: '1.5px solid',
-              borderColor: tab === i ? 'rgb(var(--color-primary))' : 'rgb(var(--color-border))',
-              background:  tab === i ? 'rgba(16,185,129,.1)' : 'transparent',
-              color:       tab === i ? 'rgb(var(--color-primary))' : 'rgb(var(--color-text-secondary))',
-              fontFamily:  'inherit', cursor: 'pointer',
-            }}>{e.label}</button>
-        ))}
-      </div>
-
-      {/* Chat window */}
-      <div className="rounded-2xl overflow-hidden"
-        style={{ border: '1.5px solid rgba(16,185,129,.22)', boxShadow: '0 8px 32px rgba(0,0,0,.35)' }}>
-
-        {/* WA-style header */}
-        <div className="flex items-center gap-3 px-4 py-3"
-          style={{ background: '#0d2416', borderBottom: '1px solid rgba(16,185,129,.12)' }}>
-          <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>Z</div>
-          <div className="flex-1">
-            <p className="text-sm font-bold text-white">ZapScript Bot</p>
-            <p className="text-xs flex items-center gap-1" style={{ color: '#10b981' }}>
-              <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: '#10b981' }} />
-              online
-            </p>
-          </div>
-          <div className="text-xs px-2.5 py-1 rounded-full font-semibold"
-            style={{ background: 'rgba(16,185,129,.12)', color: '#10b981' }}>
-            automático
-          </div>
-        </div>
-
-        {/* Messages area */}
-        <div className="px-4 pt-4 pb-3 flex flex-col gap-4"
-          style={{ background: '#0a1d12', minHeight: 300 }}>
-
-          {/* ── Received audio bubble ── */}
-          <div className="flex items-end gap-2">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
-              style={{ background: ex.avatarBg }}>
-              {initials(ex.label)}
-            </div>
-            <div className="rounded-2xl rounded-bl-sm overflow-hidden max-w-[82%]"
-              style={{ background: '#1e2d26', border: '1px solid rgba(255,255,255,.06)' }}>
-              {/* Audio player row */}
-              <div className="flex items-center gap-2.5 px-3 pt-3 pb-1">
-                <button onClick={togglePlay}
-                  className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
-                  style={{ background: playing ? 'rgba(16,185,129,.3)' : 'rgba(16,185,129,.15)',
-                           color: '#10b981', border: 'none', cursor: 'pointer' }}>
-                  {playing
-                    ? <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="1" width="4" height="10" rx="1"/><rect x="7" y="1" width="4" height="10" rx="1"/></svg>
-                    : <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M2 1.5l9 4.5-9 4.5z"/></svg>
-                  }
-                </button>
-                {/* Waveform bars */}
-                <div className="flex items-center gap-[2px] flex-1">
-                  {WAVE_HEIGHTS.map((h, i) => (
-                    <div key={i} style={{
-                      width: 2.5, height: h, borderRadius: 2,
-                      background: playing ? '#10b981' : '#3d5248',
-                      transformOrigin: 'center',
-                      animation: playing
-                        ? `waveBar ${0.45 + (i % 5) * 0.08}s ease ${(i * 0.028).toFixed(3)}s infinite alternate`
-                        : 'none',
-                    }} />
-                  ))}
-                </div>
-                <span className="text-[11px] font-mono flex-shrink-0" style={{ color: '#6b7280' }}>1:23</span>
-              </div>
-              <p className="text-right text-[10px] pb-2 pr-3" style={{ color: '#4b5e56' }}>14:32</p>
-            </div>
-          </div>
-
-          {/* ── Typing indicator ── */}
-          {phase === 1 && (
-            <div className="flex items-end gap-2" key="typing"
-              style={{ animation: 'fadeInUp .3s ease both' }}>
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>Z</div>
-              <div className="rounded-2xl rounded-bl-sm px-4 py-3"
-                style={{ background: '#083d22', border: '1px solid rgba(16,185,129,.15)' }}>
-                <div className="flex items-center gap-1.5">
-                  <div className="chat-typing-dot" style={{ animationDelay: '0s' }} />
-                  <div className="chat-typing-dot" style={{ animationDelay: '.15s' }} />
-                  <div className="chat-typing-dot" style={{ animationDelay: '.3s' }} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── ZapScript result ── */}
-          {phase === 2 && (
-            <div className="flex items-end gap-2" key="result"
-              style={{ animation: 'fadeInUp .4s ease both' }}>
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>Z</div>
-              <div className="rounded-2xl rounded-bl-sm px-4 py-3.5 max-w-[90%]"
-                style={{ background: '#083d22', border: '1px solid rgba(16,185,129,.2)' }}>
-                {/* Transcript */}
-                <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#6ee7b7' }}>📝 Transcrição:</p>
-                <p className="text-sm leading-relaxed italic" style={{ color: '#a7f3d0', fontStyle: 'italic' }}>
-                  &ldquo;{ex.transcript.slice(0, 108)}&hellip;&rdquo;
-                </p>
-                {/* Bullets */}
-                {bullets > 0 && (
-                  <div className="mt-3 pt-3 space-y-2"
-                    style={{ borderTop: '1px solid rgba(16,185,129,.12)' }}>
-                    <p className="text-[11px] font-semibold mb-2" style={{ color: '#6ee7b7' }}>🎯 Pontos-chave:</p>
-                    {ex.bullets.slice(0, bullets).map((b, i) => (
-                      <div key={i} className="flex items-start gap-2"
-                        style={{ animation: 'fadeInUp .3s ease both' }}>
-                        <span className="flex-shrink-0 text-sm leading-none mt-0.5" style={{ color: '#10b981' }}>✅</span>
-                        <span className="text-xs leading-relaxed" style={{ color: '#d1fae5' }}>{b}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <p className="text-right text-[10px] mt-2" style={{ color: '#0d4a29' }}>
-                  14:32 · ZapScript ✓✓
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-4 py-2.5 text-center"
-          style={{ background: '#071510', borderTop: '1px solid rgba(255,255,255,.04)' }}>
-          <p className="text-[11px]" style={{ color: 'rgba(16,185,129,.5)' }}>
-            ▶ Toque no play para ouvir o áudio real · Simulação em loop automático
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── FAQ ── */
-const FAQ_ITEMS = [
-  {
-    q: 'Como o ZapScript funciona?',
-    a: 'Você conecta seu número de WhatsApp ao ZapScript. A partir daí, qualquer áudio que você receber é automaticamente transcrito e resumido em tópicos usando IA. Você recebe o texto de volta no próprio WhatsApp, em segundos.',
-  },
-  {
-    q: 'Meus áudios ficam armazenados?',
-    a: 'Não. Os arquivos de áudio nunca são armazenados — são processados em memória e descartados imediatamente após a transcrição. Apenas o texto transcrito é salvo, criptografado com AES-256-GCM.',
-  },
-  {
-    q: 'Funciona com qualquer conta do WhatsApp?',
-    a: 'Sim, funciona com qualquer número de WhatsApp — pessoal ou empresarial. Você conecta escaneando um QR Code, sem precisar instalar nada no celular.',
-  },
-  {
-    q: 'O que acontece quando os minutos acabam?',
-    a: 'As transcrições são pausadas até o início do próximo ciclo mensal. Você recebe alertas por WhatsApp e e-mail ao atingir 50%, 80% e 100% do seu limite. Pode fazer upgrade a qualquer momento para continuar.',
-  },
-  {
-    q: 'Posso cancelar quando quiser?',
-    a: 'Sim, sem multa e sem fidelidade. Você cancela diretamente pelo dashboard. O acesso continua até o fim do período já pago.',
-  },
-  {
-    q: 'Em quais idiomas funciona?',
-    a: 'O ZapScript transcreve áudios em qualquer idioma suportado pelo Whisper (português, inglês, espanhol e mais de 50 idiomas). Os resumos são exibidos no idioma detectado do áudio.',
-  },
-];
-
-function FaqSection() {
-  const [open, setOpen] = useState<number | null>(null);
-  return (
-    <div className="space-y-2">
-      {FAQ_ITEMS.map((item, i) => (
-        <div key={i} className="card rounded-2xl overflow-hidden">
-          <button
-            onClick={() => setOpen(open === i ? null : i)}
-            className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left"
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-text))' }}>
-              {item.q}
-            </span>
-            <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-full transition-transform"
-              style={{
-                background: 'rgb(var(--color-surface-elevated))',
-                color: 'rgb(var(--color-primary))',
-                transform: open === i ? 'rotate(45deg)' : 'none',
-                transition: 'transform .2s ease',
-              }}>
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M5 1v8M1 5h8"/>
-              </svg>
-            </span>
-          </button>
-          {open === i && (
-            <div className="px-5 pb-4" style={{ animation: 'fadeInUp .2s ease both' }}>
-              <p className="text-sm leading-relaxed font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                {item.a}
-              </p>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
+import { DemoTranscribe } from '@/components/DemoTranscribe';
+import { ChatDemo } from '@/components/ChatDemo';
+import { FaqSection } from '@/components/FaqSection';
+import { PricingInteractive } from '@/components/PricingInteractive';
+import { AffiliateCapture } from '@/components/AffiliateCapture';
+import { SupportChatButton } from '@/components/SupportChatButton';
+import { FAQ_ITEMS } from '@/data/faq';
 
 /* ── Feature cards ── */
 const FEATURES = [
@@ -505,164 +44,43 @@ const FEATURES = [
   },
 ];
 
-/* ── Example transcriptions — textos EXATOS do original ── */
-const EXAMPLES = [
-  {
-    label: 'Voz Feminina',
-    title: 'Voz Feminina - Gestão de Equipe',
-    subtitle: 'Áudio enviado hoje',
-    avatarBg: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-    priority: { label: 'Alta Prioridade', color: '#ef4444', bg: 'rgba(239,68,68,.12)' },
-    bullets: [
-      'Definir procedimentos claros para a equipe seguir.',
-      'Reuniões semanais de alinhamento para revisar processos.',
-      'Reconhecer publicamente conquistas individuais.',
-      'Criar um ambiente de feedback contínuo e positivo.',
-    ],
-    transcript: 'Oi, tudo bem? Então, eu queria conversar com você sobre os procedimentos do departamento. Eu acredito que a gente precisa padronizar algumas coisas, sabe? Primeiro, definir quem faz o quê, com checklists bem claros. Segunda coisa, toda semana a gente faz uma reuniãozinha de alinhamento, quinze minutos só, pra ver o que cada um fez e o que tá pendente. E o mais importante: reconhecer o trabalho da galera. Quando alguém faz um bom trabalho, eu gosto de mencionar no grupo, dar aquele feedback positivo. Isso motiva muito a equipe. E claro, sempre ficar aberto pra ouvir sugestões, porque quem tá na linha de frente muitas vezes tem as melhores ideias.',
-  },
-  {
-    label: 'Voz Masculina',
-    title: 'Voz Masculina - Organização Pessoal',
-    subtitle: 'Áudio enviado hoje',
-    avatarBg: 'linear-gradient(135deg,#0ea5e9,#0d9488)',
-    priority: { label: 'Média Prioridade', color: '#f59e0b', bg: 'rgba(245,158,11,.12)' },
-    bullets: [
-      'Recebe muitos áudios no WhatsApp todos os dias.',
-      'Dificuldade em organizar e acompanhar todas as tarefas.',
-      'Precisa de uma forma de não perder informações importantes.',
-      'Quer transformar áudios em tarefas organizadas.',
-    ],
-    transcript: 'E aí, brother, tudo bem? Cara, to meio perdido, sabe? É o seguinte, todo dia eu recebo uma avalanche de áudio no WhatsApp. Do trabalho, da família, dos amigos... É muita coisa, cara. Aí eu fico lá, ouço um áudio, anoto qualquer coisa, aí vem outro, aí eu esqueço o que o primeiro disse. Não consigo acompanhar, cara. Preciso muito de uma ferramenta que pegue esses áudio e transforme em texto, em tarefa, pra mim não perder nada, entende? Porque informação que entra por áudio às vezes se perde, né? Então se tiver como organizar isso, eu vou ganhar muito tempo.',
-  },
-];
+const schemaOrg = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'ZapScript',
+  applicationCategory: 'ProductivityApplication',
+  operatingSystem: 'Web',
+  url: 'https://www.zapscript.me',
+  description: 'Transcrição automática de áudios do WhatsApp com IA. Texto + resumo em segundos.',
+  offers: [
+    { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Free' },
+    { '@type': 'Offer', price: '39.90', priceCurrency: 'BRL', name: 'Pro' },
+  ],
+};
 
-/* ── Plans ── */
-const PLANS = [
-  {
-    name: 'free', label: 'Free', price: 'R$0', per: '/mês',
-    desc: 'Para experimentar',
-    feats: [
-      '20 min/mês',
-      '1 número WhatsApp',
-      '🎙️ Transcrição automática',
-      '✨ Resumo com IA',
-      '📋 Histórico de transcrições',
-      '📅 Filtros por data e contato',
-      '🔍 Busca por transcrição',
-    ],
-    excl: ['🖥️ Transcrição de áudios no site'],
-    cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
-  },
-  {
-    name: 'pro', label: 'Pro', price: 'R$19,90', per: '/1º mês',
-    desc: 'Oferta de junho · depois R$39,90',
-    feats: [
-      '200 min/mês',
-      '2 números WhatsApp',
-      '🎙️ Transcrição automática',
-      '🖥️ Transcrição de áudios no site',
-      '✨ Resumo com IA',
-      '📋 Histórico de transcrições',
-      '📅 Filtros por data e contato',
-      '🔍 Busca por transcrição',
-      '📤 Exportar áudios em PDF, Docx, Csv e Excel',
-      '📄 Transcrição Profissional (PDF com marcação temporal)',
-      '🔒 Modo Privado de transcrição',
-    ],
-    excl: [],
-    cta: 'Assinar Pro', href: '/cadastro', popular: true, accent: '#3b82f6' as string | null,
-  },
-  // Executive: legacy plan — mantido no sistema mas não exibido na LP
-  {
-    name: 'executive', label: 'Executive', price: 'R$49,90', per: '/mês',
-    desc: 'Para uso profissional e privacidade total',
-    feats: [
-      '300 min/mês', '3 números WhatsApp',
-      '🎙️ Transcrição automática', '🖥️ Transcrição de áudios no site',
-      '✨ Resumo com IA', '📋 Histórico de transcrições',
-      '📤 Exportação PDF · DOCX · CSV · XLS',
-      '🔒 Modo Privado de transcrição',
-    ],
-    excl: [],
-    cta: 'Assinar Executive', href: '/cadastro', popular: false, accent: null as string | null,
-  },
-];
-
-/* ── Tabela comparativa ── */
-type CmpVal = string | boolean;
-const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                        vals: ['20', '200'] },
-  { feature: 'Números WhatsApp',                   vals: ['1', '2'] },
-  { feature: '🎙️ Transcrição automática',           vals: [true, true] },
-  { feature: '✨ Resumo com IA',                    vals: [true, true] },
-  { feature: '📋 Histórico de transcrições',        vals: [true, true] },
-  { feature: '📅 Filtros por data e contato',       vals: [true, true] },
-  { feature: '🔍 Busca por transcrição',             vals: [true, true] },
-  { feature: '🖥️ Transcrição no site (upload)',     vals: [false, true] },
-  { feature: '📤 Exportar áudios (PDF/Docx/Csv/Excel)', vals: [false, true] },
-  { feature: '📄 Transcrição Profissional (PDF)',    vals: [false, true] },
-  { feature: '🔒 Modo Privado de transcrição',       vals: [false, true] },
-];
-
-/* ── Depoimentos (prova social) — ilustrativos ── */
-const TESTIMONIALS = [
-  {
-    text: 'Minha equipe recebia mais de 50 áudios por dia. Com o ZapScript, viramos texto em segundos. Triplicou nossa agilidade no atendimento ao cliente.',
-    name: 'Fernanda S.',
-    role: 'Advogada · São Paulo/SP',
-    initials: 'FS',
-    color: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-  },
-  {
-    text: 'Antes eu ouvia o mesmo áudio três vezes para não perder nada. Agora leio o resumo em 10 segundos e sigo em frente. Mudou minha rotina de vendas.',
-    name: 'Ricardo M.',
-    role: 'Consultor Comercial · Campinas/SP',
-    initials: 'RM',
-    color: 'linear-gradient(135deg,#0ea5e9,#0d9488)',
-  },
-  {
-    text: 'Trabalho com 4 executivos e cada um manda áudio o dia inteiro. O ZapScript organiza tudo em tópicos claros. Nunca mais perdi uma tarefa importante.',
-    name: 'Camila T.',
-    role: 'Assistente Executiva · Belo Horizonte/MG',
-    initials: 'CT',
-    color: 'linear-gradient(135deg,#10b981,#059669)',
-  },
-];
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: FAQ_ITEMS.map(item => ({
+    '@type': 'Question',
+    name: item.q,
+    acceptedAnswer: { '@type': 'Answer', text: item.a },
+  })),
+};
 
 export default function HomePage() {
-  const [showTable, setShowTable] = useState(true);
-  const [waitlistEmail, setWaitlistEmail]     = useState('');
-  const [waitlistDone, setWaitlistDone]       = useState(false);
-  const [waitlistLoading, setWaitlistLoading] = useState(false);
-
-  // Captura o ?aff= (atribuição) e remove o código da barra de endereços
-  useEffect(() => { captureAffiliateFromUrl(); }, []);
-
-
-  const schemaOrg = {
-    '@context': 'https://schema.org',
-    '@type': 'SoftwareApplication',
-    name: 'ZapScript',
-    applicationCategory: 'ProductivityApplication',
-    operatingSystem: 'Web',
-    url: 'https://www.zapscript.me',
-    description: 'Transcrição automática de áudios do WhatsApp com IA. Texto + resumo em segundos.',
-    offers: [
-      { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Free' },
-      { '@type': 'Offer', price: '39.90', priceCurrency: 'BRL', name: 'Pro' },
-    ],
-  };
-
   return (
     <div className="min-h-screen bg-mesh font-sans text-brand-text overflow-x-hidden">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaOrg) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
+
+      {/* Captura afiliado do ?aff= sem bloquear renderização */}
+      <AffiliateCapture />
 
       <div className="landing-inner relative z-10 w-full max-w-[430px] sm:max-w-[500px] mx-auto bg-mesh min-h-screen">
 
         {/* ══ HEADER ══ */}
         <header className="relative pt-7 px-5 pb-16 overflow-hidden">
-          {/* Glow orbs — contidos dentro do header */}
           <div className="absolute -top-10 -right-10 w-60 h-60 rounded-full blur-[90px] pointer-events-none"
             style={{ background: 'rgb(var(--color-primary)/.12)' }} />
           <div className="absolute bottom-0 -left-10 w-52 h-52 rounded-full blur-[70px] pointer-events-none"
@@ -700,10 +118,8 @@ export default function HomePage() {
               Todo áudio do seu WhatsApp vira texto e resumo, automaticamente. Você lê o que importa em segundos — sem fone, sem reouvir.
             </p>
 
-            {/* ── CTAs ── */}
+            {/* CTAs */}
             <div className="flex flex-col gap-3" style={{ animation: 'fadeInUp .6s ease .35s both' }}>
-
-              {/* PRIMARY — Começar */}
               <div>
                 <p className="flex items-center gap-1.5 text-xs font-medium mb-2"
                   style={{ color: 'rgb(var(--color-text-secondary))' }}>
@@ -718,14 +134,12 @@ export default function HomePage() {
                 </Link>
               </div>
 
-              {/* Divisor "ou" */}
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px" style={{ background: 'rgb(var(--color-border))' }} />
                 <span className="text-[11px] font-medium select-none" style={{ color: 'rgb(var(--color-text-muted))' }}>ou</span>
                 <div className="flex-1 h-px" style={{ background: 'rgb(var(--color-border))' }} />
               </div>
 
-              {/* SECONDARY — Login */}
               <div>
                 <p className="flex items-center gap-1.5 text-xs font-medium mb-2"
                   style={{ color: 'rgb(var(--color-text-secondary))' }}>
@@ -744,7 +158,6 @@ export default function HomePage() {
                   Entrar na minha conta
                 </Link>
               </div>
-
             </div>
           </div>
         </header>
@@ -805,17 +218,15 @@ export default function HomePage() {
           </p>
           <div className="flex items-start justify-between gap-1">
             {[
-              { icon: '🎙️', label: 'Receba o áudio',      sub: 'No WhatsApp' },
-              { icon: '⚡',  label: 'IA processa',         sub: 'Em segundos' },
-              { icon: '📄', label: 'Texto entregue',      sub: 'Na mesma conversa' },
+              { icon: '🎙️', label: 'Receba o áudio',  sub: 'No WhatsApp' },
+              { icon: '⚡',  label: 'IA processa',     sub: 'Em segundos' },
+              { icon: '📄', label: 'Texto entregue',  sub: 'Na mesma conversa' },
             ].map((step, i) => (
               <div key={i} className="flex items-start gap-1 flex-1">
-                {/* Seta entre steps */}
                 {i > 0 && (
                   <div className="flex-shrink-0 mt-5 text-base" style={{ color: 'rgb(var(--color-text-muted))' }}>›</div>
                 )}
                 <div className="flex-1 flex flex-col items-center text-center">
-                  {/* Ícone */}
                   <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl mb-2 flex-shrink-0"
                     style={{ background: 'rgba(var(--color-primary)/.1)', border: '1px solid rgba(var(--color-primary)/.15)' }}>
                     {step.icon}
@@ -830,7 +241,6 @@ export default function HomePage() {
               </div>
             ))}
           </div>
-          {/* Linha visual conectando os passos */}
           <div className="relative mt-4 mb-1 h-px mx-6"
             style={{ background: 'linear-gradient(90deg, rgba(var(--color-primary)/.4), rgba(var(--color-primary)/.1))' }} />
         </section>
@@ -870,7 +280,7 @@ export default function HomePage() {
           <ChatDemo />
         </section>
 
-        {/* ══ PLANS — Opção 3 Híbrido ══ */}
+        {/* ══ PLANS ══ */}
         <section id="planos" className="px-5 pb-16">
           <div className="mb-8">
             <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>
@@ -881,187 +291,7 @@ export default function HomePage() {
               Comece grátis. Sem cartão de crédito.
             </p>
           </div>
-
-          {/* Cards — apenas Free e Pro (Executive mantido em legacy) */}
-          <div className="flex flex-col gap-4">
-            {PLANS.filter(p => p.name !== 'executive').map((plan, i) => {
-              const borderCol = plan.popular
-                ? 'rgb(var(--color-primary))'
-                : plan.accent ? plan.accent + '55' : 'rgb(var(--color-border))';
-              const priceCol = plan.popular
-                ? 'rgb(var(--color-primary))'
-                : plan.accent || 'rgb(var(--color-text))';
-              return (
-                <div key={i} className="relative rounded-2xl p-6 border transition-all"
-                  style={{
-                    background:  plan.popular ? 'rgb(var(--color-surface-elevated))' : 'rgb(var(--color-surface))',
-                    borderColor: borderCol,
-                    boxShadow:   plan.popular ? 'var(--shadow-glow), var(--shadow-md)' : 'var(--shadow-sm)',
-                  }}>
-                  {plan.popular && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-black text-[11px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wide whitespace-nowrap"
-                      style={{ background: 'rgb(var(--color-primary))' }}>
-                      🔥 Oferta de junho
-                    </div>
-                  )}
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <p className="font-display font-bold text-lg">{plan.label}</p>
-                      <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.desc}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-display font-bold text-2xl" style={{ color: priceCol }}>{plan.price}</span>
-                      <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2 mb-5">
-                    {plan.feats.map((f, fi) => (
-                      <div key={fi} className="flex items-center gap-2">
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                          stroke={plan.popular ? 'rgb(var(--color-primary))' : plan.accent || 'rgb(var(--color-primary))'}>
-                          <path d="M2 7.5l3 3 7-7"/>
-                        </svg>
-                        <span className="text-sm" style={{ color: 'rgb(var(--color-text-secondary))' }}>{f}</span>
-                      </div>
-                    ))}
-                    {plan.excl.map((f, fi) => (
-                      <div key={fi} className="flex items-center gap-2" style={{ opacity: 0.35 }}>
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="rgb(var(--color-text-muted))" strokeWidth="2" strokeLinecap="round">
-                          <path d="M3 3l8 8M11 3l-8 8"/>
-                        </svg>
-                        <span className="text-sm" style={{ color: 'rgb(var(--color-text-muted))' }}>{f}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <Link href={plan.href}
-                    className="block w-full py-3 rounded-2xl text-sm font-semibold text-center transition-all"
-                    style={{
-                      background:  plan.popular ? 'rgb(var(--color-primary))' : 'transparent',
-                      border:      plan.popular ? 'none' : `1.5px solid ${plan.accent || 'rgb(var(--color-border))'}`,
-                      color:       plan.popular ? '#fff' : plan.accent || 'rgb(var(--color-text))',
-                      boxShadow:   plan.popular ? 'rgba(16,185,129,.25) 0 4px 14px' : 'none',
-                    }}>
-                    {plan.cta}
-                  </Link>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Toggle tabela comparativa */}
-          <button
-            onClick={() => setShowTable(v => !v)}
-            className="w-full mt-5 py-3 rounded-2xl text-sm font-semibold transition-all flex items-center justify-center gap-2"
-            style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-secondary))', background: 'transparent' }}>
-            {showTable ? 'Ocultar comparativo ↑' : 'Comparar todos os recursos ↓'}
-          </button>
-
-          {showTable && (
-            <div className="mt-3 rounded-2xl overflow-hidden" style={{ border: '1px solid rgb(var(--color-border))' }}>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[340px]" style={{ borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: 'rgb(var(--color-surface-elevated))' }}>
-                      <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'rgb(var(--color-text-muted))' }}>Recurso</th>
-                      {PLANS.filter(p => p.name !== 'executive').map(p => (
-                        <th key={p.name} className="px-3 py-3 text-[11px] font-bold text-center"
-                          style={{ color: p.popular ? 'rgb(var(--color-primary))' : p.accent || 'rgb(var(--color-text-secondary))' }}>
-                          {p.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {TABLE_ROWS.map((row, ri) => (
-                      <tr key={ri} style={{ borderTop: '1px solid rgb(var(--color-border-light))' }}>
-                        <td className="px-4 py-3 text-xs font-medium" style={{ color: 'rgb(var(--color-text-secondary))' }}>{row.feature}</td>
-                        {row.vals.map((v, vi) => (
-                          <td key={vi} className="px-3 py-3 text-center text-xs">
-                            {typeof v === 'boolean' ? (
-                              v
-                                ? <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>
-                                : <span style={{ color: 'rgb(var(--color-text-muted))', opacity: .4 }}>✗</span>
-                            ) : (
-                              <span className="font-mono font-bold" style={{ color: 'rgb(var(--color-text))' }}>{v}</span>
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Em breve */}
-          <div className="mt-10 rounded-2xl p-6" style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(16,185,129,.18)' }}>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-4"
-              style={{ background: 'rgba(16,185,129,.08)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
-              🚀 EM BREVE
-            </div>
-            <h3 className="font-display font-bold text-xl leading-snug mb-2">
-              Mais poder para seus áudios
-            </h3>
-            <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Novas funcionalidades chegando em breve. Quer ser o primeiro a saber?
-            </p>
-            <div className="grid grid-cols-2 gap-2.5 mb-5">
-              {[
-                { icon: '👥', label: 'Resumo de Grupos' },
-                { icon: '✅', label: 'Tarefas e Planner de áudios' },
-                { icon: '🗓️', label: 'Organização e Calendário' },
-                { icon: '🔗', label: 'Integração com Sistemas' },
-              ].map((f, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs rounded-xl px-3 py-2.5"
-                  style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
-                  <span>{f.icon}</span>
-                  <span>{f.label}</span>
-                </div>
-              ))}
-            </div>
-            {/* Captura de e-mail — lista de espera */}
-            {waitlistDone ? (
-              <p className="text-sm font-semibold text-center" style={{ color: 'rgb(var(--color-primary))' }}>
-                ✓ Anotado! Você será o primeiro a saber.
-              </p>
-            ) : (
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  value={waitlistEmail}
-                  onChange={e => setWaitlistEmail(e.target.value)}
-                  placeholder="Seu melhor e-mail"
-                  className="flex-1 rounded-xl px-4 py-2.5 text-sm outline-none"
-                  style={{ border: '1.5px solid rgb(var(--color-border))', background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-text))' }}
-                  onKeyDown={e => { if (e.key === 'Enter') {
-                    e.preventDefault();
-                    if (!waitlistEmail.includes('@')) return;
-                    setWaitlistLoading(true);
-                    fetch(`${(process.env.NEXT_PUBLIC_API_URL||'').replace(/\/$/,'')}/demo/newsletter/interest`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ email: waitlistEmail }),
-                    }).finally(() => { setWaitlistLoading(false); setWaitlistDone(true); });
-                  }}}
-                />
-                <button
-                  disabled={waitlistLoading || !waitlistEmail.includes('@')}
-                  onClick={() => {
-                    if (!waitlistEmail.includes('@')) return;
-                    setWaitlistLoading(true);
-                    fetch(`${(process.env.NEXT_PUBLIC_API_URL||'').replace(/\/$/,'')}/demo/newsletter/interest`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ email: waitlistEmail }),
-                    }).finally(() => { setWaitlistLoading(false); setWaitlistDone(true); });
-                  }}
-                  className="btn-primary px-4 py-2.5 text-sm font-semibold whitespace-nowrap disabled:opacity-50">
-                  {waitlistLoading ? '...' : 'Me avise'}
-                </button>
-              </div>
-            )}
-          </div>
+          <PricingInteractive />
         </section>
 
         {/* ══ FAQ ══ */}
@@ -1091,7 +321,6 @@ export default function HomePage() {
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4 max-w-lg mx-auto">
-            {/* E-mail */}
             <a
               href="mailto:contato@zapscript.me"
               className="flex items-center gap-4 rounded-2xl p-5 border transition-all hover:scale-[1.02]"
@@ -1116,31 +345,7 @@ export default function HomePage() {
               </div>
             </a>
 
-            {/* Chat de suporte */}
-            <button
-              type="button"
-              onClick={() => {
-                const btn = document.querySelector<HTMLButtonElement>('[aria-label="Suporte"]');
-                btn?.click();
-              }}
-              className="flex items-center gap-4 rounded-2xl p-5 border transition-all hover:scale-[1.02] text-left"
-              style={{
-                background: 'rgb(var(--color-surface-elevated))',
-                borderColor: 'rgb(var(--color-border))',
-              }}
-            >
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: 'rgba(16,185,129,.1)', color: 'rgb(var(--color-primary))' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-                </svg>
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Chat ao vivo</p>
-                <p className="text-sm font-semibold" style={{ color: 'rgb(var(--color-text))' }}>Abrir suporte</p>
-                <p className="text-[10px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Clique no ícone 💬 abaixo</p>
-              </div>
-            </button>
+            <SupportChatButton />
           </div>
         </section>
 

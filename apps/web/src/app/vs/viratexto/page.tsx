@@ -111,7 +111,7 @@ export default function VsViratextoPage() {
           </div>
           <h1 className="text-3xl sm:text-5xl font-bold text-white leading-tight mb-5">
             ZapScript vs ViraTexto<br />
-            <span className="text-brand-primary">Qual transceve melhor?</span>
+            <span className="text-brand-primary">Qual transcreve melhor?</span>
           </h1>
           <p className="text-lg text-brand-muted max-w-2xl mx-auto leading-relaxed">
             Comparamos as duas principais opções para transcrever áudios do WhatsApp em texto. Sem achismo — funcionalidade por funcionalidade.
