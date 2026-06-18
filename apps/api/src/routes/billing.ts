@@ -101,6 +101,11 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/* ── Prazo de 3h para expiração do QR PIX ── */
+function threeHoursFromNow(): string {
+  return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+}
+
 /* ── externalReference encoding ──
    Formato:  "<userId>|<planName>"              — assinatura normal
              "<userId>|<planName>|upgrade"      — cobrança de proration upgrade
@@ -229,7 +234,7 @@ async function getPixQrForSubscription(subscriptionId: string): Promise<{
     return {
       qrCode:    qrData?.payload       || null,
       qrCodeUrl: qrData?.encodedImage  ? `data:image/png;base64,${qrData.encodedImage}` : null,
-      expiresAt: qrData?.expirationDate || null,
+      expiresAt: threeHoursFromNow(),
       paymentId: firstPayment.id,
       amount:    firstPayment.value ?? 0,
     };
@@ -438,7 +443,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           paymentId:      firstPix.id,
           qrCode:         qrData?.payload      || null,
           qrCodeUrl:      qrData?.encodedImage ? `data:image/png;base64,${qrData.encodedImage}` : null,
-          expiresAt:      qrData?.expirationDate || null,
+          expiresAt:      threeHoursFromNow(),
           planName,
           amount:         JUNE_PROMO_PRICE,
           promo:          true,
@@ -720,7 +725,7 @@ export default async function billingRoutes(app: FastifyInstance) {
         const qrData = await qrRes.json() as any;
         qrCode    = qrData?.payload       || null;
         qrCodeUrl = qrData?.encodedImage  ? `data:image/png;base64,${qrData.encodedImage}` : null;
-        expiresAt = qrData?.expirationDate || null;
+        expiresAt = threeHoursFromNow();
       } catch { /* QR não crítico */ }
 
       return {

@@ -175,23 +175,11 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
         || lower.includes('indisponível')
         || lower.includes('qr code')
         || lower.includes('use o qr');
-      if (useQr) {
-        setPhoneError('');
-        setQrImage(null);
-        // Recriar instância para garantir estado limpo antes de buscar QR
-        setPhase('init');
-        api.post(`/numbers/${number.id}/connect`, {})
-          .then(() => {
-            setPhase('ready');
-            setConnectMode('qr');
-          })
-          .catch(() => {
-            setPhase('ready');
-            setConnectMode('qr');
-          });
-      } else {
-        setPhoneError(msg || 'Erro ao solicitar código. Tente novamente.');
-      }
+      setPhoneError(
+        useQr
+          ? 'Código indisponível para este número. Clique em "Gerar QR Code" abaixo para conectar via câmera.'
+          : msg || 'Erro ao solicitar código. Tente novamente.'
+      );
     } finally {
       setRequesting(false);
     }

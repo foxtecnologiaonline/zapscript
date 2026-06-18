@@ -183,7 +183,7 @@ function CardForm({ onSubmit, loading, error, submitLabel }: {
 }
 
 /* ── Display QR Code PIX ── */
-function PixDisplay({ data, onPaid, loading }: { data: PixData; onPaid: () => void; loading: boolean }) {
+function PixDisplay({ data, onPaid, onExpire, loading }: { data: PixData; onPaid: () => void; onExpire: () => void; loading: boolean }) {
   const [copied,   setCopied]   = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const intervalRef             = useRef<any>(null);
@@ -201,7 +201,15 @@ function PixDisplay({ data, onPaid, loading }: { data: PixData; onPaid: () => vo
     return () => clearInterval(intervalRef.current);
   }, [data.expiresAt]);
 
-  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  function fmt(s: number) {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h > 0) return `${h}h ${String(m).padStart(2, '0')}min`;
+    return `${m}:${String(sec).padStart(2, '0')}`;
+  }
+
+  const expired = timeLeft !== null && timeLeft === 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -210,18 +218,30 @@ function PixDisplay({ data, onPaid, loading }: { data: PixData; onPaid: () => vo
         A assinatura é <strong>ativada automaticamente</strong> após a confirmação.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-        {data.qrCodeUrl ? (
-          <img src={data.qrCodeUrl} alt="QR Code PIX" width={160} height={160}
-            style={{ borderRadius: 10, border: '2px solid rgba(var(--color-primary)/.3)', background: 'white', padding: 4 }} />
+        {expired ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '24px 0' }}>
+            <div style={{ fontSize: 13, color: '#f87171', fontWeight: 700 }}>⏱ QR Code expirado</div>
+            <div style={{ fontSize: 11, color: 'rgb(var(--color-text-muted))', textAlign: 'center' }}>O prazo de 3 horas para pagamento encerrou.</div>
+            <button onClick={onExpire} style={{ background: 'rgba(var(--color-primary)/.12)', border: '1px solid rgba(var(--color-primary)/.3)', borderRadius: 8, padding: '8px 20px', fontSize: 12, color: 'rgb(var(--color-primary))', cursor: 'pointer', fontWeight: 700 }}>
+              🔄 Gerar novo PIX
+            </button>
+          </div>
         ) : (
-          <div style={{ width: 160, height: 160, background: 'rgba(var(--color-primary)/.05)', border: '1px dashed rgba(var(--color-primary)/.3)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'rgb(var(--color-text-muted))' }}>
-            Gerando QR Code...
-          </div>
-        )}
-        {timeLeft !== null && (
-          <div style={{ fontSize: 12, color: timeLeft < 60 ? '#f87171' : 'rgb(var(--color-text-muted))' }}>
-            Expira em <strong style={{ color: timeLeft < 60 ? '#f87171' : 'rgb(var(--color-primary))' }}>{fmt(timeLeft)}</strong>
-          </div>
+          <>
+            {data.qrCodeUrl ? (
+              <img src={data.qrCodeUrl} alt="QR Code PIX" width={160} height={160}
+                style={{ borderRadius: 10, border: '2px solid rgba(var(--color-primary)/.3)', background: 'white', padding: 4 }} />
+            ) : (
+              <div style={{ width: 160, height: 160, background: 'rgba(var(--color-primary)/.05)', border: '1px dashed rgba(var(--color-primary)/.3)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'rgb(var(--color-text-muted))' }}>
+                Gerando QR Code...
+              </div>
+            )}
+            {timeLeft !== null && (
+              <div style={{ fontSize: 12, color: timeLeft < 300 ? '#f87171' : 'rgb(var(--color-text-muted))' }}>
+                Válido por <strong style={{ color: timeLeft < 300 ? '#f87171' : 'rgb(var(--color-primary))' }}>{fmt(timeLeft)}</strong>
+              </div>
+            )}
+          </>
         )}
       </div>
       {data.qrCode && (
@@ -701,7 +721,7 @@ export default function CheckoutInline({
                 <WalletBanner method={method as 'google_pay' | 'apple_pay'} />
               )}
               {method === 'pix_auto' && <PixAutoBanner />}
-              <PixDisplay data={pixData} onPaid={handlePixPaid} loading={loading} />
+              <PixDisplay data={pixData} onPaid={handlePixPaid} onExpire={() => setPixData(null)} loading={loading} />
             </>
           )}
 
