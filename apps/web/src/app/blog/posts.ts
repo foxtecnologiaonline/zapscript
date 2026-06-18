@@ -1320,10 +1320,10 @@ export const POSTS: BlogPost[] = [
      POST 5 — Nicho: advogados
   ══════════════════════════════════════════════════════════════════════ */
   {
-    slug:        'transcrever-audio-whatsapp-advogados',
-    title:       'Como transcrever áudio do WhatsApp para advogados: guia prático 2026',
-    description: 'Advogados perdem horas ouvindo áudios de clientes. Veja como transcrever mensagens de voz do WhatsApp automaticamente e ganhar tempo no escritório.',
-    keywords:    ['transcrever audio whatsapp advogado','transcricao audio advocacia','whatsapp texto advogado','produtividade juridica','audio whatsapp escritorio advocacia'],
+    slug:        'converter-audio-whatsapp-advogados',
+    title:       'Converter áudio do WhatsApp para advogados: guia prático 2026',
+    description: 'Advogados perdem horas ouvindo áudios de clientes. Veja como converter mensagens de voz do WhatsApp em texto automaticamente e ganhar tempo no escritório.',
+    keywords:    ['converter audio whatsapp advogado','transcrever audio whatsapp advogado','audio texto advocacia','whatsapp texto advogado','produtividade juridica'],
     publishedAt: '2026-06-18',
     readingTime: 6,
     category:    'Nichos',
@@ -1372,10 +1372,10 @@ export const POSTS: BlogPost[] = [
      POST 6 — Nicho: corretores de imóveis
   ══════════════════════════════════════════════════════════════════════ */
   {
-    slug:        'transcrever-audio-whatsapp-corretor-imoveis',
-    title:       'Transcrever áudio do WhatsApp para corretor de imóveis: economize 2h por dia',
+    slug:        'converter-audio-whatsapp-corretores',
+    title:       'Converter áudio do WhatsApp para corretor de imóveis: economize 2h por dia',
     description: 'Corretores recebem dezenas de áudios de clientes por dia. Veja como converter mensagens de voz em texto automaticamente e fechar mais negócios em menos tempo.',
-    keywords:    ['transcrever audio whatsapp corretor','audio texto corretor imoveis','whatsapp corretor imoveis','produtividade corretor','transcricao whatsapp imóveis'],
+    keywords:    ['converter audio whatsapp corretor','transcrever audio whatsapp corretor','audio texto corretor imoveis','produtividade corretor','whatsapp imoveis texto'],
     publishedAt: '2026-06-18',
     readingTime: 5,
     category:    'Nichos',
@@ -1417,10 +1417,10 @@ export const POSTS: BlogPost[] = [
      POST 7 — Nicho: vendedores / SDR / CS
   ══════════════════════════════════════════════════════════════════════ */
   {
-    slug:        'transcrever-audio-whatsapp-vendedores-sdr',
-    title:       'Como um SDR pode usar transcrição de áudio para não perder nenhum lead',
-    description: 'SDRs e vendedores perdem informações críticas em áudios de WhatsApp. Veja como a transcrição automática ajuda a registrar objeções, agendar follow-ups e fechar mais.',
-    keywords:    ['transcrever audio vendedor','whatsapp sdr vendas','transcricao whatsapp vendas','audio texto vendedor','produtividade vendas whatsapp'],
+    slug:        'converter-audio-whatsapp-vendas',
+    title:       'Converter áudio do WhatsApp para vendedores: não perca mais nenhum lead',
+    description: 'SDRs e vendedores perdem informações críticas em áudios de WhatsApp. Veja como converter mensagens de voz em texto e fechar mais negócios com registro automático.',
+    keywords:    ['converter audio whatsapp vendas','transcrever audio vendedor','whatsapp sdr vendas','audio texto vendas','produtividade vendas whatsapp'],
     publishedAt: '2026-06-18',
     readingTime: 6,
     category:    'Nichos',
