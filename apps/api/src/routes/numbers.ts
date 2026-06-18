@@ -54,30 +54,28 @@ export default async function numberRoutes(app: FastifyInstance) {
   });
 
   // ── POST /numbers ─────────────────────────────────────────────────────────
-  app.post<{ Body: { displayName: string; phoneNumber?: string } }>('/', auth, async (req: any, reply) => {
+  app.post<{ Body: { displayName?: string; phoneNumber?: string } }>('/', auth, async (req: any, reply) => {
     const v = validateRequest(createNumberSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
 
     const { displayName, phoneNumber } = req.body;
     const userId = req.user.sub;
 
-    const trimmedName = displayName?.trim();
-    if (!trimmedName || trimmedName.length < 2)
-      return reply.code(400).send({ error: 'Nome deve ter ao menos 2 caracteres.' });
-    if (trimmedName.length > 50)
-      return reply.code(400).send({ error: 'Nome deve ter no máximo 50 caracteres.' });
-
     // Admin não tem limite de números
     const user = await prisma.user.findUnique({ where: { id: userId } });
+    const count = await prisma.whatsappNumber.count({ where: { userId } });
+
     if (!user?.isAdmin) {
       const sub = await prisma.subscription.findUnique({ where: { userId }, include: { plan: true } });
-      const count = await prisma.whatsappNumber.count({ where: { userId } });
       if (count >= sub!.plan.maxNumbers) {
         return reply.code(403).send({
           error: `Limite de ${sub!.plan.maxNumbers} número(s) atingido. Faça upgrade do plano.`,
         });
       }
     }
+
+    const firstName = (user?.name ?? 'Meu').split(' ')[0];
+    const finalName = displayName?.trim() || `${firstName} ${count + 1}`;
 
     let cleanPhone: string | undefined;
     if (phoneNumber) {
@@ -86,7 +84,7 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
 
     const number = await prisma.whatsappNumber.create({
-      data: { userId, displayName: trimmedName, ...(cleanPhone ? { phoneNumber: cleanPhone } : {}) },
+      data: { userId, displayName: finalName, ...(cleanPhone ? { phoneNumber: cleanPhone } : {}) },
     });
 
     // Nota: notifyWelcome é disparado via connection.update no webhook Evolution

@@ -503,7 +503,6 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
 export default function NumerosPage() {
   const [numbers, setNumbers]               = useState<WNumber[]>([]);
   const [loading, setLoading]               = useState(true);
-  const [addName, setAddName]               = useState('');
   const [addPhone, setAddPhone]             = useState('');
   const [adding, setAdding]                 = useState(false);
   const [error, setError]                   = useState('');
@@ -539,15 +538,13 @@ export default function NumerosPage() {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    if (!addName.trim()) return;
     setAdding(true); setError('');
     try {
       const cleanPhone = addPhone.replace(/\D/g, '');
       await api.post('/numbers', {
-        displayName: addName.trim(),
         ...(cleanPhone ? { phoneNumber: cleanPhone } : {}),
       });
-      setAddName(''); setAddPhone('');
+      setAddPhone('');
       loadNumbers();
     } catch (err: any) { setError(err.message); }
     finally { setAdding(false); }
@@ -617,9 +614,9 @@ export default function NumerosPage() {
           </summary>
           <div className="mt-2 bg-brand-elevated rounded-xl p-3 space-y-1.5">
             {[
-              'Preencha o nome e número do WhatsApp',
-              'Clique em "+ Adicionar"',
-              'Clique em "Conectar WhatsApp" e siga as instruções para vincular pelo número',
+              'Informe o número do WhatsApp (ou deixe em branco para conectar via QR)',
+              'Clique em "+ Adicionar" — o nome é gerado automaticamente',
+              'Clique em "Conectar WhatsApp" e siga as instruções',
               'Pronto! Áudios recebidos serão transcritos automaticamente',
             ].map((t, i) => (
               <div key={i} className="flex items-start gap-2 text-xs text-brand-text-secondary">
@@ -631,14 +628,6 @@ export default function NumerosPage() {
         </details>
 
         <form onSubmit={handleAdd} className="space-y-2">
-          <input
-            className="input w-full"
-            placeholder="Nome do dispositivo (ex: Comercial, Pessoal)"
-            value={addName}
-            onChange={e => setAddName(e.target.value)}
-            required
-          />
-
           {/* Campo número com prefixo integrado */}
           <div className="flex gap-2">
             <div className="flex flex-1 rounded-xl border border-brand-border bg-brand-elevated overflow-hidden focus-within:border-brand-primary transition-colors">
