@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { captureAffiliateFromUrl } from '@/lib/affiliate';
 
 /* ─────────────────────────────────────────────────────────
    Landing pública do Programa de Afiliados.
@@ -82,16 +83,8 @@ export default function AfiliadosLanding() {
   const [copied, setCopied] = useState<string | null>(null);
   const [filtro, setFiltro] = useState('Todos');
 
-  // Persist affiliate code in case someone shares a referral link to this page
-  useEffect(() => {
-    const aff = new URLSearchParams(window.location.search).get('aff');
-    if (aff) {
-      try {
-        localStorage.setItem('zs_aff', aff);
-        localStorage.setItem('zs_aff_exp', String(Date.now() + 30 * 24 * 60 * 60 * 1000));
-      } catch {}
-    }
-  }, []);
+  // Captura o ?aff= e remove o código da barra de endereços
+  useEffect(() => { captureAffiliateFromUrl(); }, []);
 
   function copyKit(key: string, text: string) {
     navigator.clipboard.writeText(text).then(() => {

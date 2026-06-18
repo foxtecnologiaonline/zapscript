@@ -5,21 +5,19 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { track } from '@/lib/analytics';
+import { captureAffiliateFromUrl, readAffiliateCode, clearAffiliateCode } from '@/lib/affiliate';
 
 function CadastroForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const inviteCode    = searchParams.get('invite') || '';
   const referralCode  = searchParams.get('ref')    || '';
-  // Read aff from URL param first; fall back to localStorage (30-day cookie-like storage)
-  const affiliateCode = searchParams.get('aff') || (() => {
-    if (typeof window === 'undefined') return '';
-    try {
-      const exp = Number(localStorage.getItem('zs_aff_exp') || '0');
-      if (Date.now() > exp) { localStorage.removeItem('zs_aff'); localStorage.removeItem('zs_aff_exp'); return ''; }
-      return localStorage.getItem('zs_aff') || '';
-    } catch { return ''; }
-  })();
+  // Captura o ?aff= (limpando a barra) e lê o código guardado (30 dias)
+  const [affiliateCode, setAffiliateCode] = useState('');
+  useEffect(() => {
+    captureAffiliateFromUrl();
+    setAffiliateCode(readAffiliateCode());
+  }, []);
   const [isTesterInvite, setIsTesterInvite] = useState(false);
 
   const [form, setForm]   = useState({ name: '', email: '', password: '', confirm: '' });
@@ -78,7 +76,7 @@ function CadastroForm() {
       // A verificação de e-mail e o CPF são exigidos só na assinatura.
       if (res?.token) {
         api.setToken(res.token);
-        try { localStorage.removeItem('zs_aff'); localStorage.removeItem('zs_aff_exp'); } catch {}
+        clearAffiliateCode();
         router.push('/dashboard');
         return;
       }

@@ -115,7 +115,9 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
   const [payoutMsg, setPayoutMsg]     = useState('');
   const [origin, setOrigin]           = useState('');
   useEffect(() => { setOrigin(window.location.origin); }, []);
-  const link = `${origin}/?aff=${affiliate.code}`;
+  // Link curto/oficial — o código fica embutido no caminho e some da barra
+  // do indicado ao abrir; a atribuição persiste por 90 dias.
+  const link = `${origin}/i/${affiliate.code}`;
 
   function copy() {
     navigator.clipboard?.writeText(link).then(() => {

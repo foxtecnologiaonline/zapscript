@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ThemeToggleButton } from '@/components/ThemeProvider';
 import { api } from '@/lib/api';
+import { captureAffiliateFromUrl } from '@/lib/affiliate';
 
 /* ── Isca de topo de funil — "Transcreva 1 áudio grátis" ──
    Upload de áudio + e-mail (lead) → POST /demo/transcribe.
@@ -635,16 +636,8 @@ export default function HomePage() {
   const [waitlistDone, setWaitlistDone]       = useState(false);
   const [waitlistLoading, setWaitlistLoading] = useState(false);
 
-  // Persist affiliate code to localStorage so /cadastro can pick it up even after navigation
-  useEffect(() => {
-    const aff = new URLSearchParams(window.location.search).get('aff');
-    if (aff) {
-      try {
-        localStorage.setItem('zs_aff', aff);
-        localStorage.setItem('zs_aff_exp', String(Date.now() + 30 * 24 * 60 * 60 * 1000));
-      } catch {}
-    }
-  }, []);
+  // Captura o ?aff= (atribuição) e remove o código da barra de endereços
+  useEffect(() => { captureAffiliateFromUrl(); }, []);
 
 
   const schemaOrg = {

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { captureAffiliateFromUrl } from '@/lib/affiliate';
 
 /* ── Tipos ──────────────────────────────────────────────────────────── */
 export interface Variant {
@@ -109,16 +110,8 @@ const PLANS = [
 
 /* ── Componente principal ───────────────────────────────────────────── */
 export default function LandingPageClient({ variant }: { variant: Variant }) {
-  // Persist affiliate code across navigation (30-day window)
-  useEffect(() => {
-    const aff = new URLSearchParams(window.location.search).get('aff');
-    if (aff) {
-      try {
-        localStorage.setItem('zs_aff', aff);
-        localStorage.setItem('zs_aff_exp', String(Date.now() + 30 * 24 * 60 * 60 * 1000));
-      } catch {}
-    }
-  }, []);
+  // Captura o ?aff= e remove o código da barra de endereços
+  useEffect(() => { captureAffiliateFromUrl(); }, []);
 
   const faqs = variant.faqs ?? FAQS;
   const faqJsonLd = {
