@@ -9,57 +9,74 @@ import Link from 'next/link';
    ───────────────────────────────────────────────────────── */
 
 const KIT: { key: string; label: string; canal: string; text: string }[] = [
+  // ── WhatsApp ───────────────────────────────────────────────────────────────
   {
-    key: 'zap-direto',
+    key: 'zap-formal',
     canal: 'WhatsApp',
-    label: 'WhatsApp — contato direto',
-    text: `Oi! Tô usando um app que transforma áudio do WhatsApp em texto + resumo automático com IA — sem precisar ouvir nada.\n\nTem plano grátis para testar (sem cartão):\n👉 [SEU_LINK]`,
+    label: 'WhatsApp — formal',
+    text: `Olá [nome], tudo bem?\n\nGostaria de indicar uma ferramenta que tenho utilizado e que pode ser bastante útil para o seu dia a dia: o ZapScript.me.\n\nEle conecta ao seu WhatsApp e converte em texto cada áudio recebido automaticamente — texto completo e resumo com IA em segundos. Sem instalar nada, sem salvar áudio.\n\nHá um plano gratuito com 20 minutos por mês, sem necessidade de cartão:\n👉 [SEU_LINK]\n\nFico à disposição se tiver alguma dúvida.`,
   },
   {
-    key: 'zap-medio',
+    key: 'zap-informal',
     canal: 'WhatsApp',
-    label: 'WhatsApp — mensagem completa',
-    text: `Oi [nome]! Queria te indicar uma ferramenta que mudou meu dia a dia: o ZapScript.\n\nEle conecta no seu WhatsApp e transcreve cada áudio automaticamente — texto + resumo em segundos. Sem instalar nada, sem encaminhar para bot. Funciona sozinho.\n\nTem 20 min grátis por mês, sem cartão:\n👉 [SEU_LINK]\n\nSe você recebe muito áudio, vale muito a pena testar.`,
+    label: 'WhatsApp — informal',
+    text: `Oi [nome]! Tudo bem?\n\nQueria te indicar uma ferramenta que mudou meu dia a dia: o ZapScript.me.\n\nEle funciona sozinho, converte em texto (e resume) todo áudio que você receber no WhatsApp automaticamente — texto + resumo com IA em segundos.\n\nTem 20 min grátis por mês, sem cartão:\n👉 [SEU_LINK]\n\nSe você recebe muito áudio, vai curtir bastante 😄`,
   },
+  // ── Grupos ─────────────────────────────────────────────────────────────────
   {
-    key: 'grupo',
+    key: 'grupo-formal',
     canal: 'Grupo',
-    label: 'Grupo de WhatsApp',
-    text: `Pessoal! 👋\n\nQuero compartilhar uma ferramenta que tenho usado todo dia:\n\n*ZapScript* 🎧➡️📝\n\nEm vez de encaminhar cada áudio para um bot, ele conecta no seu número e transcreve *automaticamente* — texto + resumo com IA em segundos.\n\n✅ Nenhuma ação necessária\n✅ Resumo inteligente dos pontos principais\n✅ Histórico pesquisável\n✅ Servidor no Brasil, LGPD\n\n🆓 20 min grátis/mês (sem cartão):\n👉 [SEU_LINK]\n\n🔥 Pro com 200 min por R$19,90 no 1º mês (oferta junho)`,
+    label: 'Grupo de WhatsApp — formal',
+    text: `Bom dia, pessoal!\n\nGostaria de compartilhar uma ferramenta que tenho utilizado e que pode ser útil para quem recebe muito áudio no WhatsApp:\n\n*ZapScript.me* — converte automaticamente cada áudio em texto + resumo com IA, em segundos. Sem instalar nada no celular, sem salvar áudio nos servidores.\n\n✅ Funciona sozinho, sem precisar fazer nada\n✅ Texto completo + resumo com os pontos principais\n✅ Servidores no Brasil, conformidade com a LGPD\n✅ Plano gratuito com 20 min/mês, sem cartão\n\n👉 [SEU_LINK]`,
   },
   {
-    key: 'linkedin-narrativa',
+    key: 'grupo-informal',
+    canal: 'Grupo',
+    label: 'Grupo de WhatsApp — informal',
+    text: `Pessoal! 👋 Dica boa aqui:\n\n*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.\n\nAquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.\n\n🆓 20 min/mês grátis, sem cartão:\n👉 [SEU_LINK]\n\n🔥 Pro com 200 min por R$19,90 no 1º mês (oferta junho)\n\nValeu! 😄`,
+  },
+  // ── LinkedIn ───────────────────────────────────────────────────────────────
+  {
+    key: 'linkedin-formal',
     canal: 'LinkedIn',
-    label: 'LinkedIn — post narrativo',
-    text: `Parei de ouvir áudio de WhatsApp no trabalho.\n\nNão porque ignorei os clientes — mas porque o ZapScript faz isso por mim.\n\nEle conecta no meu WhatsApp e transcreve cada áudio automaticamente: texto completo + resumo com os pontos principais, em segundos. Funciona em background, sem eu precisar fazer nada.\n\nPara quem lida com muito áudio no dia a dia (corretores, advogados, vendedores, gestores), é uma das ferramentas mais práticas que já usei.\n\nTem plano grátis com 20 min/mês — sem cartão de crédito:\n👉 [SEU_LINK]\n\n#produtividade #IA #whatsapp #ferramentas`,
+    label: 'LinkedIn — formal',
+    text: `Compartilhando uma ferramenta que tenho utilizado com resultado concreto na minha rotina:\n\nO *ZapScript.me* converte automaticamente cada áudio do WhatsApp em texto completo + resumo com os pontos principais, em segundos. Sem instalar nada no celular, sem precisar fazer nenhuma ação.\n\nPara quem lida diariamente com muitos áudios — corretores, advogados, gestores, vendedores — o ganho de tempo é significativo.\n\nPlano gratuito disponível com 20 min/mês, sem cartão:\n👉 [SEU_LINK]\n\n#produtividade #ferramentas #IA #WhatsApp`,
   },
   {
-    key: 'linkedin-dado',
+    key: 'linkedin-informal',
     canal: 'LinkedIn',
-    label: 'LinkedIn — post com dado',
-    text: `Quantas horas você perde por semana ouvindo áudio de WhatsApp?\n\nFiz o cálculo: se você recebe 20 áudios/dia de 3 minutos cada, são 7 horas por semana só ouvindo mensagens.\n\nDescobri o ZapScript — ele transcreve automaticamente cada áudio em texto + resumo. Você lê em segundos o que levaria minutos ouvindo.\n\nGrátis para começar:\n👉 [SEU_LINK]\n\nVocê já usa alguma solução para isso? Comenta aí 👇\n\n#produtividade #IA #WhatsApp`,
+    label: 'LinkedIn — informal',
+    text: `Parei de ouvir áudio de WhatsApp no trabalho. De nenhum. 👀\n\nO ZapScript.me converte tudo em texto automaticamente — texto + resumo em segundos. Funciona sozinho, sem precisar fazer nada.\n\nPara quem recebe muito áudio por dia, é um baita ganho de tempo.\n\nTem plano grátis para testar:\n👉 [SEU_LINK]\n\n#produtividade #IA #WhatsApp #dica`,
   },
+  // ── Instagram ──────────────────────────────────────────────────────────────
   {
-    key: 'instagram',
+    key: 'instagram-formal',
     canal: 'Instagram',
-    label: 'Instagram / TikTok — caption',
-    text: `POV: você para de ouvir áudio de WhatsApp para sempre 🎧➡️📝\n\nO ZapScript conecta no seu número e transcreve tudo automaticamente.\nTexto + resumo com IA em segundos. Sem instalar nada.\n\nLink na bio (ou no comentário 👇)\n20 min grátis por mês, sem cartão.\n\n[SEU_LINK]\n\n#whatsapp #produtividade #IA #hack #dica #tecno`,
+    label: 'Instagram — formal',
+    text: `Ferramenta de IA que converte automaticamente áudios do WhatsApp em texto:\n\n✅ Texto completo + resumo em segundos\n✅ Funciona sozinho, sem nenhuma ação necessária\n✅ 99% de precisão em português BR\n✅ Servidores no Brasil, conformidade com a LGPD\n✅ Plano gratuito com 20 min/mês, sem cartão\n\n🔗 [SEU_LINK] (link na bio)\n\n#produtividade #IA #WhatsApp #tecnologia #ferramentas`,
   },
   {
-    key: 'influencer',
-    canal: 'Parceria',
-    label: 'DM para influencer / parceiro',
-    text: `Oi [nome]!\n\nSou fã do seu conteúdo sobre produtividade.\n\nQueria te apresentar o ZapScript — uma ferramenta que transcreve automaticamente áudios do WhatsApp com IA (texto + resumo em segundos). É diferente dos bots que pedem para encaminhar o áudio: funciona 100% automático em background.\n\nAcho que seu público ia amar.\n\nSe quiser testar:\n👉 [SEU_LINK]\n\nSe gostar e quiser divulgar, temos comissão de 50% sobre cada assinante indicado.\n\n[seu nome]`,
+    key: 'instagram-informal',
+    canal: 'Instagram',
+    label: 'Instagram — informal',
+    text: `Se você também recebe um absurdo de áudio no WhatsApp todo dia… 👀\n\nEssa ferramenta converte tudo em texto automaticamente — resumo com IA em segundos. Funciona sozinho, sem precisar fazer nada.\n\nGrátis para testar 👇\n🔗 [SEU_LINK] (link na bio)\n\n#produtividade #IA #whatsapp #dica`,
   },
+  // ── E-mail ─────────────────────────────────────────────────────────────────
   {
-    key: 'email',
+    key: 'email-formal',
     canal: 'E-mail',
-    label: 'E-mail para lista pessoal',
-    text: `Assunto: A ferramenta que me fez parar de ouvir áudio de WhatsApp\n\nOi [nome],\n\nQueria compartilhar uma ferramenta que tenho usado e que fez diferença real.\n\nO ZapScript resolve isso de forma diferente: em vez de precisar encaminhar cada áudio para um bot, ele conecta no seu número e transcreve automaticamente. Texto + resumo com IA em segundos.\n\nO que eu mais gosto:\n• Funciona em background (até quando estou em reunião)\n• Resumo com os pontos principais\n• Histórico pesquisável de tudo\n• Servidor no Brasil, LGPD, criptografia bancária\n\nTem plano grátis com 20 min/mês, sem cartão:\n👉 [SEU_LINK]\n\n[seu nome]`,
+    label: 'E-mail — formal',
+    text: `Assunto: Indicação — ZapScript.me, conversão automática de áudios do WhatsApp em texto\n\nPrezado(a) [nome],\n\nEntro em contato para indicar uma ferramenta que tenho utilizado com bons resultados: o ZapScript.me.\n\nA plataforma conecta ao seu número do WhatsApp e converte automaticamente cada áudio recebido em texto completo + resumo com IA, em segundos. Funciona de forma autônoma, sem qualquer ação necessária da sua parte. O áudio é processado e descartado imediatamente — nada é armazenado.\n\nHá um plano gratuito com 20 minutos por mês, sem necessidade de cartão de crédito:\n👉 [SEU_LINK]\n\nFico à disposição para quaisquer dúvidas.\n\nAtenciosamente,\n[seu nome]`,
+  },
+  {
+    key: 'email-informal',
+    canal: 'E-mail',
+    label: 'E-mail — informal',
+    text: `Assunto: Ferramenta que me fez parar de ouvir áudio de WhatsApp\n\nOi [nome],\n\nQueria te indicar algo que tem funcionado muito bem pra mim.\n\nO ZapScript.me converte automaticamente cada áudio que chega no WhatsApp em texto + resumo com IA, em segundos. Funciona sozinho — nem preciso abrir o app para ver o resultado.\n\nTem plano grátis para testar (20 min/mês, sem cartão):\n👉 [SEU_LINK]\n\nMe conta se curtir!\n\n[seu nome]`,
   },
 ];
 
-const CANAIS = ['Todos', 'WhatsApp', 'Grupo', 'LinkedIn', 'Instagram', 'Parceria', 'E-mail'];
+const CANAIS = ['Todos', 'WhatsApp', 'Grupo', 'LinkedIn', 'Instagram', 'E-mail'];
 
 export default function AfiliadosLanding() {
   const [copied, setCopied] = useState<string | null>(null);
