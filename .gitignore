@@ -8,6 +8,10 @@ dist/
 *.mp3
 *.wav
 .DS_Store
+
+# Kits de marketing locais (não vão ao repositório)
+marketing/kit-institucional-zapscript.md
+marketing/kit-roberto-founder.md
 coverage/
 
 # Scripts temporários de setup
