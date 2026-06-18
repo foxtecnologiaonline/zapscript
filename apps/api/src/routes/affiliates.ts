@@ -46,7 +46,15 @@ export default async function affiliateRoutes(app: FastifyInstance) {
   // ── GET /affiliates/me — dados + estatísticas do afiliado atual ──────────
   app.get('/me', auth, async (req: any) => {
     const userId = req.user.sub;
-    const affiliate = await prisma.affiliate.findUnique({ where: { userId } });
+    // Select explícito — evita referenciar colunas ausentes em caso de drift de migração
+    const affiliate = await prisma.affiliate.findUnique({
+      where:  { userId },
+      select: {
+        id: true, code: true, status: true, commissionType: true,
+        pixKey: true, pixKeyType: true, payoutName: true,
+        rejectedReason: true, appliedAt: true, approvedAt: true,
+      },
+    });
     if (!affiliate) return { affiliate: null };
 
     const stats = await buildAffiliateStats(affiliate.id);
@@ -84,7 +92,10 @@ export default async function affiliateRoutes(app: FastifyInstance) {
       const { commissionType, pixKey, pixKeyType, payoutName, audience, estimatedVolume } = req.body || {};
 
       // Já existe? Não recriar — retornar o atual.
-      const existing = await prisma.affiliate.findUnique({ where: { userId } });
+      const existing = await prisma.affiliate.findUnique({
+        where:  { userId },
+        select: { id: true, status: true },
+      });
       if (existing) {
         return reply.code(409).send({
           error: 'Você já possui um cadastro de afiliado.',
@@ -102,7 +113,7 @@ export default async function affiliateRoutes(app: FastifyInstance) {
       // Garantir código único (colisão é raríssima, mas tratamos)
       let code = genAffiliateCode();
       for (let i = 0; i < 5; i++) {
-        const clash = await prisma.affiliate.findUnique({ where: { code } });
+        const clash = await prisma.affiliate.findUnique({ where: { code }, select: { id: true } });
         if (!clash) break;
         code = genAffiliateCode();
       }
@@ -140,7 +151,10 @@ export default async function affiliateRoutes(app: FastifyInstance) {
     auth,
     async (req: any, reply) => {
       const userId = req.user.sub;
-      const affiliate = await prisma.affiliate.findUnique({ where: { userId } });
+      const affiliate = await prisma.affiliate.findUnique({
+        where:  { userId },
+        select: { id: true, commissionType: true },
+      });
       if (!affiliate) return reply.code(404).send({ error: 'Cadastro de afiliado não encontrado.' });
 
       const { commissionType, pixKey, pixKeyType, payoutName } = req.body || {};
@@ -176,7 +190,10 @@ export default async function affiliateRoutes(app: FastifyInstance) {
     { ...auth, config: { rateLimit: { max: 3, timeWindow: '1 hour' } } },
     async (req: any, reply) => {
       const userId = req.user.sub;
-      const affiliate = await prisma.affiliate.findUnique({ where: { userId } });
+      const affiliate = await prisma.affiliate.findUnique({
+        where:  { userId },
+        select: { id: true, status: true, pixKey: true, pixKeyType: true, payoutName: true, code: true },
+      });
       if (!affiliate) return reply.code(404).send({ error: 'Cadastro de afiliado não encontrado.' });
       if (affiliate.status !== 'approved') return reply.code(400).send({ error: 'Apenas afiliados aprovados podem solicitar saque.' });
       if (!affiliate.pixKey) return reply.code(400).send({ error: 'Cadastre sua chave Pix antes de solicitar o saque.' });
@@ -188,10 +205,16 @@ export default async function affiliateRoutes(app: FastifyInstance) {
         });
       }
 
-      await prisma.affiliate.update({
-        where: { id: affiliate.id },
-        data:  { payoutRequestedAt: new Date() },
-      });
+      // Marca a data da solicitação (best-effort: tolera ambiente sem a coluna
+      // payoutRequestedAt até a migração rodar — não deve bloquear o saque)
+      try {
+        await prisma.affiliate.update({
+          where: { id: affiliate.id },
+          data:  { payoutRequestedAt: new Date() },
+        });
+      } catch (err: any) {
+        app.log.warn({ err: err?.message, affiliateId: affiliate.id }, '[Affiliates] payoutRequestedAt indisponível — seguindo sem marcar data');
+      }
 
       // Notificar admin por e-mail (best-effort)
       const adminEmail = process.env.SUPPORT_EMAIL || process.env.SMTP_FROM?.replace(/.*<(.+)>/, '$1');
@@ -221,7 +244,10 @@ export default async function affiliateRoutes(app: FastifyInstance) {
   // ── GET /affiliates/commissions — extrato de comissões do afiliado ───────
   app.get('/commissions', auth, async (req: any, reply) => {
     const userId = req.user.sub;
-    const affiliate = await prisma.affiliate.findUnique({ where: { userId } });
+    const affiliate = await prisma.affiliate.findUnique({
+      where:  { userId },
+      select: { id: true },
+    });
     if (!affiliate) return reply.code(404).send({ error: 'Cadastro de afiliado não encontrado.' });
 
     const commissions = await prisma.affiliateCommission.findMany({

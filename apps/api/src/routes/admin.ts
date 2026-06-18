@@ -2191,8 +2191,13 @@ export default async function adminRoutes(app: FastifyInstance) {
       const affiliates = await prisma.affiliate.findMany({
         where,
         orderBy: { appliedAt: 'desc' },
-        include: {
-          user: { select: { email: true, name: true } },
+        // Select explícito — evita referenciar colunas ausentes em caso de drift de migração
+        select: {
+          id: true, code: true, status: true, commissionType: true,
+          pixKey: true, pixKeyType: true, payoutName: true,
+          audience: true, notes: true, appliedAt: true, approvedAt: true,
+          rejectedReason: true,
+          user:   { select: { email: true, name: true } },
           _count: { select: { referrals: true } },
         },
       });
@@ -2239,7 +2244,10 @@ export default async function adminRoutes(app: FastifyInstance) {
     '/affiliates/:id/approve',
     { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
-      const aff = await prisma.affiliate.findUnique({ where: { id: req.params.id }, include: { user: { select: { email: true, name: true } } } });
+      const aff = await prisma.affiliate.findUnique({
+        where:  { id: req.params.id },
+        select: { id: true, code: true, user: { select: { email: true, name: true } } },
+      });
       if (!aff) return reply.code(404).send({ error: 'Afiliado não encontrado.' });
 
       await prisma.affiliate.update({
@@ -2274,7 +2282,10 @@ export default async function adminRoutes(app: FastifyInstance) {
     '/affiliates/:id/reject',
     { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
-      const aff = await prisma.affiliate.findUnique({ where: { id: req.params.id } });
+      const aff = await prisma.affiliate.findUnique({
+        where:  { id: req.params.id },
+        select: { id: true },
+      });
       if (!aff) return reply.code(404).send({ error: 'Afiliado não encontrado.' });
 
       await prisma.affiliate.update({
