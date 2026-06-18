@@ -1232,13 +1232,15 @@ function PlanoContent() {
                     {currentPlan !== 'free' ? `Upgrade para ${plan.label}` : `Assinar plano ${plan.label}`}
                   </h3>
                   <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                    Escolha mensal ou anual · Cancele a qualquer momento
+                    {junePromo && checkoutPlan === 'pro'
+                      ? '🔥 Oferta de junho: R$19,90 no 1º mês · depois R$39,90/mês'
+                      : 'Escolha mensal ou anual · Cancele a qualquer momento'}
                   </p>
                 </div>
                 <CheckoutInline
                   planName={checkoutPlan as 'pro' | 'executive'}
                   planLabel={plan.label}
-                  planPrice={plan.price}
+                  planPrice={junePromo && checkoutPlan === 'pro' ? 'R$19,90' : plan.price}
                   planFeats={plan.feats}
                   isUpgrade={currentPlan !== 'free'}
                   onSuccess={handleCheckoutSuccess}
