@@ -371,59 +371,59 @@ export default async function authRoutes(app: FastifyInstance) {
       if (!v.valid) return reply.code(400).send({ error: v.error });
 
       const { email, password } = req.body;
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      let { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
-        // Detectar e-mail não confirmado via error.code (novo comportamento Supabase ≥2.x)
-        // ou via message (comportamento antigo). Supabase agora retorna 'invalid_credentials'
-        // para email não confirmado (para evitar enumeração) — precisamos verificar via admin.
+        // Opção A: o login NÃO exige e-mail confirmado. Contas legadas (cadastradas
+        // antes do auto-confirm no cadastro) ficam não-confirmadas no Supabase e o
+        // signInWithPassword falha — com 'email_not_confirmed' (comportamento antigo)
+        // ou 'invalid_credentials' (novo, para evitar enumeração). Em ambos os casos,
+        // se o usuário existe localmente, auto-confirmamos no Supabase e tentamos de
+        // novo. A verificação REAL de posse do e-mail continua sendo User.emailVerified
+        // (Prisma), que NÃO tocamos aqui — ela é exigida só no momento da assinatura.
         const errCode    = (error as any).code as string | undefined;
         const errMessage = error.message?.toLowerCase() ?? '';
 
-        const isUnconfirmedByCode = errCode === 'email_not_confirmed';
-        const isUnconfirmedByMsg  = errMessage.includes('email not confirmed')
-          || errMessage.includes('email_not_confirmed');
+        const isUnconfirmed =
+          errCode === 'email_not_confirmed' ||
+          errMessage.includes('email not confirmed') ||
+          errMessage.includes('email_not_confirmed') ||
+          errCode === 'invalid_credentials' ||
+          errMessage.includes('invalid login credentials');
 
-        if (isUnconfirmedByCode || isUnconfirmedByMsg) {
-          return reply.code(403).send({
-            error: 'E-mail não confirmado. Verifique sua caixa de entrada ou solicite um novo link de ativação.',
-            needsVerification: true,
-            code: 'EMAIL_NOT_CONFIRMED',
-          });
-        }
-
-        // Supabase mudou comportamento: agora retorna 'invalid_credentials' TAMBÉM para
-        // usuários não-confirmados (evita enumeração). Usamos Prisma para distinguir:
-        // se o usuário existe localmente mas emailVerified=false → email não confirmado.
-        if (errCode === 'invalid_credentials' || errMessage.includes('invalid login credentials')) {
+        if (isUnconfirmed) {
           try {
             const localUser = await prisma.user.findUnique({
               where:  { email: email.toLowerCase() },
-              select: { emailVerified: true },
+              select: { id: true },
             });
-            if (localUser && !localUser.emailVerified) {
-              logger.info(`[Auth] Login bloqueado — e-mail não confirmado (Prisma): ${email}`);
-              return reply.code(403).send({
-                error: 'E-mail não confirmado. Verifique sua caixa de entrada ou solicite um novo link de ativação.',
-                needsVerification: true,
-                code: 'EMAIL_NOT_CONFIRMED',
-              });
+            if (localUser) {
+              // Confirma o e-mail no Supabase (apenas para liberar o signInWithPassword)
+              // e tenta o login novamente. Se a senha estiver errada, o retry falha e
+              // caímos no 401 genérico abaixo — sem revelar a existência da conta.
+              await supabase.auth.admin.updateUserById(localUser.id, { email_confirm: true });
+              const retry = await supabase.auth.signInWithPassword({ email, password });
+              data  = retry.data;
+              error = retry.error;
+              if (!error) logger.info(`[Auth] Conta legada auto-confirmada no login: ${email}`);
             }
-          } catch (lookupErr: any) {
-            logger.warn(`[Auth] Falha no lookup Prisma para ${email}: ${lookupErr.message}`);
+          } catch (confirmErr: any) {
+            logger.warn(`[Auth] Falha ao auto-confirmar conta legada ${email}: ${confirmErr.message}`);
           }
         }
 
-        logger.warn(`[Auth] Login falhou para ${email}: code=${errCode} msg=${error.message}`);
-        return reply.code(401).send({ error: 'Credenciais inválidas' });
+        if (error || !data?.user) {
+          logger.warn(`[Auth] Login falhou para ${email}: code=${errCode} msg=${error?.message}`);
+          return reply.code(401).send({ error: 'Credenciais inválidas' });
+        }
       }
 
       // Opção A: o login NÃO exige e-mail verificado — o usuário acessa o Free
       // normalmente. A verificação (User.emailVerified) é exigida apenas no
       // checkout. Não sincronizamos emailVerified aqui, pois o login não prova
       // posse do e-mail (a conta é autoconfirmada no Supabase no cadastro).
-      const token = app.jwt.sign({ sub: data.user.id, email }, { expiresIn: '30d' });
-      return { token, user: { id: data.user.id, email } };
+      const token = app.jwt.sign({ sub: data!.user!.id, email }, { expiresIn: '30d' });
+      return { token, user: { id: data!.user!.id, email } };
     }
   );
 
