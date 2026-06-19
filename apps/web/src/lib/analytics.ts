@@ -116,3 +116,85 @@ export function trackOnce(key: string, event: FunnelEvent, params?: Parameters<t
     track(event, params); // se localStorage falhar, ainda dispara
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Analytics FIRST-PARTY (próprio) — visitas e cliques do site.
+   Independente de GA/Pixel: sempre roda (não gated por analyticsEnabled),
+   pois alimenta o painel admin de monitoramento. Anônimo/LGPD-friendly:
+   sem IP, sem PII; só um id de navegador aleatório e geo grosseira (país/cidade,
+   resolvida no servidor a partir dos headers da Vercel).
+   ───────────────────────────────────────────────────────────────────────── */
+
+/** Id anônimo e estável do navegador (não-PII). Criado on-demand. */
+function getVisitorId(): string {
+  try {
+    let id = localStorage.getItem('zs_vid');
+    if (!id) {
+      id = (crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).slice(0, 64);
+      localStorage.setItem('zs_vid', id);
+    }
+    return id;
+  } catch {
+    return '';
+  }
+}
+
+function deviceClass(): 'mobile' | 'desktop' {
+  try {
+    return window.innerWidth < 768 ? 'mobile' : 'desktop';
+  } catch {
+    return 'desktop';
+  }
+}
+
+function utmFromUrl(): { utmSource?: string; utmMedium?: string; utmCampaign?: string } {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const out: Record<string, string> = {};
+    const s = p.get('utm_source');   if (s) out.utmSource   = s;
+    const m = p.get('utm_medium');   if (m) out.utmMedium   = m;
+    const c = p.get('utm_campaign'); if (c) out.utmCampaign = c;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Envia um evento first-party à rota same-origin /api/track (não bloqueia a UI). */
+function sendEvent(ev: Record<string, unknown>) {
+  if (typeof window === 'undefined') return;
+  try {
+    const payload = JSON.stringify({ events: [ev] });
+    const url = '/api/track';
+    // sendBeacon sobrevive à navegação; fallback p/ fetch keepalive
+    if (navigator.sendBeacon) {
+      const blob = new Blob([payload], { type: 'application/json' });
+      if (navigator.sendBeacon(url, blob)) return;
+    }
+    fetch(url, { method: 'POST', body: payload, headers: { 'Content-Type': 'application/json' }, keepalive: true }).catch(() => {});
+  } catch { /* nunca quebrar a UI por tracking */ }
+}
+
+/** Registra uma visualização de página (pageview first-party). */
+export function trackVisit(path: string) {
+  sendEvent({
+    type: 'pageview',
+    path,
+    visitorId: getVisitorId(),
+    referrer: typeof document !== 'undefined' ? (document.referrer || '') : '',
+    device: deviceClass(),
+    ...utmFromUrl(),
+  });
+}
+
+/** Registra um clique em CTA principal (identificado por `name`). */
+export function trackClick(name: string, path?: string) {
+  sendEvent({
+    type: 'click',
+    name,
+    path: path || (typeof window !== 'undefined' ? window.location.pathname : '/'),
+    visitorId: getVisitorId(),
+    device: deviceClass(),
+    ...utmFromUrl(),
+  });
+}

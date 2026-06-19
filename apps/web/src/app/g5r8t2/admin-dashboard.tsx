@@ -1141,6 +1141,9 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
         {/* ═══ MONITORAMENTO ═══ */}
         {tab === 'monitoramento' && (
           <div className="space-y-5">
+            {/* Analytics do site — visitas, geo, cliques (first-party) */}
+            <SiteAnalyticsPanel apiBase={API} token={token} />
+
             {/* Monitor Saúde — sintético por serviço (clique abre analítico) */}
             <ServicesHealth apiBase={API} token={token} />
 
@@ -2543,6 +2546,155 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
 ══════════════════════════════════════════════════════════ */
 
 // ── #5 Gráfico de transcrições por hora ────────────────────────────────────────
+// ── Analytics do site (first-party): visitas, geografia, cliques ────────────
+function SiteAnalyticsPanel({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]       = useState<any | null>(null);
+  const [days, setDays]       = useState(30);
+
+  async function load(d = days) {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/analytics/site?days=${d}`, { headers: { 'x-admin-token': token } });
+      setData(await res.json());
+    } catch { setData(null); }
+    finally { setLoading(false); }
+  }
+
+  // Bandeira a partir do código de país ISO-2 (emoji regional)
+  const flag = (cc: string) => {
+    if (!cc || cc.length !== 2 || cc === '??') return '🌐';
+    try {
+      return String.fromCodePoint(...cc.toUpperCase().split('').map(c => 0x1f1e6 + c.charCodeAt(0) - 65));
+    } catch { return '🌐'; }
+  };
+
+  const t       = data?.totals || { pageviews: 0, visitors: 0, clicks: 0 };
+  const daily   = data?.daily || [];
+  const maxDay  = daily.length ? Math.max(...daily.map((x: any) => x.pageviews), 1) : 1;
+
+  const Bars = ({ rows, label, valueKey, max }: { rows: any[]; label: (r: any) => string; valueKey: string; max: number }) => (
+    <div className="space-y-1.5">
+      {rows.length === 0 && <div className="text-[11px] text-[rgba(16,185,129,.3)] py-2">Sem dados</div>}
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="text-[11px] text-[#d1fae5] w-40 truncate flex-shrink-0" title={label(r)}>{label(r)}</span>
+          <div className="flex-1 h-3.5 bg-[rgba(16,185,129,.06)] rounded overflow-hidden">
+            <div className="h-full bg-[#10b981] rounded" style={{ width: `${Math.max(3, (r[valueKey] / max) * 100)}%`, opacity: 0.75 }} />
+          </div>
+          <span className="text-[11px] font-mono text-[rgba(16,185,129,.6)] w-12 text-right flex-shrink-0">{r[valueKey]}</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  const maxOf = (rows: any[], key: string) => rows.length ? Math.max(...rows.map(r => r[key]), 1) : 1;
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+      <button type="button" onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
+        className="w-full text-left px-5 py-3 flex items-center justify-between hover:bg-[rgba(16,185,129,.02)] transition-colors">
+        <span className="text-sm font-bold text-[#d1fae5]">🌍 Analytics do Site — visitas, geografia e cliques</span>
+        <span className="text-xs text-[rgba(16,185,129,.4)]">{open ? '▲' : '▼'} {data ? `${t.pageviews} views` : ''}</span>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 space-y-5">
+          {/* Período + atualizar */}
+          <div className="flex gap-1.5 items-center">
+            {[7, 14, 30, 90].map(d => (
+              <button key={d} type="button" onClick={() => { setDays(d); load(d); }}
+                className={`text-xs px-2 py-1 rounded transition-colors ${days === d ? 'bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.25)]' : 'text-[rgba(16,185,129,.4)] hover:text-[#10b981]'}`}>
+                {d}d
+              </button>
+            ))}
+            <button type="button" onClick={() => load()} disabled={loading}
+              className="text-xs text-[rgba(16,185,129,.4)] hover:text-[#10b981] ml-2 transition-colors">
+              {loading ? '⟳ Carregando...' : '↻ Atualizar'}
+            </button>
+          </div>
+
+          {/* Cartões de totais */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Visualizações', value: t.pageviews, icon: '👁️' },
+              { label: 'Visitantes únicos', value: t.visitors, icon: '👤' },
+              { label: 'Cliques em CTA', value: t.clicks, icon: '🖱️' },
+            ].map((c, i) => (
+              <div key={i} className="bg-[rgba(16,185,129,.05)] border border-[rgba(16,185,129,.10)] rounded-lg px-3 py-3">
+                <div className="text-[11px] text-[rgba(16,185,129,.5)]">{c.icon} {c.label}</div>
+                <div className="text-2xl font-bold text-[#d1fae5] mt-0.5">{Number(c.value).toLocaleString('pt-BR')}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Série diária de visualizações */}
+          <div>
+            <div className="text-[11px] font-bold text-[rgba(16,185,129,.6)] uppercase tracking-wide mb-2">Visualizações por dia</div>
+            {daily.length === 0 ? (
+              <div className="text-[11px] text-[rgba(16,185,129,.3)] py-2">Sem dados no período</div>
+            ) : (
+              <div className="flex items-end gap-0.5 h-28">
+                {daily.map((d: any, i: number) => (
+                  <div key={i} className="flex-1 flex flex-col items-center justify-end group" title={`${d.day}: ${d.pageviews} views · ${d.visitors} visitantes · ${d.clicks} cliques`}>
+                    <div className="w-full bg-[#10b981] rounded-t transition-all" style={{ height: `${Math.max(3, (d.pageviews / maxDay) * 100)}%`, opacity: 0.6 }} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Geografia + Páginas */}
+          <div className="grid md:grid-cols-2 gap-5">
+            <div>
+              <div className="text-[11px] font-bold text-[rgba(16,185,129,.6)] uppercase tracking-wide mb-2">Por país</div>
+              <Bars rows={data?.byCountry || []} valueKey="views" max={maxOf(data?.byCountry || [], 'views')}
+                label={(r) => `${flag(r.country)} ${r.country} · ${r.visitors} visit.`} />
+            </div>
+            <div>
+              <div className="text-[11px] font-bold text-[rgba(16,185,129,.6)] uppercase tracking-wide mb-2">Por cidade</div>
+              <Bars rows={data?.byCity || []} valueKey="views" max={maxOf(data?.byCity || [], 'views')}
+                label={(r) => `${flag(r.country)} ${r.city}`} />
+            </div>
+          </div>
+
+          {/* Páginas + Cliques */}
+          <div className="grid md:grid-cols-2 gap-5">
+            <div>
+              <div className="text-[11px] font-bold text-[rgba(16,185,129,.6)] uppercase tracking-wide mb-2">Páginas mais vistas</div>
+              <Bars rows={data?.topPages || []} valueKey="views" max={maxOf(data?.topPages || [], 'views')}
+                label={(r) => r.path} />
+            </div>
+            <div>
+              <div className="text-[11px] font-bold text-[rgba(16,185,129,.6)] uppercase tracking-wide mb-2">Cliques em CTAs</div>
+              <Bars rows={data?.topClicks || []} valueKey="clicks" max={maxOf(data?.topClicks || [], 'clicks')}
+                label={(r) => r.name} />
+            </div>
+          </div>
+
+          {/* Dispositivo + Origem */}
+          <div className="grid md:grid-cols-2 gap-5">
+            <div>
+              <div className="text-[11px] font-bold text-[rgba(16,185,129,.6)] uppercase tracking-wide mb-2">Por dispositivo</div>
+              <Bars rows={data?.byDevice || []} valueKey="views" max={maxOf(data?.byDevice || [], 'views')}
+                label={(r) => r.device === 'mobile' ? '📱 Celular' : r.device === 'desktop' ? '💻 Computador' : '— Desconhecido'} />
+            </div>
+            <div>
+              <div className="text-[11px] font-bold text-[rgba(16,185,129,.6)] uppercase tracking-wide mb-2">Origem (utm_source)</div>
+              <Bars rows={data?.bySource || []} valueKey="views" max={maxOf(data?.bySource || [], 'views')}
+                label={(r) => r.source} />
+            </div>
+          </div>
+
+          <p className="text-[10px] text-[rgba(16,185,129,.3)] leading-relaxed">
+            Coleta própria (first-party), anônima e sem IP — geografia aproximada via borda da Vercel. Cliques contam apenas CTAs principais marcados no site.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HourlyChart({ apiBase, token }: { apiBase: string; token: string }) {
   const [open, setOpen]       = useState(false);
   const [loading, setLoading] = useState(false);

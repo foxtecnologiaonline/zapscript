@@ -1752,6 +1752,102 @@ export default async function adminRoutes(app: FastifyInstance) {
     return rows.map(r => ({ hour: r.hour, total: Number(r.total) }));
   });
 
+  // ── Analytics first-party do SITE (visitas, geo, cliques) ──────────────────
+  // Lê a tabela SiteEvent (coletada via /analytics/collect). Resiliente a drift:
+  // se a tabela ainda não existir em prod, retorna estrutura vazia (sem 500).
+  app.get<{ Querystring: { days?: string } }>(
+    '/analytics/site',
+    { preHandler: [adminAuth] },
+    async (req) => {
+      const days  = Math.min(Math.max(parseInt(req.query.days || '30') || 30, 1), 90);
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const empty = {
+        days,
+        totals: { pageviews: 0, visitors: 0, clicks: 0 },
+        daily: [] as any[],
+        topPages: [] as any[],
+        byCountry: [] as any[],
+        byCity: [] as any[],
+        topClicks: [] as any[],
+        byDevice: [] as any[],
+        bySource: [] as any[],
+      };
+
+      try {
+        const [totals, daily, topPages, byCountry, byCity, topClicks, byDevice, bySource] = await Promise.all([
+          prisma.$queryRaw<any[]>`
+            SELECT
+              COUNT(*) FILTER (WHERE "type" = 'pageview')::int            AS pageviews,
+              COUNT(DISTINCT "visitorId") FILTER (WHERE "type" = 'pageview')::int AS visitors,
+              COUNT(*) FILTER (WHERE "type" = 'click')::int               AS clicks
+            FROM "SiteEvent" WHERE "createdAt" >= ${since}
+          `,
+          prisma.$queryRaw<any[]>`
+            SELECT
+              to_char(date_trunc('day', "createdAt" AT TIME ZONE 'America/Sao_Paulo'), 'YYYY-MM-DD') AS day,
+              COUNT(*) FILTER (WHERE "type" = 'pageview')::int AS pageviews,
+              COUNT(DISTINCT "visitorId") FILTER (WHERE "type" = 'pageview')::int AS visitors,
+              COUNT(*) FILTER (WHERE "type" = 'click')::int    AS clicks
+            FROM "SiteEvent" WHERE "createdAt" >= ${since}
+            GROUP BY 1 ORDER BY 1
+          `,
+          prisma.$queryRaw<any[]>`
+            SELECT "path", COUNT(*)::int AS views
+            FROM "SiteEvent" WHERE "type" = 'pageview' AND "createdAt" >= ${since}
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 15
+          `,
+          prisma.$queryRaw<any[]>`
+            SELECT COALESCE("country", '??') AS country, COUNT(*)::int AS views,
+                   COUNT(DISTINCT "visitorId")::int AS visitors
+            FROM "SiteEvent" WHERE "type" = 'pageview' AND "createdAt" >= ${since}
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 20
+          `,
+          prisma.$queryRaw<any[]>`
+            SELECT COALESCE("city", '—') AS city, COALESCE("country", '??') AS country, COUNT(*)::int AS views
+            FROM "SiteEvent" WHERE "type" = 'pageview' AND "createdAt" >= ${since} AND "city" IS NOT NULL
+            GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 20
+          `,
+          prisma.$queryRaw<any[]>`
+            SELECT COALESCE("name", '—') AS name, COUNT(*)::int AS clicks
+            FROM "SiteEvent" WHERE "type" = 'click' AND "createdAt" >= ${since}
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 15
+          `,
+          prisma.$queryRaw<any[]>`
+            SELECT COALESCE("device", '—') AS device, COUNT(*)::int AS views
+            FROM "SiteEvent" WHERE "type" = 'pageview' AND "createdAt" >= ${since}
+            GROUP BY 1 ORDER BY 2 DESC
+          `,
+          prisma.$queryRaw<any[]>`
+            SELECT COALESCE("utmSource", 'direto') AS source, COUNT(*)::int AS views
+            FROM "SiteEvent" WHERE "type" = 'pageview' AND "createdAt" >= ${since}
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 12
+          `,
+        ]);
+
+        const t = totals[0] || {};
+        return {
+          days,
+          totals: {
+            pageviews: Number(t.pageviews || 0),
+            visitors:  Number(t.visitors  || 0),
+            clicks:    Number(t.clicks    || 0),
+          },
+          daily:     daily.map(r => ({ day: r.day, pageviews: Number(r.pageviews), visitors: Number(r.visitors), clicks: Number(r.clicks) })),
+          topPages:  topPages.map(r => ({ path: r.path, views: Number(r.views) })),
+          byCountry: byCountry.map(r => ({ country: r.country, views: Number(r.views), visitors: Number(r.visitors) })),
+          byCity:    byCity.map(r => ({ city: r.city, country: r.country, views: Number(r.views) })),
+          topClicks: topClicks.map(r => ({ name: r.name, clicks: Number(r.clicks) })),
+          byDevice:  byDevice.map(r => ({ device: r.device, views: Number(r.views) })),
+          bySource:  bySource.map(r => ({ source: r.source, views: Number(r.views) })),
+        };
+      } catch (err: any) {
+        app.log.warn({ err: err?.message }, '[Admin] analytics/site indisponível (tabela ausente?)');
+        return empty;
+      }
+    }
+  );
+
   // ── #6 Histórico de uptime (ServiceStatusLog) ───────────
   app.get<{ Querystring: { days?: string } }>(
     '/uptime-history',

@@ -298,6 +298,7 @@ app.register(import('./routes/nps'),             { prefix: '/nps' });
 app.register(import('./routes/meta-embedded'),   { prefix: '/meta' });
 app.register(import('./routes/affiliates'),      { prefix: '/affiliates' });
 app.register(import('./routes/demo'),            { prefix: '/demo' });
+app.register(import('./routes/analytics'),       { prefix: '/analytics' });
 
 // ── WhatsApp Webhook (Meta Cloud API) ──────────────────────
 // Registrar sempre — webhook precisa responder para validação mesmo sem token configurado

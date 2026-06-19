@@ -125,7 +125,7 @@ export default function HomePage() {
                   style={{ color: 'rgb(var(--color-text-secondary))' }}>
                   <span>👋</span> Novo por aqui?
                 </p>
-                <Link href="/cadastro"
+                <Link href="/cadastro" data-cta="home_hero_cadastro"
                   className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2">
                   Quero ler em vez de ouvir
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -368,7 +368,7 @@ export default function HomePage() {
             <p className="text-base leading-relaxed mb-7 font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
               Comece gratuitamente e recupere as horas que você perde ouvindo áudio no WhatsApp.
             </p>
-            <Link href="/cadastro"
+            <Link href="/cadastro" data-cta="home_footer_cadastro"
               className="btn-primary inline-flex items-center justify-center py-4 px-8 text-base gap-2">
               Transcrever grátis agora
             </Link>

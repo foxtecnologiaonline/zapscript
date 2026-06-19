@@ -2,22 +2,44 @@
 import Script from 'next/script';
 import { useEffect, Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { GA4_ID, GADS_ID, META_PIXEL_ID, analyticsEnabled, trackPageview } from '@/lib/analytics';
+import { GA4_ID, GADS_ID, META_PIXEL_ID, analyticsEnabled, trackPageview, trackVisit, trackClick } from '@/lib/analytics';
 
-/** Dispara pageview a cada mudança de rota (Next App Router = SPA). */
+/**
+ * Dispara pageview a cada mudança de rota (Next App Router = SPA).
+ * - GA/Pixel (trackPageview): só se houver provedor configurado.
+ * - First-party (trackVisit): SEMPRE — alimenta o painel admin, independente de GA.
+ */
 function PageviewTracker() {
   const pathname = usePathname();
   const search   = useSearchParams();
   useEffect(() => {
     const url = pathname + (search?.toString() ? `?${search}` : '');
-    trackPageview(url);
+    if (analyticsEnabled) trackPageview(url);
+    trackVisit(pathname); // só o path (sem query) p/ agrupar bem no painel
   }, [pathname, search]);
   return null;
 }
 
-export default function Analytics() {
-  if (!analyticsEnabled) return null;
+/**
+ * Listener delegado de cliques em CTAs principais (marcados com [data-cta]).
+ * Captura no nível do documento — pega elementos adicionados dinamicamente.
+ */
+function CtaClickTracker() {
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const el = target?.closest?.('[data-cta]') as HTMLElement | null;
+      if (!el) return;
+      const name = el.getAttribute('data-cta');
+      if (name) trackClick(name);
+    };
+    document.addEventListener('click', onClick, { capture: true });
+    return () => document.removeEventListener('click', onClick, { capture: true });
+  }, []);
+  return null;
+}
 
+export default function Analytics() {
   // GA4 e Google Ads compartilham o mesmo gtag.js — carrega uma vez só.
   const gtagId = GA4_ID || GADS_ID;
 
@@ -62,6 +84,7 @@ export default function Analytics() {
       <Suspense fallback={null}>
         <PageviewTracker />
       </Suspense>
+      <CtaClickTracker />
     </>
   );
 }

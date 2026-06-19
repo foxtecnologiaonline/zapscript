@@ -416,6 +416,32 @@ model DemoLead {
   @@index([createdAt])
 }
 
+// Analytics first-party — visitas e cliques de CTA do site público.
+// Anônimo: visitorId é um id aleatório do navegador (não-PII); IP não é
+// armazenado, só geo grosseira (país/região/cidade) vinda dos headers da Vercel.
+model SiteEvent {
+  id          String   @id @default(cuid())
+  type        String   // 'pageview' | 'click'
+  path        String   // caminho da página
+  name        String?  // clique: nome do CTA
+  visitorId   String?  // id anônimo do navegador (não-PII)
+  referrer    String?
+  device      String?  // 'mobile' | 'desktop'
+  country     String?
+  region      String?
+  city        String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  createdAt   DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([createdAt])
+  @@index([path])
+  @@index([country])
+  @@index([visitorId])
+}
+
 // Sugestões de novos tópicos de FAQ detectados pelo agente.
 model FaqSuggestion {
   id                  String    @id @default(cuid())

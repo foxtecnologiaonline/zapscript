@@ -16,7 +16,7 @@ function btn(href: string, label: string): string {
   </div>`;
 }
 
-function wrapper(firstName: string, title: string, body: string): string {
+function wrapper(_firstName: string, title: string, body: string): string {
   return `<div style="font-family:'DM Sans',sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:16px;border:1px solid rgba(16,185,129,.15)">
     <div style="font-size:28px;font-weight:900;color:#10b981;margin-bottom:8px">⚡ ZapScript</div>
     <h1 style="font-size:22px;font-weight:700;color:#fff;margin:0 0 12px">${title}</h1>

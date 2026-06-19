@@ -89,10 +89,10 @@ const PLANS = [
   },
   {
     name: 'Pro',
-    price: 'R$19,90',
-    period: '/1º mês · depois R$39,90',
+    price: 'R$39,90',
+    period: '/mês',
     highlight: true,
-    badge: 'Oferta de junho',
+    badge: '⭐ Mais popular',
     features: [
       '200 min de transcrição/mês',
       '2 números conectados',
@@ -112,6 +112,13 @@ const PLANS = [
 export default function LandingPageClient({ variant }: { variant: Variant }) {
   // Captura o ?aff= e remove o código da barra de endereços
   useEffect(() => { captureAffiliateFromUrl(); }, []);
+
+  // Promo de junho/2026 — espelha a lógica de dashboard/plano/page.tsx
+  const now = new Date();
+  const junePromo = now.getFullYear() === 2026 && now.getMonth() === 5;
+  const plans = PLANS.map(p => p.name !== 'Pro' ? p : junePromo
+    ? { ...p, price: 'R$19,90', period: '/1º mês · depois R$39,90', badge: '🔥 Oferta de junho' }
+    : p);
 
   const faqs = variant.faqs ?? FAQS;
   const faqJsonLd = {
@@ -173,6 +180,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
           {/* CTA principal */}
           <Link
             href={variant.ctaHref}
+            data-cta="lp_hero_cta"
             className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 active:scale-95 transition-all shadow-lg"
             style={{ boxShadow: '0 0 30px rgba(16,185,129,0.3)' }}
           >
@@ -267,6 +275,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
             </div>
             <Link
               href={variant.ctaHref}
+              data-cta="lp_mid_cta"
               className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-base px-8 py-3.5 rounded-2xl hover:opacity-90 active:scale-95 transition-all mt-10"
               style={{ boxShadow: '0 0 30px rgba(16,185,129,0.3)' }}
             >
@@ -397,7 +406,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
           <h2 className="text-2xl font-bold text-white text-center mb-3">Planos simples e transparentes</h2>
           <p className="text-brand-muted text-center mb-10">Comece grátis. Faça upgrade quando quiser.</p>
           <div className="grid sm:grid-cols-2 gap-4 max-w-xl mx-auto">
-            {PLANS.map(plan => (
+            {plans.map(plan => (
               <div
                 key={plan.name}
                 className={`rounded-2xl p-6 border ${plan.highlight
@@ -411,7 +420,10 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
                   </div>
                 )}
                 <h3 className="font-bold text-white mb-1">{plan.name}</h3>
-                <div className="flex items-baseline gap-1 mb-4">
+                <div className="flex items-baseline gap-1.5 mb-4 flex-wrap">
+                  {plan.name === 'Pro' && junePromo && (
+                    <span className="text-sm text-brand-muted line-through">R$39,90</span>
+                  )}
                   <span className="text-2xl font-bold text-white">{plan.price}</span>
                   <span className="text-brand-muted text-sm">{plan.period}</span>
                 </div>
@@ -425,6 +437,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
                 </ul>
                 <Link
                   href="/cadastro"
+                  data-cta={`lp_plano_${plan.name}`}
                   className={`block text-center font-semibold py-2.5 rounded-xl transition-all text-sm ${plan.highlight
                     ? 'bg-brand-primary text-black hover:opacity-90'
                     : 'bg-white/8 text-white border border-white/10 hover:bg-white/12'
@@ -480,6 +493,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
           </p>
           <Link
             href={variant.ctaHref}
+            data-cta="lp_footer_cta"
             className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-xl px-12 py-5 rounded-2xl hover:opacity-90 active:scale-95 transition-all"
             style={{ boxShadow: '0 0 40px rgba(16,185,129,0.35)' }}
           >
