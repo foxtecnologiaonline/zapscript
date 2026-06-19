@@ -23,6 +23,8 @@ const variant: Variant = {
   cta:      'Vender Mais — Grátis',
   ctaHref:  '/cadastro?utm_source=seo&utm_campaign=vendas',
   audience: 'vendas e atendimento',
+  slug: 'vendas',
+  breadcrumbLabel: 'Vendas e Atendimento',
   pains: [
     { icon: '⏱️', title: 'Responda na hora', desc: 'O áudio do lead vira texto + resumo em segundos. Responda antes do concorrente — velocidade fecha venda.' },
     { icon: '🎯', title: 'Intenção de compra clara', desc: 'O resumo extrai o que o lead quer: produto, orçamento e urgência. Você já responde com a oferta certa.' },

@@ -14,6 +14,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/advogados`,    lastModified: d('2026-06-15'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/vendas`,       lastModified: d('2026-06-15'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/afiliados`,    lastModified: d('2026-06-16'), priority: 0.7,  changeFrequency: 'monthly' },
+    { url: `${base}/indique`,      lastModified: now,             priority: 0.7,  changeFrequency: 'monthly' },
     { url: `${base}/vs/viratexto`, lastModified: d('2026-05-20'), priority: 0.8,  changeFrequency: 'monthly' },
     { url: `${base}/vs/luzia`,     lastModified: d('2026-05-20'), priority: 0.8,  changeFrequency: 'monthly' },
     { url: `${base}/login`,        lastModified: d('2026-05-01'), priority: 0.7,  changeFrequency: 'monthly' },

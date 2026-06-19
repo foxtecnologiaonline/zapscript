@@ -15,6 +15,9 @@ export interface Variant {
   pains?:    { icon: string; title: string; desc: string }[]; // 3 dores específicas
   /** FAQ específico do nicho (opcional) — substitui o FAQ genérico + gera schema.org. */
   faqs?:     { q: string; a: string }[];
+  /** Slug da página (ex: 'corretores') — quando presente, gera schema.org BreadcrumbList. */
+  slug?:        string;
+  breadcrumbLabel?: string; // ex: 'Corretores de Imóveis'
 }
 
 /* ── FAQ Accordion ──────────────────────────────────────────────────── */
@@ -130,11 +133,22 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
       acceptedAnswer: { '@type': 'Answer', text: f.a },
     })),
   };
+  const breadcrumbJsonLd = variant.slug ? {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Início', item: 'https://www.zapscript.me' },
+      { '@type': 'ListItem', position: 2, name: variant.breadcrumbLabel ?? variant.slug, item: `https://www.zapscript.me/${variant.slug}` },
+    ],
+  } : null;
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       {/* Schema.org FAQPage — rich snippets no Google */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
+      {breadcrumbJsonLd && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
+      )}
 
       {/* ── Header mínimo — sem distrações ──────────────────────── */}
       <header className="border-b border-white/5 bg-brand-bg/95 backdrop-blur-sm sticky top-0 z-50">

@@ -23,6 +23,8 @@ const variant: Variant = {
   cta:      'Começar Grátis',
   ctaHref:  '/cadastro?utm_source=seo&utm_campaign=advogados',
   audience: 'advogados e escritórios',
+  slug: 'advogados',
+  breadcrumbLabel: 'Advogados e Escritórios',
   pains: [
     { icon: '📄', title: 'Relato vira registro', desc: 'O áudio do cliente vira texto estruturado e pesquisável — fácil de anexar ao caso e consultar depois.' },
     { icon: '🔒', title: 'Sigilo garantido', desc: 'Transcrições criptografadas com AES-256-GCM, servidores em São Paulo e conformidade total com a LGPD.' },

@@ -83,10 +83,20 @@ const FAQS = [
   },
 ];
 
+const breadcrumbSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Início',            item: 'https://www.zapscript.me' },
+    { '@type': 'ListItem', position: 2, name: 'ZapScript vs LuzIA', item: 'https://www.zapscript.me/vs/luzia' },
+  ],
+};
+
 export default function VsLuziaPage() {
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
 
       {/* Header */}
       <header className="border-b border-white/5 bg-brand-bg/95 backdrop-blur-sm sticky top-0 z-50">

@@ -72,6 +72,52 @@ async function runActivationD1(log: any) {
   return users.length;
 }
 
+/* ── Conexão iniciada mas não concluída (2h–24h) ──────────────────────────
+   Usuário chegou a clicar em "Conectar novo número" (existe um registro
+   WhatsappNumber) mas nunca chegou a status "connected". Dispara antes do
+   D+1 genérico, porque aqui já sabemos que a intenção existiu. ────────── */
+async function runConnectionIncomplete(log: any) {
+  const from = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const to   = new Date(Date.now() - 2  * 60 * 60 * 1000);
+  const tag  = 'connection_incomplete';
+
+  const users = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      numbers: { some: { createdAt: { gte: from, lte: to }, status: { not: 'connected' } } },
+    },
+    select: {
+      id: true, email: true, name: true, lifecycleEmailsSent: true,
+      numbers: { select: { status: true, connectedAt: true } },
+    },
+  }).catch(() => [] as any[]);
+
+  let sent = 0;
+  for (const u of users) {
+    if (u.lifecycleEmailsSent.includes(tag)) continue;
+    const everConnected = u.numbers.some((n: any) => n.connectedAt || n.status === 'connected');
+    if (everConnected) continue;
+
+    const firstName = firstNameOf(u.name);
+    try {
+      await sendEmail(
+        u.email,
+        `${firstName}, sua conexão do WhatsApp ficou pela metade`,
+        wrapper(firstName, `Faltou só terminar a conexão, ${firstName}`, `
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Vimos que você começou a conectar seu WhatsApp no ZapScript, mas a conexão não foi concluída. Pode ter sido o código que expirou ou a tela que fechou no meio do processo — é comum, e leva menos de 2 minutos para terminar.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Volte ao painel, gere um novo código e finalize no seu celular. Assim que conectar, todo áudio recebido já chega transcrito e resumido.</p>
+          ${btn(`${APP_URL}/dashboard/numeros`, 'Terminar minha conexão →')}
+        `),
+      );
+      await markSent(u.id, tag);
+      sent++;
+    } catch (e: any) {
+      log?.warn?.(`[Lifecycle] Falha ao enviar ${tag} para ${u.email}: ${e.message}`);
+    }
+  }
+  return sent;
+}
+
 /* ── D+3: número conectado mas zero transcrições ─────────────────────────── */
 async function runActivationD3(log: any) {
   const from = new Date(Date.now() - 96 * 60 * 60 * 1000);
@@ -160,9 +206,9 @@ async function runUpgradeByUsage(log: any) {
 
 async function runOnce(log: any) {
   try {
-    const [d1, d3] = await Promise.all([runActivationD1(log), runActivationD3(log)]);
+    const [d1, d3, incomplete] = await Promise.all([runActivationD1(log), runActivationD3(log), runConnectionIncomplete(log)]);
     const upgrade = await runUpgradeByUsage(log);
-    log?.info?.(`[Lifecycle] Ciclo concluído — candidatos d1=${d1} d3=${d3} upgrades_enviados=${upgrade}`);
+    log?.info?.(`[Lifecycle] Ciclo concluído — candidatos d1=${d1} d3=${d3} conexao_incompleta_enviados=${incomplete} upgrades_enviados=${upgrade}`);
   } catch (e: any) {
     log?.error?.(`[Lifecycle] Erro no ciclo de e-mails: ${e.message}`);
   }

@@ -23,6 +23,8 @@ const variant: Variant = {
   cta:      'Transcrever Grátis Agora',
   ctaHref:  '/cadastro?utm_source=seo&utm_campaign=corretores',
   audience: 'corretores de imóveis',
+  slug: 'corretores',
+  breadcrumbLabel: 'Corretores de Imóveis',
   pains: [
     { icon: '🎙️', title: 'Áudio vira ficha', desc: 'O relato em áudio do cliente vira texto organizado: tipo de imóvel, quartos, faixa de preço e bairro desejado.' },
     { icon: '⚡', title: 'Responda mais rápido', desc: 'Leia a intenção do cliente em segundos e responda na frente da concorrência — quem responde primeiro fecha.' },
