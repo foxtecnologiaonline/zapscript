@@ -5,20 +5,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const base = 'https://www.zapscript.me';
 
   const now = new Date();
+  // Datas reais da última alteração de conteúdo de cada página (atualizar ao editar a página).
+  const d = (iso: string) => new Date(iso);
   const staticRoutes: MetadataRoute.Sitemap = [
-    { url: base,                   lastModified: now, priority: 1.0,  changeFrequency: 'weekly'  },
-    { url: `${base}/cadastro`,     lastModified: now, priority: 0.9,  changeFrequency: 'monthly' },
-    { url: `${base}/corretores`,   lastModified: now, priority: 0.9,  changeFrequency: 'monthly' },
-    { url: `${base}/advogados`,    lastModified: now, priority: 0.9,  changeFrequency: 'monthly' },
-    { url: `${base}/vendas`,       lastModified: now, priority: 0.9,  changeFrequency: 'monthly' },
-    { url: `${base}/afiliados`,    lastModified: now, priority: 0.7,  changeFrequency: 'monthly' },
-    { url: `${base}/vs/viratexto`, lastModified: now, priority: 0.8,  changeFrequency: 'monthly' },
-    { url: `${base}/vs/luzia`,     lastModified: now, priority: 0.8,  changeFrequency: 'monthly' },
-    { url: `${base}/login`,        lastModified: now, priority: 0.7,  changeFrequency: 'monthly' },
-    { url: `${base}/blog`,         lastModified: now, priority: 0.9,  changeFrequency: 'weekly'  },
-    { url: `${base}/privacidade`,  lastModified: now, priority: 0.3,  changeFrequency: 'yearly'  },
-    { url: `${base}/termos`,       lastModified: now, priority: 0.3,  changeFrequency: 'yearly'  },
-    { url: `${base}/status`,       lastModified: now, priority: 0.4,  changeFrequency: 'daily'   },
+    { url: base,                   lastModified: d('2026-06-15'), priority: 1.0,  changeFrequency: 'weekly'  },
+    { url: `${base}/cadastro`,     lastModified: d('2026-06-10'), priority: 0.9,  changeFrequency: 'monthly' },
+    { url: `${base}/corretores`,   lastModified: d('2026-06-15'), priority: 0.9,  changeFrequency: 'monthly' },
+    { url: `${base}/advogados`,    lastModified: d('2026-06-15'), priority: 0.9,  changeFrequency: 'monthly' },
+    { url: `${base}/vendas`,       lastModified: d('2026-06-15'), priority: 0.9,  changeFrequency: 'monthly' },
+    { url: `${base}/afiliados`,    lastModified: d('2026-06-16'), priority: 0.7,  changeFrequency: 'monthly' },
+    { url: `${base}/vs/viratexto`, lastModified: d('2026-05-20'), priority: 0.8,  changeFrequency: 'monthly' },
+    { url: `${base}/vs/luzia`,     lastModified: d('2026-05-20'), priority: 0.8,  changeFrequency: 'monthly' },
+    { url: `${base}/login`,        lastModified: d('2026-05-01'), priority: 0.7,  changeFrequency: 'monthly' },
+    { url: `${base}/blog`,         lastModified: now,             priority: 0.9,  changeFrequency: 'weekly'  },
+    { url: `${base}/privacidade`,  lastModified: d('2026-05-01'), priority: 0.3,  changeFrequency: 'yearly'  },
+    { url: `${base}/termos`,       lastModified: d('2026-05-01'), priority: 0.3,  changeFrequency: 'yearly'  },
+    { url: `${base}/status`,       lastModified: now,             priority: 0.4,  changeFrequency: 'daily'   },
   ];
 
   const blogRoutes: MetadataRoute.Sitemap = POSTS.map(post => ({

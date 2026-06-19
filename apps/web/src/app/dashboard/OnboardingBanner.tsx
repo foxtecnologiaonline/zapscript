@@ -108,8 +108,8 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
     } catch {}
   }, []);
 
-  /* Se tiver número conectado, não exibe */
-  if (hasNumber || dismissed) return null;
+  /* Só esconde quando os 3 passos estiverem completos (já transcreveu) */
+  if (hasTranscription || dismissed) return null;
 
   function dismiss() {
     try { localStorage.setItem(STORAGE_KEY, '1'); } catch {}
@@ -122,6 +122,7 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
     { icon: '📱', label: 'Conectar número', done: hasNumber,     active: !hasNumber },
     { icon: '🎙', label: '1º áudio',        done: hasTranscription, active: hasNumber && !hasTranscription },
   ];
+  const stepIndex = (hasNumber ? 2 : 1); // passo atual em que o usuário está (1, 2 ou 3)
 
   return (
     <>
@@ -158,13 +159,13 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
             <div>
               <div className="text-xs font-bold uppercase tracking-widest mb-0.5"
                 style={{ color: 'rgb(var(--color-primary))' }}>
-                Quase lá!
+                Passo {stepIndex}/3 — Quase lá!
               </div>
               <h2 className="text-base font-bold text-brand-text leading-snug">
-                Conecte seu WhatsApp e comece a transcrever
+                {hasNumber ? 'Envie seu primeiro áudio de teste' : 'Conecte seu WhatsApp e comece a transcrever'}
               </h2>
               <p className="text-xs text-brand-text-secondary mt-0.5">
-                Leva menos de 5 minutos. Sem configuração complexa.
+                {hasNumber ? 'Mande qualquer áudio para o número conectado e veja a transcrição chegar.' : 'Leva menos de 5 minutos. Sem configuração complexa.'}
               </p>
             </div>
           </div>
@@ -213,17 +214,31 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row gap-2.5">
-            <button
-              onClick={() => setDrawerOpen(true)}
-              className="btn-primary flex items-center justify-center gap-2 py-3 text-sm font-semibold"
-              style={{ borderRadius: '0.875rem' }}
-            >
-              <span>📱</span>
-              Conectar meu WhatsApp agora
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            </button>
+            {hasNumber ? (
+              <Link
+                href="/dashboard/transcricoes?upload=1"
+                className="btn-primary flex items-center justify-center gap-2 py-3 text-sm font-semibold"
+                style={{ borderRadius: '0.875rem' }}
+              >
+                <span>🎙️</span>
+                Enviar áudio de teste agora
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              </Link>
+            ) : (
+              <button
+                onClick={() => setDrawerOpen(true)}
+                className="btn-primary flex items-center justify-center gap-2 py-3 text-sm font-semibold"
+                style={{ borderRadius: '0.875rem' }}
+              >
+                <span>📱</span>
+                Conectar meu WhatsApp agora
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              </button>
+            )}
             <Link
               href="/dashboard/numeros"
               className="btn-ghost flex items-center justify-center gap-2 py-3 text-sm"

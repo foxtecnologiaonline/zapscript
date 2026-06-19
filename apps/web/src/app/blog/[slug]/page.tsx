@@ -116,7 +116,11 @@ export default function BlogPost({ params }: { params: { slug: string } }) {
   const post = getPost(params.slug);
   if (!post) notFound();
 
-  const related = POSTS.filter(p => p.slug !== post.slug).slice(0, 2);
+  // Prioriza posts da mesma categoria (cluster) para fortalecer o silo de internal linking
+  const others       = POSTS.filter(p => p.slug !== post.slug);
+  const sameCategory = others.filter(p => p.category === post.category);
+  const rest          = others.filter(p => p.category !== post.category);
+  const related        = [...sameCategory, ...rest].slice(0, 2);
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text">
