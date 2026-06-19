@@ -29,6 +29,10 @@ model User {
   consentDocVersion           String?         // ex: "tos_v2.0,contrato_v2.0,pp_v2.0"
   deletedAt                   DateTime?       // Soft delete
   pseudonymizedAt             DateTime?       // LGPD: dados anonimizados
+  utmSource                   String?         // Atribuição de origem (primeiro toque) — ex: "google", "seo"
+  utmCampaign                 String?         // ex: "corretores", "advogados"
+  utmMedium                   String?         // ex: "cpc", "organic"
+  lifecycleEmailsSent         String[]        @default([]) // tags de e-mails de ciclo de vida já enviados (idempotência)
   createdAt                   DateTime        @default(now())
   updatedAt                   DateTime        @updatedAt
   subscription                Subscription?

@@ -17,6 +17,7 @@ import { prisma } from './lib/prisma';
 import { syncAllEvolutionConfigs } from './services/evolution-sync';
 import { startHeartbeat }         from './services/evolution-heartbeat';
 import { startHealthMonitor }     from './services/health-monitor';
+import { startLifecycleEmails }   from './services/lifecycle-emails';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -417,6 +418,11 @@ async function runAutoMigrations() {
     `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "documentHash" TEXT`,
     `DROP INDEX IF EXISTS "User_document_key"`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "User_documentHash_key" ON "User"("documentHash")`,
+    // Marketing: atribuição de origem (UTM) + idempotência de e-mails de ciclo de vida
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "utmSource" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "utmCampaign" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "utmMedium" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lifecycleEmailsSent" TEXT[] DEFAULT '{}'`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
@@ -531,6 +537,9 @@ async function start() {
 
     // ── Health Monitor — verifica todos os serviços a cada 1h, alerta e sugere otimizações ──
     startHealthMonitor(app.log);
+
+    // ── E-mails de ciclo de vida — ativação D1/D3 e upgrade por uso, 1x/dia ──
+    startLifecycleEmails(app.log);
 
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 

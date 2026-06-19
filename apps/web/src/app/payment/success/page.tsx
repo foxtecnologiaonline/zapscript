@@ -3,6 +3,7 @@ import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { track, trackOnce } from '@/lib/analytics';
+import { readUtm } from '@/lib/utm';
 
 function SuccessContent() {
   const router      = useRouter();
@@ -14,7 +15,13 @@ function SuccessContent() {
   // Conversão "assinatura" — dispara 1x por referência de pagamento (evita
   // duplo-disparo em refresh). Sem ref, dispara direto (página é one-shot).
   useEffect(() => {
-    const params = value != null ? { value, currency: 'BRL', transactionId: ref || undefined } : undefined;
+    const utm = readUtm();
+    const params = {
+      ...(value != null ? { value, currency: 'BRL', transactionId: ref || undefined } : {}),
+      ...(utm.source    ? { utmSource: utm.source }     : {}),
+      ...(utm.campaign  ? { utmCampaign: utm.campaign }  : {}),
+      ...(utm.medium    ? { utmMedium: utm.medium }      : {}),
+    };
     if (ref) trackOnce(`sub_${ref}`, 'subscribe', params);
     else     track('subscribe', params);
   }, [ref, value]);

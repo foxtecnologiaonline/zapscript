@@ -3,6 +3,7 @@ import './globals.css';
 import SupportWidget from '@/components/SupportWidget';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import Analytics from '@/components/Analytics';
+import UtmCapture from '@/components/UtmCapture';
 
 export const metadata: Metadata = {
   title: {
@@ -74,6 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <SupportWidget />
         </ThemeProvider>
         <Analytics />
+        <UtmCapture />
       </body>
     </html>
   );

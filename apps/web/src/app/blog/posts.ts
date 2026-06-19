@@ -613,7 +613,7 @@ export const POSTS: BlogPost[] = [
 <p>O pioneiro brasileiro. Lançado em 2022, o ViraTexto é um <strong>bot no WhatsApp</strong>: você encaminha o áudio para o número dele e recebe a transcrição de volta. Simples, gratuito e popular — processa mais de 7,5 milhões de áudios por mês.</p>
 
 <h3>LuzIA</h3>
-<p>Assistente de IA multifunction no WhatsApp. Além de transcrever áudios, a LuzIA responde perguntas, gera imagens e faz traduções. A transcrição é uma das suas funcionalidades — não o foco principal.</p>
+<p>Assistente de IA multifunction no WhatsApp. Além de transcrever áudios, a LuzIA responde perguntas, gera imagens e faz traduções. A transcrição é uma das suas funcionalidades — não o foco principal. Veja o <a href="/vs/luzia">comparativo detalhado ZapScript vs LuzIA</a>.</p>
 
 <h3>ZapScript</h3>
 <p>Solução especializada em transcrição + resumo automático. Diferente dos outros, o ZapScript <strong>se conecta ao seu número</strong> e transcreve automaticamente todos os áudios — sem precisar encaminhar nada. O foco é produtividade profissional e privacidade.</p>

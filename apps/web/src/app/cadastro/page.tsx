@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { track } from '@/lib/analytics';
 import { captureAffiliateFromUrl, readAffiliateCode, clearAffiliateCode } from '@/lib/affiliate';
+import { readUtm } from '@/lib/utm';
 
 function CadastroForm() {
   const router       = useRouter();
@@ -58,6 +59,7 @@ function CadastroForm() {
 
     setLoading(true);
     try {
+      const utm = readUtm();
       const res = await api.post<{ token: string }>('/auth/register', {
         name:       form.name,
         email:      form.email,
@@ -70,8 +72,11 @@ function CadastroForm() {
         ...(inviteCode    ? { inviteCode }    : {}),
         ...(referralCode  ? { referralCode }  : {}),
         ...(affiliateCode ? { affiliateCode } : {}),
+        ...(utm.source    ? { utmSource: utm.source }     : {}),
+        ...(utm.campaign  ? { utmCampaign: utm.campaign }  : {}),
+        ...(utm.medium    ? { utmMedium: utm.medium }      : {}),
       });
-      track('signup');
+      track('signup', { utmSource: utm.source, utmCampaign: utm.campaign, utmMedium: utm.medium });
       // Opção A: login automático — o usuário já entra usando o ZapScript.
       // A verificação de e-mail e o CPF são exigidos só na assinatura.
       if (res?.token) {
@@ -109,6 +114,21 @@ function CadastroForm() {
               <strong className="text-brand-primary">Confirmar meu e-mail</strong>{' '}
               para ativar sua conta.<br />O link expira em 24 horas.
             </p>
+            {(() => {
+              const now = new Date();
+              if (now.getFullYear() !== 2026 || now.getMonth() !== 5) return null;
+              const daysLeft = Math.ceil((new Date(2026, 6, 1).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+              return (
+                <div className="rounded-xl px-4 py-3 mb-4 text-left"
+                  style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.2)' }}>
+                  <p className="text-xs text-brand-text leading-relaxed">
+                    <span className="font-bold text-brand-primary">🔥 Oferta de junho:</span>{' '}
+                    confirme seu e-mail e assine o Pro por <strong>R$19,90 no 1º mês</strong> — termina em{' '}
+                    <strong>{daysLeft} dia{daysLeft !== 1 ? 's' : ''}</strong>.
+                  </p>
+                </div>
+              );
+            })()}
             <div className="space-y-2">
               <Link href="/login" className="btn-primary block w-full py-3 text-center text-sm">
                 Já confirmei — Fazer login

@@ -22,6 +22,9 @@ export const registerSchema = z.object({
   cbLgpd:       z.boolean().optional(),
   cbMarketing:  z.boolean().optional(),
   docVersion:   z.string().max(100).optional(),
+  utmSource:    z.string().max(100).optional(),
+  utmCampaign:  z.string().max(100).optional(),
+  utmMedium:    z.string().max(100).optional(),
 });
 
 export const loginSchema = z.object({

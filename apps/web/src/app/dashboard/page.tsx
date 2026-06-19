@@ -84,6 +84,27 @@ export default function DashboardPage() {
         <p className="text-sm text-brand-text-secondary font-light mt-1">Visão geral da sua operação</p>
       </div>
 
+      {/* ── Urgência da promo de junho (Free → Pro) ── */}
+      {(() => {
+        const now = new Date();
+        const junePromo = now.getFullYear() === 2026 && now.getMonth() === 5 && stats?.planName === 'free';
+        if (!junePromo) return null;
+        const daysLeft = Math.ceil((new Date(2026, 6, 1).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        return (
+          <Link href="/dashboard/plano"
+            className="flex items-center gap-3 rounded-xl px-4 py-3 mb-6 hover:opacity-90 transition-opacity"
+            style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.12), rgba(245,158,11,.08))', border: '1px solid rgba(16,185,129,.25)' }}>
+            <span className="text-lg flex-shrink-0">🔥</span>
+            <p className="text-xs text-brand-text flex-1">
+              <span className="font-bold text-brand-primary">Oferta de junho:</span>{' '}
+              assine o Pro por <strong>R$19,90 no 1º mês</strong> (depois R$39,90/mês) — termina em{' '}
+              <strong>{daysLeft} dia{daysLeft !== 1 ? 's' : ''}</strong>.
+            </p>
+            <span className="text-brand-primary text-xs font-bold flex-shrink-0">Aproveitar →</span>
+          </Link>
+        );
+      })()}
+
       {/* ── Onboarding Banner (até conectar 1º número) ── */}
       <OnboardingBanner
         hasNumber={(stats?.activeNumbers ?? 0) > 0}

@@ -51,10 +51,19 @@ declare global {
 }
 
 /** Dispara um evento de funil para todas as plataformas configuradas. */
-export function track(event: FunnelEvent, params?: { value?: number; currency?: string; transactionId?: string }) {
+export function track(event: FunnelEvent, params?: {
+  value?: number; currency?: string; transactionId?: string;
+  utmSource?: string; utmCampaign?: string; utmMedium?: string;
+}) {
   if (typeof window === 'undefined') return;
   const value = params?.value;
   const currency = params?.currency || 'BRL';
+  // Dimensões de origem — permitem segmentar conversão por LP/campanha no GA4/Ads
+  const utmDims = {
+    ...(params?.utmSource   ? { campaign_source:   params.utmSource }   : {}),
+    ...(params?.utmCampaign ? { campaign_name:     params.utmCampaign } : {}),
+    ...(params?.utmMedium   ? { campaign_medium:   params.utmMedium }   : {}),
+  };
 
   try {
     // GA4
@@ -62,6 +71,7 @@ export function track(event: FunnelEvent, params?: { value?: number; currency?: 
       window.gtag('event', GA4_EVENT[event], {
         ...(value != null ? { value, currency } : {}),
         ...(params?.transactionId ? { transaction_id: params.transactionId } : {}),
+        ...utmDims,
       });
     }
     // Google Ads — conversão com label dedicado
@@ -76,6 +86,7 @@ export function track(event: FunnelEvent, params?: { value?: number; currency?: 
     if (META_PIXEL_ID && window.fbq) {
       window.fbq('track', META_EVENT[event], {
         ...(value != null ? { value, currency } : {}),
+        ...utmDims,
       });
     }
   } catch { /* nunca quebrar a UI por causa de tracking */ }

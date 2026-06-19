@@ -136,6 +136,7 @@ export default async function authRoutes(app: FastifyInstance) {
     email: string; password: string; name?: string; phone?: string; inviteCode?: string;
     referralCode?: string; affiliateCode?: string;
     cbTos?: boolean; cbContrato?: boolean; cbLgpd?: boolean; cbMarketing?: boolean; docVersion?: string;
+    utmSource?: string; utmCampaign?: string; utmMedium?: string;
   } }>(
     '/register',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
@@ -144,7 +145,7 @@ export default async function authRoutes(app: FastifyInstance) {
       const v = validateRequest(registerSchema)(req.body);
       if (!v.valid) return reply.code(400).send({ error: v.error });
 
-      const { email, password, name, phone, inviteCode, referralCode, affiliateCode, cbTos, cbContrato, cbLgpd, cbMarketing, docVersion } = req.body;
+      const { email, password, name, phone, inviteCode, referralCode, affiliateCode, cbTos, cbContrato, cbLgpd, cbMarketing, docVersion, utmSource, utmCampaign, utmMedium } = req.body;
       if (!email || !password) return reply.code(400).send({ error: 'email e password obrigatórios' });
       // Validar consentimentos obrigatórios (LGPD Art. 8º §1º)
       if (!cbTos)      return reply.code(400).send({ error: 'Aceite dos Termos de Serviço é obrigatório.' });
@@ -229,6 +230,9 @@ export default async function authRoutes(app: FastifyInstance) {
               privacyPolicyAcceptedAt: cbLgpd     ? now : undefined,
               marketingConsentAt:      cbMarketing ? now : undefined,
               consentDocVersion:       docVersion || 'tos_v2.0,contrato_v2.0,pp_v2.0',
+              utmSource:               utmSource?.trim()   || undefined,
+              utmCampaign:             utmCampaign?.trim() || undefined,
+              utmMedium:               utmMedium?.trim()   || undefined,
             },
           });
           await tx.subscription.create({
