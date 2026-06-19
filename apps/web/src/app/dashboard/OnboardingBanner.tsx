@@ -159,13 +159,15 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
             <div>
               <div className="text-xs font-bold uppercase tracking-widest mb-0.5"
                 style={{ color: 'rgb(var(--color-primary))' }}>
-                Passo {stepIndex}/3 — Quase lá!
+                {hasNumber ? 'Passo 3/3 — Tudo pronto!' : 'Passo 2/3 — Quase lá!'}
               </div>
               <h2 className="text-base font-bold text-brand-text leading-snug">
-                {hasNumber ? 'Envie seu primeiro áudio de teste' : 'Conecte seu WhatsApp e comece a transcrever'}
+                {hasNumber ? 'Conexão concluída com sucesso! 🎉' : 'Conecte seu WhatsApp e comece a transcrever'}
               </h2>
               <p className="text-xs text-brand-text-secondary mt-0.5">
-                {hasNumber ? 'Mande qualquer áudio para o número conectado e veja a transcrição chegar.' : 'Leva menos de 5 minutos. Sem configuração complexa.'}
+                {hasNumber
+                  ? 'Agora, ao receber áudios no número conectado, a conversão em texto e o resumo são feitos automaticamente. Envie um áudio de teste para conferir.'
+                  : 'Leva menos de 5 minutos. Sem configuração complexa.'}
               </p>
             </div>
           </div>
