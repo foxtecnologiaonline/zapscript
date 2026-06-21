@@ -758,7 +758,7 @@ function splitText(text: string, firstMax: number, restMax: number): string[] {
  *   🎙️ *Áudio de [nome]* • ⏱ [dur]
  *   📋 *Resumo* / bullets
  *   📝 *Transcrição*
- *   _ZapScript.me_ ⚡
+ *   _Gerado por_ → *ZapScript.me* ⚡
  *
  * Modo Privado (Opção B):
  *   🔒 *Privado* | *[nome]* → você
@@ -766,7 +766,7 @@ function splitText(text: string, firstMax: number, restMax: number): string[] {
  *   📋 *Resumo* / bullets
  *   📝 *Transcrição*
  *   ↩️ Responder: wa.me/[phone]
- *   _ZapScript.me_ ⚡
+ *   _Gerado por_ → *ZapScript.me* ⚡
  */
 function buildMessage(
   bullets:      string[],
@@ -829,7 +829,7 @@ function buildMessage(
   const replyLink = replyTarget
     ? `\n\n↩️ Responder: wa.me/${replyTarget.replace(/\D/g, '')}`
     : '';
-  const footer = `${replyLink}\n\n_ZapScript.me_ ⚡`;
+  const footer = `${replyLink}\n\n_Gerado por_ → *ZapScript.me* ⚡`;
 
   // ── Transcrição COMPLETA, dividida em mensagens se exceder o teto do WhatsApp ──
   // A 1ª mensagem carrega cabeçalho + resumo + início da transcrição; as demais
