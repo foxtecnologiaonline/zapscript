@@ -1,10 +1,15 @@
 import { prisma } from '../lib/prisma';
 import { runSupportAgent, Canal } from './support-agent';
+import { sendOnChannel, sendWelcome, notifyAdminEscalation } from './support-send';
 import { io } from '../index';
 
 /**
  * Ingestão de uma mensagem recebida (qualquer canal) → cria SupportAtendimento,
- * roda o agente e persiste o rascunho para aprovação. Idempotente por canalExternoId.
+ * roda o agente e decide automaticamente:
+ *   - confiança alta e sem escalação → BOT RESPONDE SOZINHO (status "sent")
+ *   - escalação/baixa confiança      → fica pendente + avisa o admin no WhatsApp
+ * A fila de aprovação no painel continua existindo como rede de segurança
+ * (edição manual, reenvio, métricas) — mas não é mais o único caminho de envio.
  */
 export interface IntakeInput {
   canal: Canal;
@@ -62,6 +67,14 @@ export async function intakeMessage(input: IntakeInput, log?: any) {
     if (u) clienteUserId = u.id;
   }
 
+  // É a primeira mensagem desta conversa? (define se manda a saudação inicial)
+  const isFirstInThread = input.threadId
+    ? !(await prisma.supportAtendimento.findFirst({
+        where: { threadId: input.threadId },
+        select: { id: true },
+      }).catch(() => null))
+    : true;
+
   // Cria o atendimento em estado de processamento
   const atendimento = await prisma.supportAtendimento.create({
     data: {
@@ -77,6 +90,11 @@ export async function intakeMessage(input: IntakeInput, log?: any) {
     },
   });
 
+  // Mensagem inicial (saudação) — só na primeira mensagem da conversa, best-effort.
+  if (isFirstInThread) {
+    sendWelcome(atendimento).catch(() => null);
+  }
+
   // Roda o agente (classifica + gera rascunho)
   try {
     const historico = await buildHistorico(input.threadId, atendimento.id);
@@ -87,7 +105,13 @@ export async function intakeMessage(input: IntakeInput, log?: any) {
     });
 
     const c = result.classificacao;
-    await prisma.supportAtendimento.update({
+    const isSpam = c.categoria === 'spam';
+    // Auto-resolve: confiança alta e sem escalação → o bot responde sozinho.
+    // Casos sensíveis (cancelamento/cobrança/reclamação grave/baixa confiança) ficam
+    // pendentes na fila + avisam o admin — nunca são respondidos automaticamente.
+    const autoResolve = !isSpam && !c.requer_escalacao;
+
+    let atualizado = await prisma.supportAtendimento.update({
       where: { id: atendimento.id },
       data: {
         categoria: c.categoria,
@@ -99,9 +123,31 @@ export async function intakeMessage(input: IntakeInput, log?: any) {
         rascunhoAgente: result.rascunho,
         contextoUsado: result.contextoUsado,
         sugestaoFaq: c.sugestao_faq,
-        status: c.categoria === 'spam' ? 'spam' : 'pending_approval',
+        status: isSpam ? 'spam' : 'pending_approval',
       },
     });
+
+    if (autoResolve) {
+      try {
+        await sendOnChannel(atualizado, result.rascunho);
+        const now = new Date();
+        atualizado = await prisma.supportAtendimento.update({
+          where: { id: atendimento.id },
+          data: { respostaFinal: result.rascunho, status: 'sent', aprovadoEm: now, enviadoEm: now, resolvidoEm: now },
+        });
+        log?.info?.(`[Suporte] 🤖 Atendimento ${atendimento.id} resolvido automaticamente (conf=${c.confianca_resposta})`);
+      } catch (sendErr: any) {
+        // Falha ao enviar: não perder o caso — volta para a fila e avisa o admin.
+        log?.warn?.(`[Suporte] Falha ao auto-enviar (${atendimento.id}): ${sendErr.message}`);
+        atualizado = await prisma.supportAtendimento.update({
+          where: { id: atendimento.id },
+          data: { requerEscalacao: true },
+        });
+        notifyAdminEscalation(atualizado, `Falha ao enviar resposta automática: ${sendErr.message}`, log).catch(() => null);
+      }
+    } else if (!isSpam) {
+      notifyAdminEscalation(atualizado, c.requer_escalacao ? 'Caso sensível ou baixa confiança — requer humano' : 'Spam suspeito', log).catch(() => null);
+    }
 
     // Sugestão de FAQ → fila de sugestões
     if (c.sugestao_faq) {
@@ -123,17 +169,19 @@ export async function intakeMessage(input: IntakeInput, log?: any) {
       categoria: c.categoria,
       sentimento: c.sentimento,
       requerEscalacao: c.requer_escalacao,
+      autoResolvido: autoResolve,
       clienteNome: input.clienteNome,
     });
 
-    log?.info?.(`[Suporte] Atendimento ${atendimento.id} classificado: ${c.categoria}/${c.prioridade} conf=${c.confianca_resposta}`);
+    log?.info?.(`[Suporte] Atendimento ${atendimento.id} classificado: ${c.categoria}/${c.prioridade} conf=${c.confianca_resposta} auto=${autoResolve}`);
   } catch (err: any) {
     // Falha do agente não perde a mensagem: fica na fila para resposta manual
-    await prisma.supportAtendimento.update({
+    const atualizado = await prisma.supportAtendimento.update({
       where: { id: atendimento.id },
       data: { requerEscalacao: true, prioridade: 'alta', contextoUsado: `Falha do agente: ${err.message}` },
-    }).catch(() => null);
+    }).catch(() => atendimento);
     io.to('admin:suporte').emit('suporte:novo', { id: atendimento.id, canal: input.canal, requerEscalacao: true });
+    notifyAdminEscalation(atualizado, `O agente falhou ao processar: ${err.message}`, log).catch(() => null);
     log?.error?.({ err: err.message }, '[Suporte] Agente falhou — atendimento marcado para resposta manual');
   }
 

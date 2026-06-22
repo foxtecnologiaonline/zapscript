@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 
 /* ── Tipos ─────────────────────────────────────────────── */
-export type Tab = 'dashboard' | 'metas' | 'suporte' | 'monitoramento' | 'comunicacao' | 'usuarios' | 'financeiro' | 'afiliados' | 'leads';
+export type Tab = 'dashboard' | 'metas' | 'atendimento' | 'suporte' | 'monitoramento' | 'comunicacao' | 'usuarios' | 'financeiro' | 'afiliados' | 'leads';
 
 /* ── Constantes ────────────────────────────────────────── */
 const API  = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -763,6 +763,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
             {([
               ['dashboard',     '📊', 'Dashboard'],
               ['metas',         '🎯', 'Metas'],
+              ['atendimento',   '🤖', 'Atendimento'],
               ['suporte',       '🎧', 'Suporte'],
               ['monitoramento', '🖥️', 'Monitoramento'],
               ['comunicacao',   '📣', 'Comunicação'],
@@ -855,6 +856,11 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
         {/* ═══ METAS — atuais semanais e mensais ═══ */}
         {tab === 'metas' && (
           <MetasTab apiBase={API} token={token} notify={notify} />
+        )}
+
+        {/* ═══ ATENDIMENTO — Agente de Suporte (fila de aprovação) ═══ */}
+        {tab === 'atendimento' && (
+          <SupportAgentTab apiBase={API} token={token} notify={notify} />
         )}
 
         {/* ═══ USUÁRIOS (lista sintética + seção Testers) ═══ */}
@@ -3757,6 +3763,369 @@ Equipe ZapScript`,
 /* ══════════════════════════════════════════════════════════
    METAS — atuais semanais/mensais + metas (targets) editáveis
 ══════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   ATENDIMENTO — Agente de Suporte (fila de aprovação)
+   Regra de ouro: nada é enviado ao cliente sem aprovação humana.
+══════════════════════════════════════════════════════════ */
+
+const SUP_CANAL: Record<string, { icon: string; label: string }> = {
+  whatsapp: { icon: '💬', label: 'WhatsApp' },
+  email:    { icon: '✉️', label: 'E-mail' },
+  chat:     { icon: '🌐', label: 'Chat' },
+};
+const SUP_PRIO_CLS: Record<string, string> = {
+  urgente: 'text-red-400 bg-red-400/10 border-red-400/20',
+  alta:    'text-orange-400 bg-orange-400/10 border-orange-400/20',
+  media:   'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+  baixa:   'text-teal-400 bg-teal-400/10 border-teal-400/20',
+};
+const SUP_STATUS_CLS: Record<string, string> = {
+  pending_approval: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+  sent:             'text-teal-400 bg-teal-400/10 border-teal-400/20',
+  escalated:        'text-orange-400 bg-orange-400/10 border-orange-400/20',
+  spam:             'text-gray-400 bg-gray-400/10 border-gray-400/20',
+};
+const SUP_STATUS_LABEL: Record<string, string> = {
+  pending_approval: 'Aguardando', sent: 'Enviado', escalated: 'Escalado', spam: 'Spam',
+};
+
+function SupportAgentTab({ apiBase, token, notify }: {
+  apiBase: string; token: string; notify: (t: string, ty?: 'ok' | 'err' | 'warn') => void;
+}) {
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+  type View = 'fila' | 'base' | 'faq';
+  const [view, setView]       = useState<View>('fila');
+  const [statusF, setStatusF] = useState('pending_approval');
+  const [items, setItems]     = useState<any[]>([]);
+  const [urgentes, setUrgentes] = useState(0);
+  const [metrics, setMetrics] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [sel, setSel]         = useState<any>(null);     // atendimento aberto no card
+  const [draft, setDraft]     = useState('');            // texto editável da resposta
+  const [instr, setInstr]     = useState('');            // instrução p/ regenerar
+  const [busy, setBusy]       = useState(false);
+
+  // Base de conhecimento
+  const [kb, setKb]           = useState<any[]>([]);
+  const [kbForm, setKbForm]   = useState({ titulo: '', conteudo: '', categoria: '' });
+  // Sugestões de FAQ
+  const [faqs, setFaqs]       = useState<any[]>([]);
+
+  async function api(path: string, opts: RequestInit = {}) {
+    const res = await fetch(`${apiBase}/sys/g5r8t2/suporte${path}`, { headers: h, ...opts });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || `Erro ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async function loadFila() {
+    setLoading(true);
+    try {
+      const [q, m] = await Promise.all([
+        api(`/queue?status=${encodeURIComponent(statusF)}&limit=100`),
+        api('/metrics'),
+      ]);
+      setItems(q.items || []);
+      setUrgentes(q.urgentes || 0);
+      setMetrics(m);
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setLoading(false); }
+  }
+  async function loadKb() {
+    setLoading(true);
+    try { setKb(await api('/knowledge')); }
+    catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setLoading(false); }
+  }
+  async function loadFaqs() {
+    setLoading(true);
+    try { setFaqs(await api('/faq-suggestions?status=pending')); }
+    catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => {
+    if (view === 'fila') loadFila();
+    else if (view === 'base') loadKb();
+    else loadFaqs();
+    /* eslint-disable-next-line */
+  }, [view, statusF]);
+
+  function openCard(at: any) {
+    setSel(at);
+    setDraft((at.respostaFinal || at.rascunhoAgente || '').trim());
+    setInstr('');
+  }
+
+  async function act(path: string, body?: any, successMsg?: string) {
+    setBusy(true);
+    try {
+      await api(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
+      if (successMsg) notify(successMsg, 'ok');
+      setSel(null);
+      await loadFila();
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setBusy(false); }
+  }
+
+  async function regenerate() {
+    if (!sel) return;
+    setBusy(true);
+    try {
+      const r = await api(`/atendimento/${sel.id}/regenerate`, {
+        method: 'POST', body: JSON.stringify({ instrucao: instr || undefined }),
+      });
+      const at = r.atendimento;
+      setSel(at);
+      setDraft((at.rascunhoAgente || '').trim());
+      notify('🔄 Nova versão gerada', 'ok');
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setBusy(false); }
+  }
+
+  async function addKb(e: React.FormEvent) {
+    e.preventDefault();
+    if (!kbForm.titulo.trim() || !kbForm.conteudo.trim()) return;
+    setBusy(true);
+    try {
+      await api('/knowledge', { method: 'POST', body: JSON.stringify(kbForm) });
+      notify('✅ Tópico adicionado', 'ok');
+      setKbForm({ titulo: '', conteudo: '', categoria: '' });
+      await loadKb();
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setBusy(false); }
+  }
+  async function delKb(id: string) {
+    setBusy(true);
+    try { await api(`/knowledge/${id}`, { method: 'DELETE' }); await loadKb(); }
+    catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setBusy(false); }
+  }
+  async function faqAction(id: string, action: 'approve' | 'ignore') {
+    setBusy(true);
+    try {
+      await api(`/faq-suggestions/${id}/${action}`, { method: 'POST' });
+      notify(action === 'approve' ? '✅ Sugestão aprovada' : 'Sugestão ignorada', 'ok');
+      await loadFaqs();
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setBusy(false); }
+  }
+
+  const subTabs: [View, string][] = [['fila', '📥 Fila'], ['base', '📚 Base'], ['faq', '💡 Sugestões FAQ']];
+
+  return (
+    <div className="space-y-5">
+      {/* Sub-navegação + métricas */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex gap-1.5 bg-[#0d1c19] border border-[rgba(16,185,129,.08)] rounded-xl p-1.5">
+          {subTabs.map(([v, lbl]) => (
+            <button key={v} onClick={() => { setSel(null); setView(v); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                view === v ? 'bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.2)]'
+                           : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'}`}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+        {view === 'fila' && (
+          <Btn variant="ghost" onClick={loadFila} disabled={loading}>{loading ? '⟳' : '⟳ Atualizar'}</Btn>
+        )}
+      </div>
+
+      {/* ═══════════ FILA DE APROVAÇÃO ═══════════ */}
+      {view === 'fila' && (
+        <>
+          {metrics && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <MiniStat label="Aguardando" value={items.filter(i => i.status === 'pending_approval').length || (statusF === 'pending_approval' ? items.length : 0)} color="#fbbf24" />
+              <MiniStat label="Urgentes" value={urgentes} color="#f87171" />
+              <MiniStat label="Taxa de edição" value={`${metrics.taxaEdicao}%`} color="#60a5fa" />
+              <MiniStat label="Taxa de escalação" value={`${metrics.taxaEscalacao}%`} color="#fb923c" />
+            </div>
+          )}
+
+          {/* Filtro de status */}
+          <div className="flex gap-1.5 flex-wrap">
+            {(['pending_approval', 'escalated', 'sent', 'spam'] as const).map(s => (
+              <button key={s} onClick={() => setStatusF(s)}
+                className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors ${
+                  statusF === s ? SUP_STATUS_CLS[s] : 'text-[rgba(16,185,129,.35)] border-[rgba(16,185,129,.12)] hover:text-[#6ee7b7]'}`}>
+                {SUP_STATUS_LABEL[s]}
+              </button>
+            ))}
+          </div>
+
+          {loading ? (
+            <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando fila...</div>
+          ) : items.length === 0 ? (
+            <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhum atendimento em "{SUP_STATUS_LABEL[statusF] || statusF}".</div>
+          ) : (
+            <div className="space-y-3">
+              {items.map(at => {
+                const canal = SUP_CANAL[at.canal] || { icon: '❓', label: at.canal };
+                const aberto = sel?.id === at.id;
+                return (
+                  <div key={at.id} className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
+                    {/* Cabeçalho do atendimento */}
+                    <button onClick={() => (aberto ? setSel(null) : openCard(at))}
+                      className="w-full text-left p-4 hover:bg-[rgba(16,185,129,.03)] transition-colors">
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm">{canal.icon}</span>
+                          <span className="text-sm font-bold text-[#d1fae5]">{at.clienteNome || at.clienteWhatsapp || at.clienteEmail || 'Cliente'}</span>
+                          {at.prioridade && <Badge label={at.prioridade} cls={SUP_PRIO_CLS[at.prioridade]} />}
+                          {at.categoria && <Badge label={at.categoria} cls="text-[rgba(16,185,129,.7)] bg-[rgba(16,185,129,.08)] border-[rgba(16,185,129,.15)]" />}
+                          {at.requerEscalacao && <Badge label="escalar" cls="text-orange-400 bg-orange-400/10 border-orange-400/20" />}
+                          {at.clienteUserId && <Badge label="cliente" cls="text-purple-400 bg-purple-400/10 border-purple-400/20" />}
+                        </div>
+                        <span className="text-[10px] text-[rgba(16,185,129,.35)]">{fmtFull(at.criadoEm)}</span>
+                      </div>
+                      <div className="text-xs text-[rgba(16,185,129,.6)] mt-2 line-clamp-2">{at.mensagemOriginal}</div>
+                      {typeof at.confiancaResposta === 'number' && (
+                        <div className="text-[10px] text-[rgba(16,185,129,.35)] mt-1">confiança do rascunho: {at.confiancaResposta}%</div>
+                      )}
+                    </button>
+
+                    {/* Card expandido */}
+                    {aberto && (
+                      <div className="border-t border-[rgba(16,185,129,.10)] p-4 space-y-3 bg-[#0a1714]">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wide text-[rgba(16,185,129,.4)] mb-1">Mensagem do cliente</div>
+                          <div className="text-xs text-[#d1fae5] whitespace-pre-wrap bg-[#132621] rounded-lg p-3">{at.mensagemOriginal}</div>
+                        </div>
+                        {at.contextoUsado && (
+                          <details className="text-[10px] text-[rgba(16,185,129,.4)]">
+                            <summary className="cursor-pointer">contexto usado (base de conhecimento)</summary>
+                            <div className="whitespace-pre-wrap mt-1 bg-[#132621] rounded-lg p-2">{at.contextoUsado}</div>
+                          </details>
+                        )}
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wide text-[rgba(16,185,129,.4)] mb-1">Resposta (rascunho do agente — edite se quiser)</div>
+                          <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={6}
+                            disabled={busy}
+                            className="w-full text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded-lg px-3 py-2 text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.4)] resize-y" />
+                        </div>
+
+                        {/* Regenerar com instrução */}
+                        <div className="flex gap-2">
+                          <input value={instr} onChange={e => setInstr(e.target.value)}
+                            placeholder="Instrução p/ refazer (ex: mais curto, mais formal...)" disabled={busy}
+                            className="flex-1 text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded-lg px-3 py-2 text-[#d1fae5] outline-none" />
+                          <Btn variant="ghost" onClick={regenerate} disabled={busy}>🔄 Refazer</Btn>
+                        </div>
+
+                        {/* Ações */}
+                        {at.status === 'pending_approval' || at.status === 'escalated' ? (
+                          <div className="flex gap-2 flex-wrap pt-1">
+                            <Btn variant="primary" onClick={() => act(`/atendimento/${at.id}/approve`, { resposta: draft }, '✅ Resposta enviada ao cliente')} disabled={busy || !draft.trim()}>
+                              ✅ Aprovar e enviar
+                            </Btn>
+                            <Btn variant="ghost" onClick={() => act(`/atendimento/${at.id}/edit`, { resposta: draft }, '💾 Rascunho salvo')} disabled={busy || !draft.trim()}>
+                              💾 Salvar sem enviar
+                            </Btn>
+                            <Btn variant="warn" onClick={() => act(`/atendimento/${at.id}/escalate`, undefined, '↗️ Escalado para humano')} disabled={busy}>
+                              ↗️ Escalar
+                            </Btn>
+                            <Btn variant="danger" onClick={() => act(`/atendimento/${at.id}/spam`, undefined, 'Marcado como spam')} disabled={busy}>
+                              🚫 Spam
+                            </Btn>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-[rgba(16,185,129,.4)]">
+                            <Badge label={SUP_STATUS_LABEL[at.status] || at.status} cls={SUP_STATUS_CLS[at.status]} />
+                            {at.enviadoEm && <span className="ml-2">enviado em {fmtFull(at.enviadoEm)}</span>}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ═══════════ BASE DE CONHECIMENTO ═══════════ */}
+      {view === 'base' && (
+        <div className="space-y-4">
+          <form onSubmit={addKb} className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4 space-y-2">
+            <div className="text-sm font-bold text-[#d1fae5]">Adicionar tópico à base</div>
+            <div className="flex gap-2 flex-wrap">
+              <input value={kbForm.titulo} onChange={e => setKbForm(p => ({ ...p, titulo: e.target.value }))}
+                placeholder="Título" className="flex-1 min-w-[180px] text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded-lg px-3 py-2 text-[#d1fae5] outline-none" />
+              <input value={kbForm.categoria} onChange={e => setKbForm(p => ({ ...p, categoria: e.target.value }))}
+                placeholder="Categoria (opcional)" className="w-48 text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded-lg px-3 py-2 text-[#d1fae5] outline-none" />
+            </div>
+            <textarea value={kbForm.conteudo} onChange={e => setKbForm(p => ({ ...p, conteudo: e.target.value }))}
+              placeholder="Conteúdo do tópico" rows={3}
+              className="w-full text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded-lg px-3 py-2 text-[#d1fae5] outline-none resize-y" />
+            <Btn variant="primary" onClick={() => {}} disabled={busy || !kbForm.titulo.trim() || !kbForm.conteudo.trim()}>➕ Adicionar</Btn>
+          </form>
+
+          {loading ? (
+            <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando base...</div>
+          ) : kb.length === 0 ? (
+            <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Base vazia — rode o seed ou adicione tópicos.</div>
+          ) : (
+            <div className="space-y-2">
+              {kb.map(t => (
+                <div key={t.id} className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-[#d1fae5]">{t.titulo}</span>
+                      {t.categoria && <Badge label={t.categoria} cls="text-[rgba(16,185,129,.7)] bg-[rgba(16,185,129,.08)] border-[rgba(16,185,129,.15)]" />}
+                      <span className="text-[10px] text-[rgba(16,185,129,.35)]">usado {t.vezesUtilizado || 0}×</span>
+                    </div>
+                    <Btn variant="danger" onClick={() => delKb(t.id)} disabled={busy}>🗑️</Btn>
+                  </div>
+                  <div className="text-xs text-[rgba(16,185,129,.6)] mt-2 whitespace-pre-wrap">{t.conteudo}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════ SUGESTÕES DE FAQ ═══════════ */}
+      {view === 'faq' && (
+        loading ? (
+          <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Carregando sugestões...</div>
+        ) : faqs.length === 0 ? (
+          <div className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhuma sugestão pendente. O agente propõe novos tópicos conforme atende.</div>
+        ) : (
+          <div className="space-y-2">
+            {faqs.map(f => (
+              <div key={f.id} className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4">
+                <div className="flex items-center gap-2 flex-wrap mb-2">
+                  <span className="text-sm font-bold text-[#d1fae5]">{f.tituloSugerido}</span>
+                  {f.categoria && <Badge label={f.categoria} cls="text-[rgba(16,185,129,.7)] bg-[rgba(16,185,129,.08)] border-[rgba(16,185,129,.15)]" />}
+                </div>
+                <div className="text-xs text-[rgba(16,185,129,.6)] whitespace-pre-wrap mb-3">{f.conteudoSugerido}</div>
+                <div className="flex gap-2">
+                  <Btn variant="primary" onClick={() => faqAction(f.id, 'approve')} disabled={busy}>✅ Aprovar p/ base</Btn>
+                  <Btn variant="ghost" onClick={() => faqAction(f.id, 'ignore')} disabled={busy}>Ignorar</Btn>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function MiniStat({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) {
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4">
+      <div className="text-2xl font-black" style={{ color: color || '#10b981' }}>{value}</div>
+      <div className="text-[11px] text-[rgba(16,185,129,.4)] mt-1">{label}</div>
+    </div>
+  );
+}
+
 function MetasTab({ apiBase, token, notify }: {
   apiBase: string; token: string; notify: (t: string, ty?: 'ok' | 'err' | 'warn') => void;
 }) {

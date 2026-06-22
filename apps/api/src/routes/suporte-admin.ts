@@ -1,8 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
-import { whatsappAPI } from '../services/whatsapp-official';
-import { sendEmail } from '../lib/mailer';
+import { sendOnChannel } from '../services/support-send';
 import { runSupportAgent } from '../services/support-agent';
 import { io } from '../index';
 
@@ -25,26 +24,6 @@ const adminAuth = async (req: any, reply: any) => {
     return reply.code(401).send({ error: 'Unauthorized' });
   }
 };
-
-// Envia a resposta pelo canal de origem do atendimento.
-async function sendOnChannel(at: any, texto: string): Promise<void> {
-  if (at.canal === 'whatsapp') {
-    if (!at.clienteWhatsapp) throw new Error('Atendimento sem número de WhatsApp');
-    await whatsappAPI.sendMessage(at.clienteWhatsapp, texto);
-    return;
-  }
-  if (at.canal === 'email') {
-    if (!at.clienteEmail) throw new Error('Atendimento sem e-mail');
-    await sendEmail(at.clienteEmail, 'Re: seu contato com o ZapScript', texto.replace(/\n/g, '<br>'));
-    return;
-  }
-  if (at.canal === 'chat') {
-    // Chat do site: entrega via Socket.IO na sala da thread
-    io.to(`chat:${at.threadId}`).emit('suporte:resposta', { atendimentoId: at.id, texto });
-    return;
-  }
-  throw new Error(`Canal não suportado para envio: ${at.canal}`);
-}
 
 export default async function suporteAdminRoutes(app: FastifyInstance) {
   app.addHook('preHandler', adminAuth);
