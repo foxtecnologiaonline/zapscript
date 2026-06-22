@@ -245,6 +245,20 @@ export default function HomePage() {
             style={{ background: 'linear-gradient(90deg, rgba(var(--color-primary)/.4), rgba(var(--color-primary)/.1))' }} />
         </section>
 
+        {/* ══ INSIGHT — Áudio vs Texto ══ */}
+        <section className="px-5 pt-8 pb-2">
+          <div className="rounded-2xl p-5 text-center"
+            style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-primary)/.18)' }}>
+            <p className="font-display font-bold text-[15px] leading-snug">
+              Áudio é ótimo pra quem manda.{' '}
+              <span className="text-gradient">Pra quem recebe, ler é melhor.</span>
+            </p>
+            <p className="text-xs mt-2 font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Por isso o ZapScript transcreve cada áudio — você lê o texto e o resumo sem perder tempo nem contexto.
+            </p>
+          </div>
+        </section>
+
         {/* ══ FEATURES ══ */}
         <section className="relative z-10 py-10 px-5">
           <div className="mb-8" style={{ animation: 'fadeInUp .6s ease both' }}>
@@ -287,7 +301,10 @@ export default function HomePage() {
               Planos
             </span>
             <h2 className="font-display text-3xl font-bold mt-2 leading-tight tracking-tight">Escolha seu plano</h2>
-            <p className="text-sm mt-2 font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+            <p className="text-sm mt-2 font-medium" style={{ color: 'rgb(var(--color-primary))' }}>
+              Seu robô particular, convertendo áudio em texto 24 horas por dia.
+            </p>
+            <p className="text-sm mt-1 font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
               Comece grátis. Sem cartão de crédito.
             </p>
           </div>

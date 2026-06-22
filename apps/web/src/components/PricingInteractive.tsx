@@ -106,6 +106,11 @@ export function PricingInteractive() {
                   <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
                 </div>
               </div>
+              {plan.name === 'pro' && (
+                <div className="text-xs font-semibold mb-4" style={{ color: 'rgb(var(--color-primary))' }}>
+                  24h trabalhando por você, por apenas R$1,33 ao dia
+                </div>
+              )}
               <div className="flex flex-col gap-2 mb-5">
                 {plan.feats.map((f, fi) => (
                   <div key={fi} className="flex items-center gap-2">

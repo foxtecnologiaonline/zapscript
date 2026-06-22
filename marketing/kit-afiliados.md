@@ -15,7 +15,7 @@ https://zapscript.me/cadastro?aff=SEU_CODIGO
 > Pagamento via Pix nos dias 10 e 25 de cada mês.
 
 **Âncora de preço (use se alguém achar caro):**
-> R$39,90 ÷ 30 dias = R$1,33/dia — o robô do ZapScript fica de prontidão 24h, transcrevendo assim que o áudio chega.
+> 24h trabalhando por você, por apenas R$1,33 ao dia — o robô do ZapScript fica de prontidão o tempo todo, transcrevendo assim que o áudio chega (R$39,90 ÷ 30 dias).
 
 ---
 

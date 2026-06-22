@@ -263,6 +263,9 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
               <p className="text-center text-brand-primary text-sm font-semibold mt-4">~30 segundos para ler tudo ⚡</p>
             </div>
           </div>
+          <p className="text-center text-brand-muted text-sm mt-6 max-w-xl mx-auto">
+            Áudio é ótimo pra quem manda. <span className="text-white font-medium">Pra quem recebe, ler é melhor.</span>
+          </p>
         </div>
       </section>
 
@@ -418,6 +421,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
       <section className="py-12 px-4 bg-white/2 border-y border-white/5">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-2xl font-bold text-white text-center mb-3">Planos simples e transparentes</h2>
+          <p className="text-brand-primary text-center text-sm font-medium mb-1">Seu robô particular, convertendo áudio em texto 24 horas por dia.</p>
           <p className="text-brand-muted text-center mb-10">Comece grátis. Faça upgrade quando quiser.</p>
           <div className="grid sm:grid-cols-2 gap-4 max-w-xl mx-auto">
             {plans.map(plan => (
@@ -442,7 +446,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
                   <span className="text-brand-muted text-sm">{plan.period}</span>
                 </div>
                 {plan.name === 'Pro' && (
-                  <div className="text-xs font-medium text-brand-primary mb-3">= R$1,33/dia · 24h trabalhando por você</div>
+                  <div className="text-xs font-medium text-brand-primary mb-3">24h trabalhando por você, por apenas R$1,33 ao dia</div>
                 )}
                 <ul className="space-y-2 mb-6">
                   {plan.features.map(f => (
