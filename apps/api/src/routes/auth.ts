@@ -742,21 +742,20 @@ export default async function authRoutes(app: FastifyInstance) {
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado' });
 
-      // Nome é imutável após cadastro
-      if (name) {
-        return reply.code(400).send({
-          error: 'Nome não pode ser alterado após o cadastro. Entre em contato com suporte.'
-        });
+      const data: { name?: string; document?: string; documentHash?: string } = {};
+      let plainDoc: string | null = null;
+
+      // Nome — editável; valida apenas tamanho razoável
+      if (name !== undefined) {
+        const cleanName = name.trim();
+        if (cleanName.length < 2 || cleanName.length > 120) {
+          return reply.code(400).send({ error: 'Nome deve ter entre 2 e 120 caracteres.' });
+        }
+        data.name = cleanName;
       }
 
-      // CPF/CNPJ só pode ser definido uma vez (quando ainda não preenchido)
-      if (document) {
-        if (user.document) {
-          return reply.code(400).send({
-            error: 'CPF/CNPJ já cadastrado e não pode ser alterado. Entre em contato com suporte.'
-          });
-        }
-
+      // CPF/CNPJ — editável; mantém validação de formato e duplicidade
+      if (document !== undefined && document !== '') {
         const clean = document.replace(/\D/g, '');
         if (clean.length < 11 || clean.length > 14) {
           return reply.code(400).send({ error: 'CPF deve ter 11 dígitos, CNPJ deve ter 14 dígitos.' });
@@ -770,14 +769,20 @@ export default async function authRoutes(app: FastifyInstance) {
         }
 
         // C2: Armazenar CPF/CNPJ criptografado (AES-256-GCM) + blind index (HMAC-SHA256)
-        const updated = await prisma.user.update({
-          where: { id: userId },
-          data:  { document: encryptStr(clean), documentHash: hash },
-        });
-        return { updated: true, user: { ...updated, document: clean } };
+        data.document     = encryptStr(clean);
+        data.documentHash = hash;
+        plainDoc          = clean;
       }
 
-      return { updated: false, user };
+      if (Object.keys(data).length === 0) {
+        return { updated: false, user: { ...user, document: decryptStr(user.document) || null } };
+      }
+
+      const updated = await prisma.user.update({ where: { id: userId }, data });
+      return {
+        updated: true,
+        user: { ...updated, document: plainDoc ?? (decryptStr(updated.document) || null) },
+      };
     }
   );
 }

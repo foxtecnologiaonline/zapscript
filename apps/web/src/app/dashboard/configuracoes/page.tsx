@@ -6,6 +6,8 @@ import AffiliateRequest from '@/components/AffiliateRequest';
 export default function ConfiguracoesPage() {
   const [user, setUser] = useState<any>(null);
   const [form, setForm] = useState({ name: '', document: '' });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   useEffect(() => {
     api.get<any>('/auth/me').then(u => {
@@ -13,6 +15,26 @@ export default function ConfiguracoesPage() {
       setForm({ name: u.name || '', document: u.document || '' });
     });
   }, []);
+
+  async function saveProfile() {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await api.put<any>('/auth/profile', {
+        name: form.name,
+        document: form.document,
+      });
+      if (res?.user) {
+        setUser((prev: any) => ({ ...prev, name: res.user.name, document: res.user.document }));
+        setForm({ name: res.user.name || '', document: res.user.document || '' });
+      }
+      setMsg({ type: 'ok', text: 'Dados atualizados com sucesso.' });
+    } catch (e: any) {
+      setMsg({ type: 'err', text: e?.error || e?.message || 'Não foi possível salvar.' });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="p-4 sm:p-8 max-w-2xl">
@@ -25,8 +47,12 @@ export default function ConfiguracoesPage() {
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">Nome</label>
-            <input className="field-input" disabled readOnly value={form.name} placeholder="Seu nome"/>
-            <p className="text-xs text-brand-muted mt-1">Nome não pode ser alterado após o cadastro.</p>
+            <input
+              className="field-input"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Seu nome"
+            />
           </div>
           <div>
             <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">E-mail</label>
@@ -35,9 +61,27 @@ export default function ConfiguracoesPage() {
           </div>
           <div>
             <label className="block text-xs font-semibold text-brand-text-secondary mb-1.5">CPF / CNPJ</label>
-            <input className="field-input" disabled readOnly value={form.document} placeholder="000.000.000-00"/>
-            <p className="text-xs text-brand-muted mt-1">CPF / CNPJ não pode ser alterado após o cadastro.</p>
+            <input
+              className="field-input"
+              value={form.document}
+              onChange={e => setForm(f => ({ ...f, document: e.target.value }))}
+              placeholder="000.000.000-00"
+            />
           </div>
+
+          {msg && (
+            <p className={`text-xs ${msg.type === 'ok' ? 'text-brand-primary' : 'text-red-400'}`}>
+              {msg.text}
+            </p>
+          )}
+
+          <button
+            className="btn-primary text-xs px-4 py-2 disabled:opacity-50"
+            disabled={saving}
+            onClick={saveProfile}
+          >
+            {saving ? 'Salvando…' : 'Salvar alterações'}
+          </button>
         </div>
       </div>
 
