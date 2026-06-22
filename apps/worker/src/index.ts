@@ -972,11 +972,9 @@ async function processOfficialWhatsAppJob(job: Job) {
       prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
     ]);
     if (!balance || availableTotal(balance) < durationMin) {
-      log(job, '⚠️  Saldo insuficiente — notificando usuário');
-      await sendMessageToMeta(
-        senderPhone,
-        '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.'
-      );
+      log(job, '⚠️  Saldo insuficiente — alertando o próprio usuário');
+      // Avisa SOMENTE o próprio usuário (throttle + e-mail). NUNCA na conversa com o contato.
+      triggerMinuteAlertIfNeeded(userId).catch(() => null);
       return { skipped: true, reason: 'insufficient_balance' };
     }
     if (!firstNumber) {
@@ -1059,12 +1057,9 @@ async function processTwilioJob(job: Job) {
     ]);
 
     if (!balance || availableTotal(balance) < 1) {
-      log(job, '⚠️  Saldo insuficiente — notificando via Twilio');
-      await sendMessageViaTwilio(
-        senderPhone,
-        twilioFrom,
-        '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.'
-      ).catch(() => null);
+      log(job, '⚠️  Saldo insuficiente — alertando o próprio usuário');
+      // Avisa SOMENTE o próprio usuário (throttle + e-mail). NUNCA na conversa com o contato.
+      triggerMinuteAlertIfNeeded(userId).catch(() => null);
       return { skipped: true, reason: 'insufficient_balance' };
     }
     if (!firstNumber) {
@@ -1152,13 +1147,11 @@ async function processEvolutionJob(job: Job) {
     ]);
 
     if (availableTotal(balance) < 0.1) {
-      log(job, `⚠️  Saldo insuficiente: ${availableTotal(balance).toFixed(2)} min — notificando`);
-      if (instanceName) {
-        await sendMessageViaEvolution(
-          instanceName, senderPhone,
-          '⚠️ Seu saldo de minutos acabou.\nAcesse zapscript.me para fazer upgrade e continuar recebendo transcrições.'
-        ).catch(() => null);
-      }
+      log(job, `⚠️  Saldo insuficiente: ${availableTotal(balance).toFixed(2)} min — alertando o próprio usuário`);
+      // Avisa SOMENTE o próprio número do usuário (throttle + e-mail). NUNCA responde
+      // na conversa com o contato/grupo que enviou o áudio (senderPhone), para não
+      // vazar a situação de saldo a terceiros nem poluir conversas alheias.
+      triggerMinuteAlertIfNeeded(userId).catch(() => null);
       return { skipped: true, reason: 'insufficient_balance' };
     }
     if (!whatsappNumber) {
