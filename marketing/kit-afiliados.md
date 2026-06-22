@@ -14,6 +14,9 @@ https://zapscript.me/cadastro?aff=SEU_CODIGO
 > Toda pessoa que criar conta pelo seu link e assinar o plano Pro gera comissão para você.
 > Pagamento via Pix nos dias 10 e 25 de cada mês.
 
+**Âncora de preço (use se alguém achar caro):**
+> R$39,90 ÷ 30 dias = R$1,33/dia — o robô do ZapScript fica de prontidão 24h, transcrevendo assim que o áudio chega.
+
 ---
 
 ## 1. WHATSAPP (1-1)

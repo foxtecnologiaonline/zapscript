@@ -441,6 +441,9 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
                   <span className="text-2xl font-bold text-white">{plan.price}</span>
                   <span className="text-brand-muted text-sm">{plan.period}</span>
                 </div>
+                {plan.name === 'Pro' && (
+                  <div className="text-xs font-medium text-brand-primary mb-3">= R$1,33/dia · 24h trabalhando por você</div>
+                )}
                 <ul className="space-y-2 mb-6">
                   {plan.features.map(f => (
                     <li key={f} className="flex items-start gap-2 text-sm">

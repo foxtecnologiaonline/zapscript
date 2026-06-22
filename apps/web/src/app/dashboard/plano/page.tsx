@@ -810,6 +810,7 @@ function PlanoContent() {
                     <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês · cancele quando quiser</div>
                   </>
                 )}
+                <div className="text-[11px] font-medium mt-1.5" style={{ color: 'rgb(var(--color-primary))' }}>= R$1,33/dia · 24h trabalhando por você</div>
               </div>
             </div>
 
