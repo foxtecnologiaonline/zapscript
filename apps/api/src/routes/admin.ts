@@ -9,6 +9,7 @@ import { Queue } from 'bullmq';
 import { redis } from '../services/queue';
 import { sendText } from '../services/evolution';
 import { sendEmail } from '../lib/mailer';
+import { asaas, asaasConfigured, asaasEnv } from '../lib/asaas';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -78,6 +79,111 @@ const adminAuth = async (req: any, reply: any) => {
 };
 
 export default async function adminRoutes(app: FastifyInstance) {
+
+  // ════════════════════════════════════════════════════════════════════════
+  // GESTÃO DE COBRANÇAS ASAAS (financeiro) — listar / excluir / estornar
+  // A chave fica só em env (ASAAS_API_KEY). Excluir só funciona em cobrança
+  // ainda não paga; cobrança paga deve ser estornada (refund).
+  // ════════════════════════════════════════════════════════════════════════
+
+  // GET /asaas/payments?status=PENDING&limit=50&offset=0
+  app.get('/asaas/payments', { preHandler: [adminAuth] }, async (req: any, reply) => {
+    if (!asaasConfigured()) {
+      return reply.code(503).send({ error: 'Asaas não configurado (ASAAS_API_KEY ausente).' });
+    }
+    const { status = 'PENDING', limit = '50', offset = '0' } = req.query || {};
+    const qs = new URLSearchParams();
+    if (status && status !== 'ALL') qs.set('status', String(status));
+    qs.set('limit',  String(Math.min(Number(limit) || 50, 100)));
+    qs.set('offset', String(Math.max(Number(offset) || 0, 0)));
+
+    try {
+      const res  = await asaas(`/payments?${qs.toString()}`);
+      const data = await res.json() as any;
+      if (!res.ok) {
+        return reply.code(502).send({ error: data?.errors?.[0]?.description || 'Erro ao listar cobranças no Asaas.' });
+      }
+      const rows: any[] = Array.isArray(data?.data) ? data.data : [];
+
+      // Enriquecer com o usuário local via externalReference ("<userId>|<plan>|...")
+      const userIds = Array.from(new Set(
+        rows.map(p => String(p.externalReference || '').split('|')[0]).filter(Boolean),
+      )) as string[];
+      const users = userIds.length
+        ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, email: true, name: true } })
+        : [];
+      const byId = new Map(users.map(u => [u.id, u]));
+
+      const payments = rows.map(p => {
+        const ref = String(p.externalReference || '').split('|');
+        const u   = byId.get(ref[0]);
+        return {
+          id:           p.id,
+          status:       p.status,
+          value:        p.value,
+          netValue:     p.netValue,
+          billingType:  p.billingType,
+          dueDate:      p.dueDate,
+          dateCreated:  p.dateCreated,
+          description:  p.description,
+          invoiceUrl:   p.invoiceUrl,
+          customer:     p.customer,
+          subscription: p.subscription || null,
+          plan:         ref[1] || null,
+          userEmail:    u?.email ? maskEmail(u.email) : null,
+          userName:     u?.name || null,
+          canDelete:    ['PENDING', 'OVERDUE', 'AWAITING_RISK_ANALYSIS'].includes(p.status),
+        };
+      });
+
+      return reply.send({
+        env:     asaasEnv(),
+        total:   data?.totalCount ?? payments.length,
+        hasMore: !!data?.hasMore,
+        offset:  Number(offset) || 0,
+        payments,
+      });
+    } catch (err: any) {
+      app.log.error({ err: err.message }, '[Admin] Asaas list payments falhou');
+      return reply.code(502).send({ error: 'Falha ao consultar o Asaas.' });
+    }
+  });
+
+  // DELETE /asaas/payments/:id — exclui cobrança (somente não-paga)
+  app.delete<{ Params: { id: string } }>('/asaas/payments/:id', { preHandler: [adminAuth] }, async (req: any, reply) => {
+    if (!asaasConfigured()) return reply.code(503).send({ error: 'Asaas não configurado.' });
+    const { id } = req.params;
+    try {
+      const res  = await asaas(`/payments/${id}`, { method: 'DELETE' });
+      const data = await res.json() as any;
+      if (!res.ok || data?.deleted === false) {
+        return reply.code(502).send({ error: data?.errors?.[0]?.description || 'Não foi possível excluir a cobrança.' });
+      }
+      app.log.info({ paymentId: id }, '[Admin] Cobrança Asaas excluída');
+      return reply.send({ deleted: true, id });
+    } catch (err: any) {
+      app.log.error({ err: err.message, paymentId: id }, '[Admin] Asaas delete falhou');
+      return reply.code(502).send({ error: 'Falha ao excluir no Asaas.' });
+    }
+  });
+
+  // POST /asaas/payments/:id/refund — estorna cobrança paga
+  app.post<{ Params: { id: string } }>('/asaas/payments/:id/refund', { preHandler: [adminAuth] }, async (req: any, reply) => {
+    if (!asaasConfigured()) return reply.code(503).send({ error: 'Asaas não configurado.' });
+    const { id } = req.params;
+    try {
+      const res  = await asaas(`/payments/${id}/refund`, { method: 'POST' });
+      const data = await res.json() as any;
+      if (!res.ok) {
+        return reply.code(502).send({ error: data?.errors?.[0]?.description || 'Não foi possível estornar a cobrança.' });
+      }
+      app.log.info({ paymentId: id }, '[Admin] Cobrança Asaas estornada');
+      return reply.send({ refunded: true, id, status: data?.status });
+    } catch (err: any) {
+      app.log.error({ err: err.message, paymentId: id }, '[Admin] Asaas refund falhou');
+      return reply.code(502).send({ error: 'Falha ao estornar no Asaas.' });
+    }
+  });
 
   // ── POST /test-email — testa envio de e-mail (diagnóstico) ──────────────
   app.post<{ Body: { to: string } }>(

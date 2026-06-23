@@ -22,22 +22,8 @@ import { attributeAffiliateCommission } from '../lib/affiliate';
    Sand:  https://sandbox.asaas.com/api/v3
    ───────────────────────────────────────────────────────── */
 
-const IS_PROD    = process.env.NODE_ENV === 'production';
-// Prioridade: ASAAS_BASE_URL (env explícita) → fallback por NODE_ENV
-const ASAAS_BASE = process.env.ASAAS_BASE_URL?.replace(/\/$/, '')
-  || (IS_PROD ? 'https://api.asaas.com/api/v3' : 'https://sandbox.asaas.com/api/v3');
-const ASAAS_API_KEY = process.env.ASAAS_API_KEY!;
-
-function asaas(path: string, options: RequestInit = {}) {
-  return fetch(`${ASAAS_BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'access_token': ASAAS_API_KEY,
-      ...(options.headers ?? {}),
-    },
-  });
-}
+// Cliente Asaas compartilhado (lib/asaas.ts) — usado também pelo admin.
+import { asaas } from '../lib/asaas';
 
 /* ── Timing-safe compare ── */
 function safeCompare(a: string | undefined, b: string | undefined): boolean {

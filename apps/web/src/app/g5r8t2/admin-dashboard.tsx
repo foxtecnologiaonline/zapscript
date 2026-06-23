@@ -1231,6 +1231,8 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           <div className="space-y-5">
             {/* Custos, receita, margem, DRE, lucro — com inputs persistidos */}
             <FinanceiroPanel apiBase={API} token={token} notify={notify} stats={stats} />
+            {/* Cobranças Asaas — listar / excluir pendentes / estornar */}
+            <AsaasInvoicesPanel apiBase={API} token={token} notify={notify} />
             <MRRCohort   apiBase={API} token={token} />
             <ChurnRisk   apiBase={API} token={token} />
             <NPSPanel    apiBase={API} token={token} />
@@ -4462,6 +4464,181 @@ function FinanceiroPanel({ apiBase, token, notify, stats }: {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── AsaasInvoicesPanel — gestão de cobranças no gateway Asaas ──────────── */
+const ASAAS_STATUS_CLS: Record<string, string> = {
+  PENDING:               'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+  AWAITING_RISK_ANALYSIS:'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+  OVERDUE:               'text-orange-400 bg-orange-400/10 border-orange-400/20',
+  CONFIRMED:             'text-teal-400 bg-teal-400/10 border-teal-400/20',
+  RECEIVED:              'text-green-400 bg-green-400/10 border-green-400/20',
+  REFUNDED:              'text-purple-400 bg-purple-400/10 border-purple-400/20',
+  REFUND_REQUESTED:      'text-purple-400 bg-purple-400/10 border-purple-400/20',
+};
+const ASAAS_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Aguardando', AWAITING_RISK_ANALYSIS: 'Em análise', OVERDUE: 'Vencida',
+  CONFIRMED: 'Confirmada', RECEIVED: 'Recebida', REFUNDED: 'Estornada', REFUND_REQUESTED: 'Estorno solicitado',
+};
+const ASAAS_FILTERS: [string, string][] = [
+  ['PENDING', 'Pendentes'], ['OVERDUE', 'Vencidas'], ['CONFIRMED', 'Confirmadas'],
+  ['RECEIVED', 'Recebidas'], ['ALL', 'Todas'],
+];
+
+function AsaasInvoicesPanel({ apiBase, token, notify }: {
+  apiBase: string; token: string; notify: (t: string, ty?: 'ok' | 'err' | 'warn') => void;
+}) {
+  const [status,  setStatus]  = useState('PENDING');
+  const [rows,    setRows]    = useState<any[]>([]);
+  const [env,     setEnv]     = useState<string>('');
+  const [total,   setTotal]   = useState(0);
+  const [loaded,  setLoaded]  = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [busyId,  setBusyId]  = useState<string | null>(null);
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+
+  const load = useCallback(async (st: string) => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/asaas/payments?status=${st}&limit=100`, { headers: h });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Erro ao carregar cobranças');
+      setRows(d.payments || []);
+      setEnv(d.env || '');
+      setTotal(d.total || 0);
+      setLoaded(true);
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setLoading(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiBase, token]);
+
+  async function del(id: string) {
+    if (!confirm('Excluir esta cobrança no Asaas?\n\nSó funciona em cobrança ainda NÃO paga. Ação irreversível.')) return;
+    setBusyId(id);
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/asaas/payments/${id}`, { method: 'DELETE', headers: h });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Erro ao excluir');
+      setRows(prev => prev.filter(p => p.id !== id));
+      setTotal(t => Math.max(0, t - 1));
+      notify('🗑️ Cobrança excluída', 'ok');
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setBusyId(null); }
+  }
+
+  async function refund(id: string) {
+    if (!confirm('Estornar esta cobrança paga?\n\nO valor será devolvido ao cliente. Ação irreversível.')) return;
+    setBusyId(id);
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/asaas/payments/${id}/refund`, { method: 'POST', headers: h });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Erro ao estornar');
+      setRows(prev => prev.map(p => p.id === id ? { ...p, status: d.status || 'REFUNDED', canDelete: false } : p));
+      notify('↩️ Cobrança estornada', 'ok');
+    } catch (e: any) { notify(`❌ ${e.message}`, 'err'); }
+    finally { setBusyId(null); }
+  }
+
+  const totalValue = rows.reduce((a, p) => a + (Number(p.value) || 0), 0);
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.12)] rounded-xl p-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
+        <div>
+          <div className="text-sm font-bold text-[#d1fae5] flex items-center gap-2">
+            🧾 Cobranças no Asaas
+            {env && (
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${env === 'production' ? 'text-green-400 bg-green-400/10 border-green-400/20' : 'text-amber-400 bg-amber-400/10 border-amber-400/20'}`}>
+                {env === 'production' ? 'PRODUÇÃO' : 'SANDBOX'}
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-[rgba(16,185,129,.4)] mt-0.5">Liste e gerencie faturas direto no gateway de pagamento</div>
+        </div>
+        <button onClick={() => load(status)} disabled={loading}
+          className="text-xs font-semibold px-4 py-2 rounded-lg bg-[rgba(16,185,129,.1)] border border-[rgba(16,185,129,.2)] text-[#10b981] hover:bg-[rgba(16,185,129,.18)] transition-colors disabled:opacity-50">
+          {loading ? '⟳ Carregando...' : loaded ? '🔄 Recarregar' : '🔍 Carregar cobranças'}
+        </button>
+      </div>
+
+      <div className="flex gap-1.5 flex-wrap mb-4">
+        {ASAAS_FILTERS.map(([v, label]) => (
+          <button key={v}
+            onClick={() => { setStatus(v); load(v); }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+              status === v
+                ? 'bg-[rgba(16,185,129,.12)] text-[#10b981] border-[rgba(16,185,129,.2)]'
+                : 'border-transparent text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {loaded && (
+        <div className="text-xs text-[rgba(16,185,129,.5)] mb-3">
+          {total} cobrança(s) · soma exibida: <span className="font-bold text-[#d1fae5]">{brl(totalValue)}</span>
+        </div>
+      )}
+
+      {!loaded ? (
+        <div className="text-center text-xs text-[rgba(16,185,129,.3)] py-8">Clique em "Carregar cobranças".</div>
+      ) : rows.length === 0 ? (
+        <div className="text-center text-xs text-[rgba(16,185,129,.3)] py-8">✅ Nenhuma cobrança neste filtro.</div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-[rgba(16,185,129,.08)]">
+          <table className="w-full text-xs min-w-[760px]">
+            <thead>
+              <tr className="border-b border-[rgba(16,185,129,.08)]">
+                {['Status', 'Cliente', 'Plano', 'Valor', 'Tipo', 'Vencimento', 'Ações'].map(c => (
+                  <th key={c} className="text-left px-3 py-2 text-[rgba(16,185,129,.4)] font-semibold uppercase tracking-wide text-[10px]">{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(p => (
+                <tr key={p.id} className="border-b border-[rgba(16,185,129,.05)] last:border-0 hover:bg-[rgba(16,185,129,.025)] transition-colors">
+                  <td className="px-3 py-2.5">
+                    <Badge label={ASAAS_STATUS_LABEL[p.status] || p.status} cls={ASAAS_STATUS_CLS[p.status]} />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="text-[#d1fae5] font-medium">{p.userName || '—'}</div>
+                    <div className="text-[rgba(16,185,129,.4)] font-mono text-[10px]">{p.userEmail || p.customer}</div>
+                  </td>
+                  <td className="px-3 py-2.5 text-[rgba(16,185,129,.6)]">{p.plan || '—'}</td>
+                  <td className="px-3 py-2.5 font-mono text-[#d1fae5]">{brl(Number(p.value) || 0)}</td>
+                  <td className="px-3 py-2.5 text-[rgba(16,185,129,.5)]">{p.billingType}</td>
+                  <td className="px-3 py-2.5 text-[rgba(16,185,129,.5)]">{p.dueDate ? fmt(p.dueDate) : '—'}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {p.invoiceUrl && (
+                        <a href={p.invoiceUrl} target="_blank" rel="noopener noreferrer"
+                          className="text-[10px] px-2 py-1 rounded bg-[rgba(16,185,129,.08)] border border-[rgba(16,185,129,.15)] text-[#10b981] hover:bg-[rgba(16,185,129,.16)] transition-colors">
+                          ↗ Abrir
+                        </a>
+                      )}
+                      {p.canDelete && (
+                        <button onClick={() => del(p.id)} disabled={busyId === p.id}
+                          className="text-[10px] px-2 py-1 rounded bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50">
+                          {busyId === p.id ? '⟳' : '🗑️ Excluir'}
+                        </button>
+                      )}
+                      {(p.status === 'RECEIVED' || p.status === 'CONFIRMED') && (
+                        <button onClick={() => refund(p.id)} disabled={busyId === p.id}
+                          className="text-[10px] px-2 py-1 rounded bg-purple-500/10 border border-purple-500/20 text-purple-300 hover:bg-purple-500/20 transition-colors disabled:opacity-50">
+                          {busyId === p.id ? '⟳' : '↩️ Estornar'}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
