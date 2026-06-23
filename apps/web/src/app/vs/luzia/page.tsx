@@ -125,6 +125,9 @@ export default function VsLuziaPage() {
           <p className="text-lg text-brand-muted max-w-2xl mx-auto leading-relaxed">
             A LuzIA é uma assistente multifunção; o ZapScript é especializado em transcrever áudio do WhatsApp automaticamente. Veja a diferença na prática.
           </p>
+          <p className="text-brand-primary font-medium max-w-2xl mx-auto mt-4">
+            Seu robô particular, convertendo áudio em texto 24 horas por dia — mesmo enquanto você dorme.
+          </p>
         </div>
 
         {/* Veredicto rápido */}

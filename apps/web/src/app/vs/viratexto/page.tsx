@@ -126,6 +126,9 @@ export default function VsViratextoPage() {
           <p className="text-lg text-brand-muted max-w-2xl mx-auto leading-relaxed">
             Comparamos as duas principais opções para transcrever áudios do WhatsApp em texto. Sem achismo — funcionalidade por funcionalidade.
           </p>
+          <p className="text-brand-primary font-medium max-w-2xl mx-auto mt-4">
+            Seu robô particular, convertendo áudio em texto 24 horas por dia — mesmo enquanto você dorme.
+          </p>
         </div>
 
         {/* Veredicto rápido */}

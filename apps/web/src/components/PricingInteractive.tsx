@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ProCountdown } from './ProCountdown';
+import { isJunePromoActive, PRO_FULL_PRICE, PRO_PROMO_PRICE } from '@/lib/promo';
 
 type CmpVal = string | boolean;
 
@@ -57,6 +58,13 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
 ];
 
 export function PricingInteractive() {
+  const promo = isJunePromoActive();
+  const plans = PLANS.map(p => p.name !== 'pro' ? p : (
+    promo
+      ? { ...p, price: PRO_PROMO_PRICE, per: '/1º mês', desc: `Depois ${PRO_FULL_PRICE}/mês` }
+      : { ...p, price: PRO_FULL_PRICE, per: '/mês', desc: 'Sem fidelidade, cancele quando quiser' }
+  ));
+
   const [showTable, setShowTable] = useState(true);
   const [waitlistEmail, setWaitlistEmail]     = useState('');
   const [waitlistDone, setWaitlistDone]       = useState(false);
@@ -76,7 +84,7 @@ export function PricingInteractive() {
     <>
       {/* Plan cards */}
       <div className="flex flex-col gap-4">
-        {PLANS.map((plan, i) => {
+        {plans.map((plan, i) => {
           const borderCol = plan.popular
             ? 'rgb(var(--color-primary))'
             : plan.accent ? plan.accent + '55' : 'rgb(var(--color-border))';
@@ -93,7 +101,7 @@ export function PricingInteractive() {
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-black text-[11px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wide whitespace-nowrap"
                   style={{ background: 'rgb(var(--color-primary))' }}>
-                  <ProCountdown />
+                  {promo ? <ProCountdown /> : <>⭐ Mais popular</>}
                 </div>
               )}
               <div className="flex items-start justify-between mb-4">

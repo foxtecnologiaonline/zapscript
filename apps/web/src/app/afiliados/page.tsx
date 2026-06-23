@@ -21,7 +21,7 @@ const KIT: { key: string; label: string; canal: string; text: string }[] = [
     key: 'zap-informal',
     canal: 'WhatsApp',
     label: 'WhatsApp — informal',
-    text: `Oi [nome]! Tudo bem?\n\nQueria te indicar uma ferramenta que mudou meu dia a dia: o ZapScript.me.\n\nEle funciona sozinho, converte em texto (e resume) todo áudio que você receber no WhatsApp automaticamente — texto + resumo com IA em segundos.\n\nTem 20 min grátis por mês, sem cartão:\n👉 [SEU_LINK]\n\nSe você recebe muito áudio, vai curtir bastante 😄`,
+    text: `Oi [nome]! Tudo bem?\n\nQueria te indicar uma ferramenta que mudou meu dia a dia: o ZapScript.me.\n\nÉ tipo um robô particular que converte em texto (e resume) todo áudio que você recebe no WhatsApp — 24 horas por dia, automaticamente, em segundos.\n\nTem 20 min grátis por mês, sem cartão:\n👉 [SEU_LINK]\n\nSe você recebe muito áudio, vai curtir bastante 😄`,
   },
   // ── Grupos ─────────────────────────────────────────────────────────────────
   {
@@ -113,6 +113,9 @@ export default function AfiliadosLanding() {
         </h1>
         <p className="text-base sm:text-lg text-brand-text-secondary mt-4 max-w-xl mx-auto">
           Compartilhe seu link exclusivo. A cada assinatura paga pelo seu link, você recebe comissão automaticamente — sem burocracia.
+        </p>
+        <p className="text-sm text-brand-primary font-medium mt-3 max-w-xl mx-auto">
+          Você indica um robô que converte áudio em texto 24 horas por dia — um produto que se explica sozinho.
         </p>
         <div className="flex gap-3 justify-center mt-7 flex-wrap">
           <Link href="/dashboard/afiliado" className="btn-primary px-6 py-3 text-sm">Quero ser afiliado →</Link>

@@ -333,7 +333,8 @@ export default async function authRoutes(app: FastifyInstance) {
           `<div style="font-family:'DM Sans',sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:16px;border:1px solid rgba(16,185,129,.15)">
             <div style="font-size:28px;font-weight:900;color:#10b981;margin-bottom:8px">⚡ ZapScript</div>
             <h1 style="font-size:22px;font-weight:700;color:#fff;margin:0 0 12px">Sua conta está pronta, ${firstName}!</h1>
-            <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Agora conecte seu WhatsApp e comece a converter áudios em texto — leva menos de 2 minutos.</p>
+            <p style="color:#a7f3d0;line-height:1.7;margin:0 0 16px">Falta 1 passo para ligar seu <strong style="color:#6ee7b7">robô particular, que transcreve e resume cada áudio do WhatsApp 24 horas por dia</strong> — mesmo enquanto você dorme. Conectar leva menos de 2 minutos.</p>
+            <p style="color:#6ee7b7;line-height:1.6;margin:0 0 20px;font-size:13px">🔒 Criptografia AES-256 · servidores no Brasil (LGPD) · cancele quando quiser.</p>
             <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:12px;padding:20px;margin-bottom:24px">
               <p style="margin:0 0 12px;font-weight:600;color:#fff">Como ativar em 3 passos:</p>
               <p style="margin:0 0 8px;color:#a7f3d0;font-size:14px">1️⃣ Acesse seu painel e vá em <strong>Números</strong></p>

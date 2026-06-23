@@ -10,6 +10,18 @@ const FIRST_RUN_MS = 10 * 60 * 1000;      // 10 min após startup
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
 
+/* ── Promoção de lançamento (junho/2026): 1º mês do Pro por R$19,90 ──────────
+   Fonte da verdade server-side (espelha apps/web/src/lib/promo.ts). Encerra
+   30/06/2026 23:59:59 (Brasília, UTC-3). Após isso o copy volta ao preço cheio. */
+const PROMO_END = new Date('2026-06-30T23:59:59-03:00').getTime();
+function isJunePromoActive(): boolean { return Date.now() <= PROMO_END; }
+/** Frase de preço do Pro para usar dentro do corpo de e-mails. */
+function proPriceLine(): string {
+  return isJunePromoActive()
+    ? `por <strong style="color:#6ee7b7">R$19,90 no primeiro mês</strong> (depois R$39,90/mês)`
+    : `por <strong style="color:#6ee7b7">R$39,90/mês</strong>, sem fidelidade`;
+}
+
 function btn(href: string, label: string): string {
   return `<div style="text-align:center;margin:24px 0">
     <a href="${href}" style="display:inline-block;background:#10b981;color:#04130c;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:800;font-size:16px">${label}</a>
@@ -191,8 +203,85 @@ async function runUpgradeByUsage(log: any) {
         `${firstName}, você já usou ${Math.round(usedPct * 100)}% dos seus minutos grátis`,
         wrapper(firstName, `Seus minutos grátis estão acabando`, `
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já usou ${Math.round(usedPct * 100)}% dos 20 minutos do plano Free deste mês. Para continuar transcrevendo sem interrupção, dá pra fazer upgrade para o Pro.</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">O Pro inclui 200 minutos por mês, 2 números e resumo com IA — por <strong style="color:#6ee7b7">R$19,90 no primeiro mês</strong>.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">O Pro inclui 200 minutos por mês, 2 números e resumo com IA — ${proPriceLine()}.</p>
           ${btn(`${APP_URL}/dashboard/plano`, 'Fazer upgrade para o Pro →')}
+        `),
+      );
+      await markSent(u.id, tag);
+      sent++;
+    } catch (e: any) {
+      log?.warn?.(`[Lifecycle] Falha ao enviar ${tag} para ${u.email}: ${e.message}`);
+    }
+  }
+  return sent;
+}
+
+/* ── 1ª transcrição concluída → comemoração + reforço do valor "robô 24h" ────
+   Momento de maior engajamento: o usuário acabou de ver o produto funcionar.
+   Limitado a quem se cadastrou nos últimos 7 dias para não disparar em massa
+   na base existente no primeiro deploy. ────────── */
+async function runFirstTranscription(log: any) {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const tag   = 'first_transcription';
+
+  const users = await prisma.user.findMany({
+    where:  { createdAt: { gte: since }, deletedAt: null, transcriptions: { some: {} } },
+    select: { id: true, email: true, name: true, lifecycleEmailsSent: true },
+  }).catch(() => [] as any[]);
+
+  let sent = 0;
+  for (const u of users) {
+    if (u.lifecycleEmailsSent.includes(tag)) continue;
+
+    const firstName = firstNameOf(u.name);
+    try {
+      await sendEmail(
+        u.email,
+        `${firstName}, seu robô já está trabalhando 24h por você 🎉`,
+        wrapper(firstName, `Funcionou! Seu robô está no ar 🎉`, `
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Sua primeira transcrição saiu — e a partir de agora isso acontece sozinho. O ZapScript fica de prontidão <strong>24 horas por dia</strong>, transcrevendo e resumindo cada áudio assim que ele chega, mesmo enquanto você dorme.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Você não precisa encaminhar nada nem abrir outro app. É só receber o áudio — o texto e o resumo aparecem prontos no seu painel.</p>
+          ${btn(`${APP_URL}/dashboard`, 'Ver minhas transcrições →')}
+        `),
+      );
+      await markSent(u.id, tag);
+      sent++;
+    } catch (e: any) {
+      log?.warn?.(`[Lifecycle] Falha ao enviar ${tag} para ${u.email}: ${e.message}`);
+    }
+  }
+  return sent;
+}
+
+/* ── Win-back: assinatura Pro cancelada nos últimos 3–7 dias ──────────────────
+   Após cancelar, a assinatura vira status 'canceled' (planId volta p/ free).
+   Convida a voltar, reforçando o valor do robô e o custo por dia. ────────── */
+async function runWinBack(log: any) {
+  const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const to   = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  const tag  = 'winback_canceled';
+
+  const users = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      subscription: { status: 'canceled', updatedAt: { gte: from, lte: to } },
+    },
+    select: { id: true, email: true, name: true, lifecycleEmailsSent: true },
+  }).catch(() => [] as any[]);
+
+  let sent = 0;
+  for (const u of users) {
+    if (u.lifecycleEmailsSent.includes(tag)) continue;
+
+    const firstName = firstNameOf(u.name);
+    try {
+      await sendEmail(
+        u.email,
+        `${firstName}, seu robô está em pausa — quer reativar?`,
+        wrapper(firstName, `Seu robô está descansando, ${firstName}`, `
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Desde que você cancelou o Pro, os áudios voltaram a chegar — só que agora sem ninguém transcrevendo por você 24 horas por dia. Toda vez que chega um áudio longo, é você quem para pra ouvir.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Reativar leva 1 minuto: 200 minutos por mês, 2 números e resumo com IA — ${proPriceLine()}. Menos de R$1,33 por dia para ter um robô lendo seus áudios.</p>
+          ${btn(`${APP_URL}/dashboard/plano`, 'Reativar o Pro →')}
         `),
       );
       await markSent(u.id, tag);
@@ -207,8 +296,10 @@ async function runUpgradeByUsage(log: any) {
 async function runOnce(log: any) {
   try {
     const [d1, d3, incomplete] = await Promise.all([runActivationD1(log), runActivationD3(log), runConnectionIncomplete(log)]);
-    const upgrade = await runUpgradeByUsage(log);
-    log?.info?.(`[Lifecycle] Ciclo concluído — candidatos d1=${d1} d3=${d3} conexao_incompleta_enviados=${incomplete} upgrades_enviados=${upgrade}`);
+    const upgrade   = await runUpgradeByUsage(log);
+    const firstTx   = await runFirstTranscription(log);
+    const winback   = await runWinBack(log);
+    log?.info?.(`[Lifecycle] Ciclo concluído — candidatos d1=${d1} d3=${d3} conexao_incompleta_enviados=${incomplete} upgrades_enviados=${upgrade} primeira_transcricao=${firstTx} winback=${winback}`);
   } catch (e: any) {
     log?.error?.(`[Lifecycle] Erro no ciclo de e-mails: ${e.message}`);
   }

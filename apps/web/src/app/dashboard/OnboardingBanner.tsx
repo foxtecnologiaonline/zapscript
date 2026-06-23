@@ -169,6 +169,14 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
                   ? 'Agora, ao receber áudios no número conectado, a conversão em texto e o resumo são feitos automaticamente. Envie um áudio de teste para conferir.'
                   : 'Leva menos de 5 minutos. Sem configuração complexa.'}
               </p>
+              {!hasNumber && (
+                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px] text-brand-muted">
+                  <span>🔒 Criptografia AES-256</span>
+                  <span>🇧🇷 Servidores no Brasil (LGPD)</span>
+                  <span>✋ Lemos só os áudios que você envia</span>
+                  <span>↩️ Cancele quando quiser</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -360,7 +368,7 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
                 style={{ background: 'rgba(16,185,129,.04)', border: '1px solid rgba(16,185,129,.1)' }}>
                 <p className="text-brand-muted leading-relaxed">
                   🔒 <span className="font-semibold text-brand-primary">Conexão segura.</span>
-                  {' '}O ZapScript cuida de toda a infraestrutura. Só transcrevemos os áudios que você envia — nenhuma outra mensagem é lida.
+                  {' '}Tudo com criptografia <strong className="text-brand-text-secondary">AES-256</strong> e servidores no <strong className="text-brand-text-secondary">Brasil (LGPD)</strong>. Só transcrevemos os áudios que você envia — nenhuma outra mensagem é lida. Você pode desconectar o número quando quiser.
                 </p>
               </div>
             </div>

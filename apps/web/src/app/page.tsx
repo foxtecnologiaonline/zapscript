@@ -5,6 +5,7 @@ import { DemoTranscribe } from '@/components/DemoTranscribe';
 import { ChatDemo } from '@/components/ChatDemo';
 import { FaqSection } from '@/components/FaqSection';
 import { PricingInteractive } from '@/components/PricingInteractive';
+import { Testimonials } from '@/components/Testimonials';
 import { AffiliateCapture } from '@/components/AffiliateCapture';
 import { SupportChatButton } from '@/components/SupportChatButton';
 import { FAQ_ITEMS } from '@/data/faq';
@@ -296,6 +297,9 @@ export default function HomePage() {
         <section className="px-5 pb-16">
           <ChatDemo />
         </section>
+
+        {/* ══ DEPOIMENTOS (renderiza só quando houver) ══ */}
+        <Testimonials />
 
         {/* ══ PLANS ══ */}
         <section id="planos" className="px-5 pb-16">

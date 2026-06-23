@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { captureAffiliateFromUrl } from '@/lib/affiliate';
+import { Testimonials } from '@/components/Testimonials';
 
 /* ── Tipos ──────────────────────────────────────────────────────────── */
 export interface Variant {
@@ -415,6 +416,11 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
           </div>
         </div>
       </section>
+
+      {/* ════════════════════════════════════════════════════════════
+          DEPOIMENTOS — renderiza só quando houver
+      ════════════════════════════════════════════════════════════ */}
+      <Testimonials />
 
       {/* ════════════════════════════════════════════════════════════
           PLANOS — rápidos

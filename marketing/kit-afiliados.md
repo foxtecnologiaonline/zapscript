@@ -41,12 +41,22 @@ Oi [nome]! Tudo bem?
 
 Queria te indicar uma ferramenta que mudou meu dia a dia: o ZapScript.me.
 
-Ele funciona sozinho, converte em texto (e resume) todo áudio que você receber no WhatsApp automaticamente — texto + resumo com IA em segundos.
+É tipo um robô particular que converte em texto (e resume) todo áudio que você recebe no WhatsApp — 24 horas por dia, automaticamente, em segundos.
 
 Tem 20 min grátis por mês, sem cartão:
 👉 [SEU_LINK]
 
 Se você recebe muito áudio, vai curtir bastante 😄
+```
+
+**Robô 24h (curtíssima, ótima para abrir conversa):**
+```
+[nome], achei um "robô" que lê áudio de WhatsApp por você 🤖
+
+Converte em texto + resumo automático, 24h por dia — você nunca mais para pra ouvir áudio longo.
+
+Testa grátis (20 min/mês, sem cartão):
+👉 [SEU_LINK]
 ```
 
 ---
