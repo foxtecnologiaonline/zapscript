@@ -167,7 +167,7 @@ export default function HomePage() {
           <div className="w-full">
             <div className="glass rounded-3xl p-5 border shadow-medium flex justify-around items-center"
               style={{ borderColor: 'rgb(var(--color-border-light))' }}>
-              {[['10x', 'Mais rápido'], ['99%', 'Precisão'], ['+10h', 'Recuperadas/mês']].map(([val, lbl], i) => (
+              {[['24/7', 'Sempre ativo'], ['10x', 'Mais rápido'], ['99%', 'Precisão']].map(([val, lbl], i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
                   {i > 0 && <div style={{ width: 1, height: 40, background: 'rgb(var(--color-border))', marginRight: 20 }} />}
                   <div className="text-center">
@@ -212,9 +212,12 @@ export default function HomePage() {
 
         {/* ══ COMO FUNCIONA — 3 passos ══ */}
         <section className="px-5 pt-10 pb-2">
-          <p className="text-xs font-semibold uppercase tracking-widest mb-5 text-center"
+          <p className="text-xs font-semibold uppercase tracking-widest mb-2 text-center"
             style={{ color: 'rgb(var(--color-primary))' }}>
             Como funciona
+          </p>
+          <p className="text-sm font-medium text-center mb-5" style={{ color: 'rgb(var(--color-text))' }}>
+            Seu robô particular, convertendo áudio em texto 24 horas por dia — mesmo enquanto você dorme.
           </p>
           <div className="flex items-start justify-between gap-1">
             {[
@@ -301,10 +304,7 @@ export default function HomePage() {
               Planos
             </span>
             <h2 className="font-display text-3xl font-bold mt-2 leading-tight tracking-tight">Escolha seu plano</h2>
-            <p className="text-sm mt-2 font-medium" style={{ color: 'rgb(var(--color-primary))' }}>
-              Seu robô particular, convertendo áudio em texto 24 horas por dia.
-            </p>
-            <p className="text-sm mt-1 font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+            <p className="text-sm mt-2 font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
               Comece grátis. Sem cartão de crédito.
             </p>
           </div>

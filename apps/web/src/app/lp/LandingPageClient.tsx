@@ -328,6 +328,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
       <section className="py-16 px-4">
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-white mb-2">Como funciona</h2>
+          <p className="text-brand-primary font-medium mb-1">Seu robô particular, convertendo áudio em texto 24 horas por dia — mesmo enquanto você dorme.</p>
           <p className="text-brand-muted mb-12">Pronto em menos de 2 minutos. Sem instalar nada.</p>
           <div className="grid sm:grid-cols-3 gap-6">
             {[
@@ -421,7 +422,6 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
       <section className="py-12 px-4 bg-white/2 border-y border-white/5">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-2xl font-bold text-white text-center mb-3">Planos simples e transparentes</h2>
-          <p className="text-brand-primary text-center text-sm font-medium mb-1">Seu robô particular, convertendo áudio em texto 24 horas por dia.</p>
           <p className="text-brand-muted text-center mb-10">Comece grátis. Faça upgrade quando quiser.</p>
           <div className="grid sm:grid-cols-2 gap-4 max-w-xl mx-auto">
             {plans.map(plan => (
