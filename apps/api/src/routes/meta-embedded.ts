@@ -17,10 +17,10 @@ import { encryptStr } from '../services/encryption';
  *
  * Segredos (definidos pelo operador no Render — nunca em código):
  *   META_APP_ID, META_APP_SECRET (fallback FACEBOOK_APP_SECRET),
- *   META_GRAPH_VERSION (opcional, default v18.0), INTERNAL_API_SECRET.
+ *   META_GRAPH_VERSION (opcional, default v23.0), INTERNAL_API_SECRET.
  */
 
-const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v18.0';
+const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0';
 const GRAPH_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 function metaAppSecret(): string | undefined {

@@ -14,7 +14,7 @@ import { api } from '@/lib/api';
 
 const APP_ID    = process.env.NEXT_PUBLIC_META_APP_ID || '';
 const CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID || '';
-const GRAPH_VERSION = process.env.NEXT_PUBLIC_META_GRAPH_VERSION || 'v18.0';
+const GRAPH_VERSION = process.env.NEXT_PUBLIC_META_GRAPH_VERSION || 'v23.0';
 
 interface MetaStatus {
   connected: boolean;
