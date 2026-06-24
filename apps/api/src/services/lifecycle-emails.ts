@@ -293,13 +293,67 @@ async function runWinBack(log: any) {
   return sent;
 }
 
+/* ── Free engajado mas longe do limite (D+7 a D+14) → mostrar o teto do Free ──
+   Usuário que já provou valor (tem transcrições) mas usa pouco, então o gatilho
+   de "≥80% dos minutos" nunca dispara. Reforça que o hábito vai esbarrar nos
+   20 min do Free e convida ao Pro. Janela de cadastro evita disparo em massa na
+   base antiga; tag única (one-shot) garante idempotência. ────────── */
+async function runUpgradeActiveFree(log: any) {
+  const from = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const to   = new Date(Date.now() -  7 * 24 * 60 * 60 * 1000);
+  const tag  = 'upgrade_active_free';
+
+  const users = await prisma.user.findMany({
+    where: {
+      createdAt: { gte: from, lte: to },
+      deletedAt: null,
+      subscription:   { plan: { name: 'free' } },
+      transcriptions: { some: {} },
+    },
+    select: {
+      id: true, email: true, name: true, lifecycleEmailsSent: true,
+      balance:      { select: { availableMinutes: true } },
+      subscription: { select: { plan: { select: { minutesPerMonth: true } } } },
+    },
+  }).catch(() => [] as any[]);
+
+  let sent = 0;
+  for (const u of users) {
+    if (u.lifecycleEmailsSent.includes(tag)) continue;
+    // Quem já está perto do teto recebe o upgrade_usage (mais oportuno). Aqui só
+    // os que usam pouco mas com constância — evita dois e-mails de upgrade.
+    const total = u.subscription?.plan?.minutesPerMonth ?? 0;
+    const available = u.balance?.availableMinutes ?? 0;
+    if (total > 0 && (1 - available / total) >= 0.8) continue;
+
+    const firstName = firstNameOf(u.name);
+    try {
+      await sendEmail(
+        u.email,
+        `${firstName}, você já pegou o jeito do ZapScript`,
+        wrapper(firstName, `Virou hábito, ${firstName} 👏`, `
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já está transcrevendo seus áudios pelo ZapScript — ótimo sinal de que virou parte da rotina. O plano Free dá conta do começo, mas são só <strong>20 minutos por mês</strong>: num dia mais corrido de áudios, eles acabam rápido.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">No Pro são 200 minutos, 2 números e resumo com IA — ${proPriceLine()}. Assim seu robô nunca para no meio do mês.</p>
+          ${btn(`${APP_URL}/dashboard/plano`, 'Conhecer o Pro →')}
+        `),
+      );
+      await markSent(u.id, tag);
+      sent++;
+    } catch (e: any) {
+      log?.warn?.(`[Lifecycle] Falha ao enviar ${tag} para ${u.email}: ${e.message}`);
+    }
+  }
+  return sent;
+}
+
 async function runOnce(log: any) {
   try {
     const [d1, d3, incomplete] = await Promise.all([runActivationD1(log), runActivationD3(log), runConnectionIncomplete(log)]);
     const upgrade   = await runUpgradeByUsage(log);
+    const activeFree = await runUpgradeActiveFree(log);
     const firstTx   = await runFirstTranscription(log);
     const winback   = await runWinBack(log);
-    log?.info?.(`[Lifecycle] Ciclo concluído — candidatos d1=${d1} d3=${d3} conexao_incompleta_enviados=${incomplete} upgrades_enviados=${upgrade} primeira_transcricao=${firstTx} winback=${winback}`);
+    log?.info?.(`[Lifecycle] Ciclo concluído — candidatos d1=${d1} d3=${d3} conexao_incompleta_enviados=${incomplete} upgrades_enviados=${upgrade} upgrade_free_ativo=${activeFree} primeira_transcricao=${firstTx} winback=${winback}`);
   } catch (e: any) {
     log?.error?.(`[Lifecycle] Erro no ciclo de e-mails: ${e.message}`);
   }

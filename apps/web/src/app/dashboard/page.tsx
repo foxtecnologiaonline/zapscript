@@ -137,6 +137,25 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {/* ── Tempo economizado este mês (valor entregue) ── */}
+      {stats && stats.minutesUsed > 0 && (() => {
+        // Cada áudio você leria o resumo em ~15s no lugar de ouvir o áudio inteiro.
+        const saved = Math.max(0, stats.minutesUsed - (stats.transcriptionsMonth * 0.25));
+        const label = saved >= 60
+          ? `${Math.floor(saved / 60)}h${String(Math.round(saved % 60)).padStart(2, '0')}`
+          : `${Math.round(saved)} min`;
+        return (
+          <div className="flex items-center gap-3 rounded-xl px-4 py-3 mb-7"
+            style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.10), rgba(16,185,129,.03))', border: '1px solid rgba(16,185,129,.20)' }}>
+            <span className="text-lg flex-shrink-0">⚡</span>
+            <p className="text-xs text-brand-text leading-relaxed">
+              Você economizou cerca de <strong className="text-brand-primary">{label}</strong> este mês lendo resumos
+              em vez de ouvir <strong>{stats.transcriptionsMonth}</strong> áudio{stats.transcriptionsMonth !== 1 ? 's' : ''} inteiro{stats.transcriptionsMonth !== 1 ? 's' : ''}.
+            </p>
+          </div>
+        );
+      })()}
+
       {/* ── Cards secundários ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 

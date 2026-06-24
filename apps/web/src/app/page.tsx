@@ -133,6 +133,14 @@ export default function HomePage() {
                     <path d="M5 12h14M12 5l7 7-7 7"/>
                   </svg>
                 </Link>
+                <a href="#demo" data-cta="home_hero_demo"
+                  className="mt-2 flex items-center justify-center gap-1.5 text-[13px] font-semibold transition-colors hover:opacity-80"
+                  style={{ color: 'rgb(var(--color-primary))' }}>
+                  Ou teste com 1 áudio agora — sem cadastro
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 5v14M5 12l7 7 7-7"/>
+                  </svg>
+                </a>
               </div>
 
               <div className="flex items-center gap-3">
@@ -160,6 +168,18 @@ export default function HomePage() {
                 </Link>
               </div>
             </div>
+
+            {/* Selos de confiança — acima da dobra */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-5" style={{ animation: 'fadeInUp .6s ease .4s both' }}>
+              {['Grátis, sem cartão', 'Áudio nunca armazenado', 'Cancele em 1 clique'].map(t => (
+                <span key={t} className="inline-flex items-center gap-1 text-[11px] font-medium" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgb(var(--color-primary))" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6L9 17l-5-5"/>
+                  </svg>
+                  {t}
+                </span>
+              ))}
+            </div>
           </div>
         </header>
 
@@ -181,8 +201,29 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ══ FEITO PRO SEU TRABALHO — roteia pra LP do nicho ══ */}
+        <section className="px-5 pt-9">
+          <p className="text-xs font-semibold mb-2.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+            <span className="mr-1">🎯</span> Feito pro seu trabalho:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: '🏠 Corretores', href: '/corretores' },
+              { label: '⚖️ Advogados', href: '/advogados' },
+              { label: '💼 Vendas', href: '/vendas' },
+              { label: '🧮 Contadores', href: '/para/contabilidade' },
+            ].map(n => (
+              <Link key={n.href} href={n.href} data-cta="home_nicho"
+                className="inline-flex items-center px-3 py-2 rounded-full text-xs font-semibold transition-all hover:opacity-80 active:scale-[.97]"
+                style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgb(var(--color-border))', color: 'rgb(var(--color-text))' }}>
+                {n.label}
+              </Link>
+            ))}
+          </div>
+        </section>
+
         {/* ══ ISCA DE TOPO — Transcreva 1 áudio grátis ══ */}
-        <section className="px-5 pt-10" style={{ animation: 'fadeInUp .6s ease .45s both' }}>
+        <section id="demo" className="px-5 pt-10 scroll-mt-4" style={{ animation: 'fadeInUp .6s ease .45s both' }}>
           <DemoTranscribe />
         </section>
 

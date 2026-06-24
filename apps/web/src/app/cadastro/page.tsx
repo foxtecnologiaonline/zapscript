@@ -22,6 +22,11 @@ function CadastroForm() {
   const [isTesterInvite, setIsTesterInvite] = useState(false);
 
   const [form, setForm]   = useState({ name: '', email: '', password: '' });
+  // Handoff da demo: e-mail já digitado na isca chega em ?email= e vem pré-preenchido
+  const prefillEmail = searchParams.get('email') || '';
+  useEffect(() => {
+    if (prefillEmail) setForm(f => (f.email ? f : { ...f, email: prefillEmail }));
+  }, [prefillEmail]);
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');

@@ -9,14 +9,32 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type DemoResult = { text: string; bullets: string[]; durationSec: number };
 
+// Exemplo pronto — resultado instantâneo, sem upload nem e-mail (para quem só quer ver funcionando)
+const EXAMPLE_RESULT: DemoResult = {
+  durationSec: 47,
+  text: 'Oi, tudo bem? Então, sobre o apartamento da Rua das Acácias: o proprietário aceitou a proposta de R$ 420 mil, mas pediu pra fechar até sexta. Ele topa parcelar a entrada em duas vezes. Preciso que você confirme com o cliente hoje ainda e já me mande os documentos pra adiantar o contrato. Ah, e a vistoria ficou marcada pra quinta de manhã, 9 horas.',
+  bullets: [
+    'Proposta de R$ 420 mil aceita pelo proprietário',
+    'Prazo para fechar: até sexta-feira',
+    'Entrada pode ser parcelada em 2x',
+    'Vistoria marcada para quinta, às 9h',
+  ],
+};
+
 export function DemoTranscribe() {
   const [file, setFile]       = useState<File | null>(null);
   const [email, setEmail]     = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const [result, setResult]   = useState<DemoResult | null>(null);
+  const [isExample, setIsExample] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Link de cadastro carregando o e-mail já digitado (handoff demo → cadastro)
+  const signupHref = email.trim() && EMAIL_RE.test(email.trim())
+    ? `/cadastro?plan=pro&email=${encodeURIComponent(email.trim().toLowerCase())}`
+    : '/cadastro?plan=pro';
 
   function pickFile(f: File | null) {
     setError(null);
@@ -51,8 +69,14 @@ export function DemoTranscribe() {
   }
 
   function reset() {
-    setFile(null); setResult(null); setError(null); setEmail('');
+    setFile(null); setResult(null); setError(null); setEmail(''); setIsExample(false);
     if (inputRef.current) inputRef.current.value = '';
+  }
+
+  function showExample() {
+    setError(null);
+    setResult(EXAMPLE_RESULT);
+    setIsExample(true);
   }
 
   return (
@@ -145,9 +169,27 @@ export function DemoTranscribe() {
           <p className="text-[10px] text-center mt-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
             🔒 Seu áudio nunca é armazenado. Processado e descartado na hora.
           </p>
+
+          {/* Não tem áudio à mão? Vê funcionando na hora */}
+          <div className="flex items-center gap-3 my-3">
+            <div className="flex-1 h-px" style={{ background: 'rgb(var(--color-border))' }} />
+            <span className="text-[11px] font-medium" style={{ color: 'rgb(var(--color-text-muted))' }}>sem áudio agora?</span>
+            <div className="flex-1 h-px" style={{ background: 'rgb(var(--color-border))' }} />
+          </div>
+          <button type="button" onClick={showExample}
+            className="w-full py-3 rounded-2xl text-sm font-semibold transition-all hover:opacity-80 active:scale-[.98] flex items-center justify-center gap-2"
+            style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-secondary))', background: 'rgb(var(--color-surface))' }}>
+            👀 Ver um exemplo pronto
+          </button>
         </>
       ) : (
         <div style={{ animation: 'fadeInUp .4s ease both' }}>
+          {isExample && (
+            <div className="inline-flex items-center gap-1.5 mb-3 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"
+              style={{ background: 'rgba(245,158,11,.12)', color: 'rgb(245,158,11)', border: '1px solid rgba(245,158,11,.25)' }}>
+              ✨ Exemplo · áudio de 47s
+            </div>
+          )}
           {/* Transcrição */}
           <p className="text-[11px] font-semibold mb-1.5" style={{ color: 'rgb(var(--color-primary))' }}>📝 Transcrição:</p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgb(var(--color-text))' }}>
@@ -175,7 +217,7 @@ export function DemoTranscribe() {
             <p className="text-xs font-light mb-3" style={{ color: 'rgb(var(--color-text-secondary))' }}>
               Conecte seu número e todo áudio vira texto e resumo sozinho. Comece grátis — 1º mês do Pro por R$ 19,90.
             </p>
-            <Link href="/cadastro?plan=pro" className="btn-primary w-full py-3 text-sm font-semibold flex items-center justify-center gap-2">
+            <Link href={signupHref} className="btn-primary w-full py-3 text-sm font-semibold flex items-center justify-center gap-2">
               Criar minha conta grátis
             </Link>
           </div>
@@ -183,7 +225,7 @@ export function DemoTranscribe() {
           <button type="button" onClick={reset}
             className="w-full py-2.5 rounded-2xl text-sm font-semibold transition-all"
             style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-secondary))', background: 'transparent' }}>
-            Transcrever outro áudio
+            {isExample ? 'Transcrever meu próprio áudio' : 'Transcrever outro áudio'}
           </button>
         </div>
       )}
