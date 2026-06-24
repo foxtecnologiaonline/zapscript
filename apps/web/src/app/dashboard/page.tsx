@@ -166,6 +166,22 @@ export default function DashboardPage() {
               <span>{stats.minutesPct}% usado</span>
               <span>{stats.minutesAvailable.toFixed(1)} min restantes</span>
             </div>
+            {/* Alerta contextual — perto de esgotar os minutos */}
+            {stats.minutesPct >= 80 && (
+              <div className={`flex items-start gap-2 text-[11px] mb-3 px-2.5 py-2 rounded-lg ${
+                stats.minutesPct >= 95 ? 'bg-red-400/10 text-red-400 border border-red-400/20'
+                                       : 'bg-amber-400/10 text-amber-500 border border-amber-400/20'}`}>
+                <span className="mt-px">{stats.minutesPct >= 95 ? '🚨' : '⚠️'}</span>
+                <span className="leading-snug">
+                  {stats.minutesPct >= 95
+                    ? <>Seus minutos estão <strong>quase no fim</strong>.</>
+                    : <>Você já usou <strong>{stats.minutesPct}%</strong> dos seus minutos.</>}
+                  {stats.planName === 'free'
+                    ? ' Faça upgrade para o Pro e não fique sem transcrever.'
+                    : ' Eles renovam na próxima data de cobrança.'}
+                </span>
+              </div>
+            )}
             {/* Renovação — só planos pagos */}
             {stats.renewAt && stats.planName !== 'free' && (() => {
               const today    = new Date(); today.setHours(0,0,0,0);

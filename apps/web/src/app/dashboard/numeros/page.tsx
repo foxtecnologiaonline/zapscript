@@ -76,6 +76,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
   const [requesting, setRequesting]   = useState(false);
   const [qrImage, setQrImage]         = useState<string | null>(null);
   const [qrLoading, setQrLoading]     = useState(false);
+  const [qrCountdown, setQrCountdown] = useState(25);
   const [copied, setCopied]           = useState(false);
 
   // Detecta telefone fixo: 10 dígitos = DDD(2) + 8 dígitos (sem o "9" do celular)
@@ -118,27 +119,35 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  // Carrega/renova o QR e reinicia a contagem regressiva (reutilizável: polling + botão manual)
+  const loadQr = useCallback(async () => {
+    setQrLoading(true);
+    setQrCountdown(25);
+    try {
+      const res = await api.get<{ qr?: string }>(`/numbers/${number.id}/qr`);
+      if (res?.qr) setQrImage(res.qr);
+    } catch { /* ignora */ } finally { setQrLoading(false); }
+  }, [number.id]);
+
   // Polling de QR code (atualiza a cada 25s antes do QR expirar)
   useEffect(() => {
     if (connectMode !== 'qr' || phase === 'init' || phase === 'error' || phase === 'connected') return;
-    let active = true;
-    async function fetchQr() {
-      if (!active) return;
-      setQrLoading(true);
-      try {
-        const res = await api.get<{ qr?: string }>(`/numbers/${number.id}/qr`);
-        if (res?.qr) setQrImage(res.qr);
-      } catch { /* ignora */ } finally { if (active) setQrLoading(false); }
-    }
     // Primeira tentativa imediata; o backend já faz retry interno com 3s de intervalo
-    fetchQr();
+    loadQr();
     // Polling periódico a cada 25s para renovar o QR antes de expirar
-    qrPollRef.current = setInterval(fetchQr, 25_000);
+    qrPollRef.current = setInterval(loadQr, 25_000);
     // Também inicia polling de status
     setPhase(p => (p === 'ready' ? 'waiting' : p));
-    return () => { active = false; clearInterval(qrPollRef.current!); };
+    return () => { clearInterval(qrPollRef.current!); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectMode, phase === 'ready' || phase === 'waiting' || phase === 'code']);
+  }, [connectMode, phase === 'ready' || phase === 'waiting' || phase === 'code', loadQr]);
+
+  // Contador regressivo visível até a próxima renovação do QR
+  useEffect(() => {
+    if (connectMode !== 'qr' || !qrImage) return;
+    const t = setInterval(() => setQrCountdown(c => (c > 0 ? c - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [connectMode, qrImage]);
 
   // QR vindo do Socket.IO (evento qr:updated emitido pelo webhook Evolution)
   // Só troca para a tab QR se o usuário NÃO estiver já em modo phone (código por número)
@@ -418,7 +427,17 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                           <Spinner size={3} />
                           Aguardando leitura do QR…
                         </div>
-                        <p className="text-[10px] text-brand-muted">QR atualiza automaticamente a cada 20s</p>
+                        <p className="text-[10px] text-brand-muted">
+                          {qrLoading ? 'Gerando novo QR…' : `Renova automaticamente em ${qrCountdown}s`}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={loadQr}
+                          disabled={qrLoading}
+                          className="text-[11px] px-3 py-1.5 rounded-lg bg-brand-primary/10 border border-brand-primary/25 text-brand-primary hover:bg-brand-primary/20 transition-all disabled:opacity-50"
+                        >
+                          🔄 Gerar novo QR agora
+                        </button>
                       </>
                     ) : (
                       <div className="flex flex-col items-center gap-3 py-6 text-brand-muted">
@@ -471,13 +490,65 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                 </>
               )}
 
-              {/* Dica de segurança — sempre visível */}
-              <div className="flex items-start gap-2 bg-brand-elevated border border-brand-border/60 rounded-xl px-3 py-2.5">
-                <span className="text-sm mt-0.5">🔒</span>
-                <p className="text-[11px] text-brand-muted leading-relaxed">
-                  O ZapScript funciona como um <strong className="text-brand-text">dispositivo adicional</strong> — igual ao WhatsApp Web.
-                  Seu WhatsApp permanece intacto no celular.
-                </p>
+              {/* Menus dinâmicos — abrem ao clicar (fechados por padrão) */}
+              <div className="space-y-2">
+                {/* 📖 Como Conectar */}
+                <details className="group bg-brand-elevated border border-brand-border/60 rounded-xl overflow-hidden">
+                  <summary className="flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer list-none select-none">
+                    <span className="text-[13px] font-semibold text-brand-text">📖 Como conectar</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                         className="text-brand-muted transition-transform group-open:rotate-180">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </summary>
+                  <div className="px-3 pb-3 pt-0.5 space-y-2.5 text-[11px] text-brand-muted leading-relaxed border-t border-brand-border/40">
+                    <ol className="space-y-1.5 mt-2 list-decimal list-inside">
+                      <li>Abra o <strong className="text-brand-text">WhatsApp</strong> ou <strong className="text-brand-text">WhatsApp Business</strong> no celular.</li>
+                      <li>Toque nos <strong className="text-brand-text">3 pontos ⋮</strong> (canto superior direito) → <strong className="text-brand-text">Dispositivos conectados</strong>.</li>
+                      <li>Toque em <strong className="text-brand-text">Conectar dispositivo</strong>.</li>
+                      <li>Cole o <strong className="text-brand-text">código</strong> (modo recomendado) ou <strong className="text-brand-text">aponte a câmera</strong> para o QR.</li>
+                    </ol>
+                    <div className="pt-1.5 border-t border-brand-border/30 space-y-1.5">
+                      <p><span className="mr-1">📞</span><strong className="text-brand-text">Telefone fixo?</strong> Use o código normalmente. Se não chegar, troque para o QR Code.</p>
+                      <p><span className="mr-1">📍</span><strong className="text-brand-text">Avisou "localização suspeita"?</strong> É normal em automação — pode confirmar com tranquilidade.</p>
+                      <p><span className="mr-1">📱</span><strong className="text-brand-text">Só tem o celular?</strong> Abra o ZapScript no computador, ou use <strong className="text-brand-text">tela dividida</strong> no Android (browser em cima, WhatsApp embaixo).</p>
+                    </div>
+                  </div>
+                </details>
+
+                {/* 🔒 Explicações do acesso */}
+                <details className="group bg-brand-elevated border border-brand-border/60 rounded-xl overflow-hidden">
+                  <summary className="flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer list-none select-none">
+                    <span className="text-[13px] font-semibold text-brand-text">🔒 Explicações do acesso</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                         className="text-brand-muted transition-transform group-open:rotate-180">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </summary>
+                  <div className="px-3 pb-3 pt-0.5 space-y-2.5 text-[11px] text-brand-muted leading-relaxed border-t border-brand-border/40">
+                    <p className="mt-2">
+                      Você está conectando ao <strong className="text-brand-text">seu próprio WhatsApp</strong> — o mesmo processo do WhatsApp Web.
+                      O ZapScript entra como um <strong className="text-brand-text">dispositivo adicional</strong>, não dá acesso a terceiros.
+                    </p>
+                    <p>
+                      <strong className="text-brand-text">Não desconecta nada:</strong> seu WhatsApp Web, o app no celular e o WhatsApp Business
+                      continuam funcionando normalmente, ao mesmo tempo.
+                    </p>
+                    <ul className="space-y-1.5 pt-1.5 border-t border-brand-border/30">
+                      <li>✅ Áudio descartado logo após a transcrição.</li>
+                      <li>✅ Criptografia <strong className="text-brand-text">AES-256</strong> de ponta a ponta no armazenamento.</li>
+                      <li>✅ Servidores <strong className="text-brand-text">no Brasil</strong> — conformidade com a LGPD.</li>
+                      <li>✅ <strong className="text-brand-text">Nenhum humano</strong> lê seus áudios ou suas conversas.</li>
+                    </ul>
+                    <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-brand-border/30">
+                      <a href="/privacidade" target="_blank" rel="noopener noreferrer"
+                         className="text-brand-primary hover:underline font-semibold">
+                        Ver política de privacidade →
+                      </a>
+                      <span className="text-brand-muted">Desconecte quando quiser, em 1 clique.</span>
+                    </div>
+                  </div>
+                </details>
               </div>
             </>
           )}

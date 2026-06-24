@@ -489,6 +489,7 @@ function PlanoContent() {
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [invoicesMeta, setInvoicesMeta]       = useState<{ isTester?: boolean; testerRenewalsUsed?: number; testerRenewalsTotal?: number }>({});
   const justUpgraded = searchParams.get('upgrade') === 'success';
+  const justCanceled = searchParams.get('canceled') === '1';
 
   /* — Minute packages — */
   const [minutePkgs, setMinutePkgs]             = useState<MinutePkg[]>(DEFAULT_MINUTE_PKGS);
@@ -498,6 +499,23 @@ function PlanoContent() {
   const [pkgPixData, setPkgPixData]             = useState<{ qrCode: string | null; copyPaste: string | null } | null>(null);
   const [pkgCopied, setPkgCopied]               = useState(false);
   const [pkgSuccess, setPkgSuccess]             = useState(false);
+  const [cancelModal, setCancelModal]           = useState(false);
+  const [canceling, setCanceling]               = useState(false);
+  const [cancelError, setCancelError]           = useState('');
+
+  async function handleCancel() {
+    setCanceling(true);
+    setCancelError('');
+    try {
+      await api.post('/billing/cancel', {});
+      setCancelModal(false);
+      window.location.href = '/dashboard/plano?canceled=1';
+    } catch (e: any) {
+      setCancelError(e?.message || 'Não foi possível cancelar agora. Tente novamente.');
+    } finally {
+      setCanceling(false);
+    }
+  }
 
   useEffect(() => {
     // Se veio da página de sucesso, sincroniza com Asaas antes de carregar
@@ -617,6 +635,20 @@ function PlanoContent() {
           <div>
             <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Upgrade realizado com sucesso!</div>
             <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>Seus minutos foram atualizados.</div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancelamento confirmado */}
+      {justCanceled && (
+        <div className="rounded-xl px-5 py-3.5 mb-5 flex items-center gap-3"
+          style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgb(var(--color-border))' }}>
+          <span className="text-xl">✅</span>
+          <div>
+            <div className="font-bold text-sm">Assinatura cancelada</div>
+            <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Você voltou para o plano Free. Pode reativar quando quiser.
+            </div>
           </div>
         </div>
       )}
@@ -754,6 +786,22 @@ function PlanoContent() {
               </li>
             ))}
           </ul>
+
+          {/* Cancelamento — em 1 clique, sem ligação, sem fidelidade */}
+          <div className="mt-4 pt-3 flex items-center justify-between gap-3"
+            style={{ borderTop: '1px solid rgb(var(--color-border))' }}>
+            <span className="text-[11px] font-light" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              Cancele em 1 clique, sem ligação e sem fidelidade.
+            </span>
+            <button
+              type="button"
+              onClick={() => { setCancelError(''); setCancelModal(true); }}
+              className="text-xs font-medium whitespace-nowrap transition-colors hover:underline"
+              style={{ color: 'rgb(var(--color-text-muted))' }}
+            >
+              Cancelar assinatura
+            </button>
+          </div>
         </div>
       ) : (
         /* Usuários Free: comparativo rápido + Pro como herói */
@@ -1275,6 +1323,42 @@ function PlanoContent() {
           onConfirm={doUpgrade}
           onCancel={() => setUpgradePreview(null)}
         />
+      )}
+
+      {/* Modal de cancelamento */}
+      {cancelModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => !canceling && setCancelModal(false)}>
+          <div className="card rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="text-2xl mb-2">😔</div>
+            <h3 className="font-display font-bold text-lg mb-1">Cancelar assinatura?</h3>
+            <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Você volta para o plano <strong>Free</strong> (20 min/mês). Continua com acesso até o fim do período já pago e pode reativar quando quiser — sem fidelidade.
+            </p>
+            {cancelError && (
+              <p className="text-xs mb-3 px-3 py-2 rounded-lg" style={{ background: 'rgba(248,113,113,.1)', color: '#f87171' }}>
+                {cancelError}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCancelModal(false)}
+                disabled={canceling}
+                className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50">
+                Manter meu plano
+              </button>
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={canceling}
+                className="flex-1 text-sm py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50"
+                style={{ border: '1px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
+                {canceling ? 'Cancelando…' : 'Sim, cancelar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
