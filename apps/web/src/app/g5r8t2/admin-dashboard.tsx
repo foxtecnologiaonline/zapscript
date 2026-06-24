@@ -3221,6 +3221,7 @@ function CampanhasTab({ apiBase, token, notify }: {
   const [includeTesters, setTesters]      = useState(false);
   const [includeFree, setFree]            = useState(false);
   const [hasDocument, setHasDocument]     = useState(false);
+  const [hasWhatsapp, setHasWhatsapp]     = useState<'' | 'connected' | 'disconnected'>('');
 
   // Modo de seleção: por filtro automático OU escolha manual de usuários
   const [mode, setMode]             = useState<'filter' | 'manual'>('filter');
@@ -3260,6 +3261,7 @@ function CampanhasTab({ apiBase, token, notify }: {
       includeTesters:   includeTesters || undefined,
       includeFree:      includeFree || undefined,
       hasDocument:      hasDocument || undefined,
+      hasWhatsapp:      hasWhatsapp || undefined,
     };
   }
 
@@ -3540,6 +3542,23 @@ Equipe ZapScript`,
             </div>
           </div>
 
+          {/* WhatsApp: com / sem número conectado */}
+          <div>
+            <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-2">WhatsApp</div>
+            <div className="flex gap-1.5">
+              {([['', 'Todos'], ['connected', '📱 Com WhatsApp'], ['disconnected', '🚫 Sem WhatsApp']] as const).map(([v, label]) => (
+                <button key={v || 'all'} type="button" onClick={() => { setHasWhatsapp(v); setPreview(null); setResult(null); }}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border font-semibold transition-colors ${
+                    hasWhatsapp === v
+                      ? 'bg-[rgba(16,185,129,.15)] border-[rgba(16,185,129,.3)] text-[#10b981]'
+                      : 'bg-[#132621] border-[rgba(16,185,129,.1)] text-[rgba(16,185,129,.4)]'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Checkboxes + inatividade */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div>
@@ -3704,11 +3723,18 @@ Equipe ZapScript`,
           <div>
             <label className="block text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1.5">Texto da mensagem</label>
             <textarea value={message} onChange={e => setMessage(e.target.value)}
-              placeholder="Olá! Temos uma novidade no ZapScript..."
+              placeholder="Olá [Nome]! Temos uma novidade no ZapScript..."
               rows={6}
               className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)] resize-none"
             />
-            <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-1 text-right">{message.length} chars</div>
+            <div className="flex items-center justify-between mt-1">
+              <button type="button"
+                onClick={() => setMessage(m => m + '[Nome]')}
+                className="text-[10px] text-[rgba(16,185,129,.55)] hover:text-[#10b981] transition-colors">
+                + inserir <span className="font-mono">[Nome]</span> (puxa o 1º nome do cadastro)
+              </button>
+              <span className="text-[10px] text-[rgba(16,185,129,.3)]">{message.length} chars</span>
+            </div>
           </div>
 
           {/* Botão enviar */}

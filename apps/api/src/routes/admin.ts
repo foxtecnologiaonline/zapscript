@@ -2230,12 +2230,15 @@ export default async function adminRoutes(app: FastifyInstance) {
       const user = await prisma.user.findUnique({
         where:   { id },
         select:  {
-          id: true, email: true, deletedAt: true,
+          id: true, email: true, name: true, deletedAt: true,
           numbers: { where: { status: 'connected' }, select: { phoneNumber: true, zapiInstanceId: true }, take: 1 },
         },
       });
       if (!user)          return reply.code(404).send({ error: 'Usuário não encontrado.' });
       if (user.deletedAt) return reply.code(400).send({ error: 'Usuário deletado.' });
+
+      // [Nome] → primeiro nome do cadastro
+      const personalMsg = personalizeMsg(message.trim(), user.name);
 
       const results: Record<string, any> = {};
 
@@ -2255,7 +2258,7 @@ export default async function adminRoutes(app: FastifyInstance) {
             if (!sender?.zapiInstanceId) {
               throw new Error(`Número remetente ${INVITE_SENDER_PHONE} não está conectado. Conecte-o no painel antes de enviar.`);
             }
-            await sendText(sender.zapiInstanceId, number.phoneNumber, message.trim());
+            await sendText(sender.zapiInstanceId, number.phoneNumber, personalMsg);
             results.whatsapp = { ok: true, phone: number.phoneNumber };
           } catch (e: any) {
             results.whatsapp = { ok: false, error: e.message };
@@ -2266,14 +2269,8 @@ export default async function adminRoutes(app: FastifyInstance) {
       // ── E-mail ────────────────────────────────────────────
       if (channel === 'email' || channel === 'both') {
         try {
-          const emailSubject = subject?.trim() || '📩 Mensagem da equipe ZapScript';
-          const html = `
-            <div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
-              <div style="font-size:22px;font-weight:bold;margin-bottom:16px">📩 Mensagem do ZapScript</div>
-              <div style="font-size:14px;line-height:1.6;white-space:pre-wrap;color:#a7f3d0">${message.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-              <div style="margin-top:24px;font-size:11px;color:#6ee7b7;opacity:0.5">Equipe ZapScript · zapscript.me</div>
-            </div>`;
-          await sendEmail(user.email, emailSubject, html);
+          const emailSubject = personalizeMsg(subject?.trim() || '📩 Mensagem da equipe ZapScript', user.name);
+          await sendEmail(user.email, emailSubject, adminMsgEmailHtml(personalMsg));
           results.email = { ok: true, to: maskEmail(user.email) };
         } catch (e: any) {
           results.email = { ok: false, error: e.message };
@@ -2299,6 +2296,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       includeTesters?:  boolean;
       includeFree?:     boolean;
       hasDocument?:     boolean;    // apenas usuários com CNPJ/CPF cadastrado (empresas)
+      hasWhatsapp?:     'connected' | 'disconnected';
       userIds?:         string[];   // seleção manual de destinatários
     };
   }>(
@@ -2327,6 +2325,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       includeTesters?:  boolean;
       includeFree?:     boolean;
       hasDocument?:     boolean;    // apenas usuários com CNPJ/CPF cadastrado (empresas)
+      hasWhatsapp?:     'connected' | 'disconnected';
       userIds?:         string[];   // seleção manual de destinatários
       channel:          'whatsapp' | 'email' | 'both';
       message:          string;
@@ -2357,21 +2356,18 @@ export default async function adminRoutes(app: FastifyInstance) {
       const errors: string[] = [];
 
       const emailSubject = subject?.trim() || '📩 Mensagem da equipe ZapScript';
-      const html = `
-        <div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
-          <div style="font-size:22px;font-weight:bold;margin-bottom:16px">📩 Mensagem do ZapScript</div>
-          <div style="font-size:14px;line-height:1.6;white-space:pre-wrap;color:#a7f3d0">${message.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-          <div style="margin-top:24px;font-size:11px;color:#6ee7b7;opacity:0.5">Equipe ZapScript · zapscript.me</div>
-        </div>`;
+      const baseMsg = message.trim();
 
       for (const user of users) {
         let userOk = false;
+        // [Nome] → primeiro nome do cadastro (por destinatário)
+        const personalMsg = personalizeMsg(baseMsg, (user as any).name);
 
         if ((channel === 'whatsapp' || channel === 'both') && sender?.zapiInstanceId) {
           const num = user.numbers[0];
           if (num?.phoneNumber && num?.zapiInstanceId) {
             try {
-              await sendText(sender.zapiInstanceId, num.phoneNumber, message.trim());
+              await sendText(sender.zapiInstanceId, num.phoneNumber, personalMsg);
               userOk = true;
             } catch (e: any) {
               errors.push(`WA ${maskEmail(user.email)}: ${e.message}`);
@@ -2381,7 +2377,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
         if (channel === 'email' || channel === 'both') {
           try {
-            await sendEmail(user.email, emailSubject, html);
+            await sendEmail(user.email, personalizeMsg(emailSubject, (user as any).name), adminMsgEmailHtml(personalMsg));
             userOk = true;
           } catch (e: any) {
             errors.push(`Email ${maskEmail(user.email)}: ${e.message}`);
@@ -2704,6 +2700,27 @@ function escHtmlAdmin(s: string | null | undefined): string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+/** Primeiro nome do cadastro (fallback neutro quando não há nome). */
+function firstNameOfAdmin(name: string | null | undefined): string {
+  const n = name?.trim().split(/\s+/)[0];
+  return n || 'tudo bem';
+}
+
+/** Substitui o token [Nome] (case-insensitive) pelo primeiro nome do usuário. */
+function personalizeMsg(text: string, name: string | null | undefined): string {
+  return text.replace(/\[nome\]/gi, firstNameOfAdmin(name));
+}
+
+/** Monta o HTML padrão de mensagem do admin (mesmo layout em individual e campanha). */
+function adminMsgEmailHtml(message: string): string {
+  return `
+    <div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+      <div style="font-size:22px;font-weight:bold;margin-bottom:16px">📩 Mensagem do ZapScript</div>
+      <div style="font-size:14px;line-height:1.6;white-space:pre-wrap;color:#a7f3d0">${message.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+      <div style="margin-top:24px;font-size:11px;color:#6ee7b7;opacity:0.5">Equipe ZapScript · zapscript.me</div>
+    </div>`;
+}
+
 // ── Helper: monta lista de usuários para campanha ────────────────────────────
 async function getCampaignRecipients(filters: {
   plans?:           string[];
@@ -2713,6 +2730,7 @@ async function getCampaignRecipients(filters: {
   includeTesters?:  boolean;
   includeFree?:     boolean;
   hasDocument?:     boolean;
+  hasWhatsapp?:     'connected' | 'disconnected';  // com / sem número WhatsApp conectado
   userIds?:         string[];   // seleção manual — quando presente, ignora os demais filtros
 }) {
   const RECIPIENT_INCLUDE = {
@@ -2746,6 +2764,11 @@ async function getCampaignRecipients(filters: {
 
   return users.filter((u: any) => {
     const planName = u.subscription?.plan?.name || 'free';
+
+    // Filtro por WhatsApp (numbers já vem filtrado para status 'connected')
+    const hasConnected = u.numbers.length > 0;
+    if (filters.hasWhatsapp === 'connected'    && !hasConnected) return false;
+    if (filters.hasWhatsapp === 'disconnected' &&  hasConnected) return false;
 
     // Filtro por plano
     if (filters.plans && filters.plans.length > 0) {
