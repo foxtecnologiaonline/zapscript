@@ -52,10 +52,24 @@ Te espero lá! 🙌`;
 }
 
 const INVITE_SENDER_PHONE = '5534991790254';
+// Últimos 8 dígitos identificam a linha unicamente. Casamos por eles para
+// tolerar a variação do "9º dígito" do celular BR — a mesma linha pode estar
+// salva como 5534991790254 (com 9) ou 553491790254 (sem 9, formato antigo).
+const INVITE_SENDER_TAIL = INVITE_SENDER_PHONE.slice(-8); // '91790254'
+/** Linha do remetente de convites, conectada (match tolerante ao 9º dígito). */
+const INVITE_SENDER_WHERE = {
+  status: 'connected',
+  phoneNumber: { endsWith: INVITE_SENDER_TAIL },
+  zapiInstanceId: { not: null },
+} as const;
+/** True se o número é o remetente de convites (ignora variação do 9º dígito). */
+function isInviteSender(phoneNumber?: string | null): boolean {
+  return !!phoneNumber && phoneNumber.endsWith(INVITE_SENDER_TAIL);
+}
 
 async function sendTesterWhatsApp(phone: string, message: string, log: any): Promise<string> {
   const number = await prisma.whatsappNumber.findFirst({
-    where: { status: 'connected', phoneNumber: INVITE_SENDER_PHONE, zapiInstanceId: { not: null } },
+    where: INVITE_SENDER_WHERE,
     select: { zapiInstanceId: true },
   });
 
@@ -292,14 +306,15 @@ export default async function adminRoutes(app: FastifyInstance) {
     };
   });
 
-  // GET /admin/users — lista de usuários com busca e paginação
-  app.get<{ Querystring: { limit?: string; offset?: string; search?: string } }>(
+  // GET /admin/users — lista de usuários com busca, paginação e filtro de WhatsApp
+  app.get<{ Querystring: { limit?: string; offset?: string; search?: string; whatsapp?: string } }>(
     '/users',
     { preHandler: [adminAuth] },
     async (req) => {
       const limit  = Math.min(Math.max(parseInt(req.query.limit  || '20') || 20, 1), 100);
       const offset = Math.max(parseInt(req.query.offset || '0') || 0, 0);
       const search = req.query.search;
+      const whatsapp = req.query.whatsapp;  // 'connected' | 'disconnected' | undefined (todos)
 
       const where: any = {};
       if (search) {
@@ -307,6 +322,13 @@ export default async function adminRoutes(app: FastifyInstance) {
           { email: { contains: search, mode: 'insensitive' } },
           { name:  { contains: search, mode: 'insensitive' } },
         ];
+      }
+      // Filtro por status de conexão do WhatsApp
+      if (whatsapp === 'connected') {
+        where.numbers = { some: { status: 'connected' } };
+      } else if (whatsapp === 'disconnected') {
+        // Sem nenhum número conectado (inclui quem não tem número algum)
+        where.numbers = { none: { status: 'connected' } };
       }
 
       const [users, total] = await Promise.all([
@@ -1214,7 +1236,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         const entry: any = {
           id: n.id, displayName: n.displayName, phoneNumber: n.phoneNumber,
           statusDB: n.status, instanceId: n.zapiInstanceId,
-          isSender: n.phoneNumber === INVITE_SENDER_PHONE,
+          isSender: isInviteSender(n.phoneNumber),
         };
         try {
           entry.evolutionState = await getConnectionState(n.zapiInstanceId);
@@ -2227,7 +2249,7 @@ export default async function adminRoutes(app: FastifyInstance) {
             // Usa o número remetente oficial do admin (o mesmo dos convites),
             // nunca um número de cliente aleatório.
             const sender = await prisma.whatsappNumber.findFirst({
-              where:  { status: 'connected', phoneNumber: INVITE_SENDER_PHONE, zapiInstanceId: { not: null } },
+              where:  INVITE_SENDER_WHERE,
               select: { zapiInstanceId: true },
             });
             if (!sender?.zapiInstanceId) {
@@ -2327,7 +2349,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       // Número remetente oficial do admin (mesmo dos convites), nunca um cliente.
       const sender = await prisma.whatsappNumber.findFirst({
-        where:  { status: 'connected', phoneNumber: INVITE_SENDER_PHONE, zapiInstanceId: { not: null } },
+        where:  INVITE_SENDER_WHERE,
         select: { zapiInstanceId: true },
       });
 

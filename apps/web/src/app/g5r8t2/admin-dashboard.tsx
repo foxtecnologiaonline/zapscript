@@ -71,6 +71,7 @@ interface DashCtx {
   userTotal: number;
   userSearch: string;
   userOffset: number;
+  userWhatsapp: string;
   tickets: any[];
   ticketTotal: number;
   ticketStatus: string;
@@ -97,7 +98,8 @@ interface DashFn {
   setTab: (t: Tab) => void;
   setUserSearch: (s: string) => void;
   setUserOffset: (o: number) => void;
-  loadUsers: (search: string, offset: number) => void;
+  setUserWhatsapp: (s: string) => void;
+  loadUsers: (search: string, offset: number, whatsapp?: string) => void;
   setTicketStatus: (s: string) => void;
   setTicketOffset: (o: number) => void;
   loadTickets: (status: string, offset: number) => void;
@@ -687,12 +689,12 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
 
 export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }) {
   const {
-    stats, tab, growth, loading, subLoading, users, userTotal, userSearch, userOffset,
+    stats, tab, growth, loading, subLoading, users, userTotal, userSearch, userOffset, userWhatsapp,
     tickets, ticketTotal, ticketStatus, ticketOffset, detailId, invites, inviteTotal,
     inviteName, invitePhone, inviteLoading, lastInviteResult, creatingPlan, syncingPlans, toast, token,
   } = ctx;
   const {
-    refreshStats, goTab, setTab, setUserSearch, setUserOffset, loadUsers,
+    refreshStats, goTab, setTab, setUserSearch, setUserOffset, setUserWhatsapp, loadUsers,
     setTicketStatus, setTicketOffset, loadTickets, updateTicketStatus, loadInvites,
     deleteInvite, createInvite, createProTesterPlan, syncPlans, setDetailId, setInviteName,
     setInvitePhone, notify, setToast, setLastInviteResult,
@@ -875,6 +877,21 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
               />
               <Btn variant="ghost" cls="px-5">Buscar</Btn>
             </form>
+
+            {/* Filtros de WhatsApp */}
+            <div className="flex gap-1.5 flex-wrap">
+              {([['', 'Todos'], ['connected', '🟢 Com WhatsApp'], ['disconnected', '🔴 Sem WhatsApp']] as [string, string][]).map(([v, label]) => (
+                <button key={v}
+                  onClick={() => { setUserWhatsapp(v); setUserOffset(0); loadUsers(userSearch, 0, v); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+                    userWhatsapp === v
+                      ? 'bg-[rgba(16,185,129,.12)] text-[#10b981] border-[rgba(16,185,129,.2)]'
+                      : 'border-transparent text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
 
             {/* Barra de ações em lote — fora da <table> (div não é filho válido de table) */}
             {selectedUsers.size > 0 && (

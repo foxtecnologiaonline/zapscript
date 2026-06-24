@@ -20,6 +20,7 @@ export default function AdminPage() {
   const [userTotal, setUserTotal] = useState(0);
   const [userSearch, setUserSearch] = useState('');
   const [userOffset, setUserOffset] = useState(0);
+  const [userWhatsapp, setUserWhatsapp] = useState('');  // '' | 'connected' | 'disconnected'
   const [detailId, setDetailId]   = useState<string | null>(null);
 
   // Tickets
@@ -69,11 +70,13 @@ export default function AdminPage() {
   }
 
   /* ── Loaders ── */
-  async function loadUsers(search: string, offset: number) {
+  async function loadUsers(search: string, offset: number, whatsapp?: string) {
     setSubLoading(true);
     try {
+      const wa = whatsapp !== undefined ? whatsapp : userWhatsapp;
       const p = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
       if (search) p.set('search', search);
+      if (wa) p.set('whatsapp', wa);
       const d = await (await fetch(`${API}/sys/g5r8t2/users?${p}`, { headers: h })).json();
       setUsers(d.users || []);
       setUserTotal(d.total || 0);
@@ -221,14 +224,14 @@ export default function AdminPage() {
     <AdminDashboard
       ctx={{
         stats, tab, growth, loading, subLoading,
-        users, userTotal, userSearch, userOffset,
+        users, userTotal, userSearch, userOffset, userWhatsapp,
         tickets, ticketTotal, ticketStatus, ticketOffset,
         detailId, invites, inviteTotal,
         inviteName, invitePhone, inviteLoading, lastInviteResult,
         creatingPlan, syncingPlans, toast, token,
       }}
       fn={{
-        refreshStats, goTab, setTab, setUserSearch, setUserOffset, loadUsers,
+        refreshStats, goTab, setTab, setUserSearch, setUserOffset, setUserWhatsapp, loadUsers,
         setTicketStatus, setTicketOffset, loadTickets, updateTicketStatus,
         loadInvites, deleteInvite, createInvite, createProTesterPlan, syncPlans,
         setDetailId, setInviteName, setInvitePhone, notify, setToast, setLastInviteResult,
