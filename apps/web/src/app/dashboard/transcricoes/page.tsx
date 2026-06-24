@@ -18,6 +18,25 @@ interface Transcription {
   number: { displayName: string | null; phoneNumber: string } | null;
 }
 
+/* ─── Resumo estruturado (sentinels do worker) ──────────────────────────────
+ * O worker codifica seções e pendências dentro do array de bullets:
+ *   "::H::Decisões" → cabeçalho de seção
+ *   "::P::texto"    → pendência/pergunta destacada
+ * Helpers abaixo convertem para exibição. */
+const B_HEADER  = '::H::';
+const B_PENDING = '::P::';
+function bulletKind(b: string): 'header' | 'pending' | 'item' {
+  if (b.startsWith(B_HEADER))  return 'header';
+  if (b.startsWith(B_PENDING)) return 'pending';
+  return 'item';
+}
+/** Texto legível de um bullet (sem sentinels) — exportações, cópia, preview. */
+function bulletText(b: string): string {
+  if (b.startsWith(B_HEADER))  return b.slice(B_HEADER.length);
+  if (b.startsWith(B_PENDING)) return '⚠️ ' + b.slice(B_PENDING.length);
+  return b;
+}
+
 /* ─── Constants ───────────────────────────────────────────────────────────── */
 const ALLOWED_EXT = [
   '.ogg', '.opus', '.mp3', '.mp4', '.m4a', '.wav', '.webm', '.mpeg',
@@ -707,7 +726,7 @@ export default function TranscricoesPage() {
 <h1>📝 ${t.contactName || t.contactPhone}</h1>
 <p><b>Data:</b> ${date} &nbsp;|&nbsp; <b>Duração:</b> ${fmtDur(t.durationSec)} &nbsp;|&nbsp; <b>Idioma:</b> ${t.language.toUpperCase()}</p>
 ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
-<h2>✨ Resumo</h2><ul>${t.summaryBullets.map(b => `<li>${b}</li>`).join('')}</ul>
+<h2>✨ Resumo</h2><ul>${t.summaryBullets.map(b => `<li>${bulletText(b)}</li>`).join('')}</ul>
 <h2>📝 Texto Original</h2><p><i>"${t.originalText}"</i></p>
 <hr style="margin-top:40px;border:none;border-top:1px solid #eee"/>
 <p style="font-size:10px;color:#999;text-align:center">Gerado pelo ZapScript · zapscript.me</p>
@@ -723,7 +742,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
 <h1>${esc(t.contactName || t.contactPhone)}</h1>
 <p><b>Data:</b> ${date} | <b>Duração:</b> ${fmtDur(t.durationSec)} | <b>Idioma:</b> ${t.language.toUpperCase()}</p>
 ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
-<h2>✨ Resumo</h2><ul>${t.summaryBullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>
+<h2>✨ Resumo</h2><ul>${t.summaryBullets.map(b => `<li>${esc(bulletText(b))}</li>`).join('')}</ul>
 <h2>📝 Texto Original</h2><p><i>${esc(t.originalText)}</i></p>
 </body></html>`;
     const blob = new Blob([html], { type: 'application/msword;charset=utf-8' });
@@ -739,7 +758,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
       esc(t.contactName || ''), esc(t.contactPhone),
       esc(fmtDur(t.durationSec)), esc(t.language),
       esc((t.tags || []).join(', ')), esc(t.originalText),
-      esc(t.summaryBullets.join(' | ')),
+      esc(t.summaryBullets.map(bulletText).join(' | ')),
     ].join(',');
     const blob = new Blob(['﻿' + header + '\n' + row], { type: 'text/csv;charset=utf-8' });
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `transcricao-${t.id.slice(0, 8)}.csv` });
@@ -750,7 +769,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
     const c = (v: string) => `<td>${(v || '').replace(/</g, '&lt;')}</td>`;
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"/></head><body><table>
 <tr><th>Data</th><th>Contato</th><th>Telefone</th><th>Duração</th><th>Idioma</th><th>Tags</th><th>Texto</th><th>Resumo</th></tr>
-<tr>${c(new Date(t.createdAt).toLocaleString('pt-BR'))}${c(t.contactName||'')}${c(t.contactPhone)}${c(fmtDur(t.durationSec))}${c(t.language)}${c((t.tags||[]).join(', '))}${c(t.originalText)}${c(t.summaryBullets.join(' | '))}</tr>
+<tr>${c(new Date(t.createdAt).toLocaleString('pt-BR'))}${c(t.contactName||'')}${c(t.contactPhone)}${c(fmtDur(t.durationSec))}${c(t.language)}${c((t.tags||[]).join(', '))}${c(t.originalText)}${c(t.summaryBullets.map(bulletText).join(' | '))}</tr>
 </table></body></html>`;
     const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `transcricao-${t.id.slice(0, 8)}.xls` });
@@ -1247,7 +1266,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               const displayName = isManual
                 ? (t.filename ? t.filename : 'Upload manual')
                 : (t.contactName || t.contactPhone);
-              const preview = t.summaryBullets?.[0] || t.originalText;
+              const preview = (t.summaryBullets?.[0] ? bulletText(t.summaryBullets[0]) : '') || t.originalText;
               const numberLabel = isManual
                 ? '📁 Upload manual'
                 : (t.number ? (t.number.displayName || t.number.phoneNumber) : 'Número removido');
@@ -1509,17 +1528,41 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                   {/* Summary bullets */}
                   {selected.summaryBullets.length > 0 ? (
                     <div className="space-y-0.5">
-                      {selected.summaryBullets.map((b, i) => (
-                        <div
-                          key={i}
-                          className="flex gap-3 py-2.5 border-b border-brand-border/25 last:border-0">
+                      {selected.summaryBullets.map((b, i) => {
+                        const kind = bulletKind(b);
+                        if (kind === 'header') {
+                          return (
+                            <p
+                              key={i}
+                              className="text-xs font-bold uppercase tracking-wide text-brand-text/70 pt-3 pb-1 first:pt-0">
+                              {b.slice(B_HEADER.length)}
+                            </p>
+                          );
+                        }
+                        if (kind === 'pending') {
+                          return (
+                            <div
+                              key={i}
+                              className="flex gap-2 py-2.5 px-3 my-1 rounded-lg border border-amber-400/30 bg-amber-400/10">
+                              <span aria-hidden>⚠️</span>
+                              <p className="text-sm font-medium text-brand-text leading-relaxed">
+                                {b.slice(B_PENDING.length)}
+                              </p>
+                            </div>
+                          );
+                        }
+                        return (
                           <div
-                            className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-[7px]"
-                            style={{ background: 'rgb(var(--color-primary))' }}
-                            aria-hidden />
-                          <p className="text-sm text-brand-text leading-relaxed">{b}</p>
-                        </div>
-                      ))}
+                            key={i}
+                            className="flex gap-3 py-2.5 border-b border-brand-border/25 last:border-0">
+                            <div
+                              className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-[7px]"
+                              style={{ background: 'rgb(var(--color-primary))' }}
+                              aria-hidden />
+                            <p className="text-sm text-brand-text leading-relaxed">{b}</p>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-sm text-brand-muted italic py-2">Sem resumo disponível.</p>
@@ -1703,7 +1746,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                 type="button"
                 onClick={() => copyText(
                   selected.summaryBullets.length > 0
-                    ? selected.summaryBullets.map(b => `• ${b}`).join('\n') + '\n\n' + selected.originalText
+                    ? selected.summaryBullets.map(b => bulletKind(b) === 'item' ? `• ${b}` : bulletText(b)).join('\n') + '\n\n' + selected.originalText
                     : selected.originalText
                 )}
                 className="btn-ghost flex-1 text-xs py-2.5 flex items-center justify-center gap-1.5">

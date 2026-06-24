@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
 import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
-import { convertToMp3 } from './services/audio';
+import { convertToMp3, splitMp3ByDuration, estimateMp3DurationSec } from './services/audio';
 import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
 import { downloadAudioFromTwilio, sendMessageViaTwilio } from './services/twilio';
 import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread } from './services/evolution';
@@ -152,125 +152,138 @@ const AUDIO_JURIDICAL_BUCKET = 'audio-juridical';
 //  SHARED HELPERS — usados em ambos os pipelines
 // ─────────────────────────────────────────────────────────────────
 
-/**
- * Transcreve mp3Buffer com Whisper.
- * Primário: Groq whisper-large-v3-turbo (PT-BR, rápido).
- * Fallback: OpenAI whisper-1.
- * Retorna texto e duração real extraída do response verbose_json.
- */
-async function transcribeBuffer(mp3Buffer: Buffer): Promise<{ text: string; durationSec: number; language: string }> {
-  const audioFile = new File([mp3Buffer], 'audio.mp3', { type: 'audio/mpeg' });
+// Opções de transcrição: vocabulário do usuário melhora a grafia de nomes
+// próprios e jargão (o prompt do Whisper é uma amostra de estilo/vocabulário).
+interface TranscribeOpts {
+  vocab?: (string | null | undefined)[];  // nomes de contato, termos do nicho
+  juridical?: boolean;                     // usa priming formal + retorna segmentos
+}
 
-  // ── Primário: Groq ────────────────────────────────────────────
-  if (groq) {
-    try {
-      const result = await groq.audio.transcriptions.create({
-        file:            audioFile,
-        model:           'whisper-large-v3-turbo',
-        language:        'pt',
-        response_format: 'verbose_json',
-        temperature:     0,   // determinístico — reduz alucinação em ruído/silêncio
-        prompt:          PT_BR_PROMPT,
-      } as any);
-      const text = result.text?.trim();
-      if (!text) throw new Error('Groq Whisper retornou texto vazio');
-      const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
-      const language    = (result as any).language || 'pt';
-      if (isWhisperHallucination(text, durationSec)) {
-        throw new Error(`Groq retornou alucinação (prompt repetido) — tentando OpenAI`);
-      }
-      logger.info(`[Whisper] Groq whisper-large-v3-turbo — ${durationSec}s — lang:${language}`);
-      return { text, durationSec, language };
-    } catch (err: any) {
-      logger.warn(`[Whisper] Groq falhou, usando OpenAI como fallback: ${err.message}`);
-    }
-  }
+// Tamanho de cada bloco em áudios longos (segundos). 30 min @64k mono ≈ 14 MB,
+// seguro abaixo do limite de 25 MB da API Whisper. Override via AUDIO_CHUNK_SEC.
+const AUDIO_CHUNK_SEC = parseInt(process.env.AUDIO_CHUNK_SEC || '1800', 10);
 
-  // ── Fallback: OpenAI whisper-1 ────────────────────────────────
-  const result = await openai.audio.transcriptions.create({
+/** Monta o prompt de priming do Whisper, anexando vocabulário do usuário. */
+function buildWhisperPrompt(base: string, vocab?: (string | null | undefined)[]): string {
+  if (!vocab?.length) return base;
+  const names = Array.from(new Set(
+    vocab.map(v => (v || '').trim()).filter(v => v && v.toLowerCase() !== 'manual' && v.length > 1),
+  )).slice(0, 20);
+  return names.length ? `${base} (${names.join(', ')})` : base;
+}
+
+/** Uma chamada única à API Whisper. Sem language → auto-detecção de idioma. */
+async function runWhisper(
+  client: OpenAI, model: string, audioFile: File, prompt: string | undefined, temperature: number,
+): Promise<{ text: string; durationSec: number; language: string; raw: any }> {
+  const result: any = await client.audio.transcriptions.create({
     file:            audioFile,
-    model:           'whisper-1',
-    language:        'pt',
+    model,
     response_format: 'verbose_json',
-    temperature:     0,   // determinístico — reduz alucinação em ruído/silêncio
-    prompt:          PT_BR_PROMPT,
+    temperature,
+    ...(prompt ? { prompt } : {}),   // sem prompt na tentativa de recuperação
   } as any);
   const text = result.text?.trim();
   if (!text) throw new Error('Whisper retornou texto vazio');
-  const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
-  const language    = (result as any).language || 'pt';
-  if (isWhisperHallucination(text, durationSec)) {
-    throw new Error('Whisper retornou alucinação — áudio possivelmente silencioso ou corrompido');
+  return {
+    text,
+    durationSec: Math.max(1, Math.round(result.duration ?? 0)),
+    language:    result.language || 'pt',
+    raw:         result,
+  };
+}
+
+const parseSegments = (raw: any[]): WhisperSegment[] =>
+  (raw || []).map(s => ({
+    start: typeof s.start === 'number' ? s.start : 0,
+    end:   typeof s.end   === 'number' ? s.end   : 0,
+    text:  (s.text || '').trim(),
+  })).filter(s => s.text.length > 0);
+
+/**
+ * Transcreve um único bloco de áudio (≤ limite da API) com Whisper.
+ *
+ * Cadeia com RECUPERAÇÃO em vez de falha imediata:
+ *   1. Groq turbo + prompt (temp 0, determinístico)
+ *   2. Groq turbo SEM prompt (temp 0.2)   ← recupera alucinação por priming/silêncio
+ *   3. OpenAI whisper-1 + prompt (temp 0)
+ *   4. OpenAI whisper-1 SEM prompt (temp 0.2)
+ * Retorna a primeira tentativa que passa no detector de alucinação.
+ * Auto-detecta o idioma (sem language fixo).
+ */
+async function transcribeBuffer(
+  mp3Buffer: Buffer, opts: TranscribeOpts = {},
+): Promise<{ text: string; durationSec: number; language: string; segments: WhisperSegment[] }> {
+  const audioFile = new File([mp3Buffer], 'audio.mp3', { type: 'audio/mpeg' });
+  const base      = opts.juridical ? PT_BR_JURIDICAL_PROMPT : PT_BR_PROMPT;
+  const prompt    = buildWhisperPrompt(base, opts.vocab);
+
+  type Attempt = { label: string; client: OpenAI; model: string; prompt?: string; temperature: number };
+  const attempts: Attempt[] = [];
+  if (groq) {
+    attempts.push({ label: 'Groq',          client: groq,   model: 'whisper-large-v3-turbo', prompt,            temperature: 0   });
+    attempts.push({ label: 'Groq+recovery', client: groq,   model: 'whisper-large-v3-turbo', prompt: undefined, temperature: 0.2 });
   }
-  logger.info(`[Whisper] OpenAI whisper-1 — ${durationSec}s — lang:${language}`);
-  return { text, durationSec, language };
+  attempts.push({ label: 'OpenAI',          client: openai, model: 'whisper-1',              prompt,            temperature: 0   });
+  attempts.push({ label: 'OpenAI+recovery', client: openai, model: 'whisper-1',              prompt: undefined, temperature: 0.2 });
+
+  let lastErr: Error | null = null;
+  for (const a of attempts) {
+    try {
+      const r = await runWhisper(a.client, a.model, audioFile, a.prompt, a.temperature);
+      if (isWhisperHallucination(r.text, r.durationSec)) {
+        throw new Error('alucinação detectada (prompt/silêncio)');
+      }
+      const segments = opts.juridical ? parseSegments(r.raw.segments) : [];
+      logger.info(`[Whisper] ${a.label} ✅ ${r.durationSec}s — lang:${r.language}${opts.juridical ? ` — ${segments.length} seg` : ''}`);
+      return { text: r.text, durationSec: r.durationSec, language: r.language, segments };
+    } catch (err: any) {
+      lastErr = err;
+      logger.warn(`[Whisper] ${a.label} falhou: ${err.message}`);
+    }
+  }
+  throw new Error(`Transcrição falhou após ${attempts.length} tentativa(s): ${lastErr?.message}`);
 }
 
 /**
- * Versão estendida de transcribeBuffer para uploads manuais (modo jurídico).
- * Usa prompt de transcrição literal e retorna os segments do Whisper.
- * Segments permitem gerar transcrições com marcação temporal precisa.
+ * Transcreve áudio de qualquer duração, fatiando em blocos de AUDIO_CHUNK_SEC
+ * quando excede o limite seguro da API Whisper. Blocos são transcritos em
+ * sequência (respeita rate limit) e concatenados; os segmentos têm o timestamp
+ * deslocado pela duração acumulada (modo jurídico).
  */
-async function transcribeBufferFull(mp3Buffer: Buffer): Promise<{
-  text: string;
-  durationSec: number;
-  language: string;
-  segments: WhisperSegment[];
-}> {
-  const audioFile = new File([mp3Buffer], 'audio.mp3', { type: 'audio/mpeg' });
+async function transcribeAudio(
+  mp3Buffer: Buffer, opts: TranscribeOpts = {},
+): Promise<{ text: string; durationSec: number; language: string; segments: WhisperSegment[] }> {
+  const estDur = estimateMp3DurationSec(mp3Buffer);
 
-  const parseSegments = (raw: any[]): WhisperSegment[] =>
-    (raw || []).map(s => ({
-      start: typeof s.start === 'number' ? s.start : 0,
-      end:   typeof s.end   === 'number' ? s.end   : 0,
-      text:  (s.text || '').trim(),
-    })).filter(s => s.text.length > 0);
+  // Cabe num único request (com margem de 60s) → caminho rápido
+  if (estDur <= AUDIO_CHUNK_SEC + 60) {
+    return transcribeBuffer(mp3Buffer, opts);
+  }
 
-  // ── Primário: Groq ────────────────────────────────────────────────────
-  if (groq) {
-    try {
-      const result = await groq.audio.transcriptions.create({
-        file:            audioFile,
-        model:           'whisper-large-v3-turbo',
-        language:        'pt',
-        response_format: 'verbose_json',
-        temperature:     0,   // determinístico — reduz alucinação em ruído/silêncio
-        prompt:          PT_BR_JURIDICAL_PROMPT,
-      } as any);
-      const text = result.text?.trim();
-      if (!text) throw new Error('Groq Whisper retornou texto vazio');
-      const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
-      const language    = (result as any).language || 'pt';
-      if (isWhisperHallucination(text, durationSec)) {
-        throw new Error('Groq retornou alucinação — tentando OpenAI');
+  const chunks = await splitMp3ByDuration(mp3Buffer, AUDIO_CHUNK_SEC);
+  logger.info(`[Whisper] Áudio longo (~${Math.round(estDur / 60)}min) → ${chunks.length} bloco(s) de ${AUDIO_CHUNK_SEC / 60}min`);
+
+  let fullText = '';
+  let totalDur = 0;
+  let language = 'pt';
+  const allSegments: WhisperSegment[] = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    const r = await transcribeBuffer(chunks[i], opts);
+    if (opts.juridical) {
+      for (const s of r.segments) {
+        allSegments.push({ start: s.start + totalDur, end: s.end + totalDur, text: s.text });
       }
-      const segments = parseSegments((result as any).segments);
-      logger.info(`[Whisper] Groq juridical — ${durationSec}s — ${segments.length} segmentos`);
-      return { text, durationSec, language, segments };
-    } catch (err: any) {
-      logger.warn(`[Whisper] Groq juridical falhou, OpenAI fallback: ${err.message}`);
     }
+    fullText += (fullText ? ' ' : '') + r.text;
+    totalDur += r.durationSec;
+    if (i === 0) language = r.language;
+    chunks[i].fill(0);  // limpa buffer sensível
+    logger.info(`[Whisper] Bloco ${i + 1}/${chunks.length} ✅ (${r.durationSec}s)`);
   }
 
-  // ── Fallback: OpenAI whisper-1 ────────────────────────────────────────
-  const result = await openai.audio.transcriptions.create({
-    file:            audioFile,
-    model:           'whisper-1',
-    language:        'pt',
-    response_format: 'verbose_json',
-    temperature:     0,   // determinístico — reduz alucinação em ruído/silêncio
-    prompt:          PT_BR_JURIDICAL_PROMPT,
-  } as any);
-  const text = result.text?.trim();
-  if (!text) throw new Error('Whisper retornou texto vazio');
-  const durationSec = Math.max(1, Math.round((result as any).duration ?? 0));
-  const language    = (result as any).language || 'pt';
-  if (isWhisperHallucination(text, durationSec)) {
-    throw new Error('Whisper retornou alucinação — áudio possivelmente silencioso ou ininteligível');
-  }
-  const segments = parseSegments((result as any).segments);
-  logger.info(`[Whisper] OpenAI juridical — ${durationSec}s — ${segments.length} segmentos`);
-  return { text, durationSec, language, segments };
+  return { text: fullText.trim(), durationSec: totalDur, language, segments: allSegments };
 }
 
 /**
@@ -302,48 +315,63 @@ function buildTimestampedTranscript(segments: WhisperSegment[], totalDuration: n
     .join('\n');
 }
 
+// ── Sentinels de resumo estruturado ─────────────────────────────────────────
+// O resumo é armazenado como string[] (contrato existente). Para suportar
+// seções e pendências sem mudar o schema/webhook, codificamos linhas especiais:
+//   "::H::Decisões"  → cabeçalho de seção
+//   "::P::enviar orçamento até amanhã" → pendência/pergunta destacada
+// Linhas normais são bullets simples. buildMessage (WhatsApp) e a página web
+// renderizam esses sentinels de forma apropriada.
+const SUMMARY_HEADER = '::H::';
+const SUMMARY_PENDING = '::P::';
+
+type SummaryMode = 'tldr' | 'short' | 'medium' | 'long';
+
 /**
- * Modo de resumo baseado no tamanho do áudio:
- * - < 80 palavras  → 'tldr'    (1 frase telegráfica integrada no cabeçalho)
- * - >= 80 palavras → 'bullets' (extração cirúrgica de fatos concretos)
+ * Modo de resumo baseado na DURAÇÃO do áudio (com fallback por nº de palavras
+ * quando a duração não está disponível). Escala a densidade do resumo:
+ *   tldr   (< 30s ou < 80 palavras) → 1 frase telegráfica
+ *   short  (≤ 3 min)  → até 3 bullets
+ *   medium (≤ 10 min) → até 6 bullets
+ *   long   (> 10 min) → seções (Decisões / Ações / Datas)
  */
-function audioMode(text: string): 'tldr' | 'bullets' {
-  return text.trim().split(/\s+/).length < 80 ? 'tldr' : 'bullets';
+function summaryMode(text: string, durationSec: number): SummaryMode {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  if (durationSec > 0) {
+    if (durationSec < 30 && words < 80) return 'tldr';
+    if (durationSec <= 180)  return 'short';
+    if (durationSec <= 600)  return 'medium';
+    return 'long';
+  }
+  // Sem duração confiável → decide por palavras (ritmo ~130 wpm)
+  if (words < 80)  return 'tldr';
+  if (words < 400) return 'short';
+  if (words < 1300) return 'medium';
+  return 'long';
 }
 
 /**
- * Quantos bullets extrair no modo 'bullets':
- * - 80-220 palavras → 2
- * - > 220 palavras  → 3
+ * Gera resumo com densidade escalonada pela duração e bloco dedicado de
+ * pendências/perguntas. Modelo escalonado por complexidade:
+ *   curto/médio → Haiku (rápido/barato)
+ *   longo       → Sonnet (síntese de reunião) com fallback Haiku
+ *
+ * Retorna string[] possivelmente com sentinels ::H:: (seção) e ::P:: (pendência).
+ * Cadeia: [modelo do tier] → claude-3-5-haiku → claude-3-haiku → gpt-4o-mini → placeholder.
  */
-function bulletCount(text: string): number {
-  const words = text.trim().split(/\s+/).length;
-  if (words > 220) return 3;
-  return 2;
-}
-
-/**
- * Gera resumo com modo adaptado ao tamanho do áudio:
- *
- * TLDR (< 80 palavras): uma frase telegráfica de até 10 palavras,
- *   sem prefixo "•", integrada diretamente no cabeçalho da mensagem.
- *
- * Bullets (>= 80 palavras): extração cirúrgica de fatos concretos
- *   (datas, valores, decisões, ações) em 2-3 tópicos curtos.
- *
- * Cadeia: claude-haiku-4-5 → claude-3-5-haiku → claude-3-haiku → gpt-4o-mini → placeholder.
- */
-async function generateBullets(originalText: string, language?: string): Promise<string[]> {
-  const mode        = audioMode(originalText);
-  const count       = bulletCount(originalText);
-  const needsTransl = language && language !== 'pt' && language !== 'pt-BR' && language !== 'pt-br';
+async function generateBullets(originalText: string, durationSec = 0, language?: string): Promise<string[]> {
+  const mode        = summaryMode(originalText, durationSec);
+  const needsTransl = language && !/^pt(-br)?$/i.test(language);
   const ptNote      = needsTransl ? ' Responda sempre em português brasileiro (PT-BR).' : '';
+
+  // Regras de pendências reutilizadas nos modos com bullets
+  const pendingRule = `
+Pendências (o mais valioso no WhatsApp): se houver perguntas dirigidas ao destinatário OU tarefas com prazo que ele precisa executar, liste cada uma numa linha começando EXATAMENTE com "⚠️ " (máx 10 palavras). Se não houver nenhuma, não escreva linha "⚠️ ".`;
 
   let systemMsg: string;
   let userMsg: string;
 
   if (mode === 'tldr') {
-    // ── Modo TLDR: 1 frase direta, sem prefixo ───────────────────────────────
     systemMsg = `Resuma o áudio em UMA frase telegráfica em PT-BR.${ptNote}
 
 Regras:
@@ -368,36 +396,64 @@ Exemplos:
 
     userMsg = `Em até 10 palavras:\n\n${originalText}`;
 
+  } else if (mode === 'long') {
+    // ── Modo Longo: seções (reunião) ─────────────────────────────────────────
+    systemMsg = `Você resume reuniões/áudios longos de WhatsApp em PT-BR.${ptNote}
+
+Organize o resumo em SEÇÕES, cada uma com um cabeçalho próprio em linha iniciada por "## " seguido do nome da seção. Use só as seções que tiverem conteúdo, nesta ordem:
+## Decisões   → o que foi decidido/combinado
+## Ações      → tarefas a executar (quem faz o quê)
+## Datas      → datas, horários, prazos mencionados
+
+Sob cada seção, bullets "• " (máx 10 palavras cada, fatos concretos).
+${pendingRule}
+
+CRÍTICO: só use o que foi dito. NUNCA invente, dramatize ou suponha. Sem floreio.`;
+
+    userMsg = `Resuma em seções:\n\n${originalText}`;
+
   } else {
-    // ── Modo Bullets: extração cirúrgica de fatos concretos ──────────────────
+    // ── Modo Short/Medium: bullets de fatos concretos ────────────────────────
+    const max = mode === 'short' ? 3 : 6;
     systemMsg = `Extraia apenas fatos concretos de áudios de WhatsApp em PT-BR.${ptNote}
 
 Inclua: datas, horários, nomes, valores, decisões, ações pendentes.
 Exclua: opiniões, contexto redundante, palavras de preenchimento.
-Cada tópico: verbo ou substantivo de ação + dado essencial. Máx 8 palavras.
-Formato: "• " no início de cada linha. Sem título, sem explicação.
+Cada tópico: verbo ou substantivo de ação + dado essencial. Máx 10 palavras.
+Formato: "• " no início de cada linha. Sem título.
+${pendingRule}
 
 Exemplos:
 "vou passar aí sexta às 15h pra assinar o contrato" → • Visita sexta 15h — assinar contrato
-"precisa que você mande o orçamento até amanhã de manhã" → • Enviar orçamento: até amanhã cedo`;
+"precisa que você mande o orçamento até amanhã de manhã" → ⚠️ Enviar orçamento: até amanhã cedo`;
 
-    userMsg = `Extraia em ${count} ${count === 1 ? 'tópico' : 'tópicos'} (máx 8 palavras cada):\n\n${originalText}`;
+    userMsg = `Extraia em até ${max} tópicos (máx 10 palavras cada):\n\n${originalText}`;
   }
 
+  const parse = (raw: string): string[] =>
+    mode === 'tldr' ? parseTldr(raw) : parseStructured(raw);
+
+  // Modelo escalonado: áudio longo usa Sonnet primeiro (melhor síntese);
+  // demais usam direto a cadeia Haiku (rápido/barato).
+  const claudeChain = mode === 'long'
+    ? ['claude-sonnet-4-6', 'claude-haiku-4-5', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307']
+    : ['claude-haiku-4-5', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307'];
+  const maxTokens = mode === 'long' ? 700 : mode === 'medium' ? 400 : 200;
+
   // ── Tentativa 1: Claude ───────────────────────────────────────────────────
-  for (const model of ['claude-haiku-4-5', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307']) {
+  for (const model of claudeChain) {
     try {
       const res = await claude.messages.create({
         model,
-        max_tokens:  200,
+        max_tokens:  maxTokens,
         temperature: 0,   // determinístico — evita embelezamento/dramatização
         system:      systemMsg,
         messages:    [{ role: 'user', content: userMsg }],
       });
       const raw     = (res.content[0] as any).text?.trim() || '';
-      const bullets = mode === 'tldr' ? parseTldr(raw) : parseBullets(raw, count);
+      const bullets = parse(raw);
       if (bullets.length > 0) {
-        logger.info(`[Resumo] ${model} ✅ (modo: ${mode})`);
+        logger.info(`[Resumo] ${model} ✅ (modo: ${mode}, ${bullets.length} linhas)`);
         return bullets;
       }
     } catch (err: any) {
@@ -409,7 +465,7 @@ Exemplos:
   try {
     const res = await openai.chat.completions.create({
       model:       'gpt-4o-mini',
-      max_tokens:  200,
+      max_tokens:  maxTokens,
       temperature: 0,   // determinístico — evita embelezamento/dramatização
       messages: [
         { role: 'system', content: systemMsg },
@@ -417,7 +473,7 @@ Exemplos:
       ],
     });
     const raw     = res.choices[0]?.message?.content?.trim() || '';
-    const bullets = mode === 'tldr' ? parseTldr(raw) : parseBullets(raw, count);
+    const bullets = parse(raw);
     if (bullets.length > 0) {
       logger.info(`[Resumo] gpt-4o-mini ✅ (modo: ${mode})`);
       return bullets;
@@ -444,29 +500,46 @@ function parseTldr(raw: string): string[] {
   return line ? [line] : [];
 }
 
-/** Parseia bullets da resposta — aceita "• ", "- ", "1. " e texto puro */
-function parseBullets(raw: string, count: number): string[] {
+/**
+ * Parseia a resposta estruturada do resumo em string[] com sentinels:
+ *   "## Título"  → "::H::Título"
+ *   "⚠️ texto"   → "::P::texto"
+ *   "• texto"    → "texto"
+ * Pendências (::P::) são reordenadas para o fim, agrupadas. Linhas vazias e
+ * cabeçalhos sem conteúdo subsequente são descartados.
+ */
+function parseStructured(raw: string): string[] {
   if (!raw) return [];
-  // Preferência: linhas com "• "
-  const withDot = raw
-    .split('\n')
-    .map(l => l.trim())
-    .filter(l => l.startsWith('• '))
-    .map(l => l.replace(/^•\s*/, '').trim())
-    .filter(Boolean);
-  if (withDot.length > 0) return withDot.slice(0, count);
+  const bullets: string[] = [];
+  const pendings: string[] = [];
 
-  // Fallback: remover qualquer prefixo de bullet (-  –  1.  *  etc.)
-  const lines = raw
-    .split('\n')
-    .map(l => l.replace(/^[-–—*\d.)\s]+/, '').trim())
-    .filter(l => l.length > 8);
-  return lines.slice(0, count);
-}
+  for (const line of raw.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
 
-/** @deprecated use parseBullets */
-function parseFallbackLines(raw: string, count: number): string[] {
-  return parseBullets(raw, count);
+    if (t.startsWith('##')) {
+      const title = t.replace(/^#+\s*/, '').trim();
+      if (title) bullets.push(SUMMARY_HEADER + title);
+      continue;
+    }
+    if (t.startsWith('⚠️')) {
+      const p = t.replace(/^⚠️\s*/, '').trim();
+      if (p.length > 2) pendings.push(SUMMARY_PENDING + p);
+      continue;
+    }
+    // Bullet ou texto puro — remove qualquer prefixo (•  -  –  1.  * etc.)
+    const b = t.replace(/^[•\-–—*\d.)\s]+/, '').trim();
+    if (b.length > 2) bullets.push(b);
+  }
+
+  // Remove cabeçalhos órfãos (sem bullet logo após)
+  const cleaned = bullets.filter((b, i) => {
+    if (!b.startsWith(SUMMARY_HEADER)) return true;
+    const next = bullets[i + 1];
+    return next && !next.startsWith(SUMMARY_HEADER);
+  });
+
+  return [...cleaned, ...pendings];
 }
 
 /**
@@ -783,7 +856,10 @@ function buildMessage(
 ): string[] {
   const { contactName, durationSec, isPrivate, senderPhone, isSelfNote, forwarded, originPhone } = opts;
 
-  const mode    = audioMode(originalText); // 'tldr' | 'bullets'
+  const isTldr  = summaryMode(originalText, durationSec ?? 0) === 'tldr'
+    && bullets.length === 1
+    && !bullets[0].startsWith(SUMMARY_HEADER)
+    && !bullets[0].startsWith(SUMMARY_PENDING);
   const hasName = contactName && contactName !== 'manual' && contactName.trim().length > 0;
   const durStr  = durationSec && durationSec > 0
     ? `⏱ ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60 > 0 ? ` ${durationSec % 60}s` : ''}` : `${durationSec}s`}`
@@ -791,7 +867,7 @@ function buildMessage(
 
   const FALLBACK       = ['Transcrição disponível', 'Resumo não disponível', 'Não foi possível'];
   const hasRealBullets = bullets.length > 0 && !bullets.some(b => FALLBACK.some(f => b.includes(f)));
-  const tldr           = hasRealBullets && mode === 'tldr' ? bullets[0] : null;
+  const tldr           = hasRealBullets && isTldr ? bullets[0] : null;
 
   // ── Cabeçalho ──
   // Modo TLDR: frase integrada na mesma linha do cabeçalho → menos blocos, mais direto
@@ -818,9 +894,15 @@ function buildMessage(
     header = `🎙️ ${nameStr}${durStr ? ` • ${durStr}` : ''}`;
   }
 
-  // ── Seção de bullets (apenas no modo 'bullets') ──
-  const pontoSection = hasRealBullets && mode === 'bullets'
-    ? `\n\n📋 *Resumo*\n${bullets.map(b => `• ${b}`).join('\n')}`
+  // ── Seção de resumo (não-TLDR): bullets + seções + pendências ──
+  // Sentinels: ::H::Título → "*Título*" (negrito WhatsApp); ::P::texto → "⚠️ texto".
+  const renderSummaryLine = (b: string): string => {
+    if (b.startsWith(SUMMARY_HEADER))  return `\n*${b.slice(SUMMARY_HEADER.length)}*`;
+    if (b.startsWith(SUMMARY_PENDING)) return `⚠️ *${b.slice(SUMMARY_PENDING.length)}*`;
+    return `• ${b}`;
+  };
+  const pontoSection = hasRealBullets && !isTldr
+    ? `\n\n📋 *Resumo*\n${bullets.map(renderSummaryLine).join('\n')}`
     : '';
 
   // ── Rodapé ──
@@ -889,15 +971,18 @@ async function processManualJob(job: Job) {
     mp3Buffer = await convertToMp3(rawBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
 
-    if (mp3Buffer.length > 25 * 1024 * 1024) {
-      log(job, `⚠️ MP3 pós-conversão > 25MB`);
+    // Teto pós-conversão 100MB: áudios longos são fatiados internamente
+    // (transcribeAudio) em blocos de 30 min, então não há mais limite de 25MB.
+    if (mp3Buffer.length > 100 * 1024 * 1024) {
+      log(job, `⚠️ MP3 pós-conversão > 100MB`);
       return { skipped: true, reason: 'file_too_large_after_compression' };
     }
 
-    // PASSO 4: Transcrever em modo JURÍDICO (retorna segments com timestamps)
+    // PASSO 4: Transcrever em modo JURÍDICO (retorna segments com timestamps).
+    // Áudios > 30 min são fatiados e transcritos em blocos automaticamente.
     log(job, '🎙️  Whisper — modo jurídico com marcação temporal...');
     const { text: rawText, durationSec, language: detectedLanguage, segments } =
-      await transcribeBufferFull(mp3Buffer);
+      await transcribeAudio(mp3Buffer, { juridical: true, vocab: [filename] });
     log(job, `✅ ${durationSec}s — lang:${detectedLanguage} — ${segments.length} segmentos`);
 
     // PASSO 5: Montar transcrição com marcação temporal [MM:SS] por segmento
@@ -908,7 +993,7 @@ async function processManualJob(job: Job) {
 
     // PASSO 6: Resumo com Claude (gerado a partir do texto puro — sem os timestamps)
     log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(rawText, detectedLanguage);
+    const bullets = await generateBullets(rawText, durationSec, detectedLanguage);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
     // PASSO 7: Salvar transcrição (originalText = texto com marcação temporal)
@@ -993,15 +1078,15 @@ async function processOfficialWhatsAppJob(job: Job) {
     mp3Buffer = await convertToMp3(audioBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
 
-    // PASSO 4: Transcrever com Whisper (Groq primary / OpenAI fallback)
-    log(job, '🎙️  Whisper API (PT-BR)...');
-    const { text: originalText, durationSec } = await transcribeBuffer(mp3Buffer);
-    log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
+    // PASSO 4: Transcrever com Whisper (chunking automático p/ áudios longos)
+    log(job, '🎙️  Whisper API (auto-idioma)...');
+    const { text: originalText, durationSec, language: detectedLang } =
+      await transcribeAudio(mp3Buffer, { vocab: [senderName] });
+    log(job, `✅ ${durationSec}s — lang:${detectedLang} — "${originalText.substring(0, 60)}..."`);
 
-    // PASSO 5: Resumo com Claude (com tradução automática se necessário)
+    // PASSO 5: Resumo com Claude (densidade por duração + tradução se necessário)
     log(job, '🤖 Claude resumo...');
-    const detectedLang = (job.data.language as string | undefined) || 'pt';
-    const bullets = await generateBullets(originalText, detectedLang);
+    const bullets = await generateBullets(originalText, durationSec, detectedLang);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
     // PASSO 6: Enviar resposta no WhatsApp
@@ -1077,15 +1162,15 @@ async function processTwilioJob(job: Job) {
     mp3Buffer = await convertToMp3(audioBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
 
-    // PASSO 4: Transcrever com Whisper (Groq primary / OpenAI fallback)
-    log(job, '🎙️  Whisper API (PT-BR)...');
-    const { text: originalText, durationSec } = await transcribeBuffer(mp3Buffer);
-    log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
+    // PASSO 4: Transcrever com Whisper (chunking automático p/ áudios longos)
+    log(job, '🎙️  Whisper API (auto-idioma)...');
+    const { text: originalText, durationSec, language: detectedLang } =
+      await transcribeAudio(mp3Buffer, { vocab: [senderName] });
+    log(job, `✅ ${durationSec}s — lang:${detectedLang} — "${originalText.substring(0, 60)}..."`);
 
-    // PASSO 5: Resumo com Claude (com tradução automática se necessário)
+    // PASSO 5: Resumo com Claude (densidade por duração + tradução se necessário)
     log(job, '🤖 Claude resumo...');
-    const detectedLang = (job.data.language as string | undefined) || 'pt';
-    const bullets = await generateBullets(originalText, detectedLang);
+    const bullets = await generateBullets(originalText, durationSec, detectedLang);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
     // PASSO 6: Enviar resposta via Twilio
@@ -1173,17 +1258,16 @@ async function processEvolutionJob(job: Job) {
     mp3Buffer = await convertToMp3(audioBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
 
-    // PASSO 4: Transcrever com Whisper (Groq primary / OpenAI fallback)
-    log(job, '🎙️  Whisper API (PT-BR)...');
-    const { text: originalText, durationSec: whisperDuration } = await transcribeBuffer(mp3Buffer);
+    // PASSO 4: Transcrever com Whisper (chunking automático p/ áudios longos)
+    log(job, '🎙️  Whisper API (auto-idioma)...');
+    const { text: originalText, durationSec: whisperDuration, language: detectedLanguage } =
+      await transcribeAudio(mp3Buffer, { vocab: [senderName] });
     const durationSec = whisperDuration > 0 ? whisperDuration : Math.max(1, durationHint || 1);
-    // Detectar idioma via Whisper response (stored on verbose_json) — fallback 'pt'
-    const detectedLanguage = (job.data.language as string | undefined) || 'pt';
-    log(job, `✅ ${durationSec}s — "${originalText.substring(0, 60)}..."`);
+    log(job, `✅ ${durationSec}s — lang:${detectedLanguage} — "${originalText.substring(0, 60)}..."`);
 
-    // PASSO 5: Resumo com Claude Haiku (com tradução automática se não PT-BR)
-    log(job, '🤖 Claude Haiku resumo...');
-    const bullets = await generateBullets(originalText, detectedLanguage);
+    // PASSO 5: Resumo com Claude (densidade por duração + tradução se não PT-BR)
+    log(job, '🤖 Claude resumo...');
+    const bullets = await generateBullets(originalText, durationSec, detectedLanguage);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
     // PASSO 6: Enviar resposta via Evolution API
