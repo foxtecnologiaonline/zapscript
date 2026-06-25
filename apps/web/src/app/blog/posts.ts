@@ -1626,6 +1626,141 @@ export const POSTS: BlogPost[] = [
     `,
   },
 
+  /* ══════════════════════════════════════════════════════════════════════
+     POST — Keyword: "transcrever áudio do whatsapp no iphone"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcrever-audio-whatsapp-iphone',
+    title:       'Como transcrever áudio do WhatsApp no iPhone (2026)',
+    description: 'Passo a passo para transcrever áudio do WhatsApp no iPhone: recurso nativo do iOS, limitações e como transcrever tudo automaticamente. Guia atualizado 2026.',
+    keywords:    ['transcrever audio whatsapp iphone','transcricao audio whatsapp ios','whatsapp transcrever voz iphone','audio para texto iphone','passar audio para texto iphone'],
+    publishedAt: '2026-06-24',
+    readingTime: 5,
+    category:    'Guias',
+    coverEmoji:  '🍎',
+    content: `
+<p>O iPhone é o aparelho com melhor suporte à <strong>transcrição de áudio do WhatsApp</strong> no Brasil — mas o recurso nativo tem limites importantes. Veja como usar o que vem de fábrica e como transcrever <em>todos</em> os áudios automaticamente quando o nativo não dá conta.</p>
+
+<h2>Transcrição nativa do WhatsApp no iPhone</h2>
+<p>Desde o iOS 16, o WhatsApp transcreve mensagens de voz no próprio aparelho. Para ativar:</p>
+<ol>
+  <li>Abra o WhatsApp e vá em <strong>Configurações → Conversas</strong>.</li>
+  <li>Toque em <strong>Transcrições de mensagens de voz</strong> e ative.</li>
+  <li>Selecione o idioma <strong>Português (Brasil)</strong> — pode baixar um pacote na primeira vez.</li>
+</ol>
+<p>Depois, em qualquer áudio recebido, toque e segure a mensagem e escolha <strong>Transcrever</strong>. O texto aparece abaixo do áudio.</p>
+
+<h2>As limitações do recurso nativo</h2>
+<ul>
+  <li>Funciona só no seu iPhone — não no WhatsApp Web nem em outro celular.</li>
+  <li>Você precisa pedir a transcrição <strong>áudio por áudio</strong>, manualmente.</li>
+  <li>Áudios longos (acima de 3–4 minutos) costumam falhar ou cortar.</li>
+  <li>Gera apenas o texto cru — sem resumo dos pontos principais.</li>
+  <li>Em horário de pico ou aparelho antigo, pode demorar.</li>
+</ul>
+
+<h2>Como transcrever todos os áudios automaticamente</h2>
+<p>Se você recebe muitos áudios — clientes, equipe, leads — pedir transcrição um por um não escala. O <strong>ZapScript</strong> resolve isso conectando ao seu número do WhatsApp (via QR Code, como no WhatsApp Web) e transcrevendo <strong>automaticamente</strong> tudo que chega, com texto completo e resumo dos pontos principais — 24 horas por dia, mesmo com o iPhone bloqueado.</p>
+<ol>
+  <li>Crie uma conta grátis em <strong>zapscript.me</strong> (sem cartão).</li>
+  <li>Conecte seu número escaneando o QR Code no painel.</li>
+  <li>Pronto: cada áudio recebido vira texto + resumo, sozinho.</li>
+</ol>
+
+<h2>Conclusão</h2>
+<p>Para um áudio ocasional, a transcrição nativa do iPhone resolve. Para quem recebe áudios o dia inteiro e precisa de resumo e histórico pesquisável, a transcrição automática do ZapScript é o caminho. Teste grátis com 20 min/mês em <strong>zapscript.me</strong>.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST — Keyword: "transcrever áudio do whatsapp no android"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcrever-audio-whatsapp-android',
+    title:       'Como transcrever áudio do WhatsApp no Android (2026)',
+    description: 'Como transcrever áudio do WhatsApp no Android: recurso nativo (Pixel), apps de transcrição e a forma automática de transcrever tudo. Guia 2026.',
+    keywords:    ['transcrever audio whatsapp android','transcricao audio whatsapp android','whatsapp transcrever voz android','audio para texto android','passar audio para texto android'],
+    publishedAt: '2026-06-24',
+    readingTime: 5,
+    category:    'Guias',
+    coverEmoji:  '🤖',
+    content: `
+<p>No Android, transcrever <strong>áudio do WhatsApp</strong> é menos uniforme que no iPhone: o recurso nativo depende do fabricante. Veja as opções reais em 2026 e como transcrever tudo automaticamente, independente do aparelho.</p>
+
+<h2>Transcrição nativa: depende do aparelho</h2>
+<p>A transcrição nativa de voz do WhatsApp chegou primeiro aos aparelhos Pixel e está sendo liberada gradualmente para outros Androids. Para verificar se o seu já tem:</p>
+<ol>
+  <li>Abra o WhatsApp e vá em <strong>Configurações → Conversas</strong>.</li>
+  <li>Procure por <strong>Transcrições de mensagens de voz</strong>.</li>
+  <li>Se aparecer, ative e escolha <strong>Português (Brasil)</strong>.</li>
+</ol>
+<p>Se a opção não existe no seu aparelho, você depende de alternativas externas.</p>
+
+<h2>Limitações no Android</h2>
+<ul>
+  <li>Nem todo aparelho tem o recurso nativo — varia por marca e versão.</li>
+  <li>Quando existe, é manual: um áudio de cada vez.</li>
+  <li>Sem resumo — apenas o texto cru.</li>
+  <li>Áudios longos costumam falhar.</li>
+</ul>
+
+<h2>Como transcrever todos os áudios automaticamente (qualquer Android)</h2>
+<p>Independente de marca ou versão, o <strong>ZapScript</strong> transcreve seus áudios automaticamente. Ele conecta ao seu número via QR Code (como o WhatsApp Web) e transforma cada áudio recebido em texto + resumo, sem você precisar fazer nada:</p>
+<ol>
+  <li>Crie uma conta grátis em <strong>zapscript.me</strong> (sem cartão).</li>
+  <li>Conecte seu número escaneando o QR Code.</li>
+  <li>Cada áudio que chega vira texto + resumo automaticamente, 24h por dia.</li>
+</ol>
+
+<h2>Conclusão</h2>
+<p>Como o suporte nativo no Android ainda é desigual, a transcrição automática é a opção mais confiável — e a única que entrega resumo e histórico pesquisável. Comece grátis com 20 min/mês em <strong>zapscript.me</strong>.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST — Keyword: "transcrever áudio do whatsapp no pc/computador"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcrever-audio-whatsapp-pc',
+    title:       'Como transcrever áudio do WhatsApp no PC ou notebook (2026)',
+    description: 'Transcrever áudio do WhatsApp no computador: pelo WhatsApp Web, com ferramentas online e de forma automática. Passo a passo para PC e notebook em 2026.',
+    keywords:    ['transcrever audio whatsapp pc','transcrever audio whatsapp computador','transcricao audio whatsapp web','audio para texto online pc','passar audio para texto computador'],
+    publishedAt: '2026-06-24',
+    readingTime: 5,
+    category:    'Guias',
+    coverEmoji:  '💻',
+    content: `
+<p>Trabalhar no computador e ter que pegar o celular para ouvir cada áudio do WhatsApp quebra o foco. A boa notícia: dá para <strong>transcrever áudio do WhatsApp direto no PC</strong>. Veja as formas que funcionam em 2026.</p>
+
+<h2>Opção 1 — Ferramenta online (sem instalar)</h2>
+<p>A forma mais rápida de testar: use uma ferramenta de transcrição online no navegador. No ZapScript você pode <strong>transcrever um áudio grátis</strong>, sem instalar nada e sem cadastro para testar:</p>
+<ol>
+  <li>Salve o áudio do WhatsApp no computador (pelo WhatsApp Web, clique no áudio e baixe).</li>
+  <li>Acesse <strong>zapscript.me/transcrever-audio-gratis</strong>.</li>
+  <li>Envie o arquivo e receba o texto completo + resumo em segundos.</li>
+</ol>
+
+<h2>Opção 2 — WhatsApp Web + transcrição automática</h2>
+<p>Se você usa o WhatsApp no PC o dia inteiro, o ideal é não transcrever um por um. Conectando o seu número ao <strong>ZapScript</strong> (via QR Code, igual ao WhatsApp Web), todo áudio recebido é transcrito automaticamente e o texto fica disponível no painel, acessível de qualquer navegador:</p>
+<ol>
+  <li>Crie uma conta grátis em <strong>zapscript.me</strong>.</li>
+  <li>Conecte seu número escaneando o QR Code no painel.</li>
+  <li>Acompanhe as transcrições e resumos direto no computador, em tempo real.</li>
+</ol>
+
+<h2>Por que transcrever no PC ajuda na produtividade</h2>
+<ul>
+  <li>Você lê sem trocar de dispositivo nem perder o foco do trabalho.</li>
+  <li>Copia o texto direto para o CRM, e-mail ou documento.</li>
+  <li>Pesquisa por palavra em vez de reouvir áudios longos.</li>
+  <li>Exporta o histórico em PDF quando precisa de registro.</li>
+</ul>
+
+<h2>Conclusão</h2>
+<p>Para um áudio avulso, uma ferramenta online resolve. Para quem vive no computador e recebe áudios o tempo todo, a transcrição automática do ZapScript é o que mais economiza tempo. Teste grátis com 20 min/mês em <strong>zapscript.me</strong>.</p>
+    `,
+  },
+
 ];
 
 export function getPost(slug: string): BlogPost | undefined {

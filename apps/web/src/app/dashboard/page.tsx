@@ -196,7 +196,15 @@ export default function DashboardPage() {
                     ? <>Seus minutos estão <strong>quase no fim</strong>.</>
                     : <>Você já usou <strong>{stats.minutesPct}%</strong> dos seus minutos.</>}
                   {stats.planName === 'free'
-                    ? ' Faça upgrade para o Pro e não fique sem transcrever.'
+                    ? (() => {
+                        const saved = Math.max(0, stats.minutesUsed - (stats.transcriptionsMonth * 0.25));
+                        const lbl = saved >= 60
+                          ? `${Math.floor(saved / 60)}h${String(Math.round(saved % 60)).padStart(2, '0')}`
+                          : `${Math.round(saved)} min`;
+                        return saved >= 1
+                          ? <> Só este mês o ZapScript já te poupou <strong>{lbl}</strong> — faça upgrade para o Pro e não fique sem transcrever.</>
+                          : ' Faça upgrade para o Pro e não fique sem transcrever.';
+                      })()
                     : ' Eles renovam na próxima data de cobrança.'}
                 </span>
               </div>

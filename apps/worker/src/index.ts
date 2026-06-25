@@ -911,7 +911,17 @@ function buildMessage(
   const replyLink = replyTarget
     ? `\n\n↩️ Responder: wa.me/${replyTarget.replace(/\D/g, '')}`
     : '';
-  const footer = `${replyLink}\n\n_Gerado por_ → *ZapScript.me* ⚡`;
+  // Rodapé viral (growth loop / K-factor): a transcrição cai na conversa onde o áudio
+  // chegou, então quem MANDOU o áudio (um terceiro) vê a assinatura com link rastreado.
+  // A/B simples de 2 variantes via utm_content — sorteado por transcrição.
+  const appUrl   = (process.env.APP_URL || 'https://zapscript.me').replace(/\/$/, '');
+  const variant  = Math.random() < 0.5 ? 'a' : 'b';
+  const utm       = `utm_source=whatsapp&utm_medium=footer&utm_campaign=viral&utm_content=${variant}`;
+  const ctaLink   = `${appUrl}/?${utm}`;
+  const ctaLine   = variant === 'a'
+    ? `\n\n⚡ _Áudio em texto na hora?_ → ${ctaLink}`
+    : `\n\n⚡ _Transcrito por ZapScript — faça o seu grátis:_ ${ctaLink}`;
+  const footer = `${replyLink}${ctaLine}`;
 
   // ── Transcrição COMPLETA, dividida em mensagens se exceder o teto do WhatsApp ──
   // A 1ª mensagem carrega cabeçalho + resumo + início da transcrição; as demais

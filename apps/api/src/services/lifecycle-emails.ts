@@ -242,6 +242,8 @@ async function runFirstTranscription(log: any) {
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Sua primeira transcrição saiu — e a partir de agora isso acontece sozinho. O ZapScript fica de prontidão <strong>24 horas por dia</strong>, transcrevendo e resumindo cada áudio assim que ele chega, mesmo enquanto você dorme.</p>
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Você não precisa encaminhar nada nem abrir outro app. É só receber o áudio — o texto e o resumo aparecem prontos no seu painel.</p>
           ${btn(`${APP_URL}/dashboard`, 'Ver minhas transcrições →')}
+          <p style="color:#6ee7b7;line-height:1.7;margin:24px 0 4px;font-size:14px">💚 Gostou? Quem você conhece também vive afogado em áudio?</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px;font-size:14px">Indique o ZapScript e ganhe recompensas a cada amigo que ativar — seu link pessoal está em <a href="${APP_URL}/indique" style="color:#34d399">zapscript.me/indique</a>.</p>
         `),
       );
       await markSent(u.id, tag);
