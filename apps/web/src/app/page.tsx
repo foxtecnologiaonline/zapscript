@@ -49,14 +49,36 @@ const schemaOrg = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
   name: 'ZapScript',
+  alternateName: 'ZapScript.me',
   applicationCategory: 'ProductivityApplication',
-  operatingSystem: 'Web',
+  applicationSubCategory: 'Conversão de áudio do WhatsApp em texto e resumo com IA',
+  operatingSystem: 'Web, iOS, Android',
   url: 'https://www.zapscript.me',
-  description: 'Conversão automática de áudios do WhatsApp com IA. Texto + resumo em segundos.',
-  offers: [
-    { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Free' },
-    { '@type': 'Offer', price: '39.90', priceCurrency: 'BRL', name: 'Pro' },
+  inLanguage: 'pt-BR',
+  description:
+    'ZapScript converte automaticamente áudios do WhatsApp em texto e resumo com IA. Conecta no seu próprio número via QR Code e, a cada áudio recebido, entrega a transcrição completa e um resumo com os pontos principais — sem precisar ouvir nem encaminhar nada. Áudio nunca armazenado, criptografia AES-256, servidores no Brasil, conforme a LGPD.',
+  featureList: [
+    'Conversão automática de áudio do WhatsApp em texto',
+    'Resumo inteligente com os pontos principais (pedidos, prazos, valores)',
+    'Funciona no seu próprio número, sem encaminhar áudio para um bot',
+    'Modo Privado',
+    'Histórico pesquisável das conversões',
+    'Criptografia AES-256 e servidores no Brasil (LGPD)',
   ],
+  audience: {
+    '@type': 'Audience',
+    audienceType: 'Corretores, advogados, vendedores, contadores e profissionais que recebem muitos áudios no WhatsApp',
+  },
+  offers: [
+    { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Free', description: '20 minutos de conversão por mês, sem cartão' },
+    { '@type': 'Offer', price: '39.90', priceCurrency: 'BRL', name: 'Pro', description: '200 minutos/mês, 2 números, resumo com IA, Modo Privado e histórico' },
+  ],
+  publisher: {
+    '@type': 'Organization',
+    name: 'FOX TecnologIA',
+    url: 'https://www.zapscript.me',
+    brand: 'ZapScript',
+  },
 };
 
 const faqSchema = {

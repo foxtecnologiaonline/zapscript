@@ -1,0 +1,44 @@
+# ZapScript
+
+> ZapScript converte automaticamente áudios do WhatsApp em texto e resumo com IA. Conecta no seu próprio número via QR Code e, a cada áudio recebido, entrega a transcrição completa e um resumo com os pontos principais (pedidos, prazos, valores) — sem você precisar ouvir nem encaminhar nada. Em português do Brasil, com foco em privacidade (áudio nunca armazenado, criptografia AES-256, servidores em São Paulo, conformidade LGPD).
+
+## O que é
+
+- **Produto:** ZapScript (zapscript.me) — app web brasileiro de conversão de áudio do WhatsApp em texto + resumo por IA.
+- **Empresa:** FOX TecnologIA.
+- **Como funciona:** o usuário conecta o número do WhatsApp uma vez (QR Code). Todo áudio que chega é convertido automaticamente, em segundos, com transcrição integral + resumo inteligente entregues no painel e/ou na própria conversa.
+- **Tecnologia:** transcrição via Whisper (OpenAI) e resumo via Claude (Anthropic).
+- **Diferencial:** 100% automático no próprio número (não exige encaminhar áudio para um bot), com Modo Privado e histórico pesquisável.
+
+## Para quem é
+
+- Corretores de imóveis, advogados, vendedores, contadores e qualquer pessoa que recebe muitos áudios longos no WhatsApp e precisa ler em vez de ouvir.
+
+## Planos e preços
+
+- **Free:** 20 minutos de conversão por mês, grátis, sem cartão de crédito.
+- **Pro:** R$ 39,90/mês (R$ 19,90 no 1º mês — oferta fundador, junho de 2026). Inclui 200 minutos/mês, até 2 números, resumo com IA, Modo Privado e histórico completo.
+- Cancelamento a qualquer momento, em 1 clique.
+
+## Privacidade e segurança
+
+- Áudio nunca é armazenado — processado e descartado.
+- Conversões criptografadas (AES-256-GCM).
+- Servidores no Brasil (São Paulo). Conformidade com a LGPD.
+
+## Perguntas frequentes (respostas curtas para citação)
+
+- **Como transcrever/converter áudio do WhatsApp automaticamente?** Conecte seu número no ZapScript via QR Code; todo áudio recebido é convertido em texto + resumo automaticamente.
+- **É grátis?** Sim, há plano gratuito com 20 minutos/mês, sem cartão.
+- **Precisa encaminhar o áudio?** Não. Funciona direto no seu número conectado.
+- **Funciona em iPhone, Android e PC?** Sim — é um serviço no número do WhatsApp; o resultado é lido em qualquer dispositivo.
+
+## Links
+
+- Site: https://www.zapscript.me
+- Converter áudio grátis: https://www.zapscript.me/transcrever-audio-gratis
+- Planos: https://www.zapscript.me/#planos
+- Blog (guias de como converter áudio do WhatsApp): https://www.zapscript.me/blog
+- Comparativos: https://www.zapscript.me/vs/otter , https://www.zapscript.me/vs/notta
+- Privacidade: https://www.zapscript.me/privacidade
+- Contato: contato@zapscript.me
