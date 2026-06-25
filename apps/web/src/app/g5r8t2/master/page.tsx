@@ -113,7 +113,7 @@ function MasterDetailPanel({ userId, token, onClose }: {
             </div>
             <div className="bg-[#132621] rounded-xl p-3 text-center">
               <div className="text-xl font-black text-[#fbbf24]">{stats.totalTranscriptions}</div>
-              <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Transcrições</div>
+              <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Conversões</div>
             </div>
             <div className="bg-[#132621] rounded-xl p-3 text-center">
               <div className="text-xl font-black text-[#d1fae5]">{fmtMin(stats.planLimit)}</div>
@@ -161,13 +161,13 @@ function MasterDetailPanel({ userId, token, onClose }: {
             </div>
           )}
 
-          {/* Transcrições completas */}
+          {/* Conversões completas */}
           <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4">
             <div className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide mb-3">
-              Transcrições ({stats.totalTranscriptions})
+              Conversões ({stats.totalTranscriptions})
             </div>
             {transcriptions.length === 0 ? (
-              <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhuma transcrição</div>
+              <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhuma conversão</div>
             ) : (
               <div className="space-y-3">
                 {transcriptions.map((t: any) => (
@@ -183,7 +183,7 @@ function MasterDetailPanel({ userId, token, onClose }: {
                     </div>
                     {t.originalText && (
                       <details>
-                        <summary className="text-[10px] text-[rgba(16,185,129,.4)] cursor-pointer">Ver transcrição</summary>
+                        <summary className="text-[10px] text-[rgba(16,185,129,.4)] cursor-pointer">Ver conversão</summary>
                         <p className="text-xs text-[rgba(16,185,129,.6)] mt-1.5 leading-relaxed line-clamp-4">{t.originalText}</p>
                       </details>
                     )}
@@ -317,7 +317,7 @@ export default function AdminMasterPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold text-[#d1fae5]">👑 Admin Master</h1>
-            <p className="text-[rgba(16,185,129,.4)] text-xs mt-0.5">Dados completos — nomes, telefones, transcrições, refCodes</p>
+            <p className="text-[rgba(16,185,129,.4)] text-xs mt-0.5">Dados completos — nomes, telefones, conversões, refCodes</p>
           </div>
           <a href="/g5r8t2"
             className="text-xs text-[rgba(16,185,129,.5)] hover:text-[#10b981] transition-colors border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-1.5">

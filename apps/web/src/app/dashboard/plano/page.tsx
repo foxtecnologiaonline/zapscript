@@ -38,14 +38,14 @@ const PLANS = [
     feats: [
       '20 min/mês',
       '1 número WhatsApp',
-      '🎙️ Transcrição automática',
+      '🎙️ Conversão automática',
       '✨ Resumo com IA',
-      '📋 Histórico de transcrições',
+      '📋 Histórico de conversões',
       '📅 Filtros por data e contato',
-      '🔍 Busca por transcrição',
+      '🔍 Busca por conversão',
     ],
     excl:  [
-      '🖥️ Transcrição de áudios no site',
+      '🖥️ Conversão de áudios no site',
     ],
     pop:   false,
     accent: null as string | null,
@@ -59,15 +59,15 @@ const PLANS = [
     feats: [
       '200 min/mês',
       '2 números WhatsApp',
-      '🎙️ Transcrição automática',
-      '🖥️ Transcrição de áudios no site',
+      '🎙️ Conversão automática',
+      '🖥️ Conversão de áudios no site',
       '✨ Resumo com IA',
-      '📋 Histórico de transcrições',
+      '📋 Histórico de conversões',
       '📅 Filtros por data e contato',
-      '🔍 Busca por transcrição',
+      '🔍 Busca por conversão',
       '📤 Exportar áudios em PDF, Docx, Csv e Excel',
-      '📄 Transcrição Profissional (PDF com marcação temporal)',
-      '🔒 Modo Privado de transcrição',
+      '📄 Conversão Profissional (PDF com marcação temporal)',
+      '🔒 Modo Privado de conversão',
     ],
     excl:  [],
     pop:   true,
@@ -82,14 +82,14 @@ const PLANS = [
     feats: [
       '300 min/mês',
       '3 números WhatsApp',
-      '🎙️ Transcrição automática',
+      '🎙️ Conversão automática',
       '✨ Resumo com IA',
-      '📋 Histórico de transcrições',
+      '📋 Histórico de conversões',
       '📅 Filtros por data e contato',
       '🖥️ Upload de áudio no site',
-      '🔍 Busca por transcrição',
+      '🔍 Busca por conversão',
       '📤 Exportação PDF · DOCX · CSV · XLS',
-      '🔒 Modo Privado de transcrição',
+      '🔒 Modo Privado de conversão',
     ],
     excl:  [],
     pop:   true,
@@ -107,15 +107,15 @@ type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: 'Minutos/mês',                        vals: ['20', '200'] },
   { feature: 'Números WhatsApp',                   vals: ['1', '2'] },
-  { feature: '🎙️ Transcrição automática',           vals: [true, true] },
+  { feature: '🎙️ Conversão automática',           vals: [true, true] },
   { feature: '✨ Resumo com IA',                    vals: [true, true] },
-  { feature: '📋 Histórico de transcrições',        vals: [true, true] },
+  { feature: '📋 Histórico de conversões',        vals: [true, true] },
   { feature: '📅 Filtros por data e contato',       vals: [true, true] },
-  { feature: '🔍 Busca por transcrição',             vals: [true, true] },
-  { feature: '🖥️ Transcrição de áudios no site',    vals: [false, true] },
+  { feature: '🔍 Busca por conversão',             vals: [true, true] },
+  { feature: '🖥️ Conversão de áudios no site',    vals: [false, true] },
   { feature: '📤 Exportar áudios (PDF/Docx/Csv/Excel)', vals: [false, true] },
-  { feature: '📄 Transcrição Profissional (PDF)',    vals: [false, true] },
-  { feature: '🔒 Modo Privado de transcrição',       vals: [false, true] },
+  { feature: '📄 Conversão Profissional (PDF)',    vals: [false, true] },
+  { feature: '🔒 Modo Privado de conversão',       vals: [false, true] },
 ];
 
 // Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento
@@ -883,11 +883,11 @@ function PlanoContent() {
               </p>
               <ul className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-4">
                 {[
-                  '📋 Histórico de transcrições',
+                  '📋 Histórico de conversões',
                   '📅 Filtros por data e contato',
-                  '🔍 Busca por transcrição',
+                  '🔍 Busca por conversão',
                   '🔒 Modo Privado',
-                  '📄 Transcrição profissional PDF',
+                  '📄 Conversão profissional PDF',
                 ].map(f => (
                   <li key={f} className="flex items-center gap-2 text-xs" style={{ color: 'rgb(var(--color-text-secondary))' }}>
                     <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>{f}

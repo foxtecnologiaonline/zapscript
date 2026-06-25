@@ -28,16 +28,16 @@ const FAQS = [
     a: 'Não. O ZapScript funciona em segundo plano — você conecta seu número via QR code uma única vez no painel web. Nada é instalado no celular. Funciona em qualquer celular Android ou iPhone.',
   },
   {
-    q: 'Quanto tempo leva para receber a transcrição?',
+    q: 'Quanto tempo leva para receber a conversão?',
     a: 'Em média 10 a 30 segundos após o áudio ser recebido. O tempo varia conforme a duração do áudio e a demanda do servidor, mas para áudios comuns (até 3 min) é praticamente instantâneo.',
   },
   {
     q: 'Meus dados estão seguros?',
-    a: 'Sim. Todas as transcrições são criptografadas com AES-256-GCM — o mesmo padrão dos bancos. O áudio não fica armazenado — apenas o texto. Servidores em São Paulo, conformidade total com a LGPD.',
+    a: 'Sim. Todas as conversões são criptografadas com AES-256-GCM — o mesmo padrão dos bancos. O áudio não fica armazenado — apenas o texto. Servidores em São Paulo, conformidade total com a LGPD.',
   },
   {
-    q: 'O remetente sabe que eu transcreveu o áudio?',
-    a: 'Não, se você ativar o Modo Privado. Com ele, a transcrição chega para você sem que o áudio seja marcado como "ouvido" na conversa original.',
+    q: 'O remetente sabe que eu converteu o áudio?',
+    a: 'Não, se você ativar o Modo Privado. Com ele, a conversão chega para você sem que o áudio seja marcado como "ouvido" na conversa original.',
   },
   {
     q: 'Posso cancelar quando quiser?',
@@ -81,13 +81,13 @@ const PLANS = [
     period: '/mês',
     highlight: false,
     features: [
-      '20 min de transcrição/mês',
+      '20 min de conversão/mês',
       '1 número conectado',
-      'Transcrição automática',
+      'Conversão automática',
       'Resumo por IA',
-      'Histórico de transcrições',
+      'Histórico de conversões',
       'Filtros por data e contato',
-      'Busca por transcrição',
+      'Busca por conversão',
     ],
     cta: 'Começar Grátis',
   },
@@ -98,14 +98,14 @@ const PLANS = [
     highlight: true,
     badge: '⭐ Mais popular',
     features: [
-      '200 min de transcrição/mês',
+      '200 min de conversão/mês',
       '2 números conectados',
-      'Transcrição automática + áudios no site',
+      'Conversão automática + áudios no site',
       'Resumo por IA',
       'Histórico, filtros e busca',
       'Exportar áudios em PDF, Docx, Csv e Excel',
-      'Transcrição Profissional (PDF com marcação temporal)',
-      'Modo Privado de transcrição',
+      'Conversão Profissional (PDF com marcação temporal)',
+      'Modo Privado de conversão',
     ],
     cta: 'Assinar Pro',
   },
@@ -249,7 +249,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
               <p className="text-xs font-bold text-brand-primary uppercase tracking-widest mb-4">✅ Com ZapScript</p>
               <div className="space-y-3">
                 <div className="bg-white/5 border border-white/8 rounded-xl px-4 py-3">
-                  <div className="text-xs text-brand-muted mb-1.5">João • transcrição automática</div>
+                  <div className="text-xs text-brand-muted mb-1.5">João • conversão automática</div>
                   <p className="text-sm text-white leading-relaxed">• Reunião confirmada sexta 14h<br/>• Traz o contrato assinado<br/>• Prefere sala 3</p>
                 </div>
                 <div className="bg-white/5 border border-white/8 rounded-xl px-4 py-3">
@@ -311,7 +311,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
         <div className="max-w-3xl mx-auto grid grid-cols-3 gap-6 text-center">
           {[
             { n: '95%+', label: 'Precisão em PT-BR', sub: 'Motor Whisper (OpenAI)' },
-            { n: '<30s', label: 'Tempo de transcrição', sub: 'Para áudios até 3 min' },
+            { n: '<30s', label: 'Tempo de conversão', sub: 'Para áudios até 3 min' },
             { n: 'AES-256', label: 'Criptografia de dados', sub: 'Padrão bancário' },
           ].map(({ n, label, sub }) => (
             <div key={label}>
@@ -335,7 +335,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
             {[
               { step: '1', emoji: '📱', title: 'Crie sua conta', desc: 'Cadastro em 30 segundos. Sem cartão de crédito.' },
               { step: '2', emoji: '🔗', title: 'Conecte seu número', desc: 'Escaneie o QR code no painel. Leva 1 minuto.' },
-              { step: '3', emoji: '⚡', title: 'Receba as transcrições', desc: 'Cada áudio vira texto + resumo automaticamente.' },
+              { step: '3', emoji: '⚡', title: 'Receba as conversões', desc: 'Cada áudio vira texto + resumo automaticamente.' },
             ].map(({ step, emoji, title, desc }) => (
               <div key={step} className="relative">
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-6 h-full">
@@ -360,10 +360,10 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
           <h2 className="text-2xl font-bold text-white text-center mb-10">Tudo que você precisa, incluído</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
-              { icon: '🤖', title: 'Transcrição com IA', desc: 'Motor Whisper — 95%+ de precisão em português brasileiro, incluindo sotaques.' },
+              { icon: '🤖', title: 'Conversão com IA', desc: 'Motor Whisper — 95%+ de precisão em português brasileiro, incluindo sotaques.' },
               { icon: '📋', title: 'Resumo em bullets', desc: 'Claude (Anthropic) extrai os 3–5 pontos mais importantes de cada áudio.' },
               { icon: '🔒', title: 'Modo Privado', desc: 'Leia o conteúdo do áudio sem marcar como "ouvido" para o remetente.' },
-              { icon: '🔍', title: 'Histórico pesquisável', desc: 'Todas as transcrições ficam salvas e pesquisáveis por palavras-chave.' },
+              { icon: '🔍', title: 'Histórico pesquisável', desc: 'Todas as conversões ficam salvas e pesquisáveis por palavras-chave.' },
               { icon: '🔗', title: 'Webhook & API', desc: 'Integre com CRM, Zapier ou Make via webhook automático (Executive).' },
               { icon: '🛡️', title: 'LGPD & Segurança', desc: 'AES-256-GCM, servidores em SP, conformidade LGPD, sem venda de dados.' },
             ].map(({ icon, title, desc }) => (
@@ -516,7 +516,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
             Pronto para nunca mais ouvir áudio por obrigação?
           </h2>
           <p className="text-brand-muted text-lg mb-8">
-            Junte-se a quem já automatizou a transcrição de áudios do WhatsApp. Grátis para começar, sem cartão.
+            Junte-se a quem já automatizou a conversão de áudios do WhatsApp. Grátis para começar, sem cartão.
           </p>
           <Link
             href={variant.ctaHref}

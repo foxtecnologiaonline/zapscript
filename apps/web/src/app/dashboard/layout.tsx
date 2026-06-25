@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 // aprovado (user.affiliate.status === 'approved'). Ver buildNav().
 const NAV_BASE = [
   { href: '/dashboard',               icon: '🏠', label: 'Dashboard' },
-  { href: '/dashboard/transcricoes',  icon: '📝', label: 'Transcrições' },
+  { href: '/dashboard/transcricoes',  icon: '📝', label: 'Conversões' },
   { href: '/dashboard/numeros',       icon: '📱', label: 'Números' },
   { href: '/dashboard/plano',         icon: '💳', label: 'Plano' },
   { href: '/dashboard/configuracoes', icon: '⚙️', label: 'Configurações' },

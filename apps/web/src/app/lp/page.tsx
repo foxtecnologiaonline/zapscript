@@ -10,36 +10,36 @@ import LandingPageClient, { type Variant } from './LandingPageClient';
 ──────────────────────────────────────────────────────────────────── */
 const VARIANTS: Record<string, Variant> = {
   transcricao: {
-    badge:   '⚡ Transcrição automática por IA',
-    headline:'Transcreva Áudios do WhatsApp Automaticamente',
+    badge:   '⚡ Conversão automática por IA',
+    headline:'Converta Áudios do WhatsApp Automaticamente',
     sub:     'Cada áudio que chega vira texto + resumo em menos de 30 segundos. Sem escutar, sem encaminhar. Funciona em segundo plano — automático e silencioso.',
-    cta:     'Transcrever Grátis Agora',
+    cta:     'Converter Grátis Agora',
     ctaHref: '/cadastro?utm_source=google&utm_campaign=transcricao',
   },
   concorrentes: {
     badge:   '🏆 Mais completo que qualquer alternativa',
     headline:'Melhor que o ViraTexto: Automático, com Resumo e Modo Privado',
-    sub:     'Sem precisar encaminhar o áudio para um bot. Transcrição automática e silenciosa, resumo com IA e modo privado — tudo incluso no plano grátis.',
+    sub:     'Sem precisar encaminhar o áudio para um bot. Conversão automática e silenciosa, resumo com IA e modo privado — tudo incluso no plano grátis.',
     cta:     'Testar Grátis — Sem Cartão',
     ctaHref: '/cadastro?utm_source=google&utm_campaign=concorrentes',
   },
   b2b: {
     badge:   '🏢 Para equipes e empresas',
     headline:'Sua Empresa Perde Horas com Áudios do WhatsApp?',
-    sub:     'Vendedores, atendentes e gestores perdem em média 2h/dia ouvindo áudios. O ZapScript transcreve e resume tudo automaticamente — para qualquer número da equipe.',
+    sub:     'Vendedores, atendentes e gestores perdem em média 2h/dia ouvindo áudios. O ZapScript converte e resume tudo automaticamente — para qualquer número da equipe.',
     cta:     'Começar Grátis Para Minha Empresa',
     ctaHref: '/cadastro?utm_source=google&utm_campaign=b2b',
   },
   problema: {
     badge:   '😮‍💨 Chega de perder tempo',
     headline:'Chega de Ouvir Áudios. Leia Tudo em Segundos.',
-    sub:     'Por que ouvir 5 minutos de áudio quando você pode ler o ponto principal em 10 segundos? Transcrição automática + resumo por IA para cada áudio do WhatsApp.',
+    sub:     'Por que ouvir 5 minutos de áudio quando você pode ler o ponto principal em 10 segundos? Conversão automática + resumo por IA para cada áudio do WhatsApp.',
     cta:     'Parar de Ouvir Áudios — Grátis',
     ctaHref: '/cadastro?utm_source=google&utm_campaign=problema',
   },
   default: {
     badge:   '⚡ Tecnologia IA para WhatsApp',
-    headline:'Transcrição Automática de Áudios do WhatsApp com IA',
+    headline:'Conversão Automática de Áudios do WhatsApp com IA',
     sub:     'Conecte seu número e receba cada áudio convertido em texto com resumo inteligente. 95%+ de precisão em português. Grátis para começar.',
     cta:     'Criar Conta Grátis',
     ctaHref: '/cadastro?utm_source=google&utm_campaign=brand',
@@ -49,24 +49,24 @@ const VARIANTS: Record<string, Variant> = {
 /* ── Metadata dinâmica por variante ─────────────────────────────── */
 const META: Record<string, { title: string; description: string }> = {
   transcricao: {
-    title:       'Transcrição Automática de Áudios do WhatsApp — ZapScript',
+    title:       'Conversão Automática de Áudios do WhatsApp — ZapScript',
     description: 'Transforme cada áudio do WhatsApp em texto + resumo em até 30 segundos. Automático, sem encaminhar. Comece grátis.',
   },
   concorrentes: {
-    title:       'Alternativa ao ViraTexto: Transcrição Automática + Resumo IA — ZapScript',
-    description: 'ZapScript é mais completo: transcrição automática, resumo por IA e modo privado — sem precisar encaminhar áudios para bots. Grátis.',
+    title:       'Alternativa ao ViraTexto: Conversão Automática + Resumo IA — ZapScript',
+    description: 'ZapScript é mais completo: conversão automática, resumo por IA e modo privado — sem precisar encaminhar áudios para bots. Grátis.',
   },
   b2b: {
-    title:       'Transcrição de Áudios WhatsApp para Empresas — ZapScript',
-    description: 'Equipes de vendas e atendimento perdem horas com áudios. ZapScript transcreve e resume tudo automaticamente. Planos a partir de R$39,90/mês.',
+    title:       'Conversão de Áudios WhatsApp para Empresas — ZapScript',
+    description: 'Equipes de vendas e atendimento perdem horas com áudios. ZapScript converte e resume tudo automaticamente. Planos a partir de R$39,90/mês.',
   },
   problema: {
     title:       'Para de Ouvir Áudios do WhatsApp — Leia o Texto em Segundos — ZapScript',
-    description: 'Chega de ouvir áudios longos. O ZapScript transcreve e resume cada mensagem automaticamente com IA. Comece grátis.',
+    description: 'Chega de ouvir áudios longos. O ZapScript converte e resume cada mensagem automaticamente com IA. Comece grátis.',
   },
   default: {
-    title:       'ZapScript — Transcrição Automática de Áudios do WhatsApp com IA',
-    description: 'Conecte seu WhatsApp e receba transcrições automáticas com resumo por IA. 95%+ precisão em PT-BR. Grátis para começar.',
+    title:       'ZapScript — Conversão Automática de Áudios do WhatsApp com IA',
+    description: 'Conecte seu WhatsApp e receba conversões automáticas com resumo por IA. 95%+ precisão em PT-BR. Grátis para começar.',
   },
 };
 

@@ -82,10 +82,10 @@ export default function ContratoPage() {
         </div>
 
         <h2><span className="sn">Cláusula 1 /</span> Objeto do Contrato <span className="legal-ref">Art. 104 CC</span></h2>
-        <p><span className="clause-num">1.1.</span> O objeto deste contrato é a prestação, pela Contratada ao Contratante, de serviços de transcrição automatizada de mensagens de voz do WhatsApp por meio de plataforma SaaS (Software as a Service) acessível em zapscript.me.</p>
-        <p><span className="clause-num">1.2.</span> Os serviços abrangem: transcrição de áudios, painel de gerenciamento, histórico, exportação de transcrições e, conforme o plano contratado, acesso à API de integração e demais funcionalidades descritas em zapscript.me/precos.</p>
+        <p><span className="clause-num">1.1.</span> O objeto deste contrato é a prestação, pela Contratada ao Contratante, de serviços de conversão automatizada de mensagens de voz do WhatsApp por meio de plataforma SaaS (Software as a Service) acessível em zapscript.me.</p>
+        <p><span className="clause-num">1.2.</span> Os serviços abrangem: conversão de áudios, painel de gerenciamento, histórico, exportação de conversões e, conforme o plano contratado, acesso à API de integração e demais funcionalidades descritas em zapscript.me/precos.</p>
         <p><span className="clause-num">1.3.</span> O escopo exato, limites de uso e funcionalidades de cada plano constam na página de preços vigente no momento da contratação, que se incorpora a este instrumento por referência, podendo ser alterada nos termos da Cláusula 15.</p>
-        <p><span className="clause-num">1.4.</span> O serviço de transcrição utiliza tecnologias de reconhecimento de fala (Speech-to-Text). A precisão das transcrições não é garantida em 100%, sendo influenciada por fatores como qualidade do áudio, ruído ambiente, sotaque e idioma, circunstâncias essas que não configuram descumprimento contratual.</p>
+        <p><span className="clause-num">1.4.</span> O serviço de conversão utiliza tecnologias de reconhecimento de fala (Speech-to-Text). A precisão das conversões não é garantida em 100%, sendo influenciada por fatores como qualidade do áudio, ruído ambiente, sotaque e idioma, circunstâncias essas que não configuram descumprimento contratual.</p>
 
         <h2><span className="sn">Cláusula 2 /</span> Prazo e Vigência <span className="legal-ref">Art. 205 e 206 CC</span></h2>
         <p><span className="clause-num">2.1.</span> O contrato tem início na data de confirmação do pagamento pelo gateway contratado, com vigência equivalente ao plano escolhido (mensal: 30 dias; anual: 365 dias).</p>
@@ -103,13 +103,13 @@ export default function ContratoPage() {
         <p>A Contratada se obriga a:</p>
         <ol>
           <li>Disponibilizar a plataforma com disponibilidade mensal mínima de <strong>99,5%</strong> (conforme Cláusula 8);</li>
-          <li>Processar as transcrições com a qualidade técnica inerente à tecnologia STT utilizada;</li>
+          <li>Processar as conversões com a qualidade técnica inerente à tecnologia STT utilizada;</li>
           <li>Excluir os áudios enviados em até 24 horas após o processamento, salvo configuração expressa do Contratante;</li>
           <li>Proteger os dados do Contratante nos termos da LGPD e da Política de Privacidade incorporada a este contrato;</li>
           <li>Prestar suporte técnico pelos canais e nos prazos definidos para o plano contratado;</li>
           <li>Notificar o Contratante com antecedência mínima de 24h sobre manutenções programadas;</li>
           <li>Notificar o Contratante em até 72h sobre incidentes de segurança que afetem seus dados pessoais (Art. 48 LGPD);</li>
-          <li>Manter o sigilo absoluto sobre o conteúdo processado (áudios e transcrições);</li>
+          <li>Manter o sigilo absoluto sobre o conteúdo processado (áudios e conversões);</li>
           <li>Emitir nota fiscal / comprovante de pagamento referente a cada cobrança realizada.</li>
         </ol>
         <p>O descumprimento de qualquer obrigação acima, quando imputável exclusivamente à Contratada e não sanado em até 10 dias úteis após notificação formal, confere ao Contratante o direito de rescisão com reembolso proporcional, nos termos da Cláusula 11.2.</p>
@@ -118,7 +118,7 @@ export default function ContratoPage() {
         <p>O Contratante se obriga a:</p>
         <ol>
           <li>Fornecer informações cadastrais verdadeiras, completas e mantê-las atualizadas;</li>
-          <li>Garantir que possui autorização legal ou consentimento dos titulares para transcrever os áudios processados, respondendo integralmente perante terceiros por violações à Lei nº 9.296/1996 e à LGPD;</li>
+          <li>Garantir que possui autorização legal ou consentimento dos titulares para converter os áudios processados, respondendo integralmente perante terceiros por violações à Lei nº 9.296/1996 e à LGPD;</li>
           <li>Manter sigilo e confidencialidade sobre suas credenciais de acesso, sendo o único responsável por acessos realizados com sua conta;</li>
           <li>Utilizar o serviço exclusivamente para os fins lícitos contratados, em conformidade com estes Termos e a legislação vigente;</li>
           <li>Realizar os pagamentos nas datas de vencimento acordadas;</li>
@@ -129,7 +129,7 @@ export default function ContratoPage() {
         <h2><span className="sn">Cláusula 6 /</span> Propriedade Intelectual e Licença <span className="legal-ref">Lei 9.609/98 · Lei 9.610/98</span></h2>
         <p><span className="clause-num">6.1.</span> A Contratada detém todos os direitos de propriedade intelectual sobre a plataforma ZapScript, incluindo código-fonte, design, marcas, metodologias e APIs, protegidos pelas Leis nº 9.609/1998 e 9.610/1998.</p>
         <p><span className="clause-num">6.2.</span> Este contrato concede ao Contratante licença de uso <strong>não exclusiva, pessoal, intransferível e revogável</strong>, limitada ao plano contratado, exclusivamente para os fins descritos na Cláusula 1.</p>
-        <p><span className="clause-num">6.3.</span> O Contratante retém titularidade integral sobre os áudios enviados e as transcrições geradas. A Contratada recebe licença técnica irrevogável, porém limitada ao processamento necessário para a prestação do serviço.</p>
+        <p><span className="clause-num">6.3.</span> O Contratante retém titularidade integral sobre os áudios enviados e as conversões geradas. A Contratada recebe licença técnica irrevogável, porém limitada ao processamento necessário para a prestação do serviço.</p>
         <p><span className="clause-num">6.4.</span> É vedado ao Contratante: realizar engenharia reversa, descompilar, adaptar, distribuir ou criar obras derivadas da plataforma, parcial ou totalmente, sem autorização escrita prévia da Contratada.</p>
         <p><span className="clause-num">6.5.</span> A Contratada <strong>não utilizará</strong> o conteúdo do Contratante para treinamento de modelos de inteligência artificial, monetização de dados ou qualquer finalidade além da prestação do serviço contratado.</p>
 

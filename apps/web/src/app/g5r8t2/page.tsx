@@ -178,7 +178,7 @@ export default function AdminPage() {
           minutesPerMonth: 300,
           maxNumbers:      3,
           priceBrl:        0,
-          features:        ['Transcrição ilimitada até 300 min/mês', 'Até 3 números WhatsApp', 'Resumos inteligentes', 'Acesso antecipado a novidades'],
+          features:        ['Conversão ilimitada até 300 min/mês', 'Até 3 números WhatsApp', 'Resumos inteligentes', 'Acesso antecipado a novidades'],
         }),
       });
       const d = await res.json();

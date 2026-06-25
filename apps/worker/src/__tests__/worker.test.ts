@@ -1,5 +1,5 @@
 /**
- * Testes unitários do worker de transcrição.
+ * Testes unitários do worker de conversão.
  * Migrado para Meta Cloud API (Baileys removido).
  */
 
@@ -32,7 +32,7 @@ jest.mock('openai', () => {
   return jest.fn().mockImplementation(() => ({
     audio: {
       transcriptions: {
-        create: jest.fn().mockResolvedValue({ text: 'Texto transcrito de teste' }),
+        create: jest.fn().mockResolvedValue({ text: 'Texto convertido de teste' }),
       },
     },
   }));
@@ -65,14 +65,14 @@ describe('generateBullets — parsing de bullets do Claude', () => {
     expect(bullets).toEqual(['Bullet 1', 'Bullet 2', 'Bullet 3']);
   });
 
-  it('Whisper retorna texto da transcrição', async () => {
+  it('Whisper retorna texto da conversão', async () => {
     const OpenAI = require('openai');
     const openai = new OpenAI();
     const res = await openai.audio.transcriptions.create({
       file: Buffer.from('mp3'),
       model: 'whisper-1',
     });
-    expect(res.text).toBe('Texto transcrito de teste');
+    expect(res.text).toBe('Texto convertido de teste');
   });
 });
 
@@ -92,10 +92,10 @@ describe('Worker — Meta Cloud API (Baileys removido)', () => {
     expect(mp3).toBeInstanceOf(Buffer);
   });
 
-  it('sendMessageToMeta envia resposta de transcrição', async () => {
+  it('sendMessageToMeta envia resposta de conversão', async () => {
     const { sendMessageToMeta } = require('../services/whatsapp-official');
 
-    const result = await sendMessageToMeta('5511999999999', '*Transcrição:* Texto transcrito');
+    const result = await sendMessageToMeta('5511999999999', '*Conversão:* Texto convertido');
 
     expect(sendMessageToMeta).toHaveBeenCalledWith('5511999999999', expect.any(String));
     expect(result.messages[0].id).toBe('msg-123');

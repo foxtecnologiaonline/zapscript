@@ -535,7 +535,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                       continuam funcionando normalmente, ao mesmo tempo.
                     </p>
                     <ul className="space-y-1.5 pt-1.5 border-t border-brand-border/30">
-                      <li>✅ Áudio descartado logo após a transcrição.</li>
+                      <li>✅ Áudio descartado logo após a conversão.</li>
                       <li>✅ Criptografia <strong className="text-brand-text">AES-256</strong> de ponta a ponta no armazenamento.</li>
                       <li>✅ Servidores <strong className="text-brand-text">no Brasil</strong> — conformidade com a LGPD.</li>
                       <li>✅ <strong className="text-brand-text">Nenhum humano</strong> lê seus áudios ou suas conversas.</li>
@@ -676,7 +676,7 @@ export default function NumerosPage() {
               'Informe o número do WhatsApp (ou deixe em branco para conectar via QR)',
               'Clique em "+ Adicionar" — o nome é gerado automaticamente',
               'Clique em "Conectar WhatsApp" e siga as instruções',
-              'Pronto! Áudios recebidos serão transcritos automaticamente',
+              'Pronto! Áudios recebidos serão convertidos automaticamente',
             ].map((t, i) => (
               <div key={i} className="flex items-start gap-2 text-xs text-brand-text-secondary">
                 <span className="w-4 h-4 rounded-full bg-brand-primary/20 text-brand-primary flex-shrink-0 flex items-center justify-center text-[10px] font-bold mt-0.5">{i+1}</span>
@@ -753,7 +753,7 @@ export default function NumerosPage() {
               <div className="grid grid-cols-2 gap-2 mb-4">
                 <div className="bg-brand-elevated rounded-lg p-2.5">
                   <div className="text-base font-black text-brand-primary leading-none">{n.messageCount}</div>
-                  <div className="text-[10px] text-brand-muted mt-0.5">transcrições</div>
+                  <div className="text-[10px] text-brand-muted mt-0.5">conversões</div>
                 </div>
                 <div className="bg-brand-elevated rounded-lg p-2.5">
                   <div className="text-base font-black text-brand-primary leading-none">{n.minutesUsed.toFixed(1)}</div>
@@ -769,7 +769,7 @@ export default function NumerosPage() {
                       🔒 Modo Privado
                     </div>
                     <div className="text-[10px] text-brand-muted mt-0.5">
-                      Transcrições enviadas só ao seu número
+                      Conversões enviadas só ao seu número
                     </div>
                   </div>
                   <button

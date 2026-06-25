@@ -42,7 +42,7 @@ Tenho algo especial pra te contar — e esse convite é só seu. 🔒
 
 🎙️ O que é o *ZapScript.me?*
 Sabe aquela pilha de áudios no WhatsApp que você deixa pra depois... e nunca ouve? 😅
-Você vai ler em segundos, pois a transcrição e o resumo são feitos de forma automática, isso é organização sem perder nada importante! 👍
+Você vai ler em segundos, pois a conversão e o resumo são feitos de forma automática, isso é organização sem perder nada importante! 👍
 
 🎁 Você ajuda a construir, e ganha 1 ano grátis no Plano Pro de presente. 💚
 
@@ -614,7 +614,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // GET /admin/users/:id/detail — detalhes completos do usuário (uso, minutos, transcrições)
+  // GET /admin/users/:id/detail — detalhes completos do usuário (uso, minutos, conversões)
   app.get<{ Params: { id: string } }>(
     '/users/:id/detail',
     { preHandler: [adminAuth] },
@@ -826,7 +826,7 @@ export default async function adminRoutes(app: FastifyInstance) {
           maxNumbers:      5,
           priceBrl:        0,   // gratuito para testers
           features:        JSON.stringify([
-            '500 min/mês', '5 números WhatsApp', 'Transcrição automática',
+            '500 min/mês', '5 números WhatsApp', 'Conversão automática',
             'Ponto chave IA', 'Busca full-text', 'Exportação CSV',
             'Tags', 'Tradução automática', 'Webhook personalizado', 'Modo privado',
           ]),
@@ -1272,7 +1272,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // ── GET /admin/queue — status da fila de transcrições ──────────────────────
+  // ── GET /admin/queue — status da fila de conversões ──────────────────────
   // Mostra: jobs aguardando, ativos, falhos, concluídos e jobs falhos recentes.
   app.get(
     '/queue',
@@ -1753,8 +1753,8 @@ export default async function adminRoutes(app: FastifyInstance) {
       if (user.transcriptions.length > 0) {
         const first = user.transcriptions[0];
         const last  = user.transcriptions[user.transcriptions.length - 1];
-        events.push({ ts: first.createdAt, type: 'tx-first', icon: '🎙️', label: 'Primeira transcrição', detail: `${(first.durationSec / 60).toFixed(1)} min` });
-        if (last.id !== first.id) events.push({ ts: last.createdAt, type: 'tx-last', icon: '🎙️', label: 'Transcrição mais recente', detail: `${(last.durationSec / 60).toFixed(1)} min` });
+        events.push({ ts: first.createdAt, type: 'tx-first', icon: '🎙️', label: 'Primeira conversão', detail: `${(first.durationSec / 60).toFixed(1)} min` });
+        if (last.id !== first.id) events.push({ ts: last.createdAt, type: 'tx-last', icon: '🎙️', label: 'Conversão mais recente', detail: `${(last.durationSec / 60).toFixed(1)} min` });
       }
       for (const t of user.supportTickets) {
         events.push({ ts: t.createdAt, type: 'ticket', icon: '🎫', label: `Ticket: ${t.category}`, detail: t.status });
@@ -1865,7 +1865,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // ── #5 Gráfico de transcrições por hora (últimas 24h) ──
+  // ── #5 Gráfico de conversões por hora (últimas 24h) ──
   app.get('/analytics/transcriptions/hourly', { preHandler: [adminAuth] }, async () => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const rows: any[] = await prisma.$queryRaw`
@@ -2090,7 +2090,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // ── #9 Amostrador de transcrições aleatórias ────────────
+  // ── #9 Amostrador de conversões aleatórias ────────────
   app.get<{ Querystring: { n?: string } }>(
     '/transcriptions/sample',
     { preHandler: [adminAuth] },
@@ -2152,7 +2152,7 @@ export default async function adminRoutes(app: FastifyInstance) {
   );
 
   // ── #11 Metas — atuais semanais e mensais ───────────────
-  // Cadastros, Ativações (1ª transcrição), Assinaturas pagas e Receita
+  // Cadastros, Ativações (1ª conversão), Assinaturas pagas e Receita
   // no período. As METAS (targets) ficam em /alert-config sob a chave
   // "metas.targets" → { week: {...}, month: {...} }.
   app.get('/metas', { preHandler: [adminAuth] }, async () => {
@@ -2290,8 +2290,8 @@ export default async function adminRoutes(app: FastifyInstance) {
   app.post<{
     Body: {
       plans?:           string[];   // ex: ['pro','ultra']
-      minDaysInactive?: number;     // ex: 14 — sem transcrição há N dias
-      hasNeverUsed?:    boolean;    // nunca fez transcrição
+      minDaysInactive?: number;     // ex: 14 — sem conversão há N dias
+      hasNeverUsed?:    boolean;    // nunca fez conversão
       emailVerified?:   boolean;
       includeTesters?:  boolean;
       includeFree?:     boolean;
@@ -2666,7 +2666,7 @@ export default async function adminRoutes(app: FastifyInstance) {
   );
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Leads da demo pública ("transcreva 1 áudio grátis" da landing page)
+  // Leads da demo pública ("converta 1 áudio grátis" da landing page)
   // ══════════════════════════════════════════════════════════════════════════
 
   // GET /demo-leads?q=&limit= — lista leads (e-mail completo p/ contato) + totais

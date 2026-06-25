@@ -108,11 +108,11 @@ async function checkQueue(): Promise<
     const suggestions: string[] = [];
 
     if (failed >= 10) {
-      alertMsgs.push(`🔴 Fila com ${failed} jobs falhos acumulados — transcrições não entregues`);
+      alertMsgs.push(`🔴 Fila com ${failed} jobs falhos acumulados — conversões não entregues`);
       suggestions.push('Acesse o Monitor de Fila no painel admin e verifique o failedReason — URLs de áudio podem estar expirando antes do processamento');
     } else if (failed >= 3) {
-      alertMsgs.push(`⚠️ ${failed} jobs falhos na fila — algumas transcrições podem não ter sido entregues`);
-      suggestions.push('Clique em "Re-tentar todos os falhos" no Monitor de Fila para recuperar transcrições pendentes');
+      alertMsgs.push(`⚠️ ${failed} jobs falhos na fila — algumas conversões podem não ter sido entregues`);
+      suggestions.push('Clique em "Re-tentar todos os falhos" no Monitor de Fila para recuperar conversões pendentes');
     }
 
     if (waiting >= 30) {
@@ -181,7 +181,7 @@ async function checkWhatsApp(): Promise<
   }
 }
 
-// ── Check individual: worker (indireto via transcrições recentes) ─────────────
+// ── Check individual: worker (indireto via conversões recentes) ─────────────
 async function checkWorker(queue: QueueCounts): Promise<
   CheckResult & { recentProcessed: number; note: string; alertMsgs: string[]; suggestions: string[] }
 > {
@@ -196,17 +196,17 @@ async function checkWorker(queue: QueueCounts): Promise<
     // Worker travado: jobs esperando/falhando mas nada sendo processado
     const workerStalled = queue.waiting > 0 && queue.failed > 0 && recentProcessed === 0;
     if (workerStalled) {
-      alertMsgs.push('🔴 Worker possivelmente travado: jobs aguardando + falhos, mas 0 transcrições nas últimas 2h');
+      alertMsgs.push('🔴 Worker possivelmente travado: jobs aguardando + falhos, mas 0 conversões nas últimas 2h');
       suggestions.push('Verificar logs do serviço worker no Render — reiniciar o worker pela dashboard do Render');
     }
 
     const note = workerStalled
-      ? 'Nenhuma transcrição processada nas últimas 2h com fila ativa'
-      : `${recentProcessed} transcrição(ões) processada(s) nas últimas 2h`;
+      ? 'Nenhuma conversão processada nas últimas 2h com fila ativa'
+      : `${recentProcessed} conversão(ões) processada(s) nas últimas 2h`;
 
     // Sugestão de performance: jobs rápidos vs lentos
     if (recentProcessed > 50) {
-      suggestions.push(`Alta taxa de processamento (${recentProcessed} transcrições/2h) — considerar aumentar concurrency para 3 se RAM < 70%`);
+      suggestions.push(`Alta taxa de processamento (${recentProcessed} conversões/2h) — considerar aumentar concurrency para 3 se RAM < 70%`);
     }
 
     return { ok: !workerStalled, recentProcessed, note, alertMsgs, suggestions };

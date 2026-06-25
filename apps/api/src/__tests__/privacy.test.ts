@@ -114,7 +114,7 @@ describe('DELETE /privacy/account — LGPD Art. 18 (right to deletion)', () => {
         }),
       })
     );
-    // Transcrições anonimizadas
+    // Conversões anonimizadas
     expect(mockTxTranscription.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ originalText: '[ANONIMIZADO]' }),

@@ -13,7 +13,7 @@ console.warn = (...args: any[]) => {
 const redisUrl = process.env.REDIS_URL;
 
 if (!redisUrl) {
-  logger.warn('[Redis] ⚠️ REDIS_URL não configurado — fila de transcrição desabilitada');
+  logger.warn('[Redis] ⚠️ REDIS_URL não configurado — fila de conversão desabilitada');
 }
 
 // ── Redis com reconexão resiliente ────────────────────────────────────────────
@@ -40,7 +40,7 @@ redis.on('connect',      ()    => logger.info('[Redis] ✅ Conectado'));
 redis.on('reconnecting', (ms:number) => logger.warn(`[Redis] Reconectando em ${ms}ms...`));
 redis.on('ready',        ()    => logger.info('[Redis] ✅ Pronto'));
 
-// ── Fila de transcrições ───────────────────────────────────────────────────────
+// ── Fila de conversões ───────────────────────────────────────────────────────
 export const transcriptionQueue = new Queue('transcriptions', {
   connection: redis as any,
   defaultJobOptions: {

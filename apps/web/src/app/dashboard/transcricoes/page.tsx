@@ -261,7 +261,7 @@ function UploadModal({ onClose, onDone, planName }: { onClose: () => void; onDon
 
         <div className="flex items-start justify-between mb-5">
           <div>
-            <h2 className="font-bold text-base text-brand-text">Enviar áudio para transcrição</h2>
+            <h2 className="font-bold text-base text-brand-text">Enviar áudio para conversão</h2>
             <p className="text-xs text-brand-muted mt-0.5">
               MP3 · M4A · AAC · OGG · WAV · FLAC · WMA · AMR e outros — máx.{' '}
               <span className={planName === 'pro' || planName === 'executive' ? 'font-semibold' : ''}>
@@ -287,7 +287,7 @@ function UploadModal({ onClose, onDone, planName }: { onClose: () => void; onDon
               </svg>
             </div>
             <p className="font-semibold text-brand-text">Áudio enviado com sucesso!</p>
-            <p className="text-xs text-brand-muted mt-1">A transcrição chegará em instantes…</p>
+            <p className="text-xs text-brand-muted mt-1">A conversão chegará em instantes…</p>
           </div>
         ) : (
           <>
@@ -354,7 +354,7 @@ function UploadModal({ onClose, onDone, planName }: { onClose: () => void; onDon
                     </svg>
                     Enviando…
                   </>
-                ) : 'Transcrever áudio'}
+                ) : 'Converter áudio'}
               </button>
             </div>
           </>
@@ -675,7 +675,7 @@ export default function TranscricoesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Deletar esta transcrição?')) return;
+    if (!confirm('Deletar esta conversão?')) return;
     await api.delete(`/transcriptions/${id}`);
     setItems(i => i.filter(t => t.id !== id));
     setTotal(t => t - 1);
@@ -720,7 +720,7 @@ export default function TranscricoesPage() {
     const date = new Date(t.createdAt).toLocaleString('pt-BR');
     const w = window.open('', '_blank');
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Transcrição</title>
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Conversão</title>
 <style>body{font-family:Arial,sans-serif;font-size:12px;margin:2cm;color:#111}h1{font-size:18px;color:#0d9668}h2{font-size:13px;color:#0d9668;border-bottom:1px solid #ddd;padding-bottom:4px}p{line-height:1.6}li{margin:4px 0}@media print{body{margin:1.5cm}}</style>
 </head><body>
 <h1>📝 ${t.contactName || t.contactPhone}</h1>
@@ -804,7 +804,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
       });
       if (!res.ok) {
         if (res.status === 404) {
-          alert('Áudio não disponível para download.\n\nNota: o áudio MP3 só é salvo em transcrições realizadas após a versão 2.4. Transcrições antigas não possuem o arquivo.');
+          alert('Áudio não disponível para download.\n\nNota: o áudio MP3 só é salvo em conversões realizadas após a versão 2.4. Conversões antigas não possuem o arquivo.');
         } else {
           alert('Erro ao baixar áudio. Tente novamente.');
         }
@@ -889,7 +889,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
       {/* ── PAGE HEADER ─────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-3 mb-5">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold" style={{ color: 'rgb(var(--color-text))' }}>Transcrições</h1>
+          <h1 className="text-xl sm:text-2xl font-bold" style={{ color: 'rgb(var(--color-text))' }}>Conversões</h1>
           <p className="text-sm mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
             {loading ? 'Carregando…'
               : pageTab === 'whatsapp' ? `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} do WhatsApp`
@@ -928,7 +928,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               onChange={e => canSearch && setSearch(e.target.value)}
               onClick={!canSearch ? () => setShowUpgradeBanner(b => !b) : undefined}
               readOnly={!canSearch}
-              aria-label="Buscar transcrições"
+              aria-label="Buscar conversões"
             />
           </div>
           <button type="submit" disabled={!canSearch}
@@ -962,7 +962,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
             <span className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              {failedCount} transcrição{failedCount !== 1 ? 'ões' : ''} falharam na fila e não foram processadas.
+              {failedCount} conversão{failedCount !== 1 ? 'ões' : ''} falharam na fila e não foram processadas.
             </span>
           </div>
           <button
@@ -1231,7 +1231,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
             </div>
             <p className="font-semibold text-brand-text mb-1">
               {hasFilters
-                ? 'Nenhuma transcrição encontrada'
+                ? 'Nenhuma conversão encontrada'
                 : pageTab === 'whatsapp' ? 'Nenhum áudio do WhatsApp ainda'
                 : 'Nenhum áudio enviado ainda'}
             </p>
@@ -1239,8 +1239,8 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               {hasFilters
                 ? 'Tente ajustar os filtros ou limpar a busca.'
                 : pageTab === 'whatsapp'
-                  ? 'Conecte um número e envie um áudio no WhatsApp para transcrever automaticamente.'
-                  : 'Envie um arquivo de áudio pelo site para transcrever.'
+                  ? 'Conecte um número e envie um áudio no WhatsApp para converter automaticamente.'
+                  : 'Envie um arquivo de áudio pelo site para converter.'
               }
             </p>
             {hasFilters ? (
@@ -1279,7 +1279,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                   onClick={() => openDetail(t)}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Ver transcrição de ${displayName}`}
+                  aria-label={`Ver conversão de ${displayName}`}
                   onKeyDown={e => { if (e.key === 'Enter') openDetail(t); }}>
 
                   {/* Avatar */}
@@ -1357,7 +1357,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                     type="button"
                     onClick={e => { e.stopPropagation(); handleDelete(t.id); }}
                     className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1.5 rounded-lg text-brand-muted hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0 mt-0.5"
-                    aria-label={`Deletar transcrição de ${displayName}`}
+                    aria-label={`Deletar conversão de ${displayName}`}
                     title="Deletar">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
@@ -1399,7 +1399,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               📋 Histórico completo — plano Pro
             </div>
             <p className="text-xs mb-3" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              Acesse transcrições além da página atual com o plano Pro.
+              Acesse conversões além da página atual com o plano Pro.
             </p>
             <a href="/dashboard/plano"
               className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl transition-colors"
@@ -1426,7 +1426,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
           onClick={closeDetail}
           role="dialog"
           aria-modal="true"
-          aria-label={`Detalhe da transcrição de ${selected.contactName || selected.contactPhone}`}>
+          aria-label={`Detalhe da conversão de ${selected.contactName || selected.contactPhone}`}>
 
           <div
             className="bg-brand-surface w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col"
@@ -1579,7 +1579,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                       style={{ background: 'rgba(10,92,62,.08)', border: '1px solid rgba(10,92,62,.15)' }}>
                       <span className="text-sm">⏱</span>
                       <p className="text-[11px]" style={{ color: 'rgb(var(--color-primary))' }}>
-                        <strong>Transcrição literal com marcação temporal</strong> — cada linha indica o instante [MM:SS] no áudio. Use a aba <strong>Exportar</strong> para gerar o PDF.
+                        <strong>Conversão literal com marcação temporal</strong> — cada linha indica o instante [MM:SS] no áudio. Use a aba <strong>Exportar</strong> para gerar o PDF.
                       </p>
                     </div>
                   )}
@@ -1620,14 +1620,14 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               {activeTab === 'exportar' && selected && (
                 <div className="py-4 space-y-5">
 
-                  {/* ── Seção: Transcrição Profissional (apenas upload manual) ── */}
+                  {/* ── Seção: Conversão Profissional (apenas upload manual) ── */}
                   {selected.source === 'manual' && (
                     <div>
                       {/* Header da seção */}
                       <div className="flex items-center gap-2 mb-3">
                         <span className="text-base">📋</span>
                         <div>
-                          <p className="text-xs font-semibold text-brand-text">Transcrição Profissional</p>
+                          <p className="text-xs font-semibold text-brand-text">Conversão Profissional</p>
                           <p className="text-[10px] text-brand-muted leading-tight">
                             Formato literal com marcação temporal — protocolo rastreável
                           </p>
@@ -1672,7 +1672,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                           }}>
                           <span className="text-xl">🎵</span>
                           <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>Áudio + PDF</span>
-                          <span className="text-[10px] text-brand-muted">MP3 + transcrição</span>
+                          <span className="text-[10px] text-brand-muted">MP3 + conversão</span>
                         </button>
                       </div>
 
@@ -1680,7 +1680,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                       <div className="mt-2 px-3 py-2 rounded-lg"
                         style={{ background: 'rgba(10,92,62,.05)', border: '1px solid rgba(10,92,62,.12)' }}>
                         <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(var(--color-primary)/.6)' }}>
-                          O documento inclui: protocolo único, data/hora (horário de Brasília), tecnologia utilizada e transcrição literal com marcação <strong>[MM:SS]</strong>. O áudio MP3 original fica armazenado separadamente.
+                          O documento inclui: protocolo único, data/hora (horário de Brasília), tecnologia utilizada e conversão literal com marcação <strong>[MM:SS]</strong>. O áudio MP3 original fica armazenado separadamente.
                         </p>
                       </div>
 
@@ -1699,7 +1699,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                   {canExport ? (
                     <div>
                       {selected.source !== 'manual' && (
-                        <p className="text-xs text-brand-muted mb-4">Exportar esta transcrição individualmente:</p>
+                        <p className="text-xs text-brand-muted mb-4">Exportar esta conversão individualmente:</p>
                       )}
                       <div className="grid grid-cols-2 gap-2">
                         {[
@@ -1717,11 +1717,11 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                         ))}
                       </div>
                       <p className="text-[10px] text-brand-muted mt-4 text-center">
-                        Para exportar todas as transcrições do mês, use o botão <b>Exportar</b> na lista.
+                        Para exportar todas as conversões do mês, use o botão <b>Exportar</b> na lista.
                       </p>
                     </div>
                   ) : selected.source !== 'manual' ? (
-                    /* Upsell para Free em transcrições não-manuais */
+                    /* Upsell para Free em conversões não-manuais */
                     <div className="flex flex-col items-center justify-center py-6 text-center">
                       <div className="text-3xl mb-3">🔒</div>
                       <p className="font-semibold text-brand-text mb-1">Disponível no plano Pro</p>

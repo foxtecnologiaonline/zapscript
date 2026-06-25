@@ -1,5 +1,5 @@
 /**
- * evolution.ts (worker) — Integração com Evolution API para o worker de transcrição
+ * evolution.ts (worker) — Integração com Evolution API para o worker de conversão
  *
  * Responsabilidades:
  * - Baixar áudio de uma mensagem via getBase64FromMediaMessage
@@ -79,7 +79,8 @@ export async function sendMessageViaEvolution(
 
   await axios.post(
     `${base}/message/sendText/${instanceName}`,
-    { number: clean, text: message },
+    // linkPreview:false → impede o WhatsApp de gerar o card/imagem do site (og:image).
+    { number: clean, text: message, linkPreview: false },
     { headers: headers(), timeout: 15_000 }
   );
 
@@ -88,7 +89,7 @@ export async function sendMessageViaEvolution(
 
 /**
  * Marca conversa como não lida via Evolution API.
- * Chamado após enviar transcrição — preserva notificação no WhatsApp do remetente.
+ * Chamado após enviar conversão — preserva notificação no WhatsApp do remetente.
  * Ignora erros — operação não-crítica.
  */
 export async function markChatAsUnread(

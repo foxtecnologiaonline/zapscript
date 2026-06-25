@@ -108,7 +108,7 @@ export default function ExclusaoDadosPage() {
             <h2 className="text-xl font-bold text-white mb-3">🗑️ O que será deletado</h2>
             <ul className="list-disc list-inside space-y-2">
               <li>Perfil da conta (nome, CPF/CNPJ)</li>
-              <li>Histórico completo de transcrições</li>
+              <li>Histórico completo de conversões</li>
               <li>Resumos e textos processados</li>
               <li>Configurações e preferências</li>
               <li>Dados de uso e estatísticas pessoais</li>

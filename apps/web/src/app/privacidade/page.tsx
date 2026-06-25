@@ -96,7 +96,7 @@ export default function PrivacidadePage() {
           <p><strong className="legal-strong">E-mail do Encarregado:</strong> <a href="mailto:privacidade@zapscript.me" className="legal-a">privacidade@zapscript.me</a></p>
           <p><strong className="legal-strong">Site:</strong> <a href="https://www.zapscript.me" className="legal-a">zapscript.me</a> &nbsp;·&nbsp; <strong className="legal-strong">Atendimento:</strong> <a href="mailto:suporte@zapscript.me" className="legal-a">suporte@zapscript.me</a></p>
         </div>
-        <p className="legal-p">A ZapScript é uma plataforma SaaS de transcrição automatizada de áudios do WhatsApp, operada pela FOX TecnologIA, responsável pelo tratamento dos dados pessoais nos termos da LGPD.</p>
+        <p className="legal-p">A ZapScript é uma plataforma SaaS de conversão automatizada de áudios do WhatsApp, operada pela FOX TecnologIA, responsável pelo tratamento dos dados pessoais nos termos da LGPD.</p>
 
         {/* 02 */}
         <h2 className="legal-h2"><span className="sn">02 /</span> Base Legal por Finalidade <span className="legal-ref">Art. 7º e Art. 9º II LGPD</span></h2>
@@ -105,7 +105,7 @@ export default function PrivacidadePage() {
           <thead><tr><th>Finalidade</th><th>Dados Envolvidos</th><th>Base Legal</th><th>Fundamento</th></tr></thead>
           <tbody>
             <tr><td>Criação e gerenciamento de conta</td><td>Nome, e-mail, senha (hash)</td><td>Execução de contrato</td><td>Art. 7º V LGPD</td></tr>
-            <tr><td>Prestação do serviço de transcrição</td><td>Áudios, transcrições, metadados de uso</td><td>Execução de contrato</td><td>Art. 7º V LGPD</td></tr>
+            <tr><td>Prestação do serviço de conversão</td><td>Áudios, conversões, metadados de uso</td><td>Execução de contrato</td><td>Art. 7º V LGPD</td></tr>
             <tr><td>Processamento de pagamentos</td><td>Dados de cobrança (via Asaas)</td><td>Execução de contrato</td><td>Art. 7º V LGPD</td></tr>
             <tr><td>Comunicações transacionais</td><td>E-mail, dados de conta</td><td>Legítimo interesse / Contrato</td><td>Art. 7º IX e V LGPD</td></tr>
             <tr><td>Segurança e prevenção de fraudes</td><td>IP, logs, dados técnicos</td><td>Legítimo interesse</td><td>Art. 7º IX LGPD</td></tr>
@@ -124,11 +124,11 @@ export default function PrivacidadePage() {
         <p className="legal-p">Coletamos apenas os dados estritamente necessários para cada finalidade declarada (princípio da necessidade):</p>
         <ul className="legal-ul">
           <li><strong className="legal-strong">Dados de cadastro:</strong> nome completo, e-mail e senha (armazenada exclusivamente em hash irreversível — nunca em texto puro).</li>
-          <li><strong className="legal-strong">Dados de uso:</strong> data, hora e volume das transcrições realizadas, funcionalidades utilizadas e frequência de acesso.</li>
+          <li><strong className="legal-strong">Dados de uso:</strong> data, hora e volume das conversões realizadas, funcionalidades utilizadas e frequência de acesso.</li>
           <li><strong className="legal-strong">Dados de pagamento:</strong> processados pelo Asaas (gateway de pagamento). A ZapScript <strong className="legal-strong">não armazena</strong> número de cartão, CVV ou dados bancários completos.</li>
           <li><strong className="legal-strong">Dados técnicos:</strong> endereço IP, tipo e versão de navegador, sistema operacional, identificadores de sessão e logs de acesso (obrigação legal — Marco Civil da Internet).</li>
-          <li><strong className="legal-strong">Conteúdo de áudio:</strong> os áudios são processados exclusivamente para geração da transcrição e <strong className="legal-strong">excluídos em até 24 horas</strong> após o processamento. Não são armazenados permanentemente, salvo se o usuário ativar essa função expressamente.</li>
-          <li><strong className="legal-strong">Transcrições geradas:</strong> armazenadas no perfil do usuário enquanto a conta estiver ativa, podendo ser excluídas a qualquer momento pelo próprio usuário.</li>
+          <li><strong className="legal-strong">Conteúdo de áudio:</strong> os áudios são processados exclusivamente para geração da conversão e <strong className="legal-strong">excluídos em até 24 horas</strong> após o processamento. Não são armazenados permanentemente, salvo se o usuário ativar essa função expressamente.</li>
+          <li><strong className="legal-strong">Conversões geradas:</strong> armazenadas no perfil do usuário enquanto a conta estiver ativa, podendo ser excluídas a qualquer momento pelo próprio usuário.</li>
         </ul>
         <p className="legal-p">Não coletamos dados pessoais sensíveis (Art. 5º II LGPD) de forma intencional. Caso um áudio processado contenha tais informações, elas seguem o mesmo ciclo de vida do áudio e são descartadas após o processamento, sem registro separado.</p>
 
@@ -153,7 +153,7 @@ export default function PrivacidadePage() {
           <thead><tr><th>Tipo de Dado</th><th>Prazo de Retenção</th><th>Fundamento</th></tr></thead>
           <tbody>
             <tr><td>Áudios enviados</td><td>Até 24h após processamento</td><td>Princípio da necessidade — Art. 6º III LGPD</td></tr>
-            <tr><td>Transcrições geradas</td><td>Enquanto a conta estiver ativa + 90 dias após cancelamento</td><td>Execução de contrato — Art. 15 I LGPD</td></tr>
+            <tr><td>Conversões geradas</td><td>Enquanto a conta estiver ativa + 90 dias após cancelamento</td><td>Execução de contrato — Art. 15 I LGPD</td></tr>
             <tr><td>Dados de cadastro</td><td>Enquanto ativo + 90 dias após cancelamento</td><td>Execução de contrato — Art. 15 I LGPD</td></tr>
             <tr><td>Logs de acesso (IP)</td><td>6 meses</td><td>Obrigação legal — Art. 15 Marco Civil (Lei 12.965/14)</td></tr>
             <tr><td>Dados de faturamento / NF</td><td>5 anos</td><td>Obrigação legal — Art. 173 CTN c/c Lei 9.430/96</td></tr>

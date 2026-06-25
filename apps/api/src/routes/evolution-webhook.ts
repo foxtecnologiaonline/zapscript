@@ -214,7 +214,7 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       if (remoteJid.includes('@g.us')) return;
 
       // NÃO retornamos cedo em fromMe: áudios que o usuário encaminha para o
-      // PRÓPRIO número (self-chat) devem ser transcritos (Feature 1). O filtro
+      // PRÓPRIO número (self-chat) devem ser convertidos (Feature 1). O filtro
       // de self-chat acontece abaixo, após resolver o número conectado, e só
       // áudio passa — respostas de texto do próprio bot caem no guard !isAudio
       // logo adiante, evitando loop.

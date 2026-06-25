@@ -222,7 +222,7 @@ if (process.env.NODE_ENV !== 'production') {
     swagger: {
       info: {
         title: 'ZapScript API',
-        description: 'API de transcrição automática de áudios do WhatsApp',
+        description: 'API de conversão automática de áudios do WhatsApp',
         version: '1.0.0',
         contact: {
           name: 'ZapScript Support',
@@ -407,11 +407,11 @@ async function runAutoMigrations() {
       CONSTRAINT "TesterInvite_code_key" UNIQUE ("code")
     )`,
     `CREATE INDEX IF NOT EXISTS "TesterInvite_code_idx" ON "TesterInvite"("code")`,
-    // Transcrições sobrevivem à remoção do número (SET NULL em vez de CASCADE)
+    // Conversões sobrevivem à remoção do número (SET NULL em vez de CASCADE)
     `ALTER TABLE "Transcription" ALTER COLUMN "numberId" DROP NOT NULL`,
     `ALTER TABLE "Transcription" DROP CONSTRAINT IF EXISTS "Transcription_numberId_fkey"`,
     `ALTER TABLE "Transcription" ADD CONSTRAINT "Transcription_numberId_fkey" FOREIGN KEY ("numberId") REFERENCES "WhatsappNumber"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
-    // UsageLogs sobrevivem à exclusão da transcrição (minutos continuam contados)
+    // UsageLogs sobrevivem à exclusão da conversão (minutos continuam contados)
     `ALTER TABLE "UsageLog" ALTER COLUMN "transcriptionId" DROP NOT NULL`,
     `ALTER TABLE "UsageLog" DROP CONSTRAINT IF EXISTS "UsageLog_transcriptionId_fkey"`,
     `ALTER TABLE "UsageLog" ADD CONSTRAINT "UsageLog_transcriptionId_fkey" FOREIGN KEY ("transcriptionId") REFERENCES "Transcription"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
@@ -500,7 +500,7 @@ async function start() {
       }
       if (!process.env.EVOLUTION_WEBHOOK_SECRET) {
         // A4: Não fatal (Evolution pode ser opcional), mas alertar claramente
-        app.log.warn('[Startup] ⚠️  EVOLUTION_WEBHOOK_SECRET não configurado — webhook Evolution sem autenticação! Qualquer IP pode injetar transcrições.');
+        app.log.warn('[Startup] ⚠️  EVOLUTION_WEBHOOK_SECRET não configurado — webhook Evolution sem autenticação! Qualquer IP pode injetar conversões.');
       }
       if (!process.env.JWT_SECRET) {
         app.log.error('[Startup] FATAL: JWT_SECRET não configurado.');

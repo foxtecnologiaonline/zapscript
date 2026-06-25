@@ -31,7 +31,7 @@ export default function DashboardPage() {
     api.get<Stats>('/dashboard/stats')
       .then(s => {
         setStats(s);
-        // Ativação = usuário já realizou ao menos 1 transcrição. Dispara 1x por navegador.
+        // Ativação = usuário já realizou ao menos 1 conversão. Dispara 1x por navegador.
         if ((s?.transcriptionsTotal ?? 0) >= 1) trackOnce('activation', 'activation');
       })
       .catch(() => setLoadError(true))
@@ -62,7 +62,7 @@ export default function DashboardPage() {
 
   const kpis = stats ? [
     {
-      label: 'Transcrições',
+      label: 'Conversões',
       value: stats.transcriptionsTotal,
       icon: '📝',
       sub: `${stats.transcriptionsToday} hoje`,
@@ -133,7 +133,7 @@ export default function DashboardPage() {
         <span className="text-base flex-shrink-0">🔒</span>
         <p className="text-[11px] text-brand-muted leading-relaxed">
           <span className="font-semibold text-brand-primary">Seus dados estão protegidos.</span>
-          {' '}Áudio nunca armazenado · Transcrições criptografadas · Processamento via Whisper (OpenAI) e Claude (Anthropic).
+          {' '}Áudio nunca armazenado · Conversões criptografadas · Processamento via Whisper (OpenAI) e Claude (Anthropic).
         </p>
       </div>
 
@@ -202,8 +202,8 @@ export default function DashboardPage() {
                           ? `${Math.floor(saved / 60)}h${String(Math.round(saved % 60)).padStart(2, '0')}`
                           : `${Math.round(saved)} min`;
                         return saved >= 1
-                          ? <> Só este mês o ZapScript já te poupou <strong>{lbl}</strong> — faça upgrade para o Pro e não fique sem transcrever.</>
-                          : ' Faça upgrade para o Pro e não fique sem transcrever.';
+                          ? <> Só este mês o ZapScript já te poupou <strong>{lbl}</strong> — faça upgrade para o Pro e não fique sem converter.</>
+                          : ' Faça upgrade para o Pro e não fique sem converter.';
                       })()
                     : ' Eles renovam na próxima data de cobrança.'}
                 </span>
@@ -244,7 +244,7 @@ export default function DashboardPage() {
             {[
               { done: true,                                   label: 'Conta criada' },
               { done: (stats?.activeNumbers ?? 0) > 0,       label: 'Número conectado' },
-              { done: (stats?.transcriptionsTotal ?? 0) > 0, label: 'Primeira transcrição' },
+              { done: (stats?.transcriptionsTotal ?? 0) > 0, label: 'Primeira conversão' },
             ].map((s, i) => (
               <div key={i} className="flex items-center gap-2.5 mb-2.5">
                 <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] flex-shrink-0 ${
@@ -264,10 +264,10 @@ export default function DashboardPage() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-lg">🖥️</span>
-            <div className="font-bold text-sm text-brand-text">Transcrição pelo site</div>
+            <div className="font-bold text-sm text-brand-text">Conversão pelo site</div>
           </div>
           <p className="text-xs text-brand-text-secondary mb-4 leading-relaxed">
-            Envie um áudio direto do computador e receba a transcrição em segundos.
+            Envie um áudio direto do computador e receba a conversão em segundos.
           </p>
           <Link
             href="/dashboard/transcricoes?upload=1"
@@ -304,7 +304,7 @@ export default function DashboardPage() {
           <button
             onClick={() => {
               const link = `https://www.zapscript.me/cadastro?ref=${stats?.refCode ?? ''}`;
-              const msg  = `Eu uso o ZapScript para transcrever áudios do WhatsApp automaticamente com IA — e você ganha 15 minutos grátis ao se cadastrar pelo meu link: ${link}`;
+              const msg  = `Eu uso o ZapScript para converter áudios do WhatsApp automaticamente com IA — e você ganha 15 minutos grátis ao se cadastrar pelo meu link: ${link}`;
               if (navigator.share) {
                 navigator.share({ text: msg, url: link }).catch(() => {});
               } else {

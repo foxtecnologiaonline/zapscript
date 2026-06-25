@@ -33,7 +33,7 @@ type FunnelEvent = 'signup' | 'activation' | 'subscribe';
 // Nomes canônicos por plataforma (semântica padrão de e-commerce/SaaS)
 const META_EVENT: Record<FunnelEvent, string> = {
   signup:     'CompleteRegistration',
-  activation: 'StartTrial',     // 1ª transcrição = começou a usar de fato
+  activation: 'StartTrial',     // 1ª conversão = começou a usar de fato
   subscribe:  'Subscribe',
 };
 const GA4_EVENT: Record<FunnelEvent, string> = {

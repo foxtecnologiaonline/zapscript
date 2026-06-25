@@ -67,7 +67,7 @@ export default async function internalRoutes(app: FastifyInstance) {
   );
 
   // POST /internal/emit — Worker emite evento Socket.IO para o frontend
-  // Permite notificar o dashboard em tempo real quando uma transcrição é concluída.
+  // Permite notificar o dashboard em tempo real quando uma conversão é concluída.
   // H4: Whitelist de eventos permitidos — evita injeção de eventos arbitrários
   const ALLOWED_EVENTS = new Set([
     'transcription_ready',

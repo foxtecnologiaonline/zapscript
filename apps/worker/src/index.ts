@@ -105,8 +105,8 @@ function isWhisperHallucination(text: string, durationSec: number): boolean {
   // Padrões conhecidos de alucinação do Whisper
   const HALLUCINATION_PATTERNS = [
     /reproduzir exatamente o que foi dito/i,
-    /transcrição literal e fiel/i,
-    /transcrição em português brasileiro/i,
+    /conversão literal e fiel/i,
+    /conversão em português brasileiro/i,
     /sem correções ou omissões/i,
     /thank you for watching/i,
     /thanks for watching/i,
@@ -152,7 +152,7 @@ const AUDIO_JURIDICAL_BUCKET = 'audio-juridical';
 //  SHARED HELPERS — usados em ambos os pipelines
 // ─────────────────────────────────────────────────────────────────
 
-// Opções de transcrição: vocabulário do usuário melhora a grafia de nomes
+// Opções de conversão: vocabulário do usuário melhora a grafia de nomes
 // próprios e jargão (o prompt do Whisper é uma amostra de estilo/vocabulário).
 interface TranscribeOpts {
   vocab?: (string | null | undefined)[];  // nomes de contato, termos do nicho
@@ -201,7 +201,7 @@ const parseSegments = (raw: any[]): WhisperSegment[] =>
   })).filter(s => s.text.length > 0);
 
 /**
- * Transcreve um único bloco de áudio (≤ limite da API) com Whisper.
+ * Converte um único bloco de áudio (≤ limite da API) com Whisper.
  *
  * Cadeia com RECUPERAÇÃO em vez de falha imediata:
  *   1. Groq turbo + prompt (temp 0, determinístico)
@@ -242,12 +242,12 @@ async function transcribeBuffer(
       logger.warn(`[Whisper] ${a.label} falhou: ${err.message}`);
     }
   }
-  throw new Error(`Transcrição falhou após ${attempts.length} tentativa(s): ${lastErr?.message}`);
+  throw new Error(`Conversão falhou após ${attempts.length} tentativa(s): ${lastErr?.message}`);
 }
 
 /**
- * Transcreve áudio de qualquer duração, fatiando em blocos de AUDIO_CHUNK_SEC
- * quando excede o limite seguro da API Whisper. Blocos são transcritos em
+ * Converte áudio de qualquer duração, fatiando em blocos de AUDIO_CHUNK_SEC
+ * quando excede o limite seguro da API Whisper. Blocos são convertidos em
  * sequência (respeita rate limit) e concatenados; os segmentos têm o timestamp
  * deslocado pela duração acumulada (modo jurídico).
  */
@@ -287,7 +287,7 @@ async function transcribeAudio(
 }
 
 /**
- * Constrói transcrição com marcação temporal a partir dos segmentos do Whisper.
+ * Constrói conversão com marcação temporal a partir dos segmentos do Whisper.
  *
  * Formato: "  N  [MM:SS] Texto do segmento."
  * (N = número de linha, [HH:MM:SS] para áudios ≥ 1h)
@@ -553,7 +553,7 @@ function availableTotal(balance: { availableMinutes: number; extraMinutes?: numb
 }
 
 /**
- * Salva transcrição no banco e debita minutos atomicamente.
+ * Salva conversão no banco e debita minutos atomicamente.
  * Usa transação interativa para garantir que o débito só ocorre
  * se houver saldo suficiente (previne race condition).
  */
@@ -666,7 +666,7 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
     const msgs: Record<number, string> = {
       50:  `📊 *ZapScript* — 50% dos minutos usados\n\nVocê já usou *metade dos seus minutos* do mês.\n\n💡 Considere fazer upgrade para não perder nenhum áudio:\n👉 https://ZapScript.me/dashboard/plano`,
       80:  `⚠️ *ZapScript* — 80% dos minutos usados\n\nSeus minutos estão quase esgotando! Restam apenas *20%*.\n\n🚀 Faça upgrade agora:\n👉 https://ZapScript.me/dashboard/plano`,
-      100: `🔴 *ZapScript* — Minutos esgotados\n\nVocê atingiu *100% dos seus minutos* deste mês.\n\n📵 As transcrições foram *pausadas* até o próximo ciclo ou upgrade.\n\n⚡ Faça upgrade agora:\n👉 https://ZapScript.me/dashboard/plano`,
+      100: `🔴 *ZapScript* — Minutos esgotados\n\nVocê atingiu *100% dos seus minutos* deste mês.\n\n📵 As conversões foram *pausadas* até o próximo ciclo ou upgrade.\n\n⚡ Faça upgrade agora:\n👉 https://ZapScript.me/dashboard/plano`,
     };
 
     // Enviar via WhatsApp (principal)
@@ -698,7 +698,7 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
             <div style="font-size:22px;font-weight:bold;margin-bottom:16px">⚠️ Seus minutos estão quase no limite</div>
             <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
               Olá${userRecord.name ? `, <strong>${escHtml(userRecord.name)}</strong>` : ''}!<br><br>
-              Você usou <strong>80% dos seus minutos</strong> — restam apenas 20%. Quando zerar, as transcrições são pausadas até o próximo ciclo.<br><br>
+              Você usou <strong>80% dos seus minutos</strong> — restam apenas 20%. Quando zerar, as conversões são pausadas até o próximo ciclo.<br><br>
               Faça upgrade agora para não perder nenhum áudio importante:
             </div>
             <div style="margin:24px 0;text-align:center">
@@ -708,13 +708,13 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
           </div>`,
         },
         100: {
-          subject: '🔴 ZapScript — Minutos esgotados — transcrições pausadas',
+          subject: '🔴 ZapScript — Minutos esgotados — conversões pausadas',
           body: `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
             <div style="font-size:22px;font-weight:bold;margin-bottom:16px">🔴 Seus minutos acabaram</div>
             <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
               Olá${userRecord.name ? `, <strong>${escHtml(userRecord.name)}</strong>` : ''}!<br><br>
-              Você atingiu <strong>100% dos seus minutos</strong> deste mês. As transcrições estão <strong>pausadas</strong> até o próximo ciclo ou até você fazer upgrade.<br><br>
-              Para voltar a transcrever agora mesmo:
+              Você atingiu <strong>100% dos seus minutos</strong> deste mês. As conversões estão <strong>pausadas</strong> até o próximo ciclo ou até você fazer upgrade.<br><br>
+              Para voltar a converter agora mesmo:
             </div>
             <div style="margin:24px 0;text-align:center">
               <a href="${APP_URL}/dashboard/plano" style="background:#ef4444;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Desbloquear agora →</a>
@@ -740,7 +740,7 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
 }
 
 /**
- * Dispara webhook personalizado do usuário após uma transcrição concluída.
+ * Dispara webhook personalizado do usuário após uma conversão concluída.
  * Fire-and-forget: erros são logados mas não afetam o pipeline.
  */
 async function dispatchWebhook(
@@ -830,14 +830,14 @@ function splitText(text: string, firstMax: number, restMax: number): string[] {
  * Modo normal:
  *   🎙️ *Áudio de [nome]* • ⏱ [dur]
  *   📋 *Resumo* / bullets
- *   📝 *Transcrição*
+ *   📝 *Conversão*
  *   _Gerado por_ → *ZapScript.me* ⚡
  *
  * Modo Privado (Opção B):
  *   🔒 *Privado* | *[nome]* → você
  *   📱 +55 xx x xxxx-xxxx · ⏱ [dur]
  *   📋 *Resumo* / bullets
- *   📝 *Transcrição*
+ *   📝 *Conversão*
  *   ↩️ Responder: wa.me/[phone]
  *   _Gerado por_ → *ZapScript.me* ⚡
  */
@@ -865,7 +865,7 @@ function buildMessage(
     ? `⏱ ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60 > 0 ? ` ${durationSec % 60}s` : ''}` : `${durationSec}s`}`
     : '';
 
-  const FALLBACK       = ['Transcrição disponível', 'Resumo não disponível', 'Não foi possível'];
+  const FALLBACK       = ['Conversão disponível', 'Resumo não disponível', 'Não foi possível'];
   const hasRealBullets = bullets.length > 0 && !bullets.some(b => FALLBACK.some(f => b.includes(f)));
   const tldr           = hasRealBullets && isTldr ? bullets[0] : null;
 
@@ -911,23 +911,27 @@ function buildMessage(
   const replyLink = replyTarget
     ? `\n\n↩️ Responder: wa.me/${replyTarget.replace(/\D/g, '')}`
     : '';
-  // Rodapé viral (growth loop / K-factor): a transcrição cai na conversa onde o áudio
-  // chegou, então quem MANDOU o áudio (um terceiro) vê a assinatura com link rastreado.
-  // A/B simples de 2 variantes via utm_content — sorteado por transcrição.
-  const appUrl   = (process.env.APP_URL || 'https://zapscript.me').replace(/\/$/, '');
-  const variant  = Math.random() < 0.5 ? 'a' : 'b';
-  const utm       = `utm_source=whatsapp&utm_medium=footer&utm_campaign=viral&utm_content=${variant}`;
-  const ctaLink   = `${appUrl}/?${utm}`;
-  const ctaLine   = variant === 'a'
-    ? `\n\n⚡ _Áudio em texto na hora?_ → ${ctaLink}`
-    : `\n\n⚡ _Transcrito por ZapScript — faça o seu grátis:_ ${ctaLink}`;
+  // Rodapé viral (growth loop / K-factor): a conversão cai na conversa onde o áudio
+  // chegou, então quem MANDOU o áudio (um terceiro) vê a assinatura.
+  // 7 variantes rotativas (formal → irreverente); marca só no link, sem UTM,
+  // para não poluir a conversa. O preview do link é desativado no envio (evolution.ts).
+  const CTAS = [
+    '⚡ Áudio convertido em texto — ZapScript.me',
+    '_Convertido por_ ⚡ ZapScript.me',
+    '⚡ Conversão automática de áudio: ZapScript.me',
+    '⚡ Seu áudio vira texto: ZapScript.me',
+    '⚡ Leia em vez de ouvir: ZapScript.me',
+    '⚡ Cansou de ouvir áudio? ZapScript.me',
+    '⚡ Converta os seus também: ZapScript.me',
+  ];
+  const ctaLine = `\n\n${CTAS[Math.floor(Math.random() * CTAS.length)]}`;
   const footer = `${replyLink}${ctaLine}`;
 
-  // ── Transcrição COMPLETA, dividida em mensagens se exceder o teto do WhatsApp ──
-  // A 1ª mensagem carrega cabeçalho + resumo + início da transcrição; as demais
-  // continuam a transcrição. O rodapé fica só na última. Nada é truncado.
-  const transcHeader = `\n\n📝 *Transcrição*\n`;
-  const contHeader   = `📝 *Transcrição (cont.)*\n`;
+  // ── Conversão COMPLETA, dividida em mensagens se exceder o teto do WhatsApp ──
+  // A 1ª mensagem carrega cabeçalho + resumo + início da conversão; as demais
+  // continuam a conversão. O rodapé fica só na última. Nada é truncado.
+  const transcHeader = `\n\n📝 *Conversão*\n`;
+  const contHeader   = `📝 *Conversão (cont.)*\n`;
   const head         = header + pontoSection + transcHeader;
 
   const firstBudget = Math.max(500, WHATSAPP_LIMIT - head.length - footer.length);
@@ -988,25 +992,25 @@ async function processManualJob(job: Job) {
       return { skipped: true, reason: 'file_too_large_after_compression' };
     }
 
-    // PASSO 4: Transcrever em modo JURÍDICO (retorna segments com timestamps).
-    // Áudios > 30 min são fatiados e transcritos em blocos automaticamente.
+    // PASSO 4: Converter em modo JURÍDICO (retorna segments com timestamps).
+    // Áudios > 30 min são fatiados e convertidos em blocos automaticamente.
     log(job, '🎙️  Whisper — modo jurídico com marcação temporal...');
     const { text: rawText, durationSec, language: detectedLanguage, segments } =
       await transcribeAudio(mp3Buffer, { juridical: true, vocab: [filename] });
     log(job, `✅ ${durationSec}s — lang:${detectedLanguage} — ${segments.length} segmentos`);
 
-    // PASSO 5: Montar transcrição com marcação temporal [MM:SS] por segmento
+    // PASSO 5: Montar conversão com marcação temporal [MM:SS] por segmento
     const timestampedText = segments.length > 0
       ? buildTimestampedTranscript(segments, durationSec)
       : rawText; // fallback: texto puro se Whisper não retornar segmentos
-    log(job, `✅ Transcrição com ${segments.length} segmentos temporais`);
+    log(job, `✅ Conversão com ${segments.length} segmentos temporais`);
 
     // PASSO 6: Resumo com Claude (gerado a partir do texto puro — sem os timestamps)
     log(job, '🤖 Claude resumo...');
     const bullets = await generateBullets(rawText, durationSec, detectedLanguage);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
-    // PASSO 7: Salvar transcrição (originalText = texto com marcação temporal)
+    // PASSO 7: Salvar conversão (originalText = texto com marcação temporal)
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId, numberId, contactPhone: 'manual',
@@ -1088,7 +1092,7 @@ async function processOfficialWhatsAppJob(job: Job) {
     mp3Buffer = await convertToMp3(audioBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
 
-    // PASSO 4: Transcrever com Whisper (chunking automático p/ áudios longos)
+    // PASSO 4: Converter com Whisper (chunking automático p/ áudios longos)
     log(job, '🎙️  Whisper API (auto-idioma)...');
     const { text: originalText, durationSec, language: detectedLang } =
       await transcribeAudio(mp3Buffer, { vocab: [senderName] });
@@ -1105,7 +1109,7 @@ async function processOfficialWhatsAppJob(job: Job) {
     for (const m of messages) await sendMessageToMeta(senderPhone, m);
     log(job, '✅ Mensagem enviada');
 
-    // PASSO 7: Salvar transcrição e debitar minutos — duração real do Whisper
+    // PASSO 7: Salvar conversão e debitar minutos — duração real do Whisper
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId,
@@ -1172,7 +1176,7 @@ async function processTwilioJob(job: Job) {
     mp3Buffer = await convertToMp3(audioBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
 
-    // PASSO 4: Transcrever com Whisper (chunking automático p/ áudios longos)
+    // PASSO 4: Converter com Whisper (chunking automático p/ áudios longos)
     log(job, '🎙️  Whisper API (auto-idioma)...');
     const { text: originalText, durationSec, language: detectedLang } =
       await transcribeAudio(mp3Buffer, { vocab: [senderName] });
@@ -1189,7 +1193,7 @@ async function processTwilioJob(job: Job) {
     for (const m of messages) await sendMessageViaTwilio(senderPhone, twilioFrom, m);
     log(job, '✅ Mensagem enviada');
 
-    // PASSO 7: Salvar transcrição e debitar minutos
+    // PASSO 7: Salvar conversão e debitar minutos
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId,
@@ -1268,7 +1272,7 @@ async function processEvolutionJob(job: Job) {
     mp3Buffer = await convertToMp3(audioBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
 
-    // PASSO 4: Transcrever com Whisper (chunking automático p/ áudios longos)
+    // PASSO 4: Converter com Whisper (chunking automático p/ áudios longos)
     log(job, '🎙️  Whisper API (auto-idioma)...');
     const { text: originalText, durationSec: whisperDuration, language: detectedLanguage } =
       await transcribeAudio(mp3Buffer, { vocab: [senderName] });
@@ -1312,7 +1316,7 @@ async function processEvolutionJob(job: Job) {
     // PASSO 6.5: Marcar conversa como não lida
     await markChatAsUnread(instName, senderPhone);
 
-    // PASSO 7: Salvar transcrição e debitar minutos
+    // PASSO 7: Salvar conversão e debitar minutos
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId,
@@ -1407,7 +1411,7 @@ worker.on('error', (err) => {
   logger.error('[Worker] Erro interno', { err: err.message });
 });
 
-logger.info('Worker de transcrição iniciado (WhatsApp + Upload manual)');
+logger.info('Worker de conversão iniciado (WhatsApp + Upload manual)');
 
 // ─────────────────────────────────────────────────────────────────
 //  CRON — Reset automático de minutos mensais

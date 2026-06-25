@@ -5,8 +5,8 @@ import IndiqueClient from './IndiqueClient';
 
 export const metadata: Metadata = {
   title:       'Indique o ZapScript e ganhe minutos grátis — Programa de Indicação',
-  description: 'Indique um amigo para o ZapScript e ganhem 15 minutos grátis de transcrição cada um quando ele se cadastrar. Sem limite de indicações.',
-  keywords:    'indique e ganhe zapscript, programa de indicação whatsapp, link de indicação transcrição áudio',
+  description: 'Indique um amigo para o ZapScript e ganhem 15 minutos grátis de conversão cada um quando ele se cadastrar. Sem limite de indicações.',
+  keywords:    'indique e ganhe zapscript, programa de indicação whatsapp, link de indicação conversão áudio',
   alternates:  { canonical: 'https://www.zapscript.me/indique' },
   openGraph: {
     title:       'Indique o ZapScript — Ganhe minutos grátis',
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 };
 
 const FAQS = [
-  { q: 'Como funciona o programa de indicação?', a: 'Você compartilha seu link pessoal (disponível no seu painel, em "Indique o ZapScript"). Quando alguém se cadastra pelo seu link, você e a pessoa indicada ganham 15 minutos grátis de transcrição cada.' },
+  { q: 'Como funciona o programa de indicação?', a: 'Você compartilha seu link pessoal (disponível no seu painel, em "Indique o ZapScript"). Quando alguém se cadastra pelo seu link, você e a pessoa indicada ganham 15 minutos grátis de conversão cada.' },
   { q: 'Existe limite de indicações?', a: 'Não. Você pode indicar quantas pessoas quiser e acumular 15 minutos grátis por cada cadastro válido feito pelo seu link.' },
   { q: 'Onde encontro meu link de indicação?', a: 'Faça login na sua conta ZapScript e acesse o Dashboard — seu link pessoal está no card "Indique o ZapScript", com botão para copiar ou compartilhar direto no WhatsApp.' },
   { q: 'Ainda não tenho conta, posso indicar?', a: 'Você precisa de uma conta ZapScript (mesmo no plano Free, grátis) para gerar seu link pessoal de indicação. Crie sua conta grátis e o link aparece automaticamente no seu painel.' },
@@ -72,7 +72,7 @@ export default function IndiquePage() {
           Indique um amigo,<br /><span className="text-brand-primary">ganhem 15 minutos grátis</span> os dois
         </h1>
         <p className="text-lg text-brand-muted max-w-xl mx-auto leading-relaxed mb-10">
-          Cada pessoa que se cadastrar pelo seu link pessoal dá 15 minutos grátis de transcrição para você e para ela. Sem limite de indicações.
+          Cada pessoa que se cadastrar pelo seu link pessoal dá 15 minutos grátis de conversão para você e para ela. Sem limite de indicações.
         </p>
 
         <div className="grid sm:grid-cols-3 gap-4 mb-12 text-left">

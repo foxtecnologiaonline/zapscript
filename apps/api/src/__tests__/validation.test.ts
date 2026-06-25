@@ -106,7 +106,7 @@ describe('Input Validation with Zod', () => {
   });
 
   describe('createTranscriptionSchema', () => {
-    it('valida transcrição com dados válidos', () => {
+    it('valida conversão com dados válidos', () => {
       const result = createTranscriptionSchema.safeParse({
         numberId: 'clid0000000000000000000a',
         audioBase64: Buffer.from('test').toString('base64'),

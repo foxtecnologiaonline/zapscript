@@ -53,7 +53,7 @@ const PLAN_AI_FEAT = ['pro', 'pro-tester', 'executive'];   // reply sugerida + d
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ── Transcrição Profissional — HTML imprimível ───────────────────────────────
+// ── Conversão Profissional — HTML imprimível ───────────────────────────────
 function buildJuridicalPdfHtml(t: any, transcriptText: string): string {
   const createdAt = new Date(t.createdAt);
   const dateStr   = createdAt.toLocaleString('pt-BR', {
@@ -94,7 +94,7 @@ function buildJuridicalPdfHtml(t: any, transcriptText: string): string {
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Transcrição de Áudio — ${shortId}</title>
+<title>Conversão de Áudio — ${shortId}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Times New Roman',Times,serif;font-size:12pt;line-height:1.55;color:#111;background:#fff;padding:2.5cm 3cm}
@@ -138,7 +138,7 @@ table.meta td:first-child{background:#f3f3f3;font-weight:700;width:38%;font-size
 <div class="header">
   <div class="brand">
     <div class="brand-name">Zap<em>Script</em></div>
-    <div class="brand-sub">Plataforma de Transcrição Automática · zapscript.me</div>
+    <div class="brand-sub">Plataforma de Conversão Automática · zapscript.me</div>
   </div>
   <div class="doc-ref">
     <strong>${shortId}</strong>
@@ -146,25 +146,25 @@ table.meta td:first-child{background:#f3f3f3;font-weight:700;width:38%;font-size
   </div>
 </div>
 
-<h1>Transcrição Literal de Áudio</h1>
+<h1>Conversão Literal de Áudio</h1>
 <h2 class="sub">Documento gerado eletronicamente com marcação temporal — adequado para arquivo, comprovação e fins probatórios</h2>
 
 <hr class="div">
 
 <table class="meta">
   <tr><td>Número do Protocolo</td><td><span style="font-family:monospace;font-size:10pt">${docId}</span></td></tr>
-  <tr><td>Data e Hora da Transcrição</td><td>${dateStr} (Horário de Brasília)</td></tr>
+  <tr><td>Data e Hora da Conversão</td><td>${dateStr} (Horário de Brasília)</td></tr>
   <tr><td>Arquivo de Origem</td><td><span style="font-family:monospace;font-size:10pt">${esc(t.filename || '—')}</span></td></tr>
   <tr><td>Duração Total do Áudio</td><td>${durStr}</td></tr>
   <tr><td>Idioma Detectado</td><td>${language}</td></tr>
   <tr><td>Origem</td><td>Upload manual — ZapScript Dashboard</td></tr>
   <tr><td>Tecnologia</td><td>Whisper ASR — Groq whisper-large-v3-turbo (alta precisão)</td></tr>
   <tr><td>Marcação Temporal</td><td>Por segmento de fala — formato [MM:SS] referenciado ao início do áudio</td></tr>
-  <tr><td>Emitido por</td><td>ZapScript — Plataforma de Transcrição Automática (zapscript.me)</td></tr>
+  <tr><td>Emitido por</td><td>ZapScript — Plataforma de Conversão Automática (zapscript.me)</td></tr>
 </table>
 
 <div class="box">
-  <strong>Origem e Integridade:</strong> Esta transcrição foi gerada automaticamente pela plataforma
+  <strong>Origem e Integridade:</strong> Esta conversão foi gerada automaticamente pela plataforma
   <strong>ZapScript</strong> com uso de modelo de reconhecimento de fala de nível profissional (Whisper / Groq),
   reproduzindo o conteúdo auditivo do arquivo de origem sem edições ou correções.
   As marcações temporais no formato <span style="font-family:monospace;color:#0a5c3e">[MM:SS]</span> indicam o instante
@@ -172,11 +172,11 @@ table.meta td:first-child{background:#f3f3f3;font-weight:700;width:38%;font-size
   Identificação única do documento: <span style="font-family:monospace">${shortId}</span>.
 </div>
 
-<div class="sec">Conteúdo Transcrito</div>
+<div class="sec">Conteúdo Convertido</div>
 <div class="transcript">${body}</div>
 
 <div class="footer">
-  <span>ZapScript — Transcrição Automática de Áudio · zapscript.me</span>
+  <span>ZapScript — Conversão Automática de Áudio · zapscript.me</span>
   <span>Gerado em: ${now} (Horário de Brasília)</span>
 </div>
 <div class="end">· · · Fim do Documento · · ·</div>
@@ -319,7 +319,7 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
   });
 
   // ── GET /transcriptions/export ────────────────────────
-  // Exporta transcrições do mês — Executive only
+  // Exporta conversões do mês — Executive only
   // Formatos: csv | xls | pdf | docx
   app.get<{
     Querystring: { format?: string; month?: string }
@@ -357,7 +357,7 @@ export default async function transcriptionRoutes(app: FastifyInstance) {
           <p class="txt">${text}</p>
         </div>`;
       }).join('<hr>');
-      const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Transcrições ${month}</title>
+      const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Conversões ${month}</title>
 <style>body{font-family:Arial,sans-serif;font-size:11px;margin:1.5cm;color:#111}
 h1{font-size:16px;color:#0d9668;margin-bottom:16px}
 .tr{margin-bottom:20px;padding-bottom:20px}
@@ -371,8 +371,8 @@ hr{border:none;border-top:1px solid #ddd;margin:16px 0}
 <div class="no-print" style="background:#0d9668;color:#fff;padding:10px 16px;margin:-1.5cm -1.5cm 20px;font-size:12px">
   📄 Pressione <b>Ctrl+P</b> (ou <b>⌘P</b>) → "Salvar como PDF"
 </div>
-<h1>📝 Transcrições — ${month}</h1>
-<p style="color:#666;font-size:10px;margin-bottom:20px">Total: ${items.length} transcrição(ões) · Gerado pelo ZapScript</p>
+<h1>📝 Conversões — ${month}</h1>
+<p style="color:#666;font-size:10px;margin-bottom:20px">Total: ${items.length} conversão(ões) · Gerado pelo ZapScript</p>
 ${rows}
 <script>const b=document.querySelector('.no-print');if(b)b.style.display='block'</script>
 </body></html>`;
@@ -399,7 +399,7 @@ ${bullets.length ? `<ul>${bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>`
 <head><meta charset="utf-8"/>
 <style>body{font-family:Calibri,Arial;font-size:11pt;margin:2cm}h1{font-size:14pt;color:#0d9668}ul{margin:4pt 0}li{margin:2pt 0}</style>
 </head><body>
-<h1>Transcrições — ${month}</h1>
+<h1>Conversões — ${month}</h1>
 <p style="color:#666;font-size:9pt">Total: ${items.length} · ZapScript</p><hr/>
 ${rows}
 </body></html>`;
@@ -492,7 +492,7 @@ ${rows}
       const prompt = `Você é um assistente de comunicação. Analise esta mensagem de áudio recebida via WhatsApp e gere exatamente 3 sugestões de resposta em português brasileiro.
 
 Remetente: ${contact}
-Transcrição: "${text}"
+Conversão: "${text}"
 ${bullets.length ? `Pontos principais:\n${bullets.map(b => `• ${b}`).join('\n')}` : ''}
 
 Gere 3 sugestões de resposta:
@@ -521,7 +521,7 @@ Responda SOMENTE com JSON no formato:
   );
 
   // ── POST /transcriptions/:id/generate-document ────────
-  // Gera documento estruturado a partir da transcrição (Pro+)
+  // Gera documento estruturado a partir da conversão (Pro+)
   app.post<{
     Params: { id: string };
     Body: { docType: 'ata' | 'briefing' | 'combinados' | 'resumo' | 'email' };
@@ -552,7 +552,7 @@ Responda SOMENTE com JSON no formato:
 
 Data da mensagem: ${date}
 Remetente: ${contact}
-Transcrição completa: "${text}"
+Conversão completa: "${text}"
 ${bullets.length ? `Pontos principais já identificados:\n${bullets.map(b => `• ${b}`).join('\n')}` : ''}
 
 Gere apenas o documento, sem explicações adicionais.`;
@@ -573,7 +573,7 @@ Gere apenas o documento, sem explicações adicionais.`;
   );
 
   // ── PATCH /transcriptions/:id/tags ───────────────────
-  // Atualiza tags de uma transcrição (Pro+)
+  // Atualiza tags de uma conversão (Pro+)
   app.patch<{ Params: { id: string }; Body: { tags: string[] } }>(
     '/:id/tags', auth, async (req: any, reply) => {
       const userId = req.user.sub;
@@ -584,7 +584,7 @@ Gere apenas o documento, sem explicações adicionais.`;
       const { tags } = req.body;
 
       if (!Array.isArray(tags)) return reply.code(400).send({ error: 'tags deve ser um array.' });
-      if (tags.length > 5)      return reply.code(400).send({ error: 'Máximo de 5 tags por transcrição.' });
+      if (tags.length > 5)      return reply.code(400).send({ error: 'Máximo de 5 tags por conversão.' });
 
       const invalid = tags.find(t => typeof t !== 'string' || t.length > 20 || !/^[\w\sÀ-ſ]+$/u.test(t));
       if (invalid !== undefined) return reply.code(400).send({ error: 'Tag inválida. Máx 20 caracteres, sem símbolos.' });
@@ -609,7 +609,7 @@ Gere apenas o documento, sem explicações adicionais.`;
       const t = await prisma.transcription.findFirst({
         where: { id: req.params.id, userId, source: 'manual' },
       });
-      if (!t) return reply.code(404).send({ error: 'Transcrição não encontrada (apenas uploads manuais)' });
+      if (!t) return reply.code(404).send({ error: 'Conversão não encontrada (apenas uploads manuais)' });
 
       const transcriptText = decryptStr(t.originalText);
       const html = buildJuridicalPdfHtml(t, transcriptText);
@@ -630,7 +630,7 @@ Gere apenas o documento, sem explicações adicionais.`;
       const t = await prisma.transcription.findFirst({
         where: { id: req.params.id, userId, source: 'manual' },
       });
-      if (!t) return reply.code(404).send({ error: 'Transcrição não encontrada' });
+      if (!t) return reply.code(404).send({ error: 'Conversão não encontrada' });
 
       const sb = getSupabase();
       if (!sb) return reply.code(503).send({ error: 'Storage não disponível' });
@@ -695,7 +695,7 @@ Gere apenas o documento, sem explicações adicionais.`;
       return reply.code(400).send({ error: `Arquivo muito grande. Máximo: ${maxLabel}` });
     }
 
-    // Buscar qualquer número do usuário (conectado ou não) para associar a transcrição
+    // Buscar qualquer número do usuário (conectado ou não) para associar a conversão
     const number = await prisma.whatsappNumber.findFirst({ where: { userId } });
     if (!number) {
       return reply.code(400).send({ error: 'Adicione ao menos um número WhatsApp no painel antes de enviar áudios manualmente.' });
@@ -715,7 +715,7 @@ Gere apenas o documento, sem explicações adicionais.`;
       // Arquivo pequeno (<7MB) → fallback base64 (OK para Upstash)
     }
 
-    // Enfileirar job de transcrição manual
+    // Enfileirar job de conversão manual
     await transcriptionQueue.add('transcribe-manual', {
       userId,
       numberId: number.id,
@@ -724,7 +724,7 @@ Gere apenas o documento, sem explicações adicionais.`;
       ...(storageKey ? { storageKey } : { audioBase64: buffer.toString('base64') }),
     }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } });
 
-    return reply.code(202).send({ queued: true, message: 'Áudio enfileirado. A transcrição chegará em instantes.' });
+    return reply.code(202).send({ queued: true, message: 'Áudio enfileirado. A conversão chegará em instantes.' });
   });
 
   // ── GET /transcriptions/queue/status — contagem de jobs na fila do usuário ──

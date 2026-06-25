@@ -66,10 +66,10 @@ export default function TermosPage() {
 
         <h2><span className="sn">01 /</span> Definições</h2>
         <ul>
-          <li><strong>&ldquo;ZapScript&rdquo;</strong> ou <strong>&ldquo;Plataforma&rdquo;:</strong> serviço SaaS de transcrição de áudios, disponível em zapscript.me, operado pela empresa identificada na Política de Privacidade;</li>
+          <li><strong>&ldquo;ZapScript&rdquo;</strong> ou <strong>&ldquo;Plataforma&rdquo;:</strong> serviço SaaS de conversão de áudios, disponível em zapscript.me, operado pela empresa identificada na Política de Privacidade;</li>
           <li><strong>&ldquo;Usuário Consumidor&rdquo;:</strong> pessoa física que utiliza o serviço para finalidade pessoal, sujeita ao Código de Defesa do Consumidor (Lei nº 8.078/1990);</li>
           <li><strong>&ldquo;Usuário Empresarial&rdquo;:</strong> pessoa jurídica ou profissional que utiliza o serviço no exercício de atividade empresarial, sujeita prioritariamente ao Código Civil e disposições B2B;</li>
-          <li><strong>&ldquo;Conteúdo&rdquo;:</strong> áudios enviados, transcrições geradas e demais materiais inseridos na plataforma pelo usuário;</li>
+          <li><strong>&ldquo;Conteúdo&rdquo;:</strong> áudios enviados, conversões geradas e demais materiais inseridos na plataforma pelo usuário;</li>
           <li><strong>&ldquo;Assinatura&rdquo;:</strong> plano de acesso pago com cobrança recorrente (mensal ou anual);</li>
           <li><strong>&ldquo;API&rdquo;:</strong> interface de programação de aplicações disponível em planos elegíveis;</li>
           <li><strong>&ldquo;Downtime&rdquo;:</strong> período de indisponibilidade do serviço principal, excluídas manutenções programadas com aviso prévio.</li>
@@ -97,9 +97,9 @@ export default function TermosPage() {
         </div>
 
         <h2><span className="sn">03 /</span> Descrição do Serviço e Isenções Técnicas</h2>
-        <p>O ZapScript oferece transcrição automatizada de mensagens de voz do WhatsApp via tecnologias de Speech-to-Text (STT). O serviço inclui: transcrição em português e demais idiomas conforme plano, painel de gerenciamento com histórico, exportação de transcrições e, nos planos elegíveis, acesso à API de integração.</p>
+        <p>O ZapScript oferece conversão automatizada de mensagens de voz do WhatsApp via tecnologias de Speech-to-Text (STT). O serviço inclui: conversão em português e demais idiomas conforme plano, painel de gerenciamento com histórico, exportação de conversões e, nos planos elegíveis, acesso à API de integração.</p>
         <div className="warn-box">
-          <p>⚠ <strong>Limitação técnica inerente:</strong> a precisão das transcrições depende de fatores externos à ZapScript, incluindo qualidade do áudio, nível de ruído, sotaque, dicção e idioma. Nenhum sistema STT atual atinge 100% de precisão. A ZapScript não se responsabiliza por decisões tomadas com base exclusiva em transcrições automáticas sem revisão humana.</p>
+          <p>⚠ <strong>Limitação técnica inerente:</strong> a precisão das conversões depende de fatores externos à ZapScript, incluindo qualidade do áudio, nível de ruído, sotaque, dicção e idioma. Nenhum sistema STT atual atinge 100% de precisão. A ZapScript não se responsabiliza por decisões tomadas com base exclusiva em conversões automáticas sem revisão humana.</p>
         </div>
         <p>A ZapScript não é afiliada, patrocinada ou endossada pelo WhatsApp ou Meta Platforms. O uso da plataforma deve estar em conformidade com os termos de serviço do WhatsApp.</p>
 
@@ -129,7 +129,7 @@ export default function TermosPage() {
         <h2><span className="sn">06 /</span> Uso Aceitável e Sanções Escalonadas <span className="legal-ref">Art. 187 CC · Art. 927 CC</span></h2>
         <p>É <strong>expressamente vedado</strong> utilizar a ZapScript para:</p>
         <ul>
-          <li>Transcrever áudios sem consentimento do emissor — violação à Lei nº 9.296/1996 (interceptação) e Art. 5º XII CF;</li>
+          <li>Converter áudios sem consentimento do emissor — violação à Lei nº 9.296/1996 (interceptação) e Art. 5º XII CF;</li>
           <li>Processar conteúdo ilegal, difamatório, discriminatório, que incite violência ou viole direitos de terceiros;</li>
           <li>Realizar engenharia reversa, descompilar ou extrair código-fonte da plataforma — Lei nº 9.609/1998 (Software);</li>
           <li>Revender, sublicenciar ou criar produtos derivados sem autorização escrita prévia;</li>
@@ -147,8 +147,8 @@ export default function TermosPage() {
 
         <h2><span className="sn">07 /</span> Propriedade Intelectual <span className="legal-ref">Lei 9.279/96 · Lei 9.610/98 · Lei 9.609/98</span></h2>
         <p><strong>Da plataforma:</strong> o código-fonte, design, marcas, logotipos, metodologias e toda a propriedade intelectual da ZapScript são de titularidade exclusiva da empresa, protegidos pelas Leis nº 9.279/1996, 9.610/1998 e 9.609/1998. É vedada qualquer reprodução, adaptação ou uso sem autorização escrita.</p>
-        <p><strong>Do conteúdo do usuário:</strong> o usuário mantém integral titularidade sobre os áudios enviados e as transcrições geradas. Ao usar o serviço, concede à ZapScript licença técnica <strong>não exclusiva, intransferível, revogável e limitada</strong> para processar o conteúdo exclusivamente para a prestação do serviço contratado.</p>
-        <p>A ZapScript <strong>não utilizará</strong> o conteúdo do usuário para treinamento de modelos de inteligência artificial, pesquisa ou qualquer finalidade além da transcrição solicitada, sem consentimento expresso e específico do titular.</p>
+        <p><strong>Do conteúdo do usuário:</strong> o usuário mantém integral titularidade sobre os áudios enviados e as conversões geradas. Ao usar o serviço, concede à ZapScript licença técnica <strong>não exclusiva, intransferível, revogável e limitada</strong> para processar o conteúdo exclusivamente para a prestação do serviço contratado.</p>
+        <p>A ZapScript <strong>não utilizará</strong> o conteúdo do usuário para treinamento de modelos de inteligência artificial, pesquisa ou qualquer finalidade além da conversão solicitada, sem consentimento expresso e específico do titular.</p>
 
         <h2><span className="sn">08 /</span> Marco Civil da Internet <span className="legal-ref">Lei nº 12.965/2014</span></h2>
         <p>Na qualidade de provedor de aplicações de internet, a ZapScript observa integralmente as disposições da Lei nº 12.965/2014 (Marco Civil da Internet), especialmente:</p>
@@ -175,8 +175,8 @@ export default function TermosPage() {
         <h2><span className="sn">11 /</span> Limitação de Responsabilidade <span className="legal-ref">Art. 14 §3º CDC · Art. 944 CC</span></h2>
         <p>A ZapScript não se responsabiliza por:</p>
         <ul>
-          <li>Imprecisões nas transcrições decorrentes de qualidade de áudio, sotaque, ruído ou idioma não suportado;</li>
-          <li>Decisões, prejuízos ou consequências resultantes do uso das transcrições pelo usuário ou por terceiros;</li>
+          <li>Imprecisões nas conversões decorrentes de qualidade de áudio, sotaque, ruído ou idioma não suportado;</li>
+          <li>Decisões, prejuízos ou consequências resultantes do uso das conversões pelo usuário ou por terceiros;</li>
           <li>Perdas indiretas, lucros cessantes, perda de dados ou danos emergentes, em qualquer hipótese;</li>
           <li>Falhas ou indisponibilidade de serviços de terceiros (WhatsApp, APIs externas, gateways de pagamento);</li>
           <li>Atos praticados por terceiros não autorizados que resultem de negligência do usuário na guarda de credenciais.</li>

@@ -191,7 +191,7 @@ export function ChatDemo() {
               <div className="rounded-2xl rounded-bl-sm px-4 py-3.5 max-w-[90%]"
                 style={{ background: '#083d22', border: '1px solid rgba(16,185,129,.2)' }}>
                 {/* Transcript */}
-                <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#6ee7b7' }}>📝 Transcrição:</p>
+                <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#6ee7b7' }}>📝 Conversão:</p>
                 <p className="text-sm leading-relaxed italic" style={{ color: '#a7f3d0', fontStyle: 'italic' }}>
                   &ldquo;{ex.transcript.slice(0, 108)}&hellip;&rdquo;
                 </p>

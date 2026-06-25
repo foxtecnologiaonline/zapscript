@@ -62,7 +62,7 @@ export function DemoTranscribe() {
       const res = await api.postFormData<{ ok: boolean } & DemoResult>('/demo/transcribe', fd);
       setResult({ text: res.text, bullets: res.bullets || [], durationSec: res.durationSec });
     } catch (e: any) {
-      setError(e?.error || e?.message || 'Não foi possível transcrever agora. Tente novamente.');
+      setError(e?.error || e?.message || 'Não foi possível converter agora. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -100,7 +100,7 @@ export function DemoTranscribe() {
             Experimente agora · grátis
           </p>
           <h2 className="font-display font-bold text-xl tracking-tight leading-tight">
-            Transcreva 1 áudio em segundos
+            Converta 1 áudio em segundos
           </h2>
         </div>
       </div>
@@ -155,11 +155,11 @@ export function DemoTranscribe() {
             {loading ? (
               <>
                 <span className="inline-block w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                Transcrevendo…
+                Convertendo…
               </>
             ) : (
               <>
-                Transcrever grátis
+                Converter grátis
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M5 12h14M12 5l7 7-7 7"/>
                 </svg>
@@ -190,8 +190,8 @@ export function DemoTranscribe() {
               ✨ Exemplo · áudio de 47s
             </div>
           )}
-          {/* Transcrição */}
-          <p className="text-[11px] font-semibold mb-1.5" style={{ color: 'rgb(var(--color-primary))' }}>📝 Transcrição:</p>
+          {/* Conversão */}
+          <p className="text-[11px] font-semibold mb-1.5" style={{ color: 'rgb(var(--color-primary))' }}>📝 Conversão:</p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgb(var(--color-text))' }}>
             {result.text}
           </p>
@@ -225,7 +225,7 @@ export function DemoTranscribe() {
           <button type="button" onClick={reset}
             className="w-full py-2.5 rounded-2xl text-sm font-semibold transition-all"
             style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-secondary))', background: 'transparent' }}>
-            {isExample ? 'Transcrever meu próprio áudio' : 'Transcrever outro áudio'}
+            {isExample ? 'Converter meu próprio áudio' : 'Converter outro áudio'}
           </button>
         </div>
       )}

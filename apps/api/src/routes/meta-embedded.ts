@@ -13,7 +13,7 @@ import { encryptStr } from '../services/encryption';
  * assinamos o app no WABA e guardamos o vínculo criptografado.
  *
  * IMPORTANTE: usado apenas para a revisão da Meta. Usuários reais seguem no
- * Evolution API. O pipeline de transcrição NÃO é alterado por este módulo.
+ * Evolution API. O pipeline de conversão NÃO é alterado por este módulo.
  *
  * Segredos (definidos pelo operador no Render — nunca em código):
  *   META_APP_ID, META_APP_SECRET (fallback FACEBOOK_APP_SECRET),

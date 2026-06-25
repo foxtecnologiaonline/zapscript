@@ -3,13 +3,13 @@ import Link from 'next/link';
 import { POSTS } from './posts';
 
 export const metadata: Metadata = {
-  title:       'Blog — Transcrição de Áudio WhatsApp, Dicas e Produtividade',
-  description: 'Guias, comparativos e dicas sobre transcrição de áudio do WhatsApp com IA. Aprenda a economizar horas por dia com automação inteligente.',
-  keywords:    'blog transcrição whatsapp, dicas produtividade whatsapp, ia transcrição audio, como transcrever audio whatsapp',
+  title:       'Blog — Conversão de Áudio WhatsApp, Dicas e Produtividade',
+  description: 'Guias, comparativos e dicas sobre conversão de áudio do WhatsApp com IA. Aprenda a economizar horas por dia com automação inteligente.',
+  keywords:    'blog conversão whatsapp, dicas produtividade whatsapp, ia conversão audio, como converter audio whatsapp',
   alternates:  { canonical: 'https://www.zapscript.me/blog' },
   openGraph: {
-    title:       'Blog ZapScript — Transcrição de Áudio WhatsApp com IA',
-    description: 'Guias, comparativos e dicas sobre transcrição de áudio do WhatsApp com IA.',
+    title:       'Blog ZapScript — Conversão de Áudio WhatsApp com IA',
+    description: 'Guias, comparativos e dicas sobre conversão de áudio do WhatsApp com IA.',
     url:         'https://www.zapscript.me/blog',
     type:        'website',
   },
@@ -61,7 +61,7 @@ export default function BlogIndex() {
         <div className="mb-12 text-center">
           <p className="text-brand-primary font-semibold text-sm tracking-widest uppercase mb-3">Blog ZapScript</p>
           <h1 className="text-4xl sm:text-5xl font-bold text-white mb-4 leading-tight">
-            Transcrição de áudio, IA<br className="hidden sm:block" /> e produtividade no WhatsApp
+            Conversão de áudio, IA<br className="hidden sm:block" /> e produtividade no WhatsApp
           </h1>
           <p className="text-brand-muted text-lg max-w-xl mx-auto">
             Guias práticos e comparativos honestos para quem quer parar de perder tempo com áudios.
@@ -130,7 +130,7 @@ export default function BlogIndex() {
             Chega de perder tempo ouvindo áudios
           </h2>
           <p className="text-brand-muted mb-6 max-w-md mx-auto">
-            Conecte seu WhatsApp e receba transcrições automáticas com resumo por IA. Comece grátis, sem cartão.
+            Conecte seu WhatsApp e receba conversões automáticas com resumo por IA. Comece grátis, sem cartão.
           </p>
           <Link
             href="/cadastro"

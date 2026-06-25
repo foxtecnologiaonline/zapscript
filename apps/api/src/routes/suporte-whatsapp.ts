@@ -5,7 +5,7 @@ import { intakeMessage } from '../services/support-intake';
 /**
  * Webhook do WhatsApp dedicado ao AGENTE DE SUPORTE — via EVOLUTION API (QR).
  *
- * Separado de /webhook/evolution (que é do produto de transcrição): aqui o número
+ * Separado de /webhook/evolution (que é do produto de conversão): aqui o número
  * é o canal de ATENDIMENTO ao cliente (uma instância Evolution dedicada, conectada
  * por QR Code), não um número de usuário.
  *
@@ -80,8 +80,8 @@ export default async function suporteWhatsappRoutes(app: FastifyInstance) {
     } else if (messageType === 'extendedTextMessage') {
       texto = msg?.message?.extendedTextMessage?.text ?? null;
     } else if (messageType === 'audioMessage' || messageType === 'pttMessage') {
-      // MVP: áudio é registrado e escalado. Transcrição via Whisper = próximo passo.
-      texto = '[Cliente enviou um áudio no WhatsApp — transcrição pendente]';
+      // MVP: áudio é registrado e escalado. Conversão via Whisper = próximo passo.
+      texto = '[Cliente enviou um áudio no WhatsApp — conversão pendente]';
     } else if (messageType === 'imageMessage') {
       const cap = msg?.message?.imageMessage?.caption;
       texto = `[Cliente enviou uma imagem]${cap ? ` Legenda: ${cap}` : ''}`;

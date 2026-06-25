@@ -1,5 +1,5 @@
 /**
- * Testes de integração das rotas de transcrições.
+ * Testes de integração das rotas de conversões.
  */
 import Fastify from 'fastify';
 import jwt from '@fastify/jwt';
@@ -66,7 +66,7 @@ describe('GET /transcriptions', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('retorna lista de transcrições com auth válido', async () => {
+  it('retorna lista de conversões com auth válido', async () => {
     const token = app.jwt.sign({ sub: 'user-1', email: 'test@test.com' });
     (prisma.transcription.findMany as jest.Mock).mockResolvedValueOnce([
       {
@@ -127,7 +127,7 @@ describe('GET /transcriptions/:id', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it('retorna transcrição quando encontrada', async () => {
+  it('retorna conversão quando encontrada', async () => {
     const token = app.jwt.sign({ sub: 'user-1', email: 'test@test.com' });
     const mockTranscription = { id: 't1', userId: 'user-1', originalText: 'test' };
     mockFindFirstReturn = mockTranscription;
@@ -149,7 +149,7 @@ describe('DELETE /transcriptions/:id', () => {
   afterAll(async () => { await app.close(); });
   beforeEach(() => { mockFindFirstReturn = null; jest.clearAllMocks(); });
 
-  it('retorna 404 se transcrição não existir', async () => {
+  it('retorna 404 se conversão não existir', async () => {
     const token = app.jwt.sign({ sub: 'user-1', email: 'test@test.com' });
     mockFindFirstReturn = null;
 
@@ -162,7 +162,7 @@ describe('DELETE /transcriptions/:id', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it('deleta transcrição do próprio usuário com sucesso', async () => {
+  it('deleta conversão do próprio usuário com sucesso', async () => {
     const token = app.jwt.sign({ sub: 'user-1', email: 'test@test.com' });
     mockFindFirstReturn = { id: 't1', userId: 'user-1' };
     (prisma.transcription.delete as jest.Mock).mockResolvedValueOnce({});
@@ -177,7 +177,7 @@ describe('DELETE /transcriptions/:id', () => {
     expect(prisma.transcription.delete).toHaveBeenCalledWith({ where: { id: 't1' } });
   });
 
-  it('impede deletar transcrição de outro usuário (userId diferente = findFirst retorna null)', async () => {
+  it('impede deletar conversão de outro usuário (userId diferente = findFirst retorna null)', async () => {
     const token = app.jwt.sign({ sub: 'user-1', email: 'test@test.com' });
     // findFirst verifica userId no where → user-2 ≠ user-1 → retorna null
     mockFindFirstReturn = { id: 't1', userId: 'user-2' };

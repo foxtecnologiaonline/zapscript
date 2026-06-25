@@ -95,9 +95,9 @@ export default function ConvitePage() {
           {/* Benefícios */}
           <div className="space-y-2 mb-4 sm:mb-6">
             {[
-              { icon: '⚡', title: 'Plano PRO grátis por 1 ano', sub: 'Transcrição ilimitada, sem cartão' },
+              { icon: '⚡', title: 'Plano PRO grátis por 1 ano', sub: 'Conversão ilimitada, sem cartão' },
               { icon: '🏅', title: 'Selo Tester Oficial',        sub: 'Acesso antecipado a novos recursos' },
-              { icon: '🎙️', title: 'Transcrição via WhatsApp',   sub: 'IA — Groq Whisper + resumo em tópicos' },
+              { icon: '🎙️', title: 'Conversão via WhatsApp',   sub: 'IA — Groq Whisper + resumo em tópicos' },
             ].map(b => (
               <div key={b.title} className="flex items-center gap-3 bg-brand-bg rounded-xl px-3 py-2.5">
                 <span className="text-xl flex-shrink-0">{b.icon}</span>

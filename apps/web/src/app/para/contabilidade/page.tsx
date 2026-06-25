@@ -3,16 +3,16 @@ import Link from 'next/link';
 import { isJunePromoActive, PRO_FULL_PRICE, PRO_PROMO_PRICE } from '@/lib/promo';
 
 export const metadata: Metadata = {
-  title: 'ZapScript para Contabilidade — Transcreva os áudios dos seus clientes automaticamente',
+  title: 'ZapScript para Contabilidade — Converta os áudios dos seus clientes automaticamente',
   description:
-    'Escritórios de contabilidade recebem dezenas de áudios por dia de clientes. O ZapScript transcreve e resume tudo automaticamente, criando um registro pesquisável — sem ouvir, sem esquecer prazo. Comece grátis.',
+    'Escritórios de contabilidade recebem dezenas de áudios por dia de clientes. O ZapScript converte e resume tudo automaticamente, criando um registro pesquisável — sem ouvir, sem esquecer prazo. Comece grátis.',
   keywords:
-    'transcrição whatsapp contabilidade, áudio whatsapp escritório contábil, transcrever áudio cliente, contador whatsapp, atendimento contábil whatsapp, registro de áudio cliente',
+    'conversão whatsapp contabilidade, áudio whatsapp escritório contábil, converter áudio cliente, contador whatsapp, atendimento contábil whatsapp, registro de áudio cliente',
   alternates: { canonical: 'https://www.zapscript.me/para/contabilidade' },
   openGraph: {
     title: 'ZapScript para Contabilidade — Nunca mais perca um áudio de cliente',
     description:
-      'Transcrição automática + resumo com IA de cada áudio do WhatsApp. Registro pesquisável de tudo que o cliente pediu. Servidores no Brasil, conformidade LGPD.',
+      'Conversão automática + resumo com IA de cada áudio do WhatsApp. Registro pesquisável de tudo que o cliente pediu. Servidores no Brasil, conformidade LGPD.',
     url: 'https://www.zapscript.me/para/contabilidade',
     siteName: 'ZapScript',
     locale: 'pt_BR',
@@ -46,7 +46,7 @@ const DORES = [
 const BENEFICIOS = [
   {
     icon: '⚡',
-    title: 'Transcrição automática, 24h',
+    title: 'Conversão automática, 24h',
     text: 'Conecte o número do escritório uma vez. Todo áudio que chega vira texto em segundos, sozinho — mesmo fora do horário comercial.',
   },
   {
@@ -62,12 +62,12 @@ const BENEFICIOS = [
   {
     icon: '🔒',
     title: 'Sigilo e LGPD',
-    text: 'Criptografia AES-256, servidores em São Paulo e o áudio descartado logo após a transcrição. O sigilo dos dados do seu cliente é tratado como prioridade.',
+    text: 'Criptografia AES-256, servidores em São Paulo e o áudio descartado logo após a conversão. O sigilo dos dados do seu cliente é tratado como prioridade.',
   },
   {
     icon: '👥',
     title: 'Vários números do escritório',
-    text: 'No plano Pro você conecta mais de um número — atendimento, fiscal e pessoal, cada equipe com seu fluxo transcrito automaticamente.',
+    text: 'No plano Pro você conecta mais de um número — atendimento, fiscal e pessoal, cada equipe com seu fluxo convertido automaticamente.',
   },
   {
     icon: '🚫',
@@ -79,27 +79,27 @@ const BENEFICIOS = [
 const FAQS = [
   {
     q: 'Como o ZapScript ajuda um escritório de contabilidade?',
-    a: 'Escritórios contábeis recebem um volume alto de áudios — clientes mandam dúvidas fiscais, solicitações e prazos por mensagem de voz. O ZapScript conecta ao número do escritório e transcreve automaticamente cada áudio recebido, gerando texto completo e um resumo com os pontos principais. Assim a equipe lê em segundos o que antes levava minutos para ouvir, e nada fica para trás.',
+    a: 'Escritórios contábeis recebem um volume alto de áudios — clientes mandam dúvidas fiscais, solicitações e prazos por mensagem de voz. O ZapScript conecta ao número do escritório e converte automaticamente cada áudio recebido, gerando texto completo e um resumo com os pontos principais. Assim a equipe lê em segundos o que antes levava minutos para ouvir, e nada fica para trás.',
   },
   {
-    q: 'A transcrição serve como registro do que o cliente solicitou?',
-    a: 'Sim. Cada áudio transcrito fica salvo como texto pesquisável, com data e hora, e pode ser exportado em PDF. Isso cria um registro escrito do que foi solicitado, útil para o histórico do cliente e para evitar mal-entendidos sobre o que foi combinado.',
+    q: 'A conversão serve como registro do que o cliente solicitou?',
+    a: 'Sim. Cada áudio convertido fica salvo como texto pesquisável, com data e hora, e pode ser exportado em PDF. Isso cria um registro escrito do que foi solicitado, útil para o histórico do cliente e para evitar mal-entendidos sobre o que foi combinado.',
   },
   {
     q: 'Os dados dos clientes ficam seguros?',
-    a: 'Sim. Todas as transcrições são criptografadas com AES-256-GCM, o mesmo padrão usado por bancos. O áudio é processado e descartado imediatamente — nunca armazenado. Os servidores ficam em São Paulo, com conformidade total com a LGPD.',
+    a: 'Sim. Todas as conversões são criptografadas com AES-256-GCM, o mesmo padrão usado por bancos. O áudio é processado e descartado imediatamente — nunca armazenado. Os servidores ficam em São Paulo, com conformidade total com a LGPD.',
   },
   {
     q: 'Dá para usar em mais de um número do escritório?',
-    a: `Sim. O plano Pro (${proPriceLabel}) permite conectar mais de um número, ideal para separar atendimento, fiscal e departamento pessoal. Cada número tem seu fluxo de transcrição automática.`,
+    a: `Sim. O plano Pro (${proPriceLabel}) permite conectar mais de um número, ideal para separar atendimento, fiscal e departamento pessoal. Cada número tem seu fluxo de conversão automática.`,
   },
   {
     q: 'Preciso instalar algo nos celulares da equipe?',
-    a: 'Não. O ZapScript funciona 100% via web. Você faz login no painel, conecta o número escaneando um QR Code (como no WhatsApp Web) e a transcrição começa a funcionar sozinha. Nada é instalado no celular.',
+    a: 'Não. O ZapScript funciona 100% via web. Você faz login no painel, conecta o número escaneando um QR Code (como no WhatsApp Web) e a conversão começa a funcionar sozinha. Nada é instalado no celular.',
   },
   {
     q: 'Posso testar sem custo?',
-    a: 'Pode. O plano gratuito inclui 20 minutos de transcrição por mês, sem cartão de crédito. É o suficiente para sentir o ganho de tempo antes de decidir pelo plano Pro.',
+    a: 'Pode. O plano gratuito inclui 20 minutos de conversão por mês, sem cartão de crédito. É o suficiente para sentir o ganho de tempo antes de decidir pelo plano Pro.',
   },
 ];
 
@@ -153,10 +153,10 @@ export default function ParaContabilidadePage() {
             <span className="text-brand-primary">O ZapScript lê por você.</span>
           </h1>
           <p className="text-lg text-brand-muted max-w-2xl mx-auto leading-relaxed">
-            Dúvidas fiscais, prazos, solicitações — o cliente grava e manda. O ZapScript conecta ao WhatsApp do escritório e transcreve cada áudio automaticamente, com resumo dos pontos principais. Você nunca mais perde um prazo escondido num áudio de 5 minutos.
+            Dúvidas fiscais, prazos, solicitações — o cliente grava e manda. O ZapScript conecta ao WhatsApp do escritório e converte cada áudio automaticamente, com resumo dos pontos principais. Você nunca mais perde um prazo escondido num áudio de 5 minutos.
           </p>
           <p className="text-brand-primary font-medium max-w-2xl mx-auto mt-4">
-            Um robô transcrevendo os áudios do seu escritório 24 horas por dia — mesmo enquanto você dorme.
+            Um robô convertendo os áudios do seu escritório 24 horas por dia — mesmo enquanto você dorme.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link href="/cadastro?utm_source=lp&utm_campaign=contabilidade" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-8 py-4 rounded-2xl hover:opacity-90 transition-opacity">
@@ -192,7 +192,7 @@ export default function ParaContabilidadePage() {
             <div>
               <div className="w-12 h-12 mx-auto rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center text-xl font-bold mb-3">2</div>
               <p className="font-semibold text-white mb-1">Chega o áudio do cliente</p>
-              <p className="text-sm text-brand-muted">O ZapScript transcreve em segundo plano, sozinho.</p>
+              <p className="text-sm text-brand-muted">O ZapScript converte em segundo plano, sozinho.</p>
             </div>
             <div>
               <div className="w-12 h-12 mx-auto rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center text-xl font-bold mb-3">3</div>
@@ -250,7 +250,7 @@ export default function ParaContabilidadePage() {
         {/* CTA final */}
         <div className="text-center py-12 rounded-2xl border border-brand-primary/20" style={{ background: 'rgba(16,185,129,.05)' }}>
           <h2 className="text-2xl font-bold text-white mb-3">Pronto para parar de ouvir áudio de cliente?</h2>
-          <p className="text-brand-muted mb-6">Conecte o número do escritório e veja a transcrição funcionar em minutos.</p>
+          <p className="text-brand-muted mb-6">Conecte o número do escritório e veja a conversão funcionar em minutos.</p>
           <Link href="/cadastro?utm_source=lp&utm_campaign=contabilidade" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
             Começar grátis agora →
           </Link>
@@ -260,7 +260,7 @@ export default function ParaContabilidadePage() {
 
       <footer className="border-t border-white/5 py-8 text-center text-xs text-brand-muted">
         <p>© {new Date().getFullYear()} ZapScript · <Link href="/" className="hover:text-brand-primary">Voltar ao site</Link> · <Link href="/privacidade" className="hover:text-brand-primary">Privacidade</Link></p>
-        <p className="mt-1 text-brand-muted/50">Transcrição automática de áudios do WhatsApp para escritórios de contabilidade. Servidores no Brasil, conformidade com a LGPD.</p>
+        <p className="mt-1 text-brand-muted/50">Conversão automática de áudios do WhatsApp para escritórios de contabilidade. Servidores no Brasil, conformidade com a LGPD.</p>
       </footer>
     </div>
   );

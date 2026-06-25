@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'ZapScript vs ViraTexto — Comparativo completo de transcrição WhatsApp',
-  description: 'Comparação detalhada entre ZapScript e ViraTexto: preços, funcionalidades, precisão, privacidade e automação. Veja qual é a melhor opção para transcrever áudios do WhatsApp.',
-  keywords: 'zapscript vs viratexto, alternativa viratexto, melhor app transcrever whatsapp, viratexto alternativa, transcrição whatsapp automática',
+  title: 'ZapScript vs ViraTexto — Comparativo completo de conversão WhatsApp',
+  description: 'Comparação detalhada entre ZapScript e ViraTexto: preços, funcionalidades, precisão, privacidade e automação. Veja qual é a melhor opção para converter áudios do WhatsApp.',
+  keywords: 'zapscript vs viratexto, alternativa viratexto, melhor app converter whatsapp, viratexto alternativa, conversão whatsapp automática',
   alternates: { canonical: 'https://www.zapscript.me/vs/viratexto' },
   openGraph: {
-    title: 'ZapScript vs ViraTexto — Qual é o melhor para transcrever WhatsApp?',
-    description: 'Compare funcionalidades, preço e privacidade. ZapScript oferece transcrição automática, resumo com IA e Modo Privado — sem precisar encaminhar áudio para um bot.',
+    title: 'ZapScript vs ViraTexto — Qual é o melhor para converter WhatsApp?',
+    description: 'Compare funcionalidades, preço e privacidade. ZapScript oferece conversão automática, resumo com IA e Modo Privado — sem precisar encaminhar áudio para um bot.',
     url: 'https://www.zapscript.me/vs/viratexto',
     siteName: 'ZapScript',
     locale: 'pt_BR',
@@ -25,7 +25,7 @@ const schema = {
       name: 'Qual a diferença entre ZapScript e ViraTexto?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'O ZapScript funciona de forma 100% automática — você conecta seu número via QR Code e toda mensagem de áudio é transcrita automaticamente sem nenhuma ação. O ViraTexto exige que você encaminhe cada áudio manualmente para o bot. Além disso, o ZapScript inclui resumo por IA, Modo Privado e histórico pesquisável, sem necessidade de instalar nada no celular.',
+        text: 'O ZapScript funciona de forma 100% automática — você conecta seu número via QR Code e toda mensagem de áudio é convertida automaticamente sem nenhuma ação. O ViraTexto exige que você encaminhe cada áudio manualmente para o bot. Além disso, o ZapScript inclui resumo por IA, Modo Privado e histórico pesquisável, sem necessidade de instalar nada no celular.',
       },
     },
     {
@@ -41,7 +41,7 @@ const schema = {
       name: 'O ZapScript é seguro para dados pessoais?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Sim. Todas as transcrições são criptografadas com AES-256-GCM — o mesmo padrão dos bancos. O áudio nunca é armazenado: é processado e descartado imediatamente. Os servidores ficam em São Paulo, com conformidade total com a LGPD.',
+        text: 'Sim. Todas as conversões são criptografadas com AES-256-GCM — o mesmo padrão dos bancos. O áudio nunca é armazenado: é processado e descartado imediatamente. Os servidores ficam em São Paulo, com conformidade total com a LGPD.',
       },
     },
   ],
@@ -64,7 +64,7 @@ const ROWS = [
 const FAQS = [
   {
     q: 'Qual a diferença entre ZapScript e ViraTexto?',
-    a: 'O ZapScript funciona de forma 100% automática — você conecta seu número uma única vez via QR Code e todo áudio recebido é transcrito sem nenhuma ação sua. O ViraTexto exige que você encaminhe cada áudio manualmente para o bot. Isso significa que, com o ZapScript, você nunca mais "esquece" de transcrever um áudio importante.',
+    a: 'O ZapScript funciona de forma 100% automática — você conecta seu número uma única vez via QR Code e todo áudio recebido é convertido sem nenhuma ação sua. O ViraTexto exige que você encaminhe cada áudio manualmente para o bot. Isso significa que, com o ZapScript, você nunca mais "esquece" de converter um áudio importante.',
   },
   {
     q: 'O ZapScript funciona com meu número pessoal?',
@@ -76,11 +76,11 @@ const FAQS = [
   },
   {
     q: 'O áudio fica armazenado nos servidores do ZapScript?',
-    a: 'Não. O áudio é processado e descartado imediatamente após a transcrição. Apenas o texto e o resumo são salvos, criptografados com AES-256-GCM (padrão bancário), em servidores em São Paulo.',
+    a: 'Não. O áudio é processado e descartado imediatamente após a conversão. Apenas o texto e o resumo são salvos, criptografados com AES-256-GCM (padrão bancário), em servidores em São Paulo.',
   },
   {
     q: 'Como o ZapScript é mais barato que parece?',
-    a: 'O plano Free inclui 20 minutos de transcrição por mês sem custo algum e sem cartão de crédito. Para volume maior, o Pro custa R$39,90/mês e inclui 200 minutos, 2 números, resumo com IA, Modo Privado, histórico completo e exportação em PDF — funcionalidades que bots simples como o ViraTexto não oferecem.',
+    a: 'O plano Free inclui 20 minutos de conversão por mês sem custo algum e sem cartão de crédito. Para volume maior, o Pro custa R$39,90/mês e inclui 200 minutos, 2 números, resumo com IA, Modo Privado, histórico completo e exportação em PDF — funcionalidades que bots simples como o ViraTexto não oferecem.',
   },
 ];
 
@@ -121,10 +121,10 @@ export default function VsViratextoPage() {
           </div>
           <h1 className="text-3xl sm:text-5xl font-bold text-white leading-tight mb-5">
             ZapScript vs ViraTexto<br />
-            <span className="text-brand-primary">Qual transcreve melhor?</span>
+            <span className="text-brand-primary">Qual converte melhor?</span>
           </h1>
           <p className="text-lg text-brand-muted max-w-2xl mx-auto leading-relaxed">
-            Comparamos as duas principais opções para transcrever áudios do WhatsApp em texto. Sem achismo — funcionalidade por funcionalidade.
+            Comparamos as duas principais opções para converter áudios do WhatsApp em texto. Sem achismo — funcionalidade por funcionalidade.
           </p>
           <p className="text-brand-primary font-medium max-w-2xl mx-auto mt-4">
             Seu robô particular, convertendo áudio em texto 24 horas por dia — mesmo enquanto você dorme.
@@ -140,7 +140,7 @@ export default function VsViratextoPage() {
               <li>✅ Nenhuma ação necessária — funciona sozinho</li>
               <li>✅ Resumo inteligente por IA (Claude Anthropic)</li>
               <li>✅ Modo Privado — sem "ouvido" no WhatsApp</li>
-              <li>✅ Histórico pesquisável de todas as transcrições</li>
+              <li>✅ Histórico pesquisável de todas as conversões</li>
               <li>✅ Criptografia AES-256, servidores em SP</li>
             </ul>
             <Link href="/cadastro" className="mt-5 block text-center bg-brand-primary text-black font-bold py-3 rounded-xl hover:opacity-90 transition-opacity">
@@ -195,7 +195,7 @@ export default function VsViratextoPage() {
             </div>
             <div>
               <p className="font-semibold text-white mb-2">Com o ZapScript (automático)</p>
-              <p>O áudio chega → o ZapScript transcreve em background → o texto e o resumo aparecem no painel em segundos. Zero ação sua. Nenhum áudio fica para trás — nem os que chegam enquanto você está em reunião, dirigindo ou dormindo.</p>
+              <p>O áudio chega → o ZapScript converte em background → o texto e o resumo aparecem no painel em segundos. Zero ação sua. Nenhum áudio fica para trás — nem os que chegam enquanto você está em reunião, dirigindo ou dormindo.</p>
             </div>
           </div>
         </div>

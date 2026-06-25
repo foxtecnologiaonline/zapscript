@@ -141,7 +141,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
           const audio = msg.audio;
           app.log.info(`[WhatsApp] 🔊 Áudio recebido: ${audio.id}`);
 
-          // Adicionar à fila de transcrição
+          // Adicionar à fila de conversão
           await transcriptionQueue.add(
             'transcribe-official',
             {
@@ -187,7 +187,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
             try {
               await whatsappAPI.sendMessage(
                 senderPhone,
-                'Olá! Envie um áudio para transcrição e resumo automático. 🎙️'
+                'Olá! Envie um áudio para conversão e resumo automático. 🎙️'
               );
             } catch (err: any) {
               app.log.error({ err: err.message }, '[WhatsApp] Erro ao responder texto');

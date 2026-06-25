@@ -246,7 +246,7 @@ const tasks: Task[] = [
   {
     id: 'fe-dashboard',
     title: 'Dashboard completo do usuário',
-    description: '6 páginas: Home, Transcrições, Números, Plano, Configurações, Admin',
+    description: '6 páginas: Home, Conversões, Números, Plano, Configurações, Admin',
     status: 'done',
     category: 'frontend',
     owner: 'Claude',

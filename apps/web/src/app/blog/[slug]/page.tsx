@@ -191,7 +191,7 @@ export default function BlogPost({ params }: { params: { slug: string } }) {
           <div className="bg-brand-primary/10 border border-brand-primary/20 rounded-xl p-4 mb-10 flex items-center justify-between gap-4">
             <p className="text-sm text-white">
               <span className="font-semibold">Cansado de ouvir áudios?</span>{' '}
-              O ZapScript transcreve tudo automaticamente com resumo por IA.
+              O ZapScript converte tudo automaticamente com resumo por IA.
             </p>
             <Link
               href="/cadastro"
@@ -214,7 +214,7 @@ export default function BlogPost({ params }: { params: { slug: string } }) {
               Pronto para parar de ouvir áudios?
             </h2>
             <p className="text-brand-muted text-sm mb-5">
-              Conecte seu número e receba transcrições automáticas com IA. Grátis para começar.
+              Conecte seu número e receba conversões automáticas com IA. Grátis para começar.
             </p>
             <Link
               href="/cadastro"

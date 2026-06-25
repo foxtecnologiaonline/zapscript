@@ -106,7 +106,7 @@ async function sendUsageAlerts() {
 
       if (pct >= 100 && lastAlert !== '100') {
         alertLevel = '100';
-        msg = `⛔ *Seus minutos ZapScript acabaram!*\n\nVocê utilizou 100% do seu plano ${plan.label}.\n\nFaça upgrade agora para continuar recebendo transcrições:\n👉 _zapscript.me/dashboard/plano_`;
+        msg = `⛔ *Seus minutos ZapScript acabaram!*\n\nVocê utilizou 100% do seu plano ${plan.label}.\n\nFaça upgrade agora para continuar recebendo conversões:\n👉 _zapscript.me/dashboard/plano_`;
       } else if (pct >= 80 && lastAlert !== '80' && lastAlert !== '100') {
         alertLevel = '80';
         msg = `⚠️ *Atenção: 80% dos seus minutos usados*\n\nVocê usou ${Math.round(pct)}% do plano ${plan.label}.\nRestam apenas *${avail.toFixed(0)} minutos*.\n\nFaça upgrade antes de acabar:\n👉 _zapscript.me/dashboard/plano_`;

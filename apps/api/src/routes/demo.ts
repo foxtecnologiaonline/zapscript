@@ -4,10 +4,10 @@ import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
 
 /* ─────────────────────────────────────────────────────────
-   Demo pública da landing page — "transcreva 1 áudio grátis"
+   Demo pública da landing page — "converta 1 áudio grátis"
    - SEM autenticação (isca de topo de funil)
    - Captura o e-mail do visitante (lead) antes de revelar o resultado
-   - Transcreve via Groq Whisper (formatos comuns, sem ffmpeg) + resume via Claude
+   - Converte via Groq Whisper (formatos comuns, sem ffmpeg) + resume via Claude
    - Controles de abuso/custo: rate-limit por IP + limite de tamanho de arquivo
    ───────────────────────────────────────────────────────── */
 
@@ -63,7 +63,7 @@ async function summarize(text: string): Promise<string[]> {
       max_tokens: 400,
       messages: [{
         role: 'user',
-        content: `Resuma o áudio transcrito abaixo em até 4 tópicos curtos e objetivos (bullets), em português, capturando o que importa (decisões, pedidos, prazos, números). Responda APENAS com os tópicos, um por linha, sem numeração e sem introdução.\n\nTranscrição:\n"""${text.slice(0, 6000)}"""`,
+        content: `Resuma o áudio convertido abaixo em até 4 tópicos curtos e objetivos (bullets), em português, capturando o que importa (decisões, pedidos, prazos, números). Responda APENAS com os tópicos, um por linha, sem numeração e sem introdução.\n\nConversão:\n"""${text.slice(0, 6000)}"""`,
       }],
     });
     const raw = res.content?.[0]?.type === 'text' ? res.content[0].text : '';
@@ -78,7 +78,7 @@ async function summarize(text: string): Promise<string[]> {
 }
 
 export default async function demoRoutes(app: FastifyInstance) {
-  // ── POST /demo/transcribe — transcrição gratuita única (lead capture) ──────
+  // ── POST /demo/transcribe — conversão gratuita única (lead capture) ──────
   app.post(
     '/transcribe',
     { config: { rateLimit: { max: 3, timeWindow: '30 minutes' } } },
@@ -120,8 +120,8 @@ export default async function demoRoutes(app: FastifyInstance) {
         text = r.text;
         duration = r.duration;
       } catch (err: any) {
-        app.log.error({ err: err?.message }, '[Demo] Falha na transcrição Groq');
-        return reply.code(502).send({ error: 'Não foi possível transcrever o áudio agora. Tente novamente.' });
+        app.log.error({ err: err?.message }, '[Demo] Falha na conversão Groq');
+        return reply.code(502).send({ error: 'Não foi possível converter o áudio agora. Tente novamente.' });
       }
 
       if (!text) {
@@ -134,7 +134,7 @@ export default async function demoRoutes(app: FastifyInstance) {
       prisma.demoLead.create({ data: { email, ip, durationSec: duration || null } })
         .catch(err => app.log.warn({ err: err?.message }, '[Demo] Falha ao registrar lead'));
 
-      app.log.info(`[Demo] Transcrição entregue: lead=${email} dur=${Math.round(duration)}s`);
+      app.log.info(`[Demo] Conversão entregue: lead=${email} dur=${Math.round(duration)}s`);
       return {
         ok:          true,
         text,

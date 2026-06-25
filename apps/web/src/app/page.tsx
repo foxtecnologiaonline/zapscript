@@ -41,7 +41,7 @@ const FEATURES = [
     ),
     iconBg: 'rgba(16,185,129,.10)', iconColor: 'rgb(52,211,153)',
     title: 'Ninguém vê seu áudio',
-    desc: 'Áudio nunca armazenado. Transcrições criptografadas no banco. Processamento via Whisper (OpenAI) e Claude (Anthropic).',
+    desc: 'Áudio nunca armazenado. Conversões criptografadas no banco. Processamento via Whisper (OpenAI) e Claude (Anthropic).',
   },
 ];
 
@@ -52,7 +52,7 @@ const schemaOrg = {
   applicationCategory: 'ProductivityApplication',
   operatingSystem: 'Web',
   url: 'https://www.zapscript.me',
-  description: 'Transcrição automática de áudios do WhatsApp com IA. Texto + resumo em segundos.',
+  description: 'Conversão automática de áudios do WhatsApp com IA. Texto + resumo em segundos.',
   offers: [
     { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Free' },
     { '@type': 'Offer', price: '39.90', priceCurrency: 'BRL', name: 'Pro' },
@@ -222,7 +222,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ══ ISCA DE TOPO — Transcreva 1 áudio grátis ══ */}
+        {/* ══ ISCA DE TOPO — Converta 1 áudio grátis ══ */}
         <section id="demo" className="px-5 pt-10 scroll-mt-4" style={{ animation: 'fadeInUp .6s ease .45s both' }}>
           <DemoTranscribe />
         </section>
@@ -299,7 +299,7 @@ export default function HomePage() {
               <span className="text-gradient">Pra quem recebe, ler é melhor.</span>
             </p>
             <p className="text-xs mt-2 font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Por isso o ZapScript transcreve cada áudio — você lê o texto e o resumo sem perder tempo nem contexto.
+              Por isso o ZapScript converte cada áudio — você lê o texto e o resumo sem perder tempo nem contexto.
             </p>
           </div>
         </section>
@@ -432,7 +432,7 @@ export default function HomePage() {
             </p>
             <Link href="/cadastro" data-cta="home_footer_cadastro"
               className="btn-primary inline-flex items-center justify-center py-4 px-8 text-base gap-2">
-              Transcrever grátis agora
+              Converter grátis agora
             </Link>
           </div>
         </section>

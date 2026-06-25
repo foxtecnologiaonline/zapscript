@@ -72,7 +72,7 @@ function emailWrapper(
 
       <!-- Rodapé -->
       <div style="text-align:center;margin-top:24px">
-        <p style="color:#2d5040;font-size:12px;margin:0 0 4px">ZapScript — Transcrição Inteligente de Áudios do WhatsApp</p>
+        <p style="color:#2d5040;font-size:12px;margin:0 0 4px">ZapScript — Conversão Inteligente de Áudios do WhatsApp</p>
         <a href="${APP_URL}" style="color:rgba(16,185,129,.55);font-size:12px;text-decoration:none">zapscript.me</a>
       </div>
 
@@ -122,7 +122,7 @@ async function sendVerificationEmail(email: string, name: string | null | undefi
       <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:12px;padding:16px 20px">
         <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
           ⏰ <strong style="color:#5d8a72">Este link expira em 7 dias.</strong>
-          Sua conta já vem com <strong style="color:#5d8a72">20 minutos grátis</strong> de transcrição, sem cartão de crédito.
+          Sua conta já vem com <strong style="color:#5d8a72">20 minutos grátis</strong> de conversão, sem cartão de crédito.
         </p>
       </div>
     `, 'Se você não criou uma conta no ZapScript, pode ignorar este e-mail com segurança.')
@@ -333,7 +333,7 @@ export default async function authRoutes(app: FastifyInstance) {
           `<div style="font-family:'DM Sans',sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:16px;border:1px solid rgba(16,185,129,.15)">
             <div style="font-size:28px;font-weight:900;color:#10b981;margin-bottom:8px">⚡ ZapScript</div>
             <h1 style="font-size:22px;font-weight:700;color:#fff;margin:0 0 12px">Sua conta está pronta, ${firstName}!</h1>
-            <p style="color:#a7f3d0;line-height:1.7;margin:0 0 16px">Falta 1 passo para ligar seu <strong style="color:#6ee7b7">robô particular, que transcreve e resume cada áudio do WhatsApp 24 horas por dia</strong> — mesmo enquanto você dorme. Conectar leva menos de 2 minutos.</p>
+            <p style="color:#a7f3d0;line-height:1.7;margin:0 0 16px">Falta 1 passo para ligar seu <strong style="color:#6ee7b7">robô particular, que converte e resume cada áudio do WhatsApp 24 horas por dia</strong> — mesmo enquanto você dorme. Conectar leva menos de 2 minutos.</p>
             <p style="color:#6ee7b7;line-height:1.6;margin:0 0 20px;font-size:13px">🔒 Criptografia AES-256 · servidores no Brasil (LGPD) · cancele quando quiser.</p>
             <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:12px;padding:20px;margin-bottom:24px">
               <p style="margin:0 0 12px;font-weight:600;color:#fff">Como ativar em 3 passos:</p>
@@ -476,7 +476,7 @@ export default async function authRoutes(app: FastifyInstance) {
               <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:12px;padding:16px 20px">
                 <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
                   ⏰ <strong style="color:#5d8a72">Este link expira em 24 horas.</strong>
-                  Após confirmar, sua conta estará ativa com <strong style="color:#5d8a72">20 minutos grátis</strong> de transcrição, sem cartão de crédito.
+                  Após confirmar, sua conta estará ativa com <strong style="color:#5d8a72">20 minutos grátis</strong> de conversão, sem cartão de crédito.
                 </p>
               </div>
             `, 'Se você não solicitou este link, pode ignorar este e-mail com segurança.')

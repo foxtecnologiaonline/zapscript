@@ -104,7 +104,7 @@ export function estimateMp3DurationSec(mp3Buffer: Buffer): number {
  * a 64 kbps mono fica em ~14 MB, bem abaixo do limite de 25 MB da API Whisper.
  *
  * Necessário para áudios longos: a API Whisper (Groq/OpenAI) recusa arquivos
- * acima de 25 MB. Fatiando, transcrevemos áudios de horas e concatenamos.
+ * acima de 25 MB. Fatiando, convertemos áudios de horas e concatenamos.
  */
 export function splitMp3ByDuration(mp3Buffer: Buffer, chunkSec = 1800): Promise<Buffer[]> {
   return new Promise((resolve, reject) => {

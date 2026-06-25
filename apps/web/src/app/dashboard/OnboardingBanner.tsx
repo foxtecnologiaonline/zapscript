@@ -26,7 +26,7 @@ const TROUBLESHOOT = [
     a: [
       'É normal e esperado em plataformas de automação — basta confirmar a conexão.',
       'O aviso acontece porque o WhatsApp identifica IPs de servidores em nuvem, independente do país.',
-      'Sua conexão é segura: nenhuma mensagem sua é lida além dos áudios que você envia para transcrever.',
+      'Sua conexão é segura: nenhuma mensagem sua é lida além dos áudios que você envia para converter.',
     ],
   },
   {
@@ -85,7 +85,7 @@ const STEPS = [
   {
     num: '4',
     title: 'Pronto! Envie um áudio de teste',
-    body: 'Mande um áudio de qualquer duração para o número conectado. Em segundos você recebe a transcrição e o resumo de volta na mesma conversa.',
+    body: 'Mande um áudio de qualquer duração para o número conectado. Em segundos você recebe a conversão e o resumo de volta na mesma conversa.',
   },
 ];
 
@@ -108,7 +108,7 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
     } catch {}
   }, []);
 
-  /* Só esconde quando os 3 passos estiverem completos (já transcreveu) */
+  /* Só esconde quando os 3 passos estiverem completos (já converteu) */
   if (hasTranscription || dismissed) return null;
 
   function dismiss() {
@@ -162,7 +162,7 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
                 {hasNumber ? 'Passo 3/3 — Tudo pronto!' : 'Passo 2/3 — Quase lá!'}
               </div>
               <h2 className="text-base font-bold text-brand-text leading-snug">
-                {hasNumber ? 'Conexão concluída com sucesso! 🎉' : 'Conecte seu WhatsApp e comece a transcrever'}
+                {hasNumber ? 'Conexão concluída com sucesso! 🎉' : 'Conecte seu WhatsApp e comece a converter'}
               </h2>
               <p className="text-xs text-brand-text-secondary mt-0.5">
                 {hasNumber
@@ -368,7 +368,7 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
                 style={{ background: 'rgba(16,185,129,.04)', border: '1px solid rgba(16,185,129,.1)' }}>
                 <p className="text-brand-muted leading-relaxed">
                   🔒 <span className="font-semibold text-brand-primary">Conexão segura.</span>
-                  {' '}Tudo com criptografia <strong className="text-brand-text-secondary">AES-256</strong> e servidores no <strong className="text-brand-text-secondary">Brasil (LGPD)</strong>. Só transcrevemos os áudios que você envia — nenhuma outra mensagem é lida. Você pode desconectar o número quando quiser.
+                  {' '}Tudo com criptografia <strong className="text-brand-text-secondary">AES-256</strong> e servidores no <strong className="text-brand-text-secondary">Brasil (LGPD)</strong>. Só convertemos os áudios que você envia — nenhuma outra mensagem é lida. Você pode desconectar o número quando quiser.
                 </p>
               </div>
             </div>

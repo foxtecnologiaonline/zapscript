@@ -42,7 +42,7 @@ export default async function npsRoutes(app: FastifyInstance) {
   app.get('/status', auth, async (req: any) => {
     const userId = req.user.sub;
 
-    // Conta transcrições do usuário (NPS dispara após a 5ª)
+    // Conta conversões do usuário (NPS dispara após a 5ª)
     const txCount = await prisma.transcription.count({ where: { userId } });
 
     // Verifica última resposta

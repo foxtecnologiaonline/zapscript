@@ -801,8 +801,8 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
               {/* 🖥️ Monitoramento → WhatsApp conectados */}
               <KpiCard icon="🖥️" title="Monitoramento · WhatsApp" value={`${stats.whatsapp?.connected || 0}/${stats.whatsapp?.total || 0}`}
                 sub="números conectados" color="#60a5fa" onClick={() => goTab('monitoramento')} />
-              {/* 📣 Comunicação → transcrições processadas */}
-              <KpiCard icon="📣" title="Comunicação · Transcrições" value={stats.transcriptions.total}
+              {/* 📣 Comunicação → conversões processadas */}
+              <KpiCard icon="📣" title="Comunicação · Conversões" value={stats.transcriptions.total}
                 sub={`+${stats.transcriptions.today} hoje`} color="#34d399" onClick={() => goTab('comunicacao')} />
               {/* 👥 Usuários → base total */}
               <KpiCard icon="👥" title="Usuários · Base total" value={stats.users.total}
@@ -1176,7 +1176,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
             {/* Monitor de Saúde (histórico horário) */}
             <HealthMonitorPanel apiBase={API} token={token} />
 
-            {/* Gráfico de transcrições por hora */}
+            {/* Gráfico de conversões por hora */}
             <HourlyChart apiBase={API} token={token} />
 
             {/* Monitor de Fila */}
@@ -1188,7 +1188,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
             {/* Configuração de Alertas */}
             <AlertConfigPanel apiBase={API} token={token} />
 
-            {/* Amostrador de Transcrições */}
+            {/* Amostrador de Conversões */}
             <TranscriptionSampler apiBase={API} token={token} />
 
             {/* Erros Recentes */}
@@ -1558,7 +1558,7 @@ function AffiliatesPanel({ apiBase, token, notify }: {
   );
 }
 
-/* ── Leads da demo pública ("transcreva 1 áudio grátis") ── */
+/* ── Leads da demo pública ("converta 1 áudio grátis") ── */
 function LeadsPanel({ apiBase, token, notify }: {
   apiBase: string; token: string; notify: (t: string, type?: 'ok' | 'err' | 'warn') => void;
 }) {
@@ -1812,7 +1812,7 @@ function QueuePanel({ apiBase, token }: { apiBase: string; token: string }) {
         type="button"
         onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
         className="w-full text-left px-4 py-2.5 text-xs text-[rgba(16,185,129,.5)] hover:text-[rgba(16,185,129,.8)] flex items-center justify-between transition-colors">
-        <span>📊 {open ? '▲' : '▼'} Monitor de Fila (Transcrições)</span>
+        <span>📊 {open ? '▲' : '▼'} Monitor de Fila (Conversões)</span>
         {hasFailed && <span className="text-red-400 font-bold">{counts.failed} falhos ⚠️</span>}
       </button>
       {open && (
@@ -2498,10 +2498,10 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
 
           <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4">
             <div className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide mb-3">
-              Últimas Transcrições ({stats.totalTranscriptions})
+              Últimas Conversões ({stats.totalTranscriptions})
             </div>
             {transcriptions.length === 0 ? (
-              <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhuma transcrição ainda</div>
+              <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhuma conversão ainda</div>
             ) : (
               <div className="space-y-2">
                 {transcriptions.map((t: any) => (
@@ -2570,7 +2570,7 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
    NOVOS COMPONENTES — 10 Features Admin
 ══════════════════════════════════════════════════════════ */
 
-// ── #5 Gráfico de transcrições por hora ────────────────────────────────────────
+// ── #5 Gráfico de conversões por hora ────────────────────────────────────────
 // ── Analytics do site (first-party): visitas, geografia, cliques ────────────
 function SiteAnalyticsPanel({ apiBase, token }: { apiBase: string; token: string }) {
   const [open, setOpen]       = useState(false);
@@ -2741,7 +2741,7 @@ function HourlyChart({ apiBase, token }: { apiBase: string; token: string }) {
     <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
       <button type="button" onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
         className="w-full text-left px-5 py-3 flex items-center justify-between hover:bg-[rgba(16,185,129,.02)] transition-colors">
-        <span className="text-sm font-bold text-[#d1fae5]">📈 Transcrições por Hora (24h)</span>
+        <span className="text-sm font-bold text-[#d1fae5]">📈 Conversões por Hora (24h)</span>
         <span className="text-xs text-[rgba(16,185,129,.4)]">{open ? '▲' : '▼'} {data ? `${total} total` : ''}</span>
       </button>
       {open && (
@@ -2751,7 +2751,7 @@ function HourlyChart({ apiBase, token }: { apiBase: string; token: string }) {
             {loading ? '⟳ Carregando...' : '↻ Atualizar'}
           </button>
           {data && data.length === 0 && (
-            <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhuma transcrição nas últimas 24h</div>
+            <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhuma conversão nas últimas 24h</div>
           )}
           {data && data.length > 0 && (
             <div className="flex items-end gap-1 h-32 mt-2">
@@ -2910,7 +2910,7 @@ function AlertConfigPanel({ apiBase, token }: { apiBase: string; token: string }
   );
 }
 
-// ── #9 Amostrador de transcrições ─────────────────────────────────────────────
+// ── #9 Amostrador de conversões ─────────────────────────────────────────────
 function TranscriptionSampler({ apiBase, token }: { apiBase: string; token: string }) {
   const [open, setOpen]       = useState(false);
   const [loading, setLoading] = useState(false);
@@ -2930,7 +2930,7 @@ function TranscriptionSampler({ apiBase, token }: { apiBase: string; token: stri
     <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl overflow-hidden">
       <button type="button" onClick={() => { setOpen(o => !o); if (!open && !data) load(); }}
         className="w-full text-left px-5 py-3 flex items-center justify-between hover:bg-[rgba(16,185,129,.02)] transition-colors">
-        <span className="text-sm font-bold text-[#d1fae5]">🎲 Amostrador de Transcrições</span>
+        <span className="text-sm font-bold text-[#d1fae5]">🎲 Amostrador de Conversões</span>
         <span className="text-xs text-[rgba(16,185,129,.4)]">{open ? '▲' : '▼'}</span>
       </button>
       {open && (
@@ -2945,7 +2945,7 @@ function TranscriptionSampler({ apiBase, token }: { apiBase: string; token: stri
               {loading ? '⟳ Amostrando...' : '🎲 Nova amostra'}
             </button>
           </div>
-          {data && data.length === 0 && <div className="text-xs text-[rgba(16,185,129,.3)]">Nenhuma transcrição encontrada.</div>}
+          {data && data.length === 0 && <div className="text-xs text-[rgba(16,185,129,.3)]">Nenhuma conversão encontrada.</div>}
           {data && data.map((t: any, i: number) => (
             <div key={i} className="bg-[#132621] rounded-lg px-3 py-2.5 space-y-1">
               <div className="flex items-center justify-between gap-2">
@@ -3140,7 +3140,7 @@ function NPSPanel({ apiBase, token }: { apiBase: string; token: string }) {
           </div>
 
           {data && data.total === 0 && (
-            <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhuma resposta NPS no período. O modal aparece para usuários com 5+ transcrições.</div>
+            <div className="text-xs text-[rgba(16,185,129,.3)] text-center py-4">Nenhuma resposta NPS no período. O modal aparece para usuários com 5+ conversões.</div>
           )}
 
           {data && data.total > 0 && (
@@ -3298,19 +3298,19 @@ function CampanhasTab({ apiBase, token, notify }: {
     {
       icon: '🎙️',
       name: 'Boas-vindas',
-      desc: 'Free · 1ª transcrição',
+      desc: 'Free · 1ª conversão',
       applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(true); setMinDays(''); setHasDocument(false); setTesters(false); },
-      subject: '🎙️ Sua primeira transcrição está a um passo — faça agora!',
+      subject: '🎙️ Sua primeira conversão está a um passo — faça agora!',
       msg: `Olá! Tudo bem?
 
-Você criou sua conta no ZapScript há pouco tempo — mas ainda não fez a sua primeira transcrição.
+Você criou sua conta no ZapScript há pouco tempo — mas ainda não fez a sua primeira conversão.
 
-Sabe aquele áudio longo que você recebe no WhatsApp e fica com preguiça de ouvir? O ZapScript resolve isso em segundos: transcreve, resume em tópicos e ainda te diz o que é importante.
+Sabe aquele áudio longo que você recebe no WhatsApp e fica com preguiça de ouvir? O ZapScript resolve isso em segundos: converte, resume em tópicos e ainda te diz o que é importante.
 
 ✨ Para começar agora mesmo:
 1. Acesse zapscript.me/dashboard
 2. Clique em "Números" e conecte seu WhatsApp (leva menos de 1 minuto)
-3. Receba qualquer áudio — o ZapScript transcreve automaticamente!
+3. Receba qualquer áudio — o ZapScript converte automaticamente!
 
 Seu plano gratuito já vem com minutos prontos para usar. Não deixa expirar 😉
 
@@ -3326,10 +3326,10 @@ Equipe ZapScript`,
       name: 'Conectar número',
       desc: 'Free · sem número WA',
       applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(true); setMinDays(''); setHasDocument(false); setTesters(false); },
-      subject: '📱 Conecte seu WhatsApp e comece a transcrever',
+      subject: '📱 Conecte seu WhatsApp e comece a converter',
       msg: `Olá! Aqui é o time do ZapScript 👋
 
-Notamos que você criou sua conta mas ainda não conectou nenhum número de WhatsApp — e sem isso o ZapScript não consegue transcrever seus áudios.
+Notamos que você criou sua conta mas ainda não conectou nenhum número de WhatsApp — e sem isso o ZapScript não consegue converter seus áudios.
 
 A boa notícia: conectar é bem simples e leva menos de 60 segundos!
 
@@ -3337,7 +3337,7 @@ Como fazer:
 1️⃣ Acesse: https://www.zapscript.me/dashboard/numeros
 2️⃣ Clique em "Adicionar número"
 3️⃣ Abra o WhatsApp no celular → Menu → Dispositivos conectados → Escanear QR code
-4️⃣ Pronto! A partir daí, todo áudio que você receber será transcrito automaticamente.
+4️⃣ Pronto! A partir daí, todo áudio que você receber será convertido automaticamente.
 
 Sem mensalidade agora, sem cartão de crédito. O plano gratuito já te dá minutos para experimentar.
 
@@ -3358,11 +3358,11 @@ Equipe ZapScript`,
 A boa: você já está usando o ZapScript e sabe como ele economiza tempo.
 A chata: no plano gratuito os minutos são limitados — e podem acabar logo.
 
-Quando zerar, você fica sem transcrições até o próximo ciclo. Já imaginou perder um áudio importante por isso?
+Quando zerar, você fica sem conversões até o próximo ciclo. Já imaginou perder um áudio importante por isso?
 
 O plano Pro resolve de vez:
 ⚡ 300 minutos/mês — 10x mais que o gratuito
-🔍 Busca nas suas transcrições antigas
+🔍 Busca nas suas conversões antigas
 📤 Exportação em CSV para organizar tudo
 📱 Conecte até 3 números simultâneos
 
@@ -3386,7 +3386,7 @@ Mas percebemos que usuários no seu perfil costumam bater no limite de minutos a
 
 O plano Executive foi feito para quem usa de verdade:
 💎 300 minutos/mês (o triplo do Pro)
-🔒 Modo Privado: transcrição enviada só para você, não para o remetente
+🔒 Modo Privado: conversão enviada só para você, não para o remetente
 📤 Exportação em PDF, DOCX, CSV e XLS
 📱 Até 3 números simultâneos
 
@@ -3410,7 +3410,7 @@ Empresas que usam o ZapScript para times de vendas, jurídico ou atendimento nor
 
 Por isso criamos o plano Executive — feito para empresas:
 💎 1.200 minutos/mês para toda a equipe
-🔒 Modo privado: transcrições chegam só no número da empresa, não para o contato
+🔒 Modo privado: conversões chegam só no número da empresa, não para o contato
 🔗 Webhook personalizado: integre com CRM, ERP ou qualquer sistema via API
 📱 Números ilimitados para cada membro do time
 🏷️ Tags e exportação avançada para relatórios

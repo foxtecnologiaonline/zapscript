@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og';
 
 export const runtime = 'edge';
-export const alt     = 'ZapScript — Transcrição Inteligente de Áudios do WhatsApp';
+export const alt     = 'ZapScript — Conversão Inteligente de Áudios do WhatsApp';
 export const size    = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
@@ -101,7 +101,7 @@ export default function OGImage() {
           maxWidth: 700,
           display: 'flex',
         }}>
-          Transcrição automática com IA para seus áudios do WhatsApp
+          Conversão automática com IA para seus áudios do WhatsApp
         </div>
 
         {/* Bottom badges */}

@@ -7,11 +7,11 @@ import UtmCapture from '@/components/UtmCapture';
 
 export const metadata: Metadata = {
   title: {
-    default:  'ZapScript — Transcrição Inteligente de Áudios do WhatsApp',
+    default:  'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
     template: '%s | ZapScript',
   },
-  description: 'Transcreva áudios do WhatsApp automaticamente com IA. Texto + resumo em segundos, sem ouvir. Grátis para começar — usado por corretores, advogados e vendedores.',
-  keywords:    'transcrever áudio whatsapp, transcrição whatsapp grátis, transcrição áudio automática, resumo áudio ia, zapscript, whatsapp texto, transcrever áudio celular',
+  description: 'Converta áudios do WhatsApp automaticamente com IA. Texto + resumo em segundos, sem ouvir. Grátis para começar — usado por corretores, advogados e vendedores.',
+  keywords:    'converter áudio whatsapp, conversão whatsapp grátis, conversão áudio automática, resumo áudio ia, zapscript, whatsapp texto, converter áudio celular',
   metadataBase: new URL('https://www.zapscript.me'),
   authors:     [{ name: 'ZapScript', url: 'https://www.zapscript.me' }],
   creator:     'ZapScript',
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     apple:    '/icon.png',
   },
   openGraph: {
-    title:       'ZapScript — Transcrição Inteligente de Áudios do WhatsApp',
+    title:       'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
     description: 'Transforme seus áudios do WhatsApp em textos, resumos e insights com IA. Comece grátis.',
     url:         'https://www.zapscript.me',
     siteName:    'ZapScript',
@@ -32,12 +32,12 @@ export const metadata: Metadata = {
       url:    '/opengraph-image',
       width:  1200,
       height: 630,
-      alt:    'ZapScript — Transcrição Inteligente de Áudios do WhatsApp',
+      alt:    'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
     }],
   },
   twitter: {
     card:        'summary_large_image',
-    title:       'ZapScript — Transcrição Inteligente de Áudios do WhatsApp',
+    title:       'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
     description: 'Transforme seus áudios do WhatsApp em textos, resumos e insights com IA. Comece grátis.',
     images:      ['/opengraph-image'],
   },

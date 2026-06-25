@@ -49,7 +49,7 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
     }
   );
 
-  // GET /sys/g5r8t2/master/users/:id/detail — detalhes completos incluindo transcrições
+  // GET /sys/g5r8t2/master/users/:id/detail — detalhes completos incluindo conversões
   app.get<{ Params: { id: string } }>(
     '/users/:id/detail',
     { preHandler: [adminAuth] },

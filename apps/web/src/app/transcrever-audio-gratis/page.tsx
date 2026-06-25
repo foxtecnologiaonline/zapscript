@@ -3,14 +3,14 @@ import Link from 'next/link';
 import { DemoTranscribe } from '@/components/DemoTranscribe';
 
 export const metadata: Metadata = {
-  title: 'Transcrever Áudio do WhatsApp Grátis — Online, sem instalar | ZapScript',
+  title: 'Converter Áudio do WhatsApp Grátis — Online, sem instalar | ZapScript',
   description:
-    'Transcreva um áudio do WhatsApp em texto de graça, online e na hora. Sem instalar nada, sem cadastro para testar. Envie o áudio e receba o texto completo + resumo com IA em segundos.',
+    'Converta um áudio do WhatsApp em texto de graça, online e na hora. Sem instalar nada, sem cadastro para testar. Envie o áudio e receba o texto completo + resumo com IA em segundos.',
   keywords:
-    'transcrever áudio whatsapp grátis, transcrever áudio em texto, áudio para texto online, converter áudio em texto grátis, transcrição de áudio whatsapp, passar áudio para texto, ouvir áudio do whatsapp em texto',
+    'converter áudio whatsapp grátis, converter áudio em texto, áudio para texto online, converter áudio em texto grátis, conversão de áudio whatsapp, passar áudio para texto, ouvir áudio do whatsapp em texto',
   alternates: { canonical: 'https://www.zapscript.me/transcrever-audio-gratis' },
   openGraph: {
-    title: 'Transcrever Áudio do WhatsApp Grátis — Online, na hora',
+    title: 'Converter Áudio do WhatsApp Grátis — Online, na hora',
     description:
       'Envie um áudio e receba o texto completo + resumo com IA em segundos. Grátis, online, sem instalar nada.',
     url: 'https://www.zapscript.me/transcrever-audio-gratis',
@@ -22,12 +22,12 @@ export const metadata: Metadata = {
 
 const FAQS = [
   {
-    q: 'Como transcrever um áudio do WhatsApp em texto?',
-    a: 'Baixe ou compartilhe o áudio do WhatsApp para o seu computador, envie o arquivo aqui nesta página e em segundos você recebe o texto completo transcrito, mais um resumo com os pontos principais. Não precisa instalar nenhum aplicativo nem criar conta para testar.',
+    q: 'Como converter um áudio do WhatsApp em texto?',
+    a: 'Baixe ou compartilhe o áudio do WhatsApp para o seu computador, envie o arquivo aqui nesta página e em segundos você recebe o texto completo convertido, mais um resumo com os pontos principais. Não precisa instalar nenhum aplicativo nem criar conta para testar.',
   },
   {
     q: 'É realmente grátis?',
-    a: 'Sim. Você pode transcrever um áudio gratuitamente aqui na página para ver a qualidade. Para transcrever vários áudios automaticamente — tudo que chega no seu WhatsApp vira texto sozinho — basta criar uma conta gratuita, que inclui 20 minutos de transcrição por mês sem cartão de crédito.',
+    a: 'Sim. Você pode converter um áudio gratuitamente aqui na página para ver a qualidade. Para converter vários áudios automaticamente — tudo que chega no seu WhatsApp vira texto sozinho — basta criar uma conta gratuita, que inclui 20 minutos de conversão por mês sem cartão de crédito.',
   },
   {
     q: 'Quais formatos de áudio funcionam?',
@@ -35,11 +35,11 @@ const FAQS = [
   },
   {
     q: 'Meu áudio fica armazenado?',
-    a: 'Não. O áudio é processado para gerar a transcrição e descartado imediatamente depois — nunca é armazenado. As transcrições na sua conta são criptografadas com AES-256, e os servidores ficam no Brasil, em conformidade com a LGPD.',
+    a: 'Não. O áudio é processado para gerar a conversão e descartado imediatamente depois — nunca é armazenado. As conversões na sua conta são criptografadas com AES-256, e os servidores ficam no Brasil, em conformidade com a LGPD.',
   },
   {
-    q: 'Dá para transcrever áudios automaticamente, sem enviar um por um?',
-    a: 'Sim — esse é o diferencial do ZapScript. Criando uma conta, você conecta o seu número do WhatsApp escaneando um QR Code (igual ao WhatsApp Web) e, a partir daí, todo áudio que chega é transcrito automaticamente, 24 horas por dia, sem você fazer nada.',
+    q: 'Dá para converter áudios automaticamente, sem enviar um por um?',
+    a: 'Sim — esse é o diferencial do ZapScript. Criando uma conta, você conecta o seu número do WhatsApp escaneando um QR Code (igual ao WhatsApp Web) e, a partir daí, todo áudio que chega é convertido automaticamente, 24 horas por dia, sem você fazer nada.',
   },
 ];
 
@@ -56,10 +56,10 @@ const faqSchema = {
 const howToSchema = {
   '@context': 'https://schema.org',
   '@type': 'HowTo',
-  name: 'Como transcrever um áudio do WhatsApp em texto grátis',
+  name: 'Como converter um áudio do WhatsApp em texto grátis',
   step: [
     { '@type': 'HowToStep', position: 1, name: 'Envie o áudio', text: 'Selecione ou arraste o arquivo de áudio do WhatsApp para a área de upload.' },
-    { '@type': 'HowToStep', position: 2, name: 'Aguarde a transcrição', text: 'A IA transcreve o áudio em texto em poucos segundos.' },
+    { '@type': 'HowToStep', position: 2, name: 'Aguarde a conversão', text: 'A IA converte o áudio em texto em poucos segundos.' },
     { '@type': 'HowToStep', position: 3, name: 'Leia o texto e o resumo', text: 'Receba o texto completo e um resumo com os pontos principais do áudio.' },
   ],
 };
@@ -69,11 +69,11 @@ const breadcrumbSchema = {
   '@type': 'BreadcrumbList',
   itemListElement: [
     { '@type': 'ListItem', position: 1, name: 'Início', item: 'https://www.zapscript.me' },
-    { '@type': 'ListItem', position: 2, name: 'Transcrever áudio do WhatsApp grátis', item: 'https://www.zapscript.me/transcrever-audio-gratis' },
+    { '@type': 'ListItem', position: 2, name: 'Converter áudio do WhatsApp grátis', item: 'https://www.zapscript.me/transcrever-audio-gratis' },
   ],
 };
 
-export default function TranscreverAudioGratisPage() {
+export default function ConverterAudioGratisPage() {
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
@@ -87,7 +87,7 @@ export default function TranscreverAudioGratisPage() {
             <span className="text-2xl">⚡</span>
             <span className="text-white">ZapScript</span>
           </Link>
-          <Link href="/cadastro?utm_source=lp&utm_campaign=transcrever-gratis" className="text-sm bg-brand-primary text-black font-bold px-4 py-2 rounded-xl hover:opacity-90 transition-opacity">
+          <Link href="/cadastro?utm_source=lp&utm_campaign=converter-gratis" className="text-sm bg-brand-primary text-black font-bold px-4 py-2 rounded-xl hover:opacity-90 transition-opacity">
             Criar conta grátis →
           </Link>
         </div>
@@ -101,7 +101,7 @@ export default function TranscreverAudioGratisPage() {
             🎧 Ferramenta grátis
           </div>
           <h1 className="text-3xl sm:text-5xl font-bold text-white leading-tight mb-5">
-            Transcrever áudio do WhatsApp em texto, <span className="text-brand-primary">grátis</span>
+            Converter áudio do WhatsApp em texto, <span className="text-brand-primary">grátis</span>
           </h1>
           <p className="text-lg text-brand-muted max-w-2xl mx-auto leading-relaxed">
             Envie um áudio e receba o texto completo mais um resumo com os pontos principais — em segundos.
@@ -116,7 +116,7 @@ export default function TranscreverAudioGratisPage() {
 
         {/* Como funciona */}
         <div className="mb-14 rounded-2xl p-8 border border-brand-primary/20" style={{ background: 'rgba(16,185,129,.05)' }}>
-          <h2 className="text-2xl font-bold text-white text-center mb-8">Como transcrever um áudio em 3 passos</h2>
+          <h2 className="text-2xl font-bold text-white text-center mb-8">Como converter um áudio em 3 passos</h2>
           <div className="grid sm:grid-cols-3 gap-6 text-center">
             <div>
               <div className="w-12 h-12 mx-auto rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center text-xl font-bold mb-3">1</div>
@@ -125,7 +125,7 @@ export default function TranscreverAudioGratisPage() {
             </div>
             <div>
               <div className="w-12 h-12 mx-auto rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center text-xl font-bold mb-3">2</div>
-              <p className="font-semibold text-white mb-1">A IA transcreve</p>
+              <p className="font-semibold text-white mb-1">A IA converte</p>
               <p className="text-sm text-brand-muted">Em segundos o áudio vira texto, sozinho.</p>
             </div>
             <div>
@@ -138,12 +138,12 @@ export default function TranscreverAudioGratisPage() {
 
         {/* Upsell automação */}
         <div className="mb-14 text-center">
-          <h2 className="text-2xl font-bold text-white mb-3">Cansado de transcrever um por um?</h2>
+          <h2 className="text-2xl font-bold text-white mb-3">Cansado de converter um por um?</h2>
           <p className="text-brand-muted mb-6 max-w-xl mx-auto leading-relaxed">
             Crie uma conta gratuita, conecte o seu WhatsApp uma vez e <span className="text-brand-primary font-semibold">todo áudio que chegar vira texto automaticamente</span> — 24 horas por dia, sem enviar nada manualmente. O plano grátis inclui 20 minutos por mês, sem cartão.
           </p>
-          <Link href="/cadastro?utm_source=lp&utm_campaign=transcrever-gratis" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
-            Transcrever automaticamente →
+          <Link href="/cadastro?utm_source=lp&utm_campaign=converter-gratis" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
+            Converter automaticamente →
           </Link>
           <p className="text-xs text-brand-muted mt-4">✓ Sem cartão &nbsp;·&nbsp; ✓ 20 min/mês grátis &nbsp;·&nbsp; ✓ Cancele quando quiser</p>
         </div>
@@ -169,7 +169,7 @@ export default function TranscreverAudioGratisPage() {
 
       <footer className="border-t border-white/5 py-8 text-center text-xs text-brand-muted">
         <p>© {new Date().getFullYear()} ZapScript · <Link href="/" className="hover:text-brand-primary">Voltar ao site</Link> · <Link href="/privacidade" className="hover:text-brand-primary">Privacidade</Link></p>
-        <p className="mt-1 text-brand-muted/50">Transcrever áudio do WhatsApp em texto grátis, online e sem instalar. Servidores no Brasil, conformidade com a LGPD.</p>
+        <p className="mt-1 text-brand-muted/50">Converter áudio do WhatsApp em texto grátis, online e sem instalar. Servidores no Brasil, conformidade com a LGPD.</p>
       </footer>
     </div>
   );

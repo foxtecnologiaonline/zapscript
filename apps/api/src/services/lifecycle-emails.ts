@@ -69,10 +69,10 @@ async function runActivationD1(log: any) {
     try {
       await sendEmail(
         u.email,
-        `${firstName}, falta 1 passo para sua 1ª transcrição`,
+        `${firstName}, falta 1 passo para sua 1ª conversão`,
         wrapper(firstName, `Falta 1 passo, ${firstName}!`, `
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você criou sua conta no ZapScript mas ainda não conectou seu WhatsApp. Sem isso, nenhum áudio é transcrito automaticamente.</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Leva menos de 2 minutos: escaneie um QR Code (ou use o código de pareamento) e pronto — todo áudio recebido já chega transcrito e resumido por IA.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você criou sua conta no ZapScript mas ainda não conectou seu WhatsApp. Sem isso, nenhum áudio é convertido automaticamente.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Leva menos de 2 minutos: escaneie um QR Code (ou use o código de pareamento) e pronto — todo áudio recebido já chega convertido e resumido por IA.</p>
           ${btn(`${APP_URL}/dashboard/numeros`, 'Conectar meu WhatsApp →')}
         `),
       );
@@ -117,7 +117,7 @@ async function runConnectionIncomplete(log: any) {
         `${firstName}, sua conexão do WhatsApp ficou pela metade`,
         wrapper(firstName, `Faltou só terminar a conexão, ${firstName}`, `
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Vimos que você começou a conectar seu WhatsApp no ZapScript, mas a conexão não foi concluída. Pode ter sido o código que expirou ou a tela que fechou no meio do processo — é comum, e leva menos de 2 minutos para terminar.</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Volte ao painel, gere um novo código e finalize no seu celular. Assim que conectar, todo áudio recebido já chega transcrito e resumido.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Volte ao painel, gere um novo código e finalize no seu celular. Assim que conectar, todo áudio recebido já chega convertido e resumido.</p>
           ${btn(`${APP_URL}/dashboard/numeros`, 'Terminar minha conexão →')}
         `),
       );
@@ -130,7 +130,7 @@ async function runConnectionIncomplete(log: any) {
   return sent;
 }
 
-/* ── D+3: número conectado mas zero transcrições ─────────────────────────── */
+/* ── D+3: número conectado mas zero conversões ─────────────────────────── */
 async function runActivationD3(log: any) {
   const from = new Date(Date.now() - 96 * 60 * 60 * 1000);
   const to   = new Date(Date.now() - 72 * 60 * 60 * 1000);
@@ -156,7 +156,7 @@ async function runActivationD3(log: any) {
         u.email,
         `${firstName}, seu WhatsApp está conectado — falta só enviar um áudio`,
         wrapper(firstName, `Seu WhatsApp já está pronto, ${firstName}`, `
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já conectou seu número, mas ainda não recebeu nenhuma transcrição. Para o ZapScript funcionar, é só enviar (ou receber) um áudio pelo número conectado.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já conectou seu número, mas ainda não recebeu nenhuma conversão. Para o ZapScript funcionar, é só enviar (ou receber) um áudio pelo número conectado.</p>
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Em segundos, o texto e o resumo aparecem no seu painel — sem precisar abrir e ouvir nada.</p>
           ${btn(`${APP_URL}/dashboard/numeros`, 'Ver meus números →')}
         `),
@@ -202,7 +202,7 @@ async function runUpgradeByUsage(log: any) {
         u.email,
         `${firstName}, você já usou ${Math.round(usedPct * 100)}% dos seus minutos grátis`,
         wrapper(firstName, `Seus minutos grátis estão acabando`, `
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já usou ${Math.round(usedPct * 100)}% dos 20 minutos do plano Free deste mês. Para continuar transcrevendo sem interrupção, dá pra fazer upgrade para o Pro.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já usou ${Math.round(usedPct * 100)}% dos 20 minutos do plano Free deste mês. Para continuar convertendo sem interrupção, dá pra fazer upgrade para o Pro.</p>
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">O Pro inclui 200 minutos por mês, 2 números e resumo com IA — ${proPriceLine()}.</p>
           ${btn(`${APP_URL}/dashboard/plano`, 'Fazer upgrade para o Pro →')}
         `),
@@ -216,7 +216,7 @@ async function runUpgradeByUsage(log: any) {
   return sent;
 }
 
-/* ── 1ª transcrição concluída → comemoração + reforço do valor "robô 24h" ────
+/* ── 1ª conversão concluída → comemoração + reforço do valor "robô 24h" ────
    Momento de maior engajamento: o usuário acabou de ver o produto funcionar.
    Limitado a quem se cadastrou nos últimos 7 dias para não disparar em massa
    na base existente no primeiro deploy. ────────── */
@@ -239,9 +239,9 @@ async function runFirstTranscription(log: any) {
         u.email,
         `${firstName}, seu robô já está trabalhando 24h por você 🎉`,
         wrapper(firstName, `Funcionou! Seu robô está no ar 🎉`, `
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Sua primeira transcrição saiu — e a partir de agora isso acontece sozinho. O ZapScript fica de prontidão <strong>24 horas por dia</strong>, transcrevendo e resumindo cada áudio assim que ele chega, mesmo enquanto você dorme.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Sua primeira conversão saiu — e a partir de agora isso acontece sozinho. O ZapScript fica de prontidão <strong>24 horas por dia</strong>, convertendo e resumindo cada áudio assim que ele chega, mesmo enquanto você dorme.</p>
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Você não precisa encaminhar nada nem abrir outro app. É só receber o áudio — o texto e o resumo aparecem prontos no seu painel.</p>
-          ${btn(`${APP_URL}/dashboard`, 'Ver minhas transcrições →')}
+          ${btn(`${APP_URL}/dashboard`, 'Ver minhas conversões →')}
           <p style="color:#6ee7b7;line-height:1.7;margin:24px 0 4px;font-size:14px">💚 Gostou? Quem você conhece também vive afogado em áudio?</p>
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px;font-size:14px">Indique o ZapScript e ganhe recompensas a cada amigo que ativar — seu link pessoal está em <a href="${APP_URL}/indique" style="color:#34d399">zapscript.me/indique</a>.</p>
         `),
@@ -281,7 +281,7 @@ async function runWinBack(log: any) {
         u.email,
         `${firstName}, seu robô está em pausa — quer reativar?`,
         wrapper(firstName, `Seu robô está descansando, ${firstName}`, `
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Desde que você cancelou o Pro, os áudios voltaram a chegar — só que agora sem ninguém transcrevendo por você 24 horas por dia. Toda vez que chega um áudio longo, é você quem para pra ouvir.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Desde que você cancelou o Pro, os áudios voltaram a chegar — só que agora sem ninguém convertendo por você 24 horas por dia. Toda vez que chega um áudio longo, é você quem para pra ouvir.</p>
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Reativar leva 1 minuto: 200 minutos por mês, 2 números e resumo com IA — ${proPriceLine()}. Menos de R$1,33 por dia para ter um robô lendo seus áudios.</p>
           ${btn(`${APP_URL}/dashboard/plano`, 'Reativar o Pro →')}
         `),
@@ -296,7 +296,7 @@ async function runWinBack(log: any) {
 }
 
 /* ── Free engajado mas longe do limite (D+7 a D+14) → mostrar o teto do Free ──
-   Usuário que já provou valor (tem transcrições) mas usa pouco, então o gatilho
+   Usuário que já provou valor (tem conversões) mas usa pouco, então o gatilho
    de "≥80% dos minutos" nunca dispara. Reforça que o hábito vai esbarrar nos
    20 min do Free e convida ao Pro. Janela de cadastro evita disparo em massa na
    base antiga; tag única (one-shot) garante idempotência. ────────── */
@@ -334,7 +334,7 @@ async function runUpgradeActiveFree(log: any) {
         u.email,
         `${firstName}, você já pegou o jeito do ZapScript`,
         wrapper(firstName, `Virou hábito, ${firstName} 👏`, `
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já está transcrevendo seus áudios pelo ZapScript — ótimo sinal de que virou parte da rotina. O plano Free dá conta do começo, mas são só <strong>20 minutos por mês</strong>: num dia mais corrido de áudios, eles acabam rápido.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já está convertendo seus áudios pelo ZapScript — ótimo sinal de que virou parte da rotina. O plano Free dá conta do começo, mas são só <strong>20 minutos por mês</strong>: num dia mais corrido de áudios, eles acabam rápido.</p>
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">No Pro são 200 minutos, 2 números e resumo com IA — ${proPriceLine()}. Assim seu robô nunca para no meio do mês.</p>
           ${btn(`${APP_URL}/dashboard/plano`, 'Conhecer o Pro →')}
         `),

@@ -18,7 +18,7 @@ const STEPS = [
     msg: 'Entendido. Qual é o problema técnico?',
     options: [
       { label: '📱 WhatsApp não conecta', next: 'form', category: 'Problema técnico - WhatsApp' },
-      { label: '🎙 Transcrição não chegou', next: 'form', category: 'Problema técnico - Transcrição' },
+      { label: '🎙 Conversão não chegou', next: 'form', category: 'Problema técnico - Conversão' },
       { label: '⏱ Minutos sendo debitados errado', next: 'form', category: 'Problema técnico - Minutos' },
       { label: '🔐 Problema de login/acesso', next: 'form', category: 'Problema técnico - Login' },
     ],
