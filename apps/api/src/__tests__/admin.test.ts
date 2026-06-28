@@ -28,7 +28,7 @@ jest.mock('../lib/prisma', () => ({
       groupBy: jest.fn(),
       update: jest.fn(),
     },
-    transcription: { count: jest.fn() },
+    transcription: { count: jest.fn(), aggregate: jest.fn() },
     usageLog: { aggregate: jest.fn() },
     systemError: { findMany: jest.fn() },
     supportTicket: {
@@ -92,6 +92,7 @@ describe('GET /admin/stats', () => {
       { status: 'active', _count: { status: 8 } },
     ]);
     (prisma.transcription.count as jest.Mock).mockResolvedValue(100);
+    (prisma.transcription.aggregate as jest.Mock).mockResolvedValue({ _sum: { durationSec: 30000 }, _avg: { durationSec: 300 } });
     (prisma.usageLog.aggregate as jest.Mock).mockResolvedValue({ _sum: { minutesUsed: 500 } });
     (prisma.systemError.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.supportTicket.count as jest.Mock).mockResolvedValue(5);
@@ -109,6 +110,9 @@ describe('GET /admin/stats', () => {
     expect(body).toHaveProperty('minutes');
     expect(body).toHaveProperty('mrr');
     expect(body).toHaveProperty('conversion');
+    // Duração dos áudios: 30000s = 500 min totais; média 300s = 5 min/áudio
+    expect(body.transcriptions.totalMinutes).toBeCloseTo(500, 1);
+    expect(body.transcriptions.avgMinutes).toBeCloseTo(5, 2);
   });
 
   it('calcula MRR pro + executive corretamente', async () => {
@@ -121,6 +125,7 @@ describe('GET /admin/stats', () => {
       { status: 'active', _count: { status: 2 } },
     ]);
     (prisma.transcription.count as jest.Mock).mockResolvedValue(0);
+    (prisma.transcription.aggregate as jest.Mock).mockResolvedValue({ _sum: { durationSec: 0 }, _avg: { durationSec: null } });
     (prisma.usageLog.aggregate as jest.Mock).mockResolvedValue({ _sum: { minutesUsed: 0 } });
     (prisma.systemError.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.supportTicket.count as jest.Mock).mockResolvedValue(0);
@@ -146,6 +151,7 @@ describe('GET /admin/stats', () => {
       { status: 'active', _count: { status: 3 } },
     ]);
     (prisma.transcription.count as jest.Mock).mockResolvedValue(0);
+    (prisma.transcription.aggregate as jest.Mock).mockResolvedValue({ _sum: { durationSec: 0 }, _avg: { durationSec: null } });
     (prisma.usageLog.aggregate as jest.Mock).mockResolvedValue({ _sum: { minutesUsed: 0 } });
     (prisma.systemError.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.supportTicket.count as jest.Mock).mockResolvedValue(0);

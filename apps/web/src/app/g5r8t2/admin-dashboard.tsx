@@ -813,6 +813,25 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                 color="#a78bfa" onClick={() => goTab('financeiro')} />
             </div>
 
+            {/* 🎙️ Áudios transcritos — volume e duração */}
+            <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">
+              <div className="text-sm font-bold text-[#d1fae5] mb-4">🎙️ Áudios transcritos</div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-[#132621] rounded-xl p-4 text-center">
+                  <div className="text-2xl font-black text-[#10b981] leading-none mb-1.5">{stats.transcriptions.total}</div>
+                  <div className="text-[11px] text-[rgba(16,185,129,.45)] uppercase tracking-wide">Quantidade de áudios</div>
+                </div>
+                <div className="bg-[#132621] rounded-xl p-4 text-center">
+                  <div className="text-2xl font-black text-[#34d399] leading-none mb-1.5">{(stats.transcriptions.totalMinutes || 0).toFixed(1)}</div>
+                  <div className="text-[11px] text-[rgba(16,185,129,.45)] uppercase tracking-wide">Minutos totais</div>
+                </div>
+                <div className="bg-[#132621] rounded-xl p-4 text-center">
+                  <div className="text-2xl font-black text-[#6ee7b7] leading-none mb-1.5">{(stats.transcriptions.avgMinutes || 0).toFixed(2)}</div>
+                  <div className="text-[11px] text-[rgba(16,185,129,.45)] uppercase tracking-wide">Média min/áudio</div>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Planos */}
               <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5">

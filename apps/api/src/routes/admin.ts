@@ -243,6 +243,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       recentErrors,
       totalTickets, openTickets,
       connectedNumbers, totalNumbers,
+      txDurationAgg,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { createdAt: { gte: today } } }),
@@ -280,6 +281,8 @@ export default async function adminRoutes(app: FastifyInstance) {
       prisma.supportTicket.count({ where: { status: 'open' } }),
       prisma.whatsappNumber.count({ where: { status: 'connected' } }),
       prisma.whatsappNumber.count(),
+      // Duração real dos áudios transcritos — total e média (em segundos)
+      prisma.transcription.aggregate({ _sum: { durationSec: true }, _avg: { durationSec: true } }),
     ]);
 
     // Testers não contam como pagantes — têm plano pro-tester (gratuito por design)
@@ -295,7 +298,12 @@ export default async function adminRoutes(app: FastifyInstance) {
     return {
       users:          { total: totalUsers, today: todayUsers, month: monthUsers, lastMonth: lastMonthUsers },
       byPlan:         byPlanRaw,
-      transcriptions: { total: totalTranscriptions, today: todayTranscriptions },
+      transcriptions: {
+        total:        totalTranscriptions,
+        today:        todayTranscriptions,
+        totalMinutes: (txDurationAgg._sum.durationSec || 0) / 60,  // soma da duração de todos os áudios
+        avgMinutes:   (txDurationAgg._avg.durationSec || 0) / 60,  // média de minutos por áudio
+      },
       minutes:        { total: totalMinutes._sum.minutesUsed || 0, today: todayMinutes._sum.minutesUsed || 0 },
       recentErrors,
       tickets:        { total: totalTickets, open: openTickets },
