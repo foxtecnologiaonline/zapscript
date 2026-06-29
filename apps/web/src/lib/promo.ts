@@ -14,3 +14,24 @@ export function isJunePromoActive(_now: Date = new Date()): boolean {
 export function getProPrice(now: Date = new Date()): string {
   return isJunePromoActive(now) ? PRO_PROMO_PRICE : PRO_FULL_PRICE;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Âncora de preço — token padronizado de CTA.
+   Regra: nunca exibir "R$39,90" puro num CTA. Sempre emoldurar o valor em
+   algo cotidiano e barato. R$39,90/mês ÷ 30 = ~R$1,33/dia.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/** Custo diário equivalente do Pro (R$39,90/mês ÷ 30). */
+export const PRO_PER_DAY = 'R$1,33/dia';
+
+/** Variantes de âncora para A/B. A ordem é o índice persistido por visitante. */
+export const PRICE_ANCHORS = [
+  { key: 'dia',           label: 'menos de R$1,33 por dia' },
+  { key: 'cafe',          label: 'menos que um café por semana' },
+  { key: 'estacionamento',label: 'menos que 1 hora de estacionamento' },
+] as const;
+
+export type PriceAnchorKey = (typeof PRICE_ANCHORS)[number]['key'];
+
+/** Âncora comparativa (valor do tempo > preço). */
+export const PRICE_ANCHOR_COMPARE = 'Uma hora ouvindo áudio vale mais que R$1,33?';

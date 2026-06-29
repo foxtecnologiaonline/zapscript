@@ -1683,9 +1683,26 @@ async function processTrialTransitions() {
       const msLeft   = sub.trialEndsAt.getTime() - now.getTime();
       const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
 
-      // ── D8: trial expirou → downgrade idempotente para FREE ──
+      // ── D8: trial expirou ──
       if (msLeft <= 0) {
         if (sub.trialDowngradedAt || !freePlan) continue;
+
+        // Trial COM cartão: o Asaas cobra em D+7 e o webhook ativa o Pro.
+        // Não rebaixar para Free — transiciona trialing → active (mantém o plano
+        // Pro), ancorando currentPeriodEnd na data de vencimento. Se a cobrança
+        // falhar, o webhook PAYMENT_OVERDUE marca past_due e o job de tolerância
+        // rebaixa. trialDowngradedAt garante idempotência.
+        if (sub.paymentMethod === 'credit_card' && sub.asaasSubscriptionId) {
+          await prisma.subscription.update({
+            where: { id: sub.id },
+            data:  { status: 'active', trialDowngradedAt: now, currentPeriodEnd: sub.trialEndsAt },
+          });
+          await redis.del(`plan:${sub.userId}`).catch(() => null);
+          logger.info(`[Trial] D8 com cartão: ${sub.user.email} → Pro (cobrança Asaas em ${sub.trialEndsAt.toISOString().slice(0, 10)})`);
+          continue;
+        }
+
+        // ── Sem cartão: downgrade idempotente para FREE ──
         const nextReset = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
         await prisma.$transaction([
           prisma.subscription.update({

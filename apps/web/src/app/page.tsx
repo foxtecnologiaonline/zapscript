@@ -2,6 +2,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ThemeToggleButton } from '@/components/ThemeProvider';
 import { ChatDemo } from '@/components/ChatDemo';
+import ConversationDemo from '@/components/ConversationDemo';
+import PriceAnchor from '@/components/PriceAnchor';
 import { FaqSection } from '@/components/FaqSection';
 import { PricingInteractive } from '@/components/PricingInteractive';
 import { Testimonials } from '@/components/Testimonials';
@@ -154,6 +156,10 @@ export default function HomePage() {
                     <path d="M5 12h14M12 5l7 7-7 7"/>
                   </svg>
                 </Link>
+                <PriceAnchor
+                  prefix="Grátis para começar · depois, "
+                  className="block text-center text-xs mt-2 text-brand-muted"
+                />
               </div>
 
               <div className="flex items-center gap-3">
@@ -261,41 +267,17 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ══ COMO FUNCIONA — 3 passos ══ */}
+        {/* ══ VEJA NA PRÁTICA — mockup real da conversa ══ */}
         <section className="px-5 pt-10 pb-2">
           <p className="text-xs font-semibold uppercase tracking-widest mb-2 text-center"
             style={{ color: 'rgb(var(--color-primary))' }}>
-            Como funciona
+            Como aparece no seu WhatsApp
           </p>
           <p className="text-sm font-medium text-center mb-5" style={{ color: 'rgb(var(--color-text))' }}>
-            Seu robô particular, convertendo áudio em texto 24 horas por dia — mesmo enquanto você dorme.
+            O áudio chega e a transcrição + resumo voltam na mesma conversa — automaticamente, em segundos.
           </p>
-          <div className="flex items-start justify-between gap-1">
-            {[
-              { icon: '🎙️', label: 'Receba o áudio',  sub: 'No WhatsApp' },
-              { icon: '⚡',  label: 'IA processa',     sub: 'Em segundos' },
-              { icon: '📄', label: 'Texto entregue',  sub: 'Na mesma conversa' },
-            ].map((step, i) => (
-              <div key={i} className="flex items-start gap-1 flex-1">
-                {i > 0 && (
-                  <div className="flex-shrink-0 mt-5 text-base" style={{ color: 'rgb(var(--color-text-muted))' }}>›</div>
-                )}
-                <div className="flex-1 flex flex-col items-center text-center">
-                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl mb-2 flex-shrink-0"
-                    style={{ background: 'rgba(var(--color-primary)/.1)', border: '1px solid rgba(var(--color-primary)/.15)' }}>
-                    {step.icon}
-                  </div>
-                  <p className="text-xs font-semibold leading-tight" style={{ color: 'rgb(var(--color-text))' }}>
-                    {step.label}
-                  </p>
-                  <p className="text-[10px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                    {step.sub}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="relative mt-4 mb-1 h-px mx-6"
+          <ConversationDemo />
+          <div className="relative mt-6 mb-1 h-px mx-6"
             style={{ background: 'linear-gradient(90deg, rgba(var(--color-primary)/.4), rgba(var(--color-primary)/.1))' }} />
         </section>
 
@@ -443,6 +425,12 @@ export default function HomePage() {
               className="btn-primary inline-flex items-center justify-center py-4 px-8 text-base gap-2">
               Converter grátis agora
             </Link>
+            <PriceAnchor
+              prefix="Plano Pro por "
+              compare
+              className="block text-sm mt-4"
+              compareClassName="block text-xs mt-1 opacity-70"
+            />
           </div>
         </section>
 

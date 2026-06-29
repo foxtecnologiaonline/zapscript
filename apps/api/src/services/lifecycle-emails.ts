@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
+import { formatSavedTime } from '../lib/freemium';
 
 /* ── Configuração ──────────────────────────────────────────────────────────
    Roda 1x/dia (primeira execução pouco depois do boot). Cada e-mail é
@@ -343,6 +344,143 @@ async function runUpgradeActiveFree(log: any) {
   return sent;
 }
 
+/* ── D+6 do trial: véspera do fim → reforça economia + custo/dia ──────────────
+   Trial de 7 dias. Disparamos quando faltam ~24h (último dia cheio de Pro),
+   mostrando o tempo JÁ economizado no mês como prova de valor concreta.
+   Tag one-shot (um usuário só faz trial uma vez). ────────── */
+async function runTrialEndingD6(log: any) {
+  const now     = new Date();
+  const horizon = new Date(now.getTime() + 30 * 60 * 60 * 1000); // próximas ~30h
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const tag     = 'trial_ending';
+
+  const users = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      subscription: { status: 'trialing', trialEndsAt: { gt: now, lte: horizon } },
+    },
+    select: {
+      id: true, email: true, name: true, lifecycleEmailsSent: true,
+      subscription: { select: { paymentMethod: true, asaasSubscriptionId: true } },
+    },
+  }).catch(() => [] as any[]);
+
+  let sent = 0;
+  for (const u of users) {
+    if (u.lifecycleEmailsSent.includes(tag)) continue;
+
+    // Cartão já garantido → não cobramos por upgrade; avisamos da cobrança automática.
+    const cardOnFile = u.subscription?.paymentMethod === 'credit_card' && !!u.subscription?.asaasSubscriptionId;
+
+    const agg = await prisma.transcription.aggregate({
+      where:  { userId: u.id, createdAt: { gte: monthStart } },
+      _sum:   { durationSec: true },
+      _count: true,
+    }).catch(() => null);
+    const savedSec   = agg?._sum.durationSec || 0;
+    const cnt        = agg?._count || 0;
+    const savedLabel = formatSavedTime(savedSec);
+
+    const firstName = firstNameOf(u.name);
+    const savedLine = savedSec > 0
+      ? `Nestes dias de Pro, você já economizou <strong style="color:#6ee7b7">${savedLabel}</strong>${cnt > 0 ? ` lendo ${cnt} áudio${cnt !== 1 ? 's' : ''} em vez de ouvir tudo` : ''} este mês.`
+      : `Seu período de Pro está terminando.`;
+    const subject = cardOnFile
+      ? `${firstName}, seu cartão será cobrado amanhã`
+      : savedSec > 0
+        ? `${firstName}, você economizou ${savedLabel} este mês`
+        : `${firstName}, seu Pro termina amanhã`;
+    const bodyCta = cardOnFile
+      ? `
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">${savedLine}</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Seu cartão será cobrado <strong>amanhã (R$39,90/mês)</strong> e seu Pro continua sem interrupção — áudios ilimitados e Modo Privado. Não precisa fazer nada.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Se preferir não continuar, <strong>cancele antes da cobrança e não paga nada</strong>.</p>
+          ${btn(`${APP_URL}/dashboard/plano`, 'Ver meu plano →')}
+        `
+      : `
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">${savedLine}</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Para manter os áudios ilimitados e o Modo Privado sem interrupção, é <strong>menos de R$1,33 por dia</strong> — ${proPriceLine()}.</p>
+          ${btn(`${APP_URL}/dashboard/plano`, 'Continuar com o Pro →')}
+        `;
+    try {
+      await sendEmail(
+        u.email,
+        subject,
+        wrapper(firstName, cardOnFile ? `Seu Pro continua amanhã, ${firstName}` : `Seu Pro termina amanhã, ${firstName}`, bodyCta),
+      );
+      await markSent(u.id, tag);
+      sent++;
+    } catch (e: any) {
+      log?.warn?.(`[Lifecycle] Falha ao enviar ${tag} para ${u.email}: ${e.message}`);
+    }
+  }
+  return sent;
+}
+
+/** Identificador de semana ISO (ex.: "2026-W26") para idempotência semanal. */
+function isoWeekTag(d: Date): string {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+/* ── Resumo semanal (segundas) → reforço de valor recorrente ──────────────────
+   Aproxima a cadência semanal rodando só às segundas. Só para quem teve ao
+   menos 1 conversão nos últimos 7 dias (engajado) — não acorda base dormente.
+   Idempotente por semana ISO.
+   NOTA: a variante "ao próprio número via WhatsApp" (item 5c) fica pendente —
+   exige o path de envio Evolution para o número conectado do usuário. ────────── */
+async function runWeeklyDigest(log: any) {
+  const now = new Date();
+  if (now.getDay() !== 1) return 0; // só segundas-feiras
+  const tag     = `digest_${isoWeekTag(now)}`;
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const users = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      transcriptions: { some: { createdAt: { gte: weekAgo } } },
+    },
+    select: { id: true, email: true, name: true, lifecycleEmailsSent: true },
+  }).catch(() => [] as any[]);
+
+  let sent = 0;
+  for (const u of users) {
+    if (u.lifecycleEmailsSent.includes(tag)) continue;
+
+    const agg = await prisma.transcription.aggregate({
+      where:  { userId: u.id, createdAt: { gte: weekAgo } },
+      _sum:   { durationSec: true },
+      _count: true,
+    }).catch(() => null);
+    const cnt      = agg?._count || 0;
+    if (cnt === 0) continue;
+    const savedSec = agg?._sum.durationSec || 0;
+    const savedLabel = formatSavedTime(savedSec);
+
+    const firstName = firstNameOf(u.name);
+    try {
+      await sendEmail(
+        u.email,
+        `${firstName}, seu resumo da semana: ${cnt} áudio${cnt !== 1 ? 's' : ''} lido${cnt !== 1 ? 's' : ''}`,
+        wrapper(firstName, `Sua semana no ZapScript 📊`, `
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Nos últimos 7 dias, o ZapScript leu <strong style="color:#6ee7b7">${cnt} áudio${cnt !== 1 ? 's' : ''}</strong> por você${savedSec > 0 ? ` e economizou <strong style="color:#6ee7b7">${savedLabel}</strong> que você não precisou passar ouvindo` : ''}.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Tudo já está no seu painel, em texto e com resumo — fácil de buscar quando precisar.</p>
+          ${btn(`${APP_URL}/dashboard`, 'Ver minhas conversões →')}
+        `),
+      );
+      await markSent(u.id, tag);
+      sent++;
+    } catch (e: any) {
+      log?.warn?.(`[Lifecycle] Falha ao enviar ${tag} para ${u.email}: ${e.message}`);
+    }
+  }
+  return sent;
+}
+
 async function runOnce(log: any) {
   try {
     const [d1, d3, incomplete] = await Promise.all([runActivationD1(log), runActivationD3(log), runConnectionIncomplete(log)]);
@@ -350,7 +488,9 @@ async function runOnce(log: any) {
     const activeFree = await runUpgradeActiveFree(log);
     const firstTx   = await runFirstTranscription(log);
     const winback   = await runWinBack(log);
-    log?.info?.(`[Lifecycle] Ciclo concluído — candidatos d1=${d1} d3=${d3} conexao_incompleta_enviados=${incomplete} upgrades_enviados=${upgrade} upgrade_free_ativo=${activeFree} primeira_transcricao=${firstTx} winback=${winback}`);
+    const trialEnd  = await runTrialEndingD6(log);
+    const digest    = await runWeeklyDigest(log);
+    log?.info?.(`[Lifecycle] Ciclo concluído — candidatos d1=${d1} d3=${d3} conexao_incompleta_enviados=${incomplete} upgrades_enviados=${upgrade} upgrade_free_ativo=${activeFree} primeira_transcricao=${firstTx} winback=${winback} trial_ending=${trialEnd} resumo_semanal=${digest}`);
   } catch (e: any) {
     log?.error?.(`[Lifecycle] Erro no ciclo de e-mails: ${e.message}`);
   }

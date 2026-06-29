@@ -30,6 +30,7 @@ interface Stats {
   isTrial: boolean;
   trialEndsAt: string | null;
   trialDaysLeft: number | null;
+  cardOnFile: boolean;   // cartão garantido p/ cobrança em D+7
   // ── Tempo economizado no mês (C3) ──
   savedSecondsMonth: number;
   savedLabelMonth: string;
@@ -99,19 +100,28 @@ export default function DashboardPage() {
 
       {/* ── Trial PRO (7 dias): contagem regressiva + CTA ── */}
       {stats?.isTrial && (
-        <Link href="/dashboard/plano"
+        <Link href={stats.cardOnFile ? '/dashboard/plano' : '/dashboard/plano?trialcard=1'}
           className="flex items-center gap-3 rounded-xl px-4 py-3 mb-6 hover:opacity-90 transition-opacity"
           style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.14), rgba(16,185,129,.04))', border: '1px solid rgba(16,185,129,.3)' }}>
-          <span className="text-lg flex-shrink-0">✨</span>
+          <span className="text-lg flex-shrink-0">{stats.cardOnFile ? '🔒' : '✨'}</span>
           <p className="text-xs text-brand-text flex-1">
             <span className="font-bold text-brand-primary">
               {stats.trialDaysLeft === 0
                 ? 'Seu Pro termina hoje.'
                 : `Faltam ${stats.trialDaysLeft} dia${stats.trialDaysLeft !== 1 ? 's' : ''} do seu Pro.`}
             </span>{' '}
-            Áudios ilimitados e Modo Privado ativos. Continue por <strong>menos de R$1,33/dia</strong>.
+            {stats.cardOnFile ? (
+              <>Pro garantido — a 1ª cobrança será só ao fim do teste. Cancele antes e não paga nada.</>
+            ) : (stats.trialDaysLeft ?? 99) <= 1 && stats.savedSecondsMonth > 0 ? (
+              /* D6 — no fim do trial, reforça o valor já entregue */
+              <>Você já economizou <strong className="text-brand-primary">{stats.savedLabelMonth}</strong> este mês. <strong>Garanta seu Pro</strong> e não perca o acesso.</>
+            ) : (
+              <>Áudios ilimitados e Modo Privado ativos. <strong>Garanta seu Pro</strong> antes que o teste acabe.</>
+            )}
           </p>
-          <span className="text-brand-primary text-xs font-bold flex-shrink-0">Assinar →</span>
+          <span className="text-brand-primary text-xs font-bold flex-shrink-0">
+            {stats.cardOnFile ? 'Gerenciar →' : 'Garantir meu Pro →'}
+          </span>
         </Link>
       )}
 
@@ -134,6 +144,22 @@ export default function DashboardPage() {
         hasNumber={(stats?.activeNumbers ?? 0) > 0}
         hasTranscription={(stats?.transcriptionsTotal ?? 0) > 0}
       />
+
+      {/* ── KPI HERO: tempo economizado (valor entregue, acumulando) ── */}
+      {stats && stats.savedSecondsMonth > 0 && (
+        <div className="rounded-2xl px-5 py-5 mb-5 flex items-center gap-5"
+          style={{ background: 'linear-gradient(110deg, rgba(16,185,129,.16), rgba(16,185,129,.04))', border: '1px solid rgba(16,185,129,.28)' }}>
+          <span className="text-3xl sm:text-4xl flex-shrink-0">⏱️</span>
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-brand-primary uppercase tracking-wide mb-0.5">Tempo economizado este mês</div>
+            <div className="text-3xl sm:text-4xl font-black text-brand-text leading-none">{stats.savedLabelMonth}</div>
+            <div className="text-xs text-brand-muted mt-1.5">
+              Você leu <strong className="text-brand-text">{stats.transcriptionsMonth}</strong> áudio{stats.transcriptionsMonth !== 1 ? 's' : ''} em vez de ouvir tudo.
+              {stats.planName === 'free' && !stats.isTrial && <> Imagine sem limite — <Link href="/dashboard/plano" className="text-brand-primary font-semibold hover:underline">menos de R$1,33/dia</Link>.</>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── KPIs ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
@@ -160,18 +186,6 @@ export default function DashboardPage() {
           {' '}Áudio nunca armazenado · Conversões criptografadas · Processamento via Whisper (OpenAI) e Claude (Anthropic).
         </p>
       </div>
-
-      {/* ── Tempo economizado este mês (C3 — valor entregue) ── */}
-      {stats && stats.savedSecondsMonth > 0 && (
-        <div className="flex items-center gap-3 rounded-xl px-4 py-3 mb-7"
-          style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.10), rgba(16,185,129,.03))', border: '1px solid rgba(16,185,129,.20)' }}>
-          <span className="text-lg flex-shrink-0">⚡</span>
-          <p className="text-xs text-brand-text leading-relaxed">
-            Você economizou <strong className="text-brand-primary">{stats.savedLabelMonth}</strong> lendo áudios este mês —
-            em vez de ouvir <strong>{stats.transcriptionsMonth}</strong> áudio{stats.transcriptionsMonth !== 1 ? 's' : ''} inteiro{stats.transcriptionsMonth !== 1 ? 's' : ''}.
-          </p>
-        </div>
-      )}
 
       {/* ── Cards secundários ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

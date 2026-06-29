@@ -10,7 +10,7 @@ function escHtml(s: string | null | undefined): string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 import { calculateProration } from '../lib/proration';
-import { validateRequest, billingCheckoutSchema, billingUpgradeSchema } from '../lib/validation';
+import { validateRequest, billingCheckoutSchema, billingUpgradeSchema, billingTrialCardSchema } from '../lib/validation';
 import { invalidatePlanCache } from '../lib/planGate';
 import { attributeAffiliateCommission } from '../lib/affiliate';
 
@@ -510,6 +510,104 @@ export default async function billingRoutes(app: FastifyInstance) {
         planName,
         amount:         price,
       };
+    }
+  );
+
+  // ── POST /billing/trial-card ─────────────────────────────
+  // Trial com cartão (OPCIONAL). Durante o trial PRO o usuário pode cadastrar um
+  // cartão para garantir a continuidade. O Asaas cria uma assinatura cujo 1º
+  // vencimento é o FIM do trial (D+7) — nada é cobrado agora. Quando o pagamento
+  // é confirmado em D+7, o webhook chama activatePlan (trialing → active).
+  app.post<{ Body: any }>(
+    '/trial-card',
+    { ...auth, config: { rateLimit: { max: 8, timeWindow: '1 minute' } } },
+    async (req: any, reply) => {
+      const v = validateRequest(billingTrialCardSchema)(req.body);
+      if (!v.valid) return reply.code(400).send({ error: v.error });
+
+      const { card, billingAddress } = v.data;
+      const userId = req.user.sub;
+
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return reply.code(401).send({ error: 'Usuário não encontrado' });
+
+      // ── Mesmo gate da assinatura: e-mail verificado + CPF/CNPJ ──
+      if (!user.emailVerified) {
+        return reply.code(403).send({
+          code:  'EMAIL_NOT_VERIFIED',
+          error: 'Confirme seu e-mail antes de cadastrar um cartão.',
+        });
+      }
+      if (!user.document) {
+        return reply.code(400).send({
+          code:  'DOCUMENT_REQUIRED',
+          error: 'Informe seu CPF/CNPJ para cadastrar um cartão.',
+        });
+      }
+
+      // ── Só faz sentido durante o trial PRO ativo ──
+      const sub = await prisma.subscription.findUnique({ where: { userId } });
+      const now = new Date();
+      const onTrial = sub?.status === 'trialing' && !!sub.trialEndsAt && sub.trialEndsAt > now;
+      if (!onTrial || !sub?.trialEndsAt) {
+        return reply.code(400).send({ error: 'Cadastro de cartão disponível apenas durante o período de teste.' });
+      }
+      // Idempotência: cartão já garantido neste trial
+      if (sub.paymentMethod === 'credit_card' && sub.asaasSubscriptionId) {
+        return { status: 'already_set', chargeDate: sub.trialEndsAt.toISOString().slice(0, 10) };
+      }
+
+      // ── Criar/buscar cliente no Asaas ──
+      let asaasCustomerId: string;
+      try {
+        asaasCustomerId = sub.asaasCustomerId || await getOrCreateCustomer(user);
+      } catch (err: any) {
+        app.log.error({ err }, 'Asaas customer error (trial-card)');
+        return reply.code(503).send({ error: 'Serviço de pagamento indisponível. Tente novamente.' });
+      }
+
+      // 1º vencimento = fim do trial (D+7). Nada é cobrado agora; o cartão é tokenizado.
+      const nextDue  = sub.trialEndsAt.toISOString().slice(0, 10);
+      const remoteIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
+      const cardObj  = {
+        holderName:  card.holderName.toUpperCase(),
+        number:      card.number.replace(/\s/g, ''),
+        expiryMonth: card.expiryMonth,
+        expiryYear:  card.expiryYear.length === 2 ? `20${card.expiryYear}` : card.expiryYear,
+        ccv:         card.ccv,
+      };
+
+      const subRes = await asaas('/subscriptions', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer:             asaasCustomerId,
+          billingType:          'CREDIT_CARD',
+          value:                PLAN_PRICES.pro,
+          nextDueDate:          nextDue,
+          cycle:                'MONTHLY',
+          description:          `ZapScript ${PLAN_LABELS.pro} — Assinatura mensal (após teste grátis)`,
+          externalReference:    encodeRef(userId, 'pro'),
+          creditCard:           cardObj,
+          creditCardHolderInfo: buildHolderInfo(user, billingAddress),
+          remoteIp,
+        }),
+      }).then(r => r.json()).catch(() => null) as any;
+
+      if (!subRes?.id) {
+        const errMsg = subRes?.errors?.[0]?.description || subRes?.message || 'Cartão não aprovado. Verifique os dados e tente novamente.';
+        app.log.warn({ subRes }, 'Asaas trial-card subscription error');
+        return reply.code(402).send({ status: 'declined', error: errMsg });
+      }
+
+      // Mantém o status 'trialing' — apenas anexa o cartão e a assinatura futura.
+      // O webhook PAYMENT_CONFIRMED em D+7 chama activatePlan → 'active'.
+      await prisma.subscription.update({
+        where: { userId },
+        data:  { asaasSubscriptionId: subRes.id, asaasCustomerId, paymentMethod: 'credit_card' },
+      }).catch((e: any) => app.log.warn({ err: e.message, userId }, '[TrialCard] Falha ao anexar cartão à subscription'));
+
+      app.log.info(`Trial-card cadastrado: userId=${userId} sub=${subRes.id} 1ºvenc=${nextDue} valor=${PLAN_PRICES.pro}`);
+      return { status: 'trial_card_set', chargeDate: nextDue };
     }
   );
 

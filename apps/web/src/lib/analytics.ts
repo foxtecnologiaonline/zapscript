@@ -187,6 +187,28 @@ export function trackVisit(path: string) {
   });
 }
 
+/**
+ * Variante de A/B estável por visitante (índice em [0, n)).
+ * Mesma lógica do rodapé viral: escolhe uma vez e persiste, para que o mesmo
+ * visitante veja sempre a mesma âncora de preço (medição A/B limpa).
+ */
+export function pickVariant(key: string, n: number): number {
+  if (n <= 1) return 0;
+  try {
+    const k = `zs_ab_${key}`;
+    const saved = localStorage.getItem(k);
+    if (saved !== null) {
+      const i = parseInt(saved, 10);
+      if (Number.isFinite(i) && i >= 0 && i < n) return i;
+    }
+    const i = Math.floor(Math.random() * n);
+    localStorage.setItem(k, String(i));
+    return i;
+  } catch {
+    return 0;
+  }
+}
+
 /** Registra um clique em CTA principal (identificado por `name`). */
 export function trackClick(name: string, path?: string) {
   sendEvent({

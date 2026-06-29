@@ -101,6 +101,13 @@ export const billingUpgradeSchema = z.object({
   billingAddress: billingAddressSchema,
 });
 
+// Trial com cartão (opcional): nada é cobrado agora — só CPF/cartão para a
+// assinatura cujo 1º vencimento é o fim do trial (D+7).
+export const billingTrialCardSchema = z.object({
+  card:           cardSchema,
+  billingAddress: billingAddressSchema,
+});
+
 export const createSubscriptionSchema = z.object({
   planId: z.string().cuid('ID do plano inválido'),
 });

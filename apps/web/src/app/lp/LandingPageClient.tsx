@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { captureAffiliateFromUrl } from '@/lib/affiliate';
 import { Testimonials } from '@/components/Testimonials';
+import ConversationDemo from '@/components/ConversationDemo';
+import PriceAnchor from '@/components/PriceAnchor';
 import { isJunePromoActive } from '@/lib/promo';
 
 /* ── Tipos ──────────────────────────────────────────────────────────── */
@@ -113,10 +115,48 @@ const PLANS = [
   // Executive: plano legacy — não exibido na landing page
 ];
 
+/* ── Landing por dor ────────────────────────────────────────────────────
+   Override do hero por ?dor= na URL (anúncio/segmentação por dor específica).
+   Só afeta badge/headline/sub do hero — o resto da página é mantido.
+   Ex.: /vendas?dor=tempo   /dentistas?dor=esquecer
+   ──────────────────────────────────────────────────────────────────────── */
+const PAIN_VARIANTS: Record<string, Pick<Variant, 'badge' | 'headline' | 'sub'>> = {
+  tempo: {
+    badge: '⏱️ Recupere seu tempo',
+    headline: 'Recupere as horas que você perde ouvindo áudio.',
+    sub: 'O ZapScript converte cada áudio do WhatsApp em texto e resumo automático. Você lê em segundos o que levaria minutos para ouvir.',
+  },
+  'audios-longos': {
+    badge: '🎤 Áudio de 5 minutos?',
+    headline: 'Aquele áudio interminável? Leia em segundos.',
+    sub: 'Transcrição completa + resumo com os pontos principais, sem precisar ouvir do começo ao fim. Direto no seu WhatsApp.',
+  },
+  esquecer: {
+    badge: '📌 Nada se perde',
+    headline: 'Nunca mais perca um detalhe importante de um áudio.',
+    sub: 'Cada áudio vira texto pesquisável, com resumo dos pontos-chave. Endereço, valor, prazo — tudo registrado, fácil de achar depois.',
+  },
+  ocupado: {
+    badge: '🤫 Ouça sem ouvir',
+    headline: 'Sem tempo (ou silêncio) para ouvir áudio agora?',
+    sub: 'Leia a transcrição na hora, em qualquer lugar — reunião, transporte, fila. O áudio volta em texto sozinho, direto no WhatsApp.',
+  },
+};
+
 /* ── Componente principal ───────────────────────────────────────────── */
 export default function LandingPageClient({ variant }: { variant: Variant }) {
   // Captura o ?aff= e remove o código da barra de endereços
   useEffect(() => { captureAffiliateFromUrl(); }, []);
+
+  // Landing por dor: override do hero via ?dor= (client-side, não muda SEO)
+  const [pain, setPain] = useState<Pick<Variant, 'badge' | 'headline' | 'sub'> | null>(null);
+  useEffect(() => {
+    try {
+      const dor = new URLSearchParams(window.location.search).get('dor');
+      if (dor && PAIN_VARIANTS[dor]) setPain(PAIN_VARIANTS[dor]);
+    } catch { /* noop */ }
+  }, []);
+  const hero = pain ? { ...variant, ...pain } : variant;
 
   // 50% off no 1º mês — oferta permanente, espelha lib/promo.ts
   const junePromo = isJunePromoActive();
@@ -179,17 +219,17 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
         <div className="relative max-w-3xl mx-auto">
           {/* Badge dinâmico */}
           <div className="inline-flex items-center gap-2 bg-brand-primary/10 border border-brand-primary/20 rounded-full px-4 py-1.5 text-sm font-medium text-brand-primary mb-6">
-            {variant.badge}
+            {hero.badge}
           </div>
 
           {/* Headline dinâmica */}
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight mb-5">
-            {variant.headline}
+            {hero.headline}
           </h1>
 
           {/* Sub dinâmico */}
           <p className="text-lg sm:text-xl text-brand-muted leading-relaxed max-w-2xl mx-auto mb-8">
-            {variant.sub}
+            {hero.sub}
           </p>
 
           {/* CTA principal */}
@@ -324,30 +364,32 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
       </section>
 
       {/* ════════════════════════════════════════════════════════════
-          COMO FUNCIONA — 3 passos
+          VEJA NA PRÁTICA — mockup real da conversa
       ════════════════════════════════════════════════════════════ */}
       <section className="py-16 px-4">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-3xl font-bold text-white mb-2">Como funciona</h2>
-          <p className="text-brand-primary font-medium mb-1">Seu robô particular, convertendo áudio em texto 24 horas por dia — mesmo enquanto você dorme.</p>
-          <p className="text-brand-muted mb-12">Pronto em menos de 2 minutos. Sem instalar nada.</p>
-          <div className="grid sm:grid-cols-3 gap-6">
-            {[
-              { step: '1', emoji: '📱', title: 'Crie sua conta', desc: 'Cadastro em 30 segundos. Sem cartão de crédito.' },
-              { step: '2', emoji: '🔗', title: 'Conecte seu número', desc: 'Escaneie o QR code no painel. Leva 1 minuto.' },
-              { step: '3', emoji: '⚡', title: 'Receba as conversões', desc: 'Cada áudio vira texto + resumo automaticamente.' },
-            ].map(({ step, emoji, title, desc }) => (
-              <div key={step} className="relative">
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 h-full">
-                  <div className="w-8 h-8 rounded-full bg-brand-primary/20 border border-brand-primary/30 text-brand-primary text-sm font-bold flex items-center justify-center mb-4 mx-auto">
-                    {step}
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-bold text-white mb-2">Veja como aparece no seu WhatsApp</h2>
+            <p className="text-brand-primary font-medium mb-1">O áudio chega e a transcrição + resumo voltam na mesma conversa, automaticamente.</p>
+            <p className="text-brand-muted">Você lê em segundos o que levaria minutos ouvindo — sem abrir o áudio.</p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-10 items-center">
+            <ConversationDemo />
+            <div className="space-y-5">
+              {[
+                { emoji: '📱', title: 'Conecte uma vez', desc: 'Escaneie o QR code no painel. Leva 1 minuto, sem instalar nada.' },
+                { emoji: '🎤', title: 'Receba o áudio normalmente', desc: 'Nada muda no seu WhatsApp. O áudio chega como sempre.' },
+                { emoji: '⚡', title: 'A transcrição volta sozinha', desc: 'Texto completo + resumo com IA aparecem na hora, na própria conversa.' },
+              ].map(({ emoji, title, desc }) => (
+                <div key={title} className="flex gap-3">
+                  <div className="text-2xl flex-shrink-0">{emoji}</div>
+                  <div>
+                    <h3 className="font-bold text-white mb-0.5">{title}</h3>
+                    <p className="text-brand-muted text-sm leading-relaxed">{desc}</p>
                   </div>
-                  <div className="text-4xl mb-3">{emoji}</div>
-                  <h3 className="font-bold text-white mb-2">{title}</h3>
-                  <p className="text-brand-muted text-sm leading-relaxed">{desc}</p>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -530,6 +572,12 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
           <p className="mt-5 text-sm text-brand-muted">
             ✓ Grátis &nbsp;·&nbsp; ✓ Sem cartão &nbsp;·&nbsp; ✓ Cancele quando quiser &nbsp;·&nbsp; ✓ LGPD
           </p>
+          <PriceAnchor
+            prefix="Plano Pro por "
+            compare
+            className="block text-sm text-brand-muted mt-4"
+            compareClassName="block text-xs text-brand-muted/70 mt-1"
+          />
         </div>
       </section>
 

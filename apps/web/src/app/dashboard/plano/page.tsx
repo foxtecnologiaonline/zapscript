@@ -28,6 +28,7 @@ interface Stats {
   isTrial: boolean;
   trialEndsAt: string | null;
   trialDaysLeft: number | null;
+  cardOnFile: boolean;   // cartão já garantido para a cobrança em D+7
 }
 
 interface User {
@@ -487,6 +488,7 @@ function PlanoContent() {
   const [user, setUser]               = useState<User | null>(null);
   const [loading, setLoading]         = useState(true);
   const [checkoutPlan, setCheckoutPlan]     = useState<string | null>(null);  // plano com checkout inline aberto
+  const [trialCardMode, setTrialCardMode]   = useState(false);                // checkout em modo "garantir cartão do trial"
   const [docModal, setDocModal]             = useState<string | null>(null);
   const [verifyModal, setVerifyModal]       = useState(false);
   const [showTable, setShowTable]           = useState(false);
@@ -497,6 +499,7 @@ function PlanoContent() {
   const [invoicesMeta, setInvoicesMeta]       = useState<{ isTester?: boolean; testerRenewalsUsed?: number; testerRenewalsTotal?: number }>({});
   const justUpgraded = searchParams.get('upgrade') === 'success';
   const justCanceled = searchParams.get('canceled') === '1';
+  const trialCardSet = searchParams.get('trialcardset') === '1';
 
   /* — Minute packages — */
   const [minutePkgs, setMinutePkgs]             = useState<MinutePkg[]>(DEFAULT_MINUTE_PKGS);
@@ -554,6 +557,26 @@ function PlanoContent() {
     setMinutePkgs([]);
   }, []);
 
+  // ── Trial com cartão: abre o checkout em modo "garantir cartão" (D+7) ──
+  // Reaproveita o gate de e-mail verificado + CPF antes de tokenizar o cartão.
+  function startTrialCard() {
+    setTrialCardMode(true);
+    if (!user?.emailVerified) { setVerifyModal(true); return; }
+    if (!user?.document)      { setDocModal('pro');   return; }
+    setUpgradePreview(null);
+    setCheckoutPlan('pro');
+  }
+
+  // Dispara o fluxo de cartão do trial quando vier de ?trialcard=1 (CTA do banner).
+  const trialcardParam = searchParams.get('trialcard') === '1';
+  useEffect(() => {
+    if (!trialcardParam || !stats || !user) return;
+    if (!stats.isTrial || stats.cardOnFile) return;
+    if (trialCardMode || checkoutPlan || verifyModal || docModal) return;
+    startTrialCard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trialcardParam, stats, user]);
+
   // Abre o checkout inline para o plano
   function doCheckout(planName: string) {
     setCheckoutPlan(planName);
@@ -561,6 +584,7 @@ function PlanoContent() {
   }
 
   async function upgrade(planName: string) {
+    setTrialCardMode(false);  // fluxo normal de assinatura/upgrade (não é cartão de trial)
     // Opção A: gate de assinatura — e-mail verificado vem antes do CPF/checkout.
     if (!user?.emailVerified) {
       setVerifyModal(true);
@@ -589,6 +613,12 @@ function PlanoContent() {
   function handleCheckoutSuccess(planName: string) {
     setCheckoutPlan(null);
     setUpgradePreview(null);
+    // Trial: nada foi cobrado agora — só recarrega para refletir cardOnFile.
+    if (trialCardMode) {
+      setTrialCardMode(false);
+      window.location.href = `/dashboard/plano?trialcardset=1`;
+      return;
+    }
     window.location.href = `/dashboard/plano?upgrade=success`;
   }
 
@@ -640,6 +670,20 @@ function PlanoContent() {
           <div>
             <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Upgrade realizado com sucesso!</div>
             <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>Seu plano foi atualizado.</div>
+          </div>
+        </div>
+      )}
+
+      {/* Cartão do trial garantido */}
+      {trialCardSet && (
+        <div className="rounded-xl px-5 py-3.5 mb-5 flex items-center gap-3"
+          style={{ background: 'rgba(var(--color-primary)/.1)', border: '1px solid rgba(var(--color-primary)/.3)' }}>
+          <span className="text-xl">🔒</span>
+          <div>
+            <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Pro garantido!</div>
+            <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Seu cartão foi cadastrado. Nada foi cobrado agora — a 1ª cobrança será só ao fim do teste. Cancele antes e não paga nada.
+            </div>
           </div>
         </div>
       )}
@@ -1259,7 +1303,7 @@ function PlanoContent() {
         return (
           <div
             className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 overflow-y-auto"
-            onClick={() => setCheckoutPlan(null)}
+            onClick={() => { setCheckoutPlan(null); setTrialCardMode(false); }}
           >
             <div className="min-h-full flex items-start justify-center py-8 px-4">
               <div
@@ -1269,22 +1313,28 @@ function PlanoContent() {
               >
                 <div className="mb-5">
                   <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
-                    {currentPlan !== 'free' ? `Upgrade para ${plan.label}` : `Assinar plano ${plan.label}`}
+                    {trialCardMode
+                      ? 'Garanta seu Pro sem interrupção'
+                      : currentPlan !== 'free' ? `Upgrade para ${plan.label}` : `Assinar plano ${plan.label}`}
                   </h3>
                   <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                    {junePromo && checkoutPlan === 'pro'
-                      ? '🔥 50% OFF no 1º mês: R$19,90 · depois R$39,90/mês'
-                      : 'Escolha mensal ou anual · Cancele a qualquer momento'}
+                    {trialCardMode
+                      ? 'Nada é cobrado agora · 1ª cobrança só ao fim do teste · Cancele quando quiser'
+                      : junePromo && checkoutPlan === 'pro'
+                        ? '🔥 50% OFF no 1º mês: R$19,90 · depois R$39,90/mês'
+                        : 'Escolha mensal ou anual · Cancele a qualquer momento'}
                   </p>
                 </div>
                 <CheckoutInline
                   planName={checkoutPlan as 'pro' | 'executive'}
                   planLabel={plan.label}
-                  planPrice={junePromo && checkoutPlan === 'pro' ? 'R$19,90' : plan.price}
+                  planPrice={trialCardMode ? plan.price : (junePromo && checkoutPlan === 'pro' ? 'R$19,90' : plan.price)}
                   planFeats={plan.feats}
-                  isUpgrade={currentPlan !== 'free'}
+                  isUpgrade={!trialCardMode && currentPlan !== 'free'}
+                  trialMode={trialCardMode}
+                  trialChargeDate={trialCardMode ? (stats?.trialEndsAt ?? undefined) : undefined}
                   onSuccess={handleCheckoutSuccess}
-                  onCancel={() => setCheckoutPlan(null)}
+                  onCancel={() => { setCheckoutPlan(null); setTrialCardMode(false); }}
                 />
               </div>
             </div>

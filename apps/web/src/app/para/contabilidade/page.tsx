@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { isJunePromoActive, PRO_FULL_PRICE, PRO_PROMO_PRICE } from '@/lib/promo';
+import ConversationDemo from '@/components/ConversationDemo';
 
 export const metadata: Metadata = {
   title: 'ZapScript para Contabilidade — Converta os áudios dos seus clientes automaticamente',
@@ -180,24 +181,36 @@ export default function ParaContabilidadePage() {
           </div>
         </div>
 
-        {/* Como funciona */}
+        {/* Como aparece no WhatsApp */}
         <div className="mb-16 rounded-2xl p-8 border border-brand-primary/20" style={{ background: 'rgba(16,185,129,.05)' }}>
-          <h2 className="text-2xl font-bold text-white text-center mb-8">Como funciona — em 3 passos</h2>
-          <div className="grid sm:grid-cols-3 gap-6 text-center">
-            <div>
-              <div className="w-12 h-12 mx-auto rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center text-xl font-bold mb-3">1</div>
-              <p className="font-semibold text-white mb-1">Conecte o número</p>
-              <p className="text-sm text-brand-muted">Escaneie o QR Code uma vez, como no WhatsApp Web.</p>
-            </div>
-            <div>
-              <div className="w-12 h-12 mx-auto rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center text-xl font-bold mb-3">2</div>
-              <p className="font-semibold text-white mb-1">Chega o áudio do cliente</p>
-              <p className="text-sm text-brand-muted">O ZapScript converte em segundo plano, sozinho.</p>
-            </div>
-            <div>
-              <div className="w-12 h-12 mx-auto rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center text-xl font-bold mb-3">3</div>
-              <p className="font-semibold text-white mb-1">Leia texto + resumo</p>
-              <p className="text-sm text-brand-muted">Você abre o painel e vê tudo escrito, com os pontos principais.</p>
+          <h2 className="text-2xl font-bold text-white text-center mb-2">Veja como aparece no seu WhatsApp</h2>
+          <p className="text-brand-muted text-center mb-8 max-w-xl mx-auto">
+            O áudio do cliente chega e a transcrição com resumo volta sozinha — na mesma conversa, em segundos.
+          </p>
+          <div className="grid md:grid-cols-2 gap-8 items-center">
+            <ConversationDemo contactName="Cliente — Documentos do mês" audioDuration="1:12" />
+            <div className="space-y-5">
+              <div className="flex gap-3">
+                <span className="w-9 h-9 flex-shrink-0 rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center text-lg">📱</span>
+                <div>
+                  <p className="font-semibold text-white">Conecte uma vez</p>
+                  <p className="text-sm text-brand-muted">Escaneie o QR Code, como no WhatsApp Web. Leva 2 minutos.</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <span className="w-9 h-9 flex-shrink-0 rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center text-lg">🎤</span>
+                <div>
+                  <p className="font-semibold text-white">Receba o áudio normalmente</p>
+                  <p className="text-sm text-brand-muted">O cliente manda o áudio como sempre — você não muda nada.</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <span className="w-9 h-9 flex-shrink-0 rounded-full bg-brand-primary/15 text-brand-primary flex items-center justify-center text-lg">⚡</span>
+                <div>
+                  <p className="font-semibold text-white">A transcrição volta sozinha</p>
+                  <p className="text-sm text-brand-muted">Texto + resumo com os pontos principais, sem você ouvir nada.</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>

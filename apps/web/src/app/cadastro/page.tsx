@@ -164,7 +164,14 @@ function CadastroForm() {
               </div>
             </div>
           ) : (
-            <p className="text-brand-text-secondary text-sm mt-2 font-light">15 áudios grátis, sem cartão de crédito</p>
+            <>
+              <h1 className="text-brand-text text-lg sm:text-xl font-semibold mt-3 leading-tight">
+                Para quem prefere ler a ouvir.
+              </h1>
+              <p className="text-brand-text-secondary text-sm mt-1.5 font-light">
+                Comece com 15 áudios grátis — sem cartão de crédito.
+              </p>
+            </>
           )}
         </div>
 

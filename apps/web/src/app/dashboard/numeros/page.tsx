@@ -753,7 +753,7 @@ export default function NumerosPage() {
               <div className="grid grid-cols-2 gap-2 mb-4">
                 <div className="bg-brand-elevated rounded-lg p-2.5">
                   <div className="text-base font-black text-brand-primary leading-none">{n.messageCount}</div>
-                  <div className="text-[10px] text-brand-muted mt-0.5">conversões</div>
+                  <div className="text-[10px] text-brand-muted mt-0.5">áudios</div>
                 </div>
                 <div className="bg-brand-elevated rounded-lg p-2.5">
                   <div className="text-base font-black text-brand-primary leading-none">{n.minutesUsed.toFixed(1)}</div>

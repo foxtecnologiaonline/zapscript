@@ -98,6 +98,8 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       isTrial,
       trialEndsAt:         isTrial ? sub?.trialEndsAt?.toISOString() ?? null : null,
       trialDaysLeft,
+      // Cartão garantido para o trial (assinatura Asaas com 1ª cobrança em D+7)
+      cardOnFile:          sub?.paymentMethod === 'credit_card' && !!sub?.asaasSubscriptionId,
       // ── Tempo economizado no mês (C3) ──
       savedSecondsMonth,
       savedLabelMonth:     formatSavedTime(savedSecondsMonth),

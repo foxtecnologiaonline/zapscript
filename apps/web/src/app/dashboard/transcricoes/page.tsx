@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 
 /* ─── Types ───────────────────────────────────────────────────────────────── */
@@ -38,14 +38,6 @@ function bulletText(b: string): string {
 }
 
 /* ─── Constants ───────────────────────────────────────────────────────────── */
-const ALLOWED_EXT = [
-  '.ogg', '.opus', '.mp3', '.mp4', '.m4a', '.wav', '.webm', '.mpeg',
-  '.aac', '.flac', '.wma', '.amr', '.3gp', '.aiff', '.aif',
-];
-// Limite de tamanho por plano (MB) — Free=50MB, Pro=100MB, Executive=200MB
-const MAX_MB_DEFAULT   = 50;
-const MAX_MB_PRO       = 100;
-const MAX_MB_EXECUTIVE = 200;
 const LIMIT       = 20;
 
 const PLAN_HISTORY = ['free', 'pro', 'pro-tester', 'executive'];
@@ -197,169 +189,6 @@ function TagInput({ tags, onChange, disabled }: {
       {disabled && tags.length === 0 && (
         <span className="text-xs text-brand-muted italic px-1">Sem tags</span>
       )}
-    </div>
-  );
-}
-
-/** Upload audio modal */
-function UploadModal({ onClose, onDone, planName }: { onClose: () => void; onDone: () => void; planName: string }) {
-  const maxMb = planName === 'executive'                          ? MAX_MB_EXECUTIVE
-              : (planName === 'pro' || planName === 'pro-tester') ? MAX_MB_PRO
-              :                                                      MAX_MB_DEFAULT;
-  const inputRef                  = useRef<HTMLInputElement>(null);
-  const [file, setFile]           = useState<File | null>(null);
-  const [dragging, setDragging]   = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError]         = useState('');
-  const [success, setSuccess]     = useState(false);
-
-  function validateFile(f: File): string {
-    const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase();
-    if (!ALLOWED_EXT.includes(ext)) return `Formato inválido. Use: ${ALLOWED_EXT.join(', ')}`;
-    if (f.size > maxMb * 1024 * 1024) return `Arquivo muito grande. Máximo ${maxMb}MB.`;
-    return '';
-  }
-
-  function pickFile(f: File) {
-    const err = validateFile(f);
-    if (err) { setError(err); setFile(null); return; }
-    setError(''); setFile(f);
-  }
-
-  async function handleUpload() {
-    if (!file) return;
-    setUploading(true); setError('');
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      await api.postFormData('/transcriptions/upload', fd);
-      setSuccess(true);
-      setTimeout(() => { onDone(); onClose(); }, 2000);
-    } catch (err: any) {
-      setError(err.message || 'Erro ao enviar. Tente novamente.');
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={onClose}>
-      <div
-        className="bg-brand-surface w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 sm:p-6 shadow-2xl"
-        onClick={e => e.stopPropagation()}>
-
-        {/* Drag handle mobile */}
-        <div className="w-10 h-1 bg-brand-border rounded-full mx-auto mb-5 sm:hidden" />
-
-        <div className="flex items-start justify-between mb-5">
-          <div>
-            <h2 className="font-bold text-base text-brand-text">Enviar áudio para conversão</h2>
-            <p className="text-xs text-brand-muted mt-0.5">
-              MP3 · M4A · AAC · OGG · WAV · FLAC · WMA · AMR e outros — máx.{' '}
-              <span className={planName === 'pro' || planName === 'executive' ? 'font-semibold' : ''}>
-                {maxMb}MB
-              </span>
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-brand-muted hover:text-brand-text p-1 rounded-lg transition-colors"
-            aria-label="Fechar">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {success ? (
-          <div className="text-center py-8">
-            <div className="w-16 h-16 rounded-full bg-brand-primary/10 border-2 border-brand-primary/30 flex items-center justify-center mx-auto mb-4">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: 'rgb(var(--color-primary))' }}>
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-            <p className="font-semibold text-brand-text">Áudio enviado com sucesso!</p>
-            <p className="text-xs text-brand-muted mt-1">A conversão chegará em instantes…</p>
-          </div>
-        ) : (
-          <>
-            <div
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all mb-4 ${
-                dragging
-                  ? 'border-brand-primary bg-brand-primary/5 scale-[1.01]'
-                  : file
-                    ? 'border-brand-primary/40 bg-brand-primary/5'
-                    : 'border-brand-border hover:border-brand-primary/40 hover:bg-brand-elevated/50'
-              }`}
-              onClick={() => inputRef.current?.click()}
-              onDragOver={e => { e.preventDefault(); setDragging(true); }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) pickFile(f); }}>
-              <input
-                ref={inputRef}
-                type="file"
-                accept={`audio/*,${ALLOWED_EXT.join(',')}`}
-                className="hidden"
-                onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f); }}
-              />
-              {file ? (
-                <>
-                  <div className="text-3xl mb-2">🎙️</div>
-                  <p className="text-sm font-semibold text-brand-text">{file.name}</p>
-                  <p className="text-xs text-brand-muted mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                  <button
-                    type="button"
-                    onClick={e => { e.stopPropagation(); setFile(null); setError(''); }}
-                    className="text-xs text-brand-muted hover:text-red-400 mt-2 transition-colors">
-                    Remover
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="text-3xl mb-2 opacity-60">📁</div>
-                  <p className="text-sm text-brand-text-secondary">
-                    Arraste aqui ou{' '}
-                    <span className="text-brand-primary font-semibold">clique para selecionar</span>
-                  </p>
-                </>
-              )}
-            </div>
-            {error && (
-              <div className="text-red-400 text-xs bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2 mb-4">
-                {error}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <button type="button" onClick={onClose} className="btn-ghost flex-1 py-2.5 text-sm">
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleUpload}
-                disabled={!file || uploading}
-                className="btn-primary flex-1 py-2.5 text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                {uploading ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                    </svg>
-                    Enviando…
-                  </>
-                ) : 'Converter áudio'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
     </div>
   );
 }
@@ -540,11 +369,8 @@ export default function TranscricoesPage() {
   const [filterSource, setFilterSource]     = useState('whatsapp-evolution');
 
   /* — Page UI state — */
-  const [pageTab, setPageTab]                     = useState<'whatsapp' | 'enviados'>('whatsapp');
   const [showFilterDrawer, setShowFilterDrawer]   = useState(false);
   const [showSortMenu, setShowSortMenu]           = useState(false);
-  const [whatsappCount, setWhatsappCount]         = useState(0);
-  const [uploadCount, setUploadCount]             = useState(0);
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
 
   /* — Detail modal state — */
@@ -552,8 +378,7 @@ export default function TranscricoesPage() {
   const [activeTab, setActiveTab]           = useState<ModalTab>('resumo');
   const [copied, setCopied]                 = useState(false);
 
-  /* — Upload & export — */
-  const [showUpload, setShowUpload]               = useState(false);
+  /* — Export — */
   const [exporting, setExporting]                 = useState(false);
   const [showExportMenu, setShowExportMenu]       = useState(false);
 
@@ -581,13 +406,6 @@ export default function TranscricoesPage() {
       .catch(() => null);
     api.get<any>('/nps/status')
       .then(s => { if (s.shouldShow) setNpsVisible(true); })
-      .catch(() => null);
-    // Badges de contagem para as tabs
-    api.get<{ items: any[]; total: number }>('/transcriptions?limit=1&source=whatsapp-evolution')
-      .then(r => setWhatsappCount(r.total || 0))
-      .catch(() => null);
-    api.get<{ items: any[]; total: number }>('/transcriptions?limit=1&source=manual')
-      .then(r => setUploadCount(r.total || 0))
       .catch(() => null);
   }, []);
 
@@ -628,11 +446,10 @@ export default function TranscricoesPage() {
   }
 
   function clearFilters() {
-    const src = pageTab === 'whatsapp' ? 'whatsapp-evolution' : 'manual';
     setSearch(''); setFilterTag(''); setFilterLang(''); setFilterContact('');
-    setDateFrom(''); setDateTo(''); setSortOrder('date_desc'); setFilterSource(src);
+    setDateFrom(''); setDateTo(''); setSortOrder('date_desc'); setFilterSource('whatsapp-evolution');
     setOffset(0);
-    load('', 0, '', '', '', '', '', 'date_desc', src);
+    load('', 0, '', '', '', '', '', 'date_desc', 'whatsapp-evolution');
   }
 
   // Limpa filtros ativos mantendo tab e ordenação atuais
@@ -641,16 +458,6 @@ export default function TranscricoesPage() {
     setDateFrom(''); setDateTo('');
     setOffset(0);
     load('', 0, '', '', '', '', '', sortOrder, filterSource);
-  }
-
-  // Alterna entre abas WhatsApp / Enviados
-  function switchPageTab(tab: 'whatsapp' | 'enviados') {
-    setPageTab(tab);
-    const src = tab === 'whatsapp' ? 'whatsapp-evolution' : 'manual';
-    setFilterSource(src);
-    setSearch('');
-    setOffset(0);
-    load('', 0, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, src);
   }
 
   function openDetail(t: Transcription) {
@@ -884,8 +691,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
           <h1 className="text-xl sm:text-2xl font-bold" style={{ color: 'rgb(var(--color-text))' }}>Conversões</h1>
           <p className="text-sm mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
             {loading ? 'Carregando…'
-              : pageTab === 'whatsapp' ? `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} do WhatsApp`
-              : `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} enviado${total !== 1 ? 's' : ''}`}
+              : `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} do WhatsApp`}
           </p>
         </div>
       </div>
@@ -903,8 +709,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               className={`input pr-4 py-3 w-full text-sm rounded-xl ${!canSearch ? 'opacity-60 cursor-not-allowed' : ''}`}
               style={{ paddingLeft: '2.5rem' }}
               placeholder={canSearch
-                ? (pageTab === 'enviados' ? 'Buscar por nome do arquivo ou texto…'
-                  : 'Buscar por contato, texto ou resumo…')
+                ? 'Buscar por contato, texto ou resumo…'
                 : '🔒 Busca disponível no plano Pro'}
               value={search}
               onChange={e => canSearch && setSearch(e.target.value)}
@@ -1128,41 +933,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         </div>
       )}
 
-      {/* ── PAGE TABS ───────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-1 mb-5 p-1 rounded-xl w-fit"
-        style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgb(var(--color-border))' }}>
-        <button
-          type="button"
-          onClick={() => switchPageTab('whatsapp')}
-          className="flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium transition-all"
-          style={pageTab === 'whatsapp'
-            ? { background: 'rgb(var(--color-primary))', color: '#030d06' }
-            : { color: 'rgb(var(--color-text-muted))' }}>
-          💬 WhatsApp
-          {whatsappCount > 0 && pageTab !== 'whatsapp' && (
-            <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-              style={{ background: 'rgba(13,150,104,.15)', color: 'rgb(var(--color-primary))' }}>
-              {whatsappCount}
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => switchPageTab('enviados')}
-          className="flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium transition-all"
-          style={pageTab === 'enviados'
-            ? { background: 'rgb(var(--color-primary))', color: '#030d06' }
-            : { color: 'rgb(var(--color-text-muted))' }}>
-          📁 Enviados
-          {uploadCount > 0 && pageTab !== 'enviados' && (
-            <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-              style={{ background: 'rgba(13,150,104,.15)', color: 'rgb(var(--color-primary))' }}>
-              {uploadCount}
-            </span>
-          )}
-        </button>
-      </div>
-
       {/* ── FILTER DRAWER ───────────────────────────────────────────────── */}
       {showFilterDrawer && (
         <FilterDrawer
@@ -1214,16 +984,12 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
             <p className="font-semibold text-brand-text mb-1">
               {hasFilters
                 ? 'Nenhuma conversão encontrada'
-                : pageTab === 'whatsapp' ? 'Nenhum áudio do WhatsApp ainda'
-                : 'Nenhum áudio enviado ainda'}
+                : 'Nenhum áudio do WhatsApp ainda'}
             </p>
             <p className="text-sm text-brand-muted mb-5">
               {hasFilters
                 ? 'Tente ajustar os filtros ou limpar a busca.'
-                : pageTab === 'whatsapp'
-                  ? 'Conecte um número e envie um áudio no WhatsApp para converter automaticamente.'
-                  : 'Os áudios recebidos no seu WhatsApp aparecem aqui automaticamente.'
-              }
+                : 'Conecte um número e envie um áudio no WhatsApp para converter automaticamente.'}
             </p>
             {hasFilters ? (
               <button type="button" onClick={clearFilters} className="btn-ghost text-sm px-5 py-2.5">
