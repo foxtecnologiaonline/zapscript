@@ -365,24 +365,24 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // PATCH /admin/users/:id — trocar plano, ajustar minutos ou alterar isAdmin
+  // PATCH /admin/users/:id — trocar plano, ajustar áudios ou alterar isAdmin
   app.patch<{
     Params: { id: string };
     Body: {
       planName?:    string;
       isAdmin?:     boolean;
-      minutes?:     number;
-      minutesMode?: 'set' | 'add';   // 'set' define absoluto, 'add' soma/subtrai (padrão: 'set')
+      audios?:      number;          // ajuste de áudios consumidos no ciclo
+      audiosMode?:  'set' | 'add';   // 'set' define audiosUsed absoluto, 'add' soma/subtrai (padrão: 'set')
     };
   }>(
     '/users/:id',
     { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
       const { id } = req.params;
-      const { planName, isAdmin, minutes, minutesMode = 'set' } = req.body;
+      const { planName, isAdmin, audios, audiosMode = 'set' } = req.body;
 
-      if (planName === undefined && isAdmin === undefined && minutes === undefined) {
-        return reply.code(400).send({ error: 'Informe ao menos um campo: planName, isAdmin ou minutes.' });
+      if (planName === undefined && isAdmin === undefined && audios === undefined) {
+        return reply.code(400).send({ error: 'Informe ao menos um campo: planName, isAdmin ou audios.' });
       }
 
       const VALID_PLANS = ['free', 'pro', 'ultra', 'executive', 'pro-tester'];
@@ -414,18 +414,20 @@ export default async function adminRoutes(app: FastifyInstance) {
               currentPeriodEnd:    planName === 'free' ? null : nextPeriod,
             },
           }),
-          // ao trocar plano: minutos resetados para cota do novo plano
-          // resetAt ancorado na data de aquisição (próximos usuários Pro)
+          // ao trocar plano: cota de áudios reiniciada (audiosUsed = 0)
+          // minutos internos reabastecidos p/ métrica de custo; resetAt ancorado na aquisição
           prisma.minuteBalance.upsert({
             where:  { userId: id },
             create: {
               userId:           id,
               availableMinutes: plan.minutesPerMonth,
+              audiosUsed:       0,
               resetAt:          nextPeriod ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
               lastAlertSent:    null,
             },
             update: {
               availableMinutes: plan.minutesPerMonth,
+              audiosUsed:       0,
               lastAlertSent:    null,
               ...(nextPeriod ? { resetAt: nextPeriod } : {}),
             },
@@ -440,25 +442,25 @@ export default async function adminRoutes(app: FastifyInstance) {
       // Executa operações acima antes de ajustar minutos
       if (ops.length) await prisma.$transaction(ops);
 
-      // Ajuste de minutos (independente ou após troca de plano)
-      if (minutes !== undefined) {
-        if (typeof minutes !== 'number' || isNaN(minutes)) {
-          return reply.code(400).send({ error: 'minutes deve ser um número.' });
+      // Ajuste de áudios consumidos no ciclo (independente ou após troca de plano)
+      if (audios !== undefined) {
+        if (typeof audios !== 'number' || isNaN(audios)) {
+          return reply.code(400).send({ error: 'audios deve ser um número.' });
         }
 
-        if (minutesMode === 'add') {
-          // Soma/subtrai ao saldo atual (garante mínimo 0)
+        if (audiosMode === 'add') {
+          // Soma/subtrai ao consumo atual (garante mínimo 0)
           const current = await prisma.minuteBalance.findUnique({ where: { userId: id } });
-          const newVal  = Math.max(0, (current?.availableMinutes ?? 0) + minutes);
+          const newVal  = Math.max(0, ((current as any)?.audiosUsed ?? 0) + audios);
           await prisma.minuteBalance.update({
             where: { userId: id },
-            data:  { availableMinutes: newVal, lastAlertSent: null },
+            data:  { audiosUsed: newVal, lastAlertSent: null } as any,
           });
         } else {
-          // 'set' — define valor absoluto (mínimo 0)
+          // 'set' — define audiosUsed absoluto (mínimo 0)
           await prisma.minuteBalance.update({
             where: { userId: id },
-            data:  { availableMinutes: Math.max(0, minutes), lastAlertSent: null },
+            data:  { audiosUsed: Math.max(0, audios), lastAlertSent: null } as any,
           });
         }
       }
@@ -673,16 +675,16 @@ export default async function adminRoutes(app: FastifyInstance) {
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
       const totalMinutesUsed = usageLogs.reduce((s: number, l: any) => s + (l.minutesUsed || 0), 0);
-      const planLimit        = user.subscription?.plan?.minutesPerMonth || 0;
-      const available        = user.balance?.availableMinutes || 0;
-      const usagePct         = planLimit > 0 ? Math.min(100, ((planLimit - available) / planLimit) * 100) : 0;
+      const planLimit        = (user.subscription?.plan as any)?.audiosPerMonth || 0;
+      const audiosUsed       = (user.balance as any)?.audiosUsed || 0;
+      const usagePct         = planLimit > 0 ? Math.min(100, (audiosUsed / planLimit) * 100) : 0;
 
       return {
         user,
         stats: {
           totalTranscriptions: transcriptions.length,
           totalMinutesUsed,
-          availableMinutes: available,
+          audiosUsed,
           planLimit,
           usagePct: Math.round(usagePct),
         },
@@ -727,22 +729,23 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // PATCH /admin/plans/:id — editar detalhes de um plano (label, minutos, preço, etc.)
+  // PATCH /admin/plans/:id — editar detalhes de um plano (label, áudios, preço, etc.)
   app.patch<{
     Params: { id: string };
-    Body: { label?: string; minutesPerMonth?: number; maxNumbers?: number; priceBrl?: number; features?: unknown[] };
+    Body: { label?: string; audiosPerMonth?: number; minutesPerMonth?: number; maxNumbers?: number; priceBrl?: number; features?: unknown[] };
   }>(
     '/plans/:id',
     { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
       const { id } = req.params;
-      const { label, minutesPerMonth, maxNumbers, priceBrl, features } = req.body;
+      const { label, audiosPerMonth, minutesPerMonth, maxNumbers, priceBrl, features } = req.body;
 
       const plan = await prisma.plan.findUnique({ where: { id } });
       if (!plan) return reply.code(404).send({ error: 'Plano não encontrado.' });
 
       const data: Record<string, unknown> = {};
       if (label            !== undefined) data.label            = label;
+      if (audiosPerMonth   !== undefined) data.audiosPerMonth   = audiosPerMonth;
       if (minutesPerMonth  !== undefined) data.minutesPerMonth  = minutesPerMonth;
       if (maxNumbers       !== undefined) data.maxNumbers       = maxNumbers;
       if (priceBrl         !== undefined) data.priceBrl         = priceBrl;
@@ -763,12 +766,12 @@ export default async function adminRoutes(app: FastifyInstance) {
 
   // POST /admin/plans — criar novo plano (ex: pro-tester)
   app.post<{
-    Body: { name: string; label: string; minutesPerMonth: number; maxNumbers: number; priceBrl: number; features?: unknown[] };
+    Body: { name: string; label: string; audiosPerMonth?: number; minutesPerMonth: number; maxNumbers: number; priceBrl: number; features?: unknown[] };
   }>(
     '/plans',
     { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
     async (req, reply) => {
-      const { name, label, minutesPerMonth, maxNumbers, priceBrl, features = [] } = req.body;
+      const { name, label, audiosPerMonth, minutesPerMonth, maxNumbers, priceBrl, features = [] } = req.body;
       if (!name || !label || minutesPerMonth == null || maxNumbers == null || priceBrl == null) {
         return reply.code(400).send({ error: 'Campos obrigatórios: name, label, minutesPerMonth, maxNumbers, priceBrl.' });
       }
@@ -777,7 +780,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         return reply.code(409).send({ error: `Plano "${name}" já existe.`, plan: existing });
       }
       const plan = await prisma.plan.create({
-        data: { name, label, minutesPerMonth, maxNumbers, priceBrl, features: features as any },
+        data: { name, label, audiosPerMonth: audiosPerMonth ?? 0, minutesPerMonth, maxNumbers, priceBrl, features: features as any } as any,
       });
       app.log.info({ planId: plan.id, name }, '[Admin] Plano criado');
       return reply.code(201).send(plan);
@@ -795,7 +798,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         testerSince:  true,
         createdAt:    true,
         subscription: { include: { plan: true } },
-        balance:      { select: { availableMinutes: true, accumulatedMinutes: true } },
+        balance:      { select: { audiosUsed: true, availableMinutes: true, accumulatedMinutes: true } },
         numbers:      { select: { id: true, status: true, phoneNumber: true } },
       },
       orderBy: { testerSince: 'asc' },
@@ -812,7 +815,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         planName:       u.subscription?.plan?.name  || 'sem plano',
         planLabel:      u.subscription?.plan?.label || '—',
         subStatus:      u.subscription?.status      || '—',
-        minutesAvail:   u.balance?.availableMinutes  ?? 0,
+        audiosUsed:     u.balance?.audiosUsed        ?? 0,
         numbersConnected: u.numbers.filter((n: any) => n.status === 'connected').length,
       })),
     };
@@ -834,7 +837,7 @@ export default async function adminRoutes(app: FastifyInstance) {
           maxNumbers:      5,
           priceBrl:        0,   // gratuito para testers
           features:        JSON.stringify([
-            '500 min/mês', '5 números WhatsApp', 'Conversão automática',
+            'Áudios ilimitados', '5 números WhatsApp', 'Conversão automática',
             'Ponto chave IA', 'Busca full-text', 'Exportação CSV',
             'Tags', 'Tradução automática', 'Webhook personalizado', 'Modo privado',
           ]),
@@ -1784,7 +1787,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       const { userIds, action, value } = req.body;
       if (!Array.isArray(userIds) || userIds.length === 0) return reply.code(400).send({ error: 'userIds é obrigatório.' });
       if (userIds.length > 100)  return reply.code(400).send({ error: 'Máximo 100 usuários por ação em lote.' });
-      const allowed = ['add-minutes', 'set-plan', 'ban', 'unban', 'anonymize', 'export-data'];
+      const allowed = ['add-audios', 'set-plan', 'ban', 'unban', 'anonymize', 'export-data'];
       if (!allowed.includes(action)) return reply.code(400).send({ error: `Ação inválida. Use: ${allowed.join(', ')}` });
 
       let affected = 0;
@@ -1792,15 +1795,16 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       for (const userId of userIds) {
         try {
-          if (action === 'add-minutes') {
-            const minutes = parseFloat(value);
-            if (isNaN(minutes)) throw new Error('value deve ser número');
+          if (action === 'add-audios') {
+            // value = delta em audiosUsed (negativo devolve cota; positivo consome)
+            const delta = parseFloat(value);
+            if (isNaN(delta)) throw new Error('value deve ser número');
             const current = await prisma.minuteBalance.findUnique({ where: { userId } });
-            const newVal  = Math.max(0, (current?.availableMinutes ?? 0) + minutes);
+            const newVal  = Math.max(0, ((current as any)?.audiosUsed ?? 0) + delta);
             await prisma.minuteBalance.upsert({
               where:  { userId },
-              create: { userId, availableMinutes: newVal, resetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), lastAlertSent: null },
-              update: { availableMinutes: newVal, lastAlertSent: null },
+              create: { userId, audiosUsed: newVal, resetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), lastAlertSent: null } as any,
+              update: { audiosUsed: newVal, lastAlertSent: null } as any,
             });
 
           } else if (action === 'set-plan') {
@@ -1815,8 +1819,8 @@ export default async function adminRoutes(app: FastifyInstance) {
               }),
               prisma.minuteBalance.upsert({
                 where:  { userId },
-                create: { userId, availableMinutes: plan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
-                update: { availableMinutes: plan.minutesPerMonth, lastAlertSent: null, resetAt: nextReset },
+                create: { userId, audiosUsed: 0, availableMinutes: plan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null } as any,
+                update: { audiosUsed: 0, availableMinutes: plan.minutesPerMonth, lastAlertSent: null, resetAt: nextReset } as any,
               }),
             ]);
 

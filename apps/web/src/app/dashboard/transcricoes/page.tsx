@@ -571,14 +571,6 @@ export default function TranscricoesPage() {
   const [npsSubmitting, setNpsSubmitting]   = useState(false);
   const [npsDone, setNpsDone]               = useState(false);
 
-  /* ── Open upload modal when ?upload=1 ─────────────────────────────────── */
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('upload') === '1') setShowUpload(true);
-    }
-  }, []);
-
   /* ── Boot ──────────────────────────────────────────────────────────────── */
   useEffect(() => {
     api.get<any>('/auth/me')
@@ -896,16 +888,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               : `${total.toLocaleString('pt-BR')} áudio${total !== 1 ? 's' : ''} enviado${total !== 1 ? 's' : ''}`}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowUpload(true)}
-          className="btn-primary text-sm px-4 py-2.5 flex items-center gap-2 flex-shrink-0">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-          </svg>
-          <span className="hidden sm:inline">Enviar áudio</span>
-          <span className="sm:hidden">Enviar</span>
-        </button>
       </div>
 
       {/* ── HERO SEARCH ─────────────────────────────────────────────────── */}
@@ -1240,21 +1222,17 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                 ? 'Tente ajustar os filtros ou limpar a busca.'
                 : pageTab === 'whatsapp'
                   ? 'Conecte um número e envie um áudio no WhatsApp para converter automaticamente.'
-                  : 'Envie um arquivo de áudio pelo site para converter.'
+                  : 'Os áudios recebidos no seu WhatsApp aparecem aqui automaticamente.'
               }
             </p>
             {hasFilters ? (
               <button type="button" onClick={clearFilters} className="btn-ghost text-sm px-5 py-2.5">
                 Limpar filtros
               </button>
-            ) : pageTab === 'whatsapp' ? (
+            ) : (
               <a href="/dashboard/numeros" className="btn-primary text-sm px-6 py-2.5 inline-flex items-center gap-2">
                 💬 Conectar número
               </a>
-            ) : (
-              <button type="button" onClick={() => setShowUpload(true)} className="btn-primary text-sm px-6 py-2.5">
-                📁 Enviar áudio
-              </button>
             )}
           </div>
 
@@ -1410,14 +1388,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         )
       )}
 
-      {/* ── UPLOAD MODAL ────────────────────────────────────────────────── */}
-      {showUpload && (
-        <UploadModal
-          onClose={() => setShowUpload(false)}
-          onDone={() => { setOffset(0); load('', 0, '', '', '', '', '', 'date_desc', filterSource); }}
-          planName={planName}
-        />
-      )}
+      {/* Upload manual de áudio desativado — função movida para app/site separado. */}
 
       {/* ── DETAIL MODAL ────────────────────────────────────────────────── */}
       {selected && (

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { captureAffiliateFromUrl } from '@/lib/affiliate';
 import { Testimonials } from '@/components/Testimonials';
+import { isJunePromoActive } from '@/lib/promo';
 
 /* ── Tipos ──────────────────────────────────────────────────────────── */
 export interface Variant {
@@ -81,7 +82,7 @@ const PLANS = [
     period: '/mês',
     highlight: false,
     features: [
-      '20 min de conversão/mês',
+      '15 áudios/mês',
       '1 número conectado',
       'Conversão automática',
       'Resumo por IA',
@@ -98,7 +99,7 @@ const PLANS = [
     highlight: true,
     badge: '⭐ Mais popular',
     features: [
-      '200 min de conversão/mês',
+      'Áudios ilimitados (até 10 min cada)',
       '2 números conectados',
       'Conversão automática + áudios no site',
       'Resumo por IA',
@@ -117,11 +118,10 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
   // Captura o ?aff= e remove o código da barra de endereços
   useEffect(() => { captureAffiliateFromUrl(); }, []);
 
-  // Promo de junho/2026 — espelha a lógica de dashboard/plano/page.tsx
-  const now = new Date();
-  const junePromo = now.getFullYear() === 2026 && now.getMonth() === 5;
+  // 50% off no 1º mês — oferta permanente, espelha lib/promo.ts
+  const junePromo = isJunePromoActive();
   const plans = PLANS.map(p => p.name !== 'Pro' ? p : junePromo
-    ? { ...p, price: 'R$19,90', period: '/1º mês · depois R$39,90', badge: '🔥 Oferta de junho' }
+    ? { ...p, price: 'R$19,90', period: '/1º mês · depois R$39,90', badge: '🔥 50% OFF no 1º mês' }
     : p);
 
   const faqs = variant.faqs ?? FAQS;

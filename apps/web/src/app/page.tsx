@@ -1,7 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ThemeToggleButton } from '@/components/ThemeProvider';
-import { DemoTranscribe } from '@/components/DemoTranscribe';
 import { ChatDemo } from '@/components/ChatDemo';
 import { FaqSection } from '@/components/FaqSection';
 import { PricingInteractive } from '@/components/PricingInteractive';
@@ -70,8 +69,8 @@ const schemaOrg = {
     audienceType: 'Corretores, advogados, vendedores, contadores e profissionais que recebem muitos áudios no WhatsApp',
   },
   offers: [
-    { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Free', description: '20 minutos de conversão por mês, sem cartão' },
-    { '@type': 'Offer', price: '39.90', priceCurrency: 'BRL', name: 'Pro', description: '200 minutos/mês, 2 números, resumo com IA, Modo Privado e histórico' },
+    { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Free', description: '15 áudios por mês, sem cartão' },
+    { '@type': 'Offer', price: '39.90', priceCurrency: 'BRL', name: 'Pro', description: 'Áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico' },
   ],
   publisher: {
     '@type': 'Organization',
@@ -124,7 +123,7 @@ export default function HomePage() {
               <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold"
                 style={{ background: 'rgba(var(--color-primary-light)/.6)', color: 'rgb(var(--color-primary))' }}>
                 <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'rgb(var(--color-primary))' }} />
-                Leia em vez de ouvir
+                Gente ocupada lê
               </span>
             </div>
 
@@ -155,14 +154,6 @@ export default function HomePage() {
                     <path d="M5 12h14M12 5l7 7-7 7"/>
                   </svg>
                 </Link>
-                <a href="#demo" data-cta="home_hero_demo"
-                  className="mt-2 flex items-center justify-center gap-1.5 text-[13px] font-semibold transition-colors hover:opacity-80"
-                  style={{ color: 'rgb(var(--color-primary))' }}>
-                  Ou teste com 1 áudio agora — sem cadastro
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 5v14M5 12l7 7 7-7"/>
-                  </svg>
-                </a>
               </div>
 
               <div className="flex items-center gap-3">
@@ -234,6 +225,7 @@ export default function HomePage() {
               { label: '⚖️ Advogados', href: '/advogados' },
               { label: '💼 Vendas', href: '/vendas' },
               { label: '🧮 Contadores', href: '/para/contabilidade' },
+              { label: '🦷 Dentistas', href: '/dentistas' },
             ].map(n => (
               <Link key={n.href} href={n.href} data-cta="home_nicho"
                 className="inline-flex items-center px-3 py-2 rounded-full text-xs font-semibold transition-all hover:opacity-80 active:scale-[.97]"
@@ -242,11 +234,6 @@ export default function HomePage() {
               </Link>
             ))}
           </div>
-        </section>
-
-        {/* ══ ISCA DE TOPO — Converta 1 áudio grátis ══ */}
-        <section id="demo" className="px-5 pt-10 scroll-mt-4" style={{ animation: 'fadeInUp .6s ease .45s both' }}>
-          <DemoTranscribe />
         </section>
 
         {/* ══ PROVA SOCIAL — Stats numéricas ══ */}

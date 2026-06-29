@@ -52,7 +52,7 @@ function SuccessContent() {
             : 'Sua assinatura está ativa.'}
         </p>
         <p className="text-xs text-brand-muted mb-8">
-          Seus minutos foram atualizados. Redirecionando em instantes…
+          Seu plano foi atualizado. Redirecionando em instantes…
         </p>
 
         <div className="space-y-2">

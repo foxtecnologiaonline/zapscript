@@ -41,7 +41,7 @@ const schema = {
       name: 'O ZapScript é mais barato que a LuzIA?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'O ZapScript tem plano Free com 20 minutos por mês sem custo. O plano Pro custa R$39,90/mês (R$19,90 no primeiro mês em junho de 2026) e inclui 200 minutos, 2 números, resumo com IA e Modo Privado.',
+        text: 'O ZapScript tem plano Free com 15 áudios por mês sem custo. O plano Pro custa R$39,90/mês (R$19,90 no primeiro mês em junho de 2026) e inclui áudios ilimitados, 2 números, resumo com IA e Modo Privado.',
       },
     },
   ],
@@ -54,7 +54,7 @@ const ROWS = [
   { feature: 'Modo Privado',           zap: '✅ Incluído',            luzia: '❌ Não aplicável' },
   { feature: 'Histórico pesquisável',  zap: '✅ Incluído',            luzia: '❌ Não disponível' },
   { feature: 'Conecta no seu número',  zap: '✅ Sim, via QR Code',     luzia: '❌ Você fala com o contato da LuzIA' },
-  { feature: 'Plano gratuito',         zap: '✅ 20 min/mês',          luzia: '⚠️ Limites variam por funcionalidade' },
+  { feature: 'Plano gratuito',         zap: '✅ 15 áudios/mês',       luzia: '⚠️ Limites variam por funcionalidade' },
   { feature: 'Criptografia',           zap: 'AES-256-GCM',            luzia: 'Não documentado para esse uso' },
   { feature: 'Conformidade LGPD',      zap: '✅ Completo',            luzia: 'Não documentado para esse uso' },
   { feature: 'Servidores no Brasil',   zap: '✅ São Paulo',           luzia: 'Não especificado' },
@@ -79,7 +79,7 @@ const FAQS = [
   },
   {
     q: 'Quanto custa o ZapScript comparado a usar a LuzIA para isso?',
-    a: 'O plano Free do ZapScript inclui 20 minutos de conversão por mês sem custo e sem cartão. O Pro custa R$39,90/mês (R$19,90 no 1º mês em junho de 2026) e inclui 200 minutos, 2 números, resumo com IA, Modo Privado e histórico completo.',
+    a: 'O plano Free do ZapScript inclui 15 áudios de conversão por mês sem custo e sem cartão. O Pro custa R$39,90/mês (R$19,90 no 1º mês em junho de 2026) e inclui áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico completo.',
   },
 ];
 
@@ -220,7 +220,7 @@ export default function VsLuziaPage() {
         {/* CTA final */}
         <div className="text-center py-12 rounded-2xl border border-brand-primary/20" style={{ background: 'rgba(16,185,129,.05)' }}>
           <h2 className="text-2xl font-bold text-white mb-3">Comece grátis — sem cartão de crédito</h2>
-          <p className="text-brand-muted mb-6">20 minutos por mês grátis. Upgrade quando quiser. Cancele a qualquer hora.</p>
+          <p className="text-brand-muted mb-6">15 áudios por mês grátis. Upgrade quando quiser. Cancele a qualquer hora.</p>
           <Link href="/cadastro" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
             Criar minha conta grátis →
           </Link>

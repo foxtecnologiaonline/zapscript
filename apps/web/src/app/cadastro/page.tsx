@@ -119,21 +119,13 @@ function CadastroForm() {
               <strong className="text-brand-primary">Confirmar meu e-mail</strong>{' '}
               para ativar sua conta.<br />O link expira em 24 horas.
             </p>
-            {(() => {
-              const now = new Date();
-              if (now.getFullYear() !== 2026 || now.getMonth() !== 5) return null;
-              const daysLeft = Math.ceil((new Date(2026, 6, 1).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-              return (
-                <div className="rounded-xl px-4 py-3 mb-4 text-left"
-                  style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.2)' }}>
-                  <p className="text-xs text-brand-text leading-relaxed">
-                    <span className="font-bold text-brand-primary">🔥 Oferta de junho:</span>{' '}
-                    confirme seu e-mail e assine o Pro por <strong>R$19,90 no 1º mês</strong> — termina em{' '}
-                    <strong>{daysLeft} dia{daysLeft !== 1 ? 's' : ''}</strong>.
-                  </p>
-                </div>
-              );
-            })()}
+            <div className="rounded-xl px-4 py-3 mb-4 text-left"
+              style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.2)' }}>
+              <p className="text-xs text-brand-text leading-relaxed">
+                <span className="font-bold text-brand-primary">🔥 50% OFF no 1º mês:</span>{' '}
+                confirme seu e-mail e assine o Pro por <strong>R$19,90 no 1º mês</strong> (depois R$39,90/mês).
+              </p>
+            </div>
             <div className="space-y-2">
               <Link href="/login" className="btn-primary block w-full py-3 text-center text-sm">
                 Já confirmei — Fazer login
@@ -172,7 +164,7 @@ function CadastroForm() {
               </div>
             </div>
           ) : (
-            <p className="text-brand-text-secondary text-sm mt-2 font-light">20 minutos grátis, sem cartão de crédito</p>
+            <p className="text-brand-text-secondary text-sm mt-2 font-light">15 áudios grátis, sem cartão de crédito</p>
           )}
         </div>
 

@@ -5,6 +5,7 @@ import { sendEmail } from '../lib/mailer';
 import { logger } from '../lib/logger';
 import { validateRequest, registerSchema, loginSchema } from '../lib/validation';
 import { encryptStr, decryptStr, documentHash as computeDocHash } from '../services/encryption';
+import { TRIAL_DAYS } from '../lib/freemium';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -122,7 +123,7 @@ async function sendVerificationEmail(email: string, name: string | null | undefi
       <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:12px;padding:16px 20px">
         <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
           ⏰ <strong style="color:#5d8a72">Este link expira em 7 dias.</strong>
-          Sua conta já vem com <strong style="color:#5d8a72">20 minutos grátis</strong> de conversão, sem cartão de crédito.
+          Sua conta já vem com <strong style="color:#5d8a72">7 dias de Pro grátis</strong> (áudios ilimitados), sem cartão de crédito.
         </p>
       </div>
     `, 'Se você não criou uma conta no ZapScript, pode ignorar este e-mail com segurança.')
@@ -199,21 +200,24 @@ export default async function authRoutes(app: FastifyInstance) {
       });
       if (error) return reply.code(400).send({ error: error.message });
 
-      // Buscar plano adequado — testers entram no plano Pro com isTester=true
-      // (isenção de 12 meses controlada por testerRenewalsUsed; modelo de 2 planos Free/Pro)
-      const planName = testerInvite ? 'pro' : 'free';
-      const plan = await prisma.plan.findUnique({ where: { name: planName } });
+      // Freemium: TODO novo usuário começa no PRO.
+      //  • Tester      → PRO permanente (isTester, isenção 12 meses via testerRenewalsUsed)
+      //  • Não-tester  → TRIAL de 7 dias de PRO (status 'trialing'); ao expirar, o worker
+      //    faz downgrade automático para FREE no dia seguinte (D8), sem depender de login.
+      const plan = await prisma.plan.findUnique({ where: { name: 'pro' } });
       if (!plan) return reply.code(500).send({ error: 'Planos não configurados. Rode o seed.' });
 
-      const now = new Date();
+      const now          = new Date();
+      const isTrial      = !testerInvite;
+      const trialEndsAt  = isTrial ? new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000) : null;
 
       // Criar User + Subscription + MinuteBalance em transação atômica
       // Se falhar: rollback do usuário Supabase para evitar conta órfã (autenticada mas sem dados)
       try {
         await prisma.$transaction(async (tx: any) => {
-          // Indicação: ambos (indicador e novo usuário) ganham 15 min no bucket extra (valem 60 dias)
-          const REFERRAL_BONUS_MINUTES = 15;
-          const extraExpiry = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+          // Indicação: ambos (indicador e novo usuário) ganham 5 áudios extras no ciclo atual.
+          // No modelo por áudios, o bônus é creditado abatendo audiosUsed (devolve cota do ciclo).
+          const REFERRAL_BONUS_AUDIOS = 5;
 
           const u = await tx.user.create({
             data: {
@@ -239,7 +243,9 @@ export default async function authRoutes(app: FastifyInstance) {
             data: {
               userId:          u.id,
               planId:          plan.id,
-              status:          'active',
+              // Tester = PRO ativo permanente; não-tester = trial de 7 dias.
+              status:          isTrial ? 'trialing' : 'active',
+              trialEndsAt:     trialEndsAt,
               // Tester e free seguem ciclo mensal — renovação a partir de balance.resetAt
               // (a isenção do tester é controlada por testerRenewalsUsed, máx 12 renovações)
               currentPeriodEnd: undefined,
@@ -248,22 +254,21 @@ export default async function authRoutes(app: FastifyInstance) {
           // resetAt ancorando no createdAt do usuário (ciclos de 30 dias a partir do cadastro)
           // Tester e free seguem o MESMO ciclo mensal — a isenção do tester (12 meses)
           // é controlada pelo contador testerRenewalsUsed no cron de renovação.
-          // O bônus de indicação vai no bucket EXTRA (não reseta mensalmente; expira em 60 dias).
+          // O bônus de indicação abate audiosUsed (cota do ciclo); reseta no próximo ciclo.
           const cycleResetAt = new Date(u.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000);
           await tx.minuteBalance.create({
             data: {
               userId:           u.id,
+              audiosUsed:       referrer ? -REFERRAL_BONUS_AUDIOS : 0,
               availableMinutes: plan.minutesPerMonth,
-              extraMinutes:     referrer ? REFERRAL_BONUS_MINUTES : 0,
-              extraExpiresAt:   referrer ? extraExpiry : null,
               resetAt:          cycleResetAt,
-            },
+            } as any,
           });
-          // Indicador também ganha 15 min no bucket extra (valem 60 dias)
+          // Indicador também ganha 5 áudios extras no ciclo atual
           if (referrer) {
             await tx.minuteBalance.update({
               where: { userId: referrer.id },
-              data:  { extraMinutes: { increment: REFERRAL_BONUS_MINUTES }, extraExpiresAt: extraExpiry },
+              data:  { audiosUsed: { decrement: REFERRAL_BONUS_AUDIOS } } as any,
             });
           }
           // Marcar convite como usado
@@ -476,7 +481,7 @@ export default async function authRoutes(app: FastifyInstance) {
               <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:12px;padding:16px 20px">
                 <p style="color:#4a7060;font-size:12px;margin:0;line-height:1.5">
                   ⏰ <strong style="color:#5d8a72">Este link expira em 24 horas.</strong>
-                  Após confirmar, sua conta estará ativa com <strong style="color:#5d8a72">20 minutos grátis</strong> de conversão, sem cartão de crédito.
+                  Após confirmar, sua conta estará ativa com <strong style="color:#5d8a72">7 dias de Pro grátis</strong> (áudios ilimitados), sem cartão de crédito.
                 </p>
               </div>
             `, 'Se você não solicitou este link, pode ignorar este e-mail com segurança.')
@@ -698,13 +703,14 @@ export default async function authRoutes(app: FastifyInstance) {
             plan: {
               select: {
                 id: true, name: true, label: true,
-                minutesPerMonth: true, maxNumbers: true, priceBrl: true, features: true,
+                audiosPerMonth: true, minutesPerMonth: true, maxNumbers: true, priceBrl: true, features: true,
               },
             },
           },
         },
         balance: {
           select: {
+            audiosUsed:         true,
             availableMinutes:   true,
             accumulatedMinutes: true,
             resetAt:            true,

@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { ProCountdown } from './ProCountdown';
 import { isJunePromoActive, PRO_FULL_PRICE, PRO_PROMO_PRICE } from '@/lib/promo';
 
 type CmpVal = string | boolean;
@@ -11,7 +10,7 @@ const PLANS = [
     name: 'free', label: 'Free', price: 'R$0', per: '/mês',
     desc: 'Para experimentar',
     feats: [
-      '20 min/mês',
+      '15 áudios/mês',
       '1 número WhatsApp',
       '🎙️ Conversão automática',
       '✨ Resumo com IA',
@@ -26,7 +25,8 @@ const PLANS = [
     name: 'pro', label: 'Pro', price: 'R$19,90', per: '/1º mês',
     desc: 'Depois R$39,90/mês',
     feats: [
-      '200 min/mês',
+      'Áudios ilimitados',
+      'Áudios de até 10 min',
       '2 números WhatsApp',
       '🎙️ Conversão automática',
       '🖥️ Conversão de áudios no site',
@@ -44,7 +44,7 @@ const PLANS = [
 ];
 
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                        vals: ['20', '200'] },
+  { feature: 'Áudios/mês',                         vals: ['15', 'Ilimitado'] },
   { feature: 'Números WhatsApp',                   vals: ['1', '2'] },
   { feature: '🎙️ Conversão automática',           vals: [true, true] },
   { feature: '✨ Resumo com IA',                    vals: [true, true] },
@@ -101,7 +101,7 @@ export function PricingInteractive() {
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-black text-[11px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wide whitespace-nowrap"
                   style={{ background: 'rgb(var(--color-primary))' }}>
-                  {promo ? <ProCountdown /> : <>⭐ Mais popular</>}
+                  {promo ? <>🔥 50% OFF no 1º mês</> : <>⭐ Mais popular</>}
                 </div>
               )}
               <div className="flex items-start justify-between mb-4">

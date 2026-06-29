@@ -1,0 +1,26 @@
+<svg viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg" font-family="'DM Sans','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#f4f7f5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+
+  <g transform="translate(540,150)">
+    <rect x="-160" y="-44" width="320" height="76" rx="38" fill="#ecfdf5" stroke="#10b981" stroke-opacity="0.4" stroke-width="2"/>
+    <text y="8" text-anchor="middle" font-size="34" font-weight="700" fill="#34d399">📈 Para vendas</text>
+  </g>
+
+  <text x="540" y="400" text-anchor="middle" font-size="88" font-weight="800" fill="#0f172a">Toda objeção</text>
+  <text x="540" y="500" text-anchor="middle" font-size="88" font-weight="800" fill="#10b981">registrada.</text>
+  <text x="540" y="620" text-anchor="middle" font-size="88" font-weight="800" fill="#0f172a">Nenhum lead esquecido.</text>
+
+  <text x="540" y="750" text-anchor="middle" font-size="38" font-weight="500" fill="#64748b">Budget, prazo e objeção que chegam em áudio</text>
+  <text x="540" y="802" text-anchor="middle" font-size="38" font-weight="500" fill="#64748b">viram texto pronto pra colar no CRM.</text>
+
+  <g transform="translate(80,978)">
+    <g transform="scale(1.6)"><path d="M11 21h-1l1-7H6.5c-.6 0-.3-.5-.2-.7C7.8 9.5 10 5.6 12.6 1c.3-.5.6-.3.6.2l-1 6.8h4.4c.5 0 .5.3.4.5L11 21z" fill="#10b981"/></g>
+    <text x="50" y="28" font-size="36" font-weight="800" fill="#0f172a">ZapScript</text>
+  </g>
+  <text x="1000" y="1010" text-anchor="end" font-size="30" font-weight="600" fill="#10b981">zapscript.me/vendas</text>
+</svg>

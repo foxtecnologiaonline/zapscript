@@ -10,16 +10,11 @@ const FIRST_RUN_MS = 10 * 60 * 1000;      // 10 min após startup
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
 
-/* ── Promoção de lançamento (junho/2026): 1º mês do Pro por R$19,90 ──────────
-   Fonte da verdade server-side (espelha apps/web/src/lib/promo.ts). Encerra
-   30/06/2026 23:59:59 (Brasília, UTC-3). Após isso o copy volta ao preço cheio. */
-const PROMO_END = new Date('2026-06-30T23:59:59-03:00').getTime();
-function isJunePromoActive(): boolean { return Date.now() <= PROMO_END; }
+/* ── Oferta permanente: 1º mês do Pro com 50% off (R$19,90) ──────────────────
+   Fonte da verdade server-side (espelha apps/web/src/lib/promo.ts). Não expira. */
 /** Frase de preço do Pro para usar dentro do corpo de e-mails. */
 function proPriceLine(): string {
-  return isJunePromoActive()
-    ? `por <strong style="color:#6ee7b7">R$19,90 no primeiro mês</strong> (depois R$39,90/mês)`
-    : `por <strong style="color:#6ee7b7">R$39,90/mês</strong>, sem fidelidade`;
+  return `por <strong style="color:#6ee7b7">R$19,90 no primeiro mês</strong> (depois R$39,90/mês)`;
 }
 
 function btn(href: string, label: string): string {
@@ -182,28 +177,28 @@ async function runUpgradeByUsage(log: any) {
     },
     select: {
       id: true, email: true, name: true, lifecycleEmailsSent: true,
-      balance:      { select: { availableMinutes: true } },
-      subscription: { select: { plan: { select: { minutesPerMonth: true } } } },
+      balance:      { select: { audiosUsed: true } },
+      subscription: { select: { plan: { select: { audiosPerMonth: true } } } },
     },
   }).catch(() => [] as any[]);
 
   let sent = 0;
   for (const u of users) {
     if (u.lifecycleEmailsSent.includes(tag)) continue;
-    const total = u.subscription?.plan?.minutesPerMonth ?? 0;
-    const available = u.balance?.availableMinutes ?? 0;
+    const total = u.subscription?.plan?.audiosPerMonth ?? 0;
+    const used  = u.balance?.audiosUsed ?? 0;
     if (total <= 0) continue;
-    const usedPct = 1 - (available / total);
+    const usedPct = used / total;
     if (usedPct < 0.8) continue;
 
     const firstName = firstNameOf(u.name);
     try {
       await sendEmail(
         u.email,
-        `${firstName}, você já usou ${Math.round(usedPct * 100)}% dos seus minutos grátis`,
-        wrapper(firstName, `Seus minutos grátis estão acabando`, `
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já usou ${Math.round(usedPct * 100)}% dos 20 minutos do plano Free deste mês. Para continuar convertendo sem interrupção, dá pra fazer upgrade para o Pro.</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">O Pro inclui 200 minutos por mês, 2 números e resumo com IA — ${proPriceLine()}.</p>
+        `${firstName}, você já usou ${Math.round(usedPct * 100)}% dos seus áudios grátis`,
+        wrapper(firstName, `Seus áudios grátis estão acabando`, `
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já usou ${Math.round(usedPct * 100)}% dos ${total} áudios do plano Free deste mês. Para continuar convertendo sem interrupção, dá pra fazer upgrade para o Pro.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">O Pro inclui áudios ilimitados, 2 números e resumo com IA — ${proPriceLine()}.</p>
           ${btn(`${APP_URL}/dashboard/plano`, 'Fazer upgrade para o Pro →')}
         `),
       );
@@ -282,7 +277,7 @@ async function runWinBack(log: any) {
         `${firstName}, seu robô está em pausa — quer reativar?`,
         wrapper(firstName, `Seu robô está descansando, ${firstName}`, `
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Desde que você cancelou o Pro, os áudios voltaram a chegar — só que agora sem ninguém convertendo por você 24 horas por dia. Toda vez que chega um áudio longo, é você quem para pra ouvir.</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Reativar leva 1 minuto: 200 minutos por mês, 2 números e resumo com IA — ${proPriceLine()}. Menos de R$1,33 por dia para ter um robô lendo seus áudios.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Reativar leva 1 minuto: áudios ilimitados, 2 números e resumo com IA — ${proPriceLine()}. Menos de R$1,33 por dia para ter um robô lendo seus áudios.</p>
           ${btn(`${APP_URL}/dashboard/plano`, 'Reativar o Pro →')}
         `),
       );
@@ -297,8 +292,8 @@ async function runWinBack(log: any) {
 
 /* ── Free engajado mas longe do limite (D+7 a D+14) → mostrar o teto do Free ──
    Usuário que já provou valor (tem conversões) mas usa pouco, então o gatilho
-   de "≥80% dos minutos" nunca dispara. Reforça que o hábito vai esbarrar nos
-   20 min do Free e convida ao Pro. Janela de cadastro evita disparo em massa na
+   de "≥80% dos áudios" nunca dispara. Reforça que o hábito vai esbarrar nos
+   15 áudios do Free e convida ao Pro. Janela de cadastro evita disparo em massa na
    base antiga; tag única (one-shot) garante idempotência. ────────── */
 async function runUpgradeActiveFree(log: any) {
   const from = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
@@ -314,8 +309,8 @@ async function runUpgradeActiveFree(log: any) {
     },
     select: {
       id: true, email: true, name: true, lifecycleEmailsSent: true,
-      balance:      { select: { availableMinutes: true } },
-      subscription: { select: { plan: { select: { minutesPerMonth: true } } } },
+      balance:      { select: { audiosUsed: true } },
+      subscription: { select: { plan: { select: { audiosPerMonth: true } } } },
     },
   }).catch(() => [] as any[]);
 
@@ -324,9 +319,9 @@ async function runUpgradeActiveFree(log: any) {
     if (u.lifecycleEmailsSent.includes(tag)) continue;
     // Quem já está perto do teto recebe o upgrade_usage (mais oportuno). Aqui só
     // os que usam pouco mas com constância — evita dois e-mails de upgrade.
-    const total = u.subscription?.plan?.minutesPerMonth ?? 0;
-    const available = u.balance?.availableMinutes ?? 0;
-    if (total > 0 && (1 - available / total) >= 0.8) continue;
+    const total = u.subscription?.plan?.audiosPerMonth ?? 0;
+    const used  = u.balance?.audiosUsed ?? 0;
+    if (total > 0 && (used / total) >= 0.8) continue;
 
     const firstName = firstNameOf(u.name);
     try {
@@ -334,8 +329,8 @@ async function runUpgradeActiveFree(log: any) {
         u.email,
         `${firstName}, você já pegou o jeito do ZapScript`,
         wrapper(firstName, `Virou hábito, ${firstName} 👏`, `
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já está convertendo seus áudios pelo ZapScript — ótimo sinal de que virou parte da rotina. O plano Free dá conta do começo, mas são só <strong>20 minutos por mês</strong>: num dia mais corrido de áudios, eles acabam rápido.</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">No Pro são 200 minutos, 2 números e resumo com IA — ${proPriceLine()}. Assim seu robô nunca para no meio do mês.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já está convertendo seus áudios pelo ZapScript — ótimo sinal de que virou parte da rotina. O plano Free dá conta do começo, mas são só <strong>15 áudios por mês</strong>: num dia mais corrido de áudios, eles acabam rápido.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">No Pro são áudios ilimitados, 2 números e resumo com IA — ${proPriceLine()}. Assim seu robô nunca para no meio do mês.</p>
           ${btn(`${APP_URL}/dashboard/plano`, 'Conhecer o Pro →')}
         `),
       );

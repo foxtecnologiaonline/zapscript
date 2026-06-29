@@ -167,7 +167,9 @@
       "Bash(grep -v \"//.*free\")",
       "Bash(grep -E \"^\\\\s*\\(const|'|\\\\\"|\\\\`\\)\")",
       "PowerShell(git -C \"C:\\\\FOX tecnologIA\\\\ZapScript\" show ce02457 --stat)",
-      "PowerShell(cd \"C:\\\\FOX tecnologIA\\\\ZapScript\"; $env:DATABASE_URL='postgresql://postgres.sqqmusijaovhtiufbzsa:691393%40rfts@aws-1-us-west-2.pooler.supabase.com:5432/postgres'; $env:DIRECT_URL='postgresql://postgres:691393%40rfts@db.sqqmusijaovhtiufbzsa.supabase.co:5432/postgres'; npx prisma migrate dev --name add_tester_renewals_used --schema=packages/database/prisma/schema.prisma 2>&1)"
+      "PowerShell(cd \"C:\\\\FOX tecnologIA\\\\ZapScript\"; $env:DATABASE_URL='postgresql://postgres.sqqmusijaovhtiufbzsa:691393%40rfts@aws-1-us-west-2.pooler.supabase.com:5432/postgres'; $env:DIRECT_URL='postgresql://postgres:691393%40rfts@db.sqqmusijaovhtiufbzsa.supabase.co:5432/postgres'; npx prisma migrate dev --name add_tester_renewals_used --schema=packages/database/prisma/schema.prisma 2>&1)",
+      "Bash(ls marketing/png)",
+      "Bash(ls marketing/png-white)"
     ]
   }
 }

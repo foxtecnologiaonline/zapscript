@@ -124,6 +124,7 @@ export const adminUpdateUserSchema = z.object({
 export const adminCreatePlanSchema = z.object({
   name: z.string().min(1).max(50),
   label: z.string().min(1).max(100),
+  audiosPerMonth: z.number().min(0).optional(),
   minutesPerMonth: z.number().min(0),
   maxNumbers: z.number().min(1),
   priceBrl: z.number().min(0),
@@ -132,6 +133,7 @@ export const adminCreatePlanSchema = z.object({
 
 export const adminUpdatePlanSchema = z.object({
   label: z.string().min(1).max(100).optional(),
+  audiosPerMonth: z.number().min(0).optional(),
   minutesPerMonth: z.number().min(0).optional(),
   maxNumbers: z.number().min(1).optional(),
   priceBrl: z.number().min(0).optional(),

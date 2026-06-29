@@ -19,7 +19,7 @@ const STEPS = [
     options: [
       { label: '📱 WhatsApp não conecta', next: 'form', category: 'Problema técnico - WhatsApp' },
       { label: '🎙 Conversão não chegou', next: 'form', category: 'Problema técnico - Conversão' },
-      { label: '⏱ Minutos sendo debitados errado', next: 'form', category: 'Problema técnico - Minutos' },
+      { label: '⏱ Áudios sendo debitados errado', next: 'form', category: 'Problema técnico - Áudios' },
       { label: '🔐 Problema de login/acesso', next: 'form', category: 'Problema técnico - Login' },
     ],
   },

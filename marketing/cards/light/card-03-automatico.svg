@@ -1,0 +1,33 @@
+<svg viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg" font-family="'DM Sans','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#f4f7f5"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.32" r="0.6">
+      <stop offset="0" stop-color="#10b981" stop-opacity="0.2"/><stop offset="1" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+  <rect width="1080" height="1080" fill="url(#glow)"/>
+
+  <text x="540" y="120" text-anchor="middle" font-size="34" font-weight="700" fill="#10b981" letter-spacing="3">VANTAGEM 01</text>
+
+  <!-- ícone: número conectado / 24h -->
+  <g transform="translate(540,330)">
+    <circle r="120" fill="none" stroke="#10b981" stroke-width="10" stroke-opacity="0.3"/>
+    <circle r="120" fill="none" stroke="#10b981" stroke-width="10" stroke-dasharray="565" stroke-dashoffset="140" transform="rotate(-90)" stroke-linecap="round"/>
+    <text y="22" text-anchor="middle" font-size="72" font-weight="800" fill="#34d399">24h</text>
+  </g>
+
+  <text x="540" y="600" text-anchor="middle" font-size="84" font-weight="800" fill="#0f172a">Conecte uma vez.</text>
+  <text x="540" y="700" text-anchor="middle" font-size="84" font-weight="800" fill="#10b981">Esqueça o resto.</text>
+
+  <text x="540" y="810" text-anchor="middle" font-size="38" font-weight="500" fill="#64748b">Todo áudio que chega no seu WhatsApp vira</text>
+  <text x="540" y="862" text-anchor="middle" font-size="38" font-weight="500" fill="#64748b">texto sozinho — mesmo enquanto você dorme.</text>
+
+  <g transform="translate(80,978)">
+    <g transform="scale(1.6)"><path d="M11 21h-1l1-7H6.5c-.6 0-.3-.5-.2-.7C7.8 9.5 10 5.6 12.6 1c.3-.5.6-.3.6.2l-1 6.8h4.4c.5 0 .5.3.4.5L11 21z" fill="#10b981"/></g>
+    <text x="50" y="28" font-size="36" font-weight="800" fill="#0f172a">ZapScript</text>
+  </g>
+  <text x="1000" y="1010" text-anchor="end" font-size="30" font-weight="600" fill="#10b981">zapscript.me</text>
+</svg>

@@ -176,9 +176,10 @@ export default function AdminPage() {
           name:           'pro-tester',
           label:          'Pro Tester',
           minutesPerMonth: 300,
+          audiosPerMonth:  0,
           maxNumbers:      3,
           priceBrl:        0,
-          features:        ['Conversão ilimitada até 300 min/mês', 'Até 3 números WhatsApp', 'Resumos inteligentes', 'Acesso antecipado a novidades'],
+          features:        ['Áudios ilimitados', 'Até 3 números WhatsApp', 'Resumos inteligentes', 'Acesso antecipado a novidades'],
         }),
       });
       const d = await res.json();

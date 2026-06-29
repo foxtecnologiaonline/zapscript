@@ -46,13 +46,15 @@ model User {
   supportAtendimentos         SupportAtendimento[]
   affiliate                   Affiliate?
   affiliateReferral           AffiliateReferral?  @relation("ReferredUser")
+  proContactSeeds             ProContactSeed[]
 }
 
 model Plan {
   id              String         @id @default(cuid())
   name            String         @unique  // "free" | "pro" | "ultra"
   label           String
-  minutesPerMonth Int
+  minutesPerMonth Int                       // [LEGADO] mantido só como métrica interna de custo
+  audiosPerMonth  Int            @default(0) // Métrica primária de cota: nº de áudios/mês. FREE=15, PRO=500 (teto oculto)
   maxNumbers      Int
   priceBrl        Float
   features        Json           @default("[]")
@@ -67,8 +69,11 @@ model Subscription {
   asaasSubscriptionId   String?   // Asaas subscription ID (sub_...)
   asaasCustomerId       String?   // Asaas customer ID (cus_...)
   paymentMethod         String?   // 'credit_card' | 'pix'
-  status                String    @default("active")
+  status                String    @default("active")  // 'trialing' | 'active' | 'past_due' | 'canceled'
   currentPeriodEnd      DateTime?
+  // ── Trial Freemium: novo usuário entra com 7 dias de PRO grátis ──
+  trialEndsAt           DateTime? // fim do trial PRO (D7); job diário rebaixa para FREE em D8
+  trialDowngradedAt     DateTime? // marca quando o rebaixamento automático ocorreu (idempotência)
   testerRenewalsUsed    Int       @default(0)  // Renovações mensais isentas consumidas (máx 12)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
@@ -83,6 +88,7 @@ model MinuteBalance {
   accumulatedMinutes Float    @default(0)
   extraMinutes       Float    @default(0)  // minutos avulsos/indicação — valem 60 dias, não resetam mensalmente
   extraExpiresAt     DateTime?              // expiração do saldo extra (now + 60 dias na última recarga)
+  audiosUsed         Int      @default(0)  // Métrica primária: nº de áudios consumidos no ciclo atual (reset mensal)
   resetAt            DateTime
   lastAlertSent      String?  // "50" | "80" | "100" — para evitar alertas duplicados
   createdAt          DateTime @default(now())
@@ -135,6 +141,8 @@ model Transcription {
   language        String          @default("pt")
   source          String          @default("whatsapp")  // "whatsapp" | "manual"
   tags            String[]        @default([])           // Tags do usuário (Ultra+)
+  footerShown     Boolean         @default(false)        // se o rodapé viral foi exibido nesta conversão
+  footerVariant   String?                                // qual variação do rodapé foi usada (B1 — análise de conversão por variação)
   createdAt       DateTime        @default(now())
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   number          WhatsappNumber? @relation(fields: [numberId], references: [id], onDelete: SetNull)
@@ -440,6 +448,24 @@ model SiteEvent {
   @@index([path])
   @@index([country])
   @@index([visitorId])
+}
+
+// ── Rodapé condicional (Modo Privado PRO) ──────────────────────────────────
+// Registra que o usuário PRO já "semeou" o rodapé viral para um contato.
+// Regra: FREE → rodapé em toda transcrição. PRO → rodapé apenas na 1ª transcrição
+// de cada contato; nas demais, Modo Privado (sem rodapé). O seed é PERMANENTE
+// (nunca reseta), mesmo que o usuário oscile entre planos.
+// contactId = telefone normalizado (somente dígitos) de quem ENVIOU o áudio.
+model ProContactSeed {
+  id            String   @id @default(cuid())
+  userId        String
+  contactId     String   // telefone do remetente, normalizado (digits-only)
+  footerVariant String?  // variação de rodapé usada na 1ª exibição (B1)
+  firstSeenAt   DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contactId])
+  @@index([userId])
 }
 
 // Sugestões de novos tópicos de FAQ detectados pelo agente.

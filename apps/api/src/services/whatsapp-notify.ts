@@ -90,7 +90,7 @@ export async function notifyDisconnected(numberId: string): Promise<void> {
   } catch { /* não crítico */ }
 }
 
-// ── 3-5. Alertas de consumo de minutos ───────────────────────────────────
+// ── 3-5. Alertas de consumo de áudios ────────────────────────────────────
 export async function notifyMinuteAlert(
   userId: string,
   pct: 50 | 80 | 100,
@@ -104,25 +104,25 @@ export async function notifyMinuteAlert(
 
     const msgs: Record<number, string> = {
       50: [
-        `📊 *ZapScript* — 50% dos minutos usados`,
+        `📊 *ZapScript* — 50% dos áudios usados`,
         '',
-        `Você já usou *metade dos seus minutos* do mês.`,
+        `Você já usou *metade dos seus áudios* do mês.`,
         '',
         '💡 Confira seu saldo e considere fazer upgrade para não perder nenhum áudio:',
         '👉 https://ZapScript.me/dashboard/plano',
       ].join('\n'),
       80: [
-        `⚠️ *ZapScript* — 80% dos minutos usados`,
+        `⚠️ *ZapScript* — 80% dos áudios usados`,
         '',
-        `Seus minutos estão quase esgotando! Restam apenas *20%*.`,
+        `Seus áudios estão quase esgotando! Restam apenas *20%*.`,
         '',
         '🚀 Faça upgrade agora e continue convertendo sem interrupção:',
         '👉 https://ZapScript.me/dashboard/plano',
       ].join('\n'),
       100: [
-        `🔴 *ZapScript* — Minutos esgotados`,
+        `🔴 *ZapScript* — Áudios esgotados`,
         '',
-        `Você atingiu *100% dos seus minutos* deste mês.`,
+        `Você atingiu *100% dos seus áudios* deste mês.`,
         '',
         '📵 As conversões foram *pausadas* até o próximo ciclo ou upgrade.',
         '',

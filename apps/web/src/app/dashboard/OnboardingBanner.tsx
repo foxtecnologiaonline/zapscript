@@ -226,12 +226,12 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
           <div className="flex flex-col sm:flex-row gap-2.5">
             {hasNumber ? (
               <Link
-                href="/dashboard/transcricoes?upload=1"
+                href="/dashboard/transcricoes"
                 className="btn-primary flex items-center justify-center gap-2 py-3 text-sm font-semibold"
                 style={{ borderRadius: '0.875rem' }}
               >
                 <span>🎙️</span>
-                Enviar áudio de teste agora
+                Mande um áudio no seu WhatsApp e veja aqui
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M5 12h14M12 5l7 7-7 7" />
                 </svg>

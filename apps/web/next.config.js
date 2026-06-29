@@ -8,6 +8,18 @@ const nextConfig = {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   },
 
+  async redirects() {
+    return [
+      // ── Consolidação de posts duplicados de nicho (SEO: evitar canibalização) ──
+      { source: '/blog/transcricao-de-audio-para-advogados',  destination: '/blog/transcrever-audio-whatsapp-advogados',  permanent: true },
+      { source: '/blog/converter-audio-whatsapp-advogados',   destination: '/blog/transcrever-audio-whatsapp-advogados',  permanent: true },
+      { source: '/blog/transcricao-de-audio-para-corretores', destination: '/blog/transcrever-audio-whatsapp-corretores', permanent: true },
+      { source: '/blog/converter-audio-whatsapp-corretores',  destination: '/blog/transcrever-audio-whatsapp-corretores', permanent: true },
+      { source: '/blog/transcrever-audio-cliente-vendas',     destination: '/blog/transcrever-audio-whatsapp-vendas',     permanent: true },
+      { source: '/blog/converter-audio-whatsapp-vendas',      destination: '/blog/transcrever-audio-whatsapp-vendas',     permanent: true },
+    ];
+  },
+
   async headers() {
     return [
       // ── Headers de segurança para todas as rotas ───────────────────────

@@ -35,7 +35,7 @@ const variant: Variant = {
     { q: 'As conversões são seguras e sigilosas?', a: 'Sim. Todas as conversões são criptografadas com AES-256-GCM (padrão bancário), armazenadas em servidores no Brasil (São Paulo), com conformidade total à LGPD. O áudio original não é guardado — apenas o texto, sob sua conta.' },
     { q: 'Posso pesquisar relatos antigos de clientes?', a: 'Sim. Todo o histórico de conversões é pesquisável por nome do cliente, palavra-chave ou data. Encontrar um detalhe específico de um relato leva segundos.' },
     { q: 'Preciso instalar algo ou encaminhar áudios?', a: 'Não. Você conecta seu número via QR code uma vez e a conversão ocorre automaticamente em segundo plano para cada áudio recebido. Sem app no celular, sem encaminhar para bots.' },
-    { q: 'Tem custo para testar?', a: 'Não. O plano Free é gratuito e inclui 20 minutos de conversão por mês, sem cartão. Para volume maior de relatos, o plano Pro (R$39,90/mês) oferece 200 minutos e 2 números.' },
+    { q: 'Tem custo para testar?', a: 'Não. O plano Free é gratuito e inclui 15 áudios de conversão por mês, sem cartão. Para volume maior de relatos, o plano Pro (R$39,90/mês) oferece áudios ilimitados e 2 números.' },
   ],
 };
 

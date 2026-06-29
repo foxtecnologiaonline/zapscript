@@ -1,0 +1,26 @@
+<svg viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg" font-family="'DM Sans','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0f1a"/><stop offset="1" stop-color="#08130e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.4" r="0.7">
+      <stop offset="0" stop-color="#10b981" stop-opacity="0.18"/><stop offset="1" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+  <rect width="1080" height="1080" fill="url(#glow)"/>
+
+  <text x="540" y="340" text-anchor="middle" font-size="80" font-weight="700" fill="#9aa3b2">Cansou de ouvir</text>
+  <text x="540" y="440" text-anchor="middle" font-size="80" font-weight="700" fill="#9aa3b2">áudio de 5 minutos</text>
+  <text x="540" y="540" text-anchor="middle" font-size="80" font-weight="700" fill="#9aa3b2">pra achar 1 informação?</text>
+
+  <text x="540" y="700" text-anchor="middle" font-size="100" font-weight="800" fill="#10b981">Leia em 10 segundos.</text>
+
+  <text x="540" y="820" text-anchor="middle" font-size="38" font-weight="500" fill="#cbd5e1">Resumo + transcrição automáticos, direto no WhatsApp.</text>
+
+  <g transform="translate(80,978)">
+    <g transform="scale(1.6)"><path d="M11 21h-1l1-7H6.5c-.6 0-.3-.5-.2-.7C7.8 9.5 10 5.6 12.6 1c.3-.5.6-.3.6.2l-1 6.8h4.4c.5 0 .5.3.4.5L11 21z" fill="#10b981"/></g>
+    <text x="50" y="28" font-size="36" font-weight="800" fill="#f0f0f4">ZapScript</text>
+  </g>
+  <text x="1000" y="1010" text-anchor="end" font-size="30" font-weight="600" fill="#10b981">zapscript.me</text>
+</svg>

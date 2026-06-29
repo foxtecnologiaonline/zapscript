@@ -1,0 +1,28 @@
+<svg viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg" font-family="'DM Sans','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#f4f7f5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+
+  <!-- relógio -->
+  <g transform="translate(540,300)">
+    <circle r="130" fill="#ecfdf5" stroke="#10b981" stroke-width="10"/>
+    <line x1="0" y1="0" x2="0" y2="-80" stroke="#34d399" stroke-width="12" stroke-linecap="round"/>
+    <line x1="0" y1="0" x2="62" y2="30" stroke="#34d399" stroke-width="12" stroke-linecap="round"/>
+    <circle r="12" fill="#34d399"/>
+  </g>
+
+  <text x="540" y="560" text-anchor="middle" font-size="60" font-weight="600" fill="#64748b">Economize até</text>
+  <text x="540" y="680" text-anchor="middle" font-size="140" font-weight="800" fill="#10b981">1 hora por dia</text>
+
+  <text x="540" y="800" text-anchor="middle" font-size="40" font-weight="500" fill="#334155">Pare de ouvir áudio inteiro só pra achar</text>
+  <text x="540" y="852" text-anchor="middle" font-size="40" font-weight="500" fill="#334155">uma data, um valor, um nome.</text>
+
+  <g transform="translate(80,978)">
+    <g transform="scale(1.6)"><path d="M11 21h-1l1-7H6.5c-.6 0-.3-.5-.2-.7C7.8 9.5 10 5.6 12.6 1c.3-.5.6-.3.6.2l-1 6.8h4.4c.5 0 .5.3.4.5L11 21z" fill="#10b981"/></g>
+    <text x="50" y="28" font-size="36" font-weight="800" fill="#0f172a">ZapScript</text>
+  </g>
+  <text x="1000" y="1010" text-anchor="end" font-size="30" font-weight="600" fill="#10b981">zapscript.me</text>
+</svg>

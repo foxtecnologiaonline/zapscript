@@ -20,6 +20,19 @@ interface Stats {
   planStatus: string;
   refCode: string | null;
   renewAt: string | null;
+  // ── Métrica primária: áudios ──
+  audiosUsed: number;
+  audiosQuota: number;
+  audiosUnlimited: boolean;
+  audiosPct: number;
+  effectivePlan: 'pro' | 'free';
+  // ── Trial freemium ──
+  isTrial: boolean;
+  trialEndsAt: string | null;
+  trialDaysLeft: number | null;
+  // ── Tempo economizado no mês (C3) ──
+  savedSecondsMonth: number;
+  savedLabelMonth: string;
 }
 
 export default function DashboardPage() {
@@ -68,10 +81,10 @@ export default function DashboardPage() {
       sub: `${stats.transcriptionsToday} hoje`,
     },
     {
-      label: 'Minutos usados',
-      value: `${stats.minutesUsed}`,
-      icon: '⏱',
-      sub: `de ${stats.minutesTotal} min`,
+      label: 'Áudios lidos',
+      value: `${stats.audiosUsed}`,
+      icon: '🎧',
+      sub: stats.audiosUnlimited ? 'ilimitado' : `de ${stats.audiosQuota}/mês`,
     },
     { label: 'Precisão',        value: '99%',                  icon: '🎯' },
     { label: 'Números ativos',  value: stats.activeNumbers,    icon: '📱' },
@@ -84,26 +97,37 @@ export default function DashboardPage() {
         <p className="text-sm text-brand-text-secondary font-light mt-1">Visão geral da sua operação</p>
       </div>
 
-      {/* ── Urgência da promo de junho (Free → Pro) ── */}
-      {(() => {
-        const now = new Date();
-        const junePromo = now.getFullYear() === 2026 && now.getMonth() === 5 && stats?.planName === 'free';
-        if (!junePromo) return null;
-        const daysLeft = Math.ceil((new Date(2026, 6, 1).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-        return (
-          <Link href="/dashboard/plano"
-            className="flex items-center gap-3 rounded-xl px-4 py-3 mb-6 hover:opacity-90 transition-opacity"
-            style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.12), rgba(245,158,11,.08))', border: '1px solid rgba(16,185,129,.25)' }}>
-            <span className="text-lg flex-shrink-0">🔥</span>
-            <p className="text-xs text-brand-text flex-1">
-              <span className="font-bold text-brand-primary">Oferta de junho:</span>{' '}
-              assine o Pro por <strong>R$19,90 no 1º mês</strong> (depois R$39,90/mês) — termina em{' '}
-              <strong>{daysLeft} dia{daysLeft !== 1 ? 's' : ''}</strong>.
-            </p>
-            <span className="text-brand-primary text-xs font-bold flex-shrink-0">Aproveitar →</span>
-          </Link>
-        );
-      })()}
+      {/* ── Trial PRO (7 dias): contagem regressiva + CTA ── */}
+      {stats?.isTrial && (
+        <Link href="/dashboard/plano"
+          className="flex items-center gap-3 rounded-xl px-4 py-3 mb-6 hover:opacity-90 transition-opacity"
+          style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.14), rgba(16,185,129,.04))', border: '1px solid rgba(16,185,129,.3)' }}>
+          <span className="text-lg flex-shrink-0">✨</span>
+          <p className="text-xs text-brand-text flex-1">
+            <span className="font-bold text-brand-primary">
+              {stats.trialDaysLeft === 0
+                ? 'Seu Pro termina hoje.'
+                : `Faltam ${stats.trialDaysLeft} dia${stats.trialDaysLeft !== 1 ? 's' : ''} do seu Pro.`}
+            </span>{' '}
+            Áudios ilimitados e Modo Privado ativos. Continue por <strong>menos de R$1,33/dia</strong>.
+          </p>
+          <span className="text-brand-primary text-xs font-bold flex-shrink-0">Assinar →</span>
+        </Link>
+      )}
+
+      {/* ── 50% off no 1º mês (Free → Pro), oferta permanente ── */}
+      {stats?.planName === 'free' && !stats?.isTrial && (
+        <Link href="/dashboard/plano"
+          className="flex items-center gap-3 rounded-xl px-4 py-3 mb-6 hover:opacity-90 transition-opacity"
+          style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.12), rgba(245,158,11,.08))', border: '1px solid rgba(16,185,129,.25)' }}>
+          <span className="text-lg flex-shrink-0">🔥</span>
+          <p className="text-xs text-brand-text flex-1">
+            <span className="font-bold text-brand-primary">50% OFF no 1º mês:</span>{' '}
+            assine o Pro por <strong>R$19,90</strong> (depois R$39,90/mês).
+          </p>
+          <span className="text-brand-primary text-xs font-bold flex-shrink-0">Aproveitar →</span>
+        </Link>
+      )}
 
       {/* ── Onboarding Banner (até conectar 1º número) ── */}
       <OnboardingBanner
@@ -137,24 +161,17 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* ── Tempo economizado este mês (valor entregue) ── */}
-      {stats && stats.minutesUsed > 0 && (() => {
-        // Cada áudio você leria o resumo em ~15s no lugar de ouvir o áudio inteiro.
-        const saved = Math.max(0, stats.minutesUsed - (stats.transcriptionsMonth * 0.25));
-        const label = saved >= 60
-          ? `${Math.floor(saved / 60)}h${String(Math.round(saved % 60)).padStart(2, '0')}`
-          : `${Math.round(saved)} min`;
-        return (
-          <div className="flex items-center gap-3 rounded-xl px-4 py-3 mb-7"
-            style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.10), rgba(16,185,129,.03))', border: '1px solid rgba(16,185,129,.20)' }}>
-            <span className="text-lg flex-shrink-0">⚡</span>
-            <p className="text-xs text-brand-text leading-relaxed">
-              Você economizou cerca de <strong className="text-brand-primary">{label}</strong> este mês lendo resumos
-              em vez de ouvir <strong>{stats.transcriptionsMonth}</strong> áudio{stats.transcriptionsMonth !== 1 ? 's' : ''} inteiro{stats.transcriptionsMonth !== 1 ? 's' : ''}.
-            </p>
-          </div>
-        );
-      })()}
+      {/* ── Tempo economizado este mês (C3 — valor entregue) ── */}
+      {stats && stats.savedSecondsMonth > 0 && (
+        <div className="flex items-center gap-3 rounded-xl px-4 py-3 mb-7"
+          style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.10), rgba(16,185,129,.03))', border: '1px solid rgba(16,185,129,.20)' }}>
+          <span className="text-lg flex-shrink-0">⚡</span>
+          <p className="text-xs text-brand-text leading-relaxed">
+            Você economizou <strong className="text-brand-primary">{stats.savedLabelMonth}</strong> lendo áudios este mês —
+            em vez de ouvir <strong>{stats.transcriptionsMonth}</strong> áudio{stats.transcriptionsMonth !== 1 ? 's' : ''} inteiro{stats.transcriptionsMonth !== 1 ? 's' : ''}.
+          </p>
+        </div>
+      )}
 
       {/* ── Cards secundários ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -168,49 +185,48 @@ export default function DashboardPage() {
                 {stats.planStatus === 'active' ? 'Ativo' : stats.planStatus}
               </span>
             </div>
-            <div className="text-2xl font-black text-brand-primary leading-none">{stats.minutesUsed}</div>
-            <div className="text-xs text-brand-muted mb-3">de {stats.minutesTotal} minutos usados</div>
-            <div className="h-2 bg-brand-elevated rounded-full overflow-hidden mb-1">
-              <div className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${stats.minutesPct}%`,
-                  background: stats.minutesPct >= 90
-                    ? 'linear-gradient(90deg, #f87171, #ef4444)'
-                    : stats.minutesPct >= 70
-                      ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
-                      : 'linear-gradient(90deg, rgba(var(--color-primary)/.45), rgb(var(--color-primary)))',
-                }} />
-            </div>
-            <div className="flex justify-between text-[10px] text-brand-muted mb-3">
-              <span>{stats.minutesPct}% usado</span>
-              <span>{stats.minutesAvailable.toFixed(1)} min restantes</span>
-            </div>
-            {/* Alerta contextual — perto de esgotar os minutos */}
-            {stats.minutesPct >= 80 && (
+            {stats.audiosUnlimited ? (
+              <>
+                <div className="text-2xl font-black text-brand-primary leading-none">{stats.audiosUsed}</div>
+                <div className="text-xs text-brand-muted mb-3">áudios lidos · <strong className="text-brand-primary">ilimitado</strong></div>
+              </>
+            ) : (
+              <>
+                <div className="text-2xl font-black text-brand-primary leading-none">{stats.audiosUsed}</div>
+                <div className="text-xs text-brand-muted mb-3">de {stats.audiosQuota} áudios/mês</div>
+                <div className="h-2 bg-brand-elevated rounded-full overflow-hidden mb-1">
+                  <div className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${stats.audiosPct}%`,
+                      background: stats.audiosPct >= 90
+                        ? 'linear-gradient(90deg, #f87171, #ef4444)'
+                        : stats.audiosPct >= 70
+                          ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
+                          : 'linear-gradient(90deg, rgba(var(--color-primary)/.45), rgb(var(--color-primary)))',
+                    }} />
+                </div>
+                <div className="flex justify-between text-[10px] text-brand-muted mb-3">
+                  <span>{stats.audiosPct}% usado</span>
+                  <span>{Math.max(0, stats.audiosQuota - stats.audiosUsed)} restantes</span>
+                </div>
+              </>
+            )}
+            {/* Alerta contextual — perto de esgotar a cota de áudios (FREE) */}
+            {!stats.audiosUnlimited && stats.audiosPct >= 80 && (
               <div className={`flex items-start gap-2 text-[11px] mb-3 px-2.5 py-2 rounded-lg ${
-                stats.minutesPct >= 95 ? 'bg-red-400/10 text-red-400 border border-red-400/20'
+                stats.audiosPct >= 100 ? 'bg-red-400/10 text-red-400 border border-red-400/20'
                                        : 'bg-amber-400/10 text-amber-500 border border-amber-400/20'}`}>
-                <span className="mt-px">{stats.minutesPct >= 95 ? '🚨' : '⚠️'}</span>
+                <span className="mt-px">{stats.audiosPct >= 100 ? '🚨' : '⚠️'}</span>
                 <span className="leading-snug">
-                  {stats.minutesPct >= 95
-                    ? <>Seus minutos estão <strong>quase no fim</strong>.</>
-                    : <>Você já usou <strong>{stats.minutesPct}%</strong> dos seus minutos.</>}
-                  {stats.planName === 'free'
-                    ? (() => {
-                        const saved = Math.max(0, stats.minutesUsed - (stats.transcriptionsMonth * 0.25));
-                        const lbl = saved >= 60
-                          ? `${Math.floor(saved / 60)}h${String(Math.round(saved % 60)).padStart(2, '0')}`
-                          : `${Math.round(saved)} min`;
-                        return saved >= 1
-                          ? <> Só este mês o ZapScript já te poupou <strong>{lbl}</strong> — faça upgrade para o Pro e não fique sem converter.</>
-                          : ' Faça upgrade para o Pro e não fique sem converter.';
-                      })()
-                    : ' Eles renovam na próxima data de cobrança.'}
+                  {stats.audiosPct >= 100
+                    ? <>Você usou seus <strong>{stats.audiosQuota} áudios</strong> do mês.</>
+                    : <>Você já usou <strong>{stats.audiosPct}%</strong> dos seus áudios.</>}
+                  {' '}Leia sem limite por <strong>menos de R$1,33/dia</strong> e não volte a ouvir áudio.
                 </span>
               </div>
             )}
-            {/* Renovação — só planos pagos */}
-            {stats.renewAt && stats.planName !== 'free' && (() => {
+            {/* Renovação — só planos pagos (oculto durante o trial) */}
+            {stats.renewAt && stats.planName !== 'free' && !stats.isTrial && (() => {
               const today    = new Date(); today.setHours(0,0,0,0);
               const renew    = new Date(stats.renewAt); renew.setHours(0,0,0,0);
               const daysLeft = Math.round((renew.getTime() - today.getTime()) / (1000*60*60*24));
@@ -232,7 +248,7 @@ export default function DashboardPage() {
               );
             })()}
             <Link href="/dashboard/plano" className="btn-primary block w-full text-center text-sm py-2">
-              {stats.planName === 'free' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
+              {stats.isTrial ? 'Assinar Pro' : stats.planName === 'free' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
             </Link>
           </div>
         )}
@@ -260,22 +276,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Upload de áudio */}
-        <div className="card p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-lg">🖥️</span>
-            <div className="font-bold text-sm text-brand-text">Conversão pelo site</div>
-          </div>
-          <p className="text-xs text-brand-text-secondary mb-4 leading-relaxed">
-            Envie um áudio direto do computador e receba a conversão em segundos.
-          </p>
-          <Link
-            href="/dashboard/transcricoes?upload=1"
-            className="btn-primary block w-full text-center text-xs py-2.5">
-            🎙️ Enviar áudio agora
-          </Link>
-        </div>
-
         {/* Indicação com link pessoal */}
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-1">
@@ -283,7 +283,7 @@ export default function DashboardPage() {
             <div className="font-bold text-sm text-brand-text">Indique o ZapScript</div>
           </div>
           <p className="text-xs text-brand-text-secondary mb-3 leading-relaxed">
-            Indique um amigo e <strong className="text-brand-primary">ganhe 15 minutos grátis para você e sua indicação</strong> quando ele se cadastrar.
+            Indique um amigo e <strong className="text-brand-primary">ganhe 5 áudios grátis para você e sua indicação</strong> quando ele se cadastrar.
           </p>
           {stats?.refCode && (
             <div className="flex gap-2 mb-3">
@@ -304,7 +304,7 @@ export default function DashboardPage() {
           <button
             onClick={() => {
               const link = `https://www.zapscript.me/cadastro?ref=${stats?.refCode ?? ''}`;
-              const msg  = `Eu uso o ZapScript para converter áudios do WhatsApp automaticamente com IA — e você ganha 15 minutos grátis ao se cadastrar pelo meu link: ${link}`;
+              const msg  = `Eu uso o ZapScript para converter áudios do WhatsApp automaticamente com IA — e você ganha 5 áudios grátis ao se cadastrar pelo meu link: ${link}`;
               if (navigator.share) {
                 navigator.share({ text: msg, url: link }).catch(() => {});
               } else {

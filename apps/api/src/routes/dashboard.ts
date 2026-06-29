@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
+import { planEfetivo, audioQuotaFor, formatSavedTime } from '../lib/freemium';
 
 export default async function dashboardRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -9,7 +10,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     const today  = new Date(); today.setHours(0, 0, 0, 0);
     const month  = new Date(); month.setDate(1); month.setHours(0, 0, 0, 0);
 
-    const [todayCount, monthCount, totalCount, balance, activeNumbers, avgConf, sub, user, userTester] = await Promise.all([
+    const [todayCount, monthCount, totalCount, balance, activeNumbers, avgConf, sub, user, userTester, savedAgg] = await Promise.all([
       prisma.transcription.count({ where: { userId, createdAt: { gte: today } } }),
       prisma.transcription.count({ where: { userId, createdAt: { gte: month } } }),
       prisma.transcription.count({ where: { userId } }),
@@ -25,6 +26,11 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       }),
       prisma.user.findUnique({ where: { id: userId }, select: { refCode: true } }),
       prisma.user.findUnique({ where: { id: userId }, select: { isTester: true, createdAt: true } }),
+      // Tempo economizado no mês = soma das durações dos áudios lidos (C3).
+      prisma.transcription.aggregate({
+        where: { userId, createdAt: { gte: month } },
+        _sum:  { durationSec: true },
+      }),
     ]);
 
     const minutesTotal  = sub?.plan.minutesPerMonth || 0;
@@ -35,6 +41,27 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     // Saldo extra (avulso/indicação) — só conta se ainda válido (não expirado)
     const extraValid    = balance?.extraExpiresAt && balance.extraExpiresAt > new Date()
       ? (balance.extraMinutes || 0) : 0;
+
+    // ── Métrica primária: ÁUDIOS do ciclo ──────────────────────────────────
+    const now           = new Date();
+    const effPlan       = planEfetivo(
+      { isTester: userTester?.isTester, subscription: sub ? { status: sub.status, trialEndsAt: sub.trialEndsAt, plan: { name: sub.plan.name } } : null },
+      now,
+    );
+    const audiosQuota   = audioQuotaFor(effPlan);
+    // audiosUsed pode ser negativo (bônus de indicação abate a cota) — nunca exibir < 0.
+    const audiosUsed    = Math.max(0, balance?.audiosUsed || 0);
+    // PRO comunica "ilimitado" — não expõe o teto oculto na UI.
+    const audiosUnlimited = effPlan === 'pro';
+
+    // ── Trial (7 dias de PRO) ──────────────────────────────────────────────
+    const isTrial       = sub?.status === 'trialing' && !!sub.trialEndsAt && sub.trialEndsAt > now;
+    const trialDaysLeft = isTrial && sub?.trialEndsAt
+      ? Math.max(0, Math.ceil((sub.trialEndsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
+      : null;
+
+    // ── Tempo economizado no mês (C3) ──────────────────────────────────────
+    const savedSecondsMonth = savedAgg._sum.durationSec || 0;
 
     return {
       transcriptionsToday: todayCount,
@@ -61,6 +88,19 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       testerCreatedAt:     userTester?.createdAt?.toISOString() ?? null,
       testerRenewalsUsed:  sub?.testerRenewalsUsed ?? 0,
       testerRenewalsTotal: 12,
+      // ── Métrica primária: áudios ──
+      audiosUsed,
+      audiosQuota,
+      audiosUnlimited,
+      audiosPct:           audiosUnlimited ? 0 : (audiosQuota > 0 ? Math.min(100, Math.round((audiosUsed / audiosQuota) * 100)) : 0),
+      effectivePlan:       effPlan, // 'pro' | 'free' (efetivo, considerando trial/tester)
+      // ── Trial freemium ──
+      isTrial,
+      trialEndsAt:         isTrial ? sub?.trialEndsAt?.toISOString() ?? null : null,
+      trialDaysLeft,
+      // ── Tempo economizado no mês (C3) ──
+      savedSecondsMonth,
+      savedLabelMonth:     formatSavedTime(savedSecondsMonth),
     };
   });
 }

@@ -12,8 +12,8 @@ export const FAQ_ITEMS = [
     a: 'Sim, funciona com qualquer número de WhatsApp — pessoal ou empresarial. Você conecta escaneando um QR Code, sem precisar instalar nada no celular.',
   },
   {
-    q: 'O que acontece quando os minutos acabam?',
-    a: 'As conversões são pausadas até o início do próximo ciclo mensal. Você recebe alertas por WhatsApp e e-mail ao atingir 50%, 80% e 100% do seu limite. Pode fazer upgrade a qualquer momento para continuar.',
+    q: 'O que acontece quando os áudios do mês acabam?',
+    a: 'As conversões são pausadas até o início do próximo ciclo mensal. Você recebe alertas por WhatsApp e e-mail ao atingir 50%, 80% e 100% do seu limite de áudios. Pode fazer upgrade a qualquer momento para continuar.',
   },
   {
     q: 'Posso cancelar quando quiser?',

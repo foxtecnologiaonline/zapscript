@@ -1,0 +1,72 @@
+<svg viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg" font-family="'DM Sans','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0f1a"/>
+      <stop offset="1" stop-color="#08130e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+
+  <text x="540" y="105" text-anchor="middle" font-size="46" font-weight="800" fill="#f0f0f4">Todo áudio do dia,</text>
+  <text x="540" y="160" text-anchor="middle" font-size="46" font-weight="800" fill="#10b981">organizado em um painel só.</text>
+
+  <!-- Janela do painel -->
+  <g transform="translate(90,210)">
+    <rect width="900" height="700" rx="24" fill="#0f1722" stroke="#1f2937" stroke-width="2"/>
+    <!-- barra superior -->
+    <rect width="900" height="74" rx="24" fill="#121b28"/>
+    <rect width="900" height="38" y="36" fill="#121b28"/>
+    <circle cx="44" cy="37" r="9" fill="#f87171"/>
+    <circle cx="74" cy="37" r="9" fill="#fbbf24"/>
+    <circle cx="104" cy="37" r="9" fill="#34d399"/>
+    <text x="450" y="44" text-anchor="middle" font-size="26" font-weight="700" fill="#9aa3b2">Minhas conversões — hoje</text>
+
+    <!-- linhas da lista -->
+    <g font-size="25" font-weight="600">
+      <!-- linha 1 -->
+      <rect x="32" y="100" width="836" height="108" rx="16" fill="#0f2a1f" stroke="#10b981" stroke-opacity="0.4"/>
+      <circle cx="78" cy="154" r="22" fill="#10b981"/>
+      <text x="78" y="163" text-anchor="middle" font-size="22" fill="#06251a" font-weight="800">M</text>
+      <text x="118" y="142" fill="#f0f0f4">Mariana — Cliente</text>
+      <text x="118" y="178" fill="#a7c4b5" font-weight="400" font-size="22">"Proposta aceita, fechar até sexta…"</text>
+      <text x="838" y="135" text-anchor="end" fill="#9aa3b2" font-size="22">09:14</text>
+      <text x="838" y="178" text-anchor="end" fill="#34d399" font-size="22">✓ Concluído</text>
+
+      <!-- linha 2 -->
+      <rect x="32" y="224" width="836" height="108" rx="16" fill="#161f2b"/>
+      <circle cx="78" cy="278" r="22" fill="#1f2937"/>
+      <text x="78" y="287" text-anchor="middle" font-size="22" fill="#cbd5e1" font-weight="800">R</text>
+      <text x="118" y="266" fill="#f0f0f4">Ricardo — Lead</text>
+      <text x="118" y="302" fill="#9aa3b2" font-weight="400" font-size="22">"Quer 40 licenças, pagamento anual…"</text>
+      <text x="838" y="259" text-anchor="end" fill="#9aa3b2" font-size="22">10:02</text>
+      <text x="838" y="302" text-anchor="end" fill="#34d399" font-size="22">✓ Concluído</text>
+
+      <!-- linha 3 -->
+      <rect x="32" y="348" width="836" height="108" rx="16" fill="#161f2b"/>
+      <circle cx="78" cy="402" r="22" fill="#1f2937"/>
+      <text x="78" y="411" text-anchor="middle" font-size="22" fill="#cbd5e1" font-weight="800">J</text>
+      <text x="118" y="390" fill="#f0f0f4">João — Contador</text>
+      <text x="118" y="426" fill="#9aa3b2" font-weight="400" font-size="22">"Faltam 3 notas de março…"</text>
+      <text x="838" y="383" text-anchor="end" fill="#9aa3b2" font-size="22">10:21</text>
+      <text x="838" y="426" text-anchor="end" fill="#fbbf24" font-size="22">⏳ Processando</text>
+    </g>
+
+    <!-- rodapé com contadores -->
+    <line x1="32" y1="500" x2="868" y2="500" stroke="#1f2937" stroke-width="2"/>
+    <text x="32" y="560" font-size="34" font-weight="800" fill="#34d399">23</text>
+    <text x="32" y="592" font-size="22" font-weight="500" fill="#9aa3b2">áudios hoje</text>
+    <text x="300" y="560" font-size="34" font-weight="800" fill="#34d399">4h12</text>
+    <text x="300" y="592" font-size="22" font-weight="500" fill="#9aa3b2">de áudio economizado</text>
+    <text x="600" y="560" font-size="34" font-weight="800" fill="#34d399">2</text>
+    <text x="600" y="592" font-size="22" font-weight="500" fill="#9aa3b2">números conectados</text>
+
+    <rect x="32" y="630" width="836" height="2" fill="#1f2937"/>
+    <text x="32" y="668" font-size="22" font-weight="500" fill="#6b7280">🔒 Áudio nunca é armazenado · criptografia AES-256</text>
+  </g>
+
+  <g transform="translate(80,978)">
+    <g transform="scale(1.6)"><path d="M11 21h-1l1-7H6.5c-.6 0-.3-.5-.2-.7C7.8 9.5 10 5.6 12.6 1c.3-.5.6-.3.6.2l-1 6.8h4.4c.5 0 .5.3.4.5L11 21z" fill="#10b981"/></g>
+    <text x="50" y="28" font-size="36" font-weight="800" fill="#f0f0f4">ZapScript</text>
+  </g>
+  <text x="1000" y="1010" text-anchor="end" font-size="30" font-weight="600" fill="#10b981">zapscript.me</text>
+</svg>

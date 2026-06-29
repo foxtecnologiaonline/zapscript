@@ -3,6 +3,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import CheckoutInline from '@/components/CheckoutInline';
+import { isJunePromoActive } from '@/lib/promo';
 
 interface Stats {
   minutesUsed: number; minutesAvailable: number;
@@ -17,6 +18,16 @@ interface Stats {
   testerCreatedAt: string | null;
   testerRenewalsUsed: number;
   testerRenewalsTotal: number;
+  // ── Métrica primária: áudios ──
+  audiosUsed: number;
+  audiosQuota: number;
+  audiosUnlimited: boolean;
+  audiosPct: number;
+  effectivePlan: 'pro' | 'free';
+  // ── Trial freemium ──
+  isTrial: boolean;
+  trialEndsAt: string | null;
+  trialDaysLeft: number | null;
 }
 
 interface User {
@@ -36,7 +47,7 @@ const PLANS = [
     per:   '/mês',
     desc:  'Para experimentar',
     feats: [
-      '20 min/mês',
+      '15 áudios/mês',
       '1 número WhatsApp',
       '🎙️ Conversão automática',
       '✨ Resumo com IA',
@@ -44,9 +55,7 @@ const PLANS = [
       '📅 Filtros por data e contato',
       '🔍 Busca por conversão',
     ],
-    excl:  [
-      '🖥️ Conversão de áudios no site',
-    ],
+    excl:  [],
     pop:   false,
     accent: null as string | null,
   },
@@ -57,10 +66,10 @@ const PLANS = [
     per:   '/mês',
     desc:  'Para profissionais',
     feats: [
-      '200 min/mês',
+      'Áudios ilimitados',
+      'Áudios de até 10 min',
       '2 números WhatsApp',
       '🎙️ Conversão automática',
-      '🖥️ Conversão de áudios no site',
       '✨ Resumo com IA',
       '📋 Histórico de conversões',
       '📅 Filtros por data e contato',
@@ -80,13 +89,12 @@ const PLANS = [
     per:   '/mês',
     desc:  'Para uso profissional e privacidade total',
     feats: [
-      '300 min/mês',
+      'Áudios ilimitados',
       '3 números WhatsApp',
       '🎙️ Conversão automática',
       '✨ Resumo com IA',
       '📋 Histórico de conversões',
       '📅 Filtros por data e contato',
-      '🖥️ Upload de áudio no site',
       '🔍 Busca por conversão',
       '📤 Exportação PDF · DOCX · CSV · XLS',
       '🔒 Modo Privado de conversão',
@@ -105,14 +113,13 @@ const PLAN_PRICES_YEARLY: Record<string, { monthlyDisplay: string; annualDisplay
 
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Minutos/mês',                        vals: ['20', '200'] },
+  { feature: 'Áudios/mês',                         vals: ['15', 'Ilimitado'] },
   { feature: 'Números WhatsApp',                   vals: ['1', '2'] },
   { feature: '🎙️ Conversão automática',           vals: [true, true] },
   { feature: '✨ Resumo com IA',                    vals: [true, true] },
   { feature: '📋 Histórico de conversões',        vals: [true, true] },
   { feature: '📅 Filtros por data e contato',       vals: [true, true] },
   { feature: '🔍 Busca por conversão',             vals: [true, true] },
-  { feature: '🖥️ Conversão de áudios no site',    vals: [false, true] },
   { feature: '📤 Exportar áudios (PDF/Docx/Csv/Excel)', vals: [false, true] },
   { feature: '📄 Conversão Profissional (PDF)',    vals: [false, true] },
   { feature: '🔒 Modo Privado de conversão',       vals: [false, true] },
@@ -542,10 +549,9 @@ function PlanoContent() {
     } else {
       doLoad();
     }
-    // Carregar pacotes de minutos
-    api.get<{ packages: MinutePkg[] }>('/billing/minute-packages')
-      .then(r => setMinutePkgs(r.packages || []))
-      .catch(() => null);
+    // Pacotes de minutos avulsos descontinuados no modelo por áudios
+    // (Free = 15 áudios/mês, Pro = áudios ilimitados). Seção não é mais carregada.
+    setMinutePkgs([]);
   }, []);
 
   // Abre o checkout inline para o plano
@@ -609,9 +615,8 @@ function PlanoContent() {
 
   // planName já vem como slug ('free'|'pro'|'executive') — sem precisar de toLowerCase
   const currentPlan = stats?.planName || 'free';
-  // Promoção de lançamento (Junho/2026): 1º mês a R$19,90 em novas assinaturas mensais Pro
-  const now = new Date();
-  const junePromo = now.getFullYear() === 2026 && now.getMonth() === 5 && currentPlan === 'free';
+  // Oferta permanente: 1º mês do Pro a R$19,90 (50% off) em novas assinaturas mensais
+  const junePromo = isJunePromoActive() && currentPlan === 'free';
   const PLAN_ORDER: Record<string, number> = { free: 0, pro: 1, executive: 2 };
   const currentPlanOrder = PLAN_ORDER[currentPlan] ?? 0;
   // Exibir apenas Free e Pro — Executive continua suportado para usuários existentes
@@ -623,7 +628,7 @@ function PlanoContent() {
       <div className="mb-6">
         <h1 className="font-display text-2xl font-bold">Plano & Cobrança</h1>
         <p className="text-sm font-light mt-0.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-          Gerencie seu plano e uso de minutos
+          Gerencie seu plano e uso de áudios
         </p>
       </div>
 
@@ -634,7 +639,7 @@ function PlanoContent() {
           <span className="text-xl">🎉</span>
           <div>
             <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Upgrade realizado com sucesso!</div>
-            <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>Seus minutos foram atualizados.</div>
+            <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>Seu plano foi atualizado.</div>
           </div>
         </div>
       )}
@@ -699,46 +704,32 @@ function PlanoContent() {
           })()}
 
           <div className="flex justify-between text-xs mb-2" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-            <span>Minutos usados este mês</span>
+            <span>Áudios lidos este mês</span>
             <span className="font-bold" style={{ color: 'rgb(var(--color-primary))' }}>
-              {stats.minutesUsed} / {stats.minutesTotal} min
+              {stats.audiosUnlimited ? `${stats.audiosUsed} · ilimitado` : `${stats.audiosUsed} / ${stats.audiosQuota}`}
             </span>
           </div>
-          <div className="h-2 rounded-full overflow-hidden mb-1" style={{ background: 'rgb(var(--color-surface-elevated))' }}>
-            <div className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${Math.min(stats.minutesPct, 100)}%`,
-                background: stats.minutesPct >= 90
-                  ? 'linear-gradient(90deg, #f87171, #ef4444)'
-                  : stats.minutesPct >= 70
-                    ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
-                    : 'linear-gradient(90deg, rgb(var(--color-primary-light)), rgb(var(--color-primary)))',
-              }} />
-          </div>
-          <div className="flex justify-between text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
-            <span>{stats.minutesPct}% utilizado</span>
-            <span>{stats.minutesAvailable.toFixed(1)} min restantes</span>
-          </div>
-
-          {/* Saldo extra (avulso/indicação) — válido por 60 dias */}
-          {!!stats.extraMinutes && stats.extraMinutes > 0 && (
-            <div className="mt-3 pt-3 flex items-center justify-between text-xs"
-              style={{ borderTop: '1px solid rgb(var(--color-border-light))' }}>
-              <span className="flex items-center gap-1.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                <span>🎁</span> Minutos extras (avulsos/indicação)
-              </span>
-              <span className="text-right">
-                <span className="font-bold" style={{ color: 'rgb(var(--color-primary))' }}>
-                  +{stats.extraMinutes.toFixed(1)} min
-                </span>
-                {stats.extraExpiresAt && (
-                  <span className="block text-[10px]" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                    válidos até {new Date(stats.extraExpiresAt).toLocaleDateString('pt-BR')}
-                  </span>
-                )}
-              </span>
-            </div>
+          {!stats.audiosUnlimited && (
+            <>
+              <div className="h-2 rounded-full overflow-hidden mb-1" style={{ background: 'rgb(var(--color-surface-elevated))' }}>
+                <div className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(stats.audiosPct, 100)}%`,
+                    background: stats.audiosPct >= 90
+                      ? 'linear-gradient(90deg, #f87171, #ef4444)'
+                      : stats.audiosPct >= 70
+                        ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
+                        : 'linear-gradient(90deg, rgb(var(--color-primary-light)), rgb(var(--color-primary)))',
+                  }} />
+              </div>
+              <div className="flex justify-between text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                <span>{stats.audiosPct}% utilizado</span>
+                <span>{Math.max(0, stats.audiosQuota - stats.audiosUsed)} restantes</span>
+              </div>
+            </>
           )}
+
+          {/* Saldo extra em minutos descontinuado no modelo por áudios — bloco removido. */}
 
         </div>
       )}
@@ -817,7 +808,7 @@ function PlanoContent() {
               </span>
               <div>
                 <span className="text-sm font-bold">Free</span>
-                <span className="text-xs ml-2" style={{ color: 'rgb(var(--color-text-muted))' }}>20min · 1 número · básico</span>
+                <span className="text-xs ml-2" style={{ color: 'rgb(var(--color-text-muted))' }}>15 áudios · 1 número · básico</span>
               </div>
             </div>
             <span className="font-bold text-sm" style={{ color: 'rgb(var(--color-text-muted))' }}>R$0</span>
@@ -832,7 +823,7 @@ function PlanoContent() {
             }}>
             <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[11px] font-black px-4 py-1 rounded-full uppercase tracking-wider"
               style={{ background: 'rgb(var(--color-primary))', color: '#030d06' }}>
-              {junePromo ? '🔥 Oferta de junho' : '⭐ Mais completo'}
+              {junePromo ? '🔥 50% OFF no 1º mês' : '⭐ Mais completo'}
             </span>
 
             {/* Preço + nome */}
@@ -865,7 +856,7 @@ function PlanoContent() {
             {/* Stats rápidos */}
             <div className="grid grid-cols-2 gap-2 mb-4">
               {[
-                { val: '200', label: 'min/mês', icon: '⏱' },
+                { val: '∞', label: 'áudios/mês', icon: '⏱' },
                 { val: '2', label: 'números WhatsApp', icon: '📱' },
               ].map(s => (
                 <div key={s.label} className="rounded-xl p-3 text-center"
@@ -915,7 +906,7 @@ function PlanoContent() {
 
             <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.6)' }}>
               {junePromo
-                ? '🔥 Oferta de junho: R$19,90 no 1º mês, depois R$39,90/mês · Cancele quando quiser'
+                ? '🔥 50% OFF no 1º mês: R$19,90, depois R$39,90/mês · Cancele quando quiser'
                 : '🔒 Pix ou cartão · Cancele a qualquer momento'}
             </p>
           </div>
@@ -1282,7 +1273,7 @@ function PlanoContent() {
                   </h3>
                   <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
                     {junePromo && checkoutPlan === 'pro'
-                      ? '🔥 Oferta de junho: R$19,90 no 1º mês · depois R$39,90/mês'
+                      ? '🔥 50% OFF no 1º mês: R$19,90 · depois R$39,90/mês'
                       : 'Escolha mensal ou anual · Cancele a qualquer momento'}
                   </p>
                 </div>
@@ -1333,7 +1324,7 @@ function PlanoContent() {
             <div className="text-2xl mb-2">😔</div>
             <h3 className="font-display font-bold text-lg mb-1">Cancelar assinatura?</h3>
             <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Você volta para o plano <strong>Free</strong> (20 min/mês). Continua com acesso até o fim do período já pago e pode reativar quando quiser — sem fidelidade.
+              Você volta para o plano <strong>Free</strong> (15 áudios/mês). Continua com acesso até o fim do período já pago e pode reativar quando quiser — sem fidelidade.
             </p>
             {cancelError && (
               <p className="text-xs mb-3 px-3 py-2 rounded-lg" style={{ background: 'rgba(248,113,113,.1)', color: '#f87171' }}>

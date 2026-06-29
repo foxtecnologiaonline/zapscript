@@ -108,16 +108,16 @@ function MasterDetailPanel({ userId, token, onClose }: {
           {/* Stats */}
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-[#132621] rounded-xl p-3 text-center">
-              <div className="text-xl font-black text-[#10b981]">{fmtMin(stats.availableMinutes)}</div>
-              <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Disponíveis</div>
+              <div className="text-xl font-black text-[#10b981]">{stats.audiosUsed ?? 0}</div>
+              <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Áudios usados</div>
             </div>
             <div className="bg-[#132621] rounded-xl p-3 text-center">
               <div className="text-xl font-black text-[#fbbf24]">{stats.totalTranscriptions}</div>
               <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Conversões</div>
             </div>
             <div className="bg-[#132621] rounded-xl p-3 text-center">
-              <div className="text-xl font-black text-[#d1fae5]">{fmtMin(stats.planLimit)}</div>
-              <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Limite plano</div>
+              <div className="text-xl font-black text-[#d1fae5]">{stats.planLimit || '∞'}</div>
+              <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Limite (áudios)</div>
             </div>
           </div>
 

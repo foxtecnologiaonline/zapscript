@@ -294,6 +294,7 @@ function PlanosPanel({ apiBase, token, notify }: { apiBase: string; token: strin
     setEditing(plan.id);
     setEditData({
       label:           plan.label,
+      audiosPerMonth:  plan.audiosPerMonth ?? 0,
       minutesPerMonth: plan.minutesPerMonth,
       maxNumbers:      plan.maxNumbers,
       priceBrl:        plan.priceBrl,
@@ -310,6 +311,7 @@ function PlanosPanel({ apiBase, token, notify }: { apiBase: string; token: strin
         .filter(Boolean);
       const body = {
         label:           editData.label,
+        audiosPerMonth:  Number(editData.audiosPerMonth),
         minutesPerMonth: Number(editData.minutesPerMonth),
         maxNumbers:      Number(editData.maxNumbers),
         priceBrl:        Number(editData.priceBrl),
@@ -433,7 +435,12 @@ function PlanosPanel({ apiBase, token, notify }: { apiBase: string; token: strin
                     className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)]" />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Minutos/mês</label>
+                  <label className="block text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Áudios/mês</label>
+                  <input type="number" value={editData.audiosPerMonth} onChange={e => setEditData((p: any) => ({ ...p, audiosPerMonth: e.target.value }))}
+                    className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)]" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Minutos/mês (custo interno)</label>
                   <input type="number" value={editData.minutesPerMonth} onChange={e => setEditData((p: any) => ({ ...p, minutesPerMonth: e.target.value }))}
                     className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)]" />
                 </div>
@@ -458,8 +465,8 @@ function PlanosPanel({ apiBase, token, notify }: { apiBase: string; token: strin
             ) : (
               <div className="px-5 py-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div>
-                  <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Minutos/mês</div>
-                  <div className="text-xl font-black text-[#10b981]">{plan.minutesPerMonth}</div>
+                  <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Áudios/mês</div>
+                  <div className="text-xl font-black text-[#10b981]">{plan.audiosPerMonth ?? '∞'}</div>
                 </div>
                 <div>
                   <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-1">Preço</div>
@@ -544,7 +551,7 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
 
   async function downgradeToProPlan() {
     const elegivel = list.filter(t => t.planName !== 'pro');
-    if (!confirm(`Reverter ${elegivel.length} tester(s) para o plano Pro?\n\nEssa ação reduz minutos e limites de todos exceto quem já é Pro.`)) return;
+    if (!confirm(`Reverter ${elegivel.length} tester(s) para o plano Pro?\n\nEssa ação ajusta limites de todos exceto quem já é Pro.`)) return;
     setDowngradingPro(true);
     setResult(null);
     try {
@@ -563,7 +570,7 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
 
   async function upgradeProTester() {
     const elegivel = list.filter(t => t.planName !== 'executive' && t.planName !== 'pro-tester');
-    if (!confirm(`Migrar ${elegivel.length} tester(s) para Pro-Tester (150 min, 2 números, todas as features)?\n\nTesters já em Executive não serão alterados.`)) return;
+    if (!confirm(`Migrar ${elegivel.length} tester(s) para Pro-Tester (áudios ilimitados, 2 números, todas as features)?\n\nTesters já em Executive não serão alterados.`)) return;
     setUpgradingPT(true);
     setResult(null);
     try {
@@ -617,14 +624,14 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
                 disabled={upgradingPT || upgrading || downgradingPro}
                 className="text-xs font-bold px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
               >
-                {upgradingPT ? '⟳ Migrando...' : `🧪 Pro-Tester · 150min (${list.filter(t => t.planName !== 'executive' && t.planName !== 'pro-tester').length})`}
+                {upgradingPT ? '⟳ Migrando...' : `🧪 Pro-Tester · ilimitado (${list.filter(t => t.planName !== 'executive' && t.planName !== 'pro-tester').length})`}
               </button>
               <button
                 onClick={upgradeAll}
                 disabled={upgrading || upgradingPT || downgradingPro}
                 className="text-xs font-bold px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
               >
-                {upgrading ? '⟳ Atualizando...' : `⭐ Executive · 500min (${list.filter(t => t.planName !== 'executive').length})`}
+                {upgrading ? '⟳ Atualizando...' : `⭐ Executive · ilimitado (${list.filter(t => t.planName !== 'executive').length})`}
               </button>
             </>
           )}
@@ -654,7 +661,7 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-[rgba(16,185,129,.08)]">
-                  {['#', 'Nome', 'E-mail', 'Plano atual', 'Minutos', 'Números', 'Tester desde'].map(h => (
+                  {['#', 'Nome', 'E-mail', 'Plano atual', 'Áudios', 'Números', 'Tester desde'].map(h => (
                     <th key={h} className="text-left px-3 py-2 text-[rgba(16,185,129,.4)] font-semibold uppercase tracking-wide text-[10px]">{h}</th>
                   ))}
                 </tr>
@@ -671,7 +678,7 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
                         {t.planName === 'executive' && ' ✓'}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 text-[rgba(16,185,129,.6)]">{t.minutesAvail.toFixed(1)} min</td>
+                    <td className="px-3 py-2.5 text-[rgba(16,185,129,.6)]">{t.audiosUsed ?? 0}</td>
                     <td className="px-3 py-2.5 text-[rgba(16,185,129,.6)]">{t.numbersConnected} conectado(s)</td>
                     <td className="px-3 py-2.5 text-[rgba(16,185,129,.4)]">
                       {t.testerSince ? new Date(t.testerSince).toLocaleDateString('pt-BR') : '—'}
@@ -702,7 +709,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
 
   // ── Bulk selection state (local) ────────────────────────
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction]       = useState('add-minutes');
+  const [bulkAction, setBulkAction]       = useState('add-audios');
   const [bulkValue,  setBulkValue]        = useState('');
   const [bulkLoading, setBulkLoading]     = useState(false);
 
@@ -918,7 +925,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                 <span className="text-xs font-bold text-[#10b981]">{selectedUsers.size} selecionado(s)</span>
                 <select value={bulkAction} onChange={e => setBulkAction(e.target.value)}
                   className="text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded px-2 py-1 text-[#d1fae5] outline-none">
-                  <option value="add-minutes">± Adicionar minutos</option>
+                  <option value="add-audios">± Ajustar áudios usados</option>
                   <option value="set-plan">🔄 Mudar plano</option>
                   <option value="ban">🚫 Banir</option>
                   <option value="unban">✅ Desbanir</option>
@@ -927,10 +934,10 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                     <option value="export-data">📋 Solicitar exportação (LGPD)</option>
                   </optgroup>
                 </select>
-                {(bulkAction === 'add-minutes' || bulkAction === 'set-plan') && (
+                {(bulkAction === 'add-audios' || bulkAction === 'set-plan') && (
                   <input
                     value={bulkValue} onChange={e => setBulkValue(e.target.value)}
-                    placeholder={bulkAction === 'add-minutes' ? 'Minutos (ex: 60)' : 'Plano (ex: pro)'}
+                    placeholder={bulkAction === 'add-audios' ? 'Áudios (+/−, ex: -10)' : 'Plano (ex: pro)'}
                     className="text-xs bg-[#132621] border border-[rgba(16,185,129,.2)] rounded px-2 py-1 text-[#d1fae5] outline-none w-36" />
                 )}
                 <Btn variant="primary" disabled={bulkLoading} onClick={executeBulkAction} cls="text-xs py-1 px-3">
@@ -950,7 +957,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                         onChange={toggleAll}
                         className="accent-[#10b981] cursor-pointer" />
                     </th>
-                    {['ID', 'E-mail', 'Plano', 'Minutos', 'Assinatura', 'Números', 'E-mail ✓', 'Cadastro', 'Ações'].map(col => (
+                    {['ID', 'E-mail', 'Plano', 'Áudios', 'Assinatura', 'Números', 'E-mail ✓', 'Cadastro', 'Ações'].map(col => (
                       <th key={col} className="px-4 py-3 text-left text-[10px] font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide whitespace-nowrap">
                         {col}
                       </th>
@@ -965,7 +972,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                   ) : users.map((u: any) => {
                     const plan      = u.subscription?.plan?.name || 'free';
                     const status    = u.subscription?.status || '—';
-                    const mins      = u.balance?.availableMinutes;
+                    const mins      = u.balance?.audiosUsed;
                     const nums      = (u.numbers || []) as any[];
                     const connected = nums.filter((n: any) => n.status === 'connected').length;
                     const total     = nums.length;
@@ -979,7 +986,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                         <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)] max-w-[170px] truncate">{maskEmail(u.email)}</td>
                         <td className="px-4 py-3"><Badge label={plan} cls={PLAN_CLS[plan]} /></td>
                         <td className="px-4 py-3 text-xs font-mono text-right text-[#d1fae5]">
-                          {typeof mins === 'number' ? mins.toFixed(1) : '—'}
+                          {typeof mins === 'number' ? mins : '—'}
                         </td>
                         <td className="px-4 py-3"><Badge label={STATUS_LABEL[status] || status} cls={STATUS_CLS[status]} /></td>
                         <td className="px-4 py-3 text-center whitespace-nowrap">
@@ -2191,7 +2198,7 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
       const d   = await res.json();
       setData(d);
       setEditPlan(d.user?.subscription?.plan?.name || 'free');
-      setEditMins(String(d.user?.balance?.availableMinutes ?? 0));
+      setEditMins(String(d.user?.balance?.audiosUsed ?? 0));
     } finally { setLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, token]);
@@ -2244,7 +2251,7 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
     const body: any = {};
     if (editPlan !== data.user?.subscription?.plan?.name) body.planName = editPlan;
     const m = parseFloat(editMins);
-    if (!isNaN(m)) { body.minutes = m; body.minutesMode = editMode; }
+    if (!isNaN(m)) { body.audios = m; body.audiosMode = editMode; }
     if (!Object.keys(body).length) { setEditSaving(false); return; }
     try {
       const res = await fetch(`${API}/sys/g5r8t2/users/${userId}`, {
@@ -2434,19 +2441,19 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
           )}
 
           <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4">
-            <div className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide mb-4">Uso de Minutos</div>
+            <div className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide mb-4">Uso de Áudios</div>
             <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="bg-[#132621] rounded-xl p-3 text-center">
-                <div className="text-xl font-black text-[#10b981]">{fmtMin(stats.availableMinutes)}</div>
-                <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Disponíveis</div>
+                <div className="text-xl font-black text-[#10b981]">{stats.audiosUsed ?? 0}</div>
+                <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Áudios usados</div>
+              </div>
+              <div className="bg-[#132621] rounded-xl p-3 text-center">
+                <div className="text-xl font-black text-[#d1fae5]">{stats.planLimit || '∞'}</div>
+                <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Limite (áudios)</div>
               </div>
               <div className="bg-[#132621] rounded-xl p-3 text-center">
                 <div className="text-xl font-black text-[#fbbf24]">{fmtMin(stats.totalMinutesUsed)}</div>
-                <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Usados (total)</div>
-              </div>
-              <div className="bg-[#132621] rounded-xl p-3 text-center">
-                <div className="text-xl font-black text-[#d1fae5]">{fmtMin(stats.planLimit)}</div>
-                <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Limite do plano</div>
+                <div className="text-[10px] text-[rgba(16,185,129,.4)] mt-1">Minutos (custo)</div>
               </div>
             </div>
             <div className="space-y-1.5">
@@ -2459,7 +2466,7 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
           </div>
 
           <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4">
-            <div className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide mb-4">Editar Plano & Minutos</div>
+            <div className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide mb-4">Editar Plano & Áudios</div>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="block text-[10px] text-[rgba(16,185,129,.4)] mb-1.5">PLANO</label>
@@ -2473,7 +2480,7 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] text-[rgba(16,185,129,.4)] mb-1.5">MINUTOS</label>
+                <label className="block text-[10px] text-[rgba(16,185,129,.4)] mb-1.5">ÁUDIOS USADOS</label>
                 <input type="number" step="1" value={editMins}
                   onChange={e => setEditMins(e.target.value)}
                   className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] font-mono outline-none focus:border-[rgba(16,185,129,.35)]" />
@@ -3331,7 +3338,7 @@ Sabe aquele áudio longo que você recebe no WhatsApp e fica com preguiça de ou
 2. Clique em "Números" e conecte seu WhatsApp (leva menos de 1 minuto)
 3. Receba qualquer áudio — o ZapScript converte automaticamente!
 
-Seu plano gratuito já vem com minutos prontos para usar. Não deixa expirar 😉
+Seu plano gratuito já vem com 15 áudios por mês prontos para usar 😉
 
 👉 https://www.zapscript.me/dashboard
 
@@ -3358,7 +3365,7 @@ Como fazer:
 3️⃣ Abra o WhatsApp no celular → Menu → Dispositivos conectados → Escanear QR code
 4️⃣ Pronto! A partir daí, todo áudio que você receber será convertido automaticamente.
 
-Sem mensalidade agora, sem cartão de crédito. O plano gratuito já te dá minutos para experimentar.
+Sem mensalidade agora, sem cartão de crédito. O plano gratuito já te dá 15 áudios por mês para experimentar.
 
 👉 Conectar agora: https://www.zapscript.me/dashboard/numeros
 
@@ -3371,16 +3378,16 @@ Equipe ZapScript`,
       name: 'Upgrade por limite',
       desc: 'Free ativos · limite',
       applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(false); setMinDays(''); setHasDocument(false); setTesters(false); },
-      subject: '⚡ Seus minutos estão acabando — não pare agora',
+      subject: '⚡ Seus áudios estão acabando — não pare agora',
       msg: `Olá! Boas notícias e uma notícia chata 😅
 
 A boa: você já está usando o ZapScript e sabe como ele economiza tempo.
-A chata: no plano gratuito os minutos são limitados — e podem acabar logo.
+A chata: no plano gratuito são 15 áudios por mês — e podem acabar logo.
 
 Quando zerar, você fica sem conversões até o próximo ciclo. Já imaginou perder um áudio importante por isso?
 
 O plano Pro resolve de vez:
-⚡ 300 minutos/mês — 10x mais que o gratuito
+⚡ Áudios ilimitados — nunca mais se preocupe com limite
 🔍 Busca nas suas conversões antigas
 📤 Exportação em CSV para organizar tudo
 📱 Conecte até 3 números simultâneos
@@ -3401,10 +3408,10 @@ Equipe ZapScript`,
       subject: '💎 Você usa muito o ZapScript — hora de ir para o Executive',
       msg: `Olá! Você é um dos nossos usuários mais ativos no plano Pro. Isso é incrível! 🎉
 
-Mas percebemos que usuários no seu perfil costumam bater no limite de minutos antes do fim do mês — e a gente não quer que isso aconteça com você.
+Mas percebemos que usuários no seu perfil precisam de ainda mais recursos — e a gente quer te dar o melhor.
 
 O plano Executive foi feito para quem usa de verdade:
-💎 300 minutos/mês (o triplo do Pro)
+💎 Áudios ilimitados com prioridade de processamento
 🔒 Modo Privado: conversão enviada só para você, não para o remetente
 📤 Exportação em PDF, DOCX, CSV e XLS
 📱 Até 3 números simultâneos
@@ -3428,7 +3435,7 @@ Equipe ZapScript`,
 Empresas que usam o ZapScript para times de vendas, jurídico ou atendimento normalmente precisam de mais do que os planos individuais oferecem.
 
 Por isso criamos o plano Executive — feito para empresas:
-💎 1.200 minutos/mês para toda a equipe
+💎 Áudios ilimitados para toda a equipe
 🔒 Modo privado: conversões chegam só no número da empresa, não para o contato
 🔗 Webhook personalizado: integre com CRM, ERP ou qualquer sistema via API
 📱 Números ilimitados para cada membro do time

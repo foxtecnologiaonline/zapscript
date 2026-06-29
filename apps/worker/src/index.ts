@@ -14,6 +14,10 @@ import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread }
 import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encryption';
 import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
+import {
+  planEfetivo, audioQuotaFor, normalizeContactId, pickFooterVariant,
+  MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
+} from './lib/freemium';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
 // ── Supabase Storage — download/delete de áudios temporários ─────────────────
@@ -560,33 +564,34 @@ function availableTotal(balance: { availableMinutes: number; extraMinutes?: numb
 async function saveTranscription(params: {
   userId: string; numberId: string | null; contactPhone: string; contactName?: string;
   filename?: string; durationSec: number; originalText: string; bullets: string[]; source: string;
+  footerShown?: boolean; footerVariant?: string | null;
 }) {
-  const { userId, numberId, contactPhone, contactName, filename, durationSec, originalText, bullets, source } = params;
+  const { userId, numberId, contactPhone, contactName, filename, durationSec, originalText, bullets, source, footerShown, footerVariant } = params;
   // Garantir que numberId seja null (não 'unknown') para não violar FK do Prisma
   const safeNumberId = (numberId && numberId !== 'unknown') ? numberId : null;
   const durationMin = Math.round((durationSec / 60) * 100) / 100;
 
   const transcription = await prisma.$transaction(async (tx) => {
-    // Débito em dois buckets: primeiro o pool do plano (availableMinutes), depois o
-    // saldo extra válido (extraMinutes, se não expirado). Dentro da transação para consistência.
+    // Métrica primária = nº de áudios → incrementa audiosUsed.
+    // Minutos viram métrica INTERNA de custo (accumulatedMinutes alimenta o
+    // contador "economizou Xh"). O débito de availableMinutes/extra é mantido
+    // por compatibilidade, mas é NÃO-BLOQUEANTE (clamp em 0) — a cota agora é
+    // controlada por áudios na entrada de cada pipeline, não por saldo de minutos.
     const nowDebit = new Date();
     const bal = await tx.minuteBalance.findUnique({ where: { userId } });
     if (!bal) throw new Error('Saldo não encontrado no momento do débito');
 
     const extraValid = bal.extraExpiresAt && bal.extraExpiresAt > nowDebit ? bal.extraMinutes : 0;
-    const totalAvail = bal.availableMinutes + extraValid;
-    if (totalAvail + 1e-9 < durationMin) {
-      throw new Error(`Saldo insuficiente no momento do débito (${durationMin.toFixed(2)} min)`);
-    }
-
     const fromPlan  = Math.min(bal.availableMinutes, durationMin);
-    const fromExtra = Math.round((durationMin - fromPlan) * 100) / 100;
+    const remainder = Math.max(0, durationMin - fromPlan);
+    const fromExtra = Math.round(Math.min(extraValid, remainder) * 100) / 100;
     await tx.minuteBalance.update({
       where: { userId },
       data: {
         availableMinutes:   { decrement: fromPlan },
         ...(fromExtra > 0 ? { extraMinutes: { decrement: fromExtra } } : {}),
         accumulatedMinutes: { increment: durationMin },
+        audiosUsed:         { increment: 1 },
       },
     });
 
@@ -596,7 +601,7 @@ async function saveTranscription(params: {
     const encBullets = encryptArr(bullets);
 
     const transcr = await tx.transcription.create({
-      data: { userId, numberId: safeNumberId, contactPhone: encPhone, contactName: contactName ?? null, filename: filename ?? null, durationSec, originalText: encText, summaryBullets: encBullets, confidenceScore: 99.0, source },
+      data: { userId, numberId: safeNumberId, contactPhone: encPhone, contactName: contactName ?? null, filename: filename ?? null, durationSec, originalText: encText, summaryBullets: encBullets, confidenceScore: 99.0, source, footerShown: footerShown ?? false, footerVariant: footerVariant ?? null },
     });
 
     const ops: Promise<any>[] = [
@@ -619,8 +624,11 @@ async function saveTranscription(params: {
     return transcr;
   });
 
-  // ── Alertas de consumo (fire-and-forget) ─────────────────────────────────
-  triggerMinuteAlertIfNeeded(userId).catch(() => null);
+  // ── Alertas de consumo ────────────────────────────────────────────────────
+  // (legado) Os alertas por MINUTOS foram desativados: a métrica primária agora é
+  // ÁUDIOS. O aviso ao usuário acontece no gate de cota (triggerQuotaBlockNotice)
+  // e na dashboard. triggerMinuteAlertIfNeeded fica disponível, mas não é mais
+  // chamado aqui para não enviar mensagens contraditórias falando em "minutos".
 
   // ── Webhook personalizado (fire-and-forget, Executive+) ───────────────────
   dispatchWebhook(userId, transcription, { originalText, bullets }).catch(() => null);
@@ -852,9 +860,10 @@ function buildMessage(
     isSelfNote?: boolean;       // áudio que o usuário encaminhou para o próprio número
     forwarded?: boolean;        // veio com selo de encaminhamento (forwardingScore)
     originPhone?: string | null;// remetente original (só existe via mensagem citada)
+    footerText?: string | null; // rodapé viral a exibir (B). null/undefined → Modo Privado (sem rodapé)
   } = {},
 ): string[] {
-  const { contactName, durationSec, isPrivate, senderPhone, isSelfNote, forwarded, originPhone } = opts;
+  const { contactName, durationSec, isPrivate, senderPhone, isSelfNote, forwarded, originPhone, footerText } = opts;
 
   const isTldr  = summaryMode(originalText, durationSec ?? 0) === 'tldr'
     && bullets.length === 1
@@ -911,20 +920,12 @@ function buildMessage(
   const replyLink = replyTarget
     ? `\n\n↩️ Responder: wa.me/${replyTarget.replace(/\D/g, '')}`
     : '';
-  // Rodapé viral (growth loop / K-factor): a conversão cai na conversa onde o áudio
-  // chegou, então quem MANDOU o áudio (um terceiro) vê a assinatura.
-  // 7 variantes rotativas (formal → irreverente); marca só no link, sem UTM,
-  // para não poluir a conversa. O preview do link é desativado no envio (evolution.ts).
-  const CTAS = [
-    '⚡ Áudio convertido em texto — ZapScript.me',
-    '_Convertido por_ ⚡ ZapScript.me',
-    '⚡ Conversão automática de áudio: ZapScript.me',
-    '⚡ Seu áudio vira texto: ZapScript.me',
-    '⚡ Leia em vez de ouvir: ZapScript.me',
-    '⚡ Cansou de ouvir áudio? ZapScript.me',
-    '⚡ Converta os seus também: ZapScript.me',
-  ];
-  const ctaLine = `\n\n${CTAS[Math.floor(Math.random() * CTAS.length)]}`;
+  // Rodapé viral CONDICIONAL (BLOCO B): só aparece quando footerText é fornecido.
+  //   FREE → rodapé em toda transcrição.
+  //   PRO  → rodapé só na 1ª transcrição de cada contato (seed); depois Modo Privado.
+  // A decisão (mostrar/qual variação) é tomada pelo caller; aqui só renderizamos.
+  // O preview do link é desativado no envio (evolution.ts).
+  const ctaLine = footerText ? `\n\n${footerText}` : '';
   const footer = `${replyLink}${ctaLine}`;
 
   // ── Conversão COMPLETA, dividida em mensagens se exceder o teto do WhatsApp ──
@@ -946,6 +947,114 @@ function buildMessage(
 
 
 // ─────────────────────────────────────────────────────────────────
+//  FREEMIUM — cota por áudios (A1/A2) + rodapé condicional (B)
+// ─────────────────────────────────────────────────────────────────
+
+/** Carrega plano efetivo + uso de áudios do ciclo para um usuário. */
+async function loadUsage(userId: string): Promise<{ plan: 'pro' | 'free'; quota: number; used: number; allowed: boolean }> {
+  const [user, bal] = await Promise.all([
+    prisma.user.findUnique({
+      where:  { id: userId },
+      select: { isTester: true, subscription: { select: { status: true, trialEndsAt: true, plan: { select: { name: true } } } } },
+    }),
+    prisma.minuteBalance.findUnique({ where: { userId }, select: { audiosUsed: true } }),
+  ]);
+  const plan  = planEfetivo(user || {}, new Date());
+  const quota = audioQuotaFor(plan);
+  const used  = bal?.audiosUsed ?? 0;
+  return { plan, quota, used, allowed: used < quota };
+}
+
+/** Áudio acima do teto de 10 min (com margem) → rejeita sem contar cota. */
+function isAudioTooLong(durationSec: number): boolean {
+  return durationSec > MAX_AUDIO_SECONDS + MAX_AUDIO_MARGIN_SECONDS;
+}
+const REJECT_TOO_LONG_MSG =
+  '🎧 Esse áudio passa de 10 minutos. Por aqui eu transcrevo áudios de até 10 min — ' +
+  'peça pra dividir em partes que eu cuido do resto. (não descontou nada da sua cota)';
+
+/**
+ * Decide se mostra o rodapé viral nesta transcrição e qual variação (B).
+ *  FREE → sempre mostra. PRO → só na 1ª de cada contato (seed permanente); depois Modo Privado.
+ *  Self-note / sem contato → suprime (cai no próprio chat).
+ */
+async function decideFooter(
+  userId: string, plan: 'pro' | 'free', contactPhone: string, isSelfNote: boolean,
+): Promise<{ show: boolean; variantId: string | null; variantText: string | null }> {
+  if (isSelfNote) return { show: false, variantId: null, variantText: null };
+
+  const variant = pickFooterVariant();
+  if (plan === 'free') return { show: true, variantId: variant.id, variantText: variant.text };
+
+  // PRO: rodapé apenas na 1ª transcrição de cada contato
+  const contactId = normalizeContactId(contactPhone);
+  if (!contactId) return { show: false, variantId: null, variantText: null };
+
+  try {
+    const existing = await prisma.proContactSeed.findUnique({
+      where:  { userId_contactId: { userId, contactId } },
+      select: { id: true },
+    });
+    if (existing) return { show: false, variantId: null, variantText: null }; // Modo Privado
+
+    await prisma.proContactSeed.create({ data: { userId, contactId, footerVariant: variant.id } });
+    return { show: true, variantId: variant.id, variantText: variant.text };
+  } catch {
+    // Corrida (unique violation): outro job já semeou → suprime
+    return { show: false, variantId: null, variantText: null };
+  }
+}
+
+/**
+ * Avisa o PRÓPRIO usuário (WhatsApp + e-mail) que a cota FREE do mês acabou,
+ * com CTA de upgrade ancorado em "menos de R$1,33/dia". Throttle: 1x por ciclo.
+ * NUNCA responde na conversa do contato que enviou o áudio.
+ */
+async function triggerQuotaBlockNotice(userId: string): Promise<void> {
+  try {
+    const bal = await prisma.minuteBalance.findUnique({ where: { userId }, select: { lastAlertSent: true } });
+    if (bal?.lastAlertSent === 'quota_block') return; // já avisou neste ciclo
+
+    const user    = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+    const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+    const waMsg =
+      `🔓 *ZapScript* — Você usou seus ${FREE_AUDIO_QUOTA} áudios grátis do mês\n\n` +
+      `Continue lendo seus áudios *sem limite*, por *menos de R$1,33/dia*.\n` +
+      `Não volte a ouvir áudio:\n👉 ${APP_URL}/dashboard/plano`;
+
+    const n = await prisma.whatsappNumber.findFirst({
+      where:   { userId, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } },
+      orderBy: { connectedAt: 'desc' },
+    });
+    if (n?.zapiInstanceId && n?.phoneNumber) {
+      await sendMessageViaEvolution(n.zapiInstanceId, n.phoneNumber, waMsg).catch(() => null);
+    }
+    if (user?.email) {
+      const firstName = escHtml(user.name?.split(' ')[0] || 'você');
+      sendEmail(user.email, '🔓 ZapScript — seus áudios grátis acabaram este mês',
+        `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+          <div style="font-size:22px;font-weight:bold;margin-bottom:16px">🔓 Continue lendo sem limite</div>
+          <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
+            Olá, <strong>${firstName}</strong>!<br><br>
+            Você usou seus <strong>${FREE_AUDIO_QUOTA} áudios grátis</strong> deste mês.
+            Quem tem vida corrida não para pra ouvir áudio — lê.<br><br>
+            Volte a ler tudo, sem limite, por <strong>menos de R$1,33/dia</strong>:
+          </div>
+          <div style="margin:24px 0;text-align:center">
+            <a href="${APP_URL}/dashboard/plano" style="background:#10b981;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Ativar o Pro →</a>
+          </div>
+          <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+        </div>`,
+      ).catch(() => null);
+    }
+    await prisma.minuteBalance.update({ where: { userId }, data: { lastAlertSent: 'quota_block' } }).catch(() => null);
+    logger.info(`[Quota] ✅ Aviso de cota FREE esgotada enviado ao usuário ${userId}`);
+  } catch (err: any) {
+    logger.warn(`[Quota] Falha ao avisar cota esgotada: ${err.message}`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  PIPELINE B — Uploads manuais do dashboard (source: 'manual')
 // ─────────────────────────────────────────────────────────────────
 async function processManualJob(job: Job) {
@@ -956,11 +1065,13 @@ async function processManualJob(job: Job) {
   let mp3Buffer: Buffer | null = null;
 
   try {
-    // PASSO 1: Verificar saldo
-    const balance = await prisma.minuteBalance.findUnique({ where: { userId } });
-    if (!balance || availableTotal(balance) < 0.1) {
-      log(job, '⚠️  Saldo insuficiente');
-      return { skipped: true, reason: 'insufficient_balance' };
+    // PASSO 1: Cota por ÁUDIOS (métrica primária).
+    // Upload jurídico é recurso PRO → sem teto de 10 min e sem rodapé.
+    const usage = await loadUsage(userId);
+    if (!usage.allowed) {
+      log(job, `⚠️  Cota de áudios atingida (${usage.used}/${usage.quota}, plano ${usage.plan})`);
+      if (usage.plan === 'free') triggerQuotaBlockNotice(userId).catch(() => null);
+      return { skipped: true, reason: usage.plan === 'free' ? 'free_quota_reached' : 'pro_cap_reached' };
     }
 
     // PASSO 2: Obter buffer — Supabase Storage (preferido) ou base64 (fallback)
@@ -1070,17 +1181,20 @@ async function processOfficialWhatsAppJob(job: Job) {
       prisma.minuteBalance.findUnique({ where: { userId } }),
       prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
     ]);
-    if (!balance || availableTotal(balance) < durationMin) {
-      log(job, '⚠️  Saldo insuficiente — alertando o próprio usuário');
-      // Avisa SOMENTE o próprio usuário (throttle + e-mail). NUNCA na conversa com o contato.
-      triggerMinuteAlertIfNeeded(userId).catch(() => null);
-      return { skipped: true, reason: 'insufficient_balance' };
-    }
     if (!firstNumber) {
       log(job, '⚠️  Usuário sem número cadastrado');
       return { skipped: true, reason: 'no_number' };
     }
-    log(job, `✅ Saldo OK: ${availableTotal(balance).toFixed(1)} min`);
+
+    // Cota por ÁUDIOS (métrica primária). FREE no limite → bloqueia + upsell
+    // (aviso só ao próprio usuário). PRO → teto oculto, skip silencioso.
+    const usage = await loadUsage(userId);
+    if (!usage.allowed) {
+      log(job, `⚠️  Cota de áudios atingida (${usage.used}/${usage.quota}, plano ${usage.plan})`);
+      if (usage.plan === 'free') triggerQuotaBlockNotice(userId).catch(() => null);
+      return { skipped: true, reason: usage.plan === 'free' ? 'free_quota_reached' : 'pro_cap_reached' };
+    }
+    log(job, `✅ Cota OK: ${usage.used}/${usage.quota} áudios (${usage.plan})`);
 
     // PASSO 2: Baixar áudio da Meta API
     log(job, '⬇️  Baixando áudio da Meta API...');
@@ -1091,6 +1205,13 @@ async function processOfficialWhatsAppJob(job: Job) {
     log(job, '🔄 Convertendo para MP3...');
     mp3Buffer = await convertToMp3(audioBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 3.5: Teto de 10 min — rejeita antes de processar (não conta cota).
+    if (isAudioTooLong(estimateMp3DurationSec(mp3Buffer))) {
+      log(job, '⚠️  Áudio acima de 10 min — rejeitado sem contar cota');
+      await sendMessageToMeta(senderPhone, REJECT_TOO_LONG_MSG).catch(() => null);
+      return { skipped: true, reason: 'audio_too_long' };
+    }
 
     // PASSO 4: Converter com Whisper (chunking automático p/ áudios longos)
     log(job, '🎙️  Whisper API (auto-idioma)...');
@@ -1103,9 +1224,12 @@ async function processOfficialWhatsAppJob(job: Job) {
     const bullets = await generateBullets(originalText, durationSec, detectedLang);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
+    // Rodapé condicional (B): FREE sempre; PRO só na 1ª de cada contato.
+    const footer = await decideFooter(userId, usage.plan, senderPhone, false);
+
     // PASSO 6: Enviar resposta no WhatsApp
     log(job, '📤 Enviando resposta via Meta API...');
-    const messages = buildMessage(bullets, originalText, { contactName: senderName, durationSec });
+    const messages = buildMessage(bullets, originalText, { contactName: senderName, durationSec, footerText: footer.variantText });
     for (const m of messages) await sendMessageToMeta(senderPhone, m);
     log(job, '✅ Mensagem enviada');
 
@@ -1120,6 +1244,8 @@ async function processOfficialWhatsAppJob(job: Job) {
       originalText,
       bullets,
       source: 'whatsapp-meta',
+      footerShown:   footer.show,
+      footerVariant: footer.variantId,
     });
 
     log(job, `✅ Processado via WhatsApp Cloud API`);
@@ -1155,16 +1281,20 @@ async function processTwilioJob(job: Job) {
       prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
     ]);
 
-    if (!balance || availableTotal(balance) < 1) {
-      log(job, '⚠️  Saldo insuficiente — alertando o próprio usuário');
-      // Avisa SOMENTE o próprio usuário (throttle + e-mail). NUNCA na conversa com o contato.
-      triggerMinuteAlertIfNeeded(userId).catch(() => null);
-      return { skipped: true, reason: 'insufficient_balance' };
-    }
     if (!firstNumber) {
       log(job, '⚠️  Usuário sem número cadastrado');
       return { skipped: true, reason: 'no_number' };
     }
+
+    // Cota por ÁUDIOS (métrica primária). FREE no limite → bloqueia + upsell
+    // (aviso só ao próprio usuário). PRO → teto oculto, skip silencioso.
+    const usage = await loadUsage(userId);
+    if (!usage.allowed) {
+      log(job, `⚠️  Cota de áudios atingida (${usage.used}/${usage.quota}, plano ${usage.plan})`);
+      if (usage.plan === 'free') triggerQuotaBlockNotice(userId).catch(() => null);
+      return { skipped: true, reason: usage.plan === 'free' ? 'free_quota_reached' : 'pro_cap_reached' };
+    }
+    log(job, `✅ Cota OK: ${usage.used}/${usage.quota} áudios (${usage.plan})`);
 
     // PASSO 2: Baixar áudio do Twilio
     log(job, '⬇️  Baixando áudio do Twilio...');
@@ -1175,6 +1305,13 @@ async function processTwilioJob(job: Job) {
     log(job, '🔄 Convertendo para MP3...');
     mp3Buffer = await convertToMp3(audioBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 3.5: Teto de 10 min — rejeita antes de processar (não conta cota).
+    if (isAudioTooLong(estimateMp3DurationSec(mp3Buffer))) {
+      log(job, '⚠️  Áudio acima de 10 min — rejeitado sem contar cota');
+      await sendMessageViaTwilio(senderPhone, twilioFrom, REJECT_TOO_LONG_MSG).catch(() => null);
+      return { skipped: true, reason: 'audio_too_long' };
+    }
 
     // PASSO 4: Converter com Whisper (chunking automático p/ áudios longos)
     log(job, '🎙️  Whisper API (auto-idioma)...');
@@ -1187,9 +1324,12 @@ async function processTwilioJob(job: Job) {
     const bullets = await generateBullets(originalText, durationSec, detectedLang);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
+    // Rodapé condicional (B): FREE sempre; PRO só na 1ª de cada contato.
+    const footer = await decideFooter(userId, usage.plan, senderPhone, false);
+
     // PASSO 6: Enviar resposta via Twilio
     log(job, '📤 Enviando resposta via Twilio...');
-    const messages = buildMessage(bullets, originalText, { contactName: senderName, durationSec });
+    const messages = buildMessage(bullets, originalText, { contactName: senderName, durationSec, footerText: footer.variantText });
     for (const m of messages) await sendMessageViaTwilio(senderPhone, twilioFrom, m);
     log(job, '✅ Mensagem enviada');
 
@@ -1204,6 +1344,8 @@ async function processTwilioJob(job: Job) {
       originalText,
       bullets,
       source: 'whatsapp-twilio',
+      footerShown:   footer.show,
+      footerVariant: footer.variantId,
     });
 
     log(job, `✅ Processado via Twilio BSP`);
@@ -1245,19 +1387,22 @@ async function processEvolutionJob(job: Job) {
         : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
     ]);
 
-    if (availableTotal(balance) < 0.1) {
-      log(job, `⚠️  Saldo insuficiente: ${availableTotal(balance).toFixed(2)} min — alertando o próprio usuário`);
-      // Avisa SOMENTE o próprio número do usuário (throttle + e-mail). NUNCA responde
-      // na conversa com o contato/grupo que enviou o áudio (senderPhone), para não
-      // vazar a situação de saldo a terceiros nem poluir conversas alheias.
-      triggerMinuteAlertIfNeeded(userId).catch(() => null);
-      return { skipped: true, reason: 'insufficient_balance' };
+    // Cota por ÁUDIOS (métrica primária). FREE atinge o limite → bloqueia + upsell
+    // (aviso só ao próprio usuário). PRO → teto oculto de segurança (500/mês), skip silencioso.
+    const usage = await loadUsage(userId);
+    if (!usage.allowed) {
+      log(job, `⚠️  Cota de áudios atingida (${usage.used}/${usage.quota}, plano ${usage.plan})`);
+      if (usage.plan === 'free') {
+        // NUNCA responde na conversa do contato — só avisa o próprio usuário.
+        triggerQuotaBlockNotice(userId).catch(() => null);
+      }
+      return { skipped: true, reason: usage.plan === 'free' ? 'free_quota_reached' : 'pro_cap_reached' };
     }
     if (!whatsappNumber) {
       log(job, '⚠️  Número não encontrado no banco');
       return { skipped: true, reason: 'no_number' };
     }
-    log(job, `✅ Saldo OK: ${availableTotal(balance).toFixed(1)} min`);
+    log(job, `✅ Cota OK: ${usage.used}/${usage.quota} áudios (${usage.plan})`);
 
     // PASSO 2: Baixar áudio via Evolution API (getBase64FromMediaMessage)
     const instName = instanceName ?? whatsappNumber.zapiInstanceId;
@@ -1271,6 +1416,15 @@ async function processEvolutionJob(job: Job) {
     log(job, '🔄 Convertendo para MP3...');
     mp3Buffer = await convertToMp3(audioBuffer);
     log(job, `✅ Convertido: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 3.5: Teto de 10 min — rejeita antes de processar (não conta cota).
+    const estDurSec = Math.max(estimateMp3DurationSec(mp3Buffer), durationHint || 0);
+    if (isAudioTooLong(estDurSec)) {
+      log(job, `⚠️  Áudio acima de 10 min (~${Math.round(estDurSec / 60)}min) — rejeitado sem contar cota`);
+      const instNameReject = instanceName ?? whatsappNumber.zapiInstanceId;
+      if (instNameReject) await sendMessageViaEvolution(instNameReject, senderPhone, REJECT_TOO_LONG_MSG).catch(() => null);
+      return { skipped: true, reason: 'audio_too_long' };
+    }
 
     // PASSO 4: Converter com Whisper (chunking automático p/ áudios longos)
     log(job, '🎙️  Whisper API (auto-idioma)...');
@@ -1300,6 +1454,9 @@ async function processEvolutionJob(job: Job) {
                         && whatsappNumber.phoneNumber !== 'pending';
     const targetPhone = isPrivate ? whatsappNumber.phoneNumber! : senderPhone;
 
+    // Rodapé condicional (B): FREE sempre; PRO só na 1ª de cada contato.
+    const footer = await decideFooter(userId, usage.plan, senderPhone, isSelfNote);
+
     const messages = buildMessage(bullets, originalText, {
       contactName: senderName,
       durationSec,
@@ -1308,6 +1465,7 @@ async function processEvolutionJob(job: Job) {
       isSelfNote,
       forwarded:   job.data.forwarded === true,
       originPhone: (job.data.originPhone as string | undefined) ?? null,
+      footerText:  footer.variantText,
     });
 
     for (const m of messages) await sendMessageViaEvolution(instName, targetPhone, m);
@@ -1327,6 +1485,8 @@ async function processEvolutionJob(job: Job) {
       originalText,
       bullets,
       source: 'whatsapp-evolution',
+      footerShown:   footer.show,
+      footerVariant: footer.variantId,
     });
 
     // PASSO 8: Notificar dashboard via Socket.IO (fire-and-forget)
@@ -1417,6 +1577,147 @@ logger.info('Worker de conversão iniciado (WhatsApp + Upload manual)');
 //  CRON — Reset automático de minutos mensais
 //  Roda a cada hora e reseta saldos cujo resetAt já passou
 // ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+//  CRON — Transições de Trial (avisos D5/D7, downgrade D8 → FREE)
+//  Server-side, idempotente, NÃO depende de login do usuário.
+//  Trial = 7 dias de PRO. Ao expirar: vira FREE no dia seguinte (D8),
+//  reativa rodapé (plano free) e desliga Modo Privado.
+// ─────────────────────────────────────────────────────────────────
+function trialNoticeContent(
+  firstName: string, kind: 'd5' | 'd7' | 'downgrade', daysLeft: number, APP_URL: string,
+): { wa: string; subject: string; html: string } {
+  const cta = `👉 ${APP_URL}/dashboard/plano`;
+  const btn = (label: string) =>
+    `<div style="margin:24px 0;text-align:center"><a href="${APP_URL}/dashboard/plano" style="background:#10b981;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">${label}</a></div>`;
+  const wrap = (title: string, body: string, label: string) =>
+    `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+      <div style="font-size:22px;font-weight:bold;margin-bottom:16px">${title}</div>
+      <div style="font-size:14px;line-height:1.7;color:#a7f3d0">Olá, <strong>${escHtml(firstName)}</strong>!<br><br>${body}</div>
+      ${btn(label)}
+      <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+    </div>`;
+
+  if (kind === 'd5') {
+    return {
+      wa: `⏳ *ZapScript* — faltam ${daysLeft} dias do seu período Pro\n\n` +
+          `Você está lendo seus áudios *sem limite* e com *Modo Privado* ativo. Isso termina em ${daysLeft} dias.\n\n` +
+          `Continue Pro por *menos de R$1,33/dia* e não volte a parar pra ouvir áudio:\n${cta}`,
+      subject: '⏳ ZapScript — faltam poucos dias do seu Pro',
+      html: wrap('⏳ Seu período Pro está acabando',
+        `Faltam <strong>${daysLeft} dias</strong> do seu período Pro — áudios sem limite e Modo Privado.<br><br>` +
+        `Quem tem vida corrida não para pra ouvir áudio: lê. Continue Pro por <strong>menos de R$1,33/dia</strong>.`,
+        'Continuar Pro →'),
+    };
+  }
+  if (kind === 'd7') {
+    return {
+      wa: `⏳ *ZapScript* — seu período Pro termina hoje\n\n` +
+          `A partir de amanhã sua conta volta ao plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês) e o Modo Privado é desligado.\n\n` +
+          `Fique Pro por *menos de R$1,33/dia*:\n${cta}`,
+      subject: '⏳ ZapScript — seu Pro termina hoje',
+      html: wrap('⏳ Seu período Pro termina hoje',
+        `A partir de amanhã sua conta volta ao <strong>plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês)</strong> e o Modo Privado é desligado.<br><br>` +
+        `Mantenha tudo como está por <strong>menos de R$1,33/dia</strong>.`,
+        'Ativar o Pro →'),
+    };
+  }
+  return {
+    wa: `🔓 *ZapScript* — seu período Pro terminou\n\n` +
+        `Sua conta voltou ao plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês) e o Modo Privado foi desligado.\n\n` +
+        `Volte a ler tudo sem limite por *menos de R$1,33/dia*:\n${cta}`,
+    subject: '🔓 ZapScript — seu período Pro terminou',
+    html: wrap('🔓 Seu período Pro terminou',
+      `Sua conta voltou ao <strong>plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês)</strong> e o Modo Privado foi desligado.<br><br>` +
+      `Volte a ler tudo sem limite por <strong>menos de R$1,33/dia</strong>.`,
+      'Voltar ao Pro →'),
+  };
+}
+
+async function sendTrialNotice(
+  user: { id: string; email: string | null; name: string | null },
+  kind: 'd5' | 'd7' | 'downgrade', daysLeft: number,
+): Promise<void> {
+  const APP_URL   = process.env.APP_URL || 'https://zapscript.me';
+  const firstName = user.name?.split(' ')[0] || 'você';
+  const c = trialNoticeContent(firstName, kind, daysLeft, APP_URL);
+
+  const n = await prisma.whatsappNumber.findFirst({
+    where:   { userId: user.id, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } },
+    orderBy: { connectedAt: 'desc' },
+  }).catch(() => null);
+  if (n?.zapiInstanceId && n?.phoneNumber) {
+    await sendMessageViaEvolution(n.zapiInstanceId, n.phoneNumber, c.wa).catch(() => null);
+  }
+  if (user.email) sendEmail(user.email, c.subject, c.html).catch(() => null);
+}
+
+/** Envia um aviso de trial no máximo 1x (throttle via lastAlertSent). */
+async function maybeSendTrialAlert(
+  userId: string, token: 'trial_d5' | 'trial_d7', send: () => Promise<void>,
+): Promise<void> {
+  try {
+    const bal = await prisma.minuteBalance.findUnique({ where: { userId }, select: { lastAlertSent: true } });
+    if (bal?.lastAlertSent === token) return; // já avisou
+    await send();
+    await prisma.minuteBalance.update({ where: { userId }, data: { lastAlertSent: token } }).catch(() => null);
+  } catch (e: any) {
+    logger.warn(`[Trial] Falha ao enviar ${token}: ${e.message}`);
+  }
+}
+
+async function processTrialTransitions() {
+  const now = new Date();
+  try {
+    const trials = await prisma.subscription.findMany({
+      where:   { status: 'trialing', trialEndsAt: { not: null } },
+      include: { user: { select: { id: true, email: true, name: true, isTester: true } } },
+    });
+    if (trials.length === 0) return;
+
+    const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
+
+    for (const sub of trials) {
+      if (!sub.trialEndsAt) continue;
+      if (sub.user.isTester) continue; // tester = PRO real (1 ano), não expira por aqui
+
+      const msLeft   = sub.trialEndsAt.getTime() - now.getTime();
+      const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
+
+      // ── D8: trial expirou → downgrade idempotente para FREE ──
+      if (msLeft <= 0) {
+        if (sub.trialDowngradedAt || !freePlan) continue;
+        const nextReset = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        await prisma.$transaction([
+          prisma.subscription.update({
+            where: { id: sub.id },
+            data:  { planId: freePlan.id, status: 'active', trialDowngradedAt: now },
+          }),
+          prisma.minuteBalance.upsert({
+            where:  { userId: sub.userId },
+            create: { userId: sub.userId, availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
+            update: { availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
+          }),
+          // Desliga Modo Privado → rodapé viral volta a aparecer no FREE
+          prisma.whatsappNumber.updateMany({ where: { userId: sub.userId, privateMode: true }, data: { privateMode: false } }),
+        ]);
+        await redis.del(`plan:${sub.userId}`).catch(() => null); // invalida cache de plano da API
+        logger.info(`[Trial] Downgrade D8: ${sub.user.email} → FREE`);
+        await sendTrialNotice(sub.user, 'downgrade', 0).catch(() => null);
+        continue;
+      }
+
+      // ── D7: último dia ── / ── D5: faltam ~2 dias ──
+      if (daysLeft <= 1) {
+        await maybeSendTrialAlert(sub.userId, 'trial_d7', () => sendTrialNotice(sub.user, 'd7', daysLeft));
+      } else if (daysLeft <= 2) {
+        await maybeSendTrialAlert(sub.userId, 'trial_d5', () => sendTrialNotice(sub.user, 'd5', daysLeft));
+      }
+    }
+  } catch (err) {
+    logger.error(`[Trial] Erro nas transições de trial: ${(err as Error).message}`);
+  }
+}
+
 async function resetExpiredMinutes() {
   const now = new Date();
 
@@ -1453,8 +1754,8 @@ async function resetExpiredMinutes() {
           }),
           prisma.minuteBalance.upsert({
             where:  { userId: sub.userId },
-            create: { userId: sub.userId, availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
-            update: { availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
+            create: { userId: sub.userId, availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
+            update: { availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
           }),
         ]);
 
@@ -1469,7 +1770,7 @@ async function resetExpiredMinutes() {
               <div style="font-size:22px;font-weight:bold;margin-bottom:16px">🔴 Sua assinatura foi cancelada</div>
               <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
                 Olá, <strong>${firstName}</strong>!<br><br>
-                Por falta de pagamento, sua assinatura <strong>${sub.plan.label}</strong> foi cancelada e sua conta foi movida para o <strong>plano gratuito (20 min/mês)</strong>.<br><br>
+                Por falta de pagamento, sua assinatura <strong>${sub.plan.label}</strong> foi cancelada e sua conta foi movida para o <strong>plano gratuito (15 áudios/mês)</strong>.<br><br>
                 Para reativar seu plano e recuperar todas as funcionalidades, basta renovar sua assinatura:
               </div>
               <div style="margin:24px 0;text-align:center">
@@ -1490,7 +1791,7 @@ async function resetExpiredMinutes() {
 
         if (wn?.zapiInstanceId && wn?.phoneNumber) {
           const APP_URL = process.env.APP_URL || 'https://zapscript.me';
-          const msg = `🔴 *ZapScript* — Assinatura cancelada\n\nOlá! Sua assinatura *${sub.plan.label}* foi cancelada por falta de pagamento.\n\nSua conta foi movida para o plano gratuito (20 min/mês).\n\nPara reativar:\n👉 ${APP_URL}/dashboard/plano`;
+          const msg = `🔴 *ZapScript* — Assinatura cancelada\n\nOlá! Sua assinatura *${sub.plan.label}* foi cancelada por falta de pagamento.\n\nSua conta foi movida para o plano gratuito (15 áudios/mês).\n\nPara reativar:\n👉 ${APP_URL}/dashboard/plano`;
           sendMessageViaEvolution(wn.zapiInstanceId, wn.phoneNumber, msg).catch(() => null);
         }
       }
@@ -1532,6 +1833,7 @@ async function resetExpiredMinutes() {
         where: { id: balance.id },
         data:  {
           availableMinutes: minutesPerMonth,
+          audiosUsed:       0, // métrica primária — zera o contador de áudios do ciclo
           resetAt:          nextReset,
           lastAlertSent:    null,
           ...(extraExpired ? { extraMinutes: 0, extraExpiresAt: null } : {}),
@@ -1555,7 +1857,7 @@ async function resetExpiredMinutes() {
               <div style="font-size:22px;font-weight:bold;margin-bottom:16px">🎁 Obrigado por ser Tester!</div>
               <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
                 Você usou todas as suas <strong>12 renovações gratuitas</strong> como Tester.<br><br>
-                Para continuar com o <strong>Plano Pro (200 min/mês)</strong>, assine agora com desconto exclusivo.
+                Para continuar com o <strong>Plano Pro (áudios ilimitados)</strong>, assine agora com desconto exclusivo.
               </div>
               <div style="margin:24px 0;text-align:center">
                 <a href="${APP_URL}/dashboard/plano" style="background:#10b981;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Assinar Pro →</a>
@@ -1578,6 +1880,10 @@ async function resetExpiredMinutes() {
 // Executa na inicialização e a cada hora
 resetExpiredMinutes();
 setInterval(resetExpiredMinutes, 60 * 60 * 1000);
+
+// Transições de trial (avisos D5/D7 + downgrade D8) — a cada hora, sem depender de login
+processTrialTransitions();
+setInterval(processTrialTransitions, 60 * 60 * 1000);
 
 // ─────────────────────────────────────────────────────────────────
 //  CRON — Service Health Checker (#6 + #4)

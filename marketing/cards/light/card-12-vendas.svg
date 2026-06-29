@@ -1,0 +1,60 @@
+<svg viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg" font-family="'DM Sans','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f4f7f5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+
+  <text x="540" y="105" text-anchor="middle" font-size="46" font-weight="800" fill="#0f172a">O lead manda áudio.</text>
+  <text x="540" y="160" text-anchor="middle" font-size="46" font-weight="800" fill="#10b981">Você fecha a venda mais rápido.</text>
+
+  <!-- Áudio recebido (bolha cinza, esquerda) -->
+  <g transform="translate(90,210)">
+    <rect width="560" height="120" rx="26" fill="#e2e8f0"/>
+    <circle cx="58" cy="60" r="30" fill="#10b981"/>
+    <path d="M51 45 L51 75 L74 60 Z" fill="#ffffff"/>
+    <g stroke="#64748b" stroke-width="4" stroke-linecap="round">
+      <line x1="110" y1="60" x2="110" y2="60"/>
+      <line x1="128" y1="48" x2="128" y2="72"/>
+      <line x1="146" y1="40" x2="146" y2="80"/>
+      <line x1="164" y1="52" x2="164" y2="68"/>
+      <line x1="182" y1="44" x2="182" y2="76"/>
+      <line x1="200" y1="50" x2="200" y2="70"/>
+      <line x1="218" y1="38" x2="218" y2="82"/>
+      <line x1="236" y1="54" x2="236" y2="66"/>
+      <line x1="254" y1="46" x2="254" y2="74"/>
+      <line x1="272" y1="56" x2="272" y2="64"/>
+      <line x1="290" y1="42" x2="290" y2="78"/>
+      <line x1="308" y1="52" x2="308" y2="68"/>
+    </g>
+    <text x="470" y="68" font-size="30" font-weight="600" fill="#64748b">0:38</text>
+  </g>
+
+  <!-- Resposta ZapScript (bolha verde, direita) -->
+  <g transform="translate(150,380)">
+    <rect width="840" height="560" rx="30" fill="#ecfdf5" stroke="#10b981" stroke-opacity="0.5" stroke-width="2"/>
+    <text x="40" y="62" font-size="30" font-weight="800" fill="#34d399">📋 Resumo</text>
+    <text x="40" y="118" font-size="29" font-weight="500" fill="#065f46">• Quer 40 unidades do plano Pro, pagamento anual</text>
+    <text x="40" y="166" font-size="29" font-weight="500" fill="#065f46">• Pediu desconto de 10% para fechar hoje</text>
+    <text x="40" y="214" font-size="29" font-weight="500" fill="#065f46">• Decisor é o diretor financeiro, copiar no e-mail</text>
+    <text x="40" y="262" font-size="29" font-weight="500" fill="#065f46">• Quer proposta formal até o fim do dia</text>
+
+    <line x1="40" y1="300" x2="800" y2="300" stroke="#10b981" stroke-opacity="0.2" stroke-width="2"/>
+
+    <text x="40" y="350" font-size="30" font-weight="800" fill="#34d399">📝 Transcrição</text>
+    <text x="40" y="398" font-size="27" font-weight="400" fill="#047857">"Oi! Conversei com a diretoria aqui e fechamos: queremos</text>
+    <text x="40" y="436" font-size="27" font-weight="400" fill="#047857">40 licenças do plano Pro, pagamento anual. Só queria ver</text>
+    <text x="40" y="474" font-size="27" font-weight="400" fill="#047857">se dá pra fechar com 10% de desconto hoje. Pode mandar</text>
+    <text x="40" y="512" font-size="27" font-weight="400" fill="#047857">a proposta com cópia pro financeiro?"</text>
+
+    <text x="800" y="525" text-anchor="end" font-size="24" font-weight="600" fill="#059669" opacity="0.7">⚡ Gerado por ZapScript</text>
+  </g>
+
+  <g transform="translate(80,978)">
+    <g transform="scale(1.6)"><path d="M11 21h-1l1-7H6.5c-.6 0-.3-.5-.2-.7C7.8 9.5 10 5.6 12.6 1c.3-.5.6-.3.6.2l-1 6.8h4.4c.5 0 .5.3.4.5L11 21z" fill="#10b981"/></g>
+    <text x="50" y="28" font-size="36" font-weight="800" fill="#0f172a">ZapScript</text>
+  </g>
+  <text x="1000" y="1010" text-anchor="end" font-size="30" font-weight="600" fill="#10b981">zapscript.me</text>
+</svg>

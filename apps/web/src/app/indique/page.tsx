@@ -4,13 +4,13 @@ import Link from 'next/link';
 import IndiqueClient from './IndiqueClient';
 
 export const metadata: Metadata = {
-  title:       'Indique o ZapScript e ganhe minutos grátis — Programa de Indicação',
-  description: 'Indique um amigo para o ZapScript e ganhem 15 minutos grátis de conversão cada um quando ele se cadastrar. Sem limite de indicações.',
+  title:       'Indique o ZapScript e ganhe áudios grátis — Programa de Indicação',
+  description: 'Indique um amigo para o ZapScript e ganhem 5 áudios grátis de conversão cada um quando ele se cadastrar. Sem limite de indicações.',
   keywords:    'indique e ganhe zapscript, programa de indicação whatsapp, link de indicação conversão áudio',
   alternates:  { canonical: 'https://www.zapscript.me/indique' },
   openGraph: {
-    title:       'Indique o ZapScript — Ganhe minutos grátis',
-    description: 'Cada amigo que você indicar e se cadastrar dá 15 minutos grátis para os dois. Sem limite.',
+    title:       'Indique o ZapScript — Ganhe áudios grátis',
+    description: 'Cada amigo que você indicar e se cadastrar dá 5 áudios grátis para os dois. Sem limite.',
     url:         'https://www.zapscript.me/indique',
     siteName:    'ZapScript',
     locale:      'pt_BR',
@@ -19,11 +19,11 @@ export const metadata: Metadata = {
 };
 
 const FAQS = [
-  { q: 'Como funciona o programa de indicação?', a: 'Você compartilha seu link pessoal (disponível no seu painel, em "Indique o ZapScript"). Quando alguém se cadastra pelo seu link, você e a pessoa indicada ganham 15 minutos grátis de conversão cada.' },
-  { q: 'Existe limite de indicações?', a: 'Não. Você pode indicar quantas pessoas quiser e acumular 15 minutos grátis por cada cadastro válido feito pelo seu link.' },
+  { q: 'Como funciona o programa de indicação?', a: 'Você compartilha seu link pessoal (disponível no seu painel, em "Indique o ZapScript"). Quando alguém se cadastra pelo seu link, você e a pessoa indicada ganham 5 áudios grátis de conversão cada.' },
+  { q: 'Existe limite de indicações?', a: 'Não. Você pode indicar quantas pessoas quiser e acumular 5 áudios grátis por cada cadastro válido feito pelo seu link.' },
   { q: 'Onde encontro meu link de indicação?', a: 'Faça login na sua conta ZapScript e acesse o Dashboard — seu link pessoal está no card "Indique o ZapScript", com botão para copiar ou compartilhar direto no WhatsApp.' },
   { q: 'Ainda não tenho conta, posso indicar?', a: 'Você precisa de uma conta ZapScript (mesmo no plano Free, grátis) para gerar seu link pessoal de indicação. Crie sua conta grátis e o link aparece automaticamente no seu painel.' },
-  { q: 'Os minutos grátis somam com o plano que eu já tenho?', a: 'Sim. Os 15 minutos de cada indicação são creditados na sua conta e somam ao limite mensal do seu plano atual (Free ou Pro).' },
+  { q: 'Os áudios grátis somam com o plano que eu já tenho?', a: 'Sim. Os 5 áudios de cada indicação são creditados na sua conta e somam à cota mensal do seu plano atual (Free ou Pro).' },
 ];
 
 const faqJsonLd = {
@@ -69,17 +69,17 @@ export default function IndiquePage() {
           🎁 Programa de indicação
         </div>
         <h1 className="text-3xl sm:text-5xl font-bold text-white leading-tight mb-5">
-          Indique um amigo,<br /><span className="text-brand-primary">ganhem 15 minutos grátis</span> os dois
+          Indique um amigo,<br /><span className="text-brand-primary">ganhem 5 áudios grátis</span> os dois
         </h1>
         <p className="text-lg text-brand-muted max-w-xl mx-auto leading-relaxed mb-10">
-          Cada pessoa que se cadastrar pelo seu link pessoal dá 15 minutos grátis de conversão para você e para ela. Sem limite de indicações.
+          Cada pessoa que se cadastrar pelo seu link pessoal dá 5 áudios grátis de conversão para você e para ela. Sem limite de indicações.
         </p>
 
         <div className="grid sm:grid-cols-3 gap-4 mb-12 text-left">
           {[
             { n: '1', t: 'Pegue seu link', d: 'Faça login (ou crie sua conta grátis) e copie seu link pessoal de indicação no Dashboard.' },
             { n: '2', t: 'Compartilhe', d: 'Mande para amigos, clientes ou no seu grupo de WhatsApp — direto pelo botão "Compartilhar".' },
-            { n: '3', t: 'Ganhem juntos', d: 'Quando a pessoa se cadastra pelo seu link, vocês dois recebem 15 minutos grátis na conta.' },
+            { n: '3', t: 'Ganhem juntos', d: 'Quando a pessoa se cadastra pelo seu link, vocês dois recebem 5 áudios grátis na conta.' },
           ].map(s => (
             <div key={s.n} className="rounded-2xl p-5 border border-white/10 bg-white/3">
               <div className="w-7 h-7 rounded-full bg-brand-primary/15 text-brand-primary font-bold text-sm flex items-center justify-center mb-3">{s.n}</div>

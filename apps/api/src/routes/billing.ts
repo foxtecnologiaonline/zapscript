@@ -49,11 +49,10 @@ const PLAN_PRICES:        Record<string, number> = { pro: 39.90,  executive: 49.
 const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 383.04, executive: 479.04 }; // x12 com 20% off
 const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive' };
 
-/* ── Promoção de lançamento: 1º mês de assinatura mensal Pro a R$19,90 (somente Junho/2026) ── */
+/* ── Oferta permanente: 1º mês de assinatura mensal Pro com 50% off (R$19,90) ── */
 const JUNE_PROMO_PRICE = 19.90;
 function isJunePromoActive(): boolean {
-  const now = new Date();
-  return now.getUTCFullYear() === 2026 && now.getUTCMonth() === 5; // mês 5 = Junho (0-indexed)
+  return true;
 }
 
 /* ── Pacotes de minutos avulsos (valem 60 dias) ── */
@@ -379,7 +378,7 @@ export default async function billingRoutes(app: FastifyInstance) {
             paymentMethod,
           });
           await markProcessed(firstCharge.id);
-          app.log.info(`Checkout promo Junho (cartão): userId=${userId} 1ºmês=${JUNE_PROMO_PRICE} recorrência=${PLAN_PRICES[planName]}`);
+          app.log.info(`Checkout 1º mês 50% off (cartão): userId=${userId} 1ºmês=${JUNE_PROMO_PRICE} recorrência=${PLAN_PRICES[planName]}`);
           return { status: 'active', planName, promo: true };
         }
 
@@ -422,7 +421,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           return reply.code(400).send({ error: firstPix?.errors?.[0]?.description || 'Erro ao gerar PIX.' });
         }
         const qrData = await asaas(`/payments/${firstPix.id}/pixQrCode`).then(r => r.json()) as any;
-        app.log.info(`Checkout promo Junho (PIX): userId=${userId} 1ºmês=${JUNE_PROMO_PRICE} recorrência=${PLAN_PRICES[planName]}`);
+        app.log.info(`Checkout 1º mês 50% off (PIX): userId=${userId} 1ºmês=${JUNE_PROMO_PRICE} recorrência=${PLAN_PRICES[planName]}`);
         return {
           status:         'pending_pix',
           subscriptionId: subRes.id,

@@ -1,0 +1,74 @@
+<svg viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg" font-family="'DM Sans','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f4f7f5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+
+  <text x="540" y="105" text-anchor="middle" font-size="46" font-weight="800" fill="#0f172a">Conecta uma vez.</text>
+  <text x="540" y="160" text-anchor="middle" font-size="46" font-weight="800" fill="#10b981">Funciona pra sempre, automático.</text>
+
+  <!-- Passo 1: QR -->
+  <g transform="translate(90,230)">
+    <rect width="260" height="360" rx="24" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="2"/>
+    <text x="130" y="50" text-anchor="middle" font-size="26" font-weight="800" fill="#64748b">1. Escaneie</text>
+    <rect x="40" y="80" width="180" height="180" rx="12" fill="#ffffff"/>
+    <g fill="#ffffff">
+      <rect x="55" y="95" width="22" height="22"/><rect x="95" y="95" width="22" height="22"/><rect x="135" y="95" width="22" height="22"/><rect x="175" y="95" width="22" height="22"/>
+      <rect x="55" y="135" width="22" height="22"/><rect x="175" y="135" width="22" height="22"/>
+      <rect x="55" y="175" width="22" height="22"/><rect x="95" y="175" width="22" height="22"/><rect x="175" y="175" width="22" height="22"/>
+      <rect x="135" y="215" width="22" height="22"/><rect x="175" y="215" width="22" height="22"/><rect x="55" y="215" width="22" height="22"/>
+    </g>
+    <text x="130" y="300" text-anchor="middle" font-size="22" font-weight="500" fill="#64748b">Seu número,</text>
+    <text x="130" y="328" text-anchor="middle" font-size="22" font-weight="500" fill="#64748b">seu WhatsApp</text>
+  </g>
+
+  <!-- Seta -->
+  <g transform="translate(370,400)" stroke="#10b981" stroke-width="6" fill="none" stroke-linecap="round">
+    <line x1="0" y1="20" x2="60" y2="20"/>
+    <path d="M40 0 L60 20 L40 40"/>
+  </g>
+
+  <!-- Passo 2: automático -->
+  <g transform="translate(450,230)">
+    <rect width="260" height="360" rx="24" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="2"/>
+    <text x="130" y="50" text-anchor="middle" font-size="26" font-weight="800" fill="#64748b">2. Áudio chega</text>
+    <circle cx="130" cy="160" r="50" fill="#10b981"/>
+    <path d="M118 138 L118 182 L155 160 Z" fill="#eef5f1"/>
+    <text x="130" y="250" text-anchor="middle" font-size="22" font-weight="500" fill="#64748b">Em qualquer</text>
+    <text x="130" y="278" text-anchor="middle" font-size="22" font-weight="500" fill="#64748b">conversa,</text>
+    <text x="130" y="306" text-anchor="middle" font-size="22" font-weight="500" fill="#64748b">a qualquer hora</text>
+  </g>
+
+  <!-- Seta -->
+  <g transform="translate(730,400)" stroke="#10b981" stroke-width="6" fill="none" stroke-linecap="round">
+    <line x1="0" y1="20" x2="60" y2="20"/>
+    <path d="M40 0 L60 20 L40 40"/>
+  </g>
+
+  <!-- Passo 3: resultado -->
+  <g transform="translate(810,230)">
+    <rect width="260" height="360" rx="24" fill="#ecfdf5" stroke="#10b981" stroke-opacity="0.5" stroke-width="2"/>
+    <text x="130" y="50" text-anchor="middle" font-size="26" font-weight="800" fill="#34d399">3. Texto + resumo</text>
+    <g transform="translate(30,80)">
+      <rect width="200" height="14" rx="7" fill="#065f46"/>
+      <rect y="34" width="170" height="14" rx="7" fill="#047857"/>
+      <rect y="68" width="200" height="14" rx="7" fill="#065f46"/>
+      <rect y="102" width="150" height="14" rx="7" fill="#047857"/>
+      <rect y="150" width="200" height="3" fill="#10b981" opacity="0.3"/>
+      <rect y="174" width="120" height="14" rx="7" fill="#34d399"/>
+      <rect y="208" width="190" height="14" rx="7" fill="#065f46"/>
+      <rect y="242" width="160" height="14" rx="7" fill="#065f46"/>
+    </g>
+  </g>
+
+  <text x="540" y="690" text-anchor="middle" font-size="30" font-weight="600" fill="#94a3b8">Tudo em segundos. Sem ouvir, sem encaminhar, sem app extra.</text>
+
+  <g transform="translate(80,978)">
+    <g transform="scale(1.6)"><path d="M11 21h-1l1-7H6.5c-.6 0-.3-.5-.2-.7C7.8 9.5 10 5.6 12.6 1c.3-.5.6-.3.6.2l-1 6.8h4.4c.5 0 .5.3.4.5L11 21z" fill="#10b981"/></g>
+    <text x="50" y="28" font-size="36" font-weight="800" fill="#0f172a">ZapScript</text>
+  </g>
+  <text x="1000" y="1010" text-anchor="end" font-size="30" font-weight="600" fill="#10b981">zapscript.me</text>
+</svg>
