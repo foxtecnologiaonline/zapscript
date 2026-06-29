@@ -35,11 +35,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Gera o Prisma Client pelo pacote `database`: sob pnpm isso resolve o
+      # @prisma/client via symlink e popula o store compartilhado (.pnpm/...),
+      # que é exatamente o que o tsc da API lê ao seguir o symlink. Evita o
+      # `prebuild` (npm install em packages/database) que cria um @prisma/client
+      # real paralelo e desvia a geração para fora do store → TS2305.
+      - name: Generate Prisma Client
+        run: pnpm --filter database generate
+
       - name: Build API
-        run: pnpm --filter api build
+        run: pnpm --filter api exec tsc
 
       - name: Build Worker
-        run: pnpm --filter worker build
+        run: pnpm --filter worker exec tsc
         continue-on-error: true
 
   # ── TYPE CHECKING ──────────────────────────────────────────────
