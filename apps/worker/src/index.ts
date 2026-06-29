@@ -15,7 +15,7 @@ import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encry
 import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
 import {
-  planEfetivo, audioQuotaFor, normalizeContactId, pickFooterVariant,
+  planEfetivo, audioQuotaFor, normalizeContactId, pickFooterVariant, formatSavedTime,
   MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
 } from './lib/freemium';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
@@ -1901,6 +1901,88 @@ setInterval(resetExpiredMinutes, 60 * 60 * 1000);
 // Transições de trial (avisos D5/D7 + downgrade D8) — a cada hora, sem depender de login
 processTrialTransitions();
 setInterval(processTrialTransitions, 60 * 60 * 1000);
+
+// ─────────────────────────────────────────────────────────────────
+//  CRON — Resumo semanal via WhatsApp ao próprio número (Lote B #5c)
+//  Segundas, ~9h BRT (12h UTC). Reforço de valor recorrente no canal
+//  de maior abertura. Só engajados (≥1 conversão em 7d) com número
+//  conectado. Idempotente por semana ISO. A mensagem vai SEMPRE ao
+//  número do próprio usuário (self-chat) — nunca à conversa do contato.
+// ─────────────────────────────────────────────────────────────────
+/** Identificador de semana ISO (ex.: "2026-W26") para idempotência semanal. */
+function isoWeekTag(d: Date): string {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+async function runWeeklyWhatsappDigest() {
+  const now = new Date();
+  // Roda de hora em hora; dispara só na segunda às 12h UTC (~9h BRT) → 1x/semana.
+  if (now.getUTCDay() !== 1 || now.getUTCHours() !== 12) return;
+
+  const tag     = `wadigest_${isoWeekTag(now)}`;
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+
+  try {
+    const users = await prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        NOT:           { lifecycleEmailsSent: { has: tag } },
+        transcriptions: { some: { createdAt: { gte: weekAgo } } },
+        numbers:        { some: { status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } } },
+      },
+      select: {
+        id: true, name: true, lifecycleEmailsSent: true,
+        numbers: {
+          where:   { status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } },
+          orderBy: { connectedAt: 'desc' },
+          take:    1,
+          select:  { zapiInstanceId: true, phoneNumber: true },
+        },
+      },
+    }).catch(() => [] as any[]);
+
+    let sent = 0;
+    for (const u of users) {
+      if (u.lifecycleEmailsSent.includes(tag)) continue; // belt & suspenders
+      const n = u.numbers?.[0];
+      if (!n?.zapiInstanceId || !n?.phoneNumber) continue;
+
+      const agg = await prisma.transcription.aggregate({
+        where:  { userId: u.id, createdAt: { gte: weekAgo } },
+        _sum:   { durationSec: true },
+        _count: true,
+      }).catch(() => null);
+      const cnt = agg?._count || 0;
+      if (cnt === 0) continue;
+      const savedSec   = agg?._sum.durationSec || 0;
+      const savedLabel = formatSavedTime(savedSec);
+      const firstName  = u.name?.split(' ')[0] || 'você';
+
+      const msg =
+        `📊 *ZapScript* — seu resumo da semana\n\n` +
+        `Olá, ${firstName}! Nos últimos 7 dias eu li *${cnt} áudio${cnt !== 1 ? 's' : ''}* por você` +
+        (savedSec > 0 ? ` e te poupei *${savedLabel}* que você não precisou parar pra ouvir` : '') + `.\n\n` +
+        `Tudo já está no seu painel, em texto e com resumo — fácil de buscar quando precisar:\n${APP_URL}/dashboard`;
+
+      // Envia ao número do PRÓPRIO usuário (self-chat) — nunca à conversa do contato.
+      await sendMessageViaEvolution(n.zapiInstanceId, n.phoneNumber, msg).catch(() => null);
+      await prisma.user.update({ where: { id: u.id }, data: { lifecycleEmailsSent: { push: tag } } }).catch(() => null);
+      sent++;
+    }
+    if (sent > 0) logger.info(`[Cron] Resumo semanal WhatsApp enviado a ${sent} usuário(s)`);
+  } catch (err) {
+    logger.error(`[Cron] Erro no resumo semanal WhatsApp: ${(err as Error).message}`);
+  }
+}
+
+runWeeklyWhatsappDigest();
+setInterval(runWeeklyWhatsappDigest, 60 * 60 * 1000);
 
 // ─────────────────────────────────────────────────────────────────
 //  CRON — Service Health Checker (#6 + #4)

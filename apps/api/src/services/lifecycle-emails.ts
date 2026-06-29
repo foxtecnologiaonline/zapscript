@@ -443,6 +443,9 @@ async function runWeeklyDigest(log: any) {
     where: {
       deletedAt: null,
       transcriptions: { some: { createdAt: { gte: weekAgo } } },
+      // Quem tem número conectado recebe o resumo via WhatsApp (worker, Lote B #5c).
+      // Aqui o e-mail é só fallback para quem NÃO pode ser alcançado no WhatsApp.
+      NOT: { numbers: { some: { status: 'connected', zapiInstanceId: { not: null } } } },
     },
     select: { id: true, email: true, name: true, lifecycleEmailsSent: true },
   }).catch(() => [] as any[]);
