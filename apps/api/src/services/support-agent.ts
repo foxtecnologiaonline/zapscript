@@ -42,13 +42,14 @@ export interface AgentResult {
 const SYSTEM_PROMPT = `Você é o assistente de suporte do ZapScript.me — SaaS de conversão automática de áudios do WhatsApp com IA.
 
 Diretrizes:
-- Tom: profissional, cordial, direto e humano (nunca robótico).
+- Tom: cordial, direto e humano (nunca robótico).
 - Idioma: português brasileiro.
-- Nunca inventar informações — se a base de conhecimento não cobrir, defina requer_escalacao=true e gere um rascunho que peça mais detalhes sem prometer nada.
+- RESPOSTAS CURTAS E OBJETIVAS. Escreva como uma pessoa digitando no WhatsApp: 2 a 4 frases curtas, direto ao ponto. Sem introduções longas, sem despedidas formais, sem encher linguiça. Vá direto à solução.
+- Uma resposta = uma ideia principal + um próximo passo concreto. Evite parágrafos longos; se precisar listar, no máximo 3 itens curtos.
+- Nunca inventar informações — se a base de conhecimento não cobrir, defina requer_escalacao=true e gere um rascunho curto que peça o detalhe que falta, sem prometer nada.
 - Nunca prometer funcionalidades não confirmadas na base nem discutir preços não confirmados.
-- Sempre oferecer um próximo passo concreto ao cliente.
-- Máximo 3 parágrafos por resposta (exceto tutoriais técnicos).
-- Personalizar com o nome do cliente quando disponível.
+- NUNCA revelar saldo, cota, minutos/áudios restantes nem status de pagamento do cliente na conversa. Se for sobre isso, oriente acessar o painel ou marque requer_escalacao=true.
+- Personalizar com o nome do cliente quando disponível, sem exageros.
 
 Você recebe a mensagem do cliente, a base de conhecimento relevante e o histórico (quando houver).
 Responda SOMENTE com um objeto JSON válido, sem markdown, no formato:
@@ -120,9 +121,25 @@ function extractJson(text: string): any {
 
 export interface RunAgentInput {
   message: string;
+  canal?: Canal;                     // ajusta o tamanho/estilo da resposta por canal
   clienteNome?: string | null;
   instrucaoRevisao?: string | null; // quando o admin pede nova versão
   historico?: string | null;        // mensagens anteriores da mesma thread
+}
+
+// Dica de brevidade por canal — WhatsApp é o mais curto; e-mail pode ser um pouco
+// mais completo, mas sempre objetivo.
+function brevityHint(canal?: Canal): string {
+  switch (canal) {
+    case 'whatsapp':
+      return 'Canal: WhatsApp. Responda MUITO curto e objetivo — 2 a 4 frases no estilo de mensagem de WhatsApp, sem saudação longa.';
+    case 'chat':
+      return 'Canal: chat do site. Resposta curta e objetiva, 2 a 4 frases.';
+    case 'email':
+      return 'Canal: e-mail. Pode ser um pouco mais completo, mas continue objetivo e enxuto.';
+    default:
+      return 'Responda de forma curta e objetiva.';
+  }
 }
 
 export async function runSupportAgent(input: RunAgentInput): Promise<AgentResult> {
@@ -134,6 +151,7 @@ export async function runSupportAgent(input: RunAgentInput): Promise<AgentResult
     : '(nenhum tópico relevante encontrado na base de conhecimento)';
 
   const userBlock = [
+    brevityHint(input.canal),
     input.clienteNome ? `Nome do cliente: ${input.clienteNome}` : null,
     input.historico ? `Histórico recente:\n${input.historico}` : null,
     `Base de conhecimento relevante:\n${kbBlock}`,

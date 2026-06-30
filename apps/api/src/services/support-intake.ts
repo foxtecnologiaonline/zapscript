@@ -100,6 +100,7 @@ export async function intakeMessage(input: IntakeInput, log?: any) {
     const historico = await buildHistorico(input.threadId, atendimento.id);
     const result = await runSupportAgent({
       message: input.mensagem,
+      canal: input.canal,
       clienteNome: input.clienteNome,
       historico,
     });

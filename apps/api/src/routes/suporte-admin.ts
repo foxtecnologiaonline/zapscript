@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { sendOnChannel } from '../services/support-send';
-import { runSupportAgent } from '../services/support-agent';
+import { runSupportAgent, Canal } from '../services/support-agent';
 import { io } from '../index';
 
 /**
@@ -129,6 +129,7 @@ export default async function suporteAdminRoutes(app: FastifyInstance) {
       try {
         const result = await runSupportAgent({
           message: at.mensagemOriginal,
+          canal: at.canal as Canal,
           clienteNome: at.clienteNome,
           instrucaoRevisao: req.body?.instrucao || null,
         });
