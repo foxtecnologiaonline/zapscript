@@ -2704,6 +2704,206 @@ export default async function adminRoutes(app: FastifyInstance) {
       return { leads, total, uniqueEmails: distinct.length };
     }
   );
+
+  // ── Inteligência de Crescimento — funil, retenção, unit economics, MRR, alavancas ──
+  // Endpoint único consumido pela aba "Crescimento". Resiliente: cada bloco tem
+  // fallback próprio (retorna null) para não derrubar o painel inteiro se uma
+  // query falhar (ex.: drift de schema em produção).
+  app.get<{ Querystring: { days?: string } }>(
+    '/analytics/growth',
+    { preHandler: [adminAuth] },
+    async (req) => {
+      const days  = Math.min(Math.max(parseInt(req.query.days || '30') || 30, 7), 365);
+      const since = new Date(Date.now() - days * 86_400_000);
+      const d60   = new Date(Date.now() - 60 * 86_400_000);
+      const d30   = new Date(Date.now() - 30 * 86_400_000);
+      const d7    = new Date(Date.now() - 7  * 86_400_000);
+      const d1    = new Date(Date.now() - 1  * 86_400_000);
+
+      // ── 1) Funil de ativação + time-to-activation ──────────────────────────
+      async function funnel() {
+        try {
+          const rows = await prisma.$queryRaw<any[]>`
+            WITH u AS (
+              SELECT id FROM "User"
+              WHERE "deletedAt" IS NULL AND "createdAt" >= ${since}
+            )
+            SELECT
+              COUNT(*)::int AS signups,
+              COUNT(*) FILTER (WHERE EXISTS (
+                SELECT 1 FROM "WhatsappNumber" w
+                WHERE w."userId" = u.id AND (w."connectedAt" IS NOT NULL OR w.status = 'connected')
+              ))::int AS connected,
+              COUNT(*) FILTER (WHERE EXISTS (
+                SELECT 1 FROM "Transcription" t WHERE t."userId" = u.id
+              ))::int AS first_audio,
+              COUNT(*) FILTER (WHERE (
+                SELECT COUNT(*) FROM "Transcription" t WHERE t."userId" = u.id
+              ) >= 3)::int AS activated
+            FROM u
+          `;
+          const tta = await prisma.$queryRaw<any[]>`
+            SELECT percentile_cont(0.5) WITHIN GROUP (
+              ORDER BY EXTRACT(EPOCH FROM (ft.first_t - u."createdAt"))
+            ) AS median_seconds
+            FROM "User" u
+            JOIN (
+              SELECT "userId", MIN("createdAt") AS first_t
+              FROM "Transcription" GROUP BY "userId"
+            ) ft ON ft."userId" = u.id
+            WHERE u."createdAt" >= ${since} AND u."deletedAt" IS NULL
+          `;
+          const r = rows[0] || {};
+          const medSec = Number(tta[0]?.median_seconds || 0);
+          return {
+            signups:    Number(r.signups || 0),
+            connected:  Number(r.connected || 0),
+            firstAudio: Number(r.first_audio || 0),
+            activated:  Number(r.activated || 0),
+            timeToActivationHours: medSec ? Math.round((medSec / 3600) * 10) / 10 : null,
+          };
+        } catch (err: any) {
+          app.log.warn({ err: err?.message }, '[Growth] funnel falhou');
+          return null;
+        }
+      }
+
+      // ── 2) Retenção por cohort + DAU/WAU/MAU + stickiness ──────────────────
+      async function retention() {
+        try {
+          const active = await prisma.$queryRaw<any[]>`
+            SELECT
+              COUNT(DISTINCT "userId") FILTER (WHERE "createdAt" >= ${d1})::int  AS dau,
+              COUNT(DISTINCT "userId") FILTER (WHERE "createdAt" >= ${d7})::int  AS wau,
+              COUNT(DISTINCT "userId") FILTER (WHERE "createdAt" >= ${d30})::int AS mau
+            FROM "Transcription"
+          `;
+          const cohorts = await prisma.$queryRaw<any[]>`
+            WITH cohorts AS (
+              SELECT id AS user_id, date_trunc('week', "createdAt") AS cohort_week
+              FROM "User"
+              WHERE "deletedAt" IS NULL AND "createdAt" >= now() - interval '8 weeks'
+            ),
+            acts AS (
+              SELECT DISTINCT c.user_id, c.cohort_week,
+                floor(EXTRACT(EPOCH FROM (date_trunc('week', t."createdAt") - c.cohort_week)) / 604800)::int AS week_offset
+              FROM cohorts c JOIN "Transcription" t ON t."userId" = c.user_id
+            )
+            SELECT to_char(c.cohort_week, 'YYYY-MM-DD') AS cohort,
+              COUNT(DISTINCT c.user_id)::int AS size,
+              COUNT(DISTINCT a.user_id) FILTER (WHERE a.week_offset = 0)::int AS w0,
+              COUNT(DISTINCT a.user_id) FILTER (WHERE a.week_offset = 1)::int AS w1,
+              COUNT(DISTINCT a.user_id) FILTER (WHERE a.week_offset = 2)::int AS w2,
+              COUNT(DISTINCT a.user_id) FILTER (WHERE a.week_offset = 3)::int AS w3
+            FROM cohorts c LEFT JOIN acts a ON a.user_id = c.user_id
+            GROUP BY c.cohort_week ORDER BY c.cohort_week
+          `;
+          const a = active[0] || {};
+          const dau = Number(a.dau || 0), mau = Number(a.mau || 0);
+          return {
+            dau, wau: Number(a.wau || 0), mau,
+            stickiness: mau ? Math.round((dau / mau) * 1000) / 10 : null,
+            cohorts: cohorts.map(c => ({
+              cohort: c.cohort, size: Number(c.size),
+              w0: Number(c.w0), w1: Number(c.w1), w2: Number(c.w2), w3: Number(c.w3),
+            })),
+          };
+        } catch (err: any) {
+          app.log.warn({ err: err?.message }, '[Growth] retention falhou');
+          return null;
+        }
+      }
+
+      // ── 3 + 4) Unit economics + MRR movement + churn + trial→pago ──────────
+      async function economics() {
+        try {
+          const [activeSubs, canceledLast30, newPaidLast30, paidCohort60, trialFinished60, totalUsers] = await Promise.all([
+            prisma.subscription.findMany({
+              where:   { status: 'active' },
+              include: { plan: { select: { priceBrl: true } }, user: { select: { isTester: true } } },
+            }),
+            prisma.subscription.findMany({
+              where:   { status: 'canceled', updatedAt: { gte: d30 } },
+              include: { plan: { select: { priceBrl: true } }, user: { select: { isTester: true } } },
+            }),
+            prisma.subscription.findMany({
+              where:   { status: 'active', createdAt: { gte: d30 } },
+              include: { plan: { select: { priceBrl: true } }, user: { select: { isTester: true } } },
+            }),
+            // pagantes não-tester que entraram nos últimos 60 dias (conversões do funil de trial)
+            prisma.subscription.count({
+              where: { status: 'active', plan: { priceBrl: { gt: 0 } }, user: { isTester: false }, createdAt: { gte: d60 } },
+            }),
+            // usuários cujo trial (D7) já terminou: criados entre 60 e 7 dias atrás — denominador da conversão
+            prisma.user.count({ where: { deletedAt: null, createdAt: { gte: d60, lte: d7 } } }),
+            prisma.user.count({ where: { deletedAt: null } }),
+          ]);
+
+          const paying       = activeSubs.filter(s => !s.user.isTester && s.plan.priceBrl > 0);
+          const payingCount  = paying.length;
+          const mrr          = Math.round(paying.reduce((a, s) => a + s.plan.priceBrl, 0) * 100) / 100;
+          const arpu         = totalUsers  ? Math.round((mrr / totalUsers)  * 100) / 100 : 0;
+          const arppu        = payingCount ? Math.round((mrr / payingCount) * 100) / 100 : 0;
+
+          const churnedCustomers = canceledLast30.filter(s => !s.user.isTester && (s.plan?.priceBrl || 0) > 0).length;
+          const churnedMrr = Math.round(canceledLast30.reduce((a, s) => a + (s.user.isTester ? 0 : (s.plan?.priceBrl || 0)), 0) * 100) / 100;
+          const newMrr     = Math.round(newPaidLast30.filter(s => !s.user.isTester && s.plan.priceBrl > 0).reduce((a, s) => a + s.plan.priceBrl, 0) * 100) / 100;
+
+          // churn% mensal aproximado = perdidos / (pagantes atuais + perdidos no período)
+          const churnRate = (payingCount + churnedCustomers) > 0
+            ? Math.round((churnedCustomers / (payingCount + churnedCustomers)) * 1000) / 10
+            : null;
+          // LTV = ARPPU / churn mensal (fração). Sem churn medido → null.
+          const ltv = (churnRate && churnRate > 0) ? Math.round((arppu / (churnRate / 100)) * 100) / 100 : null;
+          // trial → pago D7: pagantes (≤60d) / usuários cujo D7 já passou (7–60d)
+          const trialToPaidRate = trialFinished60 > 0 ? Math.round((paidCohort60 / trialFinished60) * 1000) / 10 : null;
+
+          return {
+            mrr, payingCount, totalUsers, arpu, arppu, ltv,
+            churnRate, churnedCustomers, churnedMrr, newMrr,
+            netNewMrr: Math.round((newMrr - churnedMrr) * 100) / 100,
+            trialToPaidRate,
+            // CAC / payback dependem de investimento em mídia (não está no banco) → informados pelo painel Financeiro
+            cac: null, ltvCacRatio: null, paybackMonths: null,
+          };
+        } catch (err: any) {
+          app.log.warn({ err: err?.message }, '[Growth] economics falhou');
+          return null;
+        }
+      }
+
+      // ── 5) Alavancas de produto + K-factor ─────────────────────────────────
+      async function levers() {
+        try {
+          const [referredUsers, newUsersWindow, footerAgg, seedCount, invitesAgg, invitesUsed] = await Promise.all([
+            prisma.user.count({ where: { deletedAt: null, referredBy: { not: null }, createdAt: { gte: since } } }),
+            prisma.user.count({ where: { deletedAt: null, createdAt: { gte: since } } }),
+            prisma.transcription.groupBy({ by: ['footerVariant'], where: { footerShown: true, createdAt: { gte: since } }, _count: true }),
+            (prisma as any).proContactSeed.count().catch(() => 0),
+            prisma.testerInvite.aggregate({ _count: { _all: true }, _sum: { clickCount: true } }),
+            prisma.testerInvite.count({ where: { usedAt: { not: null } } }),
+          ]);
+          // K-factor aproximado = novos usuários vindos de indicação / novos usuários no período
+          const kFactor = newUsersWindow ? Math.round((referredUsers / newUsersWindow) * 1000) / 1000 : null;
+          return {
+            referredUsers, newUsersWindow, kFactor,
+            footerByVariant:   footerAgg.map((f: any) => ({ variant: f.footerVariant || '—', count: Number(f._count) })),
+            footerImpressions: footerAgg.reduce((a: number, f: any) => a + Number(f._count || 0), 0),
+            seededContacts:    Number(seedCount || 0),
+            invites: { total: invitesAgg._count._all, clicks: invitesAgg._sum.clickCount || 0, used: invitesUsed },
+          };
+        } catch (err: any) {
+          app.log.warn({ err: err?.message }, '[Growth] levers falhou');
+          return null;
+        }
+      }
+
+      const [funnelData, retentionData, economicsData, leversData] = await Promise.all([
+        funnel(), retention(), economics(), levers(),
+      ]);
+      return { days, funnel: funnelData, retention: retentionData, economics: economicsData, levers: leversData };
+    }
+  );
 }
 
 /** Escapa HTML em templates de e-mail do admin. */

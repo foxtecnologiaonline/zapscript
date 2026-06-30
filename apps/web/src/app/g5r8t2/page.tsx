@@ -146,8 +146,9 @@ export default function AdminPage() {
       if (users.length === 0) loadUsers('', 0);
       loadInvites(); // seção Testers foi unificada em Usuários
     }
-    if (t === 'suporte' && tickets.length === 0) loadTickets(ticketStatus || 'open', 0);
-    // 'metas', 'monitoramento', 'comunicacao' e 'financeiro' carregam dados internamente em seus componentes
+    // Atendimento absorveu os Tickets de Suporte — carrega a fila ao abrir a aba
+    if (t === 'atendimento' && tickets.length === 0) loadTickets(ticketStatus || 'open', 0);
+    // 'monitoramento', 'comunicacao' e 'crescimento' carregam dados internamente em seus componentes
   }
 
   async function syncPlans() {

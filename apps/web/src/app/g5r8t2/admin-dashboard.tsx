@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 
 /* ── Tipos ─────────────────────────────────────────────── */
-export type Tab = 'dashboard' | 'metas' | 'atendimento' | 'suporte' | 'monitoramento' | 'comunicacao' | 'usuarios' | 'financeiro' | 'afiliados' | 'leads';
+export type Tab = 'dashboard' | 'atendimento' | 'monitoramento' | 'usuarios' | 'afiliados' | 'comunicacao' | 'crescimento';
 
 /* ── Constantes ────────────────────────────────────────── */
 const API  = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -771,15 +771,12 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           <div className="flex gap-1.5 bg-[#0d1c19] border border-[rgba(16,185,129,.08)] rounded-xl p-1.5 w-max min-w-full sm:w-fit sm:min-w-0">
             {([
               ['dashboard',     '📊', 'Dashboard'],
-              ['metas',         '🎯', 'Metas'],
               ['atendimento',   '🤖', 'Atendimento'],
-              ['suporte',       '🎧', 'Suporte'],
               ['monitoramento', '🖥️', 'Monitoramento'],
-              ['comunicacao',   '📣', 'Comunicação'],
               ['usuarios',      '👥', 'Usuários'],
-              ['financeiro',    '💰', 'Financeiro'],
               ['afiliados',     '🤝', 'Afiliados'],
-              ['leads',         '📥', 'Leads'],
+              ['comunicacao',   '📣', 'Comunicação'],
+              ['crescimento',   '📈', 'Crescimento'],
             ] as [Tab, string, string][]).map(([t, icon, label]) => (
               <button key={t} onClick={() => goTab(t)}
                 className={`whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
@@ -798,13 +795,13 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           <div className="space-y-5">
             <div className="text-xs text-[rgba(16,185,129,.4)]">Resumo executivo — o indicador-chave de cada área. Clique para abrir.</div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {/* 🎯 Metas → novos cadastros no mês */}
-              <KpiCard icon="🎯" title="Metas · Cadastros no mês" value={stats.users.month}
+              {/* 📈 Crescimento → novos cadastros no mês */}
+              <KpiCard icon="📈" title="Crescimento · Cadastros no mês" value={stats.users.month}
                 sub={`${growth >= 0 ? '▲' : '▼'} ${Math.abs(growth)} vs mês anterior`}
-                color={growth >= 0 ? '#10b981' : '#f87171'} onClick={() => goTab('metas')} />
-              {/* 🎧 Suporte → tickets abertos */}
-              <KpiCard icon="🎧" title="Suporte · Tickets abertos" value={stats.tickets.open}
-                sub={`${stats.tickets.total} no total`} color="#fbbf24" onClick={() => goTab('suporte')} />
+                color={growth >= 0 ? '#10b981' : '#f87171'} onClick={() => goTab('crescimento')} />
+              {/* 🎧 Atendimento → tickets abertos */}
+              <KpiCard icon="🎧" title="Atendimento · Tickets abertos" value={stats.tickets.open}
+                sub={`${stats.tickets.total} no total`} color="#fbbf24" onClick={() => goTab('atendimento')} />
               {/* 🖥️ Monitoramento → WhatsApp conectados */}
               <KpiCard icon="🖥️" title="Monitoramento · WhatsApp" value={`${stats.whatsapp?.connected || 0}/${stats.whatsapp?.total || 0}`}
                 sub="números conectados" color="#60a5fa" onClick={() => goTab('monitoramento')} />
@@ -814,10 +811,10 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
               {/* 👥 Usuários → base total */}
               <KpiCard icon="👥" title="Usuários · Base total" value={stats.users.total}
                 sub={`+${stats.users.today} hoje · ${stats.conversion?.testers || 0} tester(s)`} onClick={() => goTab('usuarios')} />
-              {/* 💰 Financeiro → MRR */}
-              <KpiCard icon="💰" title="Financeiro · MRR" value={brl(stats.mrr || 0)}
+              {/* 💰 Crescimento → MRR */}
+              <KpiCard icon="💰" title="Crescimento · MRR" value={brl(stats.mrr || 0)}
                 sub={`${stats.conversion?.paid || 0} pagantes · ${(stats.conversion?.rate || 0).toFixed(1)}% conv.`}
-                color="#a78bfa" onClick={() => goTab('financeiro')} />
+                color="#a78bfa" onClick={() => goTab('crescimento')} />
             </div>
 
             {/* 🎙️ Áudios transcritos — volume e duração */}
@@ -881,14 +878,32 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           </div>
         )}
 
-        {/* ═══ METAS — atuais semanais e mensais ═══ */}
-        {tab === 'metas' && (
-          <MetasTab apiBase={API} token={token} notify={notify} />
-        )}
-
-        {/* ═══ ATENDIMENTO — Agente de Suporte (fila de aprovação) ═══ */}
+        {/* ═══ ATENDIMENTO — Agente de Suporte (fila) + Tickets ═══ */}
         {tab === 'atendimento' && (
-          <SupportAgentTab apiBase={API} token={token} notify={notify} />
+          <div className="space-y-8">
+            {/* Agente de Suporte — fila de aprovação / envio automático */}
+            <SupportAgentTab apiBase={API} token={token} notify={notify} />
+
+            {/* Tickets de suporte (canal painel) */}
+            <div className="space-y-5">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-[#d1fae5]">🎧 Tickets de Suporte</span>
+                <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+              </div>
+              <TicketSupportSection
+                tickets={tickets}
+                ticketTotal={ticketTotal}
+                ticketStatus={ticketStatus}
+                ticketOffset={ticketOffset}
+                subLoading={subLoading}
+                token={ctx.token}
+                onStatusChange={updateTicketStatus}
+                onFilterChange={(s) => { setTicketStatus(s); setTicketOffset(0); loadTickets(s, 0); }}
+                onPage={(o) => { setTicketOffset(o); loadTickets(ticketStatus, o); }}
+                notify={notify}
+              />
+            </div>
+          </div>
         )}
 
         {/* ═══ USUÁRIOS (lista sintética + seção Testers) ═══ */}
@@ -1020,22 +1035,6 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
             <Pagination offset={userOffset} total={userTotal} loading={subLoading}
               onPage={o => { setUserOffset(o); loadUsers(userSearch, o); }} />
           </div>
-        )}
-
-        {/* ═══ SUPORTE (TICKETS) ═══ */}
-        {tab === 'suporte' && (
-          <TicketSupportSection
-            tickets={tickets}
-            ticketTotal={ticketTotal}
-            ticketStatus={ticketStatus}
-            ticketOffset={ticketOffset}
-            subLoading={subLoading}
-            token={ctx.token}
-            onStatusChange={updateTicketStatus}
-            onFilterChange={(s) => { setTicketStatus(s); setTicketOffset(0); loadTickets(s, 0); }}
-            onPage={(o) => { setTicketOffset(o); loadTickets(ticketStatus, o); }}
-            notify={notify}
-          />
         )}
 
         {/* ═══ SEÇÃO TESTERS (dentro de Usuários) ═══ */}
@@ -1187,6 +1186,21 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           </div>
         )}
 
+        {/* ═══ COBRANÇA & PLANOS (dentro de Usuários) ═══ */}
+        {tab === 'usuarios' && (
+          <div className="space-y-5 mt-8">
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+              <span className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wider">💳 Cobrança & Planos</span>
+              <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+            </div>
+            {/* Cobranças Asaas — listar / excluir pendentes / estornar */}
+            <AsaasInvoicesPanel apiBase={API} token={token} notify={notify} />
+            {/* Gestão de Planos */}
+            <PlanosPanel apiBase={API} token={token} notify={notify} />
+          </div>
+        )}
+
         {/* ═══ MONITORAMENTO ═══ */}
         {tab === 'monitoramento' && (
           <div className="space-y-5">
@@ -1266,21 +1280,15 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
               </div>
               <PropagandaPanel apiBase={API} token={token} notify={notify} />
             </div>
-          </div>
-        )}
 
-        {/* ═══ FINANCEIRO ═══ */}
-        {tab === 'financeiro' && (
-          <div className="space-y-5">
-            {/* Custos, receita, margem, DRE, lucro — com inputs persistidos */}
-            <FinanceiroPanel apiBase={API} token={token} notify={notify} stats={stats} />
-            {/* Cobranças Asaas — listar / excluir pendentes / estornar */}
-            <AsaasInvoicesPanel apiBase={API} token={token} notify={notify} />
-            <MRRCohort   apiBase={API} token={token} />
-            <ChurnRisk   apiBase={API} token={token} />
-            <NPSPanel    apiBase={API} token={token} />
-            {/* Gestão de Planos */}
-            <PlanosPanel apiBase={API} token={token} notify={notify} />
+            {/* Seção Leads — captação e qualificação */}
+            <div className="space-y-5">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-[#d1fae5]">📥 Leads</span>
+                <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+              </div>
+              <LeadsPanel apiBase={API} token={token} notify={notify} />
+            </div>
           </div>
         )}
 
@@ -1290,9 +1298,36 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
           </div>
         )}
 
-        {tab === 'leads' && (
-          <div className="space-y-5">
-            <LeadsPanel apiBase={API} token={token} notify={notify} />
+        {/* ═══ INTELIGÊNCIA DE CRESCIMENTO ═══ */}
+        {tab === 'crescimento' && (
+          <div className="space-y-8">
+            <div className="text-xs text-[rgba(16,185,129,.4)]">
+              Métricas de crescimento, retenção e unit economics. Decisões de produto e investimento partem daqui.
+            </div>
+
+            {/* ── 5 módulos de crescimento (dados reais) ── */}
+            <GrowthMetricsPanel apiBase={API} token={token} />
+
+            {/* ── Painéis já existentes (dados reais) ── */}
+            <div className="space-y-5">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-[#d1fae5]">🎯 Metas & Realizado</span>
+                <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+              </div>
+              <MetasTab apiBase={API} token={token} notify={notify} />
+            </div>
+
+            <div className="space-y-5">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-[#d1fae5]">💰 Receita, Margem & Cohorts</span>
+                <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+              </div>
+              {/* Custos, receita, margem, DRE, lucro — com inputs persistidos */}
+              <FinanceiroPanel apiBase={API} token={token} notify={notify} stats={stats} />
+              <MRRCohort apiBase={API} token={token} />
+              <ChurnRisk apiBase={API} token={token} />
+              <NPSPanel  apiBase={API} token={token} />
+            </div>
           </div>
         )}
 
@@ -1703,6 +1738,195 @@ function KpiCard({ title, value, sub, color = '#10b981', icon, onClick }: {
       <div className="text-2xl font-black leading-none mb-1" style={{ color }}>{value}</div>
       <div className="text-xs text-[rgba(16,185,129,.35)]">{sub}</div>
       {clickable && <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-2">abrir →</div>}
+    </div>
+  );
+}
+
+// ── Inteligência de Crescimento — 5 módulos com dados reais ──────────────────
+// Consome GET /sys/g5r8t2/analytics/growth (funil, retenção, unit economics,
+// MRR movement e alavancas/K-factor). Resiliente: cada bloco some se vier null.
+function GrowthMetricsPanel({ apiBase, token }: { apiBase: string; token: string }) {
+  const [days, setDays] = useState(30);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async (d: number) => {
+    setLoading(true); setErr(null);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/analytics/growth?days=${d}`, { headers: { 'x-admin-token': token } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setData(await res.json());
+    } catch (e: any) {
+      setErr(e.message || 'Falha ao carregar');
+    } finally { setLoading(false); }
+  }, [apiBase, token]);
+
+  useEffect(() => { load(days); }, [load, days]);
+
+  const f = data?.funnel, r = data?.retention, e = data?.economics, l = data?.levers;
+  const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
+  const card = 'bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-5';
+  const stat = (label: string, value: React.ReactNode, accent = '#10b981') => (
+    <div className="bg-[#132621] rounded-xl p-3 text-center">
+      <div className="text-xl font-black leading-none mb-1" style={{ color: accent }}>{value}</div>
+      <div className="text-[10px] text-[rgba(16,185,129,.45)] uppercase tracking-wide leading-tight">{label}</div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Filtro de período */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-[rgba(16,185,129,.4)]">Período:</span>
+        {[7, 30, 90].map(d => (
+          <button key={d} onClick={() => setDays(d)}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors border ${
+              days === d ? 'bg-[rgba(16,185,129,.12)] text-[#10b981] border-[rgba(16,185,129,.2)]'
+                         : 'border-transparent text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'}`}>
+            {d}d
+          </button>
+        ))}
+        {loading && <span className="text-xs text-[rgba(16,185,129,.4)]">⟳ carregando…</span>}
+        {err && <span className="text-xs text-red-400">⚠ {err}</span>}
+      </div>
+
+      {/* 1) Funil de ativação */}
+      {f && (
+        <div className={card}>
+          <div className="text-sm font-bold text-[#d1fae5] mb-1">🚀 Funil de Ativação</div>
+          <div className="text-[11px] text-[rgba(16,185,129,.4)] mb-4">
+            Cadastros do período → conexão → 1º áudio → ativado (≥3 áudios).
+            {f.timeToActivationHours != null && <> Time-to-Activation (mediana): <strong className="text-[#6ee7b7]">{f.timeToActivationHours}h</strong>.</>}
+          </div>
+          {([
+            ['Cadastros', f.signups, '#10b981', f.signups],
+            ['Conectou WhatsApp', f.connected, '#34d399', f.signups],
+            ['1º áudio', f.firstAudio, '#6ee7b7', f.signups],
+            ['Ativado (≥3)', f.activated, '#a78bfa', f.signups],
+          ] as [string, number, string, number][]).map(([label, val, color, base]) => (
+            <div key={label} className="mb-2.5">
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-[#d1fae5]">{label}</span>
+                <span className="font-mono text-[rgba(16,185,129,.6)]">{val} · {pct(val, base)}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-[#132621] overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${pct(val, base)}%`, background: color }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 2) Retenção + DAU/WAU/MAU */}
+      {r && (
+        <div className={card}>
+          <div className="text-sm font-bold text-[#d1fae5] mb-3">🔁 Retenção & Engajamento</div>
+          <div className="grid grid-cols-4 gap-2 mb-4">
+            {stat('DAU', r.dau)}
+            {stat('WAU', r.wau, '#34d399')}
+            {stat('MAU', r.mau, '#6ee7b7')}
+            {stat('Stickiness', r.stickiness != null ? `${r.stickiness}%` : '—', '#a78bfa')}
+          </div>
+          {r.cohorts?.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[rgba(16,185,129,.4)] text-left">
+                    <th className="py-1 pr-3 font-medium">Cohort (semana)</th>
+                    <th className="py-1 px-2 font-medium">Tam.</th>
+                    <th className="py-1 px-2 font-medium">S0</th>
+                    <th className="py-1 px-2 font-medium">S1</th>
+                    <th className="py-1 px-2 font-medium">S2</th>
+                    <th className="py-1 px-2 font-medium">S3</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.cohorts.map((c: any) => (
+                    <tr key={c.cohort} className="border-t border-[rgba(16,185,129,.06)]">
+                      <td className="py-1.5 pr-3 text-[#d1fae5] font-mono">{c.cohort}</td>
+                      <td className="py-1.5 px-2 text-[rgba(16,185,129,.6)]">{c.size}</td>
+                      {(['w0', 'w1', 'w2', 'w3'] as const).map(w => {
+                        const p = pct(c[w], c.size);
+                        return (
+                          <td key={w} className="py-1.5 px-2">
+                            <span className="px-1.5 py-0.5 rounded" style={{ background: `rgba(16,185,129,${0.05 + (p / 100) * 0.35})`, color: p > 0 ? '#6ee7b7' : 'rgba(16,185,129,.3)' }}>
+                              {p}%
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-2">% de cada cohort que fez ≥1 conversão na semana 0/1/2/3 após o cadastro.</div>
+            </div>
+          ) : <div className="text-xs text-[rgba(16,185,129,.3)]">Sem cohorts suficientes ainda.</div>}
+        </div>
+      )}
+
+      {/* 3) Unit economics */}
+      {e && (
+        <div className={card}>
+          <div className="text-sm font-bold text-[#d1fae5] mb-3">🧮 Unit Economics</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {stat('MRR', brl(e.mrr), '#a78bfa')}
+            {stat('Pagantes', e.payingCount)}
+            {stat('ARPU', brl(e.arpu), '#34d399')}
+            {stat('ARPPU', brl(e.arppu), '#6ee7b7')}
+            {stat('LTV', e.ltv != null ? brl(e.ltv) : '—', '#a78bfa')}
+            {stat('Churn mensal', e.churnRate != null ? `${e.churnRate}%` : '—', '#f87171')}
+            {stat('LTV:CAC', e.ltvCacRatio != null ? `${e.ltvCacRatio}x` : '—', '#fbbf24')}
+            {stat('Payback', e.paybackMonths != null ? `${e.paybackMonths}m` : '—', '#fbbf24')}
+          </div>
+          <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-2">CAC, LTV:CAC e payback dependem do investimento em mídia (não rastreado no banco) — informe os custos no painel 💰 Receita abaixo.</div>
+        </div>
+      )}
+
+      {/* 4) MRR movement & churn */}
+      {e && (
+        <div className={card}>
+          <div className="text-sm font-bold text-[#d1fae5] mb-3">📊 MRR Movement & Churn (30d)</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {stat('Novo MRR', brl(e.newMrr), '#10b981')}
+            {stat('MRR perdido', brl(e.churnedMrr), '#f87171')}
+            {stat('MRR líquido', brl(e.netNewMrr), e.netNewMrr >= 0 ? '#10b981' : '#f87171')}
+            {stat('Trial→Pago D7', e.trialToPaidRate != null ? `${e.trialToPaidRate}%` : '—', '#34d399')}
+          </div>
+          <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-2">{e.churnedCustomers} cliente(s) cancelado(s) nos últimos 30 dias. Trial→Pago = pagantes / usuários cujo D7 já passou (7–60d).</div>
+        </div>
+      )}
+
+      {/* 5) Alavancas + K-factor */}
+      {l && (
+        <div className={card}>
+          <div className="text-sm font-bold text-[#d1fae5] mb-3">🪝 Alavancas de Produto & K-factor</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+            {stat('K-factor', l.kFactor != null ? l.kFactor : '—', '#a78bfa')}
+            {stat('Via indicação', `${l.referredUsers}/${l.newUsersWindow}`, '#34d399')}
+            {stat('Rodapé viral (imp.)', l.footerImpressions)}
+            {stat('Contatos semeados', l.seededContacts, '#6ee7b7')}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="bg-[#132621] rounded-xl p-3">
+              <div className="text-[11px] text-[rgba(16,185,129,.5)] mb-2 font-semibold">Convites Tester</div>
+              <div className="flex justify-between text-xs text-[#d1fae5]"><span>Enviados</span><span className="font-mono">{l.invites?.total ?? 0}</span></div>
+              <div className="flex justify-between text-xs text-[#d1fae5]"><span>Cliques</span><span className="font-mono">{l.invites?.clicks ?? 0}</span></div>
+              <div className="flex justify-between text-xs text-[#d1fae5]"><span>Usados</span><span className="font-mono">{l.invites?.used ?? 0}</span></div>
+            </div>
+            {l.footerByVariant?.length > 0 && (
+              <div className="bg-[#132621] rounded-xl p-3">
+                <div className="text-[11px] text-[rgba(16,185,129,.5)] mb-2 font-semibold">Rodapé viral por variação (A/B)</div>
+                {l.footerByVariant.map((v: any) => (
+                  <div key={v.variant} className="flex justify-between text-xs text-[#d1fae5]"><span className="font-mono">{v.variant}</span><span className="font-mono">{v.count}</span></div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-2">K-factor ≈ novos usuários vindos de indicação ÷ novos usuários no período. &gt;1 = crescimento viral.</div>
+        </div>
+      )}
     </div>
   );
 }
