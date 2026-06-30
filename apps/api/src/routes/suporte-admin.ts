@@ -40,22 +40,29 @@ export default async function suporteAdminRoutes(app: FastifyInstance) {
       where.status = status || 'pending_approval';
       if (canal) where.canal = canal;
 
-      const [items, total] = await Promise.all([
-        prisma.supportAtendimento.findMany({
-          where,
-          orderBy: [{ prioridade: 'asc' }, { criadoEm: 'asc' }], // urgentes/antigos primeiro
-          take: limit,
-          skip: offset,
-        }),
-        prisma.supportAtendimento.count({ where }),
-      ]);
+      try {
+        const [items, total] = await Promise.all([
+          prisma.supportAtendimento.findMany({
+            where,
+            orderBy: [{ prioridade: 'asc' }, { criadoEm: 'asc' }], // urgentes/antigos primeiro
+            take: limit,
+            skip: offset,
+          }),
+          prisma.supportAtendimento.count({ where }),
+        ]);
 
-      // contagem rápida para o cabeçalho da fila
-      const urgentes = await prisma.supportAtendimento.count({
-        where: { status: 'pending_approval', prioridade: 'urgente' },
-      });
+        // contagem rápida para o cabeçalho da fila
+        const urgentes = await prisma.supportAtendimento.count({
+          where: { status: 'pending_approval', prioridade: 'urgente' },
+        });
 
-      return { items, total, urgentes };
+        return { items, total, urgentes };
+      } catch (err: any) {
+        // Degrada suave quando a migração do Agente de Suporte ainda não foi aplicada
+        // (P2021 tabela/P2022 coluna ausente) — não derruba a aba inteira com 500.
+        app.log.error({ err: err?.message, code: err?.code }, '[Suporte] /queue indisponível (schema?)');
+        return { items: [], total: 0, urgentes: 0, unavailable: true };
+      }
     }
   );
 
@@ -174,28 +181,38 @@ export default async function suporteAdminRoutes(app: FastifyInstance) {
 
   // ── Métricas (MÓDULO 7) ───────────────────────────────────────────────────
   app.get('/metrics', async () => {
-    const [porStatus, porCanal, porCategoria, total, editados, escalados] = await Promise.all([
-      prisma.supportAtendimento.groupBy({ by: ['status'], _count: true }),
-      prisma.supportAtendimento.groupBy({ by: ['canal'], _count: true }),
-      prisma.supportAtendimento.groupBy({ by: ['categoria'], _count: true }),
-      prisma.supportAtendimento.count(),
-      prisma.supportAtendimento.count({ where: { editadoPeloAdmin: true, status: 'sent' } }),
-      prisma.supportAtendimento.count({ where: { status: 'escalated' } }),
-    ]);
-    const enviados = porStatus.find((s: any) => s.status === 'sent')?._count ?? 0;
-    return {
-      total,
-      porStatus,
-      porCanal,
-      porCategoria,
-      taxaEdicao: enviados ? Math.round((editados / enviados) * 100) : 0,
-      taxaEscalacao: total ? Math.round((escalados / total) * 100) : 0,
-    };
+    try {
+      const [porStatus, porCanal, porCategoria, total, editados, escalados] = await Promise.all([
+        prisma.supportAtendimento.groupBy({ by: ['status'], _count: true }),
+        prisma.supportAtendimento.groupBy({ by: ['canal'], _count: true }),
+        prisma.supportAtendimento.groupBy({ by: ['categoria'], _count: true }),
+        prisma.supportAtendimento.count(),
+        prisma.supportAtendimento.count({ where: { editadoPeloAdmin: true, status: 'sent' } }),
+        prisma.supportAtendimento.count({ where: { status: 'escalated' } }),
+      ]);
+      const enviados = porStatus.find((s: any) => s.status === 'sent')?._count ?? 0;
+      return {
+        total,
+        porStatus,
+        porCanal,
+        porCategoria,
+        taxaEdicao: enviados ? Math.round((editados / enviados) * 100) : 0,
+        taxaEscalacao: total ? Math.round((escalados / total) * 100) : 0,
+      };
+    } catch (err: any) {
+      app.log.error({ err: err?.message, code: err?.code }, '[Suporte] /metrics indisponível (schema?)');
+      return { total: 0, porStatus: [], porCanal: [], porCategoria: [], taxaEdicao: 0, taxaEscalacao: 0, unavailable: true };
+    }
   });
 
   // ── Base de conhecimento ──────────────────────────────────────────────────
   app.get('/knowledge', async () => {
-    return prisma.knowledgeBase.findMany({ orderBy: { atualizadoEm: 'desc' } });
+    try {
+      return await prisma.knowledgeBase.findMany({ orderBy: { atualizadoEm: 'desc' } });
+    } catch (err: any) {
+      app.log.error({ err: err?.message, code: err?.code }, '[Suporte] /knowledge indisponível (schema?)');
+      return [];
+    }
   });
 
   app.post<{ Body: { titulo: string; conteudo: string; categoria?: string; tags?: string[] } }>(
@@ -217,10 +234,15 @@ export default async function suporteAdminRoutes(app: FastifyInstance) {
 
   // ── Sugestões de FAQ (MÓDULO 5) ───────────────────────────────────────────
   app.get<{ Querystring: { status?: string } }>('/faq-suggestions', async (req) => {
-    return prisma.faqSuggestion.findMany({
-      where: { status: req.query.status || 'pending' },
-      orderBy: { criadoEm: 'desc' },
-    });
+    try {
+      return await prisma.faqSuggestion.findMany({
+        where: { status: req.query.status || 'pending' },
+        orderBy: { criadoEm: 'desc' },
+      });
+    } catch (err: any) {
+      app.log.error({ err: err?.message, code: err?.code }, '[Suporte] /faq-suggestions indisponível (schema?)');
+      return [];
+    }
   });
 
   // Aprovar sugestão → vira tópico na base de conhecimento
