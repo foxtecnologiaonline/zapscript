@@ -99,7 +99,27 @@ export async function retrieveKnowledge(message: string, limit = 3) {
 }
 
 // ── Regras de escalação automática (MÓDULO 1) ───────────────────────────────
-const ESCALATION_KEYWORDS = ['reembolso', 'processo', 'procon', 'cancelar', 'cancelamento', 'advogado', 'reclame aqui'];
+// Palavras/frases que forçam escalação independentemente da classificação do modelo.
+// Inclui sinônimos, formas sem acento e sinais de ameaça pública/jurídica.
+const ESCALATION_KEYWORDS = [
+  // jurídico / regulatório
+  'reembolso', 'processo', 'procon', 'advogado', 'reclame aqui',
+  'senacon', 'decon', 'consumidor.gov', 'tribunal', 'delegacia',
+  'judicial', 'notificar', 'notificacao', 'notificação',
+  // cancelamento (explícito)
+  'cancelar', 'cancelamento', 'quero cancelar', 'vou cancelar',
+  'nao quero mais', 'não quero mais',
+  // financeiro contestado
+  'chargeback', 'estorno', 'contestar', 'cobranca indevida', 'cobrança indevida',
+  'nao autorizei', 'não autorizei', 'cobrou sem permissao', 'cobrou sem permissão',
+  'cancelei e cobrou', 'cancelei mas',
+  'quero meu dinheiro', 'devolver o valor',
+  // fraude / enganação
+  'fraude', 'enganado', 'propaganda enganosa', 'golpe', 'mentira',
+  // ameaça pública
+  'vou publicar', 'vou postar', 'vou expor', 'vou falar nas redes',
+  'vou avisar todo mundo', 'vou reclamar em tudo',
+];
 
 function applyEscalationRules(c: ClassificacaoAtendimento, message: string): boolean {
   if (c.requer_escalacao) return true;
@@ -197,7 +217,7 @@ export async function runSupportAgent(input: RunAgentInput): Promise<AgentResult
 
       return {
         classificacao,
-        rascunho: parsed.rascunho || 'Olá! Recebemos sua mensagem e um de nossos atendentes vai te responder em breve.',
+        rascunho: parsed.rascunho || 'Oi! Recebemos sua mensagem. Um atendente vai te responder em breve.',
         contextoUsado,
       };
     } catch (err: any) {
