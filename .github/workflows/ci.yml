@@ -69,13 +69,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Necessário antes do tsc — mesmo motivo documentado no job Build acima
+      # (sem isso, o tsc não resolve @prisma/client e falha com TS2305).
+      - name: Generate Prisma Client
+        run: pnpm --filter database generate
+
       - name: Type check API
         run: pnpm --filter api exec tsc --noEmit
-        continue-on-error: true
 
       - name: Type check Worker
         run: pnpm --filter worker exec tsc --noEmit
-        continue-on-error: true
 
   # ── UNIT TESTS ─────────────────────────────────────────────────
   test:
@@ -138,6 +141,10 @@ jobs:
         run: |
           if [ "${{ needs.build.result }}" != "success" ]; then
             echo "❌ Build failed"
+            exit 1
+          fi
+          if [ "${{ needs.type-check.result }}" != "success" ]; then
+            echo "❌ Type check failed"
             exit 1
           fi
           if [ "${{ needs.test.result }}" != "success" ]; then

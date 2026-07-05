@@ -13,6 +13,7 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { redis } from './services/queue';
 import { pubClient, subClient } from './lib/redisAdapter';
+import { registerSecurityShield } from './lib/security-shield';
 import { prisma } from './lib/prisma';
 import { syncAllEvolutionConfigs } from './services/evolution-sync';
 import { startHeartbeat }         from './services/evolution-heartbeat';
@@ -42,6 +43,10 @@ app.server.on('error', (err: any) => {
   if (err.code === 'ECONNRESET') return;
   app.log.error(err, 'Server error');
 });
+
+// Escudo cibernético: bloqueia paths de sondagem e bane IPs abusivos (fail2ban-lite).
+// Registrado o mais cedo possível — antes de CORS/parsing/rotas.
+registerSecurityShield(app);
 
 // Preserve raw body for webhook verification (JSON)
 app.addContentTypeParser(
@@ -177,7 +182,8 @@ io.on('connection', (socket: Socket) => {
 
 app.register(cors, {
   origin: allowedOrigins,
-  credentials: true,
+  // Sem credentials: auth é 100% Bearer token (localStorage), nunca cookie —
+  // manter credentials:true só ampliaria a superfície de CSRF sem necessidade.
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 });
 app.register(helmet, {
@@ -200,6 +206,10 @@ app.register(jwt, { secret: process.env.JWT_SECRET! });
 app.register(rateLimit, {
   max:        150,   // aumentado para 500 usuários simultâneos
   timeWindow: '1 minute',
+  // Store compartilhado no Redis: os limites sobrevivem a restart/deploy e
+  // ficam corretos mesmo escalando para múltiplas instâncias (antes era em
+  // memória — cada instância tinha sua própria contagem, diluindo o limite real).
+  redis,
   skip: (req: any) =>
     req.url.startsWith('/webhook/') ||
     req.url === '/health',
@@ -214,7 +224,10 @@ app.register(rateLimit, {
     retryAfter: context.after,
   }),
 } as any);
-app.register(multipart, { limits: { fileSize: 200 * 1024 * 1024 } }); // 200MB — Executive plan
+// 15MB: a única rota que consome multipart hoje (/support/ticket) já limita a
+// 10MB no app; o teto global antigo (200MB) era resquício da demo de upload de
+// áudio removida e só ampliava a superfície de DoS por upload.
+app.register(multipart, { limits: { fileSize: 15 * 1024 * 1024 } });
 
 // ── Swagger/OpenAPI Documentation — somente em desenvolvimento ─────────────
 if (process.env.NODE_ENV !== 'production') {
@@ -254,7 +267,10 @@ if (process.env.NODE_ENV !== 'production') {
 app.addHook('onSend', async (_req, reply) => {
   reply.header('X-Content-Type-Options', 'nosniff');
   reply.header('X-Frame-Options', 'DENY');
-  reply.header('X-XSS-Protection', '1; mode=block');
+  // '0' é a guidance moderna (MDN/OWASP): o filtro legado do XSS-Auditor foi
+  // removido dos browsers e podia até introduzir vulnerabilidades; a proteção
+  // real já vem da CSP restritiva abaixo.
+  reply.header('X-XSS-Protection', '0');
   reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   if (process.env.NODE_ENV === 'production') {
@@ -424,6 +440,76 @@ async function runAutoMigrations() {
     `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "utmCampaign" TEXT`,
     `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "utmMedium" TEXT`,
     `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lifecycleEmailsSent" TEXT[] DEFAULT '{}'`,
+    // Agente de Suporte (migração 20260616_support_agent): auto-cura o schema no
+    // boot mesmo se o startCommand de produção não rodar `prisma migrate deploy`.
+    `CREATE TABLE IF NOT EXISTS "SupportAtendimento" (
+      "id"                TEXT NOT NULL,
+      "canal"             TEXT NOT NULL,
+      "status"            TEXT NOT NULL DEFAULT 'pending_approval',
+      "categoria"         TEXT,
+      "prioridade"        TEXT,
+      "sentimento"        TEXT,
+      "confiancaResposta" INTEGER,
+      "requerEscalacao"   BOOLEAN NOT NULL DEFAULT false,
+      "topicos"           TEXT[] DEFAULT ARRAY[]::TEXT[],
+      "clienteNome"       TEXT,
+      "clienteEmail"      TEXT,
+      "clienteWhatsapp"   TEXT,
+      "clienteUserId"     TEXT,
+      "mensagemOriginal"  TEXT NOT NULL,
+      "rascunhoAgente"    TEXT,
+      "respostaFinal"     TEXT,
+      "editadoPeloAdmin"  BOOLEAN NOT NULL DEFAULT false,
+      "instrucaoRevisao"  TEXT,
+      "threadId"          TEXT,
+      "canalExternoId"    TEXT,
+      "contextoUsado"     TEXT,
+      "sugestaoFaq"       TEXT,
+      "criadoEm"          TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "aprovadoEm"        TIMESTAMP(3),
+      "enviadoEm"         TIMESTAMP(3),
+      "resolvidoEm"       TIMESTAMP(3),
+      CONSTRAINT "SupportAtendimento_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "SupportAtendimento_status_prioridade_idx" ON "SupportAtendimento"("status", "prioridade")`,
+    `CREATE INDEX IF NOT EXISTS "SupportAtendimento_canal_criadoEm_idx" ON "SupportAtendimento"("canal", "criadoEm")`,
+    `CREATE INDEX IF NOT EXISTS "SupportAtendimento_threadId_idx" ON "SupportAtendimento"("threadId")`,
+    `CREATE INDEX IF NOT EXISTS "SupportAtendimento_canalExternoId_idx" ON "SupportAtendimento"("canalExternoId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SupportAtendimento_clienteUserId_fkey') THEN
+        ALTER TABLE "SupportAtendimento"
+          ADD CONSTRAINT "SupportAtendimento_clienteUserId_fkey"
+          FOREIGN KEY ("clienteUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "KnowledgeBase" (
+      "id"                  TEXT NOT NULL,
+      "titulo"              TEXT NOT NULL,
+      "conteudo"            TEXT NOT NULL,
+      "categoria"           TEXT,
+      "tags"                TEXT[] DEFAULT ARRAY[]::TEXT[],
+      "canalOrigem"         TEXT,
+      "atendimentoOrigemId" TEXT,
+      "aprovadoPorAdmin"    BOOLEAN NOT NULL DEFAULT true,
+      "vezesUtilizado"      INTEGER NOT NULL DEFAULT 0,
+      "utilidadeMedia"      DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "criadoEm"            TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "atualizadoEm"        TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "KnowledgeBase_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "KnowledgeBase_categoria_idx" ON "KnowledgeBase"("categoria")`,
+    `CREATE TABLE IF NOT EXISTS "FaqSuggestion" (
+      "id"                  TEXT NOT NULL,
+      "tituloSugerido"      TEXT NOT NULL,
+      "conteudoSugerido"    TEXT NOT NULL,
+      "categoria"           TEXT,
+      "atendimentoOrigemId" TEXT,
+      "status"              TEXT NOT NULL DEFAULT 'pending',
+      "criadoEm"            TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "revisadoEm"          TIMESTAMP(3),
+      CONSTRAINT "FaqSuggestion_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "FaqSuggestion_status_idx" ON "FaqSuggestion"("status")`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>

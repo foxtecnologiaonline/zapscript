@@ -10,6 +10,7 @@ import { redis } from '../services/queue';
 import { sendText } from '../services/evolution';
 import { sendEmail } from '../lib/mailer';
 import { asaas, asaasConfigured, asaasEnv } from '../lib/asaas';
+import { checkAdminTotp } from '../lib/totp';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -89,6 +90,13 @@ const adminAuth = async (req: any, reply: any) => {
   const token = req.headers['x-admin-token'] as string | undefined;
   if (!safeCompare(token, process.env.ADMIN_TOKEN)) {
     return reply.code(401).send({ error: 'Unauthorized' });
+  }
+  const totp = await checkAdminTotp(token!, req.headers['x-admin-totp'] as string | undefined);
+  if (totp !== 'ok') {
+    return reply.code(401).send({
+      error: totp === 'totp_required' ? 'Código 2FA necessário' : 'Código 2FA inválido',
+      totpRequired: true,
+    });
   }
 };
 

@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { sendOnChannel } from '../services/support-send';
 import { runSupportAgent, Canal } from '../services/support-agent';
 import { io } from '../index';
+import { checkAdminTotp } from '../lib/totp';
 
 /**
  * Painel admin — Fila de aprovação do Agente de Suporte (MÓDULO 3 + 5 + 7).
@@ -22,6 +23,13 @@ const adminAuth = async (req: any, reply: any) => {
   const token = req.headers['x-admin-token'] as string | undefined;
   if (!safeCompare(token, process.env.ADMIN_TOKEN)) {
     return reply.code(401).send({ error: 'Unauthorized' });
+  }
+  const totp = await checkAdminTotp(token!, req.headers['x-admin-totp'] as string | undefined);
+  if (totp !== 'ok') {
+    return reply.code(401).send({
+      error: totp === 'totp_required' ? 'Código 2FA necessário' : 'Código 2FA inválido',
+      totpRequired: true,
+    });
   }
 };
 

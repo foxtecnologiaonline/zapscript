@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import crypto from 'crypto';
+import { checkAdminTotp } from '../lib/totp';
 
 function safeCompare(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
@@ -14,6 +15,13 @@ const adminAuth = async (req: any, reply: any) => {
   const token = req.headers['x-admin-token'] as string | undefined;
   if (!safeCompare(token, process.env.ADMIN_TOKEN)) {
     return reply.code(401).send({ error: 'Unauthorized' });
+  }
+  const totp = await checkAdminTotp(token!, req.headers['x-admin-totp'] as string | undefined);
+  if (totp !== 'ok') {
+    return reply.code(401).send({
+      error: totp === 'totp_required' ? 'Código 2FA necessário' : 'Código 2FA inválido',
+      totpRequired: true,
+    });
   }
 };
 

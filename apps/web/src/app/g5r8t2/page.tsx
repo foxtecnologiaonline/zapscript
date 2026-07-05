@@ -7,6 +7,7 @@ const PAGE = 20;
 
 export default function AdminPage() {
   const [token, setToken]     = useState('');
+  const [totp, setTotp]       = useState(''); // código 2FA (só exigido se ADMIN_TOTP_SECRET estiver configurada no backend)
   const [auth, setAuth]       = useState(false);
   const [stats, setStats]     = useState<any>(null);
   const [tab, setTab]         = useState<Tab>('dashboard');
@@ -55,8 +56,12 @@ export default function AdminPage() {
     e.preventDefault();
     setLoading(true); setLoginErr('');
     try {
-      const res = await fetch(`${API}/sys/g5r8t2/stats`, { headers: h });
-      if (!res.ok) throw new Error('Token inválido');
+      const loginHeaders = totp.trim() ? { ...h, 'x-admin-totp': totp.trim() } : h;
+      const res = await fetch(`${API}/sys/g5r8t2/stats`, { headers: loginHeaders });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.totpRequired ? (d.error || 'Informe o código 2FA') : 'Token inválido');
+      }
       setStats(await res.json());
       setAuth(true);
     } catch (err: any) { setLoginErr(err.message); }
@@ -210,6 +215,11 @@ export default function AdminPage() {
               className="w-full bg-[#132621] border border-[rgba(16,185,129,.12)] rounded-lg px-4 py-3 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.3)] placeholder-[rgba(16,185,129,.3)]"
               type="password" placeholder="ADMIN_TOKEN"
               value={token} onChange={e => setToken(e.target.value)} required
+            />
+            <input
+              className="w-full bg-[#132621] border border-[rgba(16,185,129,.12)] rounded-lg px-4 py-3 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.3)] placeholder-[rgba(16,185,129,.3)]"
+              type="text" inputMode="numeric" maxLength={6} placeholder="Código 2FA (se habilitado)"
+              value={totp} onChange={e => setTotp(e.target.value)}
             />
             {loginErr && <p className="text-red-400 text-xs">{loginErr}</p>}
             <button type="submit" disabled={loading}
