@@ -734,8 +734,21 @@ export default async function authRoutes(app: FastifyInstance) {
       req.log?.warn(`[Auth] Falha ao ler marcação de afiliado (ignorada): ${err?.message}`);
     }
 
+    // Módulos ativos da suíte (login único + acesso à la carte). Tolerante a
+    // falhas/ausência de migração: degrada para lista vazia. Ver MODULOS_ARQUITETURA.md.
+    let modules: string[] = [];
+    try {
+      const ents = await prisma.entitlement.findMany({
+        where:  { userId: req.user.sub, status: { in: ['active', 'trialing'] } },
+        select: { productKey: true },
+      });
+      modules = ents.map((e) => e.productKey);
+    } catch (err: any) {
+      req.log?.warn(`[Auth] Falha ao ler entitlements (ignorada): ${err?.message}`);
+    }
+
     // C2: decriptar document (AES-256-GCM) antes de retornar ao frontend
-    return { ...user, document: decryptStr(user.document) || null, affiliate };
+    return { ...user, document: decryptStr(user.document) || null, affiliate, modules };
   });
 
   // ── PUT /auth/profile ─────────────────────────────────────────────────────

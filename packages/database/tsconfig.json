@@ -7,9 +7,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "outDir": "./dist",
-    "rootDir": "."
+    "outDir": "./dist"
   },
-  "include": ["prisma/**/*.ts"],
+  "include": ["prisma/**/*.ts", "../modules/catalog.ts"],
   "exclude": ["node_modules", "dist"]
 }

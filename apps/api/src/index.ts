@@ -313,6 +313,7 @@ app.register(import('./routes/webhook-config'),  { prefix: '/webhook-config' });
 app.register(import('./routes/nps'),             { prefix: '/nps' });
 app.register(import('./routes/meta-embedded'),   { prefix: '/meta' });
 app.register(import('./routes/affiliates'),      { prefix: '/affiliates' });
+app.register(import('./routes/entitlements'),    { prefix: '/modules' });
 // Demo de upload no site removido — vira app/site separado. Rota desativada.
 app.register(import('./routes/analytics'),       { prefix: '/analytics' });
 

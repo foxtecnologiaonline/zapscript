@@ -9,51 +9,52 @@ datasource db {
 }
 
 model User {
-  id                          String          @id @default(cuid())
-  email                       String          @unique
-  name                        String?
-  phone                       String?                   // Celular de contato (opcional)
-  document                    String?                   // CPF/CNPJ (AES-256-GCM encrypted)
-  documentHash                String?         @unique   // HMAC-SHA256 blind index (busca de duplicata)
-  emailVerified               Boolean         @default(false)
-  refCode                     String          @unique @default(cuid())
-  referredBy                  String?
-  isAdmin                     Boolean         @default(false)
-  isTester                    Boolean         @default(false)
-  testerSince                 DateTime?
+  id                      String               @id @default(cuid())
+  email                   String               @unique
+  name                    String?
+  phone                   String? // Celular de contato (opcional)
+  document                String? // CPF/CNPJ (AES-256-GCM encrypted)
+  documentHash            String?              @unique // HMAC-SHA256 blind index (busca de duplicata)
+  emailVerified           Boolean              @default(false)
+  refCode                 String               @unique @default(cuid())
+  referredBy              String?
+  isAdmin                 Boolean              @default(false)
+  isTester                Boolean              @default(false)
+  testerSince             DateTime?
   // LGPD - Consentimentos e direitos do usuário
-  privacyPolicyAcceptedAt     DateTime?
-  termsAcceptedAt             DateTime?
-  contractAcceptedAt          DateTime?       // Contrato de Prestação de Serviços
-  marketingConsentAt          DateTime?       // Consentimento opcional de marketing
-  consentDocVersion           String?         // ex: "tos_v2.0,contrato_v2.0,pp_v2.0"
-  deletedAt                   DateTime?       // Soft delete
-  pseudonymizedAt             DateTime?       // LGPD: dados anonimizados
-  utmSource                   String?         // Atribuição de origem (primeiro toque) — ex: "google", "seo"
-  utmCampaign                 String?         // ex: "corretores", "advogados"
-  utmMedium                   String?         // ex: "cpc", "organic"
-  lifecycleEmailsSent         String[]        @default([]) // tags de e-mails de ciclo de vida já enviados (idempotência)
-  createdAt                   DateTime        @default(now())
-  updatedAt                   DateTime        @updatedAt
-  subscription                Subscription?
-  balance                     MinuteBalance?
-  numbers                     WhatsappNumber[]
-  transcriptions              Transcription[]
-  usageLogs                   UsageLog[]
-  supportTickets              SupportTicket[]
-  webhookConfig               WebhookConfig?
-  npsResponses                NpsResponse[]
-  supportAtendimentos         SupportAtendimento[]
-  affiliate                   Affiliate?
-  affiliateReferral           AffiliateReferral?  @relation("ReferredUser")
-  proContactSeeds             ProContactSeed[]
+  privacyPolicyAcceptedAt DateTime?
+  termsAcceptedAt         DateTime?
+  contractAcceptedAt      DateTime? // Contrato de Prestação de Serviços
+  marketingConsentAt      DateTime? // Consentimento opcional de marketing
+  consentDocVersion       String? // ex: "tos_v2.0,contrato_v2.0,pp_v2.0"
+  deletedAt               DateTime? // Soft delete
+  pseudonymizedAt         DateTime? // LGPD: dados anonimizados
+  utmSource               String? // Atribuição de origem (primeiro toque) — ex: "google", "seo"
+  utmCampaign             String? // ex: "corretores", "advogados"
+  utmMedium               String? // ex: "cpc", "organic"
+  lifecycleEmailsSent     String[]             @default([]) // tags de e-mails de ciclo de vida já enviados (idempotência)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  subscription            Subscription?
+  balance                 MinuteBalance?
+  numbers                 WhatsappNumber[]
+  transcriptions          Transcription[]
+  usageLogs               UsageLog[]
+  supportTickets          SupportTicket[]
+  webhookConfig           WebhookConfig?
+  npsResponses            NpsResponse[]
+  supportAtendimentos     SupportAtendimento[]
+  affiliate               Affiliate?
+  affiliateReferral       AffiliateReferral?   @relation("ReferredUser")
+  proContactSeeds         ProContactSeed[]
+  entitlements            Entitlement[]
 }
 
 model Plan {
   id              String         @id @default(cuid())
-  name            String         @unique  // "free" | "pro" | "ultra"
+  name            String         @unique // "free" | "pro" | "ultra"
   label           String
-  minutesPerMonth Int                       // [LEGADO] mantido só como métrica interna de custo
+  minutesPerMonth Int // [LEGADO] mantido só como métrica interna de custo
   audiosPerMonth  Int            @default(0) // Métrica primária de cota: nº de áudios/mês. FREE=15, PRO=500 (teto oculto)
   maxNumbers      Int
   priceBrl        Float
@@ -63,68 +64,68 @@ model Plan {
 }
 
 model Subscription {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  planId                String
-  asaasSubscriptionId   String?   // Asaas subscription ID (sub_...)
-  asaasCustomerId       String?   // Asaas customer ID (cus_...)
-  paymentMethod         String?   // 'credit_card' | 'pix'
-  status                String    @default("active")  // 'trialing' | 'active' | 'past_due' | 'canceled'
-  currentPeriodEnd      DateTime?
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  planId              String
+  asaasSubscriptionId String? // Asaas subscription ID (sub_...)
+  asaasCustomerId     String? // Asaas customer ID (cus_...)
+  paymentMethod       String? // 'credit_card' | 'pix'
+  status              String    @default("active") // 'trialing' | 'active' | 'past_due' | 'canceled'
+  currentPeriodEnd    DateTime?
   // ── Trial Freemium: novo usuário entra com 7 dias de PRO grátis ──
-  trialEndsAt           DateTime? // fim do trial PRO (D7); job diário rebaixa para FREE em D8
-  trialDowngradedAt     DateTime? // marca quando o rebaixamento automático ocorreu (idempotência)
-  testerRenewalsUsed    Int       @default(0)  // Renovações mensais isentas consumidas (máx 12)
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan                  Plan      @relation(fields: [planId], references: [id])
+  trialEndsAt         DateTime? // fim do trial PRO (D7); job diário rebaixa para FREE em D8
+  trialDowngradedAt   DateTime? // marca quando o rebaixamento automático ocorreu (idempotência)
+  testerRenewalsUsed  Int       @default(0) // Renovações mensais isentas consumidas (máx 12)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                Plan      @relation(fields: [planId], references: [id])
 }
 
 model MinuteBalance {
-  id                 String   @id @default(cuid())
-  userId             String   @unique
-  availableMinutes   Float    @default(0)
-  accumulatedMinutes Float    @default(0)
-  extraMinutes       Float    @default(0)  // minutos avulsos/indicação — valem 60 dias, não resetam mensalmente
-  extraExpiresAt     DateTime?              // expiração do saldo extra (now + 60 dias na última recarga)
-  audiosUsed         Int      @default(0)  // Métrica primária: nº de áudios consumidos no ciclo atual (reset mensal)
+  id                 String    @id @default(cuid())
+  userId             String    @unique
+  availableMinutes   Float     @default(0)
+  accumulatedMinutes Float     @default(0)
+  extraMinutes       Float     @default(0) // minutos avulsos/indicação — valem 60 dias, não resetam mensalmente
+  extraExpiresAt     DateTime? // expiração do saldo extra (now + 60 dias na última recarga)
+  audiosUsed         Int       @default(0) // Métrica primária: nº de áudios consumidos no ciclo atual (reset mensal)
   resetAt            DateTime
-  lastAlertSent      String?  // "50" | "80" | "100" — para evitar alertas duplicados
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastAlertSent      String? // "50" | "80" | "100" — para evitar alertas duplicados
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model WhatsappNumber {
-  id               String          @id @default(cuid())
-  userId           String
-  phoneNumber      String           @default("pending")
-  displayName      String?
-  sessionEncrypted String?
-  status           String           @default("disconnected")
-  connectedAt      DateTime?
-  lastMessageAt    DateTime?
-  messageCount     Int              @default(0)
-  minutesUsed      Float            @default(0)
-  zapiInstanceId   String?          // sem @unique — múltiplos usuários podem compartilhar a mesma instância Z-API
-  zapiToken        String?          // Token da instância Z-API criada dinamicamente
-  privateMode      Boolean          @default(true)   // Modo Privado automático em planos pagos: transcrição vai ao próprio número. false = opt-out explícito do usuário.
+  id                 String          @id @default(cuid())
+  userId             String
+  phoneNumber        String          @default("pending")
+  displayName        String?
+  sessionEncrypted   String?
+  status             String          @default("disconnected")
+  connectedAt        DateTime?
+  lastMessageAt      DateTime?
+  messageCount       Int             @default(0)
+  minutesUsed        Float           @default(0)
+  zapiInstanceId     String? // sem @unique — múltiplos usuários podem compartilhar a mesma instância Z-API
+  zapiToken          String? // Token da instância Z-API criada dinamicamente
+  privateMode        Boolean         @default(true) // Modo Privado automático em planos pagos: transcrição vai ao próprio número. false = opt-out explícito do usuário.
   // ── Conexão via API oficial da Meta (WhatsApp Cloud API / Embedded Signup) ──
   // Usado apenas para o fluxo de App Review da Meta. Usuários reais seguem no Evolution.
-  provider           String         @default("evolution")  // 'evolution' | 'meta'
-  metaWabaId         String?                                // WhatsApp Business Account ID
-  metaPhoneNumberId  String?                                // Phone Number ID (Cloud API)
-  metaBusinessId     String?                                // Business Manager ID
-  metaAccessTokenEnc String?                                // Token de acesso AES-256-GCM (encryptStr)
-  metaTokenExpiresAt DateTime?                              // Expiração do token (se aplicável)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcriptions   Transcription[]
+  provider           String          @default("evolution") // 'evolution' | 'meta'
+  metaWabaId         String? // WhatsApp Business Account ID
+  metaPhoneNumberId  String? // Phone Number ID (Cloud API)
+  metaBusinessId     String? // Business Manager ID
+  metaAccessTokenEnc String? // Token de acesso AES-256-GCM (encryptStr)
+  metaTokenExpiresAt DateTime? // Expiração do token (se aplicável)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcriptions     Transcription[]
 
-  @@index([userId])             // A2: listagem de números por usuário
-  @@index([zapiInstanceId])     // A2: busca de instância em webhook (hot path)
+  @@index([userId]) // A2: listagem de números por usuário
+  @@index([zapiInstanceId]) // A2: busca de instância em webhook (hot path)
 }
 
 model Transcription {
@@ -133,22 +134,22 @@ model Transcription {
   numberId        String?
   contactPhone    String
   contactName     String?
-  filename        String?                                // Nome original do arquivo (uploads manuais)
+  filename        String? // Nome original do arquivo (uploads manuais)
   durationSec     Float
   originalText    String
   summaryBullets  Json
   confidenceScore Float?
   language        String          @default("pt")
-  source          String          @default("whatsapp")  // "whatsapp" | "manual"
-  tags            String[]        @default([])           // Tags do usuário (Ultra+)
-  footerShown     Boolean         @default(false)        // se o rodapé viral foi exibido nesta conversão
-  footerVariant   String?                                // qual variação do rodapé foi usada (B1 — análise de conversão por variação)
+  source          String          @default("whatsapp") // "whatsapp" | "manual"
+  tags            String[]        @default([]) // Tags do usuário (Ultra+)
+  footerShown     Boolean         @default(false) // se o rodapé viral foi exibido nesta conversão
+  footerVariant   String? // qual variação do rodapé foi usada (B1 — análise de conversão por variação)
   createdAt       DateTime        @default(now())
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   number          WhatsappNumber? @relation(fields: [numberId], references: [id], onDelete: SetNull)
   usageLog        UsageLog?
 
-  @@index([userId])                       // A2: listagem por usuário (hot path em toda API)
+  @@index([userId]) // A2: listagem por usuário (hot path em toda API)
   @@index([userId, createdAt(sort: Desc)]) // A2: ordenação padrão date_desc
 }
 
@@ -161,24 +162,24 @@ model UsageLog {
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcription   Transcription? @relation(fields: [transcriptionId], references: [id], onDelete: SetNull)
 
-  @@index([userId])       // A2: aggregations de uso por usuário
-  @@index([createdAt])    // A2: relatórios e agregações por período
+  @@index([userId]) // A2: aggregations de uso por usuário
+  @@index([createdAt]) // A2: relatórios e agregações por período
 }
 
 model SupportTicket {
-  id                  String   @id @default(cuid())
-  userId              String?
-  name                String
-  email               String
-  category            String
-  description         String
-  status              String   @default("open")
-  attachmentUrl       String?  // Supabase Storage URL (novo)
-  attachmentData      String?  // Base64 legado (manter para registros antigos)
-  attachmentFilename  String?
-  attachmentMimeType  String?
-  createdAt           DateTime @default(now())
-  user                User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id                 String   @id @default(cuid())
+  userId             String?
+  name               String
+  email              String
+  category           String
+  description        String
+  status             String   @default("open")
+  attachmentUrl      String? // Supabase Storage URL (novo)
+  attachmentData     String? // Base64 legado (manter para registros antigos)
+  attachmentFilename String?
+  attachmentMimeType String?
+  createdAt          DateTime @default(now())
+  user               User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model SystemError {
@@ -200,13 +201,13 @@ model ProcessedWebhook {
 
 model AuditLog {
   id               String   @id @default(cuid())
-  action           String   // user.created, user.updated, etc
+  action           String // user.created, user.updated, etc
   adminId          String
   targetUserId     String?
   targetResourceId String?
-  resourceType     String?  // user, plan, subscription, etc
-  changes          Json?    // { before: {...}, after: {...} }
-  metadata         Json?    // Additional context
+  resourceType     String? // user, plan, subscription, etc
+  changes          Json? // { before: {...}, after: {...} }
+  metadata         Json? // Additional context
   ipAddress        String?
   userAgent        String?
   timestamp        DateTime @default(now())
@@ -233,8 +234,8 @@ model TesterInvite {
 
 model PrivacyPolicy {
   id        String   @id @default(cuid())
-  version   String   @unique  // "1.0", "1.1", etc
-  content   String   // HTML content
+  version   String   @unique // "1.0", "1.1", etc
+  content   String // HTML content
   createdAt DateTime @default(now())
 
   @@index([version])
@@ -244,7 +245,7 @@ model WebhookConfig {
   id        String   @id @default(cuid())
   userId    String   @unique
   url       String
-  secret    String   // Chave HMAC-SHA256 para assinar payloads
+  secret    String // Chave HMAC-SHA256 para assinar payloads
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -256,8 +257,8 @@ model WebhookConfig {
 // #6 — Histórico de uptime dos serviços (checker no worker, a cada 5 min)
 model ServiceStatusLog {
   id        String   @id @default(cuid())
-  service   String   // "api" | "db" | "redis" | "queue" | "whatsapp" | "groq" | "email"
-  status    String   // "up" | "down" | "degraded"
+  service   String // "api" | "db" | "redis" | "queue" | "whatsapp" | "groq" | "email"
+  status    String // "up" | "down" | "degraded"
   latencyMs Int?
   checkedAt DateTime @default(now())
 
@@ -268,7 +269,7 @@ model ServiceStatusLog {
 model NpsResponse {
   id        String   @id @default(cuid())
   userId    String
-  score     Int      // 0–10
+  score     Int // 0–10
   comment   String?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -280,7 +281,7 @@ model NpsResponse {
 // #4 — Configuração de alertas automáticos do admin
 model AdminAlertConfig {
   id        String   @id @default(cuid())
-  key       String   @unique  // "queueMaxWaiting" | "errorRatePct" | "alertPhone" | "alertEmail"
+  key       String   @unique // "queueMaxWaiting" | "errorRatePct" | "alertPhone" | "alertEmail"
   value     Json
   updatedAt DateTime @updatedAt
 }
@@ -289,38 +290,38 @@ model AdminAlertConfig {
 // Cada atendimento = uma mensagem recebida + classificação + rascunho do agente,
 // aguardando aprovação humana antes de enviar pelo canal de origem.
 model SupportAtendimento {
-  id                String    @id @default(cuid())
-  canal             String    // 'whatsapp' | 'email' | 'chat'
-  status            String    @default("pending_approval") // pending_approval | sent | escalated | spam | resolved
-  categoria         String?   // duvida_produto | problema_tecnico | reclamacao | cancelamento | upgrade_plano | cobranca | elogio | spam | outro
-  prioridade        String?   // baixa | media | alta | urgente
-  sentimento        String?   // positivo | neutro | negativo | frustrado
-  confiancaResposta Int?      // 0–100
-  requerEscalacao   Boolean   @default(false)
-  topicos           String[]  @default([])
+  id                String   @id @default(cuid())
+  canal             String // 'whatsapp' | 'email' | 'chat'
+  status            String   @default("pending_approval") // pending_approval | sent | escalated | spam | resolved
+  categoria         String? // duvida_produto | problema_tecnico | reclamacao | cancelamento | upgrade_plano | cobranca | elogio | spam | outro
+  prioridade        String? // baixa | media | alta | urgente
+  sentimento        String? // positivo | neutro | negativo | frustrado
+  confiancaResposta Int? // 0–100
+  requerEscalacao   Boolean  @default(false)
+  topicos           String[] @default([])
 
-  clienteNome       String?
-  clienteEmail      String?
-  clienteWhatsapp   String?
-  clienteUserId     String?
+  clienteNome     String?
+  clienteEmail    String?
+  clienteWhatsapp String?
+  clienteUserId   String?
 
-  mensagemOriginal  String
-  rascunhoAgente    String?
-  respostaFinal     String?
-  editadoPeloAdmin  Boolean   @default(false)
-  instrucaoRevisao  String?
+  mensagemOriginal String
+  rascunhoAgente   String?
+  respostaFinal    String?
+  editadoPeloAdmin Boolean @default(false)
+  instrucaoRevisao String?
 
-  threadId          String?   // agrupa a conversa (canal + remetente)
-  canalExternoId    String?   // messageId externo (WhatsApp/email) — idempotência
-  contextoUsado     String?   // títulos/ids da base de conhecimento usados no rascunho
-  sugestaoFaq       String?   // título de novo tópico FAQ sugerido pelo agente
+  threadId       String? // agrupa a conversa (canal + remetente)
+  canalExternoId String? // messageId externo (WhatsApp/email) — idempotência
+  contextoUsado  String? // títulos/ids da base de conhecimento usados no rascunho
+  sugestaoFaq    String? // título de novo tópico FAQ sugerido pelo agente
 
-  criadoEm          DateTime  @default(now())
-  aprovadoEm        DateTime?
-  enviadoEm         DateTime?
-  resolvidoEm       DateTime?
+  criadoEm    DateTime  @default(now())
+  aprovadoEm  DateTime?
+  enviadoEm   DateTime?
+  resolvidoEm DateTime?
 
-  user              User?     @relation(fields: [clienteUserId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [clienteUserId], references: [id], onDelete: SetNull)
 
   @@index([status, prioridade])
   @@index([canal, criadoEm])
@@ -331,18 +332,18 @@ model SupportAtendimento {
 // Base de conhecimento (RAG). MVP: busca por palavra-chave. `embedding` (pgvector)
 // fica reservado para evolução — coluna criada como texto nulo até habilitar pgvector.
 model KnowledgeBase {
-  id               String   @id @default(cuid())
-  titulo           String
-  conteudo         String
-  categoria        String?
-  tags             String[] @default([])
-  canalOrigem      String?  // de qual atendimento/canal surgiu
+  id                  String   @id @default(cuid())
+  titulo              String
+  conteudo            String
+  categoria           String?
+  tags                String[] @default([])
+  canalOrigem         String? // de qual atendimento/canal surgiu
   atendimentoOrigemId String?
-  aprovadoPorAdmin Boolean  @default(true)
-  vezesUtilizado   Int      @default(0)
-  utilidadeMedia   Float    @default(0)
-  criadoEm         DateTime @default(now())
-  atualizadoEm     DateTime @updatedAt
+  aprovadoPorAdmin    Boolean  @default(true)
+  vezesUtilizado      Int      @default(0)
+  utilidadeMedia      Float    @default(0)
+  criadoEm            DateTime @default(now())
+  atualizadoEm        DateTime @updatedAt
 
   @@index([categoria])
 }
@@ -353,26 +354,26 @@ model KnowledgeBase {
 // comissão (única de 30% do 1º pagamento OU recorrente de 5% nos primeiros 12 meses).
 // Pagamento = rastreado no sistema e quitado manualmente via Pix pelo admin.
 model Affiliate {
-  id             String   @id @default(cuid())
-  userId         String   @unique
-  code           String   @unique                  // código de divulgação (?ref=CODE)
-  status         String   @default("pending")      // pending | approved | rejected | suspended
-  commissionType String   @default("recurring")    // 'onetime' (30% 1º pgto) | 'recurring' (5% x12 meses)
-  pixKey         String?                            // chave Pix p/ recebimento (não é segredo financeiro crítico)
-  pixKeyType     String?                            // cpf | cnpj | email | phone | random
-  payoutName     String?                            // nome/razão social do recebedor
-  audience       String?                            // como pretende divulgar (texto do cadastro)
-  notes          String?                            // observações internas do admin
-  rejectedReason String?
-  appliedAt      DateTime @default(now())
-  approvedAt          DateTime?
-  approvedBy          String?                            // adminId que aprovou
-  payoutRequestedAt   DateTime?                          // última solicitação de saque do afiliado
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  referrals      AffiliateReferral[]
-  commissions    AffiliateCommission[]
+  id                String                @id @default(cuid())
+  userId            String                @unique
+  code              String                @unique // código de divulgação (?ref=CODE)
+  status            String                @default("pending") // pending | approved | rejected | suspended
+  commissionType    String                @default("recurring") // 'onetime' (30% 1º pgto) | 'recurring' (5% x12 meses)
+  pixKey            String? // chave Pix p/ recebimento (não é segredo financeiro crítico)
+  pixKeyType        String? // cpf | cnpj | email | phone | random
+  payoutName        String? // nome/razão social do recebedor
+  audience          String? // como pretende divulgar (texto do cadastro)
+  notes             String? // observações internas do admin
+  rejectedReason    String?
+  appliedAt         DateTime              @default(now())
+  approvedAt        DateTime?
+  approvedBy        String? // adminId que aprovou
+  payoutRequestedAt DateTime? // última solicitação de saque do afiliado
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referrals         AffiliateReferral[]
+  commissions       AffiliateCommission[]
 
   @@index([status])
   @@index([code])
@@ -382,8 +383,8 @@ model Affiliate {
 model AffiliateReferral {
   id             String    @id @default(cuid())
   affiliateId    String
-  referredUserId String    @unique                 // cada usuário é indicado por no máximo 1 afiliado
-  status         String    @default("pending")     // pending (cadastrou) | converted (já gerou venda)
+  referredUserId String    @unique // cada usuário é indicado por no máximo 1 afiliado
+  status         String    @default("pending") // pending (cadastrou) | converted (já gerou venda)
   convertedAt    DateTime?
   createdAt      DateTime  @default(now())
   affiliate      Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
@@ -397,14 +398,14 @@ model AffiliateCommission {
   id               String    @id @default(cuid())
   affiliateId      String
   referredUserId   String
-  paymentId        String                          // Asaas payment id (idempotência)
-  saleAmount       Float                           // valor da venda (mensalidade paga)
-  commissionAmount Float                           // valor da comissão devida
-  commissionType   String                          // 'onetime' | 'recurring'
-  monthIndex       Int       @default(1)           // recorrente: qual mês (1..12)
-  status           String    @default("pending")   // pending | paid | canceled
+  paymentId        String // Asaas payment id (idempotência)
+  saleAmount       Float // valor da venda (mensalidade paga)
+  commissionAmount Float // valor da comissão devida
+  commissionType   String // 'onetime' | 'recurring'
+  monthIndex       Int       @default(1) // recorrente: qual mês (1..12)
+  status           String    @default("pending") // pending | paid | canceled
   paidAt           DateTime?
-  paidReference    String?                         // comprovante/observação do Pix manual
+  paidReference    String? // comprovante/observação do Pix manual
   createdAt        DateTime  @default(now())
   affiliate        Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
 
@@ -429,12 +430,12 @@ model DemoLead {
 // armazenado, só geo grosseira (país/região/cidade) vinda dos headers da Vercel.
 model SiteEvent {
   id          String   @id @default(cuid())
-  type        String   // 'pageview' | 'click'
-  path        String   // caminho da página
-  name        String?  // clique: nome do CTA
-  visitorId   String?  // id anônimo do navegador (não-PII)
+  type        String // 'pageview' | 'click'
+  path        String // caminho da página
+  name        String? // clique: nome do CTA
+  visitorId   String? // id anônimo do navegador (não-PII)
   referrer    String?
-  device      String?  // 'mobile' | 'desktop'
+  device      String? // 'mobile' | 'desktop'
   country     String?
   region      String?
   city        String?
@@ -459,8 +460,8 @@ model SiteEvent {
 model ProContactSeed {
   id            String   @id @default(cuid())
   userId        String
-  contactId     String   // telefone do remetente, normalizado (digits-only)
-  footerVariant String?  // variação de rodapé usada na 1ª exibição (B1)
+  contactId     String // telefone do remetente, normalizado (digits-only)
+  footerVariant String? // variação de rodapé usada na 1ª exibição (B1)
   firstSeenAt   DateTime @default(now())
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -480,4 +481,39 @@ model FaqSuggestion {
   revisadoEm          DateTime?
 
   @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Suíte de módulos — catálogo + titularidade (ver MODULOS_ARQUITETURA.md)
+// Product espelha packages/modules/catalog.ts (semeado pelo seed).
+// Entitlement é a fonte da verdade de acesso, independente do tier (Plan) do core.
+// ─────────────────────────────────────────────────────────────────────────────
+model Product {
+  id           String        @id @default(cuid())
+  key          String        @unique // 'core' | 'cobranca' | ... (== catalog.ts)
+  name         String
+  status       String        @default("planned") // 'ga' | 'beta' | 'planned' | 'discovery'
+  priceMonthly Float         @default(0)
+  priceYearly  Float         @default(0)
+  dependsOn    String[]      @default([]) // keys de módulos requeridos (dependência dura)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  entitlements Entitlement[]
+}
+
+model Entitlement {
+  id               String    @id @default(cuid())
+  userId           String
+  productKey       String // FK -> Product.key
+  status           String    @default("active") // 'active'|'trialing'|'past_due'|'canceled'
+  source           String    @default("paid") // 'paid'|'trial'|'comp'|'bundle'|'affiliate'
+  currentPeriodEnd DateTime?
+  canceledAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product          Product   @relation(fields: [productKey], references: [key], onDelete: Cascade)
+
+  @@unique([userId, productKey])
+  @@index([userId, status])
 }

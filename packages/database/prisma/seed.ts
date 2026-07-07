@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+// Fonte única da verdade do catálogo de módulos (ver MODULOS_ARQUITETURA.md).
+import { MODULES } from '../../modules/catalog';
 
 const prisma = new PrismaClient();
 
@@ -88,6 +90,29 @@ async function main() {
   }
 
   console.log(`✅ Planos: Grátis (R$0 / ${FREE_AUDIO_QUOTA} áudios), Pro (R$39,90 / ilimitado*${PRO_AUDIO_CAP}), Executive (R$49,90 / ilimitado*${PRO_AUDIO_CAP})`);
+
+  // ── Catálogo de módulos (Product) — espelha packages/modules/catalog.ts ──
+  console.log('🧩 Sincronizando catálogo de módulos...');
+  for (const m of MODULES) {
+    await prisma.product.upsert({
+      where:  { key: m.key },
+      update: { name: m.name, status: m.status, priceMonthly: m.priceMonthly, priceYearly: m.priceYearly, dependsOn: m.dependsOn },
+      create: { key: m.key, name: m.name, status: m.status, priceMonthly: m.priceMonthly, priceYearly: m.priceYearly, dependsOn: m.dependsOn },
+    });
+    console.log(`  ✓ ${m.name} (${m.key}) — ${m.status}`);
+  }
+
+  // ── Backfill: todo usuário existente ganha o entitlement do módulo `core` ──
+  // Idempotente (skipDuplicates + unique[userId,productKey]). O `core` tem tier
+  // FREE, então dar acesso a todos é seguro; o tier segue governado por Plan.
+  const users = await prisma.user.findMany({ where: { deletedAt: null }, select: { id: true } });
+  if (users.length > 0) {
+    const res = await prisma.entitlement.createMany({
+      data: users.map((u) => ({ userId: u.id, productKey: 'core', source: 'bundle' as const })),
+      skipDuplicates: true,
+    });
+    console.log(`✅ Backfill core: ${res.count} entitlement(s) criado(s) para ${users.length} usuário(s)`);
+  }
 }
 
 main()
