@@ -1,0 +1,203 @@
+/**
+ * ZapScript Suite — Catálogo canônico de módulos (fonte ÚNICA da verdade).
+ *
+ * Consumido por API (gate + checkout), Web (launcher + upsell) e billing.
+ * NÃO duplicar key/nome/preço/estado em nenhum outro lugar — importe daqui.
+ *
+ * Sem imports externos de propósito: é dado puro, seguro de importar em qualquer
+ * pipeline (api/worker/web) sem risco de build.
+ *
+ * Ver arquitetura: MODULOS_ARQUITETURA.md
+ */
+
+/** Estágio de maturidade do módulo. */
+export type ModuleStatus =
+  | 'ga'        // disponível a todos
+  | 'beta'      // liberado, em amadurecimento
+  | 'planned'   // no roadmap, ainda não construído
+  | 'discovery'; // especulativo — validar demanda antes de construir
+
+export interface ModuleSpec {
+  /** Chave estável (== Product.key no banco, == segmento de rota /app/<key>). */
+  key: string;
+  /** Nome comercial exibido ao usuário. */
+  name: string;
+  /** Emoji/ícone do card no launcher. */
+  icon: string;
+  /** Frase curta (o que é). */
+  tagline: string;
+  /** JTBD — a dor concreta que resolve. */
+  jtbd: string;
+  status: ModuleStatus;
+  /** Preço mensal à la carte (BRL). 0 = incluso/base. Placeholders — validar com pricing. */
+  priceMonthly: number;
+  /** Preço anual (BRL) — ~20% off × 12 quando aplicável. */
+  priceYearly: number;
+  /** Módulos que precisam estar ativos para este funcionar (dependência dura). */
+  dependsOn: string[];
+  /** Serviços de infra reaproveitados (documental — evita reconstruir o que já existe). */
+  reuses: string[];
+  /** Fase de rollout no roadmap (0 = fundação já entregue). */
+  phase: number;
+}
+
+/**
+ * Catálogo. `core` é a base (tiers free/pro vivem em Plan/MinuteBalance).
+ * Preços marcados como proposta — ajustar em §Billing após decisão de pricing.
+ */
+export const MODULES: readonly ModuleSpec[] = [
+  {
+    key: 'core',
+    name: 'ZapScript',
+    icon: '🎙️',
+    tagline: 'Transcrição e resumo de áudios do WhatsApp',
+    jtbd: 'Não tenho tempo de ouvir áudio longo no WhatsApp.',
+    status: 'ga',
+    priceMonthly: 39.90, // tier PRO do core; FREE = 0 (cota reduzida)
+    priceYearly: 383.04,
+    dependsOn: [],
+    reuses: ['mensageria', 'transcricao', 'ia'],
+    phase: 0,
+  },
+  {
+    key: 'atende',
+    name: 'ZapScript Atende',
+    icon: '🤖',
+    tagline: 'Atendimento automático 24/7 no WhatsApp',
+    jtbd: 'Preciso responder cliente na hora sem contratar equipe.',
+    status: 'beta',
+    priceMonthly: 49.90,
+    priceYearly: 479.04,
+    dependsOn: [],
+    reuses: ['mensageria', 'ia', 'knowledge-base'],
+    phase: 1,
+  },
+  {
+    key: 'cobranca',
+    name: 'ZapScript Cobrança',
+    icon: '💰',
+    tagline: 'Lembrete e cobrança automática via WhatsApp',
+    jtbd: 'Sou MEI e não tenho tempo de cobrar quem venceu/vence hoje; perco receita por inadimplência.',
+    status: 'planned',
+    priceMonthly: 29.90,
+    priceYearly: 287.04,
+    dependsOn: [],
+    reuses: ['mensageria'], // 100% da infra de envio já validada
+    phase: 2,
+  },
+  {
+    key: 'campanhas',
+    name: 'ZapScript Campanhas',
+    icon: '📣',
+    tagline: 'Disparo em massa compliant via API oficial',
+    jtbd: 'Perdi meu bot não autorizado (política Meta dez/2025) e preciso de alternativa legal agora.',
+    status: 'planned',
+    priceMonthly: 59.90,
+    priceYearly: 575.04,
+    dependsOn: [],
+    reuses: ['whatsapp-oficial', 'mensageria'],
+    phase: 3,
+  },
+  {
+    key: 'crm',
+    name: 'ZapScript CRM Leve',
+    icon: '📊',
+    tagline: 'Funil de vendas dentro do WhatsApp',
+    jtbd: 'Respondo no WhatsApp mas não organizo quem é lead novo, quem está negociando e quem fechou.',
+    status: 'planned',
+    priceMonthly: 39.90,
+    priceYearly: 383.04,
+    dependsOn: [],
+    reuses: ['mensageria', 'conversas'],
+    phase: 4,
+  },
+  {
+    key: 'atende-qualidade',
+    name: 'Atende Qualidade',
+    icon: '📈',
+    tagline: 'Análise das conversas do Atende (tempo, sentimento, conversão)',
+    jtbd: 'Assumi o atendimento por bot — mas está funcionando? Preciso medir.',
+    status: 'planned',
+    priceMonthly: 24.90,
+    priceYearly: 239.04,
+    dependsOn: ['atende'],
+    reuses: ['dados-atende', 'ia'],
+    phase: 4,
+  },
+  {
+    key: 'legenda',
+    name: 'ZapScript Legenda',
+    icon: '🎬',
+    tagline: 'Legenda automática para Reels e Stories',
+    jtbd: 'Faço vídeo curto e preciso de legenda sem editar na mão.',
+    status: 'planned',
+    priceMonthly: 34.90,
+    priceYearly: 335.04,
+    dependsOn: [],
+    reuses: ['transcricao'], // só nova interface sobre o Whisper
+    phase: 5,
+  },
+  {
+    key: 'voicetext-vendas',
+    name: 'VoiceText Vendas',
+    icon: '🗣️',
+    tagline: 'Grave a visita/ligação → vira nota no CRM',
+    jtbd: 'Vendedor externo perde o registro da visita; queremos transcrever e lançar como atividade.',
+    status: 'planned',
+    priceMonthly: 44.90,
+    priceYearly: 431.04,
+    dependsOn: [], // sinergia (não dependência) com 'crm'
+    reuses: ['transcricao', 'ia'],
+    phase: 5,
+  },
+  {
+    key: 'multicanal',
+    name: 'ZapScript Multicanal',
+    icon: '📷',
+    tagline: 'Mesma automação estendida ao DM do Instagram',
+    jtbd: 'Meus clientes me chamam no direct do Instagram, não só no WhatsApp.',
+    status: 'discovery', // validar com 5 conversas antes de construir
+    priceMonthly: 29.90,
+    priceYearly: 287.04,
+    dependsOn: [],
+    reuses: ['transcricao', 'ia', 'mensageria'],
+    phase: 6,
+  },
+] as const;
+
+/** Índice por key para lookup O(1). */
+export const MODULE_BY_KEY: Readonly<Record<string, ModuleSpec>> = Object.freeze(
+  Object.fromEntries(MODULES.map((m) => [m.key, m])),
+);
+
+/** Todas as keys válidas. */
+export const MODULE_KEYS: readonly string[] = MODULES.map((m) => m.key);
+
+/** Type guard: a string é uma key de módulo conhecida? */
+export function isModuleKey(key: string): boolean {
+  return key in MODULE_BY_KEY;
+}
+
+/**
+ * Resolve o conjunto de módulos efetivamente utilizáveis a partir dos módulos
+ * contratados, aplicando dependências. Um módulo com dependsOn não satisfeita
+ * NÃO entra no conjunto usável (o front deve sinalizar "requer módulo X").
+ */
+export function resolveUsableModules(ownedKeys: string[]): string[] {
+  const owned = new Set(ownedKeys.filter(isModuleKey));
+  return [...owned].filter((key) => {
+    const spec = MODULE_BY_KEY[key];
+    return spec.dependsOn.every((dep) => owned.has(dep));
+  });
+}
+
+/**
+ * Preço total mensal de uma cesta de módulos (sem desconto de bundle).
+ * O desconto de bundle, quando definido, deve ser aplicado por cima deste valor
+ * na camada de billing — mantido fora daqui para o catálogo permanecer dado puro.
+ */
+export function basketMonthlyPrice(keys: string[]): number {
+  return keys
+    .filter(isModuleKey)
+    .reduce((sum, key) => sum + MODULE_BY_KEY[key].priceMonthly, 0);
+}

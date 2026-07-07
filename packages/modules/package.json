@@ -1,0 +1,8 @@
+{
+  "name": "@zapscript/modules",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Catálogo canônico de módulos da suíte ZapScript (fonte única da verdade)",
+  "main": "catalog.ts",
+  "types": "catalog.ts"
+}
