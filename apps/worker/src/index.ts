@@ -1749,8 +1749,8 @@ async function processTrialTransitions() {
             create: { userId: sub.userId, availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
             update: { availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
           }),
-          // Desliga Modo Privado → rodapé viral volta a aparecer no FREE
-          prisma.whatsappNumber.updateMany({ where: { userId: sub.userId, privateMode: true }, data: { privateMode: false } }),
+          // Não mexe em privateMode: isPrivate já exige isPaidPlan, então FREE nunca é privado
+          // mesmo com a flag ligada — e assim ela fica pronta caso o usuário reassine o Pro.
         ]);
         await redis.del(`plan:${sub.userId}`).catch(() => null); // invalida cache de plano da API
         logger.info(`[Trial] Downgrade D8: ${sub.user.email} → FREE`);
