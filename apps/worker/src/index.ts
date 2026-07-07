@@ -686,11 +686,11 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
   try {
     const balance = await (prisma as any).minuteBalance.findUnique({
       where:   { userId },
-      include: { user: { include: { subscription: { include: { plan: true } } } } },
+      include: { user: { include: { subscriptions: { where: { productKey: 'transcription' }, include: { plan: true } } } } },
     });
     if (!balance) return;
 
-    const total     = balance.user?.subscription?.plan?.minutesPerMonth ?? 0;
+    const total     = balance.user?.subscriptions?.[0]?.plan?.minutesPerMonth ?? 0;
     if (total <= 0) return;
 
     const used      = total - balance.availableMinutes;
@@ -996,11 +996,11 @@ async function loadUsage(userId: string): Promise<{ plan: 'pro' | 'free'; quota:
   const [user, bal] = await Promise.all([
     prisma.user.findUnique({
       where:  { id: userId },
-      select: { isTester: true, subscription: { select: { status: true, trialEndsAt: true, plan: { select: { name: true } } } } },
+      select: { isTester: true, subscriptions: { where: { productKey: 'transcription' }, select: { status: true, trialEndsAt: true, plan: { select: { name: true } } } } },
     }),
     prisma.minuteBalance.findUnique({ where: { userId }, select: { audiosUsed: true } }),
   ]);
-  const plan  = planEfetivo(user || {}, new Date());
+  const plan  = planEfetivo(user ? { isTester: user.isTester, subscription: user.subscriptions?.[0] ?? null } : {}, new Date());
   const quota = audioQuotaFor(plan);
   const used  = bal?.audiosUsed ?? 0;
   return { plan, quota, used, allowed: used < quota };
@@ -1856,18 +1856,18 @@ async function resetExpiredMinutes() {
   try {
     const expired = await prisma.minuteBalance.findMany({
       where:   { resetAt: { lte: now } },
-      include: { user: { include: { subscription: { include: { plan: true } } } } },
+      include: { user: { include: { subscriptions: { where: { productKey: 'transcription' }, include: { plan: true } } } } },
     });
 
     // Pular usuários past_due — serão tratados pela seção 1 (antes ou na próxima hora)
-    const toReset = expired.filter(b => b.user.subscription?.status !== 'past_due');
+    const toReset = expired.filter(b => b.user.subscriptions?.[0]?.status !== 'past_due');
 
     if (toReset.length === 0) return;
 
     logger.info(`[Cron] Resetando minutos de ${toReset.length} usuário(s)...`);
 
     for (const balance of toReset) {
-      const sub              = balance.user.subscription;
+      const sub              = balance.user.subscriptions?.[0];
       const minutesPerMonth  = sub?.plan?.minutesPerMonth ?? 0;
       const isTester         = balance.user.isTester;
       const renewalsUsed     = sub?.testerRenewalsUsed ?? 0;

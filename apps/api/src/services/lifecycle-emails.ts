@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
 import { formatSavedTime } from '../lib/freemium';
+import { PRODUCT } from '../lib/products';
 
 /* ── Configuração ──────────────────────────────────────────────────────────
    Roda 1x/dia (primeira execução pouco depois do boot). Cada e-mail é
@@ -173,20 +174,20 @@ async function runUpgradeByUsage(log: any) {
   const users = await prisma.user.findMany({
     where: {
       deletedAt: null,
-      subscription: { plan: { name: 'free' } },
-      balance:      { isNot: null },
+      subscriptions: { some: { productKey: PRODUCT.TRANSCRIPTION, plan: { name: 'free' } } },
+      balance:       { isNot: null },
     },
     select: {
       id: true, email: true, name: true, lifecycleEmailsSent: true,
-      balance:      { select: { audiosUsed: true } },
-      subscription: { select: { plan: { select: { audiosPerMonth: true } } } },
+      balance:       { select: { audiosUsed: true } },
+      subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, select: { plan: { select: { audiosPerMonth: true } } } },
     },
   }).catch(() => [] as any[]);
 
   let sent = 0;
   for (const u of users) {
     if (u.lifecycleEmailsSent.includes(tag)) continue;
-    const total = u.subscription?.plan?.audiosPerMonth ?? 0;
+    const total = u.subscriptions?.[0]?.plan?.audiosPerMonth ?? 0;
     const used  = u.balance?.audiosUsed ?? 0;
     if (total <= 0) continue;
     const usedPct = used / total;
@@ -262,7 +263,7 @@ async function runWinBack(log: any) {
   const users = await prisma.user.findMany({
     where: {
       deletedAt: null,
-      subscription: { status: 'canceled', updatedAt: { gte: from, lte: to } },
+      subscriptions: { some: { productKey: PRODUCT.TRANSCRIPTION, status: 'canceled', updatedAt: { gte: from, lte: to } } },
     },
     select: { id: true, email: true, name: true, lifecycleEmailsSent: true },
   }).catch(() => [] as any[]);
@@ -305,13 +306,13 @@ async function runUpgradeActiveFree(log: any) {
     where: {
       createdAt: { gte: from, lte: to },
       deletedAt: null,
-      subscription:   { plan: { name: 'free' } },
+      subscriptions:  { some: { productKey: PRODUCT.TRANSCRIPTION, plan: { name: 'free' } } },
       transcriptions: { some: {} },
     },
     select: {
       id: true, email: true, name: true, lifecycleEmailsSent: true,
-      balance:      { select: { audiosUsed: true } },
-      subscription: { select: { plan: { select: { audiosPerMonth: true } } } },
+      balance:       { select: { audiosUsed: true } },
+      subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, select: { plan: { select: { audiosPerMonth: true } } } },
     },
   }).catch(() => [] as any[]);
 
@@ -320,7 +321,7 @@ async function runUpgradeActiveFree(log: any) {
     if (u.lifecycleEmailsSent.includes(tag)) continue;
     // Quem já está perto do teto recebe o upgrade_usage (mais oportuno). Aqui só
     // os que usam pouco mas com constância — evita dois e-mails de upgrade.
-    const total = u.subscription?.plan?.audiosPerMonth ?? 0;
+    const total = u.subscriptions?.[0]?.plan?.audiosPerMonth ?? 0;
     const used  = u.balance?.audiosUsed ?? 0;
     if (total > 0 && (used / total) >= 0.8) continue;
 
@@ -357,11 +358,11 @@ async function runTrialEndingD6(log: any) {
   const users = await prisma.user.findMany({
     where: {
       deletedAt: null,
-      subscription: { status: 'trialing', trialEndsAt: { gt: now, lte: horizon } },
+      subscriptions: { some: { productKey: PRODUCT.TRANSCRIPTION, status: 'trialing', trialEndsAt: { gt: now, lte: horizon } } },
     },
     select: {
       id: true, email: true, name: true, lifecycleEmailsSent: true,
-      subscription: { select: { paymentMethod: true, asaasSubscriptionId: true } },
+      subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, select: { paymentMethod: true, asaasSubscriptionId: true } },
     },
   }).catch(() => [] as any[]);
 
@@ -370,7 +371,7 @@ async function runTrialEndingD6(log: any) {
     if (u.lifecycleEmailsSent.includes(tag)) continue;
 
     // Cartão já garantido → não cobramos por upgrade; avisamos da cobrança automática.
-    const cardOnFile = u.subscription?.paymentMethod === 'credit_card' && !!u.subscription?.asaasSubscriptionId;
+    const cardOnFile = u.subscriptions?.[0]?.paymentMethod === 'credit_card' && !!u.subscriptions?.[0]?.asaasSubscriptionId;
 
     const agg = await prisma.transcription.aggregate({
       where:  { userId: u.id, createdAt: { gte: monthStart } },

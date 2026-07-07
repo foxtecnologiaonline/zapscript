@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { notifyDisconnected } from '../services/whatsapp-notify';
 import { getUserPlan, requirePlan } from '../lib/planGate';
+import { subWhere } from '../lib/products';
 import { validateRequest, createNumberSchema } from '../lib/validation';
 import {
   evolutionBaseUrl,
@@ -66,7 +67,7 @@ export default async function numberRoutes(app: FastifyInstance) {
     const count = await prisma.whatsappNumber.count({ where: { userId } });
 
     if (!user?.isAdmin) {
-      const sub = await prisma.subscription.findUnique({ where: { userId }, include: { plan: true } });
+      const sub = await prisma.subscription.findUnique({ where: subWhere(userId), include: { plan: true } });
       if (count >= sub!.plan.maxNumbers) {
         return reply.code(403).send({
           error: `Limite de ${sub!.plan.maxNumbers} número(s) atingido. Faça upgrade do plano.`,

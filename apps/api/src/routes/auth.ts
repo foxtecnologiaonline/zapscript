@@ -6,6 +6,7 @@ import { logger } from '../lib/logger';
 import { validateRequest, registerSchema, loginSchema } from '../lib/validation';
 import { encryptStr, decryptStr, documentHash as computeDocHash } from '../services/encryption';
 import { TRIAL_DAYS } from '../lib/freemium';
+import { PRODUCT } from '../lib/products';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -242,6 +243,7 @@ export default async function authRoutes(app: FastifyInstance) {
           await tx.subscription.create({
             data: {
               userId:          u.id,
+              productKey:      PRODUCT.TRANSCRIPTION,
               planId:          plan.id,
               // Tester = PRO ativo permanente; não-tester = trial de 7 dias.
               status:          isTrial ? 'trialing' : 'active',
@@ -694,7 +696,8 @@ export default async function authRoutes(app: FastifyInstance) {
         refCode:          true,
         createdAt:        true,
         termsAcceptedAt:  true,
-        subscription: {
+        subscriptions: {
+          where:  { productKey: PRODUCT.TRANSCRIPTION },
           select: {
             id:              true,
             status:          true,
@@ -735,7 +738,10 @@ export default async function authRoutes(app: FastifyInstance) {
     }
 
     // C2: decriptar document (AES-256-GCM) antes de retornar ao frontend
-    return { ...user, document: decryptStr(user.document) || null, affiliate };
+    // Billing multi-produto: expõe a assinatura de transcrição como `subscription`
+    // singular (shape estável para o frontend), derivada da lista `subscriptions`.
+    const { subscriptions, ...rest } = user as any;
+    return { ...rest, subscription: subscriptions?.[0] ?? null, document: decryptStr(user.document) || null, affiliate };
   });
 
   // ── PUT /auth/profile ─────────────────────────────────────────────────────

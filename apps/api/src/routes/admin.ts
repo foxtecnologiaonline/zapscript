@@ -8,6 +8,7 @@ import { runHealthCheck, lastReport, history } from '../services/health-monitor'
 import { Queue } from 'bullmq';
 import { redis } from '../services/queue';
 import { sendText } from '../services/evolution';
+import { subWhere, primarySub, PRODUCT } from '../lib/products';
 import { sendEmail } from '../lib/mailer';
 import { asaas, asaasConfigured, asaasEnv } from '../lib/asaas';
 import { checkAdminTotp } from '../lib/totp';
@@ -360,7 +361,7 @@ export default async function adminRoutes(app: FastifyInstance) {
             createdAt: true,
             updatedAt: true,
             deletedAt: true,
-            subscription: { include: { plan: true } },
+            subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: true } },
             balance: true,
             numbers: { select: { id: true, status: true } },
           },
@@ -369,7 +370,10 @@ export default async function adminRoutes(app: FastifyInstance) {
         prisma.user.count({ where }),
       ]);
 
-      return { users, total, limit, offset };
+      // Compat: expõe a assinatura de transcrição como `subscription` singular
+      // (shape estável para o painel admin / monitor), mantendo `subscriptions`.
+      const usersOut = users.map((u: any) => ({ ...u, subscription: primarySub<any>(u.subscriptions) }));
+      return { users: usersOut, total, limit, offset };
     }
   );
 
@@ -414,7 +418,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
         ops.push(
           prisma.subscription.update({
-            where: { userId: id },
+            where: subWhere(id),
             data: {
               planId:              plan.id,
               status:              planName === 'free' ? 'canceled' : 'active',
@@ -473,10 +477,11 @@ export default async function adminRoutes(app: FastifyInstance) {
         }
       }
 
-      return prisma.user.findUnique({
+      const updated = await prisma.user.findUnique({
         where:   { id },
-        include: { subscription: { include: { plan: true } }, balance: true },
+        include: { subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: true } }, balance: true },
       });
+      return updated ? { ...updated, subscription: primarySub(updated.subscriptions) } : updated;
     }
   );
 
@@ -652,7 +657,7 @@ export default async function adminRoutes(app: FastifyInstance) {
             createdAt: true,
             updatedAt: true,
             deletedAt: true,
-            subscription: { include: { plan: true } },
+            subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: true } },
             balance: true,
           },
         }),
@@ -683,12 +688,12 @@ export default async function adminRoutes(app: FastifyInstance) {
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
       const totalMinutesUsed = usageLogs.reduce((s: number, l: any) => s + (l.minutesUsed || 0), 0);
-      const planLimit        = (user.subscription?.plan as any)?.audiosPerMonth || 0;
+      const planLimit        = (primarySub(user.subscriptions)?.plan as any)?.audiosPerMonth || 0;
       const audiosUsed       = (user.balance as any)?.audiosUsed || 0;
       const usagePct         = planLimit > 0 ? Math.min(100, (audiosUsed / planLimit) * 100) : 0;
 
       return {
-        user,
+        user: { ...user, subscription: primarySub(user.subscriptions) },
         stats: {
           totalTranscriptions: transcriptions.length,
           totalMinutesUsed,
@@ -805,7 +810,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         email:        true,
         testerSince:  true,
         createdAt:    true,
-        subscription: { include: { plan: true } },
+        subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: true } },
         balance:      { select: { audiosUsed: true, availableMinutes: true, accumulatedMinutes: true } },
         numbers:      { select: { id: true, status: true, phoneNumber: true } },
       },
@@ -820,9 +825,9 @@ export default async function adminRoutes(app: FastifyInstance) {
         email:          u.email,
         testerSince:    u.testerSince,
         createdAt:      u.createdAt,
-        planName:       u.subscription?.plan?.name  || 'sem plano',
-        planLabel:      u.subscription?.plan?.label || '—',
-        subStatus:      u.subscription?.status      || '—',
+        planName:       primarySub<any>(u.subscriptions)?.plan?.name  || 'sem plano',
+        planLabel:      primarySub<any>(u.subscriptions)?.plan?.label || '—',
+        subStatus:      primarySub<any>(u.subscriptions)?.status      || '—',
         audiosUsed:     u.balance?.audiosUsed        ?? 0,
         numbersConnected: u.numbers.filter((n: any) => n.status === 'connected').length,
       })),
@@ -854,7 +859,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       const testers = await prisma.user.findMany({
         where: { isTester: true, deletedAt: null },
-        include: { subscription: { include: { plan: true } } },
+        include: { subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: true } } },
       });
 
       let upgraded = 0;
@@ -862,7 +867,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       const results: { email: string; from: string; to: string; action: string }[] = [];
 
       for (const u of testers) {
-        const currentPlan = u.subscription?.plan?.name;
+        const currentPlan = primarySub<any>(u.subscriptions)?.plan?.name;
         if (currentPlan === 'executive') {
           skipped++;
           results.push({ email: u.email, from: currentPlan, to: 'executive', action: 'skipped (já executive)' });
@@ -871,7 +876,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
         await prisma.$transaction([
           prisma.subscription.update({
-            where: { userId: u.id },
+            where: subWhere(u.id),
             data: {
               planId:              execPlan.id,
               status:              'active',
@@ -903,7 +908,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       const testers = await prisma.user.findMany({
         where: { isTester: true, deletedAt: null },
-        include: { subscription: { include: { plan: true } } },
+        include: { subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: true } } },
       });
 
       let downgraded = 0;
@@ -911,7 +916,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       const results: { email: string; from: string; to: string; action: string }[] = [];
 
       for (const u of testers) {
-        const currentPlan = u.subscription?.plan?.name;
+        const currentPlan = primarySub<any>(u.subscriptions)?.plan?.name;
         if (currentPlan === 'pro') {
           skipped++;
           results.push({ email: u.email, from: currentPlan, to: 'pro', action: 'skipped (já pro)' });
@@ -920,7 +925,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
         await prisma.$transaction([
           prisma.subscription.update({
-            where: { userId: u.id },
+            where: subWhere(u.id),
             data: {
               planId:              proPlan.id,
               status:              'active',
@@ -955,7 +960,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       const testers = await prisma.user.findMany({
         where: { isTester: true, deletedAt: null },
-        include: { subscription: { include: { plan: true } }, balance: true },
+        include: { subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: true } }, balance: true },
       });
 
       // Próximo vencimento mensal ancorado no cadastro: createdAt + k*30 dias, no futuro
@@ -972,7 +977,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       const results: { email: string; from: string; to: string; action: string }[] = [];
 
       for (const u of testers) {
-        const currentPlan = u.subscription?.plan?.name;
+        const currentPlan = primarySub<any>(u.subscriptions)?.plan?.name;
         // Não faz downgrade de quem tem executive (plano superior legado)
         if (currentPlan === 'executive') {
           skipped++;
@@ -982,7 +987,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
         // Aplicar os minutos do Pro PRESERVANDO os já usados neste ciclo:
         // novo saldo = PRO − (minutos do plano antigo − saldo atual)
-        const oldPlanMin    = u.subscription?.plan?.minutesPerMonth ?? 0;
+        const oldPlanMin    = primarySub<any>(u.subscriptions)?.plan?.minutesPerMonth ?? 0;
         const oldAvailable  = u.balance?.availableMinutes ?? PRO_MINUTES;
         const usedThisCycle = Math.max(0, oldPlanMin - oldAvailable);
         const newAvailable  = Math.max(0, Math.min(PRO_MINUTES, PRO_MINUTES - usedThisCycle));
@@ -990,7 +995,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
         await prisma.$transaction([
           prisma.subscription.update({
-            where: { userId: u.id },
+            where: subWhere(u.id),
             data: {
               planId:              proPlan.id,
               status:              'active',
@@ -1736,7 +1741,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       const user = await prisma.user.findUnique({
         where:   { id },
         include: {
-          subscription: { include: { plan: { select: { label: true } } } },
+          subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: { select: { label: true } } } },
           numbers:      { orderBy: { createdAt: 'asc' }, select: { id: true, displayName: true, phoneNumber: true, connectedAt: true, createdAt: true } },
           transcriptions: {
             orderBy: { createdAt: 'asc' },
@@ -1762,8 +1767,9 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       events.push({ ts: user.createdAt, type: 'signup', icon: '👤', label: 'Cadastro realizado' });
 
-      if (user.subscription) {
-        events.push({ ts: user.subscription.createdAt, type: 'subscription', icon: '💳', label: 'Assinatura ativada', detail: user.subscription.plan.label });
+      const primaryUserSub = primarySub(user.subscriptions);
+      if (primaryUserSub) {
+        events.push({ ts: primaryUserSub.createdAt, type: 'subscription', icon: '💳', label: 'Assinatura ativada', detail: primaryUserSub.plan.label });
       }
       for (const n of user.numbers) {
         events.push({ ts: n.createdAt, type: 'number-added', icon: '📱', label: 'Número adicionado', detail: n.displayName || n.phoneNumber || n.id });
@@ -1821,8 +1827,8 @@ export default async function adminRoutes(app: FastifyInstance) {
             const nextReset = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
             await prisma.$transaction([
               prisma.subscription.upsert({
-                where:  { userId },
-                create: { userId, planId: plan.id, status: 'active' },
+                where:  subWhere(userId),
+                create: { userId, productKey: PRODUCT.TRANSCRIPTION, planId: plan.id, status: 'active' },
                 update: { planId: plan.id, status: 'active' },
               }),
               prisma.minuteBalance.upsert({
@@ -2327,7 +2333,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       const users   = await getCampaignRecipients(filters);
       const sample  = users.slice(0, 5).map((u: any) => ({
         email:    maskEmail(u.email),
-        plan:     u.subscription?.plan?.name || 'free',
+        plan:     primarySub<any>(u.subscriptions)?.plan?.name || 'free',
         hasPhone: u.numbers.length > 0,
       }));
       return { total: users.length, sample };
@@ -2954,7 +2960,7 @@ async function getCampaignRecipients(filters: {
   userIds?:         string[];   // seleção manual — quando presente, ignora os demais filtros
 }) {
   const RECIPIENT_INCLUDE = {
-    subscription: { include: { plan: { select: { name: true } } } },
+    subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: { select: { name: true } } } },
     numbers:      { where: { status: 'connected' }, select: { phoneNumber: true, zapiInstanceId: true }, take: 1 },
     transcriptions: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { createdAt: true } },
   };
@@ -2983,7 +2989,7 @@ async function getCampaignRecipients(filters: {
   });
 
   return users.filter((u: any) => {
-    const planName = u.subscription?.plan?.name || 'free';
+    const planName = primarySub<any>(u.subscriptions)?.plan?.name || 'free';
 
     // Filtro por WhatsApp (numbers já vem filtrado para status 'connected')
     const hasConnected = u.numbers.length > 0;

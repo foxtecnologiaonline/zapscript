@@ -35,7 +35,7 @@ model User {
   lifecycleEmailsSent         String[]        @default([]) // tags de e-mails de ciclo de vida já enviados (idempotência)
   createdAt                   DateTime        @default(now())
   updatedAt                   DateTime        @updatedAt
-  subscription                Subscription?
+  subscriptions               Subscription[]
   balance                     MinuteBalance?
   numbers                     WhatsappNumber[]
   transcriptions              Transcription[]
@@ -47,6 +47,8 @@ model User {
   affiliate                   Affiliate?
   affiliateReferral           AffiliateReferral?  @relation("ReferredUser")
   proContactSeeds             ProContactSeed[]
+  atendeConfig                AtendeConfig?
+  atendeConversas             AtendeConversa[]
 }
 
 model Plan {
@@ -64,7 +66,11 @@ model Plan {
 
 model Subscription {
   id                    String    @id @default(cuid())
-  userId                String    @unique
+  userId                String
+  // Billing multi-produto: cada produto do usuário tem sua própria assinatura
+  // (própria assinatura Asaas, preço, ciclo e período). 'transcription' é o
+  // produto histórico; 'atende' é o Agente de Atendimento multi-tenant.
+  productKey            String    @default("transcription") // 'transcription' | 'atende'
   planId                String
   asaasSubscriptionId   String?   // Asaas subscription ID (sub_...)
   asaasCustomerId       String?   // Asaas customer ID (cus_...)
@@ -79,6 +85,8 @@ model Subscription {
   updatedAt             DateTime  @updatedAt
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan                  Plan      @relation(fields: [planId], references: [id])
+
+  @@unique([userId, productKey])
 }
 
 model MinuteBalance {
@@ -480,4 +488,79 @@ model FaqSuggestion {
   revisadoEm          DateTime?
 
   @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ZapScript Atende — Agente de atendimento multi-tenant (produto do assinante).
+// Domínio SEPARADO de SupportAtendimento/KnowledgeBase (aqueles são "cliente fala
+// com o ZapScript"; estes são "cliente do assinante fala com o assinante"). Todo
+// dado aqui é de TERCEIROS (clientes do assinante) — minimização: guardamos só o
+// necessário para auditoria da resposta (resumo + pendência + rascunho/resposta),
+// nunca o histórico bruto completo.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AtendeConfig {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  ativo               Boolean  @default(false) // gate manual do produto (Fase 1: setado pelo admin)
+  autoEnvioAtivo      Boolean  @default(false) // opt-in explícito de auto-resposta, desligado por padrão
+  categoriasSensiveis String[] @default([])    // cadastro livre por tenant — nunca auto-enviar (seção 4.4)
+  toneOverride        String?                  // tom de voz customizado (opcional)
+  negocioDescricao    String?                  // descrição do negócio do assinante p/ o prompt do agente
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AtendeConversa {
+  id           String    @id @default(cuid())
+  userId       String    // dono da conta ZapScript (o assinante)
+  numberId     String    // qual WhatsappNumber recebeu a mensagem
+  remoteJid    String    // contato do assinante (o cliente dele)
+  contatoNome  String?
+  resumoAtual  String    @default("")
+  ultimaMsgId  String?
+  ultimaMsgEm  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  pendencias   AtendePendencia[]
+  mensagens    AtendeMensagem[]
+
+  @@unique([userId, numberId, remoteJid])
+  @@index([userId])
+}
+
+model AtendePendencia {
+  id          String         @id @default(cuid())
+  conversaId  String
+  descricao   String
+  urgencia    String         @default("baixa") // baixa | media | alta
+  resolvida   Boolean        @default(false)
+  criadoEm    DateTime       @default(now())
+  conversa    AtendeConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+
+  @@index([conversaId, resolvida])
+}
+
+model AtendeMensagem {
+  id                String         @id @default(cuid())
+  conversaId        String
+  direcao           String         // 'recebida' | 'enviada'
+  categoria         String?
+  prioridade        String?
+  confiancaResposta Int?
+  requerEscalacao   Boolean        @default(false)
+  categoriaSensivel Boolean        @default(false)
+  status            String         @default("pending_approval") // pending_approval | sent | escalated | spam
+  rascunho          String?
+  respostaFinal     String?
+  canalExternoId    String?        // messageId externo (idempotência)
+  criadoEm          DateTime       @default(now())
+  enviadoEm         DateTime?
+  conversa          AtendeConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+
+  @@index([conversaId, status])
+  @@index([canalExternoId])
 }

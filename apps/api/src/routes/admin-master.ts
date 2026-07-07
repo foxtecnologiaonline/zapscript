@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
+import { primarySub, PRODUCT } from '../lib/products';
 import crypto from 'crypto';
 import { checkAdminTotp } from '../lib/totp';
 
@@ -47,13 +48,14 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
       const [users, total] = await Promise.all([
         prisma.user.findMany({
           where, take: limit, skip: offset,
-          include: { subscription: { include: { plan: true } }, balance: true, numbers: { select: { phoneNumber: true, status: true, displayName: true } } },
+          include: { subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: true } }, balance: true, numbers: { select: { phoneNumber: true, status: true, displayName: true } } },
           orderBy: { createdAt: 'desc' },
         }),
         prisma.user.count({ where }),
       ]);
 
-      return { users, total, limit, offset };
+      const usersOut = users.map((u: any) => ({ ...u, subscription: primarySub(u.subscriptions) }));
+      return { users: usersOut, total, limit, offset };
     }
   );
 
@@ -68,7 +70,7 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
         prisma.user.findUnique({
           where:   { id },
           include: {
-            subscription: { include: { plan: true } },
+            subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: true } },
             balance: true,
           },
         }),
@@ -93,12 +95,12 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
       const totalMinutesUsed = usageLogs.reduce((s: number, l: any) => s + (l.minutesUsed || 0), 0);
-      const planLimit        = (user as any).subscription?.plan?.audiosPerMonth || 0;
+      const planLimit        = (primarySub<any>((user as any).subscriptions)?.plan as any)?.audiosPerMonth || 0;
       const audiosUsed       = (user as any).balance?.audiosUsed || 0;
       const usagePct         = planLimit > 0 ? Math.min(100, (audiosUsed / planLimit) * 100) : 0;
 
       return {
-        user,
+        user: { ...(user as any), subscription: primarySub<any>((user as any).subscriptions) },
         stats: {
           totalTranscriptions: transcriptions.length,
           totalMinutesUsed,
@@ -128,12 +130,13 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
           isTester: true,
           testerSince: true,
           createdAt: true,
-          subscription: { include: { plan: true } },
+          subscriptions: { where: { productKey: PRODUCT.TRANSCRIPTION }, include: { plan: true } },
           numbers: { select: { phoneNumber: true, status: true } },
         },
         orderBy: { testerSince: 'desc' },
       });
-      return { testers, total: testers.length };
+      const testersOut = testers.map((u: any) => ({ ...u, subscription: primarySub(u.subscriptions) }));
+      return { testers: testersOut, total: testersOut.length };
     }
   );
 

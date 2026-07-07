@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { FastifyReply } from 'fastify';
 import { redis } from '../services/queue';
+import { subWhere } from './products';
 
 const PLAN_CACHE_TTL = 60; // segundos — balanço entre consistência e performance
 const planCacheKey   = (userId: string) => `plan:${userId}`;
@@ -18,7 +19,7 @@ export async function getUserPlan(userId: string): Promise<string> {
   } catch { /* Redis indisponível — continuar sem cache */ }
 
   const sub = await prisma.subscription.findUnique({
-    where:   { userId },
+    where:   subWhere(userId),
     include: { plan: true },
   });
   const planName = sub?.plan?.name ?? 'free';

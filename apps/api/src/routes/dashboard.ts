@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { planEfetivo, audioQuotaFor, formatSavedTime } from '../lib/freemium';
+import { subWhere } from '../lib/products';
 
 export default async function dashboardRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -21,7 +22,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
         _avg:  { confidenceScore: true },
       }),
       prisma.subscription.findUnique({
-        where:   { userId },
+        where:   subWhere(userId),
         include: { plan: true },
       }),
       prisma.user.findUnique({ where: { id: userId }, select: { refCode: true } }),

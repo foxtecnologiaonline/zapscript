@@ -13,6 +13,7 @@ import { calculateProration } from '../lib/proration';
 import { validateRequest, billingCheckoutSchema, billingUpgradeSchema, billingTrialCardSchema } from '../lib/validation';
 import { invalidatePlanCache } from '../lib/planGate';
 import { attributeAffiliateCommission } from '../lib/affiliate';
+import { subWhere, PRODUCT } from '../lib/products';
 
 /* ─────────────────────────────────────────────────────────
    ASAAS v3 — Billing Routes (Checkout Transparente)
@@ -150,7 +151,7 @@ async function activatePlan(userId: string, planName: string, opts: {
   // A6: Buscar plano e sub existente em paralelo para evitar drift de ciclo de cobrança
   const [plan, existingSub] = await Promise.all([
     prisma.plan.findUnique({ where: { name: planName } }),
-    prisma.subscription.findUnique({ where: { userId }, select: { currentPeriodEnd: true } }),
+    prisma.subscription.findUnique({ where: subWhere(userId), select: { currentPeriodEnd: true } }),
   ]);
   if (!plan) throw new Error(`Plano "${planName}" não encontrado no banco`);
 
@@ -165,9 +166,10 @@ async function activatePlan(userId: string, planName: string, opts: {
 
   await prisma.$transaction([
     prisma.subscription.upsert({
-      where:  { userId },
+      where:  subWhere(userId),
       create: {
         userId,
+        productKey:           PRODUCT.TRANSCRIPTION,
         planId:               plan.id,
         asaasSubscriptionId:  opts.asaasSubscriptionId ?? null,
         asaasCustomerId:      opts.asaasCustomerId ?? null,
@@ -306,8 +308,8 @@ export default async function billingRoutes(app: FastifyInstance) {
       // ── Salvar IDs como pending antes de chamar Asaas ──
       const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
       await prisma.subscription.upsert({
-        where:  { userId },
-        create: { userId, planId: freePlan?.id ?? '', asaasCustomerId, paymentMethod, status: 'pending' },
+        where:  subWhere(userId),
+        create: { userId, productKey: PRODUCT.TRANSCRIPTION, planId: freePlan?.id ?? '', asaasCustomerId, paymentMethod, status: 'pending' },
         update: { asaasCustomerId, paymentMethod, status: 'pending' },
       }).catch((e: any) => app.log.warn({ err: e.message, userId }, '[Checkout] M2: Falha ao salvar subscription pendente — estado pode ficar inconsistente'));
 
@@ -369,7 +371,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           }).then(r => r.json()) as any;
 
           await prisma.subscription.update({
-            where: { userId }, data: { asaasSubscriptionId: subRes?.id ?? null },
+            where: subWhere(userId), data: { asaasSubscriptionId: subRes?.id ?? null },
           }).catch(() => null);
 
           await activatePlan(userId, planName, {
@@ -402,7 +404,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           return reply.code(400).send({ error: errMsg });
         }
         await prisma.subscription.update({
-          where: { userId }, data: { asaasSubscriptionId: subRes.id },
+          where: subWhere(userId), data: { asaasSubscriptionId: subRes.id },
         }).catch(() => null);
 
         // 2) Cobrança PIX avulsa do 1º mês promocional
@@ -475,7 +477,7 @@ export default async function billingRoutes(app: FastifyInstance) {
 
       // Persistir subscription ID
       await prisma.subscription.update({
-        where: { userId },
+        where: subWhere(userId),
         data:  { asaasSubscriptionId: sub.id },
       }).catch(() => null);
 
@@ -546,7 +548,7 @@ export default async function billingRoutes(app: FastifyInstance) {
       }
 
       // ── Só faz sentido durante o trial PRO ativo ──
-      const sub = await prisma.subscription.findUnique({ where: { userId } });
+      const sub = await prisma.subscription.findUnique({ where: subWhere(userId) });
       const now = new Date();
       const onTrial = sub?.status === 'trialing' && !!sub.trialEndsAt && sub.trialEndsAt > now;
       if (!onTrial || !sub?.trialEndsAt) {
@@ -602,7 +604,7 @@ export default async function billingRoutes(app: FastifyInstance) {
       // Mantém o status 'trialing' — apenas anexa o cartão e a assinatura futura.
       // O webhook PAYMENT_CONFIRMED em D+7 chama activatePlan → 'active'.
       await prisma.subscription.update({
-        where: { userId },
+        where: subWhere(userId),
         data:  { asaasSubscriptionId: subRes.id, asaasCustomerId, paymentMethod: 'credit_card' },
       }).catch((e: any) => app.log.warn({ err: e.message, userId }, '[TrialCard] Falha ao anexar cartão à subscription'));
 
@@ -622,7 +624,7 @@ export default async function billingRoutes(app: FastifyInstance) {
       if (!newPrice) return reply.code(400).send({ error: 'Plano inválido' });
 
       const sub = await prisma.subscription.findUnique({
-        where: { userId }, include: { plan: true },
+        where: subWhere(userId), include: { plan: true },
       });
       if (!sub?.plan || sub.plan.priceBrl === 0) {
         return reply.code(400).send({ error: 'Use /billing/checkout para sair do plano gratuito.' });
@@ -671,7 +673,7 @@ export default async function billingRoutes(app: FastifyInstance) {
       if (!user) return reply.code(401).send({ error: 'Usuário não encontrado' });
 
       const sub = await prisma.subscription.findUnique({
-        where: { userId }, include: { plan: true },
+        where: subWhere(userId), include: { plan: true },
       });
       if (!sub?.plan || sub.plan.priceBrl === 0) {
         return reply.code(400).send({ error: 'Use /billing/checkout para sair do plano gratuito.' });
@@ -827,7 +829,7 @@ export default async function billingRoutes(app: FastifyInstance) {
   app.post('/cancel', auth, async (req: any, reply) => {
     const userId = req.user.sub;
     const sub = await prisma.subscription.findUnique({
-      where: { userId }, include: { plan: true },
+      where: subWhere(userId), include: { plan: true },
     });
     if (!sub || sub.plan.name === 'free') {
       return reply.code(400).send({ error: 'Nenhuma assinatura paga ativa para cancelar.' });
@@ -844,7 +846,7 @@ export default async function billingRoutes(app: FastifyInstance) {
     const nextReset = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await prisma.$transaction([
       prisma.subscription.update({
-        where: { userId },
+        where: subWhere(userId),
         data:  { planId: freePlan.id, status: 'canceled', asaasSubscriptionId: null, currentPeriodEnd: null },
       }),
       prisma.minuteBalance.update({
@@ -860,7 +862,7 @@ export default async function billingRoutes(app: FastifyInstance) {
   app.get('/invoices', auth, async (req: any) => {
     const userId = req.user.sub;
     const [sub, user] = await Promise.all([
-      prisma.subscription.findUnique({ where: { userId }, include: { plan: true } }),
+      prisma.subscription.findUnique({ where: subWhere(userId), include: { plan: true } }),
       prisma.user.findUnique({ where: { id: userId }, select: { isTester: true, createdAt: true } }),
     ]);
 
@@ -967,7 +969,7 @@ export default async function billingRoutes(app: FastifyInstance) {
   app.get('/sync', { ...auth, config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (req: any) => {
     const userId = req.user.sub;
     const sub = await prisma.subscription.findUnique({
-      where: { userId }, include: { plan: true },
+      where: subWhere(userId), include: { plan: true },
     });
 
     if (!sub) return { synced: false, reason: 'no_subscription' };
@@ -1080,7 +1082,7 @@ export default async function billingRoutes(app: FastifyInstance) {
 
       if (type === 'upgrade') {
         // ── Cobrança de proration do upgrade aprovada ──
-        const sub = await prisma.subscription.findUnique({ where: { userId } }).catch(() => null);
+        const sub = await prisma.subscription.findUnique({ where: subWhere(userId) }).catch(() => null);
         const asaasCustomerId = sub?.asaasCustomerId || payment?.customer;
 
         // Cancelar assinatura antiga
@@ -1112,7 +1114,7 @@ export default async function billingRoutes(app: FastifyInstance) {
 
       } else {
         // ── Pagamento de assinatura normal (mensal ou anual) ──
-        const subInDb = await prisma.subscription.findUnique({ where: { userId } }).catch(() => null);
+        const subInDb = await prisma.subscription.findUnique({ where: subWhere(userId) }).catch(() => null);
         const asaasSubId = payment.subscription || subInDb?.asaasSubscriptionId || null;
         const isYearlyWebhook = type === 'yearly';
 
@@ -1139,7 +1141,7 @@ export default async function billingRoutes(app: FastifyInstance) {
       const userId  = decoded?.userId;
       if (userId) {
         await prisma.subscription.update({
-          where: { userId },
+          where: subWhere(userId),
           data:  { status: 'past_due' },
         }).catch(() => null);
 
@@ -1207,7 +1209,7 @@ export default async function billingRoutes(app: FastifyInstance) {
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
       let asaasCustomerId: string;
-      const sub = await prisma.subscription.findUnique({ where: { userId } });
+      const sub = await prisma.subscription.findUnique({ where: subWhere(userId) });
       if (sub?.asaasCustomerId) {
         asaasCustomerId = sub.asaasCustomerId;
       } else {
