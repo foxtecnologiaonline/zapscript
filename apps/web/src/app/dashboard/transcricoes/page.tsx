@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 
 /* ─── Types ───────────────────────────────────────────────────────────────── */
@@ -119,6 +119,25 @@ function buildIcs(summary: string, start: Date, description: string): string {
     'END:VEVENT',
     'END:VCALENDAR',
   ].join('\r\n');
+}
+
+/** Rótulo humano do prazo inferido, ex.: "sex, 11 jul, 09:00". */
+function fmtDueLabel(d: Date): string {
+  return d.toLocaleString('pt-BR', {
+    weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+  }).replace('.', '');
+}
+
+/** Deep-link do Google Agenda para criar o evento direto no navegador. */
+function buildGCalUrl(title: string, start: Date, details: string): string {
+  const end = new Date(start.getTime() + 30 * 60 * 1000);
+  const p = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: title,
+    dates: `${icsLocal(start)}/${icsLocal(end)}`,
+    details,
+  });
+  return `https://calendar.google.com/calendar/render?${p.toString()}`;
 }
 
 /* ─── Constants ───────────────────────────────────────────────────────────── */
@@ -473,6 +492,15 @@ export default function TranscricoesPage() {
   const [failedCount, setFailedCount]       = useState(0);
   const [clearingFailed, setClearingFailed] = useState(false);
 
+  /* — Toast (feedback rápido, ex.: .ics baixado) — */
+  const [toast, setToast]                   = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function showToast(msg: string) {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3200);
+  }
+
   /* — NPS — */
   const [npsVisible, setNpsVisible]         = useState(false);
   const [npsScore, setNpsScore]             = useState<number | null>(null);
@@ -672,6 +700,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
     });
     a.click();
     URL.revokeObjectURL(a.href);
+    showToast('📅 Lembrete baixado — abra o arquivo para adicioná-lo à sua agenda');
   }
 
   /* ── Laudo Jurídico — Upload Manual ──────────────────────────────────── */
@@ -783,6 +812,16 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   /* ══════════════════════════════════════════════════════════════════════ */
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl">
+
+      {/* ── Toast (feedback rápido) ─────────────────────────────────────── */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] max-w-[90vw] px-4 py-2.5 rounded-xl bg-brand-text text-brand-bg text-xs font-medium shadow-xl">
+          {toast}
+        </div>
+      )}
 
       {/* ── PAGE HEADER ─────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-3 mb-5">
@@ -1377,22 +1416,46 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                         }
                         if (kind === 'pending') {
                           const pendingText = b.slice(B_PENDING.length);
+                          const dueDate = inferDeadline(pendingText, new Date(selected.createdAt));
+                          const who = selected.contactName || selected.contactPhone || 'contato';
+                          const gcalUrl = buildGCalUrl(
+                            pendingText, dueDate,
+                            `Pendência do áudio de ${who} — gerado pelo ZapScript. Ajuste a data/hora se necessário.`,
+                          );
                           return (
                             <div
                               key={i}
-                              className="flex items-start gap-2 py-2.5 px-3 my-1 rounded-lg border border-amber-400/30 bg-amber-400/10">
-                              <span aria-hidden>⚠️</span>
-                              <p className="text-sm font-medium text-brand-text leading-relaxed flex-1">
-                                {pendingText}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => exportPendingIcs(selected, pendingText)}
-                                className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border border-amber-400/40 text-amber-700 dark:text-amber-300 hover:bg-amber-400/20 transition-colors flex-shrink-0 whitespace-nowrap"
-                                title="Adicionar ao calendário (.ics)"
-                                aria-label="Adicionar pendência ao calendário">
-                                📅 Agendar
-                              </button>
+                              className="py-2.5 px-3 my-1 rounded-lg border border-amber-400/30 bg-amber-400/10">
+                              <div className="flex items-start gap-2">
+                                <span aria-hidden>⚠️</span>
+                                <p className="text-sm font-medium text-brand-text leading-relaxed flex-1">
+                                  {pendingText}
+                                </p>
+                              </div>
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-2 pl-6">
+                                <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300/90">
+                                  🕑 Sugestão: <span className="font-semibold">{fmtDueLabel(dueDate)}</span>
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => exportPendingIcs(selected, pendingText)}
+                                    className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border border-amber-400/40 text-amber-700 dark:text-amber-300 hover:bg-amber-400/20 transition-colors whitespace-nowrap"
+                                    title="Baixar lembrete (.ics) para qualquer agenda"
+                                    aria-label="Baixar lembrete .ics">
+                                    📅 Agendar (.ics)
+                                  </button>
+                                  <a
+                                    href={gcalUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border border-amber-400/40 text-amber-700 dark:text-amber-300 hover:bg-amber-400/20 transition-colors whitespace-nowrap"
+                                    title="Criar evento no Google Agenda"
+                                    aria-label="Adicionar ao Google Agenda">
+                                    📆 Google Agenda
+                                  </a>
+                                </div>
+                              </div>
                             </div>
                           );
                         }

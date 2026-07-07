@@ -116,7 +116,7 @@ export default function DashboardPage() {
               /* D6 — no fim do trial, reforça o valor já entregue */
               <>Você já economizou <strong className="text-brand-primary">{stats.savedLabelMonth}</strong> este mês. <strong>Garanta seu Pro</strong> e não perca o acesso.</>
             ) : (
-              <>Áudios ilimitados e Modo Privado ativos. <strong>Garanta seu Pro</strong> antes que o teste acabe.</>
+              <>Áudios ilimitados e Modo Privado automático. <strong>Garanta seu Pro</strong> antes que o teste acabe.</>
             )}
           </p>
           <span className="text-brand-primary text-xs font-bold flex-shrink-0">

@@ -84,7 +84,9 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
 
     const number = await prisma.whatsappNumber.create({
-      data: { userId, displayName: finalName, ...(cleanPhone ? { phoneNumber: cleanPhone } : {}) },
+      // Modo Privado nasce ligado (opt-out). Em plano pago o worker força privado
+      // por padrão; usuário pode desligar depois. Setar aqui evita depender da migração.
+      data: { userId, displayName: finalName, privateMode: true, ...(cleanPhone ? { phoneNumber: cleanPhone } : {}) },
     });
 
     // Nota: notifyWelcome é disparado via connection.update no webhook Evolution

@@ -77,7 +77,7 @@ const PLANS = [
       '🔍 Busca por conversão',
       '📤 Exportar áudios em PDF, Docx, Csv e Excel',
       '📄 Conversão Profissional (PDF com marcação temporal)',
-      '🔒 Modo Privado de conversão',
+      '🔒 Modo Privado automático',
     ],
     excl:  [],
     pop:   true,
@@ -98,7 +98,7 @@ const PLANS = [
       '📅 Filtros por data e contato',
       '🔍 Busca por conversão',
       '📤 Exportação PDF · DOCX · CSV · XLS',
-      '🔒 Modo Privado de conversão',
+      '🔒 Modo Privado automático',
     ],
     excl:  [],
     pop:   true,
@@ -123,7 +123,7 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: '🔍 Busca por conversão',             vals: [true, true] },
   { feature: '📤 Exportar áudios (PDF/Docx/Csv/Excel)', vals: [false, true] },
   { feature: '📄 Conversão Profissional (PDF)',    vals: [false, true] },
-  { feature: '🔒 Modo Privado de conversão',       vals: [false, true] },
+  { feature: '🔒 Modo Privado automático',       vals: [false, true] },
 ];
 
 // Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento
@@ -921,7 +921,7 @@ function PlanoContent() {
                   '📋 Histórico de conversões',
                   '📅 Filtros por data e contato',
                   '🔍 Busca por conversão',
-                  '🔒 Modo Privado',
+                  '🔒 Modo Privado automático',
                   '📄 Conversão profissional PDF',
                 ].map(f => (
                   <li key={f} className="flex items-center gap-2 text-xs" style={{ color: 'rgb(var(--color-text-secondary))' }}>

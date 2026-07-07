@@ -363,11 +363,13 @@ export default function HomePage() {
               },
               {
                 icon: '🤫',
-                title: 'Modo Privado',
-                desc: 'Escolha não deixar a transcrição na conversa do WhatsApp. O resumo fica só no seu painel.',
+                title: 'Modo Privado automático',
+                desc: 'No plano pago, o resumo chega só no seu número — nunca na conversa de quem enviou o áudio. Vem ligado por padrão, e você desliga quando quiser.',
+                href: '/privacidade',
+                hook: 'Como funciona',
               },
-            ].map((s) => (
-              <div key={s.title} className="card rounded-2xl p-5" style={{ borderRadius: '1rem' }}>
+            ].map((s) => {
+              const inner = (
                 <div className="flex gap-4 items-start">
                   <div className="w-[46px] h-[46px] rounded-[14px] flex items-center justify-center flex-shrink-0 text-xl"
                     style={{ background: 'rgba(16,185,129,.12)' }}>
@@ -376,13 +378,24 @@ export default function HomePage() {
                   <div>
                     <h3 className="font-display font-bold text-base mb-1.5 leading-tight">{s.title}</h3>
                     <p className="text-sm leading-relaxed font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>{s.desc}</p>
+                    {'hook' in s && s.hook && (
+                      <span className="inline-flex items-center gap-1 text-sm font-semibold mt-2 group-hover:gap-1.5 transition-all" style={{ color: 'rgb(var(--color-primary))' }}>
+                        {s.hook} <span aria-hidden>→</span>
+                      </span>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+              const cls = 'group card rounded-2xl p-5 block transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg';
+              return 'href' in s && s.href ? (
+                <Link key={s.title} href={s.href} className={cls} style={{ borderRadius: '1rem' }}>{inner}</Link>
+              ) : (
+                <div key={s.title} className={cls} style={{ borderRadius: '1rem' }}>{inner}</div>
+              );
+            })}
           </div>
 
-          <p className="text-xs mt-4 text-center font-light" style={{ color: 'rgb(var(--color-text-muted))' }}>
+          <p className="text-xs mt-4 text-center font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
             Processamento de IA via Whisper (OpenAI) e Claude (Anthropic).{' '}
             <Link href="/privacidade" className="font-semibold hover:underline" style={{ color: 'rgb(var(--color-primary))' }}>
               Ler a Política de Privacidade →

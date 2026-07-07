@@ -15,7 +15,7 @@ import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encry
 import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
 import {
-  planEfetivo, audioQuotaFor, normalizeContactId, pickFooterVariant, formatSavedTime,
+  planEfetivo, audioQuotaFor, pickFooterVariant, formatSavedTime,
   MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
 } from './lib/freemium';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
@@ -962,8 +962,8 @@ function buildMessage(
     ? `\n\n↩️ Responder: wa.me/${replyTarget.replace(/\D/g, '')}`
     : '';
   // Rodapé viral CONDICIONAL (BLOCO B): só aparece quando footerText é fornecido.
-  //   FREE → rodapé em toda transcrição.
-  //   PRO  → rodapé só na 1ª transcrição de cada contato (seed); depois Modo Privado.
+  //   FREE → rodapé em toda transcrição (transcrição cai na conversa do contato).
+  //   PAGO → Modo Privado automático: transcrição vai só ao próprio número, sem rodapé.
   // A decisão (mostrar/qual variação) é tomada pelo caller; aqui só renderizamos.
   // O preview do link é desativado no envio (evolution.ts).
   const ctaLine = footerText ? `\n\n${footerText}` : '';
@@ -1016,34 +1016,21 @@ const REJECT_TOO_LONG_MSG =
 
 /**
  * Decide se mostra o rodapé viral nesta transcrição e qual variação (B).
- *  FREE → sempre mostra. PRO → só na 1ª de cada contato (seed permanente); depois Modo Privado.
- *  Self-note / sem contato → suprime (cai no próprio chat).
+ *  FREE → sempre mostra (transcrição cai na conversa). PAGO → nunca (Modo Privado automático).
+ *  Self-note → suprime (cai no próprio chat).
  */
 async function decideFooter(
   userId: string, plan: 'pro' | 'free', contactPhone: string, isSelfNote: boolean,
 ): Promise<{ show: boolean; variantId: string | null; variantText: string | null }> {
   if (isSelfNote) return { show: false, variantId: null, variantText: null };
 
+  // FREE: rodapé viral em TODA transcrição (a transcrição cai na conversa → loop de aquisição).
+  // PAGO: Modo Privado automático — a transcrição vai 100% ao próprio número, então NÃO há
+  //       transcrição na conversa do contato nem rodapé viral (nem o "seed" da 1ª de cada contato).
+  if (plan !== 'free') return { show: false, variantId: null, variantText: null };
+
   const variant = pickFooterVariant();
-  if (plan === 'free') return { show: true, variantId: variant.id, variantText: variant.text };
-
-  // PRO: rodapé apenas na 1ª transcrição de cada contato
-  const contactId = normalizeContactId(contactPhone);
-  if (!contactId) return { show: false, variantId: null, variantText: null };
-
-  try {
-    const existing = await prisma.proContactSeed.findUnique({
-      where:  { userId_contactId: { userId, contactId } },
-      select: { id: true },
-    });
-    if (existing) return { show: false, variantId: null, variantText: null }; // Modo Privado
-
-    await prisma.proContactSeed.create({ data: { userId, contactId, footerVariant: variant.id } });
-    return { show: true, variantId: variant.id, variantText: variant.text };
-  } catch {
-    // Corrida (unique violation): outro job já semeou → suprime
-    return { show: false, variantId: null, variantText: null };
-  }
+  return { show: true, variantId: variant.id, variantText: variant.text };
 }
 
 /**
@@ -1487,10 +1474,17 @@ async function processEvolutionJob(job: Job) {
     // e NÃO aplicamos modo privado (cabeçalho dedicado de nota/encaminhado).
     const isSelfNote  = job.data.isSelfNote === true;
 
-    // Modo privado (Executive): envia ao próprio número; inclui link de resposta no cabeçalho.
-    // Guard: phoneNumber deve estar resolvido (≠ 'pending'). Desativado em self-notes.
+    // Modo Privado é AUTOMÁTICO em todo plano PAGO: a transcrição vai só ao próprio
+    // número (nunca cai na conversa do contato). Free mantém a transcrição na conversa
+    // (loop viral). O flag manual `privateMode` segue valendo como reforço, mas o plano
+    // pago já força privado sem depender dele. Guard: phoneNumber resolvido (≠ 'pending');
+    // desativado em self-notes (áudio que o próprio usuário encaminhou).
+    // Pago: Modo Privado é o padrão (opt-out). Só cai na conversa do contato se o
+    // usuário desligou explicitamente (privateMode === false). Free nunca é privado.
+    const isPaidPlan  = usage.plan === 'pro';
     const isPrivate   = !isSelfNote
-                        && whatsappNumber.privateMode === true
+                        && isPaidPlan
+                        && whatsappNumber.privateMode !== false
                         && !!whatsappNumber.phoneNumber
                         && whatsappNumber.phoneNumber !== 'pending';
     const targetPhone = isPrivate ? whatsappNumber.phoneNumber! : senderPhone;

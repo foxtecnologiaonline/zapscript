@@ -571,6 +571,10 @@ export default function NumerosPage() {
   const [deleting, setDeleting]             = useState(false);
   const [connectNumber, setConnectNumber]   = useState<WNumber | null>(null);
   const [liveQr, setLiveQr]                = useState<string | null>(null);
+  const [savingPrivate, setSavingPrivate]   = useState<string | null>(null);
+  const [hidePrivadoTip, setHidePrivadoTip] = useState(true);
+
+  const isPaid = planName === 'pro' || planName === 'pro-tester' || planName === 'executive';
 
   const loadNumbers = useCallback(async () => {
     setLoading(true); setError('');
@@ -583,9 +587,20 @@ export default function NumerosPage() {
     loadNumbers();
     api.get<any>('/auth/me').then(u => {
       setUserId(u.id);
-      setPlanName(u.subscription?.plan?.name || 'free');
+      const plan = u.subscription?.plan?.name || 'free';
+      setPlanName(plan);
+      const paid = plan === 'pro' || plan === 'pro-tester' || plan === 'executive';
+      // Dica de primeira vez do Modo Privado: só para pago, uma vez.
+      if (paid && typeof window !== 'undefined' && !localStorage.getItem('zs_privado_tip_v1')) {
+        setHidePrivadoTip(false);
+      }
     });
   }, [loadNumbers]);
+
+  function dismissPrivadoTip() {
+    setHidePrivadoTip(true);
+    try { localStorage.setItem('zs_privado_tip_v1', '1'); } catch {}
+  }
 
   const { connected: socketOk } = useSocket(userId, {
     audio_received: () => { loadNumbers(); },
@@ -623,13 +638,16 @@ export default function NumerosPage() {
     finally { setDeleting(false); setConfirmDelete(null); }
   }
 
-  async function handlePrivateMode(id: string, current: boolean) {
+  async function handlePrivateMode(id: string, next: boolean) {
+    setSavingPrivate(id); setError('');
+    // Otimista: reflete na hora, reverte se falhar.
+    setNumbers(ns => ns.map(x => x.id === id ? { ...x, privateMode: next } : x));
     try {
-      await api.patch(`/numbers/${id}`, { privateMode: !current });
-      setNumbers(ns => ns.map(n => n.id === id ? { ...n, privateMode: !current } : n));
+      await api.patch(`/numbers/${id}`, { privateMode: next });
     } catch (err: any) {
-      alert(err.message || 'Erro ao alterar modo privado.');
-    }
+      setNumbers(ns => ns.map(x => x.id === id ? { ...x, privateMode: !next } : x));
+      setError(err.message || 'Não foi possível salvar o Modo Privado.');
+    } finally { setSavingPrivate(null); }
   }
 
   const statusColor = (s: string) =>
@@ -660,6 +678,22 @@ export default function NumerosPage() {
           {socketOk ? 'Tempo real' : 'Modo polling'}
         </div>
       </div>
+
+      {/* ── Dica de primeira vez: Modo Privado automático (só pago) ── */}
+      {isPaid && !hidePrivadoTip && (
+        <div className="mb-5 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 flex items-start gap-3">
+          <span className="text-lg leading-none mt-0.5">🔒</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-brand-text">Modo Privado já está ligado</p>
+            <p className="text-xs text-brand-text-secondary mt-1 leading-relaxed">
+              Como você é assinante, cada resumo chega <strong>só no seu número</strong> — nunca na conversa de quem mandou o áudio.
+              Prefere que apareça na própria conversa? É só desligar o Modo Privado no cartão do número.
+            </p>
+          </div>
+          <button onClick={dismissPrivadoTip} aria-label="Entendi"
+            className="text-brand-muted hover:text-brand-text transition-colors text-lg leading-none flex-shrink-0">×</button>
+        </div>
+      )}
 
       {/* ── Formulário de adição ── */}
       <div className="card p-4 sm:p-5 mb-5">
@@ -761,22 +795,34 @@ export default function NumerosPage() {
                 </div>
               </div>
 
-              {/* Modo Privado — Pro+ */}
-              {(planName === 'pro' || planName === 'pro-tester' || planName === 'executive') ? (
-                <div className="flex items-center justify-between bg-brand-elevated rounded-xl px-3 py-2.5 mb-3 gap-2">
-                  <div>
-                    <div className="text-xs font-semibold text-brand-text flex items-center gap-1.5">
-                      🔒 Modo Privado
+              {/* Modo Privado — automático (opt-out) em todo plano pago */}
+              {isPaid ? (
+                <div className="bg-brand-elevated rounded-xl px-3 py-2.5 mb-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-brand-text flex items-center gap-1.5">
+                        🔒 Modo Privado
+                        {n.privateMode !== false && (
+                          <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full">automático</span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-brand-muted mt-0.5">
+                        {n.privateMode !== false
+                          ? <>Resumo enviado só para o seu número{n.phoneNumber && n.phoneNumber !== 'pending' ? <> (<span className="text-brand-text font-medium">{n.phoneNumber}</span>)</> : null} — nunca na conversa do contato.</>
+                          : <>Resumo entregue na própria conversa do contato. Ative para receber só no seu número.</>}
+                      </div>
                     </div>
-                    <div className="text-[10px] text-brand-muted mt-0.5">
-                      Conversões enviadas só ao seu número
-                    </div>
+                    {/* Toggle opt-out */}
+                    <button
+                      role="switch"
+                      aria-checked={n.privateMode !== false}
+                      aria-label="Alternar Modo Privado"
+                      disabled={savingPrivate === n.id}
+                      onClick={() => handlePrivateMode(n.id, !(n.privateMode !== false))}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${n.privateMode !== false ? 'bg-amber-400' : 'bg-brand-border'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${n.privateMode !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handlePrivateMode(n.id, n.privateMode)}
-                    className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${n.privateMode ? 'bg-amber-400' : 'bg-brand-border'}`}>
-                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${n.privateMode ? 'translate-x-4' : ''}`} />
-                  </button>
                 </div>
               ) : null}
 

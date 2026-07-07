@@ -109,7 +109,7 @@ model WhatsappNumber {
   minutesUsed      Float            @default(0)
   zapiInstanceId   String?          // sem @unique — múltiplos usuários podem compartilhar a mesma instância Z-API
   zapiToken        String?          // Token da instância Z-API criada dinamicamente
-  privateMode      Boolean          @default(false)  // Modo privado: transcrição enviada ao próprio número
+  privateMode      Boolean          @default(true)   // Modo Privado automático em planos pagos: transcrição vai ao próprio número. false = opt-out explícito do usuário.
   // ── Conexão via API oficial da Meta (WhatsApp Cloud API / Embedded Signup) ──
   // Usado apenas para o fluxo de App Review da Meta. Usuários reais seguem no Evolution.
   provider           String         @default("evolution")  // 'evolution' | 'meta'
