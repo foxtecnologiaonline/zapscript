@@ -15,13 +15,20 @@ const NAV_BASE = [
   { href: '/dashboard/configuracoes', icon: '⚙️', label: 'Configurações' },
 ];
 
-/** Monta o menu inserindo "Afiliados" antes de "Configurações" apenas para afiliados aprovados. */
+/** Monta o menu inserindo "Afiliados" e "Atende" antes de "Configurações" conforme entitlement. */
 function buildNav(user: any) {
-  if (user?.affiliate?.status !== 'approved') return NAV_BASE;
   const nav = [...NAV_BASE];
-  const idx = nav.findIndex(i => i.href === '/dashboard/configuracoes');
+  const idx = () => {
+    const i = nav.findIndex(it => it.href === '/dashboard/configuracoes');
+    return i < 0 ? nav.length : i;
+  };
+  // Atende: só para quem tem o produto habilitado (AtendeConfig.ativo).
+  if (user?.atendeAtivo) {
+    nav.splice(idx(), 0, { href: '/dashboard/atende', icon: '💬', label: 'Atende' });
+  }
+  if (user?.affiliate?.status !== 'approved') return nav;
   const afiliadoItem = { href: '/dashboard/afiliado', icon: '🤝', label: 'Afiliados' };
-  nav.splice(idx < 0 ? nav.length : idx, 0, afiliadoItem);
+  nav.splice(idx(), 0, afiliadoItem);
   return nav;
 }
 

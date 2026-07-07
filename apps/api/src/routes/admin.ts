@@ -377,6 +377,33 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── POST /admin/atende/:userId — gate manual do produto Atende (Fase 1) ──────
+  // Enquanto o billing self-service do Atende não existe, o fundador habilita o
+  // produto por conta setando AtendeConfig.ativo. Também permite pré-preencher a
+  // descrição do negócio usada no prompt do agente.
+  app.post<{ Params: { userId: string }; Body: { ativo?: boolean; negocioDescricao?: string | null } }>(
+    '/atende/:userId',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { userId } = req.params;
+      const { ativo, negocioDescricao } = req.body || {};
+
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      const cfg = await prisma.atendeConfig.upsert({
+        where:  { userId },
+        create: { userId, ativo: ativo ?? true, negocioDescricao: negocioDescricao ?? null },
+        update: {
+          ativo:            typeof ativo === 'boolean' ? ativo : undefined,
+          negocioDescricao: negocioDescricao === undefined ? undefined : negocioDescricao,
+        },
+      });
+      app.log.info(`[Admin] Atende ${cfg.ativo ? 'habilitado' : 'desabilitado'} para user=${userId}`);
+      return { ok: true, ativo: cfg.ativo, negocioDescricao: cfg.negocioDescricao };
+    }
+  );
+
   // PATCH /admin/users/:id — trocar plano, ajustar áudios ou alterar isAdmin
   app.patch<{
     Params: { id: string };

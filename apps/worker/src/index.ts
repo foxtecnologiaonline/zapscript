@@ -1540,6 +1540,26 @@ async function processEvolutionJob(job: Job) {
       }).catch(() => null);  // não bloqueia o pipeline
     }
 
+    // PASSO 9: ZapScript Atende — reaproveita a transcrição (sem 2ª análise de
+    // IA de áudio). Só para áudio de TERCEIRO (não self-note); o entitlement é
+    // checado no intake da API. Reusa o messageId para idempotência.
+    if (!isSelfNote && apiUrl && intToken && job.data.messageId) {
+      const remoteJid = `${senderPhone}@s.whatsapp.net`;
+      fetch(`${apiUrl}/internal/atende/ingest`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-token': intToken },
+        body: JSON.stringify({
+          numberId:    whatsappNumber.id,
+          userId,
+          remoteJid,
+          clienteNome: senderName,
+          mensagem:    originalText,
+          messageId:   `atende_${job.data.messageId}`,
+        }),
+        signal: AbortSignal.timeout(8_000),
+      }).catch(() => null); // best-effort, não bloqueia o pipeline de transcrição
+    }
+
     log(job, `✅ Concluído via Evolution API`);
     return { transcriptionId: transcription.id };
 

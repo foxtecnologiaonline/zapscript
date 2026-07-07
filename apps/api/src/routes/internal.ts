@@ -3,6 +3,7 @@ import { whatsappAPI } from '../services/whatsapp-official';
 import { prisma } from '../lib/prisma';
 import crypto from 'crypto';
 import { io } from '../index';
+import { atendeIntake } from '../services/atende-intake';
 
 function safeCompare(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
@@ -63,6 +64,28 @@ export default async function internalRoutes(app: FastifyInstance) {
       const { service, message, stack, context } = req.body;
       await prisma.systemError.create({ data: { service, message, stack, context } });
       return { logged: true };
+    }
+  );
+
+  // POST /internal/atende/ingest — Worker encaminha a TRANSCRIÇÃO de um áudio de
+  // cliente para o Atende, reaproveitando o texto já transcrito (sem 2ª análise
+  // de Whisper). O gate de entitlement (AtendeConfig.ativo) é aplicado no intake.
+  app.post<{ Body: { numberId: string; userId: string; remoteJid: string; clienteNome?: string; mensagem: string; messageId: string } }>(
+    '/atende/ingest',
+    { preHandler: [verifyToken], config: { rateLimit: { max: 200, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const { numberId, userId, remoteJid, clienteNome, mensagem, messageId } = req.body;
+      if (!numberId || !userId || !remoteJid || !mensagem || !messageId) {
+        return reply.code(400).send({ error: 'numberId, userId, remoteJid, mensagem e messageId são obrigatórios' });
+      }
+      const result = await atendeIntake(
+        { numberId, userId, remoteJid, clienteNome: clienteNome ?? null, mensagem, messageId },
+        app.log,
+      ).catch((e: any) => {
+        app.log.error({ err: e.message }, '[Internal] Atende intake falhou');
+        return { status: 'error' as const };
+      });
+      return { ok: true, ...result };
     }
   );
 

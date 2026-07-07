@@ -304,6 +304,7 @@ app.register(import('./routes/dashboard'),      { prefix: '/dashboard' });
 app.register(import('./routes/monitor'),        { prefix: '/monitor' });
 app.register(import('./routes/internal'),       { prefix: '/internal' });
 app.register(import('./routes/support'),        { prefix: '/support' });
+app.register(import('./routes/atende'),         { prefix: '/atende' });
 app.register(import('./routes/admin'),          { prefix: '/sys/g5r8t2' });
 app.register(import('./routes/admin-master'),   { prefix: '/sys/g5r8t2/master' });
 app.register(import('./routes/suporte-admin'),  { prefix: '/sys/g5r8t2/suporte' });

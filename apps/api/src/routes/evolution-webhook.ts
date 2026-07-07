@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected } from '../services/whatsapp-notify';
 import { storeQr } from '../lib/qrStore';
 import { io } from '../index';
+import { hasAtendeEnabled } from '../lib/products';
+import { atendeIntake } from '../services/atende-intake';
 
 
 export default async function evolutionWebhookRoutes(app: FastifyInstance) {
@@ -241,8 +243,17 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       }
 
       if (!isAudio) {
+        // ── ZapScript Atende: mensagens de TEXTO de clientes do assinante ──────
+        // Mesmo ponto de ingestão da transcrição (um webhook por WhatsappNumber),
+        // com roteamento condicional por entitlement. Áudio segue no pipeline de
+        // transcrição abaixo; o Atende de áudio é acionado pós-transcrição (worker).
         if (messageType === 'conversation' || messageType === 'extendedTextMessage') {
-          log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado`);
+          if (fromMe === true) return; // não reagir às próprias mensagens do assinante
+          const texto = (messageType === 'conversation'
+            ? msg?.message?.conversation
+            : msg?.message?.extendedTextMessage?.text) ?? '';
+          if (!texto.trim()) return;
+          await routeAtendeText(instName, remoteJid, senderPhone, senderName, texto, messageId, log);
         }
         return;
       }
@@ -345,4 +356,40 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
     // Eventos não tratados — apenas logar
     log.info(`[Evolution] Evento não tratado: ${event}`);
   }
+}
+
+/**
+ * Resolve o tenant a partir do WhatsappNumber que recebeu a mensagem e, se o
+ * dono tiver o produto Atende habilitado, encaminha o texto para o intake.
+ * Resolução DINÂMICA por instância (não uma instância fixa por env) — é o que
+ * permite um mesmo webhook atender qualquer número do banco.
+ */
+async function routeAtendeText(
+  instName: string,
+  remoteJid: string,
+  senderPhone: string,
+  senderName: string,
+  texto: string,
+  messageId: string,
+  log: any,
+): Promise<void> {
+  if (!senderPhone) return;
+  const number = await prisma.whatsappNumber.findFirst({
+    where:   { zapiInstanceId: instName },
+    select:  { id: true, userId: true },
+    orderBy: { connectedAt: 'desc' },
+  }).catch(() => null);
+  if (!number) return;
+
+  if (!(await hasAtendeEnabled(number.userId))) return;
+
+  log.info({ instance: instName, senderPhone }, '[Atende] Texto recebido → intake');
+  await atendeIntake({
+    numberId:    number.id,
+    userId:      number.userId,
+    remoteJid,
+    clienteNome: senderName,
+    mensagem:    texto,
+    messageId,
+  }, log).catch((e: any) => log.error({ err: e.message }, '[Atende] intake falhou'));
 }

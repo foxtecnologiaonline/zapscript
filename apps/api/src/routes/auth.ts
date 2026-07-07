@@ -719,6 +719,7 @@ export default async function authRoutes(app: FastifyInstance) {
             resetAt:            true,
           },
         },
+        atendeConfig: { select: { ativo: true } },
       },
     });
     if (!user) return null;
@@ -740,8 +741,14 @@ export default async function authRoutes(app: FastifyInstance) {
     // C2: decriptar document (AES-256-GCM) antes de retornar ao frontend
     // Billing multi-produto: expõe a assinatura de transcrição como `subscription`
     // singular (shape estável para o frontend), derivada da lista `subscriptions`.
-    const { subscriptions, ...rest } = user as any;
-    return { ...rest, subscription: subscriptions?.[0] ?? null, document: decryptStr(user.document) || null, affiliate };
+    const { subscriptions, atendeConfig, ...rest } = user as any;
+    return {
+      ...rest,
+      subscription: subscriptions?.[0] ?? null,
+      atendeAtivo:  atendeConfig?.ativo ?? false,
+      document:     decryptStr(user.document) || null,
+      affiliate,
+    };
   });
 
   // ── PUT /auth/profile ─────────────────────────────────────────────────────
