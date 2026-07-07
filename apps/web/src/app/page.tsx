@@ -330,6 +330,66 @@ export default function HomePage() {
           <ChatDemo />
         </section>
 
+        {/* ══ SEGURANÇA & PRIVACIDADE ══ */}
+        <section className="px-5 pb-16">
+          <div className="mb-7">
+            <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>
+              Segurança &amp; Privacidade
+            </span>
+            <h2 className="font-display text-3xl font-bold mt-2 leading-tight tracking-tight">
+              Seus áudios, protegidos
+            </h2>
+            <p className="text-sm mt-2 font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Tratamos suas conversas com o cuidado que elas merecem — do recebimento ao histórico.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            {[
+              {
+                icon: '🔒',
+                title: 'Áudio nunca armazenado',
+                desc: 'O áudio é processado e descartado. Guardamos apenas o texto e o resumo — nunca o arquivo original.',
+              },
+              {
+                icon: '🛡️',
+                title: 'Criptografia AES-256',
+                desc: 'As conversões ficam criptografadas no banco de dados. Só você acessa o conteúdo da sua conta.',
+              },
+              {
+                icon: '🇧🇷',
+                title: 'Servidores no Brasil, conforme a LGPD',
+                desc: 'Sua infraestrutura de processamento roda no Brasil, em conformidade com a Lei Geral de Proteção de Dados.',
+              },
+              {
+                icon: '🤫',
+                title: 'Modo Privado',
+                desc: 'Escolha não deixar a transcrição na conversa do WhatsApp. O resumo fica só no seu painel.',
+              },
+            ].map((s) => (
+              <div key={s.title} className="card rounded-2xl p-5" style={{ borderRadius: '1rem' }}>
+                <div className="flex gap-4 items-start">
+                  <div className="w-[46px] h-[46px] rounded-[14px] flex items-center justify-center flex-shrink-0 text-xl"
+                    style={{ background: 'rgba(16,185,129,.12)' }}>
+                    {s.icon}
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-base mb-1.5 leading-tight">{s.title}</h3>
+                    <p className="text-sm leading-relaxed font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>{s.desc}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs mt-4 text-center font-light" style={{ color: 'rgb(var(--color-text-muted))' }}>
+            Processamento de IA via Whisper (OpenAI) e Claude (Anthropic).{' '}
+            <Link href="/privacidade" className="font-semibold hover:underline" style={{ color: 'rgb(var(--color-primary))' }}>
+              Ler a Política de Privacidade →
+            </Link>
+          </p>
+        </section>
+
         {/* ══ DEPOIMENTOS (renderiza só quando houver) ══ */}
         <Testimonials />
 

@@ -37,6 +37,90 @@ function bulletText(b: string): string {
   return b;
 }
 
+/* ─── Agenda (.ics) a partir da pendência ───────────────────────────────────
+ * A ação/pendência (sentinel ::P::) vira um evento de calendário. Não há data
+ * estruturada garantida, então fazemos uma inferência leve do prazo a partir do
+ * próprio texto (hoje/amanhã/dia da semana + hora); default = amanhã 09h.
+ * Horário "flutuante" (sem TZID/Z) → o calendário do usuário interpreta na TZ
+ * local. É o caminho MVP: o usuário ajusta a data no próprio calendário. */
+const WEEKDAYS_PT: Record<string, number> = {
+  domingo: 0, segunda: 1, terca: 2, terça: 2, quarta: 3,
+  quinta: 4, sexta: 5, sabado: 6, sábado: 6,
+};
+
+function inferDeadline(text: string, base = new Date()): Date {
+  const t = text.toLowerCase();
+  const d = new Date(base);
+  d.setSeconds(0, 0);
+
+  // Dia
+  if (/\bhoje\b/.test(t)) {
+    // mantém o dia
+  } else if (/\bamanh[ãa]\b/.test(t)) {
+    d.setDate(d.getDate() + 1);
+  } else {
+    const wd = Object.keys(WEEKDAYS_PT).find(k => t.includes(k));
+    if (wd) {
+      const target = WEEKDAYS_PT[wd];
+      let delta = (target - d.getDay() + 7) % 7;
+      if (delta === 0) delta = 7; // próxima ocorrência, não hoje
+      d.setDate(d.getDate() + delta);
+    } else {
+      d.setDate(d.getDate() + 1); // default: amanhã
+    }
+  }
+
+  // Hora — "15h", "15h30", "15:00", "às 9"
+  const hm = t.match(/(\d{1,2})\s*(?:h|:)\s*(\d{2})?/) || t.match(/[àa]s?\s+(\d{1,2})\b/);
+  if (hm) {
+    const h = Math.min(23, parseInt(hm[1], 10));
+    const m = hm[2] ? Math.min(59, parseInt(hm[2], 10)) : 0;
+    d.setHours(h, m, 0, 0);
+  } else {
+    d.setHours(9, 0, 0, 0); // default: 09h
+  }
+  return d;
+}
+
+/** Formata Date como horário local flutuante YYYYMMDDTHHMMSS (sem Z). */
+function icsLocal(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`;
+}
+
+/** Escapa texto conforme RFC 5545 (vírgula, ponto-e-vírgula, barra, quebra). */
+function icsEscape(s: string): string {
+  return (s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
+
+/** Monta um VCALENDAR mínimo com 1 evento + alarme 30min antes. */
+function buildIcs(summary: string, start: Date, description: string): string {
+  const end = new Date(start.getTime() + 30 * 60 * 1000);
+  const uid = `zs-${start.getTime()}-${Math.random().toString(36).slice(2, 8)}@zapscript.me`;
+  const stamp = icsLocal(new Date());
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//ZapScript//Agenda//PT-BR',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${stamp}`,
+    `DTSTART:${icsLocal(start)}`,
+    `DTEND:${icsLocal(end)}`,
+    `SUMMARY:${icsEscape(summary)}`,
+    `DESCRIPTION:${icsEscape(description)}`,
+    'BEGIN:VALARM',
+    'TRIGGER:-PT30M',
+    'ACTION:DISPLAY',
+    `DESCRIPTION:${icsEscape(summary)}`,
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+}
+
 /* ─── Constants ───────────────────────────────────────────────────────────── */
 const LIMIT       = 20;
 
@@ -573,6 +657,21 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
     const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `transcricao-${t.id.slice(0, 8)}.xls` });
     a.click(); URL.revokeObjectURL(a.href);
+  }
+
+  /** Gera e baixa um .ics de agenda a partir de uma pendência (::P::). */
+  function exportPendingIcs(t: Transcription, pendingText: string) {
+    const who   = t.contactName || t.contactPhone || 'contato';
+    const start = inferDeadline(pendingText, new Date(t.createdAt));
+    const desc  = `Pendência do áudio de ${who} — gerado pelo ZapScript. Ajuste a data/hora se necessário.`;
+    const ics   = buildIcs(pendingText, start, desc);
+    const blob  = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: `lembrete-${t.id.slice(0, 8)}.ics`,
+    });
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   /* ── Laudo Jurídico — Upload Manual ──────────────────────────────────── */
@@ -1277,14 +1376,23 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                           );
                         }
                         if (kind === 'pending') {
+                          const pendingText = b.slice(B_PENDING.length);
                           return (
                             <div
                               key={i}
-                              className="flex gap-2 py-2.5 px-3 my-1 rounded-lg border border-amber-400/30 bg-amber-400/10">
+                              className="flex items-start gap-2 py-2.5 px-3 my-1 rounded-lg border border-amber-400/30 bg-amber-400/10">
                               <span aria-hidden>⚠️</span>
-                              <p className="text-sm font-medium text-brand-text leading-relaxed">
-                                {b.slice(B_PENDING.length)}
+                              <p className="text-sm font-medium text-brand-text leading-relaxed flex-1">
+                                {pendingText}
                               </p>
+                              <button
+                                type="button"
+                                onClick={() => exportPendingIcs(selected, pendingText)}
+                                className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border border-amber-400/40 text-amber-700 dark:text-amber-300 hover:bg-amber-400/20 transition-colors flex-shrink-0 whitespace-nowrap"
+                                title="Adicionar ao calendário (.ics)"
+                                aria-label="Adicionar pendência ao calendário">
+                                📅 Agendar
+                              </button>
                             </div>
                           );
                         }

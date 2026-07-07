@@ -331,6 +331,42 @@ const SUMMARY_PENDING = '::P::';
 
 type SummaryMode = 'tldr' | 'short' | 'medium' | 'long';
 
+// ── Domínio/vertical do áudio ────────────────────────────────────────────────
+// Não há perfil de profissão salvo por usuário. Para dar um tom útil por nicho
+// (Fase 1.2) sem migração de schema, inferimos o domínio do próprio texto por
+// palavras-chave e injetamos UMA diretriz de foco no prompt. Default = genérico.
+type SummaryDomain = 'juridico' | 'imoveis' | 'vendas' | 'generico';
+
+const DOMAIN_SIGNALS: { domain: Exclude<SummaryDomain, 'generico'>; re: RegExp }[] = [
+  { domain: 'juridico', re: /\b(process[oa]s?|audi[êe]ncia|prazo(s)?|cl[áa]usula|contrato|peti[çc][ãa]o|r[ée]u|autor|juiz|advogad|liminar|recurso|intima[çc][ãa]o|senten[çc]a|c[óo]digo civil|OAB)\b/i },
+  { domain: 'imoveis',  re: /\b(im[óo]vel|im[óo]veis|apartamento|casa|aluguel|locat[áa]rio|propriet[áa]ri|corretor|financiamento|entrada|parcel|escritura|visita|vistoria|condom[íi]nio|metro(s)? quadrado|m2|IPTU)\b/i },
+  { domain: 'vendas',   re: /\b(or[çc]amento|proposta|desconto|fechar (a )?venda|obje[çc][ãa]o|lead|cliente|follow[- ]?up|negocia[çc][ãa]o|comiss[ãa]o|meta|pipeline|ticket|pedido|cota[çc][ãa]o)\b/i },
+];
+
+// Foco extra por vertical, anexado ao system prompt (curto/médio/longo).
+const DOMAIN_GUIDANCE: Record<Exclude<SummaryDomain, 'generico'>, string> = {
+  juridico: 'Foco jurídico: priorize prazos, datas de audiência, cláusulas, valores e partes/processos citados.',
+  imoveis:  'Foco imobiliário: priorize valores, condições de pagamento, endereços/imóveis, datas de visita e próximos passos.',
+  vendas:   'Foco comercial: priorize valores, objeções levantadas, o que ficou combinado e o próximo passo/follow-up.',
+};
+
+/**
+ * Infere o domínio do áudio por contagem de sinais de palavras-chave.
+ * Exige pelo menos 2 sinais e uma margem clara sobre o segundo colocado para
+ * evitar rótulos frágeis; caso contrário retorna 'generico'.
+ */
+function detectDomain(text: string): SummaryDomain {
+  const scores = DOMAIN_SIGNALS.map(s => ({
+    domain: s.domain,
+    hits: (text.match(new RegExp(s.re, 'gi')) || []).length,
+  })).sort((a, b) => b.hits - a.hits);
+
+  const top = scores[0];
+  const runnerUp = scores[1]?.hits ?? 0;
+  if (top && top.hits >= 2 && top.hits > runnerUp) return top.domain;
+  return 'generico';
+}
+
 /**
  * Modo de resumo baseado na DURAÇÃO do áudio (com fallback por nº de palavras
  * quando a duração não está disponível). Escala a densidade do resumo:
@@ -367,6 +403,11 @@ async function generateBullets(originalText: string, durationSec = 0, language?:
   const mode        = summaryMode(originalText, durationSec);
   const needsTransl = language && !/^pt(-br)?$/i.test(language);
   const ptNote      = needsTransl ? ' Responda sempre em português brasileiro (PT-BR).' : '';
+
+  // Tom por vertical (Fase 1.2): inferido do conteúdo, não de perfil.
+  // Só aplica a modos com bullets — o tldr é curto demais e inflaria a frase.
+  const domain     = mode === 'tldr' ? 'generico' : detectDomain(originalText);
+  const domainNote = domain === 'generico' ? '' : `\n\n${DOMAIN_GUIDANCE[domain]}`;
 
   // Regras de pendências reutilizadas nos modos com bullets
   const pendingRule = `
@@ -412,7 +453,7 @@ Organize o resumo em SEÇÕES, cada uma com um cabeçalho próprio em linha inic
 Sob cada seção, bullets "• " (máx 10 palavras cada, fatos concretos).
 ${pendingRule}
 
-CRÍTICO: só use o que foi dito. NUNCA invente, dramatize ou suponha. Sem floreio.`;
+CRÍTICO: só use o que foi dito. NUNCA invente, dramatize ou suponha. Sem floreio.${domainNote}`;
 
     userMsg = `Resuma em seções:\n\n${originalText}`;
 
@@ -429,7 +470,7 @@ ${pendingRule}
 
 Exemplos:
 "vou passar aí sexta às 15h pra assinar o contrato" → • Visita sexta 15h — assinar contrato
-"precisa que você mande o orçamento até amanhã de manhã" → ⚠️ Enviar orçamento: até amanhã cedo`;
+"precisa que você mande o orçamento até amanhã de manhã" → ⚠️ Enviar orçamento: até amanhã cedo${domainNote}`;
 
     userMsg = `Extraia em até ${max} tópicos (máx 10 palavras cada):\n\n${originalText}`;
   }
