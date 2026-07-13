@@ -30,6 +30,9 @@ jest.mock('../lib/prisma', () => ({
     minuteBalance: {
       findUnique: jest.fn(),
     },
+    subscription: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
   },
 }));
 
@@ -210,11 +213,8 @@ describe('POST /transcriptions/upload', () => {
     expect([401, 415]).toContain(res.statusCode);
   });
 
-  it('retorna 402 se saldo de minutos < 0.5 (envia multipart correto)', async () => {
+  it('retorna 410 — envio manual foi descontinuado neste app', async () => {
     const token = app.jwt.sign({ sub: 'user-1', email: 'test@test.com' });
-    (prisma.minuteBalance.findUnique as jest.Mock).mockResolvedValueOnce({
-      availableMinutes: 0.1,
-    });
 
     const form = '--boundary\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\ndummy\r\n--boundary--\r\n';
 
@@ -228,7 +228,7 @@ describe('POST /transcriptions/upload', () => {
       payload: form,
     });
 
-    expect(res.statusCode).toBe(402);
-    expect(res.json().error).toMatch(/saldo/i);
+    expect(res.statusCode).toBe(410);
+    expect(res.json().error).toMatch(/descontinuad/i);
   });
 });

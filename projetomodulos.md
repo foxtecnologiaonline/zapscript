@@ -56,13 +56,13 @@ Preços são **proposta** (validar com pricing). Fonte de dados: `packages/modul
 | 2 | **ZapScript Atende** | `atende` | Atendimento automático 24/7. "Responder cliente na hora sem contratar equipe." | mensageria, IA, KB | R$ 49,90 | **Beta** | 1 |
 | 3 | **ZapScript Cobrança** | `cobranca` | Lembrete/cobrança automática (venceu, vence hoje, 2ª via). Dor #1 do MEI: inadimplência. | mensageria (100%) | R$ 29,90 | Planejado | 2 |
 | 4 | **ZapScript Campanhas** | `campanhas` | Disparo em massa *compliant* via API oficial. Janela Meta (dez/2025) órfãos de bots. | WhatsApp oficial | R$ 59,90 | Planejado | 3 |
-| 5 | **ZapScript CRM Leve** (Gestão Clientes) | `crm` | Funil no WhatsApp (novo lead → negociando → fechado). Gap entre "responder" e "vender". | mensageria, conversas | R$ 39,90 | Planejado | 4 |
+| 5 | **ZapScript CRM** (Gestão Clientes) | `crm` | Funil no WhatsApp (novo lead → negociando → fechado). Gap entre "responder" e "vender". | mensageria, conversas | R$ 39,90 | Planejado | 4 |
 | 6 | **Atende Qualidade** | `atende-qualidade` | Dashboard das conversas do Atende: tempo de resposta, sentimento, conversão. "O bot tá funcionando?" | dados do Atende, IA | R$ 24,90 | Planejado (**requer Atende**) | 4 |
-| 7 | **ZapScript Legenda** | `legenda` | Legenda automática de Reels/Stories. ICP novo (criador de conteúdo). Só nova interface sobre o Whisper. | transcrição | R$ 34,90 | Planejado | 5 |
-| 8 | **VoiceText Vendas** | `voicetext-vendas` | Vendedor grava visita/ligação → transcreve/resume → nota no CRM. Registro de atividade comercial. | transcrição, IA | R$ 44,90 | Planejado (sinergia c/ CRM) | 5 |
-| 9 | **ZapScript Multicanal** | `multicanal` | Mesma automação estendida ao DM do Instagram. Aposta mais especulativa. | transcrição, IA, mensageria | R$ 29,90 | **Discovery** (validar com 5) | 6 |
+| 7 | **ZapScript Legendas** | `legenda` | Legenda automática de Reels/Stories. ICP novo (criador de conteúdo). Só nova interface sobre o Whisper. | transcrição | R$ 34,90 | Planejado | 5 |
+| 8 | **ZapScript Vendas** | `vendas` | Vendedor grava visita/ligação → transcreve/resume → nota no CRM. Registro de atividade comercial. | transcrição, IA | R$ 44,90 | Planejado (sinergia c/ CRM) | 5 |
+| 9 | **ZapScript Multicanal** | `multicanal` | Todos os módulos ZapScript replicados no Instagram, Facebook e Telegram. Aposta mais especulativa. | transcrição, IA, mensageria | R$ 29,90 | **Discovery** (validar com 5) | 6 |
 
-**Dependências:** `atende-qualidade` → requer `atende`. `voicetext-vendas` tem sinergia (não
+**Dependências:** `atende-qualidade` → requer `atende`. `vendas` tem sinergia (não
 dependência dura) com `crm`. As dependências vivem no catálogo (`dependsOn`) e são aplicadas
 no checkout e no gate de acesso.
 
@@ -73,11 +73,11 @@ no checkout e no gate de acesso.
 | Fase | Entrega | Situação |
 |------|---------|----------|
 | **0 — Fundação** | Registry do catálogo + arquitetura documentada | ✅ **Feito** |
-| **1 — Plataforma de entitlements** | Models `Product`/`Entitlement` + migração + backfill `core` + `requireModule` + `modules` no `/auth/me` + launcher `/app` | ✅ **Feito** (backbone); falta provisionamento no billing |
+| **1 — Plataforma de entitlements** | Models `Product`/`Entitlement` + migração + backfill `core` + `requireModule` + `modules` no `/auth/me` + launcher `/app` + provisionamento no billing (subscribe/cancel com proração) | ✅ **Feito** |
 | **2 — Cobrança** | 1º módulo pago novo (reusa 100% mensageria; dor #1 do MEI) | ⏳ Próximo |
 | **3 — Campanhas** | Aproveitar a janela Meta (dez/2025) — alternativa compliant | ⏳ |
 | **4 — CRM + Atende Qualidade** | Cross-sell com Atende; fecha "responder → vender → medir" | ⏳ |
-| **5 — Legenda / VoiceText Vendas** | ICP novo e sinergia comercial; baixo risco técnico | ⏳ |
+| **5 — Legendas / ZapScript Vendas** | ICP novo e sinergia comercial; baixo risco técnico | ⏳ |
 | **6 — Multicanal** | Discovery — validar com 5 conversas antes de investir | ⏳ |
 
 ### Passos técnicos da plataforma (strangler, sem big-bang) — ver `PLATAFORMA_BASE.md`

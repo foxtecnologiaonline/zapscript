@@ -663,6 +663,7 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Todos os aceites obrigatórios são necessários.' });
       }
       const now = new Date();
+      const consentDocVersion = 'tos_v2.0,contrato_v2.0,pp_v2.0';
       await prisma.user.update({
         where: { id: req.user.sub },
         data: {
@@ -670,7 +671,15 @@ export default async function authRoutes(app: FastifyInstance) {
           contractAcceptedAt:      now,
           privacyPolicyAcceptedAt: now,
           marketingConsentAt:      cbMarketing ? now : undefined,
-          consentDocVersion:       'tos_v2.0,contrato_v2.0,pp_v2.0',
+          consentDocVersion,
+        },
+      });
+      await prisma.auditLog.create({
+        data: {
+          action:       'user.terms_accepted',
+          targetUserId: req.user.sub,
+          adminId:      'system',
+          changes:      { cbTos, cbContrato, cbLgpd, cbMarketing: !!cbMarketing, consentDocVersion },
         },
       });
       return { accepted: true };

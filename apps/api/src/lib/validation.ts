@@ -101,6 +101,13 @@ export const billingUpgradeSchema = z.object({
   billingAddress: billingAddressSchema,
 });
 
+// Contratação de módulo da suíte (key vem do param da URL, não do body)
+export const moduleSubscribeSchema = z.object({
+  paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
+  card:           cardSchema.optional(),
+  billingAddress: billingAddressSchema,
+});
+
 // Trial com cartão (opcional): nada é cobrado agora — só CPF/cartão para a
 // assinatura cujo 1º vencimento é o fim do trial (D+7).
 export const billingTrialCardSchema = z.object({

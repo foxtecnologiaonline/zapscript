@@ -24,7 +24,7 @@ export const MODULE_ICON: Record<string, string> = {
   crm: '📊',
   'atende-qualidade': '📈',
   legenda: '🎬',
-  'voicetext-vendas': '🗣️',
+  vendas: '🗣️',
   multicanal: '📷',
 };
 

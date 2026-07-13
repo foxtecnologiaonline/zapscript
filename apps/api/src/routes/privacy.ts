@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../lib/prisma';
 
 /**
@@ -6,6 +7,17 @@ import { prisma } from '../lib/prisma';
  * Endpoints para exportação e deleção de dados do usuário
  * Lei Geral de Proteção de Dados (LGPD) - Lei 13.709/2018
  */
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!,
+);
+
+const TERMS_OF_SERVICE = {
+  version:       '2.0',
+  effectiveFrom: '2025-06-01T00:00:00.000Z',
+  content:       'Termos de Serviço do ZapScript — versão vigente. Texto completo em https://www.zapscript.me/termos.',
+};
 
 export default async function privacyRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -92,8 +104,12 @@ export default async function privacyRoutes(app: FastifyInstance) {
           },
         });
 
+        const exportedAt = new Date();
+        const expiresAt  = new Date(exportedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+
         const exportData = {
-          exportedAt: new Date().toISOString(),
+          exportedAt:   exportedAt.toISOString(),
+          expiresAt:    expiresAt.toISOString(),
           exportFormat: 'JSON',
           LGPD: {
             law: 'Lei Geral de Proteção de Dados (Lei 13.709/2018)',
@@ -102,12 +118,10 @@ export default async function privacyRoutes(app: FastifyInstance) {
               'Você solicitou cópia dos seus dados pessoais armazenados',
           },
           user,
-          data: {
-            numbers,
-            transcriptions,
-            subscriptions,
-            auditLog: auditLogs,
-          },
+          transcriptions,
+          whatsappNumbers: numbers,
+          subscriptions,
+          auditLog: auditLogs,
         };
 
         reply.header('Content-Disposition', 'attachment; filename="zapscript-data-export.json"');
@@ -269,5 +283,111 @@ export default async function privacyRoutes(app: FastifyInstance) {
       app.log.error({ error }, 'Erro ao buscar audit log');
       return reply.code(500).send({ error: 'Erro ao buscar histórico' });
     }
+  });
+
+  // ── DELETE /privacy/account ────────────────────────────────
+  // Soft delete + anonimização (LGPD Art. 18 — direito à eliminação)
+  // Mantém registros com obrigação legal de retenção (ex: notas fiscais),
+  // mas anonimiza dados pessoais. Retenção de 30 dias antes de purga definitiva.
+  app.delete('/account', { ...auth }, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const now = new Date();
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            name:            'Usuário deletado',
+            email:           `deleted_${userId.slice(0, 8)}@deleted.local`,
+            document:        null,
+            phone:           null,
+            deletedAt:       now,
+            pseudonymizedAt: now,
+          },
+        });
+        await tx.transcription.updateMany({
+          where: { userId },
+          data:  { originalText: '[ANONIMIZADO]' },
+        });
+        await tx.supportTicket.updateMany({
+          where: { userId },
+          data:  { description: '[ANONIMIZADO]' },
+        });
+        await tx.auditLog.create({
+          data: {
+            action:       'user.deleted',
+            targetUserId: userId,
+            adminId:      'system',
+            metadata:     { reason: 'LGPD Art. 18 — solicitação do titular', dataRetention: '30 days' },
+          },
+        });
+      });
+
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {
+        app.log.error({ err, userId }, 'Erro ao remover usuário do Supabase Auth');
+      }
+
+      return reply.code(202).send({ status: 'deletion_scheduled', dataRetention: '30 days' });
+    } catch (error) {
+      app.log.error({ error, userId }, 'Erro ao processar exclusão de conta');
+      return reply.code(500).send({ error: 'Erro ao processar solicitação de exclusão' });
+    }
+  });
+
+  // ── POST /privacy/accept-terms ─────────────────────────────
+  // Registro de consentimento (Termos + Política de Privacidade)
+  app.post<{ Body: { policyVersion?: string; termsVersion?: string } }>(
+    '/accept-terms',
+    { ...auth },
+    async (req: any, reply) => {
+      const userId = req.user.sub;
+      const { policyVersion, termsVersion } = req.body || {};
+      const now = new Date();
+
+      await prisma.user.update({
+        where: { id: userId },
+        data:  { privacyPolicyAcceptedAt: now, termsAcceptedAt: now },
+      });
+      await prisma.auditLog.create({
+        data: {
+          action:       'user.terms_accepted',
+          targetUserId: userId,
+          adminId:      'system',
+          changes:      { policyVersion, termsVersion },
+        },
+      });
+
+      return reply.code(200).send({ accepted: true, acceptedAt: now.toISOString() });
+    }
+  );
+
+  // ── GET /privacy/legal/privacy-policy ──────────────────────
+  // Documento público e versionado (sem autenticação)
+  app.get<{ Querystring: { version?: string } }>(
+    '/legal/privacy-policy',
+    async (req: any, reply) => {
+      const { version } = req.query;
+      const where = version ? { version } : {};
+      const policy = await prisma.privacyPolicy.findFirst({ where, orderBy: { createdAt: 'desc' } });
+
+      if (!policy) {
+        return reply.code(404).send({ error: 'Nenhuma política de privacidade cadastrada.' });
+      }
+
+      return {
+        version:       policy.version,
+        content:       policy.content,
+        effectiveFrom: policy.createdAt.toISOString(),
+      };
+    }
+  );
+
+  // ── GET /privacy/legal/terms-of-service ────────────────────
+  // Documento público (sem autenticação) — conteúdo estático, mesma versão do site
+  app.get('/legal/terms-of-service', async () => {
+    return TERMS_OF_SERVICE;
   });
 }

@@ -505,7 +505,7 @@ model Entitlement {
   id               String    @id @default(cuid())
   userId           String
   productKey       String // FK -> Product.key
-  status           String    @default("active") // 'active'|'trialing'|'past_due'|'canceled'
+  status           String    @default("active") // 'active'|'trialing'|'past_due'|'canceled'|'pending' (pending = PIX aguardando confirmação; não concede acesso)
   source           String    @default("paid") // 'paid'|'trial'|'comp'|'bundle'|'affiliate'
   currentPeriodEnd DateTime?
   canceledAt       DateTime?

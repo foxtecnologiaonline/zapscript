@@ -100,7 +100,7 @@ export const MODULES: readonly ModuleSpec[] = [
   },
   {
     key: 'crm',
-    name: 'ZapScript CRM Leve',
+    name: 'ZapScript CRM',
     icon: '📊',
     tagline: 'Funil de vendas dentro do WhatsApp',
     jtbd: 'Respondo no WhatsApp mas não organizo quem é lead novo, quem está negociando e quem fechou.',
@@ -126,7 +126,7 @@ export const MODULES: readonly ModuleSpec[] = [
   },
   {
     key: 'legenda',
-    name: 'ZapScript Legenda',
+    name: 'ZapScript Legendas',
     icon: '🎬',
     tagline: 'Legenda automática para Reels e Stories',
     jtbd: 'Faço vídeo curto e preciso de legenda sem editar na mão.',
@@ -138,8 +138,8 @@ export const MODULES: readonly ModuleSpec[] = [
     phase: 5,
   },
   {
-    key: 'voicetext-vendas',
-    name: 'VoiceText Vendas',
+    key: 'vendas',
+    name: 'ZapScript Vendas',
     icon: '🗣️',
     tagline: 'Grave a visita/ligação → vira nota no CRM',
     jtbd: 'Vendedor externo perde o registro da visita; queremos transcrever e lançar como atividade.',
@@ -154,8 +154,8 @@ export const MODULES: readonly ModuleSpec[] = [
     key: 'multicanal',
     name: 'ZapScript Multicanal',
     icon: '📷',
-    tagline: 'Mesma automação estendida ao DM do Instagram',
-    jtbd: 'Meus clientes me chamam no direct do Instagram, não só no WhatsApp.',
+    tagline: 'Os módulos ZapScript também no Instagram, Facebook e Telegram',
+    jtbd: 'Meus clientes não falam só pelo WhatsApp — preciso do mesmo atendimento/automação no Instagram, Facebook e Telegram.',
     status: 'discovery', // validar com 5 conversas antes de construir
     priceMonthly: 29.90,
     priceYearly: 287.04,

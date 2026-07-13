@@ -12,8 +12,9 @@ jest.mock('../lib/prisma', () => ({
     subscription: { create: jest.fn() },
     minuteBalance:{ create: jest.fn() },
     plan:         { findUnique: jest.fn() },
+    auditLog:     { create: jest.fn() },
     $transaction: jest.fn(async (fn: any) => fn({
-      user:         { create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com' }) },
+      user:         { create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', createdAt: new Date() }) },
       subscription: { create: jest.fn() },
       minuteBalance:{ create: jest.fn() },
     })),
@@ -76,11 +77,22 @@ describe('POST /auth/register', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  const CONSENTS = { cbTos: true, cbContrato: true, cbLgpd: true };
+
+  it('retorna 400 se consentimentos LGPD não forem aceitos', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/auth/register',
+      payload: { email: 'x@x.com', password: '12345678' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/aceite/i);
+  });
+
   it('retorna 400 se e-mail já estiver cadastrado', async () => {
     (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'existing' });
     const res = await app.inject({
       method: 'POST', url: '/auth/register',
-      payload: { email: 'dup@dup.com', password: '12345678' },
+      payload: { email: 'dup@dup.com', password: '12345678', ...CONSENTS },
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/cadastrado/i);
@@ -96,10 +108,10 @@ describe('POST /auth/register', () => {
 
     const res = await app.inject({
       method: 'POST', url: '/auth/register',
-      payload: { email: 'new@new.com', password: 'strongpass' },
+      payload: { email: 'new@new.com', password: 'strongpass', ...CONSENTS },
     });
     expect(res.statusCode).toBe(201);
-    expect(res.json().needsVerification).toBe(true);
+    expect(res.json().emailVerified).toBe(false);
   });
 });
 
@@ -122,17 +134,17 @@ describe('POST /auth/login', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('retorna 403 se e-mail não foi verificado', async () => {
+  it('permite login mesmo com e-mail não verificado (Opção A — verificação só é exigida no checkout)', async () => {
     supabaseMock.auth.signInWithPassword.mockResolvedValueOnce({
-      data: { user: { id: 'u1', email_confirmed_at: null } },
+      data: { user: { id: 'u1', email: 'x@x.com', email_confirmed_at: null } },
       error: null,
     });
     const res = await app.inject({
       method: 'POST', url: '/auth/login',
       payload: { email: 'x@x.com', password: 'pass' },
     });
-    expect(res.statusCode).toBe(403);
-    expect(res.json().needsVerification).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveProperty('token');
   });
 
   it('retorna token em login bem-sucedido', async () => {

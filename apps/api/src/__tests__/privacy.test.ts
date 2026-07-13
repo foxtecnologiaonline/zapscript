@@ -26,9 +26,9 @@ jest.mock('../lib/prisma', () => ({
       count:     jest.fn().mockResolvedValue(0),
     },
     whatsappNumber: { findMany: jest.fn().mockResolvedValue([]) },
-    subscription:   { findUnique: jest.fn().mockResolvedValue(null) },
+    subscription:   { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
     minuteBalance:  { findUnique: jest.fn().mockResolvedValue(null) },
-    auditLog:       { create: jest.fn().mockResolvedValue({}) },
+    auditLog:       { create: jest.fn().mockResolvedValue({}), findMany: jest.fn().mockResolvedValue([]) },
     privacyPolicy:  { findFirst: jest.fn() },
     $transaction: jest.fn(async (fn: any) => fn({
       user:          mockTxUser,

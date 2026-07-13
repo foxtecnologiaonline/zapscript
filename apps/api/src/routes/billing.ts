@@ -10,9 +10,10 @@ function escHtml(s: string | null | undefined): string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 import { calculateProration } from '../lib/proration';
-import { validateRequest, billingCheckoutSchema, billingUpgradeSchema, billingTrialCardSchema } from '../lib/validation';
+import { validateRequest, billingCheckoutSchema, billingUpgradeSchema, billingTrialCardSchema, moduleSubscribeSchema } from '../lib/validation';
 import { invalidatePlanCache } from '../lib/planGate';
 import { attributeAffiliateCommission } from '../lib/affiliate';
+import { invalidateModuleCache } from '../lib/moduleGate';
 
 /* ─────────────────────────────────────────────────────────
    ASAAS v3 — Billing Routes (Checkout Transparente)
@@ -109,6 +110,19 @@ function encodeMinutePackageRef(userId: string, minutes: number): string {
   return `${userId}|pkg_minutes|${minutes}`;
 }
 
+/* ── externalReference de contratação de módulo ──
+   Formato: "<userId>|module|<productKey>" — cobrança de ativação/proration de módulo.
+   Checado ANTES de decodeRef() no webhook (planName nunca é literalmente "module"). */
+function encodeModuleRef(userId: string, productKey: string): string {
+  return `${userId}|module|${productKey}`;
+}
+function decodeModuleRef(ref: string | undefined): { userId: string; productKey: string } | null {
+  if (!ref) return null;
+  const parts = ref.split('|');
+  if (parts.length < 3 || parts[1] !== 'module') return null;
+  return { userId: parts[0], productKey: parts[2] };
+}
+
 /* ── Buscar ou criar cliente no Asaas ── */
 async function getOrCreateCustomer(user: {
   id: string; name: string | null; email: string; document?: string | null; phone?: string | null;
@@ -195,6 +209,74 @@ async function activatePlan(userId: string, planName: string, opts: {
 
   // M6: Invalidar cache de plano após mudança de subscription
   invalidatePlanCache(userId).catch(() => null);
+}
+
+/* ── Valor agregado atual: core pago (se houver) + módulos pagos ativos ──
+   Fonte única da verdade da premissa "1 transação, valor total somado". Lê sempre
+   do banco (Subscription+Plan, Entitlement+Product) — nunca do catálogo estático. */
+async function computeAggregateValue(userId: string): Promise<number> {
+  const [sub, entitlements] = await Promise.all([
+    prisma.subscription.findUnique({ where: { userId }, include: { plan: true } }),
+    prisma.entitlement.findMany({
+      where:  { userId, status: 'active', source: 'paid' },
+      select: { productKey: true },
+    }),
+  ]);
+  const corePart = sub?.plan && sub.plan.name !== 'free' ? sub.plan.priceBrl : 0;
+  if (entitlements.length === 0) return corePart;
+
+  const products = await prisma.product.findMany({
+    where:  { key: { in: entitlements.map((e: { productKey: string }) => e.productKey) } },
+    select: { priceMonthly: true },
+  });
+  const modulesPart = products.reduce((sum: number, p: { priceMonthly: number }) => sum + p.priceMonthly, 0);
+  return Math.round((corePart + modulesPart) * 100) / 100;
+}
+
+/* ── Recriar a assinatura Asaas agregada num novo valor total ──
+   Mesma proteção do /billing/upgrade: cria a nova ANTES de cancelar a antiga. */
+async function reissueAggregateSubscription(opts: {
+  userId: string;
+  asaasCustomerId: string;
+  newValue: number;
+  paymentMethod?: string | null;
+  oldAsaasSubscriptionId?: string | null;
+  description: string;
+}): Promise<string | null> {
+  const newSubRes = await asaas('/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify({
+      customer:          opts.asaasCustomerId,
+      billingType:       toAsaasBillingType(opts.paymentMethod ?? undefined),
+      value:             opts.newValue,
+      nextDueDate:       todayStr(),
+      cycle:             'MONTHLY',
+      description:       opts.description,
+      externalReference: opts.userId,
+    }),
+  }).then(r => r.json()).catch(() => null) as any;
+
+  if (!newSubRes?.id) return null;
+
+  if (opts.oldAsaasSubscriptionId) {
+    await asaas(`/subscriptions/${opts.oldAsaasSubscriptionId}`, { method: 'DELETE' }).catch(() => null);
+  }
+  return newSubRes.id as string;
+}
+
+/* ── Ativar entitlement de módulo no banco (upsert) ──
+   'pending' (PIX aguardando confirmação) nunca concede acesso — ver moduleGate.ts ACTIVE_STATUSES. */
+async function activateModuleEntitlement(userId: string, productKey: string, opts: {
+  paymentId?: string;
+} = {}): Promise<void> {
+  const nextPeriod = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  await prisma.entitlement.upsert({
+    where:  { userId_productKey: { userId, productKey } },
+    create: { userId, productKey, status: 'active', source: 'paid', currentPeriodEnd: nextPeriod },
+    update: { status: 'active', source: 'paid', currentPeriodEnd: nextPeriod, canceledAt: null },
+  });
+  if (opts.paymentId) await markProcessed(opts.paymentId);
+  invalidateModuleCache(userId).catch(() => null);
 }
 
 /* ── Buscar QR code PIX da primeira cobrança de uma assinatura ── */
@@ -856,6 +938,214 @@ export default async function billingRoutes(app: FastifyInstance) {
     return { canceled: true, message: 'Assinatura cancelada. Você voltou para o plano gratuito.' };
   });
 
+  // ── POST /billing/modules/:key/subscribe ──────────────────
+  // Contrata um módulo da suíte. Cobra a diferença proporcional (proration) sobre o
+  // valor agregado (premissa: 1 transação cobra o total somado). Cartão libera na hora;
+  // PIX libera após confirmação do webhook (entitlement fica "pending" até lá).
+  app.post<{ Params: { key: string }; Body: any }>(
+    '/modules/:key/subscribe',
+    { ...auth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req: any, reply) => {
+      const { key } = req.params;
+      const userId  = req.user.sub;
+
+      const v = validateRequest(moduleSubscribeSchema)(req.body);
+      if (!v.valid) return reply.code(400).send({ error: v.error });
+      const { paymentMethod, card, billingAddress } = v.data;
+
+      if (isCardMethod(paymentMethod) && !card) {
+        return reply.code(400).send({ error: 'Dados do cartão são obrigatórios.' });
+      }
+
+      const [user, product, existing] = await Promise.all([
+        prisma.user.findUnique({ where: { id: userId } }),
+        prisma.product.findUnique({ where: { key } }),
+        prisma.entitlement.findUnique({ where: { userId_productKey: { userId, productKey: key } } }),
+      ]);
+      if (!user) return reply.code(401).send({ error: 'Usuário não encontrado' });
+      if (!product || product.status === 'planned' || product.status === 'discovery') {
+        return reply.code(400).send({ error: 'Módulo indisponível para contratação.' });
+      }
+      if (existing?.status === 'active') {
+        return reply.code(400).send({ error: 'Você já tem este módulo ativo.' });
+      }
+
+      // Dependência dura (ex.: atende-qualidade requer atende)
+      if (product.dependsOn?.length) {
+        const owned = new Set((await prisma.entitlement.findMany({
+          where:  { userId, status: { in: ['active', 'trialing'] } },
+          select: { productKey: true },
+        })).map((e: { productKey: string }) => e.productKey));
+        const missing = product.dependsOn.find((d: string) => !owned.has(d));
+        if (missing) {
+          return reply.code(400).send({ error: `Este módulo requer o módulo "${missing}" ativo.`, moduleRequired: missing });
+        }
+      }
+
+      if (!user.emailVerified) {
+        return reply.code(403).send({ code: 'EMAIL_NOT_VERIFIED', error: 'Confirme seu e-mail antes de contratar um módulo.' });
+      }
+      if (!user.document) {
+        return reply.code(400).send({ code: 'DOCUMENT_REQUIRED', error: 'Informe seu CPF/CNPJ para contratar um módulo.' });
+      }
+
+      let asaasCustomerId: string;
+      try {
+        asaasCustomerId = await getOrCreateCustomer(user);
+      } catch (err: any) {
+        app.log.error({ err }, 'Asaas customer error (module subscribe)');
+        return reply.code(503).send({ error: 'Serviço de pagamento indisponível. Tente novamente.' });
+      }
+
+      const sub          = await prisma.subscription.findUnique({ where: { userId } });
+      const currentTotal = await computeAggregateValue(userId);
+      const newTotal      = Math.round((currentTotal + product.priceMonthly) * 100) / 100;
+      const proration     = calculateProration(currentTotal, newTotal, sub?.currentPeriodEnd ?? null);
+      const freePlan      = await prisma.plan.findUnique({ where: { name: 'free' } });
+
+      // ── Sem cobrança adicional (módulo gratuito ou ciclo já no fim) ──
+      if (!proration.shouldCharge) {
+        const newSubId = await reissueAggregateSubscription({
+          userId, asaasCustomerId, newValue: newTotal, paymentMethod,
+          oldAsaasSubscriptionId: sub?.asaasSubscriptionId ?? null,
+          description: 'ZapScript — Assinatura mensal',
+        });
+        await prisma.subscription.upsert({
+          where:  { userId },
+          create: { userId, planId: freePlan?.id ?? '', asaasSubscriptionId: newSubId, asaasCustomerId, paymentMethod, status: 'active' },
+          update: { asaasSubscriptionId: newSubId, asaasCustomerId, paymentMethod },
+        }).catch(() => null);
+        await activateModuleEntitlement(userId, key);
+        app.log.info(`Módulo ativado (sem custo adicional): userId=${userId} module=${key} total=${newTotal}`);
+        return { status: 'active', moduleKey: key, newTotal, message: 'Módulo ativado sem custo adicional.' };
+      }
+
+      // ── Cobrar proration do módulo ──
+      const chargeBody: Record<string, any> = {
+        customer:          asaasCustomerId,
+        billingType:       toAsaasBillingType(paymentMethod),
+        value:             proration.proratedAmount,
+        dueDate:           todayStr(),
+        description:       `ZapScript — Ativação do módulo ${product.name}`,
+        externalReference: encodeModuleRef(userId, key),
+      };
+      if (isCardMethod(paymentMethod) && card) {
+        chargeBody.creditCard = {
+          holderName:  card.holderName.toUpperCase(),
+          number:      card.number.replace(/\s/g, ''),
+          expiryMonth: card.expiryMonth,
+          expiryYear:  card.expiryYear.length === 2 ? `20${card.expiryYear}` : card.expiryYear,
+          ccv:         card.ccv,
+        };
+        chargeBody.creditCardHolderInfo = buildHolderInfo(user, billingAddress);
+        chargeBody.remoteIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
+      }
+
+      const chargeRes = await asaas('/payments', { method: 'POST', body: JSON.stringify(chargeBody) });
+      const charge    = await chargeRes.json() as any;
+      if (!charge?.id) {
+        app.log.error({ charge }, 'Asaas: erro ao criar cobrança de ativação de módulo');
+        return reply.code(500).send({ error: 'Erro ao criar cobrança. Tente novamente.' });
+      }
+
+      // ── Cartão: aprovação imediata ──
+      if (isCardMethod(paymentMethod)) {
+        if (charge.errors?.length > 0) {
+          return reply.code(402).send({ status: 'declined', error: charge.errors[0]?.description || 'Cartão recusado.' });
+        }
+        if (charge.status === 'CONFIRMED' || charge.status === 'RECEIVED') {
+          const newSubId = await reissueAggregateSubscription({
+            userId, asaasCustomerId, newValue: newTotal, paymentMethod,
+            oldAsaasSubscriptionId: sub?.asaasSubscriptionId ?? null,
+            description: 'ZapScript — Assinatura mensal',
+          });
+          await prisma.subscription.upsert({
+            where:  { userId },
+            create: { userId, planId: freePlan?.id ?? '', asaasSubscriptionId: newSubId, asaasCustomerId, paymentMethod, status: 'active' },
+            update: { asaasSubscriptionId: newSubId, asaasCustomerId, paymentMethod },
+          }).catch(() => null);
+          await activateModuleEntitlement(userId, key, { paymentId: charge.id });
+          app.log.info(`Módulo ativado (cartão): userId=${userId} module=${key} total=${newTotal}`);
+          return { status: 'active', moduleKey: key, newTotal };
+        }
+        return reply.code(402).send({ status: 'declined', error: 'Cartão não aprovado. Verifique os dados e tente novamente.' });
+      }
+
+      // ── PIX: entitlement fica "pending" até o webhook confirmar (não concede acesso) ──
+      await prisma.entitlement.upsert({
+        where:  { userId_productKey: { userId, productKey: key } },
+        create: { userId, productKey: key, status: 'pending', source: 'paid' },
+        update: { status: 'pending' },
+      });
+      let qrCode = null as string | null, qrCodeUrl = null as string | null;
+      try {
+        const qrData = await asaas(`/payments/${charge.id}/pixQrCode`).then(r => r.json()) as any;
+        qrCode    = qrData?.payload      || null;
+        qrCodeUrl = qrData?.encodedImage ? `data:image/png;base64,${qrData.encodedImage}` : null;
+      } catch { /* QR não crítico */ }
+
+      return {
+        status: 'pending_pix', chargeId: charge.id, qrCode, qrCodeUrl,
+        expiresAt: threeHoursFromNow(), proratedAmount: proration.proratedAmount, newTotal,
+      };
+    }
+  );
+
+  // ── POST /billing/modules/:key/cancel ──────────────────────
+  // Cancela um módulo pago. Recalcula o valor agregado e reemite a assinatura Asaas
+  // no novo total (ou cancela de vez se não sobrar nada a cobrar). Sem reembolso
+  // proporcional — mesma política do resto do sistema (sem precedente de down-charge).
+  app.post<{ Params: { key: string } }>('/modules/:key/cancel', auth, async (req: any, reply) => {
+    const { key } = req.params;
+    const userId  = req.user.sub;
+
+    const [entitlement, sub, product] = await Promise.all([
+      prisma.entitlement.findUnique({ where: { userId_productKey: { userId, productKey: key } } }),
+      prisma.subscription.findUnique({ where: { userId } }),
+      prisma.product.findUnique({ where: { key } }),
+    ]);
+    if (!entitlement || entitlement.status !== 'active') {
+      return reply.code(400).send({ error: 'Você não tem este módulo ativo.' });
+    }
+
+    if (entitlement.source !== 'paid') {
+      // Cortesia/trial/bundle — apenas revoga, sem impacto de cobrança.
+      await prisma.entitlement.update({
+        where: { userId_productKey: { userId, productKey: key } },
+        data:  { status: 'canceled', canceledAt: new Date() },
+      });
+      invalidateModuleCache(userId).catch(() => null);
+      return { canceled: true, moduleKey: key };
+    }
+
+    const currentTotal = await computeAggregateValue(userId);
+    const newTotal      = Math.max(0, Math.round((currentTotal - (product?.priceMonthly ?? 0)) * 100) / 100);
+
+    if (sub?.asaasSubscriptionId && sub.asaasCustomerId) {
+      if (newTotal <= 0) {
+        await asaas(`/subscriptions/${sub.asaasSubscriptionId}`, { method: 'DELETE' })
+          .catch(err => app.log.warn({ err }, 'Asaas: falha ao cancelar assinatura agregada'));
+        await prisma.subscription.update({ where: { userId }, data: { asaasSubscriptionId: null } }).catch(() => null);
+      } else {
+        const newSubId = await reissueAggregateSubscription({
+          userId, asaasCustomerId: sub.asaasCustomerId, newValue: newTotal,
+          paymentMethod: sub.paymentMethod ?? undefined,
+          oldAsaasSubscriptionId: sub.asaasSubscriptionId,
+          description: 'ZapScript — Assinatura mensal',
+        });
+        await prisma.subscription.update({ where: { userId }, data: { asaasSubscriptionId: newSubId } }).catch(() => null);
+      }
+    }
+
+    await prisma.entitlement.update({
+      where: { userId_productKey: { userId, productKey: key } },
+      data:  { status: 'canceled', canceledAt: new Date() },
+    });
+    invalidateModuleCache(userId).catch(() => null);
+    app.log.info(`Módulo cancelado: userId=${userId} module=${key} novoTotal=${newTotal}`);
+    return { canceled: true, moduleKey: key, newTotal };
+  });
+
   // ── GET /billing/invoices ─────────────────────────────
   app.get('/invoices', auth, async (req: any) => {
     const userId = req.user.sub;
@@ -1057,6 +1347,33 @@ export default async function billingRoutes(app: FastifyInstance) {
         return reply.send({ received: true });
       }
 
+      // ── Ativação de módulo (proration) confirmada — checar ANTES do decodeRef genérico ──
+      const moduleRef = decodeModuleRef(payment.externalReference);
+      if (moduleRef) {
+        const { userId, productKey } = moduleRef;
+        const subInDb = await prisma.subscription.findUnique({ where: { userId } }).catch(() => null);
+        const asaasCustomerId = subInDb?.asaasCustomerId || payment.customer;
+        const product   = await prisma.product.findUnique({ where: { key: productKey } });
+        const currentTotal = await computeAggregateValue(userId);
+        const newTotal  = Math.round((currentTotal + (product?.priceMonthly ?? 0)) * 100) / 100;
+
+        const newSubId = await reissueAggregateSubscription({
+          userId, asaasCustomerId, newValue: newTotal,
+          paymentMethod: payment.billingType === 'CREDIT_CARD' ? 'credit_card' : payment.billingType === 'DEBIT_CARD' ? 'debit_card' : 'pix',
+          oldAsaasSubscriptionId: subInDb?.asaasSubscriptionId ?? null,
+          description: 'ZapScript — Assinatura mensal',
+        });
+        const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
+        await prisma.subscription.upsert({
+          where:  { userId },
+          create: { userId, planId: freePlan?.id ?? '', asaasSubscriptionId: newSubId, asaasCustomerId, status: 'active' },
+          update: { asaasSubscriptionId: newSubId, asaasCustomerId },
+        }).catch(() => null);
+        await activateModuleEntitlement(userId, productKey, { paymentId: payment.id });
+        app.log.info(`Módulo ativado via webhook: userId=${userId} module=${productKey} total=${newTotal}`);
+        return reply.send({ received: true });
+      }
+
       const decoded = decodeRef(payment.externalReference);
       if (!decoded?.userId || !decoded?.planName) {
         app.log.error({ ref: payment.externalReference }, `Webhook ${eventType}: externalReference inválido`);
@@ -1166,6 +1483,32 @@ export default async function billingRoutes(app: FastifyInstance) {
           `;
           sendEmail(failedUser.email, '⚠️ ZapScript — Pagamento pendente', html)
             .catch(err => app.log.error({ err }, 'Erro ao enviar e-mail de cobrança'));
+        }
+      }
+      return reply.send({ received: true });
+    }
+
+    // ── Assinatura cancelada/expirada no lado do Asaas (ex.: falha de pagamento
+    //    após as tentativas de retry) — downgrade para free, espelhando /billing/cancel ──
+    if (eventType === 'SUBSCRIPTION_DELETED') {
+      const decoded = decodeRef(body?.subscription?.externalReference);
+      const userId  = decoded?.userId;
+      if (userId) {
+        const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
+        if (freePlan) {
+          const nextReset = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          await prisma.$transaction([
+            prisma.subscription.update({
+              where: { userId },
+              data:  { planId: freePlan.id, status: 'canceled', asaasSubscriptionId: null, currentPeriodEnd: null },
+            }),
+            prisma.minuteBalance.update({
+              where: { userId },
+              data:  { availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
+            }),
+          ]).catch(err => app.log.error({ err }, 'Erro ao processar downgrade de SUBSCRIPTION_DELETED'));
+          invalidatePlanCache(userId).catch(() => null);
+          app.log.info(`Assinatura removida no Asaas — downgrade para free: userId=${userId}`);
         }
       }
       return reply.send({ received: true });

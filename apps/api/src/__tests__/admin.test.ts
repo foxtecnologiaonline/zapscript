@@ -50,6 +50,13 @@ jest.mock('../lib/prisma', () => ({
   },
 }));
 
+// Mock de redis (admin.ts importa client real no top-level para requeue de jobs
+// via BullMQ — sem isso, o require de services/queue tenta conectar de verdade
+// e trava a suíte inteira quando não há Redis acessível).
+jest.mock('../services/queue', () => ({
+  redis: { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue('OK'), del: jest.fn().mockResolvedValue(1) },
+}));
+
 import { prisma } from '../lib/prisma';
 
 const VALID_TOKEN = 'test-admin-token';
@@ -85,8 +92,8 @@ describe('GET /admin/stats', () => {
   it('retorna estatísticas com token válido', async () => {
     (prisma.user.count as jest.Mock).mockResolvedValue(10);
     (prisma.subscription.findMany as jest.Mock).mockResolvedValue([
-      { plan: { name: 'free' } },
-      { plan: { name: 'pro' } },
+      { plan: { name: 'free' }, user: { isTester: false } },
+      { plan: { name: 'pro' },  user: { isTester: false } },
     ]);
     (prisma.subscription.groupBy as jest.Mock).mockResolvedValue([
       { status: 'active', _count: { status: 8 } },
@@ -118,8 +125,8 @@ describe('GET /admin/stats', () => {
   it('calcula MRR pro + executive corretamente', async () => {
     (prisma.user.count as jest.Mock).mockResolvedValue(2);
     (prisma.subscription.findMany as jest.Mock).mockResolvedValue([
-      { plan: { name: 'pro' } },       // R$39.90
-      { plan: { name: 'executive' } }, // R$49.90
+      { plan: { name: 'pro' },       user: { isTester: false } }, // R$39.90
+      { plan: { name: 'executive' }, user: { isTester: false } }, // R$49.90
     ]);
     (prisma.subscription.groupBy as jest.Mock).mockResolvedValue([
       { status: 'active', _count: { status: 2 } },
@@ -137,15 +144,15 @@ describe('GET /admin/stats', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().mrr).toBeCloseTo(79.80, 1);
+    expect(res.json().mrr).toBeCloseTo(89.80, 1);
   });
 
   it('calcula conversion rate corretamente', async () => {
     (prisma.user.count as jest.Mock).mockResolvedValue(100);
     (prisma.subscription.findMany as jest.Mock).mockResolvedValue([
-      { plan: { name: 'free' } },
-      { plan: { name: 'pro' } },
-      { plan: { name: 'pro' } },
+      { plan: { name: 'free' }, user: { isTester: false } },
+      { plan: { name: 'pro' },  user: { isTester: false } },
+      { plan: { name: 'pro' },  user: { isTester: false } },
     ]);
     (prisma.subscription.groupBy as jest.Mock).mockResolvedValue([
       { status: 'active', _count: { status: 3 } },

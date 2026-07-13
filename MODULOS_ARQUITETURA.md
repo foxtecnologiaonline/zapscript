@@ -19,13 +19,13 @@ Branch: `claude/zapscript-modules-nv95eb`.
 | `atende` | **ZapScript Atende** | "Preciso responder cliente 24/7 sem contratar gente" | Mensageria + IA | **Beta / em construção** |
 | `cobranca` | **ZapScript Cobrança** | Inadimplência do MEI: cobrar venceu/vence hoje/2ª via | **100%** mensageria | **P1 — próximo** |
 | `campanhas` | **ZapScript Campanhas** | Disparo em massa *compliant* (janela Meta dez/2025) | API oficial WhatsApp | **P1 — janela urgente** |
-| `crm` | **ZapScript CRM Leve** | Gap entre "responder" e "vender" no WhatsApp (funil) | Conversas + mensageria | **P2 — cross-sell c/ Atende** |
+| `crm` | **ZapScript CRM** | Gap entre "responder" e "vender" no WhatsApp (funil) | Conversas + mensageria | **P2 — cross-sell c/ Atende** |
 | `atende-qualidade` | **Atende Qualidade** | "O bot tá funcionando?" (tempo resposta, sentimento, conversão) | Dados do Atende | **P2** (depende de `atende`) |
-| `legenda` | **ZapScript Legenda** | Legenda automática de Reels/Stories (ICP novo: criador) | Motor Whisper | **P2 — baixo risco técnico** |
-| `voicetext-vendas` | **VoiceText Vendas** | Vendedor grava visita → transcreve/resume → nota no CRM | Motor Ata/Whisper | **P3** (sinergia c/ `crm`) |
-| `multicanal` | **ZapScript Multicanal** | Mesma automação estendida ao DM do Instagram | Motor `core`/`atende` | **P3 — discovery** (validar com 5 antes) |
+| `legenda` | **ZapScript Legendas** | Legenda automática de Reels/Stories (ICP novo: criador) | Motor Whisper | **P2 — baixo risco técnico** |
+| `vendas` | **ZapScript Vendas** | Vendedor grava visita → transcreve/resume → nota no CRM | Motor Ata/Whisper | **P3** (sinergia c/ `crm`) |
+| `multicanal` | **ZapScript Multicanal** | Todos os módulos replicados noutras plataformas (Instagram, Facebook, Telegram) | Motor `core`/`atende` | **P3 — discovery** (validar com 5 antes) |
 
-> `atende-qualidade` **depende** de `atende`. `voicetext-vendas` tem sinergia (não dependência
+> `atende-qualidade` **depende** de `atende`. `vendas` tem sinergia (não dependência
 > dura) com `crm`. Estes vínculos vivem no registry (`dependsOn`) e são aplicados no checkout e no gate.
 
 A fonte única da verdade deste catálogo é **`packages/modules/catalog.ts`** (criado junto com este
@@ -216,7 +216,7 @@ apps/web/src/app/
   autorizados precisam de alternativa compliant **agora**.
 - **Fase 4 — `crm` + `atende-qualidade`:** cross-sell com Atende; fecha o ciclo "responder → vender →
   medir".
-- **Fase 5 — `legenda` / `voicetext-vendas`:** ICP novo e sinergia comercial; baixo risco técnico
+- **Fase 5 — `legenda` / `vendas`:** ICP novo e sinergia comercial; baixo risco técnico
   (só nova interface sobre motores existentes).
 - **Fase 6 — `multicanal`:** discovery — validar com 5 conversas antes de investir (mais especulativo).
 
