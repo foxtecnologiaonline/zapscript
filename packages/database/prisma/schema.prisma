@@ -9,17 +9,17 @@ datasource db {
 }
 
 model User {
-  id                      String               @id @default(cuid())
-  email                   String               @unique
+  id                      String                @id @default(cuid())
+  email                   String                @unique
   name                    String?
   phone                   String? // Celular de contato (opcional)
   document                String? // CPF/CNPJ (AES-256-GCM encrypted)
-  documentHash            String?              @unique // HMAC-SHA256 blind index (busca de duplicata)
-  emailVerified           Boolean              @default(false)
-  refCode                 String               @unique @default(cuid())
+  documentHash            String?               @unique // HMAC-SHA256 blind index (busca de duplicata)
+  emailVerified           Boolean               @default(false)
+  refCode                 String                @unique @default(cuid())
   referredBy              String?
-  isAdmin                 Boolean              @default(false)
-  isTester                Boolean              @default(false)
+  isAdmin                 Boolean               @default(false)
+  isTester                Boolean               @default(false)
   testerSince             DateTime?
   // LGPD - Consentimentos e direitos do usuário
   privacyPolicyAcceptedAt DateTime?
@@ -32,9 +32,9 @@ model User {
   utmSource               String? // Atribuição de origem (primeiro toque) — ex: "google", "seo"
   utmCampaign             String? // ex: "corretores", "advogados"
   utmMedium               String? // ex: "cpc", "organic"
-  lifecycleEmailsSent     String[]             @default([]) // tags de e-mails de ciclo de vida já enviados (idempotência)
-  createdAt               DateTime             @default(now())
-  updatedAt               DateTime             @updatedAt
+  lifecycleEmailsSent     String[]              @default([]) // tags de e-mails de ciclo de vida já enviados (idempotência)
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
   subscription            Subscription?
   balance                 MinuteBalance?
   numbers                 WhatsappNumber[]
@@ -45,7 +45,7 @@ model User {
   npsResponses            NpsResponse[]
   supportAtendimentos     SupportAtendimento[]
   affiliate               Affiliate?
-  affiliateReferral       AffiliateReferral?   @relation("ReferredUser")
+  affiliateReferral       AffiliateReferral?    @relation("ReferredUser")
   proContactSeeds         ProContactSeed[]
   entitlements            Entitlement[]
   atendeConfigs           AtendeConfig[]
@@ -106,34 +106,34 @@ model MinuteBalance {
 }
 
 model WhatsappNumber {
-  id                 String          @id @default(cuid())
-  userId             String
-  phoneNumber        String          @default("pending")
-  displayName        String?
-  sessionEncrypted   String?
-  status             String          @default("disconnected")
-  connectedAt        DateTime?
-  lastMessageAt      DateTime?
-  messageCount       Int             @default(0)
-  minutesUsed        Float           @default(0)
-  zapiInstanceId     String? // sem @unique — múltiplos usuários podem compartilhar a mesma instância Z-API
-  zapiToken          String? // Token da instância Z-API criada dinamicamente
-  privateMode        Boolean         @default(true) // Modo Privado automático em planos pagos: transcrição vai ao próprio número. false = opt-out explícito do usuário.
+  id                  String               @id @default(cuid())
+  userId              String
+  phoneNumber         String               @default("pending")
+  displayName         String?
+  sessionEncrypted    String?
+  status              String               @default("disconnected")
+  connectedAt         DateTime?
+  lastMessageAt       DateTime?
+  messageCount        Int                  @default(0)
+  minutesUsed         Float                @default(0)
+  zapiInstanceId      String? // sem @unique — múltiplos usuários podem compartilhar a mesma instância Z-API
+  zapiToken           String? // Token da instância Z-API criada dinamicamente
+  privateMode         Boolean              @default(true) // Modo Privado automático em planos pagos: transcrição vai ao próprio número. false = opt-out explícito do usuário.
   // ── Conexão via API oficial da Meta (WhatsApp Cloud API / Embedded Signup) ──
   // Usado apenas para o fluxo de App Review da Meta. Usuários reais seguem no Evolution.
-  provider           String          @default("evolution") // 'evolution' | 'meta'
-  metaWabaId         String? // WhatsApp Business Account ID
-  metaPhoneNumberId  String? // Phone Number ID (Cloud API)
-  metaBusinessId     String? // Business Manager ID
-  metaAccessTokenEnc String? // Token de acesso AES-256-GCM (encryptStr)
-  metaTokenExpiresAt DateTime? // Expiração do token (se aplicável)
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
-  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcriptions     Transcription[]
-  atendeConfig       AtendeConfig?
+  provider            String               @default("evolution") // 'evolution' | 'meta'
+  metaWabaId          String? // WhatsApp Business Account ID
+  metaPhoneNumberId   String? // Phone Number ID (Cloud API)
+  metaBusinessId      String? // Business Manager ID
+  metaAccessTokenEnc  String? // Token de acesso AES-256-GCM (encryptStr)
+  metaTokenExpiresAt  DateTime? // Expiração do token (se aplicável)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcriptions      Transcription[]
+  atendeConfig        AtendeConfig?
   atendeConversations AtendeConversation[]
-  crmContacts        CrmContact[]
+  crmContacts         CrmContact[]
 
   @@index([userId]) // A2: listagem de números por usuário
   @@index([zapiInstanceId]) // A2: busca de instância em webhook (hot path)
