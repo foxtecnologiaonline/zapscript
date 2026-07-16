@@ -52,6 +52,9 @@ model User {
   atendeKnowledgeBase     AtendeKnowledgeBase[]
   atendeConversations     AtendeConversation[]
   salesVisits             SalesVisit[]
+  crmStages               CrmStage[]
+  crmContacts             CrmContact[]
+  crmActivities           CrmActivity[]
 }
 
 model Plan {
@@ -130,6 +133,7 @@ model WhatsappNumber {
   transcriptions     Transcription[]
   atendeConfig       AtendeConfig?
   atendeConversations AtendeConversation[]
+  crmContacts        CrmContact[]
 
   @@index([userId]) // A2: listagem de números por usuário
   @@index([zapiInstanceId]) // A2: busca de instância em webhook (hot path)
@@ -613,4 +617,76 @@ model SalesVisit {
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt(sort: Desc)])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Módulo CRM — funil de vendas dentro do WhatsApp (ver MODULOS_ARQUITETURA.md).
+// v1 é gerenciado manualmente: usuário arrasta contatos entre estágios e pode
+// importar contatos já existentes no histórico de Transcription (1 clique).
+// Escopo v1 NÃO altera o webhook de mensageria — nenhuma captura automática.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Estágio do funil (colunas do Kanban). Semeado com 5 padrões no primeiro
+// acesso do usuário ao módulo (Novo lead, Contato feito, Negociando, Fechado, Perdido).
+model CrmStage {
+  id        String       @id @default(cuid())
+  userId    String
+  name      String
+  order     Int          @default(0)
+  color     String       @default("#6b7280") // hex — cor do cabeçalho da coluna
+  isWon     Boolean      @default(false) // estágio terminal de sucesso (fecha o deal)
+  isLost    Boolean      @default(false) // estágio terminal de perda
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contacts  CrmContact[]
+
+  @@index([userId, order])
+}
+
+// Um lead/contato dentro do funil. phone é único por usuário (evita duplicar
+// o mesmo contato ao importar do histórico de transcrições mais de uma vez).
+model CrmContact {
+  id             String          @id @default(cuid())
+  userId         String
+  stageId        String
+  name           String
+  phone          String
+  email          String?
+  company        String?
+  value          Float? // valor estimado do negócio (R$)
+  tags           String[]        @default([])
+  numberId       String? // WhatsappNumber de origem, quando importado
+  source         String          @default("manual") // 'manual' | 'import_whatsapp'
+  lostReason     String?
+  lastActivityAt DateTime        @default(now())
+  closedAt       DateTime? // preenchido quando entra em estágio isWon/isLost
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stage          CrmStage        @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  number         WhatsappNumber? @relation(fields: [numberId], references: [id], onDelete: SetNull)
+  activities     CrmActivity[]
+
+  @@unique([userId, phone])
+  @@index([userId, stageId])
+  @@index([userId, lastActivityAt(sort: Desc)])
+}
+
+// Linha do tempo do contato: notas manuais, mudanças de estágio (log
+// automático) e lembretes (dueAt + completedAt).
+model CrmActivity {
+  id          String     @id @default(cuid())
+  contactId   String
+  userId      String
+  type        String // 'note' | 'stage_change' | 'call' | 'meeting' | 'reminder' | 'whatsapp'
+  content     String
+  dueAt       DateTime? // lembretes: quando vence
+  completedAt DateTime? // lembretes: quando foi concluído
+  createdAt   DateTime   @default(now())
+  contact     CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, createdAt(sort: Desc)])
+  @@index([userId, dueAt])
 }

@@ -159,6 +159,57 @@ export const adminUpdateTicketSchema = z.object({
   response: z.string().max(5000).optional(),
 });
 
+// ── CRM Schemas ───────────────────────────────────────────
+export const createCrmStageSchema = z.object({
+  name:  z.string().min(1, 'Nome é obrigatório').max(50),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor deve ser hex (#rrggbb)').optional(),
+});
+
+export const updateCrmStageSchema = z.object({
+  name:  z.string().min(1).max(50).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor deve ser hex (#rrggbb)').optional(),
+});
+
+export const reorderCrmStagesSchema = z.object({
+  order: z.array(z.string().cuid()).min(1, 'Informe ao menos um estágio'),
+});
+
+export const createCrmContactSchema = z.object({
+  name:    z.string().min(1, 'Nome é obrigatório').max(100),
+  phone:   z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos'),
+  email:   z.string().email('E-mail inválido').max(150).optional(),
+  company: z.string().max(100).optional(),
+  stageId: z.string().cuid('Estágio inválido').optional(), // se ausente, usa o 1º estágio do funil
+  value:   z.number().min(0).max(100_000_000).optional(),
+  tags:    z.array(z.string().max(30)).max(20).optional(),
+});
+
+export const updateCrmContactSchema = z.object({
+  name:       z.string().min(1).max(100).optional(),
+  phone:      z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos').optional(),
+  email:      z.string().email('E-mail inválido').max(150).nullable().optional(),
+  company:    z.string().max(100).nullable().optional(),
+  value:      z.number().min(0).max(100_000_000).nullable().optional(),
+  tags:       z.array(z.string().max(30)).max(20).optional(),
+  lostReason: z.string().max(300).nullable().optional(),
+});
+
+export const moveCrmContactSchema = z.object({
+  stageId:    z.string().cuid('Estágio inválido'),
+  lostReason: z.string().max(300).optional(), // usado quando o estágio destino é isLost
+});
+
+export const createCrmActivitySchema = z.object({
+  type:    z.enum(['note', 'call', 'meeting', 'reminder']),
+  content: z.string().min(1, 'Descreva a atividade').max(2000),
+  dueAt:   z.coerce.date().optional(), // obrigatório em type=reminder (checado na rota)
+});
+
+export const crmImportSchema = z.object({
+  // lista de telefones (dedupe) escolhidos na tela de sugestões do histórico de transcrições
+  phones: z.array(z.string().regex(/^\d{10,15}$/)).min(1, 'Selecione ao menos um contato').max(200),
+});
+
 // ── Support Schemas ──────────────────────────────────────
 export const createSupportTicketSchema = z.object({
   subject: z.string().min(5, 'Assunto deve ter pelo menos 5 caracteres').max(200),
