@@ -243,6 +243,31 @@ export const atendeKbUpdateSchema = z.object({
   active:   z.boolean().optional(),
 });
 
+// ── Cobrança Schemas ─────────────────────────────────────
+export const cobrancaClienteSchema = z.object({
+  nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+  telefone: z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos (com DDD)'),
+  documento: z.string().max(20).optional(),
+  email: z.string().email('E-mail inválido').optional().or(z.literal('')),
+  notas: z.string().max(500).optional(),
+});
+
+export const cobrancaClienteUpdateSchema = cobrancaClienteSchema.partial();
+
+export const cobrancaCobrancaSchema = z.object({
+  clienteId: z.string().cuid('Cliente inválido'),
+  descricao: z.string().min(2, 'Descrição deve ter pelo menos 2 caracteres').max(200),
+  valor: z.number().positive('Valor deve ser maior que zero').max(1_000_000),
+  vencimento: z.coerce.date({ errorMap: () => ({ message: 'Data de vencimento inválida' }) }),
+});
+
+export const cobrancaCobrancaUpdateSchema = z.object({
+  descricao: z.string().min(2).max(200).optional(),
+  valor: z.number().positive().max(1_000_000).optional(),
+  vencimento: z.coerce.date().optional(),
+  status: z.enum(['pendente', 'paga', 'cancelada']).optional(),
+});
+
 // ── Types Export ──────────────────────────────────────────
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
