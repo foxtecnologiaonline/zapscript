@@ -57,6 +57,7 @@ model User {
   crmActivities           CrmActivity[]
   cobrancaClientes        CobrancaCliente[]
   cobrancaCobrancas       CobrancaCobranca[]
+  legendaJobs             LegendaJob[]
 }
 
 model Plan {
@@ -746,4 +747,31 @@ model CobrancaEnvio {
   cobranca   CobrancaCobranca @relation(fields: [cobrancaId], references: [id], onDelete: Cascade)
 
   @@index([cobrancaId, tipo])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Módulo Legendas — legenda automática para Reels/Stories.
+// Vídeo enviado pelo usuário → áudio extraído → Whisper (com timestamps por
+// segmento, reaproveitado da transcrição) → .srt/.vtt para download. MVP não
+// inclui legenda queimada no vídeo (v2) nem canal WhatsApp (só upload web).
+// ─────────────────────────────────────────────────────────────────────────────
+model LegendaJob {
+  id               String    @id @default(cuid())
+  userId           String
+  status           String    @default("pending") // pending | processing | done | error
+  originalFilename String?
+  inputStorageKey  String // bucket legenda-uploads
+  inputSizeBytes   Int?
+  durationSec      Float?
+  language         String    @default("pt")
+  srtStorageKey    String? // bucket legenda-output
+  vttStorageKey    String?
+  errorMessage     String?
+  deletedAt        DateTime? // Soft delete
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status])
 }

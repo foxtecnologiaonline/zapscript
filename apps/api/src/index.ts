@@ -318,6 +318,7 @@ app.register(import('./routes/atende'),          { prefix: '/atende' });
 app.register(import('./routes/modules/vendas'),  { prefix: '/modules/vendas' });
 app.register(import('./routes/modules/crm'),     { prefix: '/crm' });
 app.register(import('./routes/cobranca'),        { prefix: '/cobranca' });
+app.register(import('./routes/legendas'),        { prefix: '/legendas' });
 // Demo de upload no site removido — vira app/site separado. Rota desativada.
 app.register(import('./routes/analytics'),       { prefix: '/analytics' });
 
@@ -595,13 +596,52 @@ async function runAutoMigrations() {
         VALUES ('cobranca-product-seed', 'cobranca', 'ZapScript Cobrança', 'planned', 29.90, 287.04, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
+    // Módulo Legendas (migração 20260714_legenda_jobs): auto-cura o schema no
+    // boot mesmo se o startCommand de produção não rodar `prisma migrate deploy`.
+    `CREATE TABLE IF NOT EXISTS "LegendaJob" (
+      "id"               TEXT NOT NULL,
+      "userId"           TEXT NOT NULL,
+      "status"           TEXT NOT NULL DEFAULT 'pending',
+      "originalFilename" TEXT,
+      "inputStorageKey"  TEXT NOT NULL,
+      "inputSizeBytes"   INTEGER,
+      "durationSec"      DOUBLE PRECISION,
+      "language"         TEXT NOT NULL DEFAULT 'pt',
+      "srtStorageKey"    TEXT,
+      "vttStorageKey"    TEXT,
+      "errorMessage"     TEXT,
+      "deletedAt"        TIMESTAMP(3),
+      "createdAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"        TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "LegendaJob_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "LegendaJob_userId_createdAt_idx" ON "LegendaJob"("userId", "createdAt" DESC)`,
+    `CREATE INDEX IF NOT EXISTS "LegendaJob_status_idx" ON "LegendaJob"("status")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'LegendaJob_userId_fkey') THEN
+        ALTER TABLE "LegendaJob"
+          ADD CONSTRAINT "LegendaJob_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // Módulo mantido oculto (status 'planned') até decisão explícita de lançamento —
+    // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'legenda') THEN
+        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 34.90, "priceYearly" = 335.04
+          WHERE "key" = 'legenda' AND "status" NOT IN ('beta', 'ga');
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'planned', 34.90, 335.04, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
       app.log.warn(`[AutoMigration] ${e.message}`)
     );
   }
-  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt)');
+  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt + Cobrança + Legendas)');
 }
 
 /**

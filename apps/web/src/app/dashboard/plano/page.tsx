@@ -1549,7 +1549,7 @@ function PlanoContent() {
               <ModuleCheckoutInline
                 moduleKey={moduleInfo.key}
                 moduleName={moduleInfo.name}
-                priceLabel={formatBrl(moduleInfo.priceMonthly)}
+                priceMonthly={moduleInfo.priceMonthly}
                 onSuccess={handleModuleSuccess}
                 onCancel={() => setModuleCheckoutOpen(false)}
               />

@@ -61,3 +61,14 @@ export const atendeQueue = new Queue('atende-replies', {
     removeOnFail:     { count: 1000, age: 7 * 24 * 60 * 60 },
   },
 });
+
+// ── Fila de geração de legendas (ZapScript Legendas) ──────────────────────────
+export const legendaQueue = new Queue('legendas', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff:  { type: 'exponential', delay: 10_000 },
+    removeOnComplete: { count: 500, age: 24 * 60 * 60 },
+    removeOnFail:     { count: 1000, age: 7 * 24 * 60 * 60 },
+  },
+});

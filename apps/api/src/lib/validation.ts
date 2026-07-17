@@ -268,6 +268,13 @@ export const cobrancaCobrancaUpdateSchema = z.object({
   status: z.enum(['pendente', 'paga', 'cancelada']).optional(),
 });
 
+// ── Legendas Schemas ──────────────────────────────────────
+export const legendaUploadUrlSchema = z.object({
+  filename:    z.string().min(1).max(200),
+  contentType: z.string().min(3).max(100),
+  sizeBytes:   z.number().positive().max(500 * 1024 * 1024, 'Arquivo acima do limite de 500MB'),
+});
+
 // ── Types Export ──────────────────────────────────────────
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
