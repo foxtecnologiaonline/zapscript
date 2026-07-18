@@ -25,7 +25,7 @@ export async function getUserPlan(userId: string): Promise<string> {
 
   // Salvar em cache (fire-and-forget)
   try {
-    await (redis as any).set(planCacheKey(userId), planName, { EX: PLAN_CACHE_TTL });
+    await (redis as any).set(planCacheKey(userId), planName, 'EX', PLAN_CACHE_TTL);
   } catch { /* Redis indisponível — ignorar */ }
 
   return planName;

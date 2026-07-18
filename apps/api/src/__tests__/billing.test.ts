@@ -357,3 +357,254 @@ describe('POST /billing/modules/:key/cancel', () => {
     expect(prisma.subscription.update).toHaveBeenCalledWith({ where: { userId: 'u1' }, data: { asaasSubscriptionId: 'sub_new' } });
   });
 });
+
+// ── Combo Preview Tests ──────────────────────────────────────────────
+describe('GET /billing/combo/preview', () => {
+  let app: Awaited<ReturnType<typeof buildApp>>;
+
+  beforeAll(async () => { app = await buildApp(); });
+  afterAll(async () => { await app.close(); });
+  beforeEach(() => jest.clearAllMocks());
+
+  it('retorna available=false quando já tem o core pago e todos os módulos', async () => {
+    (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce({ plan: { name: 'pro' } });
+    (prisma.product.findMany as jest.Mock).mockResolvedValueOnce([]);
+    (prisma.entitlement.findMany as jest.Mock).mockResolvedValueOnce([]);
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'GET', url: '/billing/combo/preview',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ available: false, reason: 'complete' });
+  });
+
+  it('retorna prévia com desconto quando há módulos disponíveis', async () => {
+    (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce(null);
+    (prisma.product.findMany as jest.Mock).mockResolvedValueOnce([productAtende]);
+    (prisma.entitlement.findMany as jest.Mock).mockResolvedValueOnce([]);
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'GET', url: '/billing/combo/preview',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      available:     true,
+      corePlanName:  'pro',
+      corePlanLabel: 'Pro',
+      modules:       [{ key: 'atende', name: 'Atende', priceMonthly: 29.9 }],
+      discountPct:   0.2,
+      rawTotal:      69.8,
+      newTotal:      55.84,
+    });
+  });
+});
+
+// ── Combo Subscribe Tests ─────────────────────────────────────────────
+describe('POST /billing/combo/subscribe', () => {
+  let app: Awaited<ReturnType<typeof buildApp>>;
+
+  beforeAll(async () => {
+    app = await buildApp();
+    process.env.ASAAS_API_KEY = 'test-key';
+  });
+  afterAll(async () => { await app.close(); });
+  beforeEach(() => jest.clearAllMocks());
+
+  it('retorna 400 quando o combo já está completo', async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(baseUser);
+    (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce({ plan: { name: 'pro' } });
+    (prisma.product.findMany as jest.Mock).mockResolvedValueOnce([]);
+    (prisma.entitlement.findMany as jest.Mock).mockResolvedValueOnce([]);
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/billing/combo/subscribe',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/combo completo/i);
+  });
+
+  it('retorna 403 quando o e-mail não está verificado', async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce({ ...baseUser, emailVerified: false });
+    (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce(null);
+    (prisma.product.findMany as jest.Mock).mockResolvedValueOnce([productAtende]);
+    (prisma.entitlement.findMany as jest.Mock).mockResolvedValueOnce([]);
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/billing/combo/subscribe',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('EMAIL_NOT_VERIFIED');
+  });
+
+  it('retorna 400 quando falta CPF/CNPJ', async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce({ ...baseUser, document: null });
+    (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce(null);
+    (prisma.product.findMany as jest.Mock).mockResolvedValueOnce([productAtende]);
+    (prisma.entitlement.findMany as jest.Mock).mockResolvedValueOnce([]);
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/billing/combo/subscribe',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('DOCUMENT_REQUIRED');
+  });
+
+  it('ativa o Combo na hora quando pago no cartão (sem desconto duplicado)', async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(baseUser);
+    (prisma.subscription.findUnique as jest.Mock)
+      .mockResolvedValueOnce(null)   // top-level (Promise.all)
+      .mockResolvedValueOnce(null)   // computeAggregateValue
+      .mockResolvedValueOnce(null);  // activatePlan (select currentPeriodEnd)
+    (prisma.product.findMany as jest.Mock)
+      .mockResolvedValueOnce([productAtende])   // resolveComboModules (rota)
+      .mockResolvedValueOnce([productAtende]);  // resolveComboModules (dentro de activateCombo)
+    (prisma.entitlement.findMany as jest.Mock)
+      .mockResolvedValueOnce([])   // resolveComboModules (rota)
+      .mockResolvedValueOnce([])   // computeAggregateValue
+      .mockResolvedValueOnce([]);  // resolveComboModules (dentro de activateCombo)
+    (prisma.plan.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'plan-pro', priceBrl: 39.90, minutesPerMonth: 999999 });
+    (prisma.subscription.upsert as jest.Mock).mockResolvedValueOnce({});
+    (prisma.minuteBalance.upsert as jest.Mock).mockResolvedValueOnce({});
+    (prisma.entitlement.upsert as jest.Mock).mockResolvedValueOnce({});
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({ json: async () => ({ data: [{ id: 'cus_1' }] }) })            // getOrCreateCustomer (já existe)
+      .mockResolvedValueOnce({ json: async () => ({ id: 'pay_1', status: 'CONFIRMED' }) })   // cobrança aprovada
+      .mockResolvedValueOnce({ json: async () => ({ id: 'sub_new' }) });                     // reissueAggregateSubscription
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/billing/combo/subscribe',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        paymentMethod: 'credit_card',
+        card: { holderName: 'Test User', number: '4111111111111111', expiryMonth: '12', expiryYear: '30', ccv: '123' },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(expect.objectContaining({
+      status: 'active', corePlanName: 'pro', newTotal: 55.84, discountPct: 0.2, modulesActivated: ['atende'],
+    }));
+    expect(prisma.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ comboDiscountPct: 0.2 }),
+    }));
+    expect(prisma.entitlement.upsert).toHaveBeenCalled();
+  });
+
+  it('retorna 402 quando o cartão é recusado', async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(baseUser);
+    (prisma.subscription.findUnique as jest.Mock)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    (prisma.product.findMany as jest.Mock).mockResolvedValueOnce([productAtende]);
+    (prisma.entitlement.findMany as jest.Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({ json: async () => ({ data: [{ id: 'cus_1' }] }) })
+      .mockResolvedValueOnce({ json: async () => ({ id: 'pay_declined', status: 'PENDING', errors: [{ description: 'Cartão recusado pela operadora.' }] }) });
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/billing/combo/subscribe',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        paymentMethod: 'credit_card',
+        card: { holderName: 'Test User', number: '4111111111111111', expiryMonth: '12', expiryYear: '30', ccv: '123' },
+      },
+    });
+    expect(res.statusCode).toBe(402);
+    expect(res.json().status).toBe('declined');
+    expect(res.json().error).toMatch(/recusado/i);
+    expect(prisma.subscription.upsert).not.toHaveBeenCalled();
+  });
+
+  it('retorna pending_pix e ativa módulos como pendentes quando pago via PIX', async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(baseUser);
+    (prisma.subscription.findUnique as jest.Mock)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    (prisma.product.findMany as jest.Mock).mockResolvedValueOnce([productAtende]);
+    (prisma.entitlement.findMany as jest.Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    (prisma.entitlement.upsert as jest.Mock).mockResolvedValueOnce({});
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({ json: async () => ({ data: [{ id: 'cus_1' }] }) })
+      .mockResolvedValueOnce({ json: async () => ({ id: 'pay_pix_1', status: 'PENDING' }) })
+      .mockResolvedValueOnce({ json: async () => ({ payload: 'comboPix123', encodedImage: 'aW1n' }) });
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/billing/combo/subscribe',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('pending_pix');
+    expect(res.json().qrCode).toBe('comboPix123');
+    expect(res.json().modulesPending).toEqual(['atende']);
+    expect(prisma.entitlement.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ status: 'pending' }) })
+    );
+  });
+
+  it('ativa o Combo sem custo adicional quando o ciclo atual já está no fim', async () => {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const subShape = {
+      plan: { name: 'pro', priceBrl: 39.90 },
+      currentPeriodEnd: yesterday,
+      asaasSubscriptionId: 'sub_old',
+      asaasCustomerId: 'cus_1',
+      paymentMethod: 'pix',
+    };
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(baseUser);
+    (prisma.subscription.findUnique as jest.Mock)
+      .mockResolvedValueOnce(subShape)                          // top-level
+      .mockResolvedValueOnce(subShape)                          // computeAggregateValue
+      .mockResolvedValueOnce({ currentPeriodEnd: yesterday });  // activatePlan (select)
+    (prisma.product.findMany as jest.Mock)
+      .mockResolvedValueOnce([productAtende])
+      .mockResolvedValueOnce([productAtende]);
+    (prisma.entitlement.findMany as jest.Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    (prisma.plan.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'plan-pro', priceBrl: 39.90, minutesPerMonth: 999999 });
+    (prisma.subscription.upsert as jest.Mock).mockResolvedValueOnce({});
+    (prisma.minuteBalance.upsert as jest.Mock).mockResolvedValueOnce({});
+    (prisma.entitlement.upsert as jest.Mock).mockResolvedValueOnce({});
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({ json: async () => ({ data: [{ id: 'cus_1' }] }) })  // getOrCreateCustomer
+      .mockResolvedValueOnce({ json: async () => ({ id: 'sub_new' }) })           // reissue: cria nova assinatura
+      .mockResolvedValueOnce({ ok: true });                                       // reissue: apaga a antiga
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/billing/combo/subscribe',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(expect.objectContaining({
+      status: 'active', corePlanName: 'pro', newTotal: 55.84, discountPct: 0.2,
+      modulesActivated: ['atende'], message: 'Combo ativado sem custo adicional.',
+    }));
+  });
+});
