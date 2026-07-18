@@ -72,3 +72,16 @@ export const legendaQueue = new Queue('legendas', {
     removeOnFail:     { count: 1000, age: 7 * 24 * 60 * 60 },
   },
 });
+
+// ── Fila de disparo de campanhas (ZapScript Campanhas) ───────────────────────
+// Um job por destinatário — o worker reconfere o status da campanha antes de
+// enviar (pausa/cancelamento não removem jobs já enfileirados, só os ignoram).
+export const campanhasQueue = new Queue('campanhas', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff:  { type: 'exponential', delay: 10_000 },
+    removeOnComplete: { count: 2_000, age: 48 * 60 * 60 },
+    removeOnFail:     { count: 5_000, age: 7 * 24 * 60 * 60 },
+  },
+});
