@@ -350,15 +350,16 @@ model KnowledgeBase {
 
 // ── Programa de Afiliados ───────────────────────────────────────────────────
 // Afiliado = usuário aprovado que divulga o ZapScript e ganha comissão por venda.
-// Decisões: cadastro requer aprovação do admin; o afiliado escolhe o modelo de
-// comissão (única de 30% do 1º pagamento OU recorrente de 5% nos primeiros 12 meses).
+// Decisões: cadastro requer aprovação do admin; comissão é recorrente — 30% em
+// cada pagamento do indicado nos primeiros 12 meses (40% se o afiliado bateu a
+// meta de 50+ clientes novos no mês da conversão), depois 5% residual vitalício.
+// Cancelamento nos primeiros 30 dias zera a comissão pendente (ver lib/affiliate.ts).
 // Pagamento = rastreado no sistema e quitado manualmente via Pix pelo admin.
 model Affiliate {
   id                String                @id @default(cuid())
   userId            String                @unique
   code              String                @unique // código de divulgação (?ref=CODE)
   status            String                @default("pending") // pending | approved | rejected | suspended
-  commissionType    String                @default("recurring") // 'onetime' (30% 1º pgto) | 'recurring' (5% x12 meses)
   pixKey            String? // chave Pix p/ recebimento (não é segredo financeiro crítico)
   pixKeyType        String? // cpf | cnpj | email | phone | random
   payoutName        String? // nome/razão social do recebedor
@@ -386,6 +387,7 @@ model AffiliateReferral {
   referredUserId String    @unique // cada usuário é indicado por no máximo 1 afiliado
   status         String    @default("pending") // pending (cadastrou) | converted (já gerou venda)
   convertedAt    DateTime?
+  bonusTier      Boolean   @default(false) // travado na conversão: era o cliente novo nº51+ do afiliado no mês? (30%→40% enquanto recorrente)
   createdAt      DateTime  @default(now())
   affiliate      Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
   referredUser   User      @relation("ReferredUser", fields: [referredUserId], references: [id], onDelete: Cascade)
@@ -401,9 +403,9 @@ model AffiliateCommission {
   paymentId        String // Asaas payment id (idempotência)
   saleAmount       Float // valor da venda (mensalidade paga)
   commissionAmount Float // valor da comissão devida
-  commissionType   String // 'onetime' | 'recurring'
-  monthIndex       Int       @default(1) // recorrente: qual mês (1..12)
-  status           String    @default("pending") // pending | paid | canceled
+  commissionType   String // 'monthly' | 'annual' — plano do pagamento que gerou a comissão
+  monthIndex       Int       @default(1) // recorrente: nº do pagamento do indicado (1, 2, 3...) — define a janela de 12 meses
+  status           String    @default("pending") // pending | paid | canceled (cancelada = churn nos primeiros 30 dias)
   paidAt           DateTime?
   paidReference    String? // comprovante/observação do Pix manual
   createdAt        DateTime  @default(now())
