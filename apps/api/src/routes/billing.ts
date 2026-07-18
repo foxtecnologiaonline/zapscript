@@ -12,7 +12,7 @@ function escHtml(s: string | null | undefined): string {
 import { calculateProration } from '../lib/proration';
 import { validateRequest, billingCheckoutSchema, billingUpgradeSchema, billingTrialCardSchema, moduleSubscribeSchema } from '../lib/validation';
 import { invalidatePlanCache } from '../lib/planGate';
-import { attributeAffiliateCommission } from '../lib/affiliate';
+import { attributeAffiliateCommission, clawbackAffiliateCommissionOnCancel } from '../lib/affiliate';
 import { invalidateModuleCache } from '../lib/moduleGate';
 
 /* ─────────────────────────────────────────────────────────
@@ -999,6 +999,9 @@ export default async function billingRoutes(app: FastifyInstance) {
       }),
     ]);
 
+    // Programa de afiliados: cancelamento nos primeiros 30 dias zera comissões pendentes
+    clawbackAffiliateCommissionOnCancel(userId).catch(() => null);
+
     return { canceled: true, message: 'Assinatura cancelada. Você voltou para o plano gratuito.' };
   });
 
@@ -1791,6 +1794,8 @@ export default async function billingRoutes(app: FastifyInstance) {
             }),
           ]).catch(err => app.log.error({ err }, 'Erro ao processar downgrade de SUBSCRIPTION_DELETED'));
           invalidatePlanCache(userId).catch(() => null);
+          // Programa de afiliados: cancelamento nos primeiros 30 dias zera comissões pendentes
+          clawbackAffiliateCommissionOnCancel(userId).catch(() => null);
           app.log.info(`Assinatura removida no Asaas — downgrade para free: userId=${userId}`);
         }
       }

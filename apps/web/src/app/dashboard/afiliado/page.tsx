@@ -3,19 +3,18 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
-const PAYOUT_MIN = 50;
-
 /* ─────────────────────────────────────────────────────────
    Painel do Afiliado — EXCLUSIVO de afiliados aprovados.
    A solicitação do código fica em Configurações; quem não tem a
    marcação aprovada é redirecionado pra lá. Pagamento via Pix manual.
+   Modelo: 30% recorrente (12 meses) · 40% bônus (51º+ cliente/mês) ·
+   5% residual vitalício · saldo liberado D+30, sem valor mínimo.
    ───────────────────────────────────────────────────────── */
 
 interface Affiliate {
   id: string;
   code: string;
   status: 'pending' | 'approved' | 'rejected' | 'suspended';
-  commissionType: 'onetime' | 'recurring';
   pixKey: string | null;
   pixKeyType: string | null;
   payoutName: string | null;
@@ -25,13 +24,17 @@ interface Affiliate {
 }
 interface Stats {
   referrals: number; converted: number; totalCommissions: number;
-  pendingAmount: number; paidAmount: number;
+  pendingAmount: number; availableAmount: number; lockedAmount: number; paidAmount: number;
 }
-interface Rates { monthlyRate: number; yearlyRate: number; payoutDays: number[]; }
+interface Rates {
+  baseRate: number; bonusRate: number; residualRate: number;
+  recurringMonths: number; bonusThreshold: number; payoutHoldDays: number;
+}
+interface Progress { conversionsThisMonth: number; bonusThreshold: number; bonusActive: boolean; }
 interface Commission {
-  id: string; saleAmount: number; commissionAmount: number;
-  commissionType: string; monthIndex: number;
-  status: 'pending' | 'paid' | 'canceled';
+  id: string; cliente: string; saleAmount: number; commissionAmount: number;
+  ratePercent: number; bonus: boolean; commissionType: string; monthIndex: number;
+  status: 'pending' | 'paid' | 'canceled'; available: boolean;
   paidAt: string | null; createdAt: string;
 }
 
@@ -52,11 +55,12 @@ export default function AfiliadoPage() {
   const [affiliate, setAffiliate]     = useState<Affiliate | null>(null);
   const [stats, setStats]             = useState<Stats | null>(null);
   const [rates, setRates]             = useState<Rates | null>(null);
+  const [progress, setProgress]       = useState<Progress | null>(null);
   const [commissions, setCommissions] = useState<Commission[]>([]);
 
   async function load() {
     try {
-      const data = await api.get<{ affiliate: Affiliate | null; stats?: Stats; rates?: Rates }>('/affiliates/me');
+      const data = await api.get<{ affiliate: Affiliate | null; stats?: Stats; rates?: Rates; progress?: Progress }>('/affiliates/me');
       // Página exclusiva de aprovados — demais voltam para Configurações (onde solicitam/acompanham).
       if (data.affiliate?.status !== 'approved') {
         router.replace('/dashboard/configuracoes');
@@ -65,6 +69,7 @@ export default function AfiliadoPage() {
       setAffiliate(data.affiliate);
       setStats(data.stats || null);
       setRates(data.rates || null);
+      setProgress(data.progress || null);
       try {
         const c = await api.get<{ commissions: Commission[] }>('/affiliates/commissions');
         setCommissions(c.commissions || []);
@@ -92,12 +97,12 @@ export default function AfiliadoPage() {
           <span>🤝</span> Programa de Afiliados
         </h1>
         <p className="text-sm text-brand-muted mt-1">
-          Compartilhe seu link e ganhe comissão sobre cada assinatura paga.
+          Compartilhe seu link e ganhe comissão recorrente sobre cada assinatura paga.
         </p>
       </div>
 
       <ApprovedPanel
-        affiliate={affiliate} stats={stats} rates={rates}
+        affiliate={affiliate} stats={stats} rates={rates} progress={progress}
         commissions={commissions} onUpdated={load}
       />
     </div>
@@ -105,14 +110,15 @@ export default function AfiliadoPage() {
 }
 
 /* ── Painel do afiliado aprovado ── */
-function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
-  affiliate: Affiliate; stats: Stats | null; rates: Rates | null;
+function ApprovedPanel({ affiliate, stats, rates, progress, commissions, onUpdated }: {
+  affiliate: Affiliate; stats: Stats | null; rates: Rates | null; progress: Progress | null;
   commissions: Commission[]; onUpdated: () => void;
 }) {
   const [copied, setCopied]           = useState(false);
   const [kitMsg, setKitMsg]           = useState<string | null>(null);
   const [payoutLoading, setPayoutLoading] = useState(false);
   const [payoutMsg, setPayoutMsg]     = useState('');
+  const [filter, setFilter]           = useState<'all' | 'available' | 'locked' | 'paid'>('all');
   const [origin, setOrigin]           = useState('');
   useEffect(() => { setOrigin(window.location.origin); }, []);
   // Link curto/oficial — o código fica embutido no caminho e some da barra
@@ -145,27 +151,35 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
     }
   }
 
-  const pendingAmount   = stats?.pendingAmount ?? 0;
-  const canRequestPayout = pendingAmount >= PAYOUT_MIN && !!affiliate.pixKey;
+  const availableAmount  = stats?.availableAmount ?? 0;
+  const lockedAmount     = stats?.lockedAmount ?? 0;
+  const canRequestPayout = availableAmount > 0 && !!affiliate.pixKey;
 
   const pendingCount = commissions.filter(c => c.status === 'pending').length;
   const paidCount    = commissions.filter(c => c.status === 'paid').length;
+
+  const filteredCommissions = commissions.filter(c => {
+    if (filter === 'available') return c.status === 'pending' && c.available;
+    if (filter === 'locked')    return c.status === 'pending' && !c.available;
+    if (filter === 'paid')      return c.status === 'paid';
+    return true;
+  });
 
   const kitMessages = [
     {
       key: 'whatsapp',
       label: 'WhatsApp (direto)',
-      text: `Oi! Criei um app que transforma áudio do WhatsApp em texto + resumo em segundos 🎧➡️📝\nTesta grátis, sem cadastro 👉 ${link} 🚀\n(15 áudios grátis/mês 🆓 · Pro R$19,90 em junho 🔥)`,
+      text: `Oi! Criei um app que transforma áudio do WhatsApp em texto + resumo em segundos 🎧➡️📝\nTesta grátis, sem cadastro 👉 ${link} 🚀\n(15 áudios grátis/mês 🆓 · Pro R$19,90 no 1º mês 🔥)`,
     },
     {
       key: 'grupo',
       label: 'Grupo de WhatsApp',
-      text: `Pessoal! 👋 Criei o *ZapScript* 🎧➡️📝 — transforma *áudio do WhatsApp em texto + resumo* em segundos. Aquele áudio de 5 min que chega na pior hora? Lido em 10 segundos 🙌\nTesta grátis, sem cadastro 👉 ${link} 🚀 (15 áudios grátis/mês 🆓 · Pro R$19,90 em junho 🔥)`,
+      text: `Pessoal! 👋 Criei o *ZapScript* 🎧➡️📝 — transforma *áudio do WhatsApp em texto + resumo* em segundos. Aquele áudio de 5 min que chega na pior hora? Lido em 10 segundos 🙌\nTesta grátis, sem cadastro 👉 ${link} 🚀 (15 áudios grátis/mês 🆓 · Pro R$19,90 no 1º mês 🔥)`,
     },
     {
       key: 'linkedin',
       label: 'LinkedIn (post)',
-      text: `Áudio de WhatsApp é ladrão de tempo. ⏱️\n\nO ZapScript transforma áudio em texto + resumo automático 🎧➡️📝\nVocê lê em segundos o que levaria minutos ouvindo.\n\n🆓 15 áudios grátis/mês · 🔥 Pro R$19,90 só em junho\nDemo sem cadastro 👉 ${link}\n\n#produtividade #IA #whatsapp`,
+      text: `Áudio de WhatsApp é ladrão de tempo. ⏱️\n\nO ZapScript transforma áudio em texto + resumo automático 🎧➡️📝\nVocê lê em segundos o que levaria minutos ouvindo.\n\n🆓 15 áudios grátis/mês · 🔥 Pro R$19,90 no 1º mês\nDemo sem cadastro 👉 ${link}\n\n#produtividade #IA #whatsapp`,
     },
   ];
 
@@ -175,7 +189,9 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
       <div className="rounded-2xl p-5" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.12)' }}>
         <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
           <span className="text-xs font-mono uppercase tracking-widest text-brand-muted">Seu link de indicação</span>
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary font-semibold">50% mensal · 20% anual</span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary font-semibold">
+            {rates ? `${Math.round(rates.baseRate * 100)}% recorrente · até ${Math.round(rates.bonusRate * 100)}% bônus` : '...'}
+          </span>
         </div>
         <div className="flex gap-2 flex-wrap">
           <input readOnly value={link} className="field-input flex-1 min-w-[200px] font-mono text-xs" onFocus={e => e.target.select()} />
@@ -201,9 +217,9 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
           sub={`de ${stats?.referrals ?? 0} indicados`}
         />
         <StatBox
-          label="A receber"
-          value={brl(stats?.pendingAmount ?? 0)}
-          sub={`${pendingCount} comissão${pendingCount !== 1 ? 'ões' : ''} pendente${pendingCount !== 1 ? 's' : ''}`}
+          label="Disponível"
+          value={brl(availableAmount)}
+          sub="liberado para saque (D+30)"
           accent
         />
         <StatBox
@@ -212,6 +228,45 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
           sub={`${paidCount} comissão${paidCount !== 1 ? 'ões' : ''} paga${paidCount !== 1 ? 's' : ''}`}
         />
       </div>
+      {lockedAmount > 0 && (
+        <p className="text-[11px] text-brand-muted -mt-2">
+          + {brl(lockedAmount)} em validação — libera 30 dias após cada comissão gerada.
+        </p>
+      )}
+
+      {/* Progresso rumo ao bônus */}
+      {progress && rates && (
+        <div className="rounded-2xl p-5" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.12)' }}>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+            <h3 className="text-sm font-bold text-brand-text">
+              {progress.bonusActive ? '🔥 Bônus ativo neste mês!' : `Meta de bônus: ${progress.bonusThreshold} clientes novos/mês`}
+            </h3>
+            <span
+              className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
+              style={{
+                color:      progress.bonusActive ? '#10b981' : 'var(--color-muted)',
+                background: progress.bonusActive ? 'rgba(16,185,129,.12)' : 'rgba(255,255,255,.06)',
+              }}
+            >
+              {progress.conversionsThisMonth}/{progress.bonusThreshold}
+            </span>
+          </div>
+          <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width:      `${Math.min(100, (progress.conversionsThisMonth / progress.bonusThreshold) * 100)}%`,
+                background: progress.bonusActive ? '#10b981' : 'rgb(var(--color-primary))',
+              }}
+            />
+          </div>
+          <p className="text-[11px] text-brand-muted mt-2">
+            {progress.bonusActive
+              ? `A partir do cliente nº${progress.bonusThreshold + 1} deste mês, sua comissão sobe para ${Math.round(rates.bonusRate * 100)}% (em vez de ${Math.round(rates.baseRate * 100)}%) — travada por ${rates.recurringMonths} meses nesses clientes.`
+              : `Feche ${progress.bonusThreshold} clientes novos este mês e os próximos passam a valer ${Math.round(rates.bonusRate * 100)}% de comissão (em vez de ${Math.round(rates.baseRate * 100)}%), travados por ${rates.recurringMonths} meses.`}
+          </p>
+        </div>
+      )}
 
       {/* Solicitar saque */}
       <div className="rounded-2xl p-5" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.12)' }}>
@@ -219,7 +274,7 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
           <div>
             <h3 className="text-sm font-bold text-brand-text">Solicitar saque via Pix</h3>
             <p className="text-xs text-brand-muted mt-0.5">
-              Pagamentos via Pix nos dias 10 e 25 · Mínimo R${PAYOUT_MIN.toFixed(2)}
+              Qualquer valor disponível, sem mínimo · liberado 30 dias após cada comissão · Pix processado manualmente pela equipe
             </p>
           </div>
           <button
@@ -227,14 +282,14 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
             disabled={!canRequestPayout || payoutLoading}
             className="btn-primary px-4 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
           >
-            {payoutLoading ? 'Enviando...' : `Solicitar saque ${brl(pendingAmount)}`}
+            {payoutLoading ? 'Enviando...' : `Solicitar saque ${brl(availableAmount)}`}
           </button>
         </div>
         {!affiliate.pixKey && (
           <p className="text-xs text-amber-400 mt-2">⚠ Cadastre sua chave Pix abaixo para habilitar o saque.</p>
         )}
-        {pendingAmount < PAYOUT_MIN && pendingAmount > 0 && (
-          <p className="text-xs text-brand-muted mt-2">Faltam {brl(PAYOUT_MIN - pendingAmount)} para atingir o mínimo de saque.</p>
+        {affiliate.pixKey && availableAmount <= 0 && lockedAmount > 0 && (
+          <p className="text-xs text-brand-muted mt-2">Nada disponível ainda — {brl(lockedAmount)} em validação (D+30).</p>
         )}
         {payoutMsg && (
           <p className={`text-xs mt-2 ${payoutMsg.startsWith('Solicitação') ? 'text-brand-primary' : 'text-red-400'}`}>{payoutMsg}</p>
@@ -271,35 +326,59 @@ function ApprovedPanel({ affiliate, stats, rates, commissions, onUpdated }: {
 
       {/* Extrato de comissões */}
       <div className="rounded-2xl overflow-hidden" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.12)' }}>
-        <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="px-5 py-3 border-b flex items-center justify-between flex-wrap gap-2" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <h3 className="text-sm font-bold text-brand-text">Extrato de comissões</h3>
+          <div className="flex gap-1.5 flex-wrap">
+            {([
+              ['all', 'Todas'], ['available', 'Disponível'], ['locked', 'Em validação'], ['paid', 'Pagas'],
+            ] as const).map(([v, l]) => (
+              <button
+                key={v}
+                onClick={() => setFilter(v)}
+                className="text-[11px] px-2.5 py-1 rounded-full font-semibold transition-colors"
+                style={{
+                  color:      filter === v ? '#04130c' : 'var(--color-muted)',
+                  background: filter === v ? 'rgb(var(--color-primary))' : 'rgba(255,255,255,.06)',
+                }}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
         </div>
         {commissions.length === 0 ? (
           <div className="px-5 py-8 text-center text-sm text-brand-muted">
             Ainda não há comissões. Compartilhe seu link para começar.
+          </div>
+        ) : filteredCommissions.length === 0 ? (
+          <div className="px-5 py-8 text-center text-sm text-brand-muted">
+            Nenhuma comissão neste filtro.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wider text-brand-muted">
-                  <th className="px-4 py-2 font-medium">Data</th>
-                  <th className="px-4 py-2 font-medium">Venda</th>
+                  <th className="px-4 py-2 font-medium">Data da venda</th>
+                  <th className="px-4 py-2 font-medium">Cliente</th>
+                  <th className="px-4 py-2 font-medium">Plano</th>
                   <th className="px-4 py-2 font-medium">Comissão</th>
-                  <th className="px-4 py-2 font-medium">Tipo</th>
                   <th className="px-4 py-2 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {commissions.map(c => (
+                {filteredCommissions.map(c => (
                   <tr key={c.id} className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
                     <td className="px-4 py-2.5 text-brand-text-secondary">{fmtDate(c.createdAt)}</td>
-                    <td className="px-4 py-2.5 text-brand-text-secondary">{brl(c.saleAmount)}</td>
-                    <td className="px-4 py-2.5 font-semibold text-brand-text">{brl(c.commissionAmount)}</td>
-                    <td className="px-4 py-2.5 text-brand-muted text-xs">
-                      {c.commissionType === 'annual' ? 'Anual (20%)' : c.commissionType === 'monthly' ? 'Mensal (50%)' : 'Única'}
+                    <td className="px-4 py-2.5 text-brand-text-secondary">{c.cliente}</td>
+                    <td className="px-4 py-2.5 text-brand-muted text-xs">{c.commissionType === 'annual' ? 'Anual' : 'Mensal'}</td>
+                    <td className="px-4 py-2.5 font-semibold text-brand-text">
+                      {brl(c.commissionAmount)}
+                      <span className="block text-[10px] font-normal" style={{ color: c.bonus ? '#10b981' : 'var(--color-muted)' }}>
+                        {c.ratePercent}%{c.bonus ? ' · bônus' : ''}
+                      </span>
                     </td>
-                    <td className="px-4 py-2.5"><CommStatus status={c.status} /></td>
+                    <td className="px-4 py-2.5"><CommStatus status={c.status} available={c.available} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -321,13 +400,17 @@ function StatBox({ label, value, sub, accent }: { label: string; value: string; 
   );
 }
 
-function CommStatus({ status }: { status: string }) {
+function CommStatus({ status, available }: { status: string; available?: boolean }) {
+  if (status === 'pending') {
+    return available
+      ? <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: '#10b981', background: 'rgba(16,185,129,.12)' }}>Disponível</span>
+      : <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: '#fbbf24', background: 'rgba(251,191,36,.12)' }}>Em validação</span>;
+  }
   const map: Record<string, { l: string; c: string; b: string }> = {
-    pending:  { l: 'A receber', c: '#fbbf24', b: 'rgba(251,191,36,.12)' },
     paid:     { l: 'Pago',      c: '#10b981', b: 'rgba(16,185,129,.12)' },
     canceled: { l: 'Cancelada', c: '#9ca3af', b: 'rgba(156,163,175,.12)' },
   };
-  const s = map[status] || map.pending;
+  const s = map[status] || map.paid;
   return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: s.c, background: s.b }}>{s.l}</span>;
 }
 
