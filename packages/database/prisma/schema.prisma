@@ -48,6 +48,8 @@ model User {
   affiliateReferral       AffiliateReferral?   @relation("ReferredUser")
   proContactSeeds         ProContactSeed[]
   entitlements            Entitlement[]
+  cobrancaClientes        CobrancaCliente[]
+  cobrancaCobrancas       CobrancaCobranca[]
 }
 
 model Plan {
@@ -516,4 +518,59 @@ model Entitlement {
 
   @@unique([userId, productKey])
   @@index([userId, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Módulo Cobrança — lembretes automáticos de vencimento via WhatsApp.
+// Não é gateway de pagamento: o usuário registra cliente + valor + vencimento,
+// e o worker envia lembrete (dia do vencimento + 1º dia de atraso) usando a
+// própria instância WhatsApp conectada do usuário. Reenvio manual a qualquer momento.
+// ─────────────────────────────────────────────────────────────────────────────
+model CobrancaCliente {
+  id        String             @id @default(cuid())
+  userId    String
+  nome      String
+  telefone  String // DDI+DDD+número, só dígitos (ex: 5511999999999)
+  documento String? // CPF/CNPJ (opcional)
+  email     String?
+  notas     String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  deletedAt DateTime? // soft delete (LGPD)
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cobrancas CobrancaCobranca[]
+
+  @@index([userId, deletedAt])
+}
+
+model CobrancaCobranca {
+  id         String          @id @default(cuid())
+  userId     String
+  clienteId  String
+  descricao  String
+  valor      Float
+  vencimento DateTime // data do vencimento (meia-noite UTC do dia)
+  status     String          @default("pendente") // 'pendente' | 'paga' | 'cancelada'
+  pagoEm     DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  deletedAt  DateTime?
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cliente    CobrancaCliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  envios     CobrancaEnvio[]
+
+  @@index([userId, status, vencimento])
+  @@index([clienteId])
+}
+
+model CobrancaEnvio {
+  id         String           @id @default(cuid())
+  cobrancaId String
+  tipo       String // 'vence_hoje' | 'venceu' | 'manual'
+  enviadoEm  DateTime         @default(now())
+  sucesso    Boolean          @default(true)
+  erro       String?
+  cobranca   CobrancaCobranca @relation(fields: [cobrancaId], references: [id], onDelete: Cascade)
+
+  @@index([cobrancaId, tipo])
 }

@@ -314,6 +314,7 @@ app.register(import('./routes/nps'),             { prefix: '/nps' });
 app.register(import('./routes/meta-embedded'),   { prefix: '/meta' });
 app.register(import('./routes/affiliates'),      { prefix: '/affiliates' });
 app.register(import('./routes/entitlements'),    { prefix: '/modules' });
+app.register(import('./routes/cobranca'),        { prefix: '/cobranca' });
 // Demo de upload no site removido — vira app/site separado. Rota desativada.
 app.register(import('./routes/analytics'),       { prefix: '/analytics' });
 
@@ -511,6 +512,86 @@ async function runAutoMigrations() {
       CONSTRAINT "FaqSuggestion_pkey" PRIMARY KEY ("id")
     )`,
     `CREATE INDEX IF NOT EXISTS "FaqSuggestion_status_idx" ON "FaqSuggestion"("status")`,
+    // ── Módulo Cobrança (2026-07-13): auto-cura o schema no boot, mesmo padrão acima ──
+    `CREATE TABLE IF NOT EXISTS "CobrancaCliente" (
+      "id"        TEXT NOT NULL,
+      "userId"    TEXT NOT NULL,
+      "nome"      TEXT NOT NULL,
+      "telefone"  TEXT NOT NULL,
+      "documento" TEXT,
+      "email"     TEXT,
+      "notas"     TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      "deletedAt" TIMESTAMP(3),
+      CONSTRAINT "CobrancaCliente_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "CobrancaCliente_userId_deletedAt_idx" ON "CobrancaCliente"("userId", "deletedAt")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CobrancaCliente_userId_fkey') THEN
+        ALTER TABLE "CobrancaCliente"
+          ADD CONSTRAINT "CobrancaCliente_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CobrancaCobranca" (
+      "id"         TEXT NOT NULL,
+      "userId"     TEXT NOT NULL,
+      "clienteId"  TEXT NOT NULL,
+      "descricao"  TEXT NOT NULL,
+      "valor"      DOUBLE PRECISION NOT NULL,
+      "vencimento" TIMESTAMP(3) NOT NULL,
+      "status"     TEXT NOT NULL DEFAULT 'pendente',
+      "pagoEm"     TIMESTAMP(3),
+      "createdAt"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"  TIMESTAMP(3) NOT NULL,
+      "deletedAt"  TIMESTAMP(3),
+      CONSTRAINT "CobrancaCobranca_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "CobrancaCobranca_userId_status_vencimento_idx" ON "CobrancaCobranca"("userId", "status", "vencimento")`,
+    `CREATE INDEX IF NOT EXISTS "CobrancaCobranca_clienteId_idx" ON "CobrancaCobranca"("clienteId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CobrancaCobranca_userId_fkey') THEN
+        ALTER TABLE "CobrancaCobranca"
+          ADD CONSTRAINT "CobrancaCobranca_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CobrancaCobranca_clienteId_fkey') THEN
+        ALTER TABLE "CobrancaCobranca"
+          ADD CONSTRAINT "CobrancaCobranca_clienteId_fkey"
+          FOREIGN KEY ("clienteId") REFERENCES "CobrancaCliente"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CobrancaEnvio" (
+      "id"         TEXT NOT NULL,
+      "cobrancaId" TEXT NOT NULL,
+      "tipo"       TEXT NOT NULL,
+      "enviadoEm"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "sucesso"    BOOLEAN NOT NULL DEFAULT true,
+      "erro"       TEXT,
+      CONSTRAINT "CobrancaEnvio_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "CobrancaEnvio_cobrancaId_tipo_idx" ON "CobrancaEnvio"("cobrancaId", "tipo")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CobrancaEnvio_cobrancaId_fkey') THEN
+        ALTER TABLE "CobrancaEnvio"
+          ADD CONSTRAINT "CobrancaEnvio_cobrancaId_fkey"
+          FOREIGN KEY ("cobrancaId") REFERENCES "CobrancaCobranca"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // Ativa o Product no catálogo mesmo se o seed.ts nunca tiver rodado em produção
+    // (render.yaml não chama db:seed no startCommand — ver packages/modules/catalog.ts)
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'cobranca') THEN
+        UPDATE "Product" SET "status" = 'beta', "priceMonthly" = 29.90, "priceYearly" = 287.04
+          WHERE "key" = 'cobranca' AND "status" <> 'beta';
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('cobranca-product-seed', 'cobranca', 'ZapScript Cobrança', 'beta', 29.90, 287.04, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
