@@ -51,6 +51,9 @@ model User {
   crmStages               CrmStage[]
   crmContacts             CrmContact[]
   crmActivities           CrmActivity[]
+  atendeConfigs           AtendeConfig[]
+  atendeKnowledgeBase     AtendeKnowledgeBase[]
+  atendeConversations     AtendeConversation[]
 }
 
 model Plan {
@@ -79,6 +82,7 @@ model Subscription {
   trialEndsAt         DateTime? // fim do trial PRO (D7); job diário rebaixa para FREE em D8
   trialDowngradedAt   DateTime? // marca quando o rebaixamento automático ocorreu (idempotência)
   testerRenewalsUsed  Int       @default(0) // Renovações mensais isentas consumidas (máx 12)
+  comboDiscountPct    Float? // % fixo (ex.: 0.20) aplicado sobre o valor agregado — setado ao contratar o Combo (Core+módulos)
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -127,6 +131,8 @@ model WhatsappNumber {
   user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcriptions     Transcription[]
   crmContacts        CrmContact[]
+  atendeConfig       AtendeConfig?
+  atendeConversations AtendeConversation[]
 
   @@index([userId]) // A2: listagem de números por usuário
   @@index([zapiInstanceId]) // A2: busca de instância em webhook (hot path)
@@ -354,15 +360,16 @@ model KnowledgeBase {
 
 // ── Programa de Afiliados ───────────────────────────────────────────────────
 // Afiliado = usuário aprovado que divulga o ZapScript e ganha comissão por venda.
-// Decisões: cadastro requer aprovação do admin; o afiliado escolhe o modelo de
-// comissão (única de 30% do 1º pagamento OU recorrente de 5% nos primeiros 12 meses).
+// Decisões: cadastro requer aprovação do admin; comissão é recorrente — 30% em
+// cada pagamento do indicado nos primeiros 12 meses (40% se o afiliado bateu a
+// meta de 50+ clientes novos no mês da conversão), depois 5% residual vitalício.
+// Cancelamento nos primeiros 30 dias zera a comissão pendente (ver lib/affiliate.ts).
 // Pagamento = rastreado no sistema e quitado manualmente via Pix pelo admin.
 model Affiliate {
   id                String                @id @default(cuid())
   userId            String                @unique
   code              String                @unique // código de divulgação (?ref=CODE)
   status            String                @default("pending") // pending | approved | rejected | suspended
-  commissionType    String                @default("recurring") // 'onetime' (30% 1º pgto) | 'recurring' (5% x12 meses)
   pixKey            String? // chave Pix p/ recebimento (não é segredo financeiro crítico)
   pixKeyType        String? // cpf | cnpj | email | phone | random
   payoutName        String? // nome/razão social do recebedor
@@ -390,6 +397,7 @@ model AffiliateReferral {
   referredUserId String    @unique // cada usuário é indicado por no máximo 1 afiliado
   status         String    @default("pending") // pending (cadastrou) | converted (já gerou venda)
   convertedAt    DateTime?
+  bonusTier      Boolean   @default(false) // travado na conversão: era o cliente novo nº51+ do afiliado no mês? (30%→40% enquanto recorrente)
   createdAt      DateTime  @default(now())
   affiliate      Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
   referredUser   User      @relation("ReferredUser", fields: [referredUserId], references: [id], onDelete: Cascade)
@@ -405,9 +413,9 @@ model AffiliateCommission {
   paymentId        String // Asaas payment id (idempotência)
   saleAmount       Float // valor da venda (mensalidade paga)
   commissionAmount Float // valor da comissão devida
-  commissionType   String // 'onetime' | 'recurring'
-  monthIndex       Int       @default(1) // recorrente: qual mês (1..12)
-  status           String    @default("pending") // pending | paid | canceled
+  commissionType   String // 'monthly' | 'annual' — plano do pagamento que gerou a comissão
+  monthIndex       Int       @default(1) // recorrente: nº do pagamento do indicado (1, 2, 3...) — define a janela de 12 meses
+  status           String    @default("pending") // pending | paid | canceled (cancelada = churn nos primeiros 30 dias)
   paidAt           DateTime?
   paidReference    String? // comprovante/observação do Pix manual
   createdAt        DateTime  @default(now())
@@ -592,4 +600,70 @@ model CrmActivity {
 
   @@index([contactId, createdAt(sort: Desc)])
   @@index([userId, dueAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ZapScript Atende — resposta automática por IA sobre um número já conectado.
+// Tenant-scoped (userId em todos os modelos), ao contrário do motor de suporte
+// interno da FOX (SupportAtendimento/KnowledgeBase, que é single-tenant).
+// ─────────────────────────────────────────────────────────────────────────────
+model AtendeConfig {
+  id              String         @id @default(cuid())
+  numberId        String         @unique
+  userId          String
+  enabled         Boolean        @default(false)
+  businessContext String? // descrição livre do negócio, usada no prompt do agente
+  tone            String         @default("profissional-amigavel")
+  fallbackMessage String         @default("Recebemos sua mensagem! Já já alguém te responde por aqui.")
+  escalationPhone String? // opcional: número interno avisado quando escala p/ humano
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  number          WhatsappNumber @relation(fields: [numberId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AtendeKnowledgeBase {
+  id        String   @id @default(cuid())
+  userId    String
+  question  String
+  answer    String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, active])
+}
+
+model AtendeConversation {
+  id            String          @id @default(cuid())
+  userId        String
+  numberId      String
+  contactPhone  String
+  contactName   String?
+  status        String          @default("open") // 'open' | 'escalated' | 'closed'
+  humanTakeover Boolean         @default(false) // true = resposta automática desligada nesta conversa
+  lastMessageAt DateTime        @default(now())
+  createdAt     DateTime        @default(now())
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number        WhatsappNumber  @relation(fields: [numberId], references: [id], onDelete: Cascade)
+  messages      AtendeMessage[]
+
+  @@unique([numberId, contactPhone])
+  @@index([userId, lastMessageAt(sort: Desc)])
+}
+
+model AtendeMessage {
+  id             String             @id @default(cuid())
+  conversationId String
+  direction      String // 'in' | 'out'
+  content        String
+  aiGenerated    Boolean            @default(false)
+  confidence     Float?
+  createdAt      DateTime           @default(now())
+  conversation   AtendeConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }

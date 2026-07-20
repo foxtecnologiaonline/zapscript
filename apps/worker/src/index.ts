@@ -18,6 +18,7 @@ import {
   planEfetivo, audioQuotaFor, pickFooterVariant, formatSavedTime,
   MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
 } from './lib/freemium';
+import './atende'; // registra o worker da fila 'atende-replies' (ZapScript Atende)
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
 // ── Supabase Storage — download/delete de áudios temporários ─────────────────
@@ -1016,19 +1017,14 @@ const REJECT_TOO_LONG_MSG =
 
 /**
  * Decide se mostra o rodapé viral nesta transcrição e qual variação (B).
- *  FREE → sempre mostra (transcrição cai na conversa). PAGO → nunca (Modo Privado automático).
- *  Self-note → suprime (cai no próprio chat).
+ *  Mostra em TODA transcrição, exceto:
+ *   - Modo Privado ativo (a transcrição vai só ao dono, ninguém mais veria o rodapé);
+ *   - Self-note (áudio encaminhado ao próprio número — cai no próprio chat).
  */
-async function decideFooter(
-  userId: string, plan: 'pro' | 'free', contactPhone: string, isSelfNote: boolean,
-): Promise<{ show: boolean; variantId: string | null; variantText: string | null }> {
-  if (isSelfNote) return { show: false, variantId: null, variantText: null };
-
-  // FREE: rodapé viral em TODA transcrição (a transcrição cai na conversa → loop de aquisição).
-  // PAGO: Modo Privado automático — a transcrição vai 100% ao próprio número, então NÃO há
-  //       transcrição na conversa do contato nem rodapé viral (nem o "seed" da 1ª de cada contato).
-  if (plan !== 'free') return { show: false, variantId: null, variantText: null };
-
+function decideFooter(
+  isSelfNote: boolean, isPrivate: boolean,
+): { show: boolean; variantId: string | null; variantText: string | null } {
+  if (isSelfNote || isPrivate) return { show: false, variantId: null, variantText: null };
   const variant = pickFooterVariant();
   return { show: true, variantId: variant.id, variantText: variant.text };
 }
@@ -1252,8 +1248,8 @@ async function processOfficialWhatsAppJob(job: Job) {
     const bullets = await generateBullets(originalText, durationSec, detectedLang);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
-    // Rodapé condicional (B): FREE sempre; PRO só na 1ª de cada contato.
-    const footer = await decideFooter(userId, usage.plan, senderPhone, false);
+    // Rodapé viral: mostra sempre (pipeline sem Modo Privado).
+    const footer = decideFooter(false, false);
 
     // PASSO 6: Enviar resposta no WhatsApp
     log(job, '📤 Enviando resposta via Meta API...');
@@ -1352,8 +1348,8 @@ async function processTwilioJob(job: Job) {
     const bullets = await generateBullets(originalText, durationSec, detectedLang);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
-    // Rodapé condicional (B): FREE sempre; PRO só na 1ª de cada contato.
-    const footer = await decideFooter(userId, usage.plan, senderPhone, false);
+    // Rodapé viral: mostra sempre (pipeline sem Modo Privado).
+    const footer = decideFooter(false, false);
 
     // PASSO 6: Enviar resposta via Twilio
     log(job, '📤 Enviando resposta via Twilio...');
@@ -1489,8 +1485,8 @@ async function processEvolutionJob(job: Job) {
                         && whatsappNumber.phoneNumber !== 'pending';
     const targetPhone = isPrivate ? whatsappNumber.phoneNumber! : senderPhone;
 
-    // Rodapé condicional (B): FREE sempre; PRO só na 1ª de cada contato.
-    const footer = await decideFooter(userId, usage.plan, senderPhone, isSelfNote);
+    // Rodapé viral: mostra sempre, exceto Modo Privado ativo ou self-note.
+    const footer = decideFooter(isSelfNote, isPrivate);
 
     const messages = buildMessage(bullets, originalText, {
       contactName: senderName,
