@@ -1,8 +1,9 @@
 import { FastifyInstance } from 'fastify';
-import { transcriptionQueue } from '../services/queue';
+import { transcriptionQueue, atendeQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected } from '../services/whatsapp-notify';
 import { storeQr } from '../lib/qrStore';
+import { getUserModules } from '../lib/moduleGate';
 import { io } from '../index';
 
 
@@ -241,8 +242,43 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       }
 
       if (!isAudio) {
-        if (messageType === 'conversation' || messageType === 'extendedTextMessage') {
-          log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado`);
+        if ((messageType === 'conversation' || messageType === 'extendedTextMessage') && !fromMe) {
+          const messageText: string | undefined =
+            messageType === 'conversation'
+              ? msg?.message?.conversation
+              : msg?.message?.extendedTextMessage?.text;
+
+          const number = messageText ? await findNumber(false) : null;
+          const cfg = number
+            ? await prisma.atendeConfig.findUnique({ where: { numberId: number.id } })
+            : null;
+          // Entitlement é a fonte da verdade (mesmo gate de requireModule('atende')) —
+          // AtendeConfig.enabled sozinho não reflete cancelamento do módulo (billing.ts
+          // só marca o Entitlement como 'canceled', nunca desliga o config).
+          const hasAtende = (number && cfg?.enabled)
+            ? (await getUserModules(number.userId)).includes('atende')
+            : false;
+
+          if (number && cfg?.enabled && hasAtende) {
+            log.info(`[Evolution] 💬 Texto de ${senderName} → Atende habilitado, enfileirando resposta`);
+            await atendeQueue.add(
+              'atende-reply',
+              {
+                userId:       number.userId,
+                numberId:     number.id,
+                instanceName: instName,
+                senderPhone,
+                senderName,
+                messageText,
+                messageId,
+              },
+              { jobId: messageId, attempts: 3, backoff: { type: 'exponential', delay: 5000 } }
+            );
+          } else if (number && cfg?.enabled && !hasAtende) {
+            log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado (módulo Atende não contratado/cancelado)`);
+          } else {
+            log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado`);
+          }
         }
         return;
       }

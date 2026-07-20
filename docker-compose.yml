@@ -30,7 +30,7 @@ services:
       redis-server
       --appendonly yes
       --requirepass ${REDIS_PASSWORD:-zapscript_dev_redis_2024}
-      --bind 127.0.0.1 0.0.0.0
+      --bind 0.0.0.0
     ports:
       - "127.0.0.1:6379:6379"
     volumes:

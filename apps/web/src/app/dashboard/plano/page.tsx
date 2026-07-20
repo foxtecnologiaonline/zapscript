@@ -3,7 +3,10 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import CheckoutInline from '@/components/CheckoutInline';
+import ModuleCheckoutInline from '@/components/ModuleCheckoutInline';
+import ComboCheckoutInline from '@/components/ComboCheckoutInline';
 import { isJunePromoActive } from '@/lib/promo';
+import { ModuleCatalogItem, MODULE_ICON, moduleRoute, isContractable, formatBrl } from '@/lib/modules';
 
 interface Stats {
   minutesUsed: number; minutesAvailable: number;
@@ -158,6 +161,18 @@ interface UpgradePreview {
   totalDays:        number;
   shouldCharge:     boolean;
   nextCycleDate:    string | null;
+}
+
+/* ── Prévia do Combo (Core + módulos disponíveis) — GET /billing/combo/preview ── */
+interface ComboPreview {
+  available:      boolean;
+  reason?:        string;
+  corePlanName?:  string;
+  corePlanLabel?: string;
+  modules?:       { key: string; name: string; priceMonthly: number }[];
+  discountPct?:   number;
+  rawTotal?:      number;
+  newTotal?:      number;
 }
 
 function UpgradeModal({
@@ -500,6 +515,23 @@ function PlanoContent() {
   const justUpgraded = searchParams.get('upgrade') === 'success';
   const justCanceled = searchParams.get('canceled') === '1';
   const trialCardSet = searchParams.get('trialcardset') === '1';
+  const addModuleKey  = searchParams.get('add');
+  const moduleAddedKey = searchParams.get('moduleadded');
+  const comboAdded    = searchParams.get('combo') === '1';
+
+  /* — Contratação de módulo avulso (?add=chave, CTA do launcher /app) — */
+  const [moduleInfo, setModuleInfo]                 = useState<ModuleCatalogItem | null>(null);
+  const [moduleOwned, setModuleOwned]               = useState<string[]>([]);
+  const [moduleLoading, setModuleLoading]           = useState(false);
+  const [moduleCheckoutOpen, setModuleCheckoutOpen] = useState(false);
+  const [moduleVerifyModal, setModuleVerifyModal]   = useState(false);
+  const [moduleDocModal, setModuleDocModal]         = useState(false);
+
+  /* — Combo (Core + módulos disponíveis), oferecido junto do ?add=chave — */
+  const [comboPreview, setComboPreview]             = useState<ComboPreview | null>(null);
+  const [comboCheckoutOpen, setComboCheckoutOpen]   = useState(false);
+  const [comboVerifyModal, setComboVerifyModal]     = useState(false);
+  const [comboDocModal, setComboDocModal]           = useState(false);
 
   /* — Minute packages — */
   const [minutePkgs, setMinutePkgs]             = useState<MinutePkg[]>(DEFAULT_MINUTE_PKGS);
@@ -639,6 +671,60 @@ function PlanoContent() {
     await doCheckout(plan);
   }
 
+  // Contratação de módulo avulso via ?add=<key> — busca catálogo + módulos já contratados
+  // + prévia do Combo (mesma tela, para oferecer como alternativa)
+  useEffect(() => {
+    if (!addModuleKey) return;
+    setModuleLoading(true);
+    Promise.all([
+      api.get<{ modules: ModuleCatalogItem[] }>('/modules'),
+      api.get<{ modules: string[] }>('/modules/me').catch(() => ({ modules: [] })),
+      api.get<ComboPreview>('/billing/combo/preview').catch(() => null),
+    ]).then(([catalog, mine, combo]) => {
+      setModuleInfo(catalog.modules.find(m => m.key === addModuleKey) || null);
+      setModuleOwned(mine.modules || []);
+      setComboPreview(combo);
+    }).finally(() => setModuleLoading(false));
+  }, [addModuleKey]);
+
+  // Mesmo gate de e-mail/CPF do fluxo de planos, antes de abrir o checkout do módulo
+  function startModulePurchase() {
+    if (!user?.emailVerified) { setModuleVerifyModal(true); return; }
+    if (!user?.document)      { setModuleDocModal(true);    return; }
+    setModuleCheckoutOpen(true);
+  }
+
+  async function handleModuleDocumentConfirm(document: string) {
+    await api.put('/auth/profile', { document });
+    setUser(u => u ? { ...u, document: document.replace(/\D/g, '') } : u);
+    setModuleDocModal(false);
+    setModuleCheckoutOpen(true);
+  }
+
+  function handleModuleSuccess(key: string) {
+    setModuleCheckoutOpen(false);
+    window.location.href = `/dashboard/plano?moduleadded=${key}`;
+  }
+
+  // Mesmo gate de e-mail/CPF, antes de abrir o checkout do Combo
+  function startComboPurchase() {
+    if (!user?.emailVerified) { setComboVerifyModal(true); return; }
+    if (!user?.document)      { setComboDocModal(true);    return; }
+    setComboCheckoutOpen(true);
+  }
+
+  async function handleComboDocumentConfirm(document: string) {
+    await api.put('/auth/profile', { document });
+    setUser(u => u ? { ...u, document: document.replace(/\D/g, '') } : u);
+    setComboDocModal(false);
+    setComboCheckoutOpen(true);
+  }
+
+  function handleComboSuccess() {
+    setComboCheckoutOpen(false);
+    window.location.href = `/dashboard/plano?combo=1`;
+  }
+
   if (loading) return (
     <div className="p-8 text-center text-brand-muted text-sm pt-20">Carregando...</div>
   );
@@ -699,6 +785,104 @@ function PlanoContent() {
               Você voltou para o plano Free. Pode reativar quando quiser.
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Módulo avulso ativado com sucesso */}
+      {moduleAddedKey && (
+        <div className="rounded-xl px-5 py-3.5 mb-5 flex items-center gap-3"
+          style={{ background: 'rgba(var(--color-primary)/.1)', border: '1px solid rgba(var(--color-primary)/.3)' }}>
+          <span className="text-xl">🎉</span>
+          <div>
+            <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Módulo ativado!</div>
+            <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              <a href={moduleRoute(moduleAddedKey)} className="underline">Abrir módulo →</a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Combo ativado com sucesso */}
+      {comboAdded && (
+        <div className="rounded-xl px-5 py-3.5 mb-5 flex items-center gap-3"
+          style={{ background: 'rgba(var(--color-primary)/.1)', border: '1px solid rgba(var(--color-primary)/.3)' }}>
+          <span className="text-xl">🎉</span>
+          <div>
+            <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Combo ativado!</div>
+            <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              <a href="/app" className="underline">Abrir plataforma →</a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmação de contratação de módulo avulso (?add=chave, CTA do launcher /app) */}
+      {addModuleKey && !moduleCheckoutOpen && (
+        <div className="rounded-2xl p-5 mb-6"
+          style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.3)' }}>
+          {moduleLoading ? (
+            <div className="text-sm" style={{ color: 'rgb(var(--color-text-muted))' }}>Carregando módulo...</div>
+          ) : !moduleInfo ? (
+            <div className="text-sm" style={{ color: 'rgb(var(--color-text-muted))' }}>Módulo não encontrado.</div>
+          ) : moduleOwned.includes(addModuleKey) ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-2xl">✅</span>
+              <div className="flex-1 min-w-[180px]">
+                <div className="font-bold text-sm">Você já tem o módulo {moduleInfo.name}</div>
+                <div className="text-xs font-light mt-0.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                  Já está ativo na sua conta.
+                </div>
+              </div>
+              <a href={moduleRoute(moduleInfo.key)} className="btn-primary py-2 px-4 text-sm whitespace-nowrap">
+                Abrir →
+              </a>
+            </div>
+          ) : !isContractable(moduleInfo.status) ? (
+            <div className="text-sm" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              Este módulo ainda não está disponível para contratação.
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="text-2xl flex-shrink-0">{MODULE_ICON[moduleInfo.key] || '🧩'}</div>
+                <div className="flex-1 min-w-[180px]">
+                  <div className="font-bold text-sm">Contratar módulo {moduleInfo.name}</div>
+                  <div className="text-xs font-light mt-0.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                    {formatBrl(moduleInfo.priceMonthly)}/mês · cobrança proporcional ao período restante do seu ciclo atual
+                  </div>
+                </div>
+                <button onClick={startModulePurchase} className="btn-primary py-2.5 px-5 text-sm whitespace-nowrap">
+                  Contratar agora →
+                </button>
+              </div>
+
+              {/* Cross-sell: Combo (Core + todos os módulos) com desconto fixo */}
+              {comboPreview?.available && (
+                <div className="mt-4 pt-4 flex items-center gap-4 flex-wrap"
+                  style={{ borderTop: '1px dashed rgba(var(--color-primary)/.2)' }}>
+                  <div className="text-2xl flex-shrink-0">🎁</div>
+                  <div className="flex-1 min-w-[180px]">
+                    <div className="font-bold text-sm">
+                      Ou leve o Combo completo com {Math.round((comboPreview.discountPct ?? 0) * 100)}% off
+                    </div>
+                    <div className="text-xs font-light mt-0.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                      {[comboPreview.corePlanLabel, ...(comboPreview.modules || []).map(m => m.name)].join(' + ')}
+                      {' · '}
+                      <span style={{ textDecoration: 'line-through', color: 'rgb(var(--color-text-muted))' }}>
+                        {formatBrl(comboPreview.rawTotal || 0)}
+                      </span>
+                      {' '}
+                      <strong style={{ color: 'rgb(var(--color-primary))' }}>{formatBrl(comboPreview.newTotal || 0)}/mês</strong>
+                    </div>
+                  </div>
+                  <button onClick={startComboPurchase} className="py-2.5 px-5 text-sm whitespace-nowrap rounded-lg font-bold"
+                    style={{ background: 'rgba(var(--color-primary)/.12)', border: '1.5px solid rgb(var(--color-primary))', color: 'rgb(var(--color-primary))' }}>
+                    Ver Combo →
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -1342,6 +1526,72 @@ function PlanoContent() {
         );
       })()}
 
+      {/* ── Checkout inline de módulo avulso ── */}
+      {moduleCheckoutOpen && moduleInfo && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 overflow-y-auto"
+          onClick={() => setModuleCheckoutOpen(false)}
+        >
+          <div className="min-h-full flex items-start justify-center py-8 px-4">
+            <div
+              className="w-full max-w-lg rounded-2xl p-6"
+              style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-primary)/.3)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mb-5">
+                <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
+                  Contratar {moduleInfo.name}
+                </h3>
+                <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                  Cobrança proporcional ao período restante do seu ciclo atual
+                </p>
+              </div>
+              <ModuleCheckoutInline
+                moduleKey={moduleInfo.key}
+                moduleName={moduleInfo.name}
+                priceLabel={formatBrl(moduleInfo.priceMonthly)}
+                onSuccess={handleModuleSuccess}
+                onCancel={() => setModuleCheckoutOpen(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Checkout inline do Combo (Core + módulos disponíveis) ── */}
+      {comboCheckoutOpen && comboPreview?.available && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 overflow-y-auto"
+          onClick={() => setComboCheckoutOpen(false)}
+        >
+          <div className="min-h-full flex items-start justify-center py-8 px-4">
+            <div
+              className="w-full max-w-lg rounded-2xl p-6"
+              style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-primary)/.3)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mb-5">
+                <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
+                  Contratar o Combo
+                </h3>
+                <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                  Cobrança proporcional ao período restante do seu ciclo atual
+                </p>
+              </div>
+              <ComboCheckoutInline
+                corePlanLabel={comboPreview.corePlanLabel || 'Pro'}
+                modules={comboPreview.modules || []}
+                discountPct={comboPreview.discountPct || 0}
+                rawTotal={comboPreview.rawTotal || 0}
+                newTotal={comboPreview.newTotal || 0}
+                onSuccess={handleComboSuccess}
+                onCancel={() => setComboCheckoutOpen(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de verificação de e-mail (gate da assinatura) */}
       {verifyModal && user && (
         <VerifyEmailModal email={user.email} onCancel={() => setVerifyModal(false)} />
@@ -1353,6 +1603,34 @@ function PlanoContent() {
           planLabel={PLANS.find(p => p.name === docModal)?.label || docModal}
           onConfirm={handleDocumentConfirm}
           onCancel={() => setDocModal(null)}
+        />
+      )}
+
+      {/* Modal de verificação de e-mail (gate da contratação de módulo) */}
+      {moduleVerifyModal && user && (
+        <VerifyEmailModal email={user.email} onCancel={() => setModuleVerifyModal(false)} />
+      )}
+
+      {/* Modal de CPF/CNPJ (gate da contratação de módulo) */}
+      {moduleDocModal && moduleInfo && (
+        <DocumentModal
+          planLabel={moduleInfo.name}
+          onConfirm={handleModuleDocumentConfirm}
+          onCancel={() => setModuleDocModal(false)}
+        />
+      )}
+
+      {/* Modal de verificação de e-mail (gate da contratação do Combo) */}
+      {comboVerifyModal && user && (
+        <VerifyEmailModal email={user.email} onCancel={() => setComboVerifyModal(false)} />
+      )}
+
+      {/* Modal de CPF/CNPJ (gate da contratação do Combo) */}
+      {comboDocModal && comboPreview?.available && (
+        <DocumentModal
+          planLabel="Combo"
+          onConfirm={handleComboDocumentConfirm}
+          onCancel={() => setComboDocModal(false)}
         />
       )}
 

@@ -2433,7 +2433,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         orderBy: { appliedAt: 'desc' },
         // Select explícito — evita referenciar colunas ausentes em caso de drift de migração
         select: {
-          id: true, code: true, status: true, commissionType: true,
+          id: true, code: true, status: true,
           pixKey: true, pixKeyType: true, payoutName: true,
           audience: true, notes: true, appliedAt: true, approvedAt: true,
           rejectedReason: true,
@@ -2460,7 +2460,6 @@ export default async function adminRoutes(app: FastifyInstance) {
           id:             a.id,
           code:           a.code,
           status:         a.status,
-          commissionType: a.commissionType,
           email:          maskEmail(a.user.email),
           name:           a.user.name,
           pixKey:         a.pixKey,
@@ -2632,7 +2631,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         prisma.affiliate.findMany({
           where:  { status: 'approved' },
           select: {
-            id: true, code: true, commissionType: true,
+            id: true, code: true,
             user: { select: { name: true, email: true } },
             _count: { select: { referrals: true } },
           },
@@ -2655,7 +2654,6 @@ export default async function adminRoutes(app: FastifyInstance) {
           code:           a.code,
           name:           a.user.name,
           email:          maskEmail(a.user.email),
-          commissionType: a.commissionType,
           referrals,
           converted,
           convRate:  referrals ? Math.round((converted / referrals) * 100) : 0,

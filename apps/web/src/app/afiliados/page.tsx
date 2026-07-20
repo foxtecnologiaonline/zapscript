@@ -7,7 +7,36 @@ import { captureAffiliateFromUrl } from '@/lib/affiliate';
 /* ─────────────────────────────────────────────────────────
    Landing pública do Programa de Afiliados.
    O cadastro em si exige conta (self-service em /dashboard/afiliado).
+   Modelo: 30% recorrente (12 meses) · 40% bônus (51º+ cliente/mês) ·
+   5% residual vitalício · saldo liberado D+30, sem valor mínimo.
    ───────────────────────────────────────────────────────── */
+
+const FAQ: { q: string; a: string }[] = [
+  {
+    q: 'O que acontece se o meu indicado cancelar?',
+    a: 'Se ele cancelar até 30 dias após assinar, a comissão pendente desse cliente é zerada. Depois desse prazo, você mantém tudo o que já foi gerado — só para de acumular comissão futura dele.',
+  },
+  {
+    q: 'Como acompanho meu progresso rumo ao bônus de 40%?',
+    a: 'No seu painel de afiliado, uma barra mostra quantos clientes novos você já fechou no mês e quantos faltam para os 50. A partir do 51º, a comissão sobe automaticamente para esses clientes.',
+  },
+  {
+    q: 'Quando o saldo fica disponível para saque?',
+    a: 'Cada comissão é liberada 30 dias depois de gerada. Não há valor mínimo — você pode solicitar o saque de qualquer saldo já disponível, quando quiser.',
+  },
+  {
+    q: 'A comissão de 30% é só na primeira venda?',
+    a: 'Não. Você recebe 30% em todo pagamento aprovado do indicado (mensal ou anual) durante os 12 primeiros meses de assinatura dele — é recorrente, não é um pagamento único.',
+  },
+  {
+    q: 'Como funciona depois dos 12 meses?',
+    a: 'A comissão continua, numa taxa residual vitalícia de 5%, enquanto o indicado seguir assinante do ZapScript.',
+  },
+  {
+    q: 'Quais clientes contam para o bônus de 50 no mês?',
+    a: 'Apenas indicados com pagamento aprovado no mês contam para a meta. Cadastros que ainda não converteram em assinatura paga não entram na contagem.',
+  },
+];
 
 const KIT: { key: string; label: string; canal: string; text: string }[] = [
   // ── WhatsApp ───────────────────────────────────────────────────────────────
@@ -34,7 +63,7 @@ const KIT: { key: string; label: string; canal: string; text: string }[] = [
     key: 'grupo-informal',
     canal: 'Grupo',
     label: 'Grupo de WhatsApp — informal',
-    text: `Pessoal! 👋 Dica boa aqui:\n\n*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.\n\nAquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.\n\n🆓 15 áudios/mês grátis, sem cartão:\n👉 [SEU_LINK]\n\n🔥 Pro com áudios ilimitados por R$19,90 no 1º mês (oferta junho)\n\nValeu! 😄`,
+    text: `Pessoal! 👋 Dica boa aqui:\n\n*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.\n\nAquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.\n\n🆓 15 áudios/mês grátis, sem cartão:\n👉 [SEU_LINK]\n\n🔥 Pro com áudios ilimitados por R$19,90 no 1º mês\n\nValeu! 😄`,
   },
   // ── LinkedIn ───────────────────────────────────────────────────────────────
   {
@@ -109,45 +138,41 @@ export default function AfiliadosLanding() {
           Programa de Afiliados
         </span>
         <h1 className="text-3xl sm:text-5xl font-black text-brand-text leading-tight">
-          Indique o ZapScript e <span className="text-brand-primary">ganhe comissão em dinheiro</span>
+          Indique o ZapScript e <span className="text-brand-primary">ganhe comissão todo mês</span>
         </h1>
         <p className="text-base sm:text-lg text-brand-text-secondary mt-4 max-w-xl mx-auto">
-          Compartilhe seu link exclusivo. A cada assinatura paga pelo seu link, você recebe comissão automaticamente — sem burocracia.
+          Não é comissão única: você recebe 30% em cada pagamento do seu indicado durante os 12 primeiros meses — e até 40% com o bônus de performance.
         </p>
         <p className="text-sm text-brand-primary font-medium mt-3 max-w-xl mx-auto">
           Você indica um robô que converte áudio em texto 24 horas por dia — um produto que se explica sozinho.
         </p>
+        <div className="flex justify-center mt-5">
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background: 'rgba(16,185,129,.12)', color: '#10b981' }}>
+            💸 Pagamento em até 30 dias
+          </span>
+        </div>
         <div className="flex gap-3 justify-center mt-7 flex-wrap">
-          <Link href="/dashboard/afiliado" className="btn-primary px-6 py-3 text-sm">Quero ser afiliado →</Link>
+          <Link href="/dashboard/afiliado" className="btn-primary px-6 py-3 text-sm font-bold">QUERO SER AFILIADO →</Link>
           <Link href="/cadastro" className="px-6 py-3 text-sm rounded-xl border border-white/15 text-brand-text hover:border-white/30 transition-colors">
             Ainda não tenho conta
           </Link>
         </div>
       </section>
 
-      {/* Comissão — novo modelo único */}
-      <section className="px-5 sm:px-8 pb-12 max-w-3xl mx-auto">
-        <h2 className="text-xl font-bold text-brand-text text-center mb-6">Quanto você ganha</h2>
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div className="rounded-2xl p-6" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.20)' }}>
-            <div className="text-xs font-mono uppercase tracking-widest text-brand-muted mb-2">Plano Mensal</div>
-            <div className="text-5xl font-black text-brand-primary">50%</div>
-            <p className="text-sm text-brand-text-secondary mt-3 leading-relaxed">
-              do 1º pagamento mensal do indicado.<br />
-              <span className="text-brand-muted text-xs">Ex: indicado assina Pro (R$39,90) → você recebe <strong className="text-brand-primary">R$19,95</strong></span>
-            </p>
-          </div>
-          <div className="rounded-2xl p-6" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.15)' }}>
-            <div className="text-xs font-mono uppercase tracking-widest text-brand-muted mb-2">Plano Anual</div>
-            <div className="text-5xl font-black text-brand-primary">20%</div>
-            <p className="text-sm text-brand-text-secondary mt-3 leading-relaxed">
-              do 1º pagamento anual do indicado.<br />
-              <span className="text-brand-muted text-xs">Ex: plano anual R$399 → você recebe <strong className="text-brand-primary">R$79,80</strong></span>
-            </p>
-          </div>
+      {/* Comissão — modelo recorrente */}
+      <section className="px-5 sm:px-8 pb-12 max-w-4xl mx-auto">
+        <h2 className="text-xl font-bold text-brand-text text-center mb-2">Quanto você ganha</h2>
+        <p className="text-sm text-brand-muted text-center mb-6 max-w-lg mx-auto">
+          Comissão recorrente — não é um pagamento único na primeira venda.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <CommCard emoji="💰" title="30%" sub="12 primeiros meses" detail="Em cada pagamento do indicado — mensal ou anual." />
+          <CommCard emoji="🚀" title="40%" sub="bônus de performance" detail="A partir do 51º cliente novo no mês. Trava por 12 meses." />
+          <CommCard emoji="♾️" title="5%" sub="residual vitalício" detail="Após os 12 meses, enquanto o indicado seguir assinante." />
+          <CommCard emoji="💸" title="D+30" sub="saque sem mínimo" detail="Saldo liberado 30 dias após cada comissão gerada." />
         </div>
-        <div className="mt-4 rounded-xl px-5 py-3 text-center text-sm text-brand-muted" style={{ background: 'rgba(16,185,129,.06)', border: '1px solid rgba(16,185,129,.12)' }}>
-          💳 Pagamentos via Pix nos dias <strong className="text-brand-primary">10 e 25</strong> de cada mês · mínimo R$50,00 acumulado
+        <div className="mt-5 rounded-xl px-5 py-4 text-sm text-brand-text-secondary text-center leading-relaxed" style={{ background: 'rgba(16,185,129,.06)', border: '1px solid rgba(16,185,129,.12)' }}>
+          Exemplo: seu indicado assina o plano Pro (R$39,90/mês) → você recebe <strong className="text-brand-primary">R$11,97 todo mês</strong>, por 12 meses. Depois disso, <strong className="text-brand-primary">R$1,99/mês</strong> vitalício enquanto ele continuar assinante.
         </div>
       </section>
 
@@ -169,7 +194,7 @@ export default function AfiliadosLanding() {
             {
               n: '3',
               t: 'Receba via Pix',
-              d: 'A comissão cai no seu extrato automaticamente. Saque via Pix nos dias 10 e 25 (mínimo R$50,00).',
+              d: 'A comissão cai no seu extrato a cada pagamento do indicado. Saldo liberado 30 dias depois, sem valor mínimo para sacar.',
             },
           ].map(s => (
             <div key={s.n} className="rounded-2xl p-5 text-center" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -183,17 +208,32 @@ export default function AfiliadosLanding() {
         {/* Regras e condições resumidas */}
         <div className="mt-8 rounded-2xl p-5 space-y-2 text-xs text-brand-muted" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
           <p className="font-semibold text-brand-text-secondary text-sm mb-3">Regras e condições</p>
-          <p>• Comissão única por indicado (baseada no 1º pagamento do plano escolhido pelo indicado)</p>
-          <p>• O indicado deve se cadastrar pelo seu link e realizar o 1º pagamento para gerar comissão</p>
+          <p>• Comissão de 30% em cada pagamento aprovado do indicado durante os 12 primeiros meses de assinatura (mensal ou anual)</p>
+          <p>• Após 12 meses, comissão residual de 5% enquanto o indicado continuar assinante</p>
+          <p>• Bônus: a partir do 51º cliente novo conquistado no mês, a comissão desses clientes sobe para 40% — travada por 12 meses</p>
+          <p>• Apenas pagamentos aprovados contam para o cálculo e para a meta de 50 clientes/mês</p>
+          <p>• Cancelamento do indicado até 30 dias após a assinatura zera as comissões pendentes desse cliente; depois disso, o que já foi gerado é mantido</p>
+          <p>• Saldo liberado 30 dias após cada comissão gerada — saque via Pix a qualquer momento, sem valor mínimo</p>
           <p>• Pagamento exclusivamente via Pix para conta de titularidade do CPF/CNPJ cadastrado</p>
-          <p>• Saldo mínimo de R$50,00 para solicitar saque</p>
-          <p>• Pagamentos processados nos dias 10 e 25 de cada mês</p>
           <p>• A aprovação da afiliação exige e-mail verificado e CPF/CNPJ cadastrado</p>
           <p>• A ZapScript pode recusar ou cancelar afiliações que violem os termos de uso</p>
         </div>
 
         <div className="text-center mt-10">
           <Link href="/dashboard/afiliado" className="btn-primary px-7 py-3 text-sm">Começar agora →</Link>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="px-5 sm:px-8 pb-16 max-w-3xl mx-auto">
+        <h2 className="text-xl font-bold text-brand-text text-center mb-7">Perguntas frequentes</h2>
+        <div className="space-y-3">
+          {FAQ.map(f => (
+            <div key={f.q} className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <p className="text-sm font-bold text-brand-text">{f.q}</p>
+              <p className="text-xs text-brand-muted mt-1.5 leading-relaxed">{f.a}</p>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -257,6 +297,17 @@ export default function AfiliadosLanding() {
       <footer className="px-5 sm:px-8 py-8 border-t text-center" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <p className="text-xs text-brand-muted">© {new Date().getFullYear()} ZapScript · <Link href="/" className="hover:text-brand-primary">Voltar ao site</Link></p>
       </footer>
+    </div>
+  );
+}
+
+function CommCard({ emoji, title, sub, detail }: { emoji: string; title: string; sub: string; detail: string }) {
+  return (
+    <div className="rounded-2xl p-4 sm:p-5 text-center" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.15)' }}>
+      <div className="text-2xl mb-1">{emoji}</div>
+      <div className="text-3xl sm:text-4xl font-black text-brand-primary">{title}</div>
+      <div className="text-[11px] font-semibold text-brand-text-secondary mt-1 uppercase tracking-wide">{sub}</div>
+      <p className="text-xs text-brand-muted mt-2 leading-relaxed">{detail}</p>
     </div>
   );
 }

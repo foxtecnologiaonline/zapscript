@@ -41,7 +41,7 @@ export async function getUserModules(userId: string): Promise<string[]> {
   }
 
   try {
-    await (redis as any).set(entCacheKey(userId), JSON.stringify(keys), { EX: ENT_CACHE_TTL });
+    await (redis as any).set(entCacheKey(userId), JSON.stringify(keys), 'EX', ENT_CACHE_TTL);
   } catch { /* ignorar */ }
 
   return keys;

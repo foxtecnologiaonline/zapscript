@@ -13,6 +13,9 @@ const brl     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', cu
 const fmt     = (d: string) => new Date(d).toLocaleDateString('pt-BR');
 const fmtFull = (d: string) => new Date(d).toLocaleString('pt-BR');
 const fmtMin  = (m: number) => `${m.toFixed(1)} min`;
+// % efetivo de uma comissão (30/40/5) a partir do valor — modelo recorrente não guarda a taxa, só o resultado
+const commRatePct = (c: { commissionAmount: number; saleAmount: number }) =>
+  c.saleAmount > 0 ? Math.round((c.commissionAmount / c.saleAmount) * 100) : 0;
 
 /* ── Estilos por plano / status ─────────────────────────── */
 const PLAN_CLS: Record<string, string> = {
@@ -1491,7 +1494,6 @@ function AffiliatesPanel({ apiBase, token, notify }: {
                   <tr className="text-left text-[10px] uppercase tracking-wider text-[rgba(16,185,129,.4)] border-b border-[rgba(16,185,129,.08)]">
                     <th className="px-4 py-2.5 font-medium">#</th>
                     <th className="px-4 py-2.5 font-medium">Afiliado</th>
-                    <th className="px-4 py-2.5 font-medium">Tipo</th>
                     <th className="px-4 py-2.5 font-medium text-right">Indicações</th>
                     <th className="px-4 py-2.5 font-medium text-right">Conv.</th>
                     <th className="px-4 py-2.5 font-medium text-right">Taxa</th>
@@ -1501,12 +1503,11 @@ function AffiliatesPanel({ apiBase, token, notify }: {
                   </tr>
                 </thead>
                 <tbody>
-                  {perf.rows.length === 0 && <tr><td colSpan={9} className="px-4 py-6 text-center text-[rgba(16,185,129,.4)]">Nenhum afiliado aprovado ainda.</td></tr>}
+                  {perf.rows.length === 0 && <tr><td colSpan={8} className="px-4 py-6 text-center text-[rgba(16,185,129,.4)]">Nenhum afiliado aprovado ainda.</td></tr>}
                   {perf.rows.map((r, i) => (
                     <tr key={r.id} className="border-b border-[rgba(16,185,129,.05)]">
                       <td className="px-4 py-2.5 text-[rgba(16,185,129,.4)]">{i + 1}</td>
                       <td className="px-4 py-2.5 text-[#d1fae5]">{r.name || r.email}<div className="text-[10px] font-mono text-[rgba(16,185,129,.4)]">{r.code}</div></td>
-                      <td className="px-4 py-2.5 text-[rgba(16,185,129,.5)] text-xs">{r.commissionType === 'onetime' ? 'Única 30%' : 'Rec. 5%/mês'}</td>
                       <td className="px-4 py-2.5 text-right text-[#d1fae5]">{r.referrals}</td>
                       <td className="px-4 py-2.5 text-right text-[#6ee7b7]">{r.converted}</td>
                       <td className="px-4 py-2.5 text-right text-[rgba(16,185,129,.6)]">{r.convRate}%</td>
@@ -1544,7 +1545,7 @@ function AffiliatesPanel({ apiBase, token, notify }: {
                         <Badge label={AFF_STATUS_LABEL[a.status] || a.status} cls={AFF_STATUS_CLS[a.status]} />
                         <span className="text-[10px] font-mono text-[rgba(16,185,129,.5)] bg-[rgba(16,185,129,.08)] px-2 py-0.5 rounded">{a.code}</span>
                       </div>
-                      <div className="text-[11px] text-[rgba(16,185,129,.4)] mt-1">{a.email} · {a.commissionType === 'onetime' ? 'Única 30%' : 'Recorrente 5%/mês'} · {a.referrals} indicação(ões)</div>
+                      <div className="text-[11px] text-[rgba(16,185,129,.4)] mt-1">{a.email} · {a.referrals} indicação(ões)</div>
                       {a.notes && <div className="text-[11px] text-[#6ee7b7] mt-1">📊 {a.notes}</div>}
                       {a.audience && <div className="text-[11px] text-[rgba(16,185,129,.35)] mt-1 italic">“{a.audience}”</div>}
                       {(a.pixKey || a.payoutName) && <div className="text-[11px] text-[rgba(16,185,129,.4)] mt-1">Pix: {a.pixKey || '—'} {a.pixKeyType ? `(${a.pixKeyType})` : ''} · {a.payoutName || '—'}</div>}
@@ -1604,7 +1605,10 @@ function AffiliatesPanel({ apiBase, token, notify }: {
                       <td className="px-4 py-2.5 text-[#d1fae5]">{c.affiliateName || c.affiliateEmail}<div className="text-[10px] font-mono text-[rgba(16,185,129,.4)]">{c.affiliateCode}</div></td>
                       <td className="px-4 py-2.5 text-[rgba(16,185,129,.5)] text-xs">{c.pixKey || '—'}<div className="text-[10px] text-[rgba(16,185,129,.35)]">{c.pixKeyType || ''}</div></td>
                       <td className="px-4 py-2.5 font-semibold text-[#d1fae5]">{brl(c.commissionAmount)}<div className="text-[10px] text-[rgba(16,185,129,.35)]">venda {brl(c.saleAmount)}</div></td>
-                      <td className="px-4 py-2.5 text-[rgba(16,185,129,.5)] text-xs">{c.commissionType === 'onetime' ? 'Única' : `Rec. ${c.monthIndex}/12`}</td>
+                      <td className="px-4 py-2.5 text-[rgba(16,185,129,.5)] text-xs">
+                        {c.commissionType === 'annual' ? 'Anual' : 'Mensal'} · {commRatePct(c)}%
+                        {commRatePct(c) === 40 && <span className="ml-1 text-[#10b981]" title="Bônus de performance">★</span>}
+                      </td>
                       <td className="px-4 py-2.5"><Badge label={c.status === 'pending' ? 'A pagar' : c.status === 'paid' ? 'Pago' : 'Cancelada'} cls={COMM_STATUS_CLS[c.status]} /></td>
                       <td className="px-4 py-2.5">{c.status === 'pending' && <button onClick={() => markPaid(c.id)} className="px-3 py-1 rounded-lg text-[11px] font-semibold bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.25)] hover:bg-[rgba(16,185,129,.25)] whitespace-nowrap">Marcar pago</button>}{c.status === 'paid' && c.paidReference && <span className="text-[10px] text-[rgba(16,185,129,.4)]">{c.paidReference}</span>}</td>
                     </tr>
