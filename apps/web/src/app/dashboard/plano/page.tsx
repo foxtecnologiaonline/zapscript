@@ -39,6 +39,11 @@ interface User {
   emailVerified: boolean;
 }
 
+interface ModuleInfo {
+  key: string; name: string; status: string;
+  priceMonthly: number; priceYearly: number; dependsOn: string[];
+}
+
 /* ── Planos ── */
 const PLANS = [
   {
@@ -513,6 +518,14 @@ function PlanoContent() {
   const [canceling, setCanceling]               = useState(false);
   const [cancelError, setCancelError]           = useState('');
 
+  /* — Contratação de módulo avulso (?add=<key>, ex.: /dashboard/plano?add=campanhas) — */
+  const addModuleKey = searchParams.get('add');
+  const [modules, setModules]               = useState<ModuleInfo[]>([]);
+  const [moduleCheckout, setModuleCheckout]   = useState<string | null>(null);
+  const [moduleDocModal, setModuleDocModal]   = useState<string | null>(null);
+  const [moduleVerifyModal, setModuleVerifyModal] = useState(false);
+  const [moduleError, setModuleError]         = useState('');
+
   async function handleCancel() {
     setCanceling(true);
     setCancelError('');
@@ -555,6 +568,11 @@ function PlanoContent() {
     // Pacotes de minutos avulsos descontinuados no modelo por áudios
     // (Free = 15 áudios/mês, Pro = áudios ilimitados). Seção não é mais carregada.
     setMinutePkgs([]);
+
+    // Catálogo de módulos — usado pelo fluxo de contratação avulsa (?add=<key>)
+    api.get<{ modules: ModuleInfo[] }>('/modules')
+      .then(r => setModules(r.modules || []))
+      .catch(() => null);
   }, []);
 
   // ── Trial com cartão: abre o checkout em modo "garantir cartão" (D+7) ──
@@ -576,6 +594,35 @@ function PlanoContent() {
     startTrialCard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trialcardParam, stats, user]);
+
+  // Dispara o fluxo de contratação de módulo quando vier de ?add=<key> (CTAs de upsell
+  // da LP, do launcher /app e das telas de módulo bloqueadas por moduleGate).
+  useEffect(() => {
+    if (!addModuleKey || !modules.length || !user) return;
+    if (moduleCheckout || moduleDocModal || moduleVerifyModal || moduleError) return;
+    const mod = modules.find(m => m.key === addModuleKey);
+    if (!mod || mod.status === 'planned' || mod.status === 'discovery') {
+      setModuleError('Este módulo ainda não está disponível para contratação.');
+      return;
+    }
+    if (!user.emailVerified) { setModuleVerifyModal(true); return; }
+    if (!user.document)      { setModuleDocModal(addModuleKey); return; }
+    setModuleCheckout(addModuleKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addModuleKey, modules, user]);
+
+  async function handleModuleDocumentConfirm(document: string) {
+    await api.put('/auth/profile', { document });
+    setUser(u => u ? { ...u, document: document.replace(/\D/g, '') } : u);
+    const key = moduleDocModal!;
+    setModuleDocModal(null);
+    setModuleCheckout(key);
+  }
+
+  function handleModuleCheckoutSuccess(key: string) {
+    setModuleCheckout(null);
+    window.location.href = `/app/${key}`;
+  }
 
   // Abre o checkout inline para o plano
   function doCheckout(planName: string) {
@@ -698,6 +745,18 @@ function PlanoContent() {
             <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
               Você voltou para o plano Free. Pode reativar quando quiser.
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Erro ao contratar módulo (?add=<key>) */}
+      {moduleError && (
+        <div className="rounded-xl px-5 py-3.5 mb-5 flex items-center gap-3"
+          style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.2)' }}>
+          <span className="text-xl">⚠️</span>
+          <div>
+            <div className="font-bold text-sm" style={{ color: '#f87171' }}>Não foi possível contratar o módulo</div>
+            <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>{moduleError}</div>
           </div>
         </div>
       )}
@@ -1342,6 +1401,44 @@ function PlanoContent() {
         );
       })()}
 
+      {/* ── Checkout inline de módulo avulso (Asaas) ── */}
+      {moduleCheckout && (() => {
+        const mod = modules.find(m => m.key === moduleCheckout);
+        const priceLabel = mod ? `R$${mod.priceMonthly.toFixed(2).replace('.', ',')}` : '';
+        return (
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 overflow-y-auto"
+            onClick={() => setModuleCheckout(null)}
+          >
+            <div className="min-h-full flex items-start justify-center py-8 px-4">
+              <div
+                className="w-full max-w-lg rounded-2xl p-6"
+                style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-primary)/.3)' }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="mb-5">
+                  <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
+                    Contratar módulo {mod?.name || moduleCheckout}
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                    Cobrança mensal recorrente · Cancele quando quiser
+                  </p>
+                </div>
+                <CheckoutInline
+                  mode="module"
+                  planName={moduleCheckout}
+                  planLabel={mod?.name || moduleCheckout}
+                  planPrice={priceLabel}
+                  planFeats={[]}
+                  onSuccess={handleModuleCheckoutSuccess}
+                  onCancel={() => setModuleCheckout(null)}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Modal de verificação de e-mail (gate da assinatura) */}
       {verifyModal && user && (
         <VerifyEmailModal email={user.email} onCancel={() => setVerifyModal(false)} />
@@ -1353,6 +1450,20 @@ function PlanoContent() {
           planLabel={PLANS.find(p => p.name === docModal)?.label || docModal}
           onConfirm={handleDocumentConfirm}
           onCancel={() => setDocModal(null)}
+        />
+      )}
+
+      {/* Modal de verificação de e-mail (gate da contratação de módulo) */}
+      {moduleVerifyModal && user && (
+        <VerifyEmailModal email={user.email} onCancel={() => setModuleVerifyModal(false)} />
+      )}
+
+      {/* Modal de CPF/CNPJ (gate da contratação de módulo) */}
+      {moduleDocModal && (
+        <DocumentModal
+          planLabel={modules.find(m => m.key === moduleDocModal)?.name || moduleDocModal}
+          onConfirm={handleModuleDocumentConfirm}
+          onCancel={() => setModuleDocModal(null)}
         />
       )}
 

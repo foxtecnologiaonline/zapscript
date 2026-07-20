@@ -159,7 +159,7 @@ export default async function metaEmbeddedRoutes(app: FastifyInstance) {
     const conn = await prisma.whatsappNumber.findFirst({
       where:  { userId, provider: 'meta' },
       select: {
-        status: true, phoneNumber: true, displayName: true,
+        id: true, status: true, phoneNumber: true, displayName: true,
         metaWabaId: true, metaPhoneNumberId: true, connectedAt: true,
       },
     });
