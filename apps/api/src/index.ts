@@ -317,6 +317,7 @@ app.register(import('./routes/entitlements'),    { prefix: '/modules' });
 app.register(import('./routes/modules/campanhas'), { prefix: '/modules/campanhas' });
 app.register(import('./routes/modules/crm'),     { prefix: '/crm' });
 app.register(import('./routes/atende'),          { prefix: '/atende' });
+app.register(import('./routes/modules/vendas'),  { prefix: '/modules/vendas' });
 // Demo de upload no site removido — vira app/site separado. Rota desativada.
 app.register(import('./routes/analytics'),       { prefix: '/analytics' });
 

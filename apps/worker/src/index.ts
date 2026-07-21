@@ -257,7 +257,7 @@ async function transcribeBuffer(
  * sequência (respeita rate limit) e concatenados; os segmentos têm o timestamp
  * deslocado pela duração acumulada (modo jurídico).
  */
-async function transcribeAudio(
+export async function transcribeAudio(
   mp3Buffer: Buffer, opts: TranscribeOpts = {},
 ): Promise<{ text: string; durationSec: number; language: string; segments: WhisperSegment[] }> {
   const estDur = estimateMp3DurationSec(mp3Buffer);
@@ -401,7 +401,7 @@ function summaryMode(text: string, durationSec: number): SummaryMode {
  * Retorna string[] possivelmente com sentinels ::H:: (seção) e ::P:: (pendência).
  * Cadeia: [modelo do tier] → claude-3-5-haiku → claude-3-haiku → gpt-4o-mini → placeholder.
  */
-async function generateBullets(originalText: string, durationSec = 0, language?: string): Promise<string[]> {
+export async function generateBullets(originalText: string, durationSec = 0, language?: string): Promise<string[]> {
   const mode        = summaryMode(originalText, durationSec);
   const needsTransl = language && !/^pt(-br)?$/i.test(language);
   const ptNote      = needsTransl ? ' Responda sempre em português brasileiro (PT-BR).' : '';
@@ -1556,6 +1556,7 @@ async function routeJob(job: Job) {
   if (source === 'manual')          return processManualJob(job);
   if (source === 'whatsapp-twilio') return processTwilioJob(job);
   if (source === 'whatsapp-evolution') return processEvolutionJob(job);
+  if (source === 'vendas')          return (await import('./modules/vendas/process')).processVendasJob(job);
   // transcribe-official / whatsapp-meta = WhatsApp Cloud API (Meta)
   return processOfficialWhatsAppJob(job);
 }
