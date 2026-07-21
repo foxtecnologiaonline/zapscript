@@ -17,9 +17,9 @@ import { getQr } from '../lib/qrStore';
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function getApiBase(): string {
-  const url = process.env.API_URL || process.env.RENDER_EXTERNAL_URL;
+  const url = process.env.API_URL || process.env.RENDER_EXTERNAL_URL || process.env.APP_URL;
   if (url) return url.replace(/\/$/, '');
-  console.error('[numbers] ⛔ API_URL não configurado! Configure API_URL no Render.');
+  console.error('[numbers] ⛔ API_URL não configurado! Configure API_URL no .env da Vultr.');
   return '';
 }
 
