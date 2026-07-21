@@ -2057,6 +2057,109 @@ runWeeklyWhatsappDigest();
 setInterval(runWeeklyWhatsappDigest, 60 * 60 * 1000);
 
 // ─────────────────────────────────────────────────────────────────
+//  CRON — Lembretes de Cobrança via WhatsApp (módulo Cobrança)
+//  Roda de hora em hora; dispara só às 12h UTC (~9h BRT) → 1x/dia.
+//  D0: cobrança vence hoje. D+1: venceu ontem (1º dia de atraso).
+//  Não é gateway de pagamento — só lembrete. Idempotente via CobrancaEnvio
+//  (1 tipo por cobrancaId); reenvio depois disso é manual, via API.
+// ─────────────────────────────────────────────────────────────────
+function cobrancaDateOnlyUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+function formatBRL(v: number): string {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function formatDateBR(d: Date): string {
+  return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+}
+
+function buildCobrancaReminderMessage(
+  kind: 'vence_hoje' | 'venceu',
+  opts: { nomeCliente: string; descricao: string; valor: number; vencimento: Date },
+): string {
+  const valorFmt = formatBRL(opts.valor);
+  const dataFmt = formatDateBR(opts.vencimento);
+  const primeiroNome = opts.nomeCliente.trim().split(' ')[0] || opts.nomeCliente;
+
+  if (kind === 'vence_hoje') {
+    return `Olá, ${primeiroNome}! Passando para lembrar que *${opts.descricao}* no valor de *${valorFmt}* vence hoje (${dataFmt}). Qualquer dúvida, é só responder por aqui. 🙂`;
+  }
+  return `Olá, ${primeiroNome}! *${opts.descricao}* no valor de *${valorFmt}* venceu em ${dataFmt} e ainda consta em aberto. Se já pagou, pode desconsiderar esta mensagem — qualquer dúvida, é só responder por aqui.`;
+}
+
+async function sendCobrancaReminders(kind: 'vence_hoje' | 'venceu', targetDate: Date) {
+  const start = cobrancaDateOnlyUTC(targetDate);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+  const cobrancas = await prisma.cobrancaCobranca.findMany({
+    where: {
+      status: 'pendente',
+      deletedAt: null,
+      vencimento: { gte: start, lt: end },
+      envios: { none: { tipo: kind } },
+    },
+    include: {
+      cliente: true,
+      user: {
+        select: {
+          numbers: {
+            where: { status: 'connected', zapiInstanceId: { not: null } },
+            orderBy: { connectedAt: 'desc' },
+            take: 1,
+            select: { zapiInstanceId: true },
+          },
+        },
+      },
+    },
+  }).catch(() => [] as any[]);
+
+  let sent = 0;
+  for (const c of cobrancas) {
+    if (c.cliente.deletedAt) continue;
+    const inst = c.user.numbers?.[0]?.zapiInstanceId;
+    if (!inst) continue;
+
+    const message = buildCobrancaReminderMessage(kind, {
+      nomeCliente: c.cliente.nome,
+      descricao: c.descricao,
+      valor: c.valor,
+      vencimento: c.vencimento,
+    });
+
+    try {
+      await sendMessageViaEvolution(inst, c.cliente.telefone, message);
+      await prisma.cobrancaEnvio.create({ data: { cobrancaId: c.id, tipo: kind, sucesso: true } });
+      sent++;
+    } catch (err: any) {
+      await prisma.cobrancaEnvio.create({
+        data: { cobrancaId: c.id, tipo: kind, sucesso: false, erro: String(err?.message || err) },
+      }).catch(() => null);
+      logger.error(`[Cron][Cobrança] Falha ao enviar lembrete ${kind} (cobrancaId=${c.id}): ${err?.message}`);
+    }
+  }
+  if (sent > 0) logger.info(`[Cron][Cobrança] Lembrete "${kind}" enviado a ${sent} cobrança(s)`);
+}
+
+async function runCobrancaReminders() {
+  const now = new Date();
+  // Roda de hora em hora; dispara só às 12h UTC (~9h BRT) → 1x/dia.
+  if (now.getUTCHours() !== 12) return;
+
+  try {
+    await sendCobrancaReminders('vence_hoje', now);
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    await sendCobrancaReminders('venceu', yesterday);
+  } catch (err) {
+    logger.error(`[Cron][Cobrança] Erro no lembrete de cobrança: ${(err as Error).message}`);
+  }
+}
+
+runCobrancaReminders();
+setInterval(runCobrancaReminders, 60 * 60 * 1000);
+
+// ─────────────────────────────────────────────────────────────────
 //  CRON — Service Health Checker (#6 + #4)
 //  Verifica saúde dos serviços a cada 5 minutos e persiste no DB.
 //  Se thresholds de alerta forem excedidos, envia notificação via WhatsApp.

@@ -78,7 +78,7 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '💰',
     tagline: 'Lembrete e cobrança automática via WhatsApp',
     jtbd: 'Sou MEI e não tenho tempo de cobrar quem venceu/vence hoje; perco receita por inadimplência.',
-    status: 'planned',
+    status: 'beta',
     priceMonthly: 29.90,
     priceYearly: 287.04,
     dependsOn: [],
