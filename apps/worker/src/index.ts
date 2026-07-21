@@ -14,6 +14,7 @@ import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread }
 import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encryption';
 import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
+import { processCampanhaJob, markCampanhaJobExhausted } from './modules/campanhas';
 import {
   planEfetivo, audioQuotaFor, pickFooterVariant, formatSavedTime,
   MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
@@ -1606,6 +1607,45 @@ worker.on('error', (err) => {
 logger.info('Worker de conversão iniciado (WhatsApp + Upload manual)');
 
 // ─────────────────────────────────────────────────────────────────
+//  WORKER — Campanhas (disparo em massa via Meta Cloud API)
+// ─────────────────────────────────────────────────────────────────
+// Fila e worker separados da fila 'transcriptions': domínio isolado, permite
+// tunar concorrência/rate limit sem afetar o pipeline de transcrição.
+const CAMPANHAS_CONCURRENCY = parseInt(process.env.CAMPANHAS_WORKER_CONCURRENCY || '3', 10);
+
+const campanhasWorker = new Worker('campanhas', processCampanhaJob, {
+  connection:  redis as any,
+  concurrency: CAMPANHAS_CONCURRENCY,
+  limiter:     { max: 10, duration: 1_000 }, // teto de segurança: 10 envios/seg à Graph API
+});
+
+campanhasWorker.on('completed', (job, result) => {
+  if (result?.skipped) {
+    logger.warn(`[Campanhas] Job ${job.id} ignorado — motivo: ${result.reason}`);
+  } else {
+    logger.info(`[Campanhas] ✅ Job ${job.id} concluído`);
+  }
+});
+
+campanhasWorker.on('failed', (job, err) => {
+  const attempts    = job?.attemptsMade ?? 0;
+  const maxAttempts = job?.opts?.attempts ?? 3;
+  logger.error(`[Campanhas] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
+  // Só marca o contato como 'failed' quando as tentativas realmente se esgotaram —
+  // o evento 'failed' dispara a cada tentativa, não só na exaustão (ver comentário em modules/campanhas.ts).
+  if (job && attempts >= maxAttempts) {
+    markCampanhaJobExhausted(job, err).catch((e) =>
+      logger.error(`[Campanhas] Falha ao marcar contato como failed: ${e.message}`));
+  }
+});
+
+campanhasWorker.on('error', (err) => {
+  logger.error('[Campanhas] Erro interno', { err: err.message });
+});
+
+logger.info('Worker de campanhas iniciado (Meta Cloud API)');
+
+// ─────────────────────────────────────────────────────────────────
 //  CRON — Reset automático de minutos mensais
 //  Roda a cada hora e reseta saldos cujo resetAt já passou
 // ─────────────────────────────────────────────────────────────────
@@ -2177,6 +2217,7 @@ process.on('SIGTERM', async () => {
   }, 30_000);
   try {
     await worker.close();
+    await campanhasWorker.close();
     await prisma.$disconnect();
     clearTimeout(forceExit);
     process.exit(0);

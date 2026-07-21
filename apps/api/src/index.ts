@@ -314,6 +314,7 @@ app.register(import('./routes/nps'),             { prefix: '/nps' });
 app.register(import('./routes/meta-embedded'),   { prefix: '/meta' });
 app.register(import('./routes/affiliates'),      { prefix: '/affiliates' });
 app.register(import('./routes/entitlements'),    { prefix: '/modules' });
+app.register(import('./routes/modules/campanhas'), { prefix: '/modules/campanhas' });
 app.register(import('./routes/modules/crm'),     { prefix: '/crm' });
 app.register(import('./routes/atende'),          { prefix: '/atende' });
 app.register(import('./routes/modules/vendas'),  { prefix: '/modules/vendas' });
@@ -514,6 +515,84 @@ async function runAutoMigrations() {
       CONSTRAINT "FaqSuggestion_pkey" PRIMARY KEY ("id")
     )`,
     `CREATE INDEX IF NOT EXISTS "FaqSuggestion_status_idx" ON "FaqSuggestion"("status")`,
+    // ZapScript Campanhas (migrações 20260713_campanhas_tables + 20260714_campanhas_beta):
+    // auto-cura tabelas + libera o módulo mesmo se o startCommand de produção não rodar
+    // `prisma migrate deploy`, e mesmo se o seed (Product) nunca tiver sido executado.
+    `CREATE TABLE IF NOT EXISTS "Campanha" (
+      "id"                 TEXT NOT NULL,
+      "userId"             TEXT NOT NULL,
+      "whatsappNumberId"   TEXT NOT NULL,
+      "name"               TEXT NOT NULL,
+      "status"             TEXT NOT NULL DEFAULT 'draft',
+      "templateName"       TEXT NOT NULL,
+      "templateLanguage"   TEXT NOT NULL DEFAULT 'pt_BR',
+      "templateComponents" JSONB,
+      "audienceCount"      INTEGER NOT NULL DEFAULT 0,
+      "sentCount"          INTEGER NOT NULL DEFAULT 0,
+      "scheduledAt"        TIMESTAMP(3),
+      "startedAt"          TIMESTAMP(3),
+      "completedAt"        TIMESTAMP(3),
+      "createdAt"          TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"          TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "Campanha_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "Campanha_userId_idx" ON "Campanha"("userId")`,
+    `CREATE INDEX IF NOT EXISTS "Campanha_whatsappNumberId_idx" ON "Campanha"("whatsappNumberId")`,
+    `CREATE INDEX IF NOT EXISTS "Campanha_status_idx" ON "Campanha"("status")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Campanha_userId_fkey') THEN
+        ALTER TABLE "Campanha" ADD CONSTRAINT "Campanha_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Campanha_whatsappNumberId_fkey') THEN
+        ALTER TABLE "Campanha" ADD CONSTRAINT "Campanha_whatsappNumberId_fkey" FOREIGN KEY ("whatsappNumberId") REFERENCES "WhatsappNumber"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CampanhaContato" (
+      "id"           TEXT NOT NULL,
+      "campanhaId"   TEXT NOT NULL,
+      "phone"        TEXT NOT NULL,
+      "name"         TEXT,
+      "variables"    JSONB,
+      "status"       TEXT NOT NULL DEFAULT 'pending',
+      "wamid"        TEXT,
+      "errorMessage" TEXT,
+      "sentAt"       TIMESTAMP(3),
+      "deliveredAt"  TIMESTAMP(3),
+      "readAt"       TIMESTAMP(3),
+      "failedAt"     TIMESTAMP(3),
+      "createdAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"    TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "CampanhaContato_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "CampanhaContato_campanhaId_idx" ON "CampanhaContato"("campanhaId")`,
+    `CREATE INDEX IF NOT EXISTS "CampanhaContato_campanhaId_status_idx" ON "CampanhaContato"("campanhaId", "status")`,
+    `CREATE INDEX IF NOT EXISTS "CampanhaContato_wamid_idx" ON "CampanhaContato"("wamid")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CampanhaContato_campanhaId_fkey') THEN
+        ALTER TABLE "CampanhaContato" ADD CONSTRAINT "CampanhaContato_campanhaId_fkey" FOREIGN KEY ("campanhaId") REFERENCES "Campanha"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CampanhaOptOut" (
+      "id"        TEXT NOT NULL,
+      "userId"    TEXT NOT NULL,
+      "phone"     TEXT NOT NULL,
+      "reason"    TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CampanhaOptOut_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "CampanhaOptOut_userId_phone_key" ON "CampanhaOptOut"("userId", "phone")`,
+    `CREATE INDEX IF NOT EXISTS "CampanhaOptOut_userId_idx" ON "CampanhaOptOut"("userId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CampanhaOptOut_userId_fkey') THEN
+        ALTER TABLE "CampanhaOptOut" ADD CONSTRAINT "CampanhaOptOut_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // Garante o Product 'campanhas' em 'beta' mesmo se `prisma db seed` nunca rodou em produção.
+    `INSERT INTO "Product" ("id", "key", "name", "status", "priceMonthly", "priceYearly", "dependsOn", "createdAt", "updatedAt")
+     VALUES ('seed-product-campanhas', 'campanhas', 'ZapScript Campanhas', 'beta', 59.90, 575.04, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+     ON CONFLICT ("key") DO UPDATE SET "status" = 'beta', "updatedAt" = CURRENT_TIMESTAMP`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>

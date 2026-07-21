@@ -159,6 +159,15 @@ export const adminUpdateTicketSchema = z.object({
   response: z.string().max(5000).optional(),
 });
 
+// ── Campanhas Schemas ─────────────────────────────────────
+export const createCampanhaSchema = z.object({
+  name:               z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+  whatsappNumberId:   z.string().cuid('Número inválido'),
+  templateName:       z.string().min(1, 'Selecione um template').max(512),
+  templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
+  templateComponents: z.array(z.record(z.any())).optional(),
+});
+
 // ── CRM Schemas ───────────────────────────────────────────
 export const createCrmStageSchema = z.object({
   name:  z.string().min(1, 'Nome é obrigatório').max(50),

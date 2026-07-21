@@ -91,7 +91,7 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '📣',
     tagline: 'Disparo em massa compliant via API oficial',
     jtbd: 'Perdi meu bot não autorizado (política Meta dez/2025) e preciso de alternativa legal agora.',
-    status: 'planned',
+    status: 'beta',
     priceMonthly: 59.90,
     priceYearly: 575.04,
     dependsOn: [],
