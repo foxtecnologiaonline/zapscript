@@ -12,7 +12,7 @@ function escHtml(s: string | null | undefined): string {
 import { calculateProration } from '../lib/proration';
 import { validateRequest, billingCheckoutSchema, billingUpgradeSchema, billingTrialCardSchema, moduleSubscribeSchema } from '../lib/validation';
 import { invalidatePlanCache } from '../lib/planGate';
-import { attributeAffiliateCommission } from '../lib/affiliate';
+import { attributeAffiliateCommission, clawbackAffiliateCommissionOnCancel } from '../lib/affiliate';
 import { invalidateModuleCache } from '../lib/moduleGate';
 
 /* ─────────────────────────────────────────────────────────
@@ -49,6 +49,9 @@ async function markProcessed(paymentId: string): Promise<void> {
 const PLAN_PRICES:        Record<string, number> = { pro: 39.90,  executive: 49.90  };
 const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 383.04, executive: 479.04 }; // x12 com 20% off
 const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive' };
+
+/* ── Combo (Core + módulos disponíveis): % fixo sobre a soma do valor agregado ── */
+const COMBO_DISCOUNT_PCT = 0.20;
 
 /* ── Oferta permanente: 1º mês de assinatura mensal Pro com 50% off (R$19,90) ── */
 const JUNE_PROMO_PRICE = 19.90;
@@ -123,6 +126,38 @@ function decodeModuleRef(ref: string | undefined): { userId: string; productKey:
   return { userId: parts[0], productKey: parts[2] };
 }
 
+/* ── externalReference de contratação do Combo (Core + módulos disponíveis) ──
+   Formato: "<userId>|combo|<corePlanName>" — carrega o plano-núcleo resolvido no
+   momento da cobrança (mantém o tier atual do usuário ou default 'pro'), para o
+   webhook não precisar recalcular. Checado ANTES de decodeRef() — um ref de plano
+   comum nunca tem "combo" como planName. */
+function encodeComboRef(userId: string, corePlanName: string): string {
+  return `${userId}|combo|${corePlanName}`;
+}
+function decodeComboRef(ref: string | undefined): { userId: string; corePlanName: string } | null {
+  if (!ref) return null;
+  const parts = ref.split('|');
+  if (parts.length < 3 || parts[1] !== 'combo') return null;
+  return { userId: parts[0], corePlanName: parts[2] };
+}
+
+/* ── Módulos contratáveis (ga/beta, exceto core) que o usuário ainda não possui ativo —
+   base dinâmica do Combo: cresce sozinha quando um novo módulo sai de "planned". ── */
+async function resolveComboModules(userId: string): Promise<Array<{ key: string; name: string; priceMonthly: number }>> {
+  const [products, owned] = await Promise.all([
+    prisma.product.findMany({
+      where:  { status: { in: ['ga', 'beta'] }, key: { not: 'core' } },
+      select: { key: true, name: true, priceMonthly: true },
+    }),
+    prisma.entitlement.findMany({
+      where:  { userId, status: 'active' },
+      select: { productKey: true },
+    }),
+  ]);
+  const ownedKeys = new Set(owned.map((e: { productKey: string }) => e.productKey));
+  return products.filter((p: { key: string }) => !ownedKeys.has(p.key));
+}
+
 /* ── Buscar ou criar cliente no Asaas ── */
 async function getOrCreateCustomer(user: {
   id: string; name: string | null; email: string; document?: string | null; phone?: string | null;
@@ -160,6 +195,7 @@ async function activatePlan(userId: string, planName: string, opts: {
   paymentMethod?:       string | null;
   paymentId?:           string;
   yearly?:              boolean;
+  comboDiscountPct?:    number | null; // setar (Combo) ou limpar (null) o desconto agregado
 }): Promise<void> {
   // A6: Buscar plano e sub existente em paralelo para evitar drift de ciclo de cobrança
   const [plan, existingSub] = await Promise.all([
@@ -188,6 +224,7 @@ async function activatePlan(userId: string, planName: string, opts: {
         paymentMethod:        opts.paymentMethod ?? null,
         status:               'active',
         currentPeriodEnd:     nextPeriod,
+        comboDiscountPct:     opts.comboDiscountPct ?? null,
       },
       update: {
         planId:               plan.id,
@@ -196,6 +233,7 @@ async function activatePlan(userId: string, planName: string, opts: {
         paymentMethod:        opts.paymentMethod ?? undefined,
         status:               'active',
         currentPeriodEnd:     nextPeriod,
+        comboDiscountPct:     opts.comboDiscountPct !== undefined ? opts.comboDiscountPct : undefined,
       },
     }),
     prisma.minuteBalance.upsert({
@@ -213,7 +251,8 @@ async function activatePlan(userId: string, planName: string, opts: {
 
 /* ── Valor agregado atual: core pago (se houver) + módulos pagos ativos ──
    Fonte única da verdade da premissa "1 transação, valor total somado". Lê sempre
-   do banco (Subscription+Plan, Entitlement+Product) — nunca do catálogo estático. */
+   do banco (Subscription+Plan, Entitlement+Product) — nunca do catálogo estático.
+   Se houver comboDiscountPct (contratação via Combo), aplica sobre o total somado. */
 async function computeAggregateValue(userId: string): Promise<number> {
   const [sub, entitlements] = await Promise.all([
     prisma.subscription.findUnique({ where: { userId }, include: { plan: true } }),
@@ -223,14 +262,15 @@ async function computeAggregateValue(userId: string): Promise<number> {
     }),
   ]);
   const corePart = sub?.plan && sub.plan.name !== 'free' ? sub.plan.priceBrl : 0;
-  if (entitlements.length === 0) return corePart;
+  const discount = sub?.comboDiscountPct ?? 0;
+  if (entitlements.length === 0) return Math.round(corePart * (1 - discount) * 100) / 100;
 
   const products = await prisma.product.findMany({
     where:  { key: { in: entitlements.map((e: { productKey: string }) => e.productKey) } },
     select: { priceMonthly: true },
   });
   const modulesPart = products.reduce((sum: number, p: { priceMonthly: number }) => sum + p.priceMonthly, 0);
-  return Math.round((corePart + modulesPart) * 100) / 100;
+  return Math.round((corePart + modulesPart) * (1 - discount) * 100) / 100;
 }
 
 /* ── Recriar a assinatura Asaas agregada num novo valor total ──
@@ -277,6 +317,30 @@ async function activateModuleEntitlement(userId: string, productKey: string, opt
   });
   if (opts.paymentId) await markProcessed(opts.paymentId);
   invalidateModuleCache(userId).catch(() => null);
+}
+
+/* ── Ativar o Combo no banco: sobe o plano-núcleo (mantém tier atual ou 'pro') +
+   ativa todos os módulos contratáveis que o usuário ainda não possui, com o
+   desconto agregado. Reaproveitado pelos 3 caminhos de confirmação (sem cobrança
+   adicional, cartão aprovado na hora, PIX confirmado via webhook). ── */
+async function activateCombo(userId: string, corePlanName: string, opts: {
+  asaasSubscriptionId?: string | null;
+  asaasCustomerId?:     string | null;
+  paymentMethod?:       string | null;
+  paymentId?:           string;
+} = {}): Promise<{ modules: Array<{ key: string; name: string; priceMonthly: number }> }> {
+  const modules = await resolveComboModules(userId);
+  await activatePlan(userId, corePlanName, {
+    asaasSubscriptionId: opts.asaasSubscriptionId ?? null,
+    asaasCustomerId:     opts.asaasCustomerId ?? null,
+    paymentMethod:       opts.paymentMethod ?? null,
+    paymentId:           opts.paymentId,
+    comboDiscountPct:    COMBO_DISCOUNT_PCT,
+  });
+  for (const m of modules) {
+    await activateModuleEntitlement(userId, m.key);
+  }
+  return { modules };
 }
 
 /* ── Buscar QR code PIX da primeira cobrança de uma assinatura ── */
@@ -927,13 +991,16 @@ export default async function billingRoutes(app: FastifyInstance) {
     await prisma.$transaction([
       prisma.subscription.update({
         where: { userId },
-        data:  { planId: freePlan.id, status: 'canceled', asaasSubscriptionId: null, currentPeriodEnd: null },
+        data:  { planId: freePlan.id, status: 'canceled', asaasSubscriptionId: null, currentPeriodEnd: null, comboDiscountPct: null },
       }),
       prisma.minuteBalance.update({
         where: { userId },
         data:  { availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
       }),
     ]);
+
+    // Programa de afiliados: cancelamento nos primeiros 30 dias zera comissões pendentes
+    clawbackAffiliateCommissionOnCancel(userId).catch(() => null);
 
     return { canceled: true, message: 'Assinatura cancelada. Você voltou para o plano gratuito.' };
   });
@@ -1101,7 +1168,7 @@ export default async function billingRoutes(app: FastifyInstance) {
 
     const [entitlement, sub, product] = await Promise.all([
       prisma.entitlement.findUnique({ where: { userId_productKey: { userId, productKey: key } } }),
-      prisma.subscription.findUnique({ where: { userId } }),
+      prisma.subscription.findUnique({ where: { userId }, include: { plan: true } }),
       prisma.product.findUnique({ where: { key } }),
     ]);
     if (!entitlement || entitlement.status !== 'active') {
@@ -1118,14 +1185,35 @@ export default async function billingRoutes(app: FastifyInstance) {
       return { canceled: true, moduleKey: key };
     }
 
-    const currentTotal = await computeAggregateValue(userId);
-    const newTotal      = Math.max(0, Math.round((currentTotal - (product?.priceMonthly ?? 0)) * 100) / 100);
+    // ── Combo ativo: cancelar QUALQUER módulo já quebra "todos os contratáveis" —
+    //    desconto cai e o total volta a ser a soma bruta (sem desconto) do que resta.
+    //    (Subtrair o preço bruto de um total já descontado dobraria o desconto.) ──
+    const hadCombo = !!sub?.comboDiscountPct;
+    let newTotal: number;
+    if (hadCombo) {
+      const remaining = await prisma.entitlement.findMany({
+        where:  { userId, status: 'active', source: 'paid', productKey: { not: key } },
+        select: { productKey: true },
+      });
+      const remainingProducts = remaining.length
+        ? await prisma.product.findMany({
+            where:  { key: { in: remaining.map((e: { productKey: string }) => e.productKey) } },
+            select: { priceMonthly: true },
+          })
+        : [];
+      const corePart    = sub?.plan && sub.plan.name !== 'free' ? sub.plan.priceBrl : 0;
+      const modulesPart = remainingProducts.reduce((s: number, p: { priceMonthly: number }) => s + p.priceMonthly, 0);
+      newTotal = Math.round((corePart + modulesPart) * 100) / 100;
+    } else {
+      const currentTotal = await computeAggregateValue(userId);
+      newTotal = Math.max(0, Math.round((currentTotal - (product?.priceMonthly ?? 0)) * 100) / 100);
+    }
 
     if (sub?.asaasSubscriptionId && sub.asaasCustomerId) {
       if (newTotal <= 0) {
         await asaas(`/subscriptions/${sub.asaasSubscriptionId}`, { method: 'DELETE' })
           .catch(err => app.log.warn({ err }, 'Asaas: falha ao cancelar assinatura agregada'));
-        await prisma.subscription.update({ where: { userId }, data: { asaasSubscriptionId: null } }).catch(() => null);
+        await prisma.subscription.update({ where: { userId }, data: { asaasSubscriptionId: null, comboDiscountPct: hadCombo ? null : undefined } }).catch(() => null);
       } else {
         const newSubId = await reissueAggregateSubscription({
           userId, asaasCustomerId: sub.asaasCustomerId, newValue: newTotal,
@@ -1133,8 +1221,10 @@ export default async function billingRoutes(app: FastifyInstance) {
           oldAsaasSubscriptionId: sub.asaasSubscriptionId,
           description: 'ZapScript — Assinatura mensal',
         });
-        await prisma.subscription.update({ where: { userId }, data: { asaasSubscriptionId: newSubId } }).catch(() => null);
+        await prisma.subscription.update({ where: { userId }, data: { asaasSubscriptionId: newSubId, comboDiscountPct: hadCombo ? null : undefined } }).catch(() => null);
       }
+    } else if (hadCombo) {
+      await prisma.subscription.update({ where: { userId }, data: { comboDiscountPct: null } }).catch(() => null);
     }
 
     await prisma.entitlement.update({
@@ -1145,6 +1235,177 @@ export default async function billingRoutes(app: FastifyInstance) {
     app.log.info(`Módulo cancelado: userId=${userId} module=${key} novoTotal=${newTotal}`);
     return { canceled: true, moduleKey: key, newTotal };
   });
+
+  // ── GET /billing/combo/preview ──────────────────────────────
+  // Prévia do Combo antes da confirmação: módulos que faltam, total bruto,
+  // total com desconto e o percentual em si — front nunca hardcoda
+  // COMBO_DISCOUNT_PCT, só exibe o que a API calcular.
+  app.get('/combo/preview', auth, async (req: any) => {
+    const userId = req.user.sub;
+    const sub = await prisma.subscription.findUnique({ where: { userId }, include: { plan: true } });
+
+    const corePlanName  = sub?.plan?.name === 'executive' ? 'executive' : 'pro';
+    const modules        = await resolveComboModules(userId);
+    const alreadyOnCore  = !!sub?.plan && sub.plan.name !== 'free';
+    if (modules.length === 0 && alreadyOnCore) {
+      return { available: false, reason: 'complete' };
+    }
+
+    const rawTotal = Math.round((PLAN_PRICES[corePlanName] + modules.reduce((s: number, m: { priceMonthly: number }) => s + m.priceMonthly, 0)) * 100) / 100;
+    const newTotal = Math.round(rawTotal * (1 - COMBO_DISCOUNT_PCT) * 100) / 100;
+
+    return {
+      available:     true,
+      corePlanName,
+      corePlanLabel: PLAN_LABELS[corePlanName],
+      modules:       modules.map((m: { key: string; name: string; priceMonthly: number }) => ({ key: m.key, name: m.name, priceMonthly: m.priceMonthly })),
+      discountPct:   COMBO_DISCOUNT_PCT,
+      rawTotal,
+      newTotal,
+    };
+  });
+
+  // ── POST /billing/combo/subscribe ──────────────────────────
+  // Contrata o Combo (Core + todos os módulos disponíveis) com desconto fixo
+  // sobre a soma. Núcleo mantém o tier atual do usuário (pro/executive) ou assume
+  // 'pro' se ele estiver no free; módulos são resolvidos dinamicamente (ga/beta,
+  // exceto core, ainda não possuídos) — cresce sozinho quando um módulo novo sai
+  // de "planned". Mesma mecânica de proration/cartão/PIX do /modules/:key/subscribe.
+  app.post<{ Body: any }>(
+    '/combo/subscribe',
+    { ...auth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req: any, reply) => {
+      const userId = req.user.sub;
+
+      const v = validateRequest(moduleSubscribeSchema)(req.body);
+      if (!v.valid) return reply.code(400).send({ error: v.error });
+      const { paymentMethod, card, billingAddress } = v.data;
+
+      if (isCardMethod(paymentMethod) && !card) {
+        return reply.code(400).send({ error: 'Dados do cartão são obrigatórios.' });
+      }
+
+      const [user, sub] = await Promise.all([
+        prisma.user.findUnique({ where: { id: userId } }),
+        prisma.subscription.findUnique({ where: { userId }, include: { plan: true } }),
+      ]);
+      if (!user) return reply.code(401).send({ error: 'Usuário não encontrado' });
+
+      const corePlanName = sub?.plan?.name === 'executive' ? 'executive' : 'pro';
+      const modules       = await resolveComboModules(userId);
+      const alreadyOnCore = !!sub?.plan && sub.plan.name !== 'free';
+      if (modules.length === 0 && alreadyOnCore) {
+        return reply.code(400).send({ error: 'Você já tem o Combo completo (todos os módulos disponíveis).' });
+      }
+
+      if (!user.emailVerified) {
+        return reply.code(403).send({ code: 'EMAIL_NOT_VERIFIED', error: 'Confirme seu e-mail antes de contratar o Combo.' });
+      }
+      if (!user.document) {
+        return reply.code(400).send({ code: 'DOCUMENT_REQUIRED', error: 'Informe seu CPF/CNPJ para contratar o Combo.' });
+      }
+
+      let asaasCustomerId: string;
+      try {
+        asaasCustomerId = await getOrCreateCustomer(user);
+      } catch (err: any) {
+        app.log.error({ err }, 'Asaas customer error (combo subscribe)');
+        return reply.code(503).send({ error: 'Serviço de pagamento indisponível. Tente novamente.' });
+      }
+
+      const currentTotal = await computeAggregateValue(userId);
+      const rawTotal      = Math.round((PLAN_PRICES[corePlanName] + modules.reduce((s: number, m: { priceMonthly: number }) => s + m.priceMonthly, 0)) * 100) / 100;
+      const newTotal       = Math.round(rawTotal * (1 - COMBO_DISCOUNT_PCT) * 100) / 100;
+      const proration      = calculateProration(currentTotal, newTotal, sub?.currentPeriodEnd ?? null);
+
+      // ── Sem cobrança adicional (ciclo já no fim, ou total do Combo é menor que o atual) ──
+      if (!proration.shouldCharge) {
+        const newSubId = await reissueAggregateSubscription({
+          userId, asaasCustomerId, newValue: newTotal, paymentMethod,
+          oldAsaasSubscriptionId: sub?.asaasSubscriptionId ?? null,
+          description: 'ZapScript — Assinatura mensal (Combo)',
+        });
+        const { modules: activated } = await activateCombo(userId, corePlanName, { asaasSubscriptionId: newSubId, asaasCustomerId, paymentMethod });
+        app.log.info(`Combo ativado (sem custo adicional): userId=${userId} plano=${corePlanName} total=${newTotal}`);
+        return {
+          status: 'active', corePlanName, newTotal, discountPct: COMBO_DISCOUNT_PCT,
+          modulesActivated: activated.map((m: { key: string }) => m.key),
+          message: 'Combo ativado sem custo adicional.',
+        };
+      }
+
+      // ── Cobrar proration do Combo ──
+      const chargeBody: Record<string, any> = {
+        customer:          asaasCustomerId,
+        billingType:       toAsaasBillingType(paymentMethod),
+        value:             proration.proratedAmount,
+        dueDate:           todayStr(),
+        description:       `ZapScript — Combo (${PLAN_LABELS[corePlanName]} + módulos)`,
+        externalReference: encodeComboRef(userId, corePlanName),
+      };
+      if (isCardMethod(paymentMethod) && card) {
+        chargeBody.creditCard = {
+          holderName:  card.holderName.toUpperCase(),
+          number:      card.number.replace(/\s/g, ''),
+          expiryMonth: card.expiryMonth,
+          expiryYear:  card.expiryYear.length === 2 ? `20${card.expiryYear}` : card.expiryYear,
+          ccv:         card.ccv,
+        };
+        chargeBody.creditCardHolderInfo = buildHolderInfo(user, billingAddress);
+        chargeBody.remoteIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
+      }
+
+      const chargeRes = await asaas('/payments', { method: 'POST', body: JSON.stringify(chargeBody) });
+      const charge    = await chargeRes.json() as any;
+      if (!charge?.id) {
+        app.log.error({ charge }, 'Asaas: erro ao criar cobrança do Combo');
+        return reply.code(500).send({ error: 'Erro ao criar cobrança. Tente novamente.' });
+      }
+
+      // ── Cartão: aprovação imediata ──
+      if (isCardMethod(paymentMethod)) {
+        if (charge.errors?.length > 0) {
+          return reply.code(402).send({ status: 'declined', error: charge.errors[0]?.description || 'Cartão recusado.' });
+        }
+        if (charge.status === 'CONFIRMED' || charge.status === 'RECEIVED') {
+          const newSubId = await reissueAggregateSubscription({
+            userId, asaasCustomerId, newValue: newTotal, paymentMethod,
+            oldAsaasSubscriptionId: sub?.asaasSubscriptionId ?? null,
+            description: 'ZapScript — Assinatura mensal (Combo)',
+          });
+          const { modules: activated } = await activateCombo(userId, corePlanName, { asaasSubscriptionId: newSubId, asaasCustomerId, paymentMethod, paymentId: charge.id });
+          app.log.info(`Combo ativado (cartão): userId=${userId} plano=${corePlanName} total=${newTotal}`);
+          return {
+            status: 'active', corePlanName, newTotal, discountPct: COMBO_DISCOUNT_PCT,
+            modulesActivated: activated.map((m: { key: string }) => m.key),
+          };
+        }
+        return reply.code(402).send({ status: 'declined', error: 'Cartão não aprovado. Verifique os dados e tente novamente.' });
+      }
+
+      // ── PIX: módulos ficam "pending" até o webhook confirmar; plano só sobe na confirmação ──
+      for (const m of modules) {
+        await prisma.entitlement.upsert({
+          where:  { userId_productKey: { userId, productKey: m.key } },
+          create: { userId, productKey: m.key, status: 'pending', source: 'paid' },
+          update: { status: 'pending' },
+        });
+      }
+      let qrCode = null as string | null, qrCodeUrl = null as string | null;
+      try {
+        const qrData = await asaas(`/payments/${charge.id}/pixQrCode`).then(r => r.json()) as any;
+        qrCode    = qrData?.payload      || null;
+        qrCodeUrl = qrData?.encodedImage ? `data:image/png;base64,${qrData.encodedImage}` : null;
+      } catch { /* QR não crítico */ }
+
+      return {
+        status: 'pending_pix', chargeId: charge.id, qrCode, qrCodeUrl,
+        expiresAt: threeHoursFromNow(), proratedAmount: proration.proratedAmount,
+        newTotal, discountPct: COMBO_DISCOUNT_PCT, corePlanName,
+        modulesPending: modules.map((m: { key: string }) => m.key),
+      };
+    }
+  );
 
   // ── GET /billing/invoices ─────────────────────────────
   app.get('/invoices', auth, async (req: any) => {
@@ -1374,6 +1635,31 @@ export default async function billingRoutes(app: FastifyInstance) {
         return reply.send({ received: true });
       }
 
+      // ── Ativação do Combo (Core + módulos) confirmada — checar ANTES do decodeRef genérico ──
+      const comboRef = decodeComboRef(payment.externalReference);
+      if (comboRef) {
+        const { userId, corePlanName } = comboRef;
+        const subInDb = await prisma.subscription.findUnique({ where: { userId } }).catch(() => null);
+        const asaasCustomerId = subInDb?.asaasCustomerId || payment.customer;
+        const modules   = await resolveComboModules(userId);
+        const rawTotal  = Math.round((PLAN_PRICES[corePlanName] + modules.reduce((s: number, m: { priceMonthly: number }) => s + m.priceMonthly, 0)) * 100) / 100;
+        const newTotal  = Math.round(rawTotal * (1 - COMBO_DISCOUNT_PCT) * 100) / 100;
+
+        const newSubId = await reissueAggregateSubscription({
+          userId, asaasCustomerId, newValue: newTotal,
+          paymentMethod: payment.billingType === 'CREDIT_CARD' ? 'credit_card' : payment.billingType === 'DEBIT_CARD' ? 'debit_card' : 'pix',
+          oldAsaasSubscriptionId: subInDb?.asaasSubscriptionId ?? null,
+          description: 'ZapScript — Assinatura mensal (Combo)',
+        });
+        await activateCombo(userId, corePlanName, {
+          asaasSubscriptionId: newSubId, asaasCustomerId,
+          paymentMethod: payment.billingType === 'CREDIT_CARD' ? 'credit_card' : payment.billingType === 'DEBIT_CARD' ? 'debit_card' : 'pix',
+          paymentId: payment.id,
+        });
+        app.log.info(`Combo ativado via webhook: userId=${userId} plano=${corePlanName} total=${newTotal}`);
+        return reply.send({ received: true });
+      }
+
       const decoded = decodeRef(payment.externalReference);
       if (!decoded?.userId || !decoded?.planName) {
         app.log.error({ ref: payment.externalReference }, `Webhook ${eventType}: externalReference inválido`);
@@ -1500,7 +1786,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           await prisma.$transaction([
             prisma.subscription.update({
               where: { userId },
-              data:  { planId: freePlan.id, status: 'canceled', asaasSubscriptionId: null, currentPeriodEnd: null },
+              data:  { planId: freePlan.id, status: 'canceled', asaasSubscriptionId: null, currentPeriodEnd: null, comboDiscountPct: null },
             }),
             prisma.minuteBalance.update({
               where: { userId },
@@ -1508,6 +1794,8 @@ export default async function billingRoutes(app: FastifyInstance) {
             }),
           ]).catch(err => app.log.error({ err }, 'Erro ao processar downgrade de SUBSCRIPTION_DELETED'));
           invalidatePlanCache(userId).catch(() => null);
+          // Programa de afiliados: cancelamento nos primeiros 30 dias zera comissões pendentes
+          clawbackAffiliateCommissionOnCancel(userId).catch(() => null);
           app.log.info(`Assinatura removida no Asaas — downgrade para free: userId=${userId}`);
         }
       }

@@ -10,6 +10,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: base,                   lastModified: d('2026-06-15'), priority: 1.0,  changeFrequency: 'weekly'  },
     { url: `${base}/cadastro`,     lastModified: d('2026-06-10'), priority: 0.9,  changeFrequency: 'monthly' },
+    { url: `${base}/atende`,       lastModified: d('2026-07-14'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/corretores`,   lastModified: d('2026-06-15'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/advogados`,    lastModified: d('2026-06-15'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/vendas`,       lastModified: d('2026-06-15'), priority: 0.9,  changeFrequency: 'monthly' },

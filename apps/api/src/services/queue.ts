@@ -63,3 +63,14 @@ export const campanhasQueue = new Queue('campanhas', {
     removeOnFail:     { count: 5_000, age: 7 * 24 * 60 * 60 },
   },
 });
+
+// ── Fila de respostas automáticas (ZapScript Atende) ──────────────────────────
+export const atendeQueue = new Queue('atende-replies', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff:  { type: 'exponential', delay: 5_000 }, // 5s → 10s → 20s
+    removeOnComplete: { count: 500, age: 24 * 60 * 60 },
+    removeOnFail:     { count: 1000, age: 7 * 24 * 60 * 60 },
+  },
+});
