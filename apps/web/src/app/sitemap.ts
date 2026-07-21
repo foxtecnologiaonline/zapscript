@@ -15,6 +15,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/advogados`,    lastModified: d('2026-06-15'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/vendas`,       lastModified: d('2026-06-15'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/dentistas`,    lastModified: d('2026-06-27'), priority: 0.9,  changeFrequency: 'monthly' },
+    { url: `${base}/campanhas`,    lastModified: d('2026-07-15'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/para/contabilidade`, lastModified: d('2026-06-23'), priority: 0.9, changeFrequency: 'monthly' },
     { url: `${base}/cobranca`,     lastModified: d('2026-07-16'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/afiliados`,    lastModified: d('2026-06-16'), priority: 0.7,  changeFrequency: 'monthly' },

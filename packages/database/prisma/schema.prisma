@@ -50,6 +50,8 @@ model User {
   entitlements            Entitlement[]
   cobrancaClientes        CobrancaCliente[]
   cobrancaCobrancas       CobrancaCobranca[]
+  campanhas               Campanha[]
+  campanhaOptOuts         CampanhaOptOut[]
   crmStages               CrmStage[]
   crmContacts             CrmContact[]
   crmActivities           CrmActivity[]
@@ -133,6 +135,7 @@ model WhatsappNumber {
   updatedAt          DateTime        @updatedAt
   user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcriptions     Transcription[]
+  campanhas          Campanha[]
   crmContacts        CrmContact[]
   atendeConfig       AtendeConfig?
   atendeConversations AtendeConversation[]
@@ -586,6 +589,69 @@ model CobrancaEnvio {
   cobranca   CobrancaCobranca @relation(fields: [cobrancaId], references: [id], onDelete: Cascade)
 
   @@index([cobrancaId, tipo])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ZapScript Campanhas — disparo em massa via WhatsApp API oficial (Meta Cloud API).
+// Exige template pré-aprovado pela Meta (mensagem fora da janela de 24h de sessão).
+// ─────────────────────────────────────────────────────────────────────────────
+model Campanha {
+  id                 String            @id @default(cuid())
+  userId             String
+  whatsappNumberId   String
+  name               String
+  status             String            @default("draft") // draft|scheduled|running|paused|completed|canceled|failed
+  templateName       String
+  templateLanguage   String            @default("pt_BR")
+  templateComponents Json? // estrutura de componentes do template (header/body/botões) usada no envio
+  audienceCount      Int               @default(0)
+  sentCount          Int               @default(0) // contador incremental — único escritor é o worker (evita drift)
+  scheduledAt        DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappNumber     WhatsappNumber    @relation(fields: [whatsappNumberId], references: [id], onDelete: Cascade)
+  contatos           CampanhaContato[]
+
+  @@index([userId])
+  @@index([whatsappNumberId])
+  @@index([status])
+}
+
+model CampanhaContato {
+  id           String    @id @default(cuid())
+  campanhaId   String
+  phone        String
+  name         String?
+  variables    Json? // valores das variáveis do template para este contato ({{1}}, {{2}}, ...)
+  status       String    @default("pending") // pending|sent|delivered|read|failed|optout
+  wamid        String? // message id da Meta — correlaciona com o status recebido no webhook
+  errorMessage String?
+  sentAt       DateTime?
+  deliveredAt  DateTime?
+  readAt       DateTime?
+  failedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  campanha     Campanha  @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+
+  @@index([campanhaId])
+  @@index([campanhaId, status])
+  @@index([wamid]) // correlação de status recebido no webhook (hot path)
+}
+
+model CampanhaOptOut {
+  id        String   @id @default(cuid())
+  userId    String // dono do número Business — opt-out é por conta, não global
+  phone     String
+  reason    String? // palavra-chave detectada (ex: "PARAR")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, phone])
+  @@index([userId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
