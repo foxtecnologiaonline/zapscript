@@ -54,6 +54,7 @@ model User {
   atendeConfigs           AtendeConfig[]
   atendeKnowledgeBase     AtendeKnowledgeBase[]
   atendeConversations     AtendeConversation[]
+  salesVisits             SalesVisit[]
 }
 
 model Plan {
@@ -666,4 +667,26 @@ model AtendeMessage {
   conversation   AtendeConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+}
+
+// ── Módulo Vendas ──────────────────────────────────────────────────────────
+// Visita/ligação comercial gravada pelo vendedor → transcrita e resumida
+// (foco em valores, objeções, combinados e próximo passo). Sem retenção de
+// áudio (deletado após processar) e sem consumo do MinuteBalance do Core —
+// gate é o entitlement do módulo (Product/Entitlement, key "vendas").
+model SalesVisit {
+  id             String    @id @default(cuid())
+  userId         String
+  clientName     String? // Nome do cliente/prospect (texto livre, não criptografado — como Transcription.contactName)
+  filename       String? // Nome original do arquivo de áudio enviado
+  status         String    @default("processing") // 'processing' | 'done' | 'error'
+  durationSec    Float     @default(0)
+  originalText   String? // Transcrição (AES-256-GCM — encryptStr)
+  summaryBullets Json? // Resumo em bullets (AES-256-GCM — encryptArr)
+  errorMessage   String? // Motivo da falha quando status = 'error'
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
 }
