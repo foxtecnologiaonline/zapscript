@@ -1,7 +1,7 @@
+import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ThemeToggleButton } from '@/components/ThemeProvider';
-import { ChatDemo } from '@/components/ChatDemo';
 import ConversationDemo from '@/components/ConversationDemo';
 import LiveStats from '@/components/LiveStats';
 import PriceAnchor from '@/components/PriceAnchor';
@@ -11,6 +11,33 @@ import { Testimonials } from '@/components/Testimonials';
 import { AffiliateCapture } from '@/components/AffiliateCapture';
 import { SupportChatButton } from '@/components/SupportChatButton';
 import { FAQ_ITEMS } from '@/data/faq';
+
+export const metadata: Metadata = {
+  title:       'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
+  description: 'Converta áudios do WhatsApp automaticamente em texto e resumo com IA. Grátis para começar — 10x mais rápido que ouvir. Para corretores, advogados e vendedores.',
+  keywords:    'converter áudio whatsapp, transcrição whatsapp automática, resumo áudio ia, whatsapp texto, converter áudio em texto, passar áudio para texto, áudio para texto online, transcrever áudio whatsapp grátis, conversão automática whatsapp, mensagem de voz texto',
+  alternates:  { canonical: 'https://www.zapscript.me' },
+  openGraph: {
+    title:       'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
+    description: 'Transforme seus áudios do WhatsApp em textos, resumos e insights com IA. Comece grátis, sem cartão.',
+    url:         'https://www.zapscript.me',
+    siteName:    'ZapScript',
+    locale:      'pt_BR',
+    type:        'website',
+    images: [{
+      url:    '/opengraph-image',
+      width:  1200,
+      height: 630,
+      alt:    'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
+    }],
+  },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
+    description: 'Transforme seus áudios do WhatsApp em textos, resumos e insights com IA. Comece grátis.',
+    images:      ['/opengraph-image'],
+  },
+};
 
 /* ── Feature cards ── */
 const FEATURES = [
@@ -302,11 +329,6 @@ export default function HomePage() {
               </div>
             ))}
           </div>
-        </section>
-
-        {/* ══ CHAT DEMO ══ */}
-        <section className="px-5 pb-16">
-          <ChatDemo />
         </section>
 
         {/* ══ SEGURANÇA & PRIVACIDADE ══ */}
