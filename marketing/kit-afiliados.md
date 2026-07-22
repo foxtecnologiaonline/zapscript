@@ -90,7 +90,7 @@ Aquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segu
 🆓 15 áudios/mês grátis, sem cartão:
 👉 [SEU_LINK]
 
-🔥 Pro com áudios ilimitados por R$18,50 no 1º mês (oferta junho)
+🔥 Pro com áudios ilimitados por R$18 no 1º mês (oferta junho)
 
 Valeu! 😄
 ```

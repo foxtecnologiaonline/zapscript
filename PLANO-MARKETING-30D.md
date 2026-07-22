@@ -10,7 +10,7 @@
 - **Budget:** R$ 500/mês (R$ 350 Google Search + R$ 150 Meta)
 - **CAC-alvo:** ≤ R$ 16 por pagante
 - **Foco de nicho:** corretores de imóveis (LP `/corretores` já existe)
-- **Oferta de lançamento:** "Fundador" — 1º mês Pro R$ 18,50
+- **Oferta de lançamento:** "Fundador" — 1º mês Pro R$ 18
 
 ### Reality-check
 30% cadastro→pago é agressivo p/ self-serve frio (normal 2–5% frio, 15–25% trial
