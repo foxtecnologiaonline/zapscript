@@ -1516,18 +1516,14 @@ async function processEvolutionJob(job: Job) {
     // e NÃO aplicamos modo privado (cabeçalho dedicado de nota/encaminhado).
     const isSelfNote  = job.data.isSelfNote === true;
 
-    // Modo Privado é AUTOMÁTICO em todo plano PAGO: a transcrição vai só ao próprio
-    // número (nunca cai na conversa do contato). Free mantém a transcrição na conversa
-    // (loop viral). O flag manual `privateMode` segue valendo como reforço, mas o plano
-    // pago já força privado sem depender dele. Guard: phoneNumber resolvido (≠ 'pending');
-    // desativado em self-notes (áudio que o próprio usuário encaminhou).
-    // Pago: Modo Privado é o padrão (opt-out). Só cai na conversa do contato se o
-    // usuário desligou explicitamente (privateMode === false). Free nunca é privado.
+    // Modo Privado é OPT-IN: usuário ativa manualmente no painel.
+    // Quando ligado (privateMode === true), a transcrição vai só ao próprio número
+    // (nunca cai na conversa do contato). Funciona em qualquer plano (inclusive Free).
+    // Desativado em self-notes (áudio que o próprio usuário encaminhou).
     const usage = await loadUsage(userId);
     const isPaidPlan  = usage.plan === 'pro';
     const isPrivate   = !isSelfNote
-                        && isPaidPlan
-                        && whatsappNumber.privateMode !== false
+                        && !!whatsappNumber.privateMode
                         && !!whatsappNumber.phoneNumber
                         && whatsappNumber.phoneNumber !== 'pending';
     const targetPhone = isPrivate ? whatsappNumber.phoneNumber! : senderPhone;
@@ -1997,8 +1993,7 @@ async function processTrialTransitions() {
             create: { userId: sub.userId, availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
             update: { availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
           }),
-          // Não mexe em privateMode: isPrivate já exige isPaidPlan, então FREE nunca é privado
-          // mesmo com a flag ligada — e assim ela fica pronta caso o usuário reassine o Pro.
+          // Não mexe em privateMode: o flag é opt-in e sobrevive a downgrades.
         ]);
         await redis.del(`plan:${sub.userId}`).catch(() => null); // invalida cache de plano da API
         logger.info(`[Trial] Downgrade D8: ${sub.user.email} → FREE`);

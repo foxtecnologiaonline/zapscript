@@ -1,7 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { notifyDisconnected } from '../services/whatsapp-notify';
-import { getUserPlan, requirePlan } from '../lib/planGate';
 import { validateRequest, createNumberSchema } from '../lib/validation';
 import {
   evolutionBaseUrl,
@@ -84,9 +83,8 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
 
     const number = await prisma.whatsappNumber.create({
-      // Modo Privado nasce ligado (opt-out). Em plano pago o worker força privado
-      // por padrão; usuário pode desligar depois. Setar aqui evita depender da migração.
-      data: { userId, displayName: finalName, privateMode: true, ...(cleanPhone ? { phoneNumber: cleanPhone } : {}) },
+      // Modo Privado nasce desligado (opt-in). Usuário ativa manualmente no painel.
+      data: { userId, displayName: finalName, privateMode: false, ...(cleanPhone ? { phoneNumber: cleanPhone } : {}) },
     });
 
     // Nota: notifyWelcome é disparado via connection.update no webhook Evolution
@@ -112,8 +110,6 @@ export default async function numberRoutes(app: FastifyInstance) {
       }
 
       if (req.body.privateMode !== undefined) {
-        const plan = await getUserPlan(userId);
-        if (!requirePlan(plan, ['pro', 'pro-tester', 'executive'], reply)) return;
         data.privateMode = Boolean(req.body.privateMode);
       }
 

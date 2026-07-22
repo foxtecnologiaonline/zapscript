@@ -887,36 +887,36 @@ export default function NumerosPage() {
                 </div>
               </div>
 
-              {/* Modo Privado — automático (opt-out) em todo plano pago */}
-              {isPaid ? (
+              {/* Modo Privado — opt-in (usuário ativa manualmente) */}
+              {(
                 <div className="bg-brand-elevated rounded-xl px-3 py-2.5 mb-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="text-xs font-semibold text-brand-text flex items-center gap-1.5">
                         🔒 Modo Privado
-                        {n.privateMode !== false && (
-                          <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full">automático</span>
+                        {n.privateMode === true && (
+                          <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full">ativado</span>
                         )}
                       </div>
                       <div className="text-[10px] text-brand-muted mt-0.5">
-                        {n.privateMode !== false
+                        {n.privateMode === true
                           ? <>Resumo enviado só para o seu número{n.phoneNumber && n.phoneNumber !== 'pending' ? <> (<span className="text-brand-text font-medium">{n.phoneNumber}</span>)</> : null} — nunca na conversa do contato.</>
                           : <>Resumo entregue na própria conversa do contato. Ative para receber só no seu número.</>}
                       </div>
                     </div>
-                    {/* Toggle opt-out */}
+                    {/* Toggle opt-in */}
                     <button
                       role="switch"
-                      aria-checked={n.privateMode !== false}
+                      aria-checked={n.privateMode === true}
                       aria-label="Alternar Modo Privado"
                       disabled={savingPrivate === n.id}
-                      onClick={() => handlePrivateMode(n.id, !(n.privateMode !== false))}
-                      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${n.privateMode !== false ? 'bg-amber-400' : 'bg-brand-border'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${n.privateMode !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+                      onClick={() => handlePrivateMode(n.id, !(n.privateMode === true))}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${n.privateMode === true ? 'bg-amber-400' : 'bg-brand-border'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${n.privateMode === true ? 'translate-x-6' : 'translate-x-1'}`} />
                     </button>
                   </div>
                 </div>
-              ) : null}
+              )}
 
               {/* Ações */}
               {n.status === 'connected' ? (
