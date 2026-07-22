@@ -887,8 +887,8 @@ export default function NumerosPage() {
                 </div>
               </div>
 
-              {/* Modo Privado — opt-in (usuário ativa manualmente) */}
-              {(
+              {/* Modo Privado — opt-in (apenas planos pagos) */}
+              {isPaid ? (
                 <div className="bg-brand-elevated rounded-xl px-3 py-2.5 mb-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
@@ -916,7 +916,7 @@ export default function NumerosPage() {
                     </button>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* Ações */}
               {n.status === 'connected' ? (

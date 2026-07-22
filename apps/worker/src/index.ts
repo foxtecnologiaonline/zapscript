@@ -1517,12 +1517,13 @@ async function processEvolutionJob(job: Job) {
     const isSelfNote  = job.data.isSelfNote === true;
 
     // Modo Privado é OPT-IN: usuário ativa manualmente no painel.
-    // Quando ligado (privateMode === true), a transcrição vai só ao próprio número
-    // (nunca cai na conversa do contato). Funciona em qualquer plano (inclusive Free).
+    // Disponível apenas para planos pagos. Quando ligado (privateMode === true),
+    // a transcrição vai só ao próprio número (nunca cai na conversa do contato).
     // Desativado em self-notes (áudio que o próprio usuário encaminhou).
     const usage = await loadUsage(userId);
     const isPaidPlan  = usage.plan === 'pro';
     const isPrivate   = !isSelfNote
+                        && isPaidPlan
                         && !!whatsappNumber.privateMode
                         && !!whatsappNumber.phoneNumber
                         && whatsappNumber.phoneNumber !== 'pending';
