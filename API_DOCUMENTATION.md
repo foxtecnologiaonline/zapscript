@@ -246,15 +246,15 @@ Response (200):
 {
   "invoiceUrl": "https://checkout.asaas.com/...",
   "asaasPaymentId": "pay_123456",
-  "amount": 29.90,
+  "amount": 29,
   "dueDate": "2026-05-15",
   "minutesGranted": 1000
 }
 
 Plans:
 - free: R$ 0/mês, 100 min
-- pro: R$ 29.90/mês, 1000 min
-- ultra: R$ 59.90/mês, 5000 min
+- pro: R$ 37/mês, 5000 min
+- executive: R$ 67/mês, 15000 min
 ```
 
 #### `GET /billing/subscription`
@@ -266,7 +266,7 @@ Response (200):
   "plan": {
     "name": "pro",
     "minutesPerMonth": 1000,
-    "price": 29.90
+    "price": 37
   },
   "status": "active",
   "currentPeriodStart": "2026-05-04T00:00:00Z",
@@ -298,7 +298,7 @@ Response (200):
   "items": [
     {
       "id": "uuid",
-      "amount": 29.90,
+      "amount": 29,
       "status": "paid",
       "dueDate": "2026-05-15",
       "paidAt": "2026-05-10T15:30:00Z",
@@ -442,7 +442,7 @@ Body:
   "payment": {
     "id": "pay_123456",
     "status": "RECEIVED",
-    "amount": 29.90,
+    "amount": 29,
     "subscription": {
       "externalReference": "user_id|pro"
     }

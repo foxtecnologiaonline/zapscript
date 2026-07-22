@@ -63,7 +63,7 @@ const KIT: { key: string; label: string; canal: string; text: string }[] = [
     key: 'grupo-informal',
     canal: 'Grupo',
     label: 'Grupo de WhatsApp — informal',
-    text: `Pessoal! 👋 Dica boa aqui:\n\n*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.\n\nAquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.\n\n🆓 15 áudios/mês grátis, sem cartão:\n👉 [SEU_LINK]\n\n🔥 Pro com áudios ilimitados por R$19,90 no 1º mês\n\nValeu! 😄`,
+    text: `Pessoal! 👋 Dica boa aqui:\n\n*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.\n\nAquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.\n\n🆓 15 áudios/mês grátis, sem cartão:\n👉 [SEU_LINK]\n\n🔥 Pro com áudios ilimitados por R$18,50 no 1º mês\n\nValeu! 😄`,
   },
   // ── LinkedIn ───────────────────────────────────────────────────────────────
   {
@@ -172,7 +172,7 @@ export default function AfiliadosLanding() {
           <CommCard emoji="💸" title="D+30" sub="saque sem mínimo" detail="Saldo liberado 30 dias após cada comissão gerada." />
         </div>
         <div className="mt-5 rounded-xl px-5 py-4 text-sm text-brand-text-secondary text-center leading-relaxed" style={{ background: 'rgba(16,185,129,.06)', border: '1px solid rgba(16,185,129,.12)' }}>
-          Exemplo: seu indicado assina o plano Pro (R$39,90/mês) → você recebe <strong className="text-brand-primary">R$11,97 todo mês</strong>, por 12 meses. Depois disso, <strong className="text-brand-primary">R$1,99/mês</strong> vitalício enquanto ele continuar assinante.
+          Exemplo: seu indicado assina o plano Pro (R$37/mês) → você recebe <strong className="text-brand-primary">R$11,10 todo mês</strong>, por 12 meses. Depois disso, <strong className="text-brand-primary">R$1,85/mês</strong> vitalício enquanto ele continuar assinante.
         </div>
       </section>
 

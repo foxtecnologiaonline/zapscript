@@ -3620,7 +3620,7 @@ O plano Pro resolve de vez:
 📤 Exportação em CSV para organizar tudo
 📱 Conecte até 3 números simultâneos
 
-Tudo por R$39,90/mês — menos que uma pizza. Cancele quando quiser.
+Tudo por R$37/mês — menos que uma pizza. Cancele quando quiser.
 
 👉 Fazer upgrade: https://www.zapscript.me/dashboard/plano
 
@@ -3644,7 +3644,7 @@ O plano Executive foi feito para quem usa de verdade:
 📤 Exportação em PDF, DOCX, CSV e XLS
 📱 Até 3 números simultâneos
 
-Por apenas R$20,00/mês a mais — ou seja, R$49,90 total.
+Por apenas R$30,00/mês a mais — ou seja, R$67 total.
 
 👉 Ver plano Executive: https://www.zapscript.me/dashboard/plano
 
@@ -3669,7 +3669,7 @@ Por isso criamos o plano Executive — feito para empresas:
 📱 Números ilimitados para cada membro do time
 🏷️ Tags e exportação avançada para relatórios
 
-Tudo por R$49,90/mês — sem taxa de implantação, sem fidelidade.
+Tudo por R$67/mês — sem taxa de implantação, sem fidelidade.
 
 👉 Ver plano Executive: https://www.zapscript.me/dashboard/plano
 

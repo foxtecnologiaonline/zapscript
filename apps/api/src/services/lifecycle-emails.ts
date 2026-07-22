@@ -11,11 +11,11 @@ const FIRST_RUN_MS = 10 * 60 * 1000;      // 10 min após startup
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
 
-/* ── Oferta permanente: 1º mês do Pro com 50% off (R$19,90) ──────────────────
+/* ── Oferta permanente: 1º mês do Pro com 50% off (R$18,50) ──────────────────
    Fonte da verdade server-side (espelha apps/web/src/lib/promo.ts). Não expira. */
 /** Frase de preço do Pro para usar dentro do corpo de e-mails. */
 function proPriceLine(): string {
-  return `por <strong style="color:#6ee7b7">R$19,90 no primeiro mês</strong> (depois R$39,90/mês)`;
+  return `por <strong style="color:#6ee7b7">R$18,50 no primeiro mês</strong> (depois R$37/mês)`;
 }
 
 function btn(href: string, label: string): string {
@@ -278,7 +278,7 @@ async function runWinBack(log: any) {
         `${firstName}, seu robô está em pausa — quer reativar?`,
         wrapper(firstName, `Seu robô está descansando, ${firstName}`, `
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Desde que você cancelou o Pro, os áudios voltaram a chegar — só que agora sem ninguém convertendo por você 24 horas por dia. Toda vez que chega um áudio longo, é você quem para pra ouvir.</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Reativar leva 1 minuto: áudios ilimitados, 2 números e resumo com IA — ${proPriceLine()}. Menos de R$1,33 por dia para ter um robô lendo seus áudios.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Reativar leva 1 minuto: áudios ilimitados, 2 números e resumo com IA — ${proPriceLine()}. Menos de R$1,23 por dia para ter um robô lendo seus áudios.</p>
           ${btn(`${APP_URL}/dashboard/plano`, 'Reativar o Pro →')}
         `),
       );
@@ -393,13 +393,13 @@ async function runTrialEndingD6(log: any) {
     const bodyCta = cardOnFile
       ? `
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">${savedLine}</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Seu cartão será cobrado <strong>amanhã (R$39,90/mês)</strong> e seu Pro continua sem interrupção — áudios ilimitados e Modo Privado. Não precisa fazer nada.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Seu cartão será cobrado <strong>amanhã (R$37/mês)</strong> e seu Pro continua sem interrupção — áudios ilimitados e Modo Privado. Não precisa fazer nada.</p>
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Se preferir não continuar, <strong>cancele antes da cobrança e não paga nada</strong>.</p>
           ${btn(`${APP_URL}/dashboard/plano`, 'Ver meu plano →')}
         `
       : `
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">${savedLine}</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Para manter os áudios ilimitados e o Modo Privado sem interrupção, é <strong>menos de R$1,33 por dia</strong> — ${proPriceLine()}.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Para manter os áudios ilimitados e o Modo Privado sem interrupção, é <strong>menos de R$1,23 por dia</strong> — ${proPriceLine()}.</p>
           ${btn(`${APP_URL}/dashboard/plano`, 'Continuar com o Pro →')}
         `;
     try {

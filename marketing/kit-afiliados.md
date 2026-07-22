@@ -15,7 +15,7 @@ https://zapscript.me/cadastro?aff=SEU_CODIGO
 > Pagamento via Pix nos dias 10 e 25 de cada mês.
 
 **Âncora de preço (use se alguém achar caro):**
-> 24h trabalhando por você, por apenas R$1,33 ao dia — o robô do ZapScript fica de prontidão o tempo todo, transcrevendo assim que o áudio chega (R$39,90 ÷ 30 dias).
+> 24h trabalhando por você, por apenas R$1,23 ao dia — o robô do ZapScript fica de prontidão o tempo todo, transcrevendo assim que o áudio chega (R$37 ÷ 30 dias).
 
 ---
 
@@ -90,7 +90,7 @@ Aquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segu
 🆓 15 áudios/mês grátis, sem cartão:
 👉 [SEU_LINK]
 
-🔥 Pro com áudios ilimitados por R$19,90 no 1º mês (oferta junho)
+🔥 Pro com áudios ilimitados por R$18,50 no 1º mês (oferta junho)
 
 Valeu! 😄
 ```

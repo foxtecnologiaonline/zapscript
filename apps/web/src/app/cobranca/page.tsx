@@ -4,14 +4,14 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'ZapScript Cobrança — Lembrete automático de pagamento via WhatsApp',
   description:
-    'Cadastre o cliente e o valor. No dia do vencimento e no primeiro dia de atraso, o ZapScript Cobrança manda um lembrete pelo WhatsApp, automaticamente. Sem planilha, sem esquecer, sem constrangimento. R$29,90/mês.',
+    'Cadastre o cliente e o valor. No dia do vencimento e no primeiro dia de atraso, o ZapScript Cobrança manda um lembrete pelo WhatsApp, automaticamente. Sem planilha, sem esquecer, sem constrangimento. R$39/mês.',
   keywords:
     'cobrança automática whatsapp, lembrete de pagamento whatsapp, cobrar cliente mei, lembrete de vencimento automático, inadimplência whatsapp, cobrança para autônomo',
   alternates: { canonical: 'https://www.zapscript.me/cobranca' },
   openGraph: {
     title: 'ZapScript Cobrança — O lembrete de pagamento que você não manda mais na mão',
     description:
-      'Automatize o lembrete de cobrança pelo WhatsApp: no vencimento e no 1º dia de atraso. Reenvio manual em 1 clique. R$29,90/mês, cancele quando quiser.',
+      'Automatize o lembrete de cobrança pelo WhatsApp: no vencimento e no 1º dia de atraso. Reenvio manual em 1 clique. R$39/mês, cancele quando quiser.',
     url: 'https://www.zapscript.me/cobranca',
     siteName: 'ZapScript',
     locale: 'pt_BR',
@@ -206,7 +206,7 @@ export default function CobrancaPage() {
             <Link href="/cadastro?utm_source=lp&utm_campaign=cobranca" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-8 py-4 rounded-2xl hover:opacity-90 transition-opacity">
               Criar conta grátis →
             </Link>
-            <span className="text-xs text-brand-muted">✓ R$29,90/mês · ✓ Sem fidelidade</span>
+            <span className="text-xs text-brand-muted">✓ R$39/mês · ✓ Sem fidelidade</span>
           </div>
         </div>
 
@@ -278,7 +278,7 @@ export default function CobrancaPage() {
         <div className="mb-16 text-center">
           <h2 className="text-2xl font-bold text-white mb-3">Um valor fixo, sem letra miúda</h2>
           <p className="text-brand-muted mb-6 max-w-xl mx-auto">
-            <span className="text-brand-primary font-semibold">R$29,90/mês</span>, clientes e cobranças ilimitados, sem fidelidade. Cancele quando quiser, direto no painel.
+            <span className="text-brand-primary font-semibold">R$39/mês</span>, clientes e cobranças ilimitados, sem fidelidade. Cancele quando quiser, direto no painel.
           </p>
           <Link href="/cadastro?utm_source=lp&utm_campaign=cobranca" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
             Criar conta grátis →
@@ -310,7 +310,7 @@ export default function CobrancaPage() {
           <Link href="/cadastro?utm_source=lp&utm_campaign=cobranca" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
             Começar grátis agora →
           </Link>
-          <p className="text-xs text-brand-muted mt-4">✓ R$29,90/mês &nbsp;·&nbsp; ✓ Sem fidelidade &nbsp;·&nbsp; ✓ Cancele quando quiser</p>
+          <p className="text-xs text-brand-muted mt-4">✓ R$39/mês &nbsp;·&nbsp; ✓ Sem fidelidade &nbsp;·&nbsp; ✓ Cancele quando quiser</p>
         </div>
       </div>
 

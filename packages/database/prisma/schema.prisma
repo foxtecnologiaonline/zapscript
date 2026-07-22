@@ -60,6 +60,8 @@ model User {
   legendaJobs             LegendaJob[]
   campanhas               Campanha[]
   campanhaOptOuts         CampanhaOptOut[]
+  ownedTeams              Team[]              @relation("TeamOwner")
+  teamMemberships         TeamMember[]
 }
 
 model Plan {
@@ -124,6 +126,7 @@ model WhatsappNumber {
   zapiInstanceId      String? // sem @unique — múltiplos usuários podem compartilhar a mesma instância Z-API
   zapiToken           String? // Token da instância Z-API criada dinamicamente
   privateMode         Boolean              @default(true) // Modo Privado automático em planos pagos: transcrição vai ao próprio número. false = opt-out explícito do usuário.
+  isPublic            Boolean              @default(false) // Número público do ZapScript: qualquer pessoa pode encaminhar áudio e receber demo grátis. Sem custo contra quota de usuário.
   // ── Conexão via API oficial da Meta (WhatsApp Cloud API / Embedded Signup) ──
   // Usado apenas para o fluxo de App Review da Meta. Usuários reais seguem no Evolution.
   provider            String               @default("evolution") // 'evolution' | 'meta'
@@ -392,6 +395,7 @@ model Affiliate {
   user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   referrals         AffiliateReferral[]
   commissions       AffiliateCommission[]
+  clicks            AffiliateClick[]
 
   @@index([status])
   @@index([code])
@@ -430,6 +434,24 @@ model AffiliateCommission {
 
   @@unique([paymentId, affiliateId])
   @@index([affiliateId, status])
+}
+
+// Tracking de cliques em links de afiliado.
+// Registro anônimo: IP hasheado (SHA-256) para LGPD, sem PII.
+model AffiliateClick {
+  id          String    @id @default(cuid())
+  affiliateId String
+  code        String
+  ip          String?   // SHA-256 do IP (anonimizado)
+  userAgent   String?
+  referrer    String?
+  country     String?
+  converted   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId, createdAt])
+  @@index([code, createdAt])
 }
 
 // Leads capturados pela demo pública da landing page ("transcreva 1 áudio grátis").
@@ -839,5 +861,40 @@ model CampanhaOptOut {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, phone])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plano Empresas Multi-Seat — MVP
+// Um dono de time paga por todos os seats (Pro cada membro). Cada membro
+// herda o tier do dono. Sem RBAC complexo no MVP — só owner e member.
+// ─────────────────────────────────────────────────────────────────────────────
+model Team {
+  id        String       @id @default(cuid())
+  name      String
+  slug      String       @unique
+  ownerId   String
+  owner     User         @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members   TeamMember[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([ownerId])
+}
+
+model TeamMember {
+  id       String   @id @default(cuid())
+  teamId   String
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String   @unique
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     String   @default("member") // 'owner' | 'member'
+  status   String   @default("active") // 'invited' | 'active' | 'inactive'
+  inviteCode String? @unique // código para aceitar convite (hash simples)
+  invitedEmail String? // e-mail do convidado (antes de criar conta)
+  joinedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([teamId])
   @@index([userId])
 }

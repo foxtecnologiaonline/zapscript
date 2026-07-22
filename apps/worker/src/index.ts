@@ -1032,7 +1032,7 @@ function decideFooter(
 
 /**
  * Avisa o PRÓPRIO usuário (WhatsApp + e-mail) que a cota FREE do mês acabou,
- * com CTA de upgrade ancorado em "menos de R$1,33/dia". Throttle: 1x por ciclo.
+ * com CTA de upgrade ancorado em "menos de R$1,23/dia". Throttle: 1x por ciclo.
  * NUNCA responde na conversa do contato que enviou o áudio.
  */
 async function triggerQuotaBlockNotice(userId: string): Promise<void> {
@@ -1044,7 +1044,7 @@ async function triggerQuotaBlockNotice(userId: string): Promise<void> {
     const APP_URL = process.env.APP_URL || 'https://zapscript.me';
     const waMsg =
       `🔓 *ZapScript* — Você usou seus ${FREE_AUDIO_QUOTA} áudios grátis do mês\n\n` +
-      `Continue lendo seus áudios *sem limite*, por *menos de R$1,33/dia*.\n` +
+      `Continue lendo seus áudios *sem limite*, por *menos de R$1,23/dia*.\n` +
       `Não volte a ouvir áudio:\n👉 ${APP_URL}/dashboard/plano`;
 
     const n = await prisma.whatsappNumber.findFirst({
@@ -1063,7 +1063,7 @@ async function triggerQuotaBlockNotice(userId: string): Promise<void> {
             Olá, <strong>${firstName}</strong>!<br><br>
             Você usou seus <strong>${FREE_AUDIO_QUOTA} áudios grátis</strong> deste mês.
             Quem tem vida corrida não para pra ouvir áudio — lê.<br><br>
-            Volte a ler tudo, sem limite, por <strong>menos de R$1,33/dia</strong>:
+            Volte a ler tudo, sem limite, por <strong>menos de R$1,23/dia</strong>:
           </div>
           <div style="margin:24px 0;text-align:center">
             <a href="${APP_URL}/dashboard/plano" style="background:#10b981;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Ativar o Pro →</a>
@@ -1400,34 +1400,44 @@ async function processEvolutionJob(job: Job) {
   let mp3Buffer: Buffer | null = null;
 
   try {
-    // PASSO 1: Verificar saldo e buscar o número exato que recebeu o áudio
-    const [balance, whatsappNumber] = await Promise.all([
-      prisma.minuteBalance.upsert({
-        where:  { userId },
-        update: {},
-        create: { userId, availableMinutes: 0, accumulatedMinutes: 0, resetAt: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
-      }),
-      numberId
-        ? prisma.whatsappNumber.findUnique({ where: { id: numberId } })
-        : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
-    ]);
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🆕 DEMO PÚBLICA (número público) — estranho envia áudio, respondemos
+    // com transcrição + CTA de cadastro. NÃO conta quota, NÃO salva no DB.
+    // ═══════════════════════════════════════════════════════════════════════
+    const isPublicDemo = job.data.isPublicDemo === true;
+
+    // PASSO 1: Verificar saldo e buscar o número (skippado para demo pública)
+    const [balance, whatsappNumber] = isPublicDemo
+      ? [null, numberId
+            ? await prisma.whatsappNumber.findUnique({ where: { id: numberId } })
+            : null]
+      : await Promise.all([
+          prisma.minuteBalance.upsert({
+            where:  { userId },
+            update: {},
+            create: { userId, availableMinutes: 0, accumulatedMinutes: 0, resetAt: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
+          }),
+          numberId
+            ? prisma.whatsappNumber.findUnique({ where: { id: numberId } })
+            : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+        ]);
 
     // Cota por ÁUDIOS (métrica primária). FREE atinge o limite → bloqueia + upsell
     // (aviso só ao próprio usuário). PRO → teto oculto de segurança (500/mês), skip silencioso.
-    const usage = await loadUsage(userId);
-    if (!usage.allowed) {
-      log(job, `⚠️  Cota de áudios atingida (${usage.used}/${usage.quota}, plano ${usage.plan})`);
-      if (usage.plan === 'free') {
-        // NUNCA responde na conversa do contato — só avisa o próprio usuário.
-        triggerQuotaBlockNotice(userId).catch(() => null);
+    // ⚠️ Demo pública NÃO conta quota — cu$to de aquisição.
+    if (!isPublicDemo) {
+      const usage = await loadUsage(userId);
+      if (!usage.allowed) {
+        log(job, `⚠️  Cota de áudios atingida (${usage.used}/${usage.quota}, plano ${usage.plan})`);
+        if (usage.plan === 'free') {
+          triggerQuotaBlockNotice(userId).catch(() => null);
+        }
+        return { skipped: true, reason: usage.plan === 'free' ? 'free_quota_reached' : 'pro_cap_reached' };
       }
-      return { skipped: true, reason: usage.plan === 'free' ? 'free_quota_reached' : 'pro_cap_reached' };
+      log(job, `✅ Cota OK: ${usage.used}/${usage.quota} áudios (${usage.plan})`);
+    } else {
+      log(job, `🆕 Demo pública: quota ignorada`);
     }
-    if (!whatsappNumber) {
-      log(job, '⚠️  Número não encontrado no banco');
-      return { skipped: true, reason: 'no_number' };
-    }
-    log(job, `✅ Cota OK: ${usage.used}/${usage.quota} áudios (${usage.plan})`);
 
     // PASSO 2: Baixar áudio via Evolution API (getBase64FromMediaMessage)
     const instName = instanceName ?? whatsappNumber.zapiInstanceId;
@@ -1466,6 +1476,40 @@ async function processEvolutionJob(job: Job) {
     // PASSO 6: Enviar resposta via Evolution API
     log(job, '📤 Enviando resposta via Evolution API...');
 
+    // 🆕 Demo pública: responde ao estranho com transcrição + CTA de cadastro.
+    if (isPublicDemo) {
+      const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+      const demoHeader = `🔊 *Transcrição gratuita — ZapScript*${durationSec ? ` • ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60}s` : `${durationSec}s`}` : ''}`;
+      const bulletsStr = bullets.length > 0
+        ? `\n\n📋 *Resumo*\n${bullets.map((b: string) => `• ${b}`).join('\n')}`
+        : '';
+      const ctaBlock =
+        `\n\n━━━━━━━━━━━━━━━━━━\n` +
+        `⚡ *ZapScript* faz isso automático no seu WhatsApp — 24h por dia.\n` +
+        `👉 ${APP_URL}/cadastro?ref=public\n\n` +
+        `_15 áudios grátis · sem cartão de crédito · cancele quando quiser_`;
+
+      // Cabeçalho de áudio público (não privado, não self-note)
+      const header = `🎙️ *${senderName || fmtPhone(senderPhone)}*${bullets.length > 0 ? `\n→ ${bullets[0]}` : ''}`;
+
+      const messages: string[] = [];
+      // Bloco 1: transcrição completa (corta se > 1000 chars)
+      const fullText = `🔊 *Transcrição*\n\n${originalText}`;
+      messages.push(fullText.length > 1200 ? fullText.slice(0, 1197) + '…' : fullText);
+
+      // Bloco 2: resumo + CTA
+      const summaryBlock = bullets.length > 0 ? `📋 *Resumo*\n${bullets.map((b: string) => `• ${b}`).join('\n')}` : '';
+      messages.push(summaryBlock + ctaBlock);
+
+      for (const m of messages) {
+        await sendMessageViaEvolution(instName, senderPhone, m);
+      }
+      log(job, `✅ Demo pública: ${messages.length} msg(ns) enviada(s) → ${senderPhone}`);
+
+      // NÃO salva no banco, NÃO debita cota
+      return { ok: true, isPublicDemo: true };
+    }
+
     // Self-note: áudio que o usuário encaminhou para o próprio número (self-chat).
     // Nesse caso a resposta volta ao próprio chat (senderPhone == número conectado)
     // e NÃO aplicamos modo privado (cabeçalho dedicado de nota/encaminhado).
@@ -1478,6 +1522,7 @@ async function processEvolutionJob(job: Job) {
     // desativado em self-notes (áudio que o próprio usuário encaminhou).
     // Pago: Modo Privado é o padrão (opt-out). Só cai na conversa do contato se o
     // usuário desligou explicitamente (privateMode === false). Free nunca é privado.
+    const usage = await loadUsage(userId);
     const isPaidPlan  = usage.plan === 'pro';
     const isPrivate   = !isSelfNote
                         && isPaidPlan
@@ -1838,11 +1883,11 @@ function trialNoticeContent(
     return {
       wa: `⏳ *ZapScript* — faltam ${daysLeft} dias do seu período Pro\n\n` +
           `Você está lendo seus áudios *sem limite* e com *Modo Privado* ativo. Isso termina em ${daysLeft} dias.\n\n` +
-          `Continue Pro por *menos de R$1,33/dia* e não volte a parar pra ouvir áudio:\n${cta}`,
+          `Continue Pro por *menos de R$1,23/dia* e não volte a parar pra ouvir áudio:\n${cta}`,
       subject: '⏳ ZapScript — faltam poucos dias do seu Pro',
       html: wrap('⏳ Seu período Pro está acabando',
         `Faltam <strong>${daysLeft} dias</strong> do seu período Pro — áudios sem limite e Modo Privado.<br><br>` +
-        `Quem tem vida corrida não para pra ouvir áudio: lê. Continue Pro por <strong>menos de R$1,33/dia</strong>.`,
+        `Quem tem vida corrida não para pra ouvir áudio: lê. Continue Pro por <strong>menos de R$1,23/dia</strong>.`,
         'Continuar Pro →'),
     };
   }
@@ -1850,22 +1895,22 @@ function trialNoticeContent(
     return {
       wa: `⏳ *ZapScript* — seu período Pro termina hoje\n\n` +
           `A partir de amanhã sua conta volta ao plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês) e o Modo Privado é desligado.\n\n` +
-          `Fique Pro por *menos de R$1,33/dia*:\n${cta}`,
+          `Fique Pro por *menos de R$1,23/dia*:\n${cta}`,
       subject: '⏳ ZapScript — seu Pro termina hoje',
       html: wrap('⏳ Seu período Pro termina hoje',
         `A partir de amanhã sua conta volta ao <strong>plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês)</strong> e o Modo Privado é desligado.<br><br>` +
-        `Mantenha tudo como está por <strong>menos de R$1,33/dia</strong>.`,
+        `Mantenha tudo como está por <strong>menos de R$1,23/dia</strong>.`,
         'Ativar o Pro →'),
     };
   }
   return {
     wa: `🔓 *ZapScript* — seu período Pro terminou\n\n` +
         `Sua conta voltou ao plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês) e o Modo Privado foi desligado.\n\n` +
-        `Volte a ler tudo sem limite por *menos de R$1,33/dia*:\n${cta}`,
+        `Volte a ler tudo sem limite por *menos de R$1,23/dia*:\n${cta}`,
     subject: '🔓 ZapScript — seu período Pro terminou',
     html: wrap('🔓 Seu período Pro terminou',
       `Sua conta voltou ao <strong>plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês)</strong> e o Modo Privado foi desligado.<br><br>` +
-      `Volte a ler tudo sem limite por <strong>menos de R$1,33/dia</strong>.`,
+      `Volte a ler tudo sem limite por <strong>menos de R$1,23/dia</strong>.`,
       'Voltar ao Pro →'),
   };
 }

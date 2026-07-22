@@ -17,7 +17,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!,
 );
 
-const PLAN_PRICES: Record<string, number> = { pro: 39.90, executive: 49.90, free: 0, 'pro-tester': 0 };
+const PLAN_PRICES: Record<string, number> = { pro: 37, executive: 67, free: 0, 'pro-tester': 0 };
 
 // Mascara email para LGPD: "fr***@gmail.com"
 function maskEmail(email: string): string {

@@ -16,8 +16,8 @@ const FALLBACK_MODULE: ModuleCatalogItem = {
   key: 'atende',
   name: 'ZapScript Atende',
   status: 'beta',
-  priceMonthly: 49.90,
-  priceYearly: 479.04,
+  priceMonthly: 67,
+  priceYearly: 643.20,
   dependsOn: [],
 };
 

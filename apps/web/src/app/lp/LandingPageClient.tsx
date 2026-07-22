@@ -96,7 +96,7 @@ const PLANS = [
   },
   {
     name: 'Pro',
-    price: 'R$39,90',
+    price: 'R$37',
     period: '/mês',
     highlight: true,
     badge: '⭐ Mais popular',
@@ -161,7 +161,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
   // 50% off no 1º mês — oferta permanente, espelha lib/promo.ts
   const junePromo = isJunePromoActive();
   const plans = PLANS.map(p => p.name !== 'Pro' ? p : junePromo
-    ? { ...p, price: 'R$19,90', period: '/1º mês · depois R$39,90', badge: '🔥 50% OFF no 1º mês' }
+    ? { ...p, price: 'R$18,50', period: '/1º mês · depois R$37', badge: '🔥 50% OFF no 1º mês' }
     : p);
 
   const faqs = variant.faqs ?? FAQS;
@@ -488,13 +488,13 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
                 <h3 className="font-bold text-white mb-1">{plan.name}</h3>
                 <div className="flex items-baseline gap-1.5 mb-4 flex-wrap">
                   {plan.name === 'Pro' && junePromo && (
-                    <span className="text-sm text-brand-muted line-through">R$39,90</span>
+                    <span className="text-sm text-brand-muted line-through">R$37</span>
                   )}
                   <span className="text-2xl font-bold text-white">{plan.price}</span>
                   <span className="text-brand-muted text-sm">{plan.period}</span>
                 </div>
                 {plan.name === 'Pro' && (
-                  <div className="text-xs font-medium text-brand-primary mb-3">24h trabalhando por você, por apenas R$1,33 ao dia</div>
+                  <div className="text-xs font-medium text-brand-primary mb-3">24h trabalhando por você, por apenas R$1,23 ao dia</div>
                 )}
                 <ul className="space-y-2 mb-6">
                   {plan.features.map(f => (

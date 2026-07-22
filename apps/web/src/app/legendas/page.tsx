@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'ZapScript Legendas — Legenda automática para Reels, Stories e Shorts',
-  description: 'Envie o vídeo e receba a legenda pronta em .srt e .vtt em minutos, via IA (Whisper). Sem editar na mão, sem plugin de vídeo. R$34,90/mês.',
+  description: 'Envie o vídeo e receba a legenda pronta em .srt e .vtt em minutos, via IA (Whisper). Sem editar na mão, sem plugin de vídeo. R$37/mês.',
   keywords: 'legenda automática vídeo, legenda reels, legenda stories, gerar srt automatico, legenda shorts, transcrição de vídeo ia',
   alternates: { canonical: 'https://www.zapscript.me/legendas' },
   openGraph: {
@@ -41,7 +41,7 @@ const schema = {
       name: 'Quanto custa o ZapScript Legendas?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'R$34,90 por mês, com uso ilimitado de envios dentro da sua conta. Pagamento via Pix ou cartão, sem fidelidade — cancele quando quiser.',
+        text: 'R$37 por mês, com uso ilimitado de envios dentro da sua conta. Pagamento via Pix ou cartão, sem fidelidade — cancele quando quiser.',
       },
     },
     {
@@ -80,7 +80,7 @@ const PAINS = [
 const FAQS = [
   { q: 'Como funciona o ZapScript Legendas?', a: 'Você envia o vídeo (MP4, MOV, WebM, MKV, 3GP ou AVI, até 500MB). A IA transcreve a fala automaticamente com marcação de tempo, e você baixa a legenda pronta em .srt e .vtt.' },
   { q: 'Quais formatos de legenda são gerados?', a: 'Geramos .srt (aceito pela maioria dos editores e redes sociais) e .vtt (usado em players web), ambos já sincronizados com o áudio do vídeo.' },
-  { q: 'Quanto custa?', a: 'R$34,90/mês, com uso ilimitado de envios. Pix ou cartão, sem fidelidade — cancele quando quiser direto no painel.' },
+  { q: 'Quanto custa?', a: 'R$37/mês, com uso ilimitado de envios. Pix ou cartão, sem fidelidade — cancele quando quiser direto no painel.' },
   { q: 'Preciso editar o vídeo depois?', a: 'Não. Basta importar o .srt no seu editor (CapCut, Premiere, InShot) ou usar o .vtt direto em players web — a legenda já vem sincronizada.' },
   { q: 'Funciona com qualquer tamanho de vídeo?', a: 'Aceitamos arquivos de até 500MB nos formatos MP4, MOV, WebM, MKV, 3GP e AVI — suficiente para a maioria dos Reels, Stories e Shorts.' },
 ];
@@ -120,7 +120,7 @@ export default function LegendasPage() {
             <Link href="/cadastro?utm_source=seo&utm_campaign=legendas" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-base px-8 py-3.5 rounded-2xl hover:opacity-90 transition-opacity">
               Criar conta e testar →
             </Link>
-            <span className="text-sm text-brand-muted">R$34,90/mês · Pix ou cartão · cancele quando quiser</span>
+            <span className="text-sm text-brand-muted">R$37/mês · Pix ou cartão · cancele quando quiser</span>
           </div>
         </div>
 
@@ -157,7 +157,7 @@ export default function LegendasPage() {
         <div className="mb-16 rounded-2xl p-8 border border-brand-primary/30 text-center" style={{ background: 'rgba(16,185,129,.06)' }}>
           <div className="text-xs font-mono uppercase tracking-widest text-brand-primary mb-3">ZapScript Legendas</div>
           <div className="flex items-baseline justify-center gap-1 mb-2">
-            <span className="text-4xl font-black text-white">R$34,90</span>
+            <span className="text-4xl font-black text-white">R$37</span>
             <span className="text-brand-muted">/mês</span>
           </div>
           <p className="text-sm text-brand-muted mb-6">Envios ilimitados dentro da sua conta · sem fidelidade</p>

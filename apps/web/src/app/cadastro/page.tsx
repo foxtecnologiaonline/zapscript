@@ -33,6 +33,29 @@ function CadastroForm() {
   const [done, setDone]       = useState(false);
   const [userEmail, setUserEmail] = useState('');
 
+  // Magic link (expresso): o usuário já provou valor na demo, só quer acessar
+  const [magicSent, setMagicSent] = useState(false);
+  const [magicSending, setMagicSending] = useState(false);
+
+  async function handleMagicRegister() {
+    const emailVal = form.email.trim().toLowerCase();
+    if (!emailVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+      setError('Informe um e-mail válido para criar sua conta.');
+      return;
+    }
+    setMagicSending(true);
+    setError('');
+    try {
+      await api.post('/auth/magic-register', { email: emailVal });
+      setMagicSent(true);
+      setUserEmail(emailVal);
+    } catch (e: any) {
+      setError(e?.message || 'Erro ao criar conta. Tente novamente.');
+    } finally {
+      setMagicSending(false);
+    }
+  }
+
   // Consentimentos LGPD — único aceite cobre todos os documentos
   const [cbAll, setCbAll] = useState(false);
   const [consentError, setConsentError] = useState(false);
@@ -102,38 +125,46 @@ function CadastroForm() {
   }
 
   // ── Tela pós-cadastro ────────────────────────────────────────────────────
-  if (done) {
+  if (done || magicSent) {
     return (
       <div className="min-h-screen bg-brand-bg flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm text-center">
           <div className="bg-brand-surface rounded-2xl p-8"
             style={{ border: '1px solid rgba(var(--color-primary)/.15)' }}>
             <div className="w-16 h-16 rounded-full bg-brand-primary/10 flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl">📧</span>
+              <span className="text-3xl">{magicSent ? '⚡' : '📧'}</span>
             </div>
-            <h2 className="text-xl font-bold text-brand-primary mb-2">Verifique seu e-mail</h2>
-            <p className="text-sm text-brand-text-secondary mb-1">Enviamos um link de confirmação para:</p>
+            <h2 className="text-xl font-bold text-brand-primary mb-2">
+              {magicSent ? 'Link de acesso enviado!' : 'Verifique seu e-mail'}
+            </h2>
+            <p className="text-sm text-brand-text-secondary mb-1">
+              {magicSent ? 'Enviamos um link mágico para:' : 'Enviamos um link de confirmação para:'}
+            </p>
             <p className="text-sm font-semibold text-brand-text mb-4 break-all">{userEmail}</p>
             <p className="text-xs text-brand-muted mb-6 leading-relaxed">
-              Abra o e-mail e clique em{' '}
-              <strong className="text-brand-primary">Confirmar meu e-mail</strong>{' '}
-              para ativar sua conta.<br />O link expira em 24 horas.
+              {magicSent
+                ? <>Clique no link e acesse seu painel <strong className="text-brand-primary">direto, sem senha</strong>.<br />Sem burocracia — sua conta já está ativa.</>
+                : <>Abra o e-mail e clique em{' '}
+                    <strong className="text-brand-primary">Confirmar meu e-mail</strong>{' '}
+                    para ativar sua conta.<br />O link expira em 24 horas.</>}
             </p>
-            <div className="rounded-xl px-4 py-3 mb-4 text-left"
-              style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.2)' }}>
-              <p className="text-xs text-brand-text leading-relaxed">
-                <span className="font-bold text-brand-primary">🔥 50% OFF no 1º mês:</span>{' '}
-                confirme seu e-mail e assine o Pro por <strong>R$19,90 no 1º mês</strong> (depois R$39,90/mês).
-              </p>
-            </div>
+            {!magicSent && (
+              <div className="rounded-xl px-4 py-3 mb-4 text-left"
+                style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.2)' }}>
+                <p className="text-xs text-brand-text leading-relaxed">
+                  <span className="font-bold text-brand-primary">🔥 50% OFF no 1º mês:</span>{' '}
+                  confirme seu e-mail e assine o Pro por <strong>R$18,50 no 1º mês</strong> (depois R$37/mês).
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Link href="/login" className="btn-primary block w-full py-3 text-center text-sm">
-                Já confirmei — Fazer login
+                {magicSent ? 'Já acessei — Ir para o painel' : 'Já confirmei — Fazer login'}
               </Link>
               <button
-                onClick={() => { setDone(false); setForm(f => ({ ...f, password: '' })); }}
+                onClick={() => { setDone(false); setMagicSent(false); setForm(f => ({ ...f, password: '' })); }}
                 className="block w-full text-xs text-brand-muted hover:text-brand-primary transition-colors py-2">
-                Voltar e usar outro e-mail
+                {magicSent ? 'Tentar com outro e-mail' : 'Voltar e usar outro e-mail'}
               </button>
             </div>
           </div>
@@ -249,6 +280,21 @@ function CadastroForm() {
             <button type="submit" disabled={loading}
               className="btn-primary w-full py-3 text-sm disabled:opacity-50">
               {loading ? 'Criando conta...' : 'Criar conta grátis →'}
+            </button>
+
+            {/* Magic link expresso — para quem não quer digitar senha */}
+            <div className="relative my-1">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-brand-border/50" />
+              </div>
+              <div className="relative flex justify-center text-[10px]">
+                <span className="px-2 text-brand-muted bg-brand-surface">ou, sem senha</span>
+              </div>
+            </div>
+            <button type="button" onClick={handleMagicRegister} disabled={magicSending}
+              className="w-full py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:opacity-80 active:scale-[.98] disabled:opacity-50"
+              style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-primary))' }}>
+              {magicSending ? 'Enviando link…' : '⚡ Criar conta com link mágico'}
             </button>
           </form>
 

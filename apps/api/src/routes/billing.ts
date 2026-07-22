@@ -46,23 +46,23 @@ async function markProcessed(paymentId: string): Promise<void> {
 }
 
 /* ── Preços ── */
-const PLAN_PRICES:        Record<string, number> = { pro: 39.90,  executive: 49.90  };
-const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 383.04, executive: 479.04 }; // x12 com 20% off
+const PLAN_PRICES:        Record<string, number> = { pro: 37,  executive: 67  };
+const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 355.20, executive: 643.20 }; // x12 com 20% off
 const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive' };
 
 /* ── Combo (Core + módulos disponíveis): % fixo sobre a soma do valor agregado ── */
 const COMBO_DISCOUNT_PCT = 0.20;
 
-/* ── Oferta permanente: 1º mês de assinatura mensal Pro com 50% off (R$19,90) ── */
-const JUNE_PROMO_PRICE = 19.90;
+/* ── Oferta permanente: 1º mês de assinatura mensal Pro com 50% off (R$18,50) ── */
+const JUNE_PROMO_PRICE = 18.50;
 function isJunePromoActive(): boolean {
   return true;
 }
 
 /* ── Pacotes de minutos avulsos (valem 60 dias) ── */
 export const MINUTE_PACKAGES = [
-  { id: 'pkg_50',  minutes: 50,  priceBrl: 11.90, label: '50 minutos',  desc: 'Mais econômico' },
-  { id: 'pkg_100', minutes: 100, priceBrl: 19.90, label: '100 minutos', desc: 'Melhor valor' },
+  { id: 'pkg_50',  minutes: 50,  priceBrl: 11, label: '50 minutos',  desc: 'Mais econômico' },
+  { id: 'pkg_100', minutes: 100, priceBrl: 19, label: '100 minutos', desc: 'Melhor valor' },
 ] as const;
 
 /* ── Validade do saldo extra (minutos avulsos / indicação) ── */
@@ -457,7 +457,7 @@ export default async function billingRoutes(app: FastifyInstance) {
         update: { asaasCustomerId, paymentMethod, status: 'pending' },
       }).catch((e: any) => app.log.warn({ err: e.message, userId }, '[Checkout] M2: Falha ao salvar subscription pendente — estado pode ficar inconsistente'));
 
-      // ── Promoção de lançamento (Junho/2026): 1º mês a R$19,90 em assinaturas MENSAIS Pro ──
+// ── Promoção de lançamento (Junho/2026): 1º mês a R$18,50 em assinaturas MENSAIS Pro ──
       // Estratégia Asaas: cobrança avulsa do 1º mês no valor promocional + assinatura recorrente
       // no valor cheio com 1º vencimento em +30 dias (a partir do 2º mês cobra o valor normal).
       const promoActive = isJunePromoActive() && !isYearly && planName === 'pro';

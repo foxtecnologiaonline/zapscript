@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { ThemeToggleButton } from '@/components/ThemeProvider';
 import { ChatDemo } from '@/components/ChatDemo';
 import ConversationDemo from '@/components/ConversationDemo';
+import WhatsAppSimulator from '@/components/WhatsAppSimulator';
+import LiveStats from '@/components/LiveStats';
 import PriceAnchor from '@/components/PriceAnchor';
 import { FaqSection } from '@/components/FaqSection';
 import { PricingInteractive } from '@/components/PricingInteractive';
@@ -72,7 +74,7 @@ const schemaOrg = {
   },
   offers: [
     { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Free', description: '15 áudios por mês, sem cartão' },
-    { '@type': 'Offer', price: '39.90', priceCurrency: 'BRL', name: 'Pro', description: 'Áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico' },
+    { '@type': 'Offer', price: '37', priceCurrency: 'BRL', name: 'Pro', description: 'Áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico' },
   ],
   publisher: {
     '@type': 'Organization',
@@ -130,36 +132,45 @@ export default function HomePage() {
             </div>
 
             {/* H1 */}
-            <h1 className="font-display font-bold leading-[1.06] tracking-tight mb-3"
-              style={{ fontSize: 'clamp(28px, 8vw, 42px)', animation: 'fadeInUp .6s ease .25s both' }}>
-              <span className="text-brand-text">Pare de ouvir áudio.</span>{' '}
-              <span className="text-gradient">Leia o resumo em 10 segundos.</span>
+            <h1 className="font-display font-bold leading-[1.06] tracking-tight mb-4"
+              style={{ fontSize: 'clamp(26px, 7.5vw, 38px)', animation: 'fadeInUp .6s ease .25s both' }}>
+              <span className="text-brand-text">Todo áudio do WhatsApp</span>{' '}
+              <span className="text-gradient">vira texto e resumo, sozinho.</span>
             </h1>
 
             {/* Subtitle */}
             <p className="text-[15px] leading-relaxed mb-5"
               style={{ color: 'rgb(var(--color-text-secondary))', animation: 'fadeInUp .6s ease .3s both' }}>
-              Todo áudio do seu WhatsApp vira texto e resumo, automaticamente. Você lê o que importa em segundos — sem fone, sem reouvir.
+              Conecte seu número e pronto. A cada áudio recebido, você lê a transcrição e o resumo na mesma conversa — sem ouvir, sem encaminhar, sem fazer nada.
             </p>
 
+            {/* ══ SIMULADOR ANIMADO — entenda em 5 segundos ══ */}
+            <div style={{ animation: 'fadeInUp .6s ease .38s both' }}>
+              <WhatsAppSimulator className="mb-6" />
+            </div>
+
             {/* CTAs */}
-            <div className="flex flex-col gap-3" style={{ animation: 'fadeInUp .6s ease .35s both' }}>
-              <div>
-                <p className="flex items-center gap-1.5 text-xs font-medium mb-2"
-                  style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                  <span>👋</span> Novo por aqui?
-                </p>
+            <div className="flex flex-col gap-3" style={{ animation: 'fadeInUp .6s ease .45s both' }}>
+              <div className="flex gap-2.5">
                 <Link href="/cadastro" data-cta="home_hero_cadastro"
-                  className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2">
+                  className="btn-primary flex-1 py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2">
                   Quero ler em vez de ouvir
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M12 5l7 7-7 7"/>
                   </svg>
                 </Link>
-                <PriceAnchor
-                  prefix="Grátis para começar · depois, "
-                  className="block text-center text-xs mt-2 text-brand-muted"
-                />
+                <Link href="/transcrever-audio-gratis" data-cta="home_hero_demo"
+                  className="py-[14px] px-5 text-[15px] font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-80 active:scale-[.98] flex-shrink-0"
+                  style={{
+                    border: '1.5px solid rgb(var(--color-primary))',
+                    color: 'rgb(var(--color-primary))',
+                    background: 'rgba(var(--color-primary)/.08)',
+                  }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                  </svg>
+                  Ver funcionando
+                </Link>
               </div>
 
               <div className="flex items-center gap-3">
@@ -168,24 +179,18 @@ export default function HomePage() {
                 <div className="flex-1 h-px" style={{ background: 'rgb(var(--color-border))' }} />
               </div>
 
-              <div>
-                <p className="flex items-center gap-1.5 text-xs font-medium mb-2"
-                  style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                  <span>🔑</span> Já tem uma conta?
-                </p>
-                <Link href="/login"
-                  className="w-full py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-80 active:scale-[.98]"
-                  style={{
-                    border: '1.5px solid rgb(var(--color-border))',
-                    color: 'rgb(var(--color-text-secondary))',
-                    background: 'rgb(var(--color-surface))',
-                  }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/>
-                  </svg>
-                  Entrar na minha conta
-                </Link>
-              </div>
+              <Link href="/login"
+                className="w-full py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-80 active:scale-[.98]"
+                style={{
+                  border: '1.5px solid rgb(var(--color-border))',
+                  color: 'rgb(var(--color-text-secondary))',
+                  background: 'rgb(var(--color-surface))',
+                }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/>
+                </svg>
+                Entrar na minha conta
+              </Link>
             </div>
 
             {/* Selos de confiança — acima da dobra */}
@@ -202,20 +207,12 @@ export default function HomePage() {
           </div>
         </header>
 
-        {/* ══ STATS GLASS CARD ══ */}
+        {/* ══ LIVE STATS — contador real de atividade ══ */}
         <section className="relative z-20 -mt-10 px-5" style={{ animation: 'fadeInUp .6s ease .4s both' }}>
           <div className="w-full">
             <div className="glass rounded-3xl p-5 border shadow-medium flex justify-around items-center"
               style={{ borderColor: 'rgb(var(--color-border-light))' }}>
-              {[['24/7', 'Sempre ativo'], ['10x', 'Mais rápido'], ['99%', 'Precisão']].map(([val, lbl], i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
-                  {i > 0 && <div style={{ width: 1, height: 40, background: 'rgb(var(--color-border))', marginRight: 20 }} />}
-                  <div className="text-center">
-                    <p className="font-display text-xl font-bold text-brand-text">{val}</p>
-                    <p className="text-[11px] font-medium mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{lbl}</p>
-                  </div>
-                </div>
-              ))}
+              <LiveStats />
             </div>
           </div>
         </section>

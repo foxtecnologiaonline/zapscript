@@ -33,7 +33,7 @@ const COMPARISON: [string, string, string, string][] = [
   ['Funil arrastar-e-soltar',            '❌', '✅', '✅'],
   ['Lembretes por contato',              '⚠️ Manual', '✅', '✅'],
   ['Tempo de configuração',              '—', '⚠️ Dias', '✅ Minutos'],
-  ['Custo mensal',                       '✅ Grátis', '⚠️ Alto', '✅ R$39,90'],
+  ['Custo mensal',                       '✅ Grátis', '⚠️ Alto', '✅ R$47'],
 ];
 
 const FAQS = [
@@ -165,7 +165,7 @@ export default function CrmLandingClient() {
             className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 active:scale-95 transition-all shadow-lg"
             style={{ boxShadow: '0 0 30px rgba(16,185,129,0.3)' }}
           >
-            Ativar CRM — R$39,90/mês
+            Ativar CRM — R$47/mês
             <span>→</span>
           </Link>
 
@@ -233,7 +233,7 @@ export default function CrmLandingClient() {
             className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-base px-8 py-3.5 rounded-2xl hover:opacity-90 active:scale-95 transition-all mt-10"
             style={{ boxShadow: '0 0 30px rgba(16,185,129,0.3)' }}
           >
-            Ativar CRM — R$39,90/mês
+            Ativar CRM — R$47/mês
             <span>→</span>
           </Link>
         </div>
@@ -322,7 +322,7 @@ export default function CrmLandingClient() {
             </div>
             <h3 className="font-bold text-white mb-1">ZapScript CRM</h3>
             <div className="flex items-baseline gap-1.5 mb-4">
-              <span className="text-2xl font-bold text-white">R$39,90</span>
+              <span className="text-2xl font-bold text-white">R$47</span>
               <span className="text-brand-muted text-sm">/mês</span>
             </div>
             <ul className="space-y-2 mb-6">
@@ -385,7 +385,7 @@ export default function CrmLandingClient() {
             className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-xl px-12 py-5 rounded-2xl hover:opacity-90 active:scale-95 transition-all"
             style={{ boxShadow: '0 0 40px rgba(16,185,129,0.35)' }}
           >
-            Ativar CRM — R$39,90/mês
+            Ativar CRM — R$47/mês
             <span>→</span>
           </Link>
           <p className="mt-5 text-sm text-brand-muted">
