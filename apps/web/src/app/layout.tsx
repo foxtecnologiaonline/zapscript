@@ -4,6 +4,7 @@ import SupportWidget from '@/components/SupportWidget';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import Analytics from '@/components/Analytics';
 import UtmCapture from '@/components/UtmCapture';
+import { Analytics as VercelAnalytics } from '@vercel/analytics/next';
 
 export const metadata: Metadata = {
   title: {
@@ -76,6 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </ThemeProvider>
         <Analytics />
         <UtmCapture />
+        <VercelAnalytics />
       </body>
     </html>
   );
