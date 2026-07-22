@@ -825,7 +825,18 @@ async function runAutoMigrations() {
       app.log.warn(`[AutoMigration] ${e.message}`)
     );
   }
-  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt + Cobrança + Legendas + Campanhas + Teams + AffiliateClick + isPublic)');
+  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt + Cobrança + Legendas + Campanhas + Teams + AffiliateClick + isPublic + privateMode default false)');
+
+  // ── Migração: ALTER DEFAULT privateMode → false (2026-07-22) ──
+  // Anteriormente o default era true (opt-out automático em pago).
+  // Agora é false (opt-in manual). Só altera o DEFAULT — não faz backfill
+  // (usuários existentes que já ativaram mantêm o flag ligado).
+  await prisma.$executeRawUnsafe(
+    `ALTER TABLE "WhatsappNumber" ALTER COLUMN "privateMode" SET DEFAULT false`
+  ).catch((e: any) =>
+    app.log.warn(`[AutoMigration] privateMode default: ${e.message}`)
+  );
+  app.log.info('[AutoMigration] ✅ privateMode default = false');
 }
 
 /**
