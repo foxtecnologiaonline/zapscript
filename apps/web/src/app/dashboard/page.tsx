@@ -5,6 +5,9 @@ import { api } from '@/lib/api';
 import { trackOnce } from '@/lib/analytics';
 import OnboardingBanner from './OnboardingBanner';
 import AhaReferralModal from '@/components/AhaReferralModal';
+import QuickDemoCard from '@/components/QuickDemoCard';
+import WelcomeCelebration from '@/components/WelcomeCelebration';
+import AchievementBanner from '@/components/AchievementBanner';
 
 interface Stats {
   transcriptionsToday: number;
@@ -138,6 +141,23 @@ export default function DashboardPage() {
           </p>
           <span className="text-brand-primary text-xs font-bold flex-shrink-0">Aproveitar →</span>
         </Link>
+      )}
+
+      {/* ── Celebração pós-cadastro (1x) ── */}
+      <WelcomeCelebration />
+
+      {/* ── Quick Demo: mostra o produto sem WhatsApp (só se não tiver transcrições e não tiver número) ── */}
+      {(stats?.activeNumbers ?? 0) === 0 && (stats?.transcriptionsTotal ?? 0) === 0 && (
+        <QuickDemoCard />
+      )}
+
+      {/* ── Achievement/Upsell: após a 1ª transcrição (só Free, 1x) ── */}
+      {(stats?.transcriptionsTotal ?? 0) >= 1 && stats?.planName === 'free' && (
+        <AchievementBanner
+          planLabel={stats?.planLabel}
+          savedLabelMonth={stats?.savedLabelMonth}
+          transcriptionsTotal={stats?.transcriptionsTotal}
+        />
       )}
 
       {/* ── Onboarding Banner (até conectar 1º número) ── */}

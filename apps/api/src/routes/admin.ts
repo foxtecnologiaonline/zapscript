@@ -11,6 +11,7 @@ import { sendText } from '../services/evolution';
 import { sendEmail } from '../lib/mailer';
 import { asaas, asaasConfigured, asaasEnv } from '../lib/asaas';
 import { checkAdminTotp } from '../lib/totp';
+import { maskEmail } from '../lib/mask';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -18,14 +19,6 @@ const supabase = createClient(
 );
 
 const PLAN_PRICES: Record<string, number> = { pro: 37, executive: 67, free: 0, 'pro-tester': 0 };
-
-// Mascara email para LGPD: "fr***@gmail.com"
-function maskEmail(email: string): string {
-  const [local, domain] = email.split('@');
-  if (!domain) return '***';
-  const masked = local.length > 2 ? local.slice(0, 2) + '***' : '***';
-  return `${masked}@${domain}`;
-}
 
 function safeCompare(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
