@@ -6,6 +6,7 @@ dist/
 .sessions/
 *.ogg
 *.mp3
+!apps/api/private/welcome.mp3
 *.wav
 .DS_Store
 
