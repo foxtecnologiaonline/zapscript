@@ -235,7 +235,7 @@ export function DemoTranscribe() {
               Gostou? Faça isso automático no seu WhatsApp.
             </p>
             <p className="text-xs font-light mb-3" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Conecte seu número e todo áudio vira texto e resumo sozinho. Comece grátis — 1º mês do Pro por R$ 18,50.
+              Conecte seu número e todo áudio vira texto e resumo sozinho. Comece grátis — 1º mês do Pro por R$ 18.
             </p>
 
             {magicSent ? (

@@ -597,11 +597,11 @@ async function runAutoMigrations() {
     // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
     `DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'cobranca') THEN
-        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 39, "priceYearly" = 374.40
+        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 39, "priceYearly" = 374
           WHERE "key" = 'cobranca' AND "status" NOT IN ('beta', 'ga');
       ELSE
         INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
-        VALUES ('cobranca-product-seed', 'cobranca', 'ZapScript Cobrança', 'planned', 39, 374.40, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        VALUES ('cobranca-product-seed', 'cobranca', 'ZapScript Cobrança', 'planned', 39, 374, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
     // Módulo Legendas (migração 20260714_legenda_jobs): auto-cura o schema no
@@ -636,11 +636,11 @@ async function runAutoMigrations() {
     // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
     `DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'legenda') THEN
-        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 37, "priceYearly" = 355.20
+        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 37, "priceYearly" = 355
           WHERE "key" = 'legenda' AND "status" NOT IN ('beta', 'ga');
       ELSE
         INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
-        VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'planned', 37, 355.20, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'planned', 37, 355, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
     // Módulo Campanhas (migração 20260713_campanhas_tables): auto-cura o schema no
@@ -720,11 +720,11 @@ async function runAutoMigrations() {
     // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
     `DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'campanhas') THEN
-        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 67, "priceYearly" = 643.20
+        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 67, "priceYearly" = 643
           WHERE "key" = 'campanhas' AND "status" NOT IN ('beta', 'ga');
       ELSE
         INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
-        VALUES ('campanhas-product-seed', 'campanhas', 'ZapScript Campanhas', 'planned', 67, 643.20, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        VALUES ('campanhas-product-seed', 'campanhas', 'ZapScript Campanhas', 'planned', 67, 643, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
     // ── Plano Empresas Multi-Seat (migração 20260722_team_multiseat) ──

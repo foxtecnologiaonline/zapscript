@@ -3,7 +3,7 @@ import LandingPageClient, { type Variant } from '../lp/LandingPageClient';
 
 export const metadata: Metadata = {
   title:       'Conversão de Áudios do WhatsApp para Corretores de Imóveis — ZapScript',
-  description: 'Cliente mandou áudio de 5 minutos descrevendo o imóvel? O ZapScript transforma cada áudio em ficha de texto + resumo automático. Feito para corretores. Grátis para começar.',
+  description: 'Cliente manda áudio do imóvel? ZapScript converte e resume cada áudio automaticamente. Corretor lê em segundos e responde primeiro. Grátis.',
   keywords:    'converter áudio cliente imóvel, corretor whatsapp áudio, conversão imobiliária, ficha imóvel áudio whatsapp',
   alternates:  { canonical: 'https://www.zapscript.me/corretores' },
   openGraph: {

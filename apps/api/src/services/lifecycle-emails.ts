@@ -11,11 +11,11 @@ const FIRST_RUN_MS = 10 * 60 * 1000;      // 10 min após startup
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
 
-/* ── Oferta permanente: 1º mês do Pro com 50% off (R$18,50) ──────────────────
+/* ── Oferta permanente: 1º mês do Pro com 50% off (R$18) ──────────────────
    Fonte da verdade server-side (espelha apps/web/src/lib/promo.ts). Não expira. */
 /** Frase de preço do Pro para usar dentro do corpo de e-mails. */
 function proPriceLine(): string {
-  return `por <strong style="color:#6ee7b7">R$18,50 no primeiro mês</strong> (depois R$37/mês)`;
+  return `por <strong style="color:#6ee7b7">R$18 no primeiro mês</strong> (depois R$37/mês)`;
 }
 
 function btn(href: string, label: string): string {

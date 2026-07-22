@@ -3,7 +3,7 @@ import LandingPageClient, { type Variant } from '../lp/LandingPageClient';
 
 export const metadata: Metadata = {
   title:       'Conversão de Áudios do WhatsApp para Dentistas e Clínicas — ZapScript',
-  description: 'Pacientes mandam áudio relatando sintomas e marcando consulta. O ZapScript converte e resume cada um automaticamente — registro pesquisável, LGPD, sem app. Comece grátis.',
+  description: 'Pacientes mandam áudio com sintomas e dúvidas. ZapScript converte e resume automaticamente — registro pesquisável, LGPD, sem app. Grátis.',
   keywords:    'transcrever áudio paciente whatsapp, converter áudio whatsapp clínica, dentista áudio whatsapp texto, prontuário relato paciente whatsapp',
   alternates:  { canonical: 'https://www.zapscript.me/dentistas' },
   openGraph: {

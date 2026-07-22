@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getPost, getAllSlugs, POSTS, type BlogPost } from '../posts';
+import INTERLINK_MAP from '../interlinks';
+import PostContent from './PostContent';
 
 /* ── Static generation ──────────────────────────────────────────────── */
 export function generateStaticParams() {
@@ -118,9 +120,13 @@ export default function BlogPost({ params }: { params: { slug: string } }) {
 
   // Prioriza posts da mesma categoria (cluster) para fortalecer o silo de internal linking
   const others       = POSTS.filter(p => p.slug !== post.slug);
-  const sameCategory = others.filter(p => p.category === post.category);
-  const rest          = others.filter(p => p.category !== post.category);
-  const related        = [...sameCategory, ...rest].slice(0, 2);
+  // Interlinks do mapa têm prioridade; completa com mesma categoria + rest
+  const interlinkSlugs = INTERLINK_MAP[post.slug] ?? [];
+  const interlinks     = interlinkSlugs.map(s => others.find(p => p.slug === s)).filter(Boolean) as BlogPost[];
+  const remaining      = others.filter(p => !interlinkSlugs.includes(p.slug));
+  const sameCategory   = remaining.filter(p => p.category === post.category);
+  const rest           = remaining.filter(p => p.category !== post.category);
+  const related        = [...interlinks, ...sameCategory, ...rest].slice(0, 4);
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text">
@@ -239,10 +245,7 @@ export default function BlogPost({ params }: { params: { slug: string } }) {
           </div>
 
           {/* ── Conteúdo do post ─────────────────────────────────────── */}
-          <div
-            className="prose-blog"
-            dangerouslySetInnerHTML={{ __html: post.content }}
-          />
+          <PostContent html={post.content} currentSlug={post.slug} />
 
           {/* ── CTA rodapé ──────────────────────────────────────────── */}
           <div className="mt-12 bg-white/5 border border-white/10 rounded-2xl p-8 text-center">

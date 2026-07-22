@@ -3,7 +3,7 @@ import AtendeLandingClient from './AtendeLandingClient';
 
 export const metadata: Metadata = {
   title:       'ZapScript Atende — Atendimento automático no WhatsApp com IA',
-  description: 'Responda seus clientes no WhatsApp 24/7 com IA treinada no seu negócio. Escalonamento humano quando a IA não sabe responder. Ative sobre o número que você já tem.',
+  description: 'Responda clientes no WhatsApp 24/7 com IA treinada no seu negócio. Escalonamento humano quando a IA não souber. Sobre o número que você já tem.',
   keywords:    'atendimento automático whatsapp, chatbot whatsapp ia, responder cliente whatsapp automatico, atendimento 24 horas whatsapp',
   alternates:  { canonical: 'https://www.zapscript.me/atende' },
   openGraph: {

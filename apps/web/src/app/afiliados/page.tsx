@@ -63,7 +63,7 @@ const KIT: { key: string; label: string; canal: string; text: string }[] = [
     key: 'grupo-informal',
     canal: 'Grupo',
     label: 'Grupo de WhatsApp — informal',
-    text: `Pessoal! 👋 Dica boa aqui:\n\n*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.\n\nAquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.\n\n🆓 15 áudios/mês grátis, sem cartão:\n👉 [SEU_LINK]\n\n🔥 Pro com áudios ilimitados por R$18,50 no 1º mês\n\nValeu! 😄`,
+    text: `Pessoal! 👋 Dica boa aqui:\n\n*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.\n\nAquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.\n\n🆓 15 áudios/mês grátis, sem cartão:\n👉 [SEU_LINK]\n\n🔥 Pro com áudios ilimitados por R$18 no 1º mês\n\nValeu! 😄`,
   },
   // ── LinkedIn ───────────────────────────────────────────────────────────────
   {

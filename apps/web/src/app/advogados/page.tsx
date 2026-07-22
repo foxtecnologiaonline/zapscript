@@ -3,12 +3,12 @@ import LandingPageClient, { type Variant } from '../lp/LandingPageClient';
 
 export const metadata: Metadata = {
   title:       'Conversão de Áudios do WhatsApp para Advogados — ZapScript',
-  description: 'Transforme o relato em áudio do cliente em texto pesquisável e organizado. Criptografia AES-256, conformidade LGPD, servidores no Brasil. Feito para advogados. Comece grátis.',
+  description: 'Relato do cliente em áudio vira texto organizado e pesquisável. Criptografia AES-256, LGPD, servidores no Brasil. Comece grátis.',
   keywords:    'converter áudio cliente whatsapp advogado, registro escrito relato cliente, conversão jurídica whatsapp, advogado áudio cliente texto',
   alternates:  { canonical: 'https://www.zapscript.me/advogados' },
   openGraph: {
     title:       'ZapScript para Advogados — Relato do cliente em texto pesquisável',
-    description: 'O relato em áudio do cliente vira texto organizado e seguro. Criptografia padrão bancário, LGPD. Comece grátis.',
+    description: 'Relato do cliente em áudio vira texto seguro. Criptografia padrão bancário, LGPD. Grátis.',
     url:         'https://www.zapscript.me/advogados',
     siteName:    'ZapScript',
     locale:      'pt_BR',

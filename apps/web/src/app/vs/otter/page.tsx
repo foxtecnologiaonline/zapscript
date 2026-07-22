@@ -75,7 +75,7 @@ const FAQS = [
   },
   {
     q: 'Quanto custa o ZapScript?',
-    a: 'O plano Free inclui 15 áudios de conversão por mês, em real, sem cartão. O Pro custa R$37/mês (R$18,50 no 1º mês) com áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico.',
+    a: 'O plano Free inclui 15 áudios de conversão por mês, em real, sem cartão. O Pro custa R$37/mês (R$18 no 1º mês) com áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico.',
   },
 ];
 

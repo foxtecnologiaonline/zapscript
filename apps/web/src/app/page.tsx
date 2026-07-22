@@ -14,7 +14,7 @@ import { FAQ_ITEMS } from '@/data/faq';
 
 export const metadata: Metadata = {
   title:       'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
-  description: 'Converta áudios do WhatsApp automaticamente em texto e resumo com IA. Grátis para começar — 10x mais rápido que ouvir. Para corretores, advogados e vendedores.',
+  description: 'Converta áudios do WhatsApp em texto e resumo com IA. Grátis para começar — 10x mais rápido que ouvir. Para corretores, advogados e vendedores.',
   keywords:    'converter áudio whatsapp, transcrição whatsapp automática, resumo áudio ia, whatsapp texto, converter áudio em texto, passar áudio para texto, áudio para texto online, transcrever áudio whatsapp grátis, conversão automática whatsapp, mensagem de voz texto',
   alternates:  { canonical: 'https://www.zapscript.me' },
   openGraph: {

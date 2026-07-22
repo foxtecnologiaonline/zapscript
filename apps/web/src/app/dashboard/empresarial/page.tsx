@@ -201,8 +201,8 @@ function EmpresarialContent() {
             <div className="rounded-xl p-4 text-center"
               style={{ background: 'rgba(var(--color-primary)/.04)', border: '1px solid rgba(var(--color-primary)/.1)' }}>
               <div className="text-xs font-bold mb-1" style={{ color: 'rgb(var(--color-text-muted))' }}>Por seat / ano</div>
-              <div className="font-black text-2xl" style={{ color: 'rgb(var(--color-primary))' }}>R$29,60</div>
-              <div className="text-[10px]" style={{ color: 'rgb(var(--color-text-muted))' }}>R$355,20/ano · 2 meses grátis</div>
+              <div className="font-black text-2xl" style={{ color: 'rgb(var(--color-primary))' }}>R$29</div>
+              <div className="text-[10px]" style={{ color: 'rgb(var(--color-text-muted))' }}>R$355/ano · 2 meses grátis</div>
             </div>
           </div>
 

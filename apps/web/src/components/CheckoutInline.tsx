@@ -34,8 +34,8 @@ function formatChargeDate(d?: string): string {
 
 /* ── Preços anuais (20% off — 12× com desconto) ── */
 const CHECKOUT_YEARLY: Record<string, { annual: string; monthlyEq: string; annualNum: number }> = {
-  pro:       { annual: 'R$355,20', monthlyEq: 'R$29,60/mês', annualNum: 355.20 },
-  executive: { annual: 'R$643,20', monthlyEq: 'R$53,60/mês', annualNum: 643.20 },
+  pro:       { annual: 'R$355', monthlyEq: 'R$29/mês', annualNum: 355 },
+  executive: { annual: 'R$643', monthlyEq: 'R$53/mês', annualNum: 643 },
 };
 
 type Method = 'pix' | 'pix_auto' | 'credit_card' | 'debit_card' | 'google_pay' | 'apple_pay' | 'paypal';

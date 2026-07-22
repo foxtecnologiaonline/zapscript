@@ -111,8 +111,8 @@ const PLANS = [
 
 /* ── Preços anuais (x12 com 20% off) ── */
 const PLAN_PRICES_YEARLY: Record<string, { monthlyDisplay: string; annualDisplay: string }> = {
-  pro:       { monthlyDisplay: 'R$29,60', annualDisplay: 'R$355,20' },
-  executive: { monthlyDisplay: 'R$53,60', annualDisplay: 'R$643,20' },
+  pro:       { monthlyDisplay: 'R$29', annualDisplay: 'R$355' },
+  executive: { monthlyDisplay: 'R$53', annualDisplay: 'R$643' },
 };
 
 type CmpVal = string | boolean;
@@ -731,7 +731,7 @@ function PlanoContent() {
 
   // planName já vem como slug ('free'|'pro'|'executive') — sem precisar de toLowerCase
   const currentPlan = stats?.planName || 'free';
-  // Oferta permanente: 1º mês do Pro a R$18,50 (50% off) em novas assinaturas mensais
+  // Oferta permanente: 1º mês do Pro a R$18 (50% off) em novas assinaturas mensais
   const junePromo = isJunePromoActive() && currentPlan === 'free';
   const PLAN_ORDER: Record<string, number> = { free: 0, pro: 1, executive: 2 };
   const currentPlanOrder = PLAN_ORDER[currentPlan] ?? 0;
@@ -1017,7 +1017,7 @@ function PlanoContent() {
                 </span>
               </div>
               <p className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                R$29,60/mês no anual vs R$37/mês no mensal — economia de R$88,80/ano
+                R$29/mês no anual vs R$37/mês no mensal — economia de R$88/ano
               </p>
             </div>
             <button
@@ -1090,7 +1090,7 @@ function PlanoContent() {
                   <>
                     <div className="text-xs line-through" style={{ color: 'rgb(var(--color-text-muted))' }}>R$37</div>
                     <div className="font-display font-black text-3xl tracking-tight leading-none" style={{ color: 'rgb(var(--color-primary))' }}>
-                      R$18,50
+                      R$18
                     </div>
                     <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>1º mês · depois R$37/mês</div>
                   </>
@@ -1153,13 +1153,13 @@ function PlanoContent() {
               {previewLoading
                 ? 'Calculando...'
                 : junePromo
-                  ? 'Assinar Pro por R$18,50 no 1º mês →'
+                  ? 'Assinar Pro por R$18 no 1º mês →'
                   : 'Assinar Pro por R$37/mês →'}
             </button>
 
             <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.6)' }}>
               {junePromo
-                ? '🔥 50% OFF no 1º mês: R$18,50, depois R$37/mês · Cancele quando quiser'
+                ? '🔥 50% OFF no 1º mês: R$18, depois R$37/mês · Cancele quando quiser'
                 : '🔒 Pix ou cartão · Cancele a qualquer momento'}
             </p>
           </div>
@@ -1543,14 +1543,14 @@ function PlanoContent() {
                     {trialCardMode
                       ? 'Nada é cobrado agora · 1ª cobrança só ao fim do teste · Cancele quando quiser'
                       : junePromo && checkoutPlan === 'pro'
-                        ? '🔥 50% OFF no 1º mês: R$18,50 · depois R$37/mês'
+                        ? '🔥 50% OFF no 1º mês: R$18 · depois R$37/mês'
                         : 'Escolha mensal ou anual · Cancele a qualquer momento'}
                   </p>
                 </div>
                 <CheckoutInline
                   planName={checkoutPlan as 'pro' | 'executive'}
                   planLabel={plan.label}
-                  planPrice={trialCardMode ? plan.price : (junePromo && checkoutPlan === 'pro' ? 'R$18,50' : plan.price)}
+                  planPrice={trialCardMode ? plan.price : (junePromo && checkoutPlan === 'pro' ? 'R$18' : plan.price)}
                   planFeats={plan.feats}
                   isUpgrade={!trialCardMode && currentPlan !== 'free'}
                   trialMode={trialCardMode}

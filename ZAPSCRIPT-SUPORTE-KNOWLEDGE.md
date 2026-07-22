@@ -25,7 +25,7 @@ ZapScript.me é um SaaS brasileiro que **transcreve e resume automaticamente os 
 | Plano | Preço | Áudios | Números |
 |---|---|---|---|
 | Free | R$0/mês | 15/mês | 1 |
-| Pro (1º mês) | **R$18,50** (50% OFF — oferta permanente) | Ilimitados | 2 |
+| Pro (1º mês) | **R$18** (50% OFF — oferta permanente) | Ilimitados | 2 |
 | Pro (a partir do 2º mês) | R$37/mês | Ilimitados | 2 |
 | Executive | Sob consulta | Ilimitados | Múltiplos |
 

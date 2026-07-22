@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { trackOnce } from '@/lib/analytics';
 import OnboardingBanner from './OnboardingBanner';
+import AhaReferralModal from '@/components/AhaReferralModal';
 
 interface Stats {
   transcriptionsToday: number;
@@ -133,7 +134,7 @@ export default function DashboardPage() {
           <span className="text-lg flex-shrink-0">🔥</span>
           <p className="text-xs text-brand-text flex-1">
             <span className="font-bold text-brand-primary">50% OFF no 1º mês:</span>{' '}
-            assine o Pro por <strong>R$18,50</strong> (depois R$37/mês).
+            assine o Pro por <strong>R$18</strong> (depois R$37/mês).
           </p>
           <span className="text-brand-primary text-xs font-bold flex-shrink-0">Aproveitar →</span>
         </Link>
@@ -331,6 +332,12 @@ export default function DashboardPage() {
         </div>
 
       </div>
+
+      {/* ── Modal de Indicação pós-aha (5ª conversão) ── */}
+      <AhaReferralModal
+        transcriptionsTotal={stats?.transcriptionsTotal ?? 0}
+        refCode={stats?.refCode ?? null}
+      />
     </div>
   );
 }

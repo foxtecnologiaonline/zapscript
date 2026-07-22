@@ -1,9 +1,9 @@
 // Fonte única da verdade da oferta comercial do Pro.
-// Oferta permanente: 1º mês com 50% off (R$18,50), depois R$37/mês.
+// Oferta permanente: 1º mês com 50% off (R$18), depois R$37/mês.
 // Substituiu a promo "Junho/2026" de preço fixo com data de expiração.
 
 export const PRO_FULL_PRICE = 'R$37';
-export const PRO_PROMO_PRICE = 'R$18,50';
+export const PRO_PROMO_PRICE = 'R$18';
 
 /** Desconto do 1º mês está ativo? Oferta permanente — sempre true. */
 export function isJunePromoActive(_now: Date = new Date()): boolean {

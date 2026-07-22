@@ -47,14 +47,14 @@ async function markProcessed(paymentId: string): Promise<void> {
 
 /* ── Preços ── */
 const PLAN_PRICES:        Record<string, number> = { pro: 37,  executive: 67  };
-const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 355.20, executive: 643.20 }; // x12 com 20% off
+const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 355, executive: 643 }; // x12 com 20% off
 const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive' };
 
 /* ── Combo (Core + módulos disponíveis): % fixo sobre a soma do valor agregado ── */
 const COMBO_DISCOUNT_PCT = 0.20;
 
-/* ── Oferta permanente: 1º mês de assinatura mensal Pro com 50% off (R$18,50) ── */
-const JUNE_PROMO_PRICE = 18.50;
+/* ── Oferta permanente: 1º mês de assinatura mensal Pro com 50% off (R$18) ── */
+const JUNE_PROMO_PRICE = 18;
 function isJunePromoActive(): boolean {
   return true;
 }
@@ -457,7 +457,7 @@ export default async function billingRoutes(app: FastifyInstance) {
         update: { asaasCustomerId, paymentMethod, status: 'pending' },
       }).catch((e: any) => app.log.warn({ err: e.message, userId }, '[Checkout] M2: Falha ao salvar subscription pendente — estado pode ficar inconsistente'));
 
-// ── Promoção de lançamento (Junho/2026): 1º mês a R$18,50 em assinaturas MENSAIS Pro ──
+// ── Promoção de lançamento (Junho/2026): 1º mês a R$18 em assinaturas MENSAIS Pro ──
       // Estratégia Asaas: cobrança avulsa do 1º mês no valor promocional + assinatura recorrente
       // no valor cheio com 1º vencimento em +30 dias (a partir do 2º mês cobra o valor normal).
       const promoActive = isJunePromoActive() && !isYearly && planName === 'pro';

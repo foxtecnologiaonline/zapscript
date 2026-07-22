@@ -161,7 +161,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
   // 50% off no 1º mês — oferta permanente, espelha lib/promo.ts
   const junePromo = isJunePromoActive();
   const plans = PLANS.map(p => p.name !== 'Pro' ? p : junePromo
-    ? { ...p, price: 'R$18,50', period: '/1º mês · depois R$37', badge: '🔥 50% OFF no 1º mês' }
+    ? { ...p, price: 'R$18', period: '/1º mês · depois R$37', badge: '🔥 50% OFF no 1º mês' }
     : p);
 
   const faqs = variant.faqs ?? FAQS;

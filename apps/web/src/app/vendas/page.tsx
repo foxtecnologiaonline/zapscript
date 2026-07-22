@@ -3,7 +3,7 @@ import LandingPageClient, { type Variant } from '../lp/LandingPageClient';
 
 export const metadata: Metadata = {
   title:       'Conversão de Áudios do WhatsApp para Vendas e Atendimento — ZapScript',
-  description: 'Cada áudio de lead não ouvido é uma venda perdida. O ZapScript converte e resume a intenção de compra de cada áudio automaticamente. Responda 3x mais rápido. Comece grátis.',
+  description: 'Cada áudio de lead não ouvido é venda perdida. ZapScript converte e resume a intenção de compra automaticamente. Responda 3x mais rápido. Grátis.',
   keywords:    'responder áudio cliente whatsapp rápido, conversão vendas whatsapp, áudio lead texto, atendimento whatsapp áudio',
   alternates:  { canonical: 'https://www.zapscript.me/vendas' },
   openGraph: {

@@ -10,7 +10,7 @@ import { sendEmail } from '../lib/mailer';
    ───────────────────────────────────────────────────────── */
 
 const SEAT_PRICE_MONTHLY = 37;   // R$37/mês por seat (preço Pro)
-const SEAT_PRICE_YEARLY  = 355.20; // R$355,20/ano por seat
+const SEAT_PRICE_YEARLY  = 355; // R$355/ano por seat
 
 function genInviteCode(): string {
   return crypto.randomBytes(16).toString('hex'); // 32 chars

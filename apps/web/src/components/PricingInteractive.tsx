@@ -6,9 +6,9 @@ import { isJunePromoActive, PRO_FULL_PRICE, PRO_PROMO_PRICE } from '@/lib/promo'
 type CmpVal = string | boolean;
 
 const PRO_FULL_PRICE_NUM = 37;
-const PRO_YEARLY_PRICE_NUM = 355.20;
-const PRO_YEARLY_MONTHLY_EQ = 'R$29,60';
-const PRO_YEARLY_SAVINGS = 'R$88,80';
+const PRO_YEARLY_PRICE_NUM = 355;
+const PRO_YEARLY_MONTHLY_EQ = 'R$29';
+const PRO_YEARLY_SAVINGS = 'R$88';
 
 const PLANS = [
   {
@@ -27,7 +27,7 @@ const PLANS = [
     cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
   },
   {
-    name: 'pro', label: 'Pro', price: 'R$18,50', per: '/1º mês',
+    name: 'pro', label: 'Pro', price: 'R$18', per: '/1º mês',
     desc: 'Depois R$37/mês',
     feats: [
       'Áudios ilimitados',

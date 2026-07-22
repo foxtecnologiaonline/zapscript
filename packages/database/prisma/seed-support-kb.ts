@@ -25,7 +25,7 @@ const TOPICOS = [
     tags: ['plano', 'preco', 'preco', 'audios', 'free', 'pro', 'limite', 'cota'],
     conteudo:
       'Plano Free: R$0, 15 áudios/mês, 1 número conectado. ' +
-      'Plano Pro: R$18,50 no 1º mês (50% OFF de lançamento), depois R$37/mês; áudios ilimitados, 2 números. ' +
+      'Plano Pro: R$18 no 1º mês (50% OFF de lançamento), depois R$37/mês; áudios ilimitados, 2 números. ' +
       'Cota renova mensalmente. ' +
       'Não confirme valores fora desta base — em dúvida, escale para um humano.',
   },

@@ -153,7 +153,7 @@ function CadastroForm() {
                 style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.2)' }}>
                 <p className="text-xs text-brand-text leading-relaxed">
                   <span className="font-bold text-brand-primary">🔥 50% OFF no 1º mês:</span>{' '}
-                  confirme seu e-mail e assine o Pro por <strong>R$18,50 no 1º mês</strong> (depois R$37/mês).
+                  confirme seu e-mail e assine o Pro por <strong>R$18 no 1º mês</strong> (depois R$37/mês).
                 </p>
               </div>
             )}
