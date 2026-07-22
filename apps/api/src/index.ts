@@ -789,6 +789,36 @@ async function runAutoMigrations() {
     END $$`,
     // ── Número público para demo/lead magnet (migração 20260722_public_number_flag) ──
     `ALTER TABLE "WhatsappNumber" ADD COLUMN IF NOT EXISTS "isPublic" BOOLEAN NOT NULL DEFAULT false`,
+    // ── Seed idempotente: número oficial do ZapScript (34 98843-4133) ────────────
+    // Serve 4 papéis simultâneos:
+    //   1. Comunicação e envio de campanhas/mensagens (admin)
+    //   2. Número para Suporte oficial
+    //   3. Conversão automática: todo áudio recebido → texto + resumo
+    //   4. 1º áudio enviado ao usuário assim que ele conecta no ZapScript (onboarding)
+    // userId = primeiro admin encontrado (fallback: cria placeholder se não existir).
+    // isPublic = true → webhook processa áudios de desconhecidos como demo grátis.
+    `DO $$
+    DECLARE
+      _admin_id TEXT;
+      _exists   BOOLEAN;
+    BEGIN
+      SELECT "id" INTO _admin_id FROM "User" WHERE "isAdmin" = true AND "deletedAt" IS NULL ORDER BY "createdAt" ASC LIMIT 1;
+      IF _admin_id IS NULL THEN
+        SELECT "id" INTO _admin_id FROM "User" WHERE "deletedAt" IS NULL ORDER BY "createdAt" ASC LIMIT 1;
+      END IF;
+      -- Se não houver nenhum usuário (DB vazio), usar placeholder (FK exige valor)
+      IF _admin_id IS NULL THEN
+        _admin_id := 'zapscript-oficial-placeholder';
+      END IF;
+
+      SELECT EXISTS(SELECT 1 FROM "WhatsappNumber" WHERE "phoneNumber" = '5534988434133' AND "isPublic" = true)
+        INTO _exists;
+      IF NOT _exists THEN
+        INSERT INTO "WhatsappNumber" ("id", "userId", "phoneNumber", "displayName", "status", "isPublic", "privateMode", "provider", "createdAt", "updatedAt")
+        VALUES (gen_random_uuid()::text, _admin_id, '5534988434133', 'ZapScript Oficial', 'disconnected', true, true, 'evolution', NOW(), NOW());
+        RAISE NOTICE '[Seed] Numero oficial ZapScript (34 98843-4133) criado como isPublic=true';
+      END IF;
+    END $$`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
