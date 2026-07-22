@@ -19,6 +19,7 @@ import {
   planEfetivo, audioQuotaFor, pickFooterVariant, formatSavedTime,
   MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
 } from './lib/freemium';
+import { processCampanhaJob, markCampanhaJobExhausted } from './modules/campanhas';
 import './atende'; // registra o worker da fila 'atende-replies' (ZapScript Atende)
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
@@ -1032,7 +1033,7 @@ function decideFooter(
 
 /**
  * Avisa o PRÓPRIO usuário (WhatsApp + e-mail) que a cota FREE do mês acabou,
- * com CTA de upgrade ancorado em "menos de R$1,33/dia". Throttle: 1x por ciclo.
+ * com CTA de upgrade ancorado em "menos de R$1,23/dia". Throttle: 1x por ciclo.
  * NUNCA responde na conversa do contato que enviou o áudio.
  */
 async function triggerQuotaBlockNotice(userId: string): Promise<void> {
@@ -1044,7 +1045,7 @@ async function triggerQuotaBlockNotice(userId: string): Promise<void> {
     const APP_URL = process.env.APP_URL || 'https://zapscript.me';
     const waMsg =
       `🔓 *ZapScript* — Você usou seus ${FREE_AUDIO_QUOTA} áudios grátis do mês\n\n` +
-      `Continue lendo seus áudios *sem limite*, por *menos de R$1,33/dia*.\n` +
+      `Continue lendo seus áudios *sem limite*, por *menos de R$1,23/dia*.\n` +
       `Não volte a ouvir áudio:\n👉 ${APP_URL}/dashboard/plano`;
 
     const n = await prisma.whatsappNumber.findFirst({
@@ -1063,7 +1064,7 @@ async function triggerQuotaBlockNotice(userId: string): Promise<void> {
             Olá, <strong>${firstName}</strong>!<br><br>
             Você usou seus <strong>${FREE_AUDIO_QUOTA} áudios grátis</strong> deste mês.
             Quem tem vida corrida não para pra ouvir áudio — lê.<br><br>
-            Volte a ler tudo, sem limite, por <strong>menos de R$1,33/dia</strong>:
+            Volte a ler tudo, sem limite, por <strong>menos de R$1,23/dia</strong>:
           </div>
           <div style="margin:24px 0;text-align:center">
             <a href="${APP_URL}/dashboard/plano" style="background:#10b981;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Ativar o Pro →</a>
@@ -1400,34 +1401,44 @@ async function processEvolutionJob(job: Job) {
   let mp3Buffer: Buffer | null = null;
 
   try {
-    // PASSO 1: Verificar saldo e buscar o número exato que recebeu o áudio
-    const [balance, whatsappNumber] = await Promise.all([
-      prisma.minuteBalance.upsert({
-        where:  { userId },
-        update: {},
-        create: { userId, availableMinutes: 0, accumulatedMinutes: 0, resetAt: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
-      }),
-      numberId
-        ? prisma.whatsappNumber.findUnique({ where: { id: numberId } })
-        : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
-    ]);
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🆕 DEMO PÚBLICA (número público) — estranho envia áudio, respondemos
+    // com transcrição + CTA de cadastro. NÃO conta quota, NÃO salva no DB.
+    // ═══════════════════════════════════════════════════════════════════════
+    const isPublicDemo = job.data.isPublicDemo === true;
+
+    // PASSO 1: Verificar saldo e buscar o número (skippado para demo pública)
+    const [balance, whatsappNumber] = isPublicDemo
+      ? [null, numberId
+            ? await prisma.whatsappNumber.findUnique({ where: { id: numberId } })
+            : null]
+      : await Promise.all([
+          prisma.minuteBalance.upsert({
+            where:  { userId },
+            update: {},
+            create: { userId, availableMinutes: 0, accumulatedMinutes: 0, resetAt: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
+          }),
+          numberId
+            ? prisma.whatsappNumber.findUnique({ where: { id: numberId } })
+            : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+        ]);
 
     // Cota por ÁUDIOS (métrica primária). FREE atinge o limite → bloqueia + upsell
     // (aviso só ao próprio usuário). PRO → teto oculto de segurança (500/mês), skip silencioso.
-    const usage = await loadUsage(userId);
-    if (!usage.allowed) {
-      log(job, `⚠️  Cota de áudios atingida (${usage.used}/${usage.quota}, plano ${usage.plan})`);
-      if (usage.plan === 'free') {
-        // NUNCA responde na conversa do contato — só avisa o próprio usuário.
-        triggerQuotaBlockNotice(userId).catch(() => null);
+    // ⚠️ Demo pública NÃO conta quota — cu$to de aquisição.
+    if (!isPublicDemo) {
+      const usage = await loadUsage(userId);
+      if (!usage.allowed) {
+        log(job, `⚠️  Cota de áudios atingida (${usage.used}/${usage.quota}, plano ${usage.plan})`);
+        if (usage.plan === 'free') {
+          triggerQuotaBlockNotice(userId).catch(() => null);
+        }
+        return { skipped: true, reason: usage.plan === 'free' ? 'free_quota_reached' : 'pro_cap_reached' };
       }
-      return { skipped: true, reason: usage.plan === 'free' ? 'free_quota_reached' : 'pro_cap_reached' };
+      log(job, `✅ Cota OK: ${usage.used}/${usage.quota} áudios (${usage.plan})`);
+    } else {
+      log(job, `🆕 Demo pública: quota ignorada`);
     }
-    if (!whatsappNumber) {
-      log(job, '⚠️  Número não encontrado no banco');
-      return { skipped: true, reason: 'no_number' };
-    }
-    log(job, `✅ Cota OK: ${usage.used}/${usage.quota} áudios (${usage.plan})`);
 
     // PASSO 2: Baixar áudio via Evolution API (getBase64FromMediaMessage)
     const instName = instanceName ?? whatsappNumber.zapiInstanceId;
@@ -1466,6 +1477,40 @@ async function processEvolutionJob(job: Job) {
     // PASSO 6: Enviar resposta via Evolution API
     log(job, '📤 Enviando resposta via Evolution API...');
 
+    // 🆕 Demo pública: responde ao estranho com transcrição + CTA de cadastro.
+    if (isPublicDemo) {
+      const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+      const demoHeader = `🔊 *Transcrição gratuita — ZapScript*${durationSec ? ` • ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60}s` : `${durationSec}s`}` : ''}`;
+      const bulletsStr = bullets.length > 0
+        ? `\n\n📋 *Resumo*\n${bullets.map((b: string) => `• ${b}`).join('\n')}`
+        : '';
+      const ctaBlock =
+        `\n\n━━━━━━━━━━━━━━━━━━\n` +
+        `⚡ *ZapScript* faz isso automático no seu WhatsApp — 24h por dia.\n` +
+        `👉 ${APP_URL}/cadastro?ref=public\n\n` +
+        `_15 áudios grátis · sem cartão de crédito · cancele quando quiser_`;
+
+      // Cabeçalho de áudio público (não privado, não self-note)
+      const header = `🎙️ *${senderName || fmtPhone(senderPhone)}*${bullets.length > 0 ? `\n→ ${bullets[0]}` : ''}`;
+
+      const messages: string[] = [];
+      // Bloco 1: transcrição completa (corta se > 1000 chars)
+      const fullText = `🔊 *Transcrição*\n\n${originalText}`;
+      messages.push(fullText.length > 1200 ? fullText.slice(0, 1197) + '…' : fullText);
+
+      // Bloco 2: resumo + CTA
+      const summaryBlock = bullets.length > 0 ? `📋 *Resumo*\n${bullets.map((b: string) => `• ${b}`).join('\n')}` : '';
+      messages.push(summaryBlock + ctaBlock);
+
+      for (const m of messages) {
+        await sendMessageViaEvolution(instName, senderPhone, m);
+      }
+      log(job, `✅ Demo pública: ${messages.length} msg(ns) enviada(s) → ${senderPhone}`);
+
+      // NÃO salva no banco, NÃO debita cota
+      return { ok: true, isPublicDemo: true };
+    }
+
     // Self-note: áudio que o usuário encaminhou para o próprio número (self-chat).
     // Nesse caso a resposta volta ao próprio chat (senderPhone == número conectado)
     // e NÃO aplicamos modo privado (cabeçalho dedicado de nota/encaminhado).
@@ -1478,6 +1523,7 @@ async function processEvolutionJob(job: Job) {
     // desativado em self-notes (áudio que o próprio usuário encaminhou).
     // Pago: Modo Privado é o padrão (opt-out). Só cai na conversa do contato se o
     // usuário desligou explicitamente (privateMode === false). Free nunca é privado.
+    const usage = await loadUsage(userId);
     const isPaidPlan  = usage.plan === 'pro';
     const isPrivate   = !isSelfNote
                         && isPaidPlan
@@ -1549,6 +1595,139 @@ async function processEvolutionJob(job: Job) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  PIPELINE D — Legendas (upload de vídeo → .srt/.vtt), fila própria
+// ─────────────────────────────────────────────────────────────────
+const LEGENDA_UPLOADS_BUCKET   = 'legenda-uploads';
+const LEGENDA_OUTPUT_BUCKET    = 'legenda-output';
+const LEGENDA_MAX_DURATION_SEC = 10 * 60; // teto de custo (Whisper + CPU de extração)
+
+async function downloadFromBucket(bucket: string, storageKey: string): Promise<Buffer> {
+  const sb = getSupabaseClient();
+  if (!sb) throw new Error('Supabase não configurado no worker (SUPABASE_URL / SUPABASE_SERVICE_KEY)');
+  const { data, error } = await sb.storage.from(bucket).download(storageKey);
+  if (error) throw new Error(`Supabase Storage download falhou (${bucket}): ${error.message}`);
+  return Buffer.from(await data.arrayBuffer());
+}
+
+async function uploadToBucket(bucket: string, storageKey: string, buffer: Buffer, contentType: string): Promise<void> {
+  const sb = getSupabaseClient();
+  if (!sb) throw new Error('Supabase não configurado no worker (SUPABASE_URL / SUPABASE_SERVICE_KEY)');
+  await sb.storage.createBucket(bucket, { public: false }).catch(() => null);
+  const { error } = await sb.storage.from(bucket).upload(storageKey, buffer, { contentType, upsert: true });
+  if (error) throw new Error(`Supabase Storage upload falhou (${bucket}): ${error.message}`);
+}
+
+async function deleteFromBucket(bucket: string, storageKey: string): Promise<void> {
+  try {
+    const sb = getSupabaseClient();
+    if (!sb) return;
+    await sb.storage.from(bucket).remove([storageKey]);
+  } catch { /* non-fatal */ }
+}
+
+function srtTimestamp(sec: number): string {
+  const h  = Math.floor(sec / 3600);
+  const m  = Math.floor((sec % 3600) / 60);
+  const s  = Math.floor(sec % 60);
+  const ms = Math.round((sec - Math.floor(sec)) * 1000);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},${String(ms).padStart(3,'0')}`;
+}
+
+/** Mesma base do .srt, trocando vírgula por ponto nos milissegundos (spec WebVTT) */
+function vttTimestamp(sec: number): string {
+  return srtTimestamp(sec).replace(',', '.');
+}
+
+function buildSrt(segments: WhisperSegment[]): string {
+  return segments
+    .map((seg, i) => `${i + 1}\n${srtTimestamp(seg.start)} --> ${srtTimestamp(seg.end)}\n${seg.text.trim()}\n`)
+    .join('\n');
+}
+
+function buildVtt(segments: WhisperSegment[]): string {
+  const body = segments
+    .map((seg) => `${vttTimestamp(seg.start)} --> ${vttTimestamp(seg.end)}\n${seg.text.trim()}\n`)
+    .join('\n');
+  return `WEBVTT\n\n${body}`;
+}
+
+async function processLegendaJob(job: Job) {
+  const { legendaJobId, userId, storageKey, originalFilename } = job.data;
+
+  log(job, `📥 Legendas: job ${legendaJobId} (${originalFilename})`);
+
+  let mp3Buffer: Buffer | null = null;
+
+  try {
+    await prisma.legendaJob.update({ where: { id: legendaJobId }, data: { status: 'processing' } });
+
+    // PASSO 1: baixar vídeo do bucket de upload
+    log(job, `☁️ Baixando vídeo: ${storageKey}`);
+    const videoBuffer = await downloadFromBucket(LEGENDA_UPLOADS_BUCKET, storageKey);
+    log(job, `✅ Baixado: ${(videoBuffer.length / 1024 / 1024).toFixed(1)} MB`);
+
+    // PASSO 2: extrair áudio — convertToMp3 já lida com containers de vídeo (ex. MOV/MP4)
+    log(job, '🔄 Extraindo áudio do vídeo...');
+    const ext = (originalFilename?.split('.').pop() || 'mp4').toLowerCase();
+    mp3Buffer = await convertToMp3(videoBuffer, ext);
+    log(job, `✅ Áudio extraído: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 3: teto de duração — rejeita antes de gastar Whisper
+    const estDur = estimateMp3DurationSec(mp3Buffer);
+    if (estDur > LEGENDA_MAX_DURATION_SEC) {
+      throw new Error(`Vídeo acima do limite de ${LEGENDA_MAX_DURATION_SEC / 60} min (~${Math.round(estDur / 60)} min detectado)`);
+    }
+
+    // PASSO 4: Whisper com timestamps por segmento.
+    // juridical:true é o único flag que faz transcribeAudio devolver `segments`
+    // (reaproveitado aqui só pela marcação temporal, não pelo conteúdo do prompt).
+    log(job, '🎙️ Whisper — segmentos com timestamp...');
+    const { durationSec, language, segments } = await transcribeAudio(mp3Buffer, { juridical: true });
+    log(job, `✅ ${durationSec}s — lang:${language} — ${segments.length} segmento(s)`);
+
+    if (!segments.length) {
+      throw new Error('Nenhuma fala detectada no vídeo');
+    }
+
+    // PASSO 5: gerar .srt e .vtt
+    const srt = buildSrt(segments);
+    const vtt = buildVtt(segments);
+
+    // PASSO 6: salvar arquivos de saída
+    const srtKey = `${userId}/${legendaJobId}.srt`;
+    const vttKey = `${userId}/${legendaJobId}.vtt`;
+    await uploadToBucket(LEGENDA_OUTPUT_BUCKET, srtKey, Buffer.from(srt, 'utf-8'), 'text/plain; charset=utf-8');
+    await uploadToBucket(LEGENDA_OUTPUT_BUCKET, vttKey, Buffer.from(vtt, 'utf-8'), 'text/vtt; charset=utf-8');
+    log(job, `✅ Legendas salvas: ${srtKey} / ${vttKey}`);
+
+    // PASSO 7: concluir job e limpar upload original (só após sucesso — ver nota no catch)
+    await prisma.legendaJob.update({
+      where: { id: legendaJobId },
+      data: { status: 'done', durationSec, language, srtStorageKey: srtKey, vttStorageKey: vttKey },
+    });
+    await deleteFromBucket(LEGENDA_UPLOADS_BUCKET, storageKey);
+
+    log(job, `✅ Legenda concluída — ${legendaJobId}`);
+    return { legendaJobId };
+
+  } catch (err) {
+    log(job, `❌ Erro no job de legenda: ${(err as Error).message}`);
+    await prisma.legendaJob.update({
+      where: { id: legendaJobId },
+      data: { status: 'error', errorMessage: (err as Error).message.slice(0, 500) },
+    }).catch(() => null);
+
+    // Diferente do pipeline manual: só apaga o upload original na ÚLTIMA tentativa,
+    // para permitir retry do BullMQ sem perder o arquivo fonte em falhas transitórias.
+    const isLastAttempt = job.attemptsMade + 1 >= (job.opts?.attempts ?? 1);
+    if (isLastAttempt) await deleteFromBucket(LEGENDA_UPLOADS_BUCKET, storageKey);
+    throw err;
+  } finally {
+    mp3Buffer?.fill(0);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  ROUTER — decide qual pipeline usar
 // ─────────────────────────────────────────────────────────────────
 async function routeJob(job: Job) {
@@ -1605,6 +1784,38 @@ worker.on('error', (err) => {
 });
 
 logger.info('Worker de conversão iniciado (WhatsApp + Upload manual)');
+
+// ─────────────────────────────────────────────────────────────────
+//  WORKER SETUP — Legendas (fila própria, isolada da fila de WhatsApp)
+// ─────────────────────────────────────────────────────────────────
+const legendaWorker = new Worker('legendas', processLegendaJob, {
+  connection:      redis as any,
+  concurrency:     parseInt(process.env.LEGENDA_WORKER_CONCURRENCY || '1'),
+  lockDuration:    15 * 60_000, // extração de vídeo + Whisper pode passar do tempo de um áudio
+  lockRenewTime:   Math.floor(15 * 60_000 / 2),
+  stalledInterval: 30_000,
+  maxStalledCount: 2,
+});
+
+legendaWorker.on('completed', (job) => {
+  logger.info(`[LegendaWorker] ✅ Job ${job.id} concluído`);
+});
+
+legendaWorker.on('failed', (job, err) => {
+  const attempts = job?.attemptsMade ?? 0;
+  const maxAttempts = job?.opts?.attempts ?? 2;
+  logger.error(`[LegendaWorker] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
+});
+
+legendaWorker.on('stalled', (jobId) => {
+  logger.warn(`[LegendaWorker] ⚠️ Job ${jobId} ficou stalled`);
+});
+
+legendaWorker.on('error', (err) => {
+  logger.error('[LegendaWorker] Erro interno', { err: err.message });
+});
+
+logger.info('Worker de Legendas iniciado');
 
 // ─────────────────────────────────────────────────────────────────
 //  WORKER — Campanhas (disparo em massa via Meta Cloud API)
@@ -1673,11 +1884,11 @@ function trialNoticeContent(
     return {
       wa: `⏳ *ZapScript* — faltam ${daysLeft} dias do seu período Pro\n\n` +
           `Você está lendo seus áudios *sem limite* e com *Modo Privado* ativo. Isso termina em ${daysLeft} dias.\n\n` +
-          `Continue Pro por *menos de R$1,33/dia* e não volte a parar pra ouvir áudio:\n${cta}`,
+          `Continue Pro por *menos de R$1,23/dia* e não volte a parar pra ouvir áudio:\n${cta}`,
       subject: '⏳ ZapScript — faltam poucos dias do seu Pro',
       html: wrap('⏳ Seu período Pro está acabando',
         `Faltam <strong>${daysLeft} dias</strong> do seu período Pro — áudios sem limite e Modo Privado.<br><br>` +
-        `Quem tem vida corrida não para pra ouvir áudio: lê. Continue Pro por <strong>menos de R$1,33/dia</strong>.`,
+        `Quem tem vida corrida não para pra ouvir áudio: lê. Continue Pro por <strong>menos de R$1,23/dia</strong>.`,
         'Continuar Pro →'),
     };
   }
@@ -1685,22 +1896,22 @@ function trialNoticeContent(
     return {
       wa: `⏳ *ZapScript* — seu período Pro termina hoje\n\n` +
           `A partir de amanhã sua conta volta ao plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês) e o Modo Privado é desligado.\n\n` +
-          `Fique Pro por *menos de R$1,33/dia*:\n${cta}`,
+          `Fique Pro por *menos de R$1,23/dia*:\n${cta}`,
       subject: '⏳ ZapScript — seu Pro termina hoje',
       html: wrap('⏳ Seu período Pro termina hoje',
         `A partir de amanhã sua conta volta ao <strong>plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês)</strong> e o Modo Privado é desligado.<br><br>` +
-        `Mantenha tudo como está por <strong>menos de R$1,33/dia</strong>.`,
+        `Mantenha tudo como está por <strong>menos de R$1,23/dia</strong>.`,
         'Ativar o Pro →'),
     };
   }
   return {
     wa: `🔓 *ZapScript* — seu período Pro terminou\n\n` +
         `Sua conta voltou ao plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês) e o Modo Privado foi desligado.\n\n` +
-        `Volte a ler tudo sem limite por *menos de R$1,33/dia*:\n${cta}`,
+        `Volte a ler tudo sem limite por *menos de R$1,23/dia*:\n${cta}`,
     subject: '🔓 ZapScript — seu período Pro terminou',
     html: wrap('🔓 Seu período Pro terminou',
       `Sua conta voltou ao <strong>plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês)</strong> e o Modo Privado foi desligado.<br><br>` +
-      `Volte a ler tudo sem limite por <strong>menos de R$1,33/dia</strong>.`,
+      `Volte a ler tudo sem limite por <strong>menos de R$1,23/dia</strong>.`,
       'Voltar ao Pro →'),
   };
 }
@@ -2320,6 +2531,7 @@ process.on('SIGTERM', async () => {
   }, 30_000);
   try {
     await worker.close();
+    await legendaWorker.close();
     await campanhasWorker.close();
     await prisma.$disconnect();
     clearTimeout(forceExit);

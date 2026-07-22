@@ -63,7 +63,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
   onConnected: () => void;
   externalQr?: string | null;
 }) {
-  const [phase, setPhase]             = useState<'init' | 'ready' | 'code' | 'waiting' | 'connected' | 'error'>('init');
+  const [phase, setPhase]             = useState<'intro' | 'init' | 'ready' | 'code' | 'waiting' | 'connected' | 'error'>('intro');
   const [connectMode, setConnectMode] = useState<'phone' | 'qr'>('phone');
   const [error, setError]             = useState('');
   const [phoneInput, setPhoneInput]   = useState(
@@ -86,19 +86,21 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
   const qrPollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoReqRef = useRef(false);  // garante auto-solicitação do código só 1×
 
-  // Iniciar conexão ao abrir o modal
+  // Iniciar conexão — só após o usuário confirmar na tela de introdução
+  const startConnection = useCallback(async () => {
+    setPhase('init');
+    try {
+      await api.post(`/numbers/${number.id}/connect`, {});
+      setPhase('ready');
+    } catch (err: any) {
+      setError(err.message || 'Erro ao iniciar conexão. Verifique as configurações do servidor.');
+      setPhase('error');
+    }
+  }, [number.id]);
+
+  // Cleanup polling ao fechar
   useEffect(() => {
-    (async () => {
-      try {
-        await api.post(`/numbers/${number.id}/connect`, {});
-        setPhase('ready');
-      } catch (err: any) {
-        setError(err.message || 'Erro ao iniciar conexão. Verifique as configurações do servidor.');
-        setPhase('error');
-      }
-    })();
     return () => { clearInterval(pollRef.current!); clearInterval(qrPollRef.current!); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Polling de status (código e QR)
@@ -131,7 +133,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
 
   // Polling de QR code (atualiza a cada 25s antes do QR expirar)
   useEffect(() => {
-    if (connectMode !== 'qr' || phase === 'init' || phase === 'error' || phase === 'connected') return;
+    if (connectMode !== 'qr' || phase === 'intro' || phase === 'init' || phase === 'error' || phase === 'connected') return;
     // Primeira tentativa imediata; o backend já faz retry interno com 3s de intervalo
     loadQr();
     // Polling periódico a cada 25s para renovar o QR antes de expirar
@@ -150,9 +152,9 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
   }, [connectMode, qrImage]);
 
   // QR vindo do Socket.IO (evento qr:updated emitido pelo webhook Evolution)
-  // Só troca para a tab QR se o usuário NÃO estiver já em modo phone (código por número)
+  // Só troca para a tab QR se o usuário NÃO estiver na intro ou já em modo phone (código por número)
   useEffect(() => {
-    if (!externalQr) return;
+    if (!externalQr || phase === 'intro') return;
     const qr = externalQr.startsWith('data:') ? externalQr : `data:image/png;base64,${externalQr}`;
     setQrImage(qr);
     setQrLoading(false);
@@ -230,6 +232,96 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
         </div>
 
         <div className="p-5 space-y-4">
+
+          {/* ══════════════════════════════════════════════════════
+              TELA DE INTRODUÇÃO — Tranquiliza antes de conectar.
+              O usuário precisa CONFIAR antes de escanear QR.
+          ══════════════════════════════════════════════════════ */}
+          {phase === 'intro' && (
+            <div className="space-y-4">
+              {/* Cabeçalho visual */}
+              <div className="text-center space-y-2">
+                <div className="text-5xl">🔐</div>
+                <h3 className="text-base font-bold text-brand-text">Seu WhatsApp, só seu</h3>
+                <p className="text-xs text-brand-text-secondary leading-relaxed max-w-sm mx-auto">
+                  Você está conectando <strong className="text-brand-text">seu próprio WhatsApp</strong> como um dispositivo adicional — igual ao WhatsApp Web. Nada muda no seu celular.
+                </p>
+              </div>
+
+              {/* ── O que o ZapScript FAZ ── */}
+              <div className="bg-green-400/5 border border-green-400/20 rounded-xl p-4 space-y-2.5">
+                <p className="text-xs font-bold text-green-400 flex items-center gap-1.5">
+                  <span>✅</span> O que o ZapScript vai fazer:
+                </p>
+                {[
+                  'Ouvir apenas áudios que você recebe e convertê-los em texto',
+                  'Entregar a transcrição e o resumo no seu próprio WhatsApp',
+                  'Funcionar 24h por dia — você nem precisa abrir o app',
+                ].map((t, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[11px] text-brand-text-secondary leading-relaxed">
+                    <span className="text-green-400 mt-0.5 flex-shrink-0">▸</span>
+                    {t}
+                  </div>
+                ))}
+              </div>
+
+              {/* ── O que o ZapScript NÃO FAZ ── */}
+              <div className="bg-red-400/5 border border-red-400/20 rounded-xl p-4 space-y-2.5">
+                <p className="text-xs font-bold text-red-400 flex items-center gap-1.5">
+                  <span>🚫</span> O que o ZapScript <strong>NÃO</strong> faz:
+                </p>
+                {[
+                  'Não lê suas mensagens de texto — só processa áudios',
+                  'Nenhum humano vê suas conversas — é tudo automatizado',
+                  'Não envia mensagens nem notifica seus contatos',
+                  'Não acessa sua lista de contatos nem grupos',
+                ].map((t, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[11px] text-brand-text-secondary leading-relaxed">
+                    <span className="text-red-400 mt-0.5 flex-shrink-0">✕</span>
+                    {t}
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Selos de segurança ── */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { icon: '🔒', title: 'Criptografado', sub: 'AES-256' },
+                  { icon: '🇧🇷', title: 'Servidores', sub: 'No Brasil (LGPD)' },
+                  { icon: '🗑️', title: 'Áudio', sub: 'Descartado após uso' },
+                ].map(s => (
+                  <div key={s.title} className="text-center bg-brand-elevated rounded-xl py-2.5 px-1">
+                    <div className="text-lg">{s.icon}</div>
+                    <div className="text-[10px] font-semibold text-brand-text mt-1">{s.title}</div>
+                    <div className="text-[9px] text-brand-muted">{s.sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Depoimento social proof ── */}
+              <div className="text-center bg-brand-elevated rounded-xl px-3 py-2.5">
+                <p className="text-[11px] text-brand-text-secondary italic leading-relaxed">
+                  &ldquo;Funciona igual WhatsApp Web — seu celular nem precisa estar ligado. E se quiser, desconecta em 1 clique.&rdquo;
+                </p>
+              </div>
+
+              {/* ── CTA principal ── */}
+              <button
+                onClick={startConnection}
+                className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-sm font-semibold"
+              >
+                📱 Entendi — quero conectar meu WhatsApp
+              </button>
+
+              {/* ── Link sutil para política ── */}
+              <p className="text-center text-[10px] text-brand-muted">
+                Ao conectar você concorda com nossa{' '}
+                <a href="/termos" target="_blank" rel="noopener noreferrer" className="text-brand-primary hover:underline font-medium">
+                  Política de Privacidade
+                </a>
+              </p>
+            </div>
+          )}
 
           {/* ── Conectado ── */}
           {phase === 'connected' && (

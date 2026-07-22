@@ -319,6 +319,47 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
         return;
       }
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🆕 NÚMERO PÚBLICO — Zero-friction first use via WhatsApp
+      //
+      // Quando um número é marcado como `isPublic` e um ESTRANHO (não-usuário)
+      // envia áudio: transcrever, responder com demo + CTA de cadastro.
+      // SEM custo de quota — custeia o custo de aquisição (CAC via API).
+      // ═══════════════════════════════════════════════════════════════════════
+      const isPublicNumber = whatsappNumber.isPublic === true;
+      const isStranger = fromMe === false && isPublicNumber;  // estranho = não é o dono, é o público
+
+      if (isStranger) {
+        log.info(`[Evolution] 🆕 Número público: áudio de estranho ${senderPhone} → demo grátis`);
+
+        // Enfileirar job de transcrição pública (worker existente trata)
+        await transcriptionQueue.add(
+          'transcribe-evolution',
+          {
+            userId:        whatsappNumber.userId,
+            numberId:      whatsappNumber.id,
+            instanceName:  instName,
+            senderPhone,
+            senderName,
+            messageKey:    key,
+            messageData:   msg,
+            durationHint,
+            messageId,
+            source:        'whatsapp-public',   // sinaliza worker: é demo pública
+            isSelfNote:    false,
+            forwarded:     false,
+            originPhone:   null,
+            isPublicDemo:  true,                 // 🆕 flag para worker: responder com CTA
+          },
+          {
+            jobId:    messageId,
+            attempts: 3,
+            backoff:  { type: 'exponential', delay: 2000 },
+          }
+        );
+        return;
+      }
+
       // ── Backfill do phoneNumber a partir do JID do dono ───────────────────
       // phoneNumber é opcional na criação e costuma vir vazio. Quando o webhook
       // expõe o dono da instância (ownerDigits), gravamos no banco — habilita o

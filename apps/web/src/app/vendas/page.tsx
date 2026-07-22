@@ -35,7 +35,7 @@ const variant: Variant = {
     { q: 'Por que a velocidade de resposta importa tanto?', a: 'Em vendas, quem responde primeiro geralmente fecha. Cada áudio que fica sem ser ouvido é uma oportunidade esfriando. Com a conversão automática, você lê a intenção do lead em segundos em vez de parar tudo para ouvir minutos de áudio.' },
     { q: 'Consigo acompanhar todos os leads que mandaram áudio?', a: 'Sim. Todas as conversões ficam salvas e pesquisáveis por nome, produto ou data. Você acompanha cada oportunidade sem precisar reouvir os áudios.' },
     { q: 'Funciona para a minha equipe de atendimento?', a: 'O plano Pro permite conectar 2 números. Um plano Empresas multi-usuário (com webhook para integrar ao CRM) está a caminho, ideal para times de vendas e atendimento.' },
-    { q: 'Quanto custa para começar?', a: 'Grátis. O plano Free inclui 15 áudios de conversão por mês, sem cartão de crédito. O plano Pro (R$39,90/mês) oferece áudios ilimitados e 2 números conectados.' },
+    { q: 'Quanto custa para começar?', a: 'Grátis. O plano Free inclui 15 áudios de conversão por mês, sem cartão de crédito. O plano Pro (R$37/mês) oferece áudios ilimitados e 2 números conectados.' },
   ],
 };
 

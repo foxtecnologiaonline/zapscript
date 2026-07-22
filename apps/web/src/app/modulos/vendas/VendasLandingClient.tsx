@@ -8,7 +8,7 @@ import {
 
 const FALLBACK: ModuleCatalogItem = {
   key: 'vendas', name: 'ZapScript Vendas', status: 'planned',
-  priceMonthly: 44.90, priceYearly: 431.04, dependsOn: [],
+  priceMonthly: 57, priceYearly: 547.20, dependsOn: [],
 };
 
 const FAQS = [

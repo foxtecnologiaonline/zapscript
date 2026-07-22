@@ -133,7 +133,7 @@ export default function DashboardPage() {
           <span className="text-lg flex-shrink-0">🔥</span>
           <p className="text-xs text-brand-text flex-1">
             <span className="font-bold text-brand-primary">50% OFF no 1º mês:</span>{' '}
-            assine o Pro por <strong>R$19,90</strong> (depois R$39,90/mês).
+            assine o Pro por <strong>R$18,50</strong> (depois R$37/mês).
           </p>
           <span className="text-brand-primary text-xs font-bold flex-shrink-0">Aproveitar →</span>
         </Link>
@@ -155,7 +155,7 @@ export default function DashboardPage() {
             <div className="text-3xl sm:text-4xl font-black text-brand-text leading-none">{stats.savedLabelMonth}</div>
             <div className="text-xs text-brand-muted mt-1.5">
               Você leu <strong className="text-brand-text">{stats.transcriptionsMonth}</strong> áudio{stats.transcriptionsMonth !== 1 ? 's' : ''} em vez de ouvir tudo.
-              {stats.planName === 'free' && !stats.isTrial && <> Imagine sem limite — <Link href="/dashboard/plano" className="text-brand-primary font-semibold hover:underline">menos de R$1,33/dia</Link>.</>}
+              {stats.planName === 'free' && !stats.isTrial && <> Imagine sem limite — <Link href="/dashboard/plano" className="text-brand-primary font-semibold hover:underline">menos de R$1,23/dia</Link>.</>}
             </div>
           </div>
         </div>
@@ -235,7 +235,7 @@ export default function DashboardPage() {
                   {stats.audiosPct >= 100
                     ? <>Você usou seus <strong>{stats.audiosQuota} áudios</strong> do mês.</>
                     : <>Você já usou <strong>{stats.audiosPct}%</strong> dos seus áudios.</>}
-                  {' '}Leia sem limite por <strong>menos de R$1,33/dia</strong> e não volte a ouvir áudio.
+                  {' '}Leia sem limite por <strong>menos de R$1,23/dia</strong> e não volte a ouvir áudio.
                 </span>
               </div>
             )}

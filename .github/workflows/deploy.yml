@@ -60,7 +60,7 @@ jobs:
           npm run build
         env:
           # Vars fictícias para o build passar (Next.js precisa delas no build)
-          NEXT_PUBLIC_API_URL: https://zapscript-api.onrender.com
+          NEXT_PUBLIC_API_URL: https://api.zapscript.me
           NEXT_PUBLIC_BASE_URL: https://zapscript.me
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key

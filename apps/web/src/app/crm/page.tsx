@@ -3,7 +3,7 @@ import CrmLandingClient from './CrmLandingClient';
 
 export const metadata: Metadata = {
   title:       'CRM para WhatsApp — Organize Leads em um Funil Visual — ZapScript',
-  description: 'Organize quem é lead novo, quem está negociando e quem já fechou — direto do WhatsApp. Funil visual, notas, lembretes e importação em 1 clique. A partir de R$39,90/mês.',
+  description: 'Organize quem é lead novo, quem está negociando e quem já fechou — direto do WhatsApp. Funil visual, notas, lembretes e importação em 1 clique. A partir de R$47/mês.',
   keywords:    'crm whatsapp, funil de vendas whatsapp, organizar leads whatsapp, kanban whatsapp, crm para whatsapp, pipeline de vendas whatsapp',
   alternates:  { canonical: 'https://www.zapscript.me/crm' },
   openGraph: {

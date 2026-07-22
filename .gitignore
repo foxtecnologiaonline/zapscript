@@ -39,3 +39,5 @@ scripts/migrate-full-db.mjs
 scripts/migrate-supabase-users.mjs
 scripts/send-migration-notice.mjs
 scripts/send-password-reset.mjs
+
+.env*

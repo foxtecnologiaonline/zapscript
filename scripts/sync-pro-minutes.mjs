@@ -2,7 +2,7 @@
  * sync-pro-minutes.mjs — v3
  *
  * Sincroniza MinuteBalance dos usuários Pro de forma PRECISA:
- *   0. Atualiza o plano Pro para 200 min/R$39,90 no banco (caso migration ainda não aplicada)
+ *   0. Atualiza o plano Pro para 200 min/R$37 no banco (caso migration ainda não aplicada)
  *   1. Para cada usuário Pro, determina o início do ciclo atual (resetAt - 30 dias)
  *   2. Soma os minutos usados neste ciclo a partir das Transcriptions reais
  *   3. Define availableMinutes = max(0, 200 - minutesUsedThisCycle)
@@ -65,7 +65,7 @@ async function main() {
     await client.query(`
       UPDATE "Plan"
       SET "minutesPerMonth" = $1,
-          "priceBrl"        = 39.90,
+          "priceBrl"        = 37,
           "features"        = $2::jsonb
       WHERE name = 'pro'
     `, [PRO_MINUTES, JSON.stringify([

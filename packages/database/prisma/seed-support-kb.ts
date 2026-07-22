@@ -25,7 +25,7 @@ const TOPICOS = [
     tags: ['plano', 'preco', 'preco', 'audios', 'free', 'pro', 'limite', 'cota'],
     conteudo:
       'Plano Free: R$0, 15 áudios/mês, 1 número conectado. ' +
-      'Plano Pro: R$19,90 no 1º mês (50% OFF de lançamento), depois R$39,90/mês; áudios ilimitados, 2 números. ' +
+      'Plano Pro: R$18,50 no 1º mês (50% OFF de lançamento), depois R$37/mês; áudios ilimitados, 2 números. ' +
       'Cota renova mensalmente. ' +
       'Não confirme valores fora desta base — em dúvida, escale para um humano.',
   },
@@ -34,7 +34,7 @@ const TOPICOS = [
     categoria: 'upgrade_plano',
     tags: ['desconto', 'oferta', 'promocao', 'preco', '50 off', 'primeiro mes', 'r$19', '19,90'],
     conteudo:
-      'O plano Pro custa R$19,90 no primeiro mês (50% de desconto). A partir do 2º mês, o valor regular é R$39,90/mês. ' +
+      'O plano Pro custa R$18,50 no primeiro mês (50% de desconto). A partir do 2º mês, o valor regular é R$37/mês. ' +
       'A oferta é permanente — não tem prazo de expiração. ' +
       'Para assinar, acesse o painel em /dashboard/plano e clique em "Assinar Pro". ' +
       'Pagamento por PIX ou cartão de crédito (via Asaas).',
@@ -46,7 +46,7 @@ const TOPICOS = [
     conteudo:
       'Ao assinar o Pro com cartão de crédito, você tem 7 dias de trial gratuito. ' +
       'Se cancelar antes do 7º dia, não é cobrado nada. ' +
-      'Após o trial, a cobrança do 1º mês (R$19,90) é feita automaticamente. ' +
+      'Após o trial, a cobrança do 1º mês (R$18,50) é feita automaticamente. ' +
       'Com PIX não há trial — o pagamento é imediato.',
   },
   {

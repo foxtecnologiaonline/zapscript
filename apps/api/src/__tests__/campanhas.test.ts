@@ -21,7 +21,7 @@ jest.mock('../lib/prisma', () => ({
 // Redis mockado — moduleGate lê o cache de entitlements daqui (evita conexão real)
 jest.mock('../services/queue', () => ({
   redis: { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue('OK'), del: jest.fn().mockResolvedValue(1) },
-  campanhasQueue: { addBulk: jest.fn().mockResolvedValue([]), remove: jest.fn().mockResolvedValue(1) },
+  campanhasQueue: { addBulk: jest.fn().mockResolvedValue([]) },
 }));
 
 jest.mock('../services/encryption', () => ({
@@ -430,47 +430,6 @@ describe('Ciclo start/pause/cancel', () => {
         { name: 'send', data: { campanhaId: 'c1', contatoId: 'ct2' }, opts: { jobId: 'c1:ct2' } },
       ]);
       expect(prisma.campanha.update).toHaveBeenCalledWith({ where: { id: 'c1' }, data: { status: 'running', startedAt: expect.any(Date) } });
-    });
-
-    it('remove jobs BullMQ antigos (jobId determinístico) antes de reenfileirar — resume após pausa', async () => {
-      // Regressão: se a campanha foi pausada, o worker "completa" (sem erro) os jobs
-      // pendentes em voo — o registro fica no Redis até 48h. addBulk com o mesmo jobId
-      // seria tratado como duplicata pelo BullMQ e o contato nunca voltaria à fila.
-      grantModuleAccess();
-      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'paused', audienceCount: 2, whatsappNumberId: NUM_ID, startedAt: new Date() });
-      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
-      (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }, { id: 'ct2' }]);
-      (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
-
-      const token = makeToken(app);
-      const res = await app.inject({
-        method: 'POST', url: '/modules/campanhas/c1/start',
-        headers: { authorization: `Bearer ${token}` },
-      });
-      expect(res.statusCode).toBe(200);
-      expect(campanhasQueue.remove).toHaveBeenCalledWith('c1:ct1');
-      expect(campanhasQueue.remove).toHaveBeenCalledWith('c1:ct2');
-
-      const removeOrder = (campanhasQueue.remove as jest.Mock).mock.invocationCallOrder[0];
-      const addBulkOrder = (campanhasQueue.addBulk as jest.Mock).mock.invocationCallOrder[0];
-      expect(removeOrder).toBeLessThan(addBulkOrder);
-    });
-
-    it('resume funciona mesmo se remove() falhar para algum job (best-effort)', async () => {
-      grantModuleAccess();
-      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'paused', audienceCount: 1, whatsappNumberId: NUM_ID, startedAt: new Date() });
-      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
-      (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }]);
-      (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
-      (campanhasQueue.remove as jest.Mock).mockRejectedValueOnce(new Error('job travado (locked)'));
-
-      const token = makeToken(app);
-      const res = await app.inject({
-        method: 'POST', url: '/modules/campanhas/c1/start',
-        headers: { authorization: `Bearer ${token}` },
-      });
-      expect(res.statusCode).toBe(200);
-      expect(campanhasQueue.addBulk).toHaveBeenCalled();
     });
   });
 

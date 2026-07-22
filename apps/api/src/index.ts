@@ -317,10 +317,18 @@ app.register(import('./routes/entitlements'),    { prefix: '/modules' });
 app.register(import('./routes/modules/campanhas'), { prefix: '/modules/campanhas' });
 app.register(import('./routes/modules/crm'),     { prefix: '/crm' });
 app.register(import('./routes/atende'),          { prefix: '/atende' });
-app.register(import('./routes/cobranca'),        { prefix: '/cobranca' });
 app.register(import('./routes/modules/vendas'),  { prefix: '/modules/vendas' });
+app.register(import('./routes/modules/crm'),     { prefix: '/crm' });
+app.register(import('./routes/cobranca'),        { prefix: '/cobranca' });
+app.register(import('./routes/legendas'),        { prefix: '/legendas' });
+app.register(import('./routes/modules/campanhas'), { prefix: '/modules/campanhas' });
+// Plano Empresas — multi-seat MVP
+app.register(import('./routes/teams'),           { prefix: '/teams' });
 // Demo de upload no site removido — vira app/site separado. Rota desativada.
 app.register(import('./routes/analytics'),       { prefix: '/analytics' });
+
+// ── Demo pública (lead magnet) — 1 áudio grátis sem cadastro ─────────
+app.register(import('./routes/demo'),            { prefix: '/demo' });
 
 // ── WhatsApp Webhook (Meta Cloud API) ──────────────────────
 // Registrar sempre — webhook precisa responder para validação mesmo sem token configurado
@@ -585,20 +593,58 @@ async function runAutoMigrations() {
           FOREIGN KEY ("cobrancaId") REFERENCES "CobrancaCobranca"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
-    // Ativa o Product no catálogo mesmo se o seed.ts nunca tiver rodado em produção
-    // (render.yaml não chama db:seed no startCommand — ver packages/modules/catalog.ts)
+    // Módulo mantido oculto (status 'planned') até decisão explícita de lançamento —
+    // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
     `DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'cobranca') THEN
-        UPDATE "Product" SET "status" = 'beta', "priceMonthly" = 29.90, "priceYearly" = 287.04
-          WHERE "key" = 'cobranca' AND "status" <> 'beta';
+        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 39, "priceYearly" = 374.40
+          WHERE "key" = 'cobranca' AND "status" NOT IN ('beta', 'ga');
       ELSE
         INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
-        VALUES ('cobranca-product-seed', 'cobranca', 'ZapScript Cobrança', 'beta', 29.90, 287.04, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        VALUES ('cobranca-product-seed', 'cobranca', 'ZapScript Cobrança', 'planned', 39, 374.40, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
-    // ZapScript Campanhas (migrações 20260713_campanhas_tables + 20260714_campanhas_beta):
-    // auto-cura tabelas + libera o módulo mesmo se o startCommand de produção não rodar
-    // `prisma migrate deploy`, e mesmo se o seed (Product) nunca tiver sido executado.
+    // Módulo Legendas (migração 20260714_legenda_jobs): auto-cura o schema no
+    // boot mesmo se o startCommand de produção não rodar `prisma migrate deploy`.
+    `CREATE TABLE IF NOT EXISTS "LegendaJob" (
+      "id"               TEXT NOT NULL,
+      "userId"           TEXT NOT NULL,
+      "status"           TEXT NOT NULL DEFAULT 'pending',
+      "originalFilename" TEXT,
+      "inputStorageKey"  TEXT NOT NULL,
+      "inputSizeBytes"   INTEGER,
+      "durationSec"      DOUBLE PRECISION,
+      "language"         TEXT NOT NULL DEFAULT 'pt',
+      "srtStorageKey"    TEXT,
+      "vttStorageKey"    TEXT,
+      "errorMessage"     TEXT,
+      "deletedAt"        TIMESTAMP(3),
+      "createdAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"        TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "LegendaJob_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "LegendaJob_userId_createdAt_idx" ON "LegendaJob"("userId", "createdAt" DESC)`,
+    `CREATE INDEX IF NOT EXISTS "LegendaJob_status_idx" ON "LegendaJob"("status")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'LegendaJob_userId_fkey') THEN
+        ALTER TABLE "LegendaJob"
+          ADD CONSTRAINT "LegendaJob_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // Módulo mantido oculto (status 'planned') até decisão explícita de lançamento —
+    // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'legenda') THEN
+        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 37, "priceYearly" = 355.20
+          WHERE "key" = 'legenda' AND "status" NOT IN ('beta', 'ga');
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'planned', 37, 355.20, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
+    // Módulo Campanhas (migração 20260713_campanhas_tables): auto-cura o schema no
+    // boot mesmo se o startCommand de produção não rodar `prisma migrate deploy`.
     `CREATE TABLE IF NOT EXISTS "Campanha" (
       "id"                 TEXT NOT NULL,
       "userId"             TEXT NOT NULL,
@@ -670,17 +716,67 @@ async function runAutoMigrations() {
         ALTER TABLE "CampanhaOptOut" ADD CONSTRAINT "CampanhaOptOut_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
-    // Garante o Product 'campanhas' em 'beta' mesmo se `prisma db seed` nunca rodou em produção.
-    `INSERT INTO "Product" ("id", "key", "name", "status", "priceMonthly", "priceYearly", "dependsOn", "createdAt", "updatedAt")
-     VALUES ('seed-product-campanhas', 'campanhas', 'ZapScript Campanhas', 'beta', 59.90, 575.04, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-     ON CONFLICT ("key") DO UPDATE SET "status" = 'beta', "updatedAt" = CURRENT_TIMESTAMP`,
+    // Módulo mantido oculto (status 'planned') até decisão explícita de lançamento —
+    // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'campanhas') THEN
+        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 67, "priceYearly" = 643.20
+          WHERE "key" = 'campanhas' AND "status" NOT IN ('beta', 'ga');
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('campanhas-product-seed', 'campanhas', 'ZapScript Campanhas', 'planned', 67, 643.20, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
+    // ── Plano Empresas Multi-Seat (migração 20260722_team_multiseat) ──
+    `CREATE TABLE IF NOT EXISTS "Team" (
+      "id"        TEXT NOT NULL,
+      "name"      TEXT NOT NULL,
+      "slug"      TEXT NOT NULL,
+      "ownerId"   TEXT NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "Team_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Team_slug_key" ON "Team"("slug")`,
+    `CREATE INDEX IF NOT EXISTS "Team_ownerId_idx" ON "Team"("ownerId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Team_ownerId_fkey') THEN
+        ALTER TABLE "Team" ADD CONSTRAINT "Team_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "TeamMember" (
+      "id"           TEXT NOT NULL,
+      "teamId"       TEXT NOT NULL,
+      "userId"       TEXT NOT NULL,
+      "role"         TEXT NOT NULL DEFAULT 'member',
+      "status"       TEXT NOT NULL DEFAULT 'active',
+      "inviteCode"   TEXT,
+      "invitedEmail" TEXT,
+      "joinedAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "TeamMember_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "TeamMember_userId_key" ON "TeamMember"("userId")`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "TeamMember_inviteCode_key" ON "TeamMember"("inviteCode")`,
+    `CREATE INDEX IF NOT EXISTS "TeamMember_teamId_idx" ON "TeamMember"("teamId")`,
+    `CREATE INDEX IF NOT EXISTS "TeamMember_userId_idx" ON "TeamMember"("userId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TeamMember_teamId_fkey') THEN
+        ALTER TABLE "TeamMember" ADD CONSTRAINT "TeamMember_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TeamMember_userId_fkey') THEN
+        ALTER TABLE "TeamMember" ADD CONSTRAINT "TeamMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
       app.log.warn(`[AutoMigration] ${e.message}`)
     );
   }
-  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt)');
+  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt + Cobrança + Legendas + Campanhas)');
 }
 
 /**

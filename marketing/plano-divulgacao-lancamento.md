@@ -1,6 +1,6 @@
 # Plano de Divulgação — Lançamento ZapScript
 
-> Dia D: 2026-06-20 · Oferta vigente: Pro R$19,90 no 1º mês (junho/2026)
+> Dia D: 2026-06-20 · Oferta vigente: Pro R$18,50 no 1º mês (junho/2026)
 > Mensagens prontas: [kit-roberto-founder.md](kit-roberto-founder.md) · [kit-institucional-zapscript.md](kit-institucional-zapscript.md) · [kit-afiliados.md](kit-afiliados.md)
 
 ---

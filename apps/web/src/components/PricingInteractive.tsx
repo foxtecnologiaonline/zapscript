@@ -5,6 +5,11 @@ import { isJunePromoActive, PRO_FULL_PRICE, PRO_PROMO_PRICE } from '@/lib/promo'
 
 type CmpVal = string | boolean;
 
+const PRO_FULL_PRICE_NUM = 37;
+const PRO_YEARLY_PRICE_NUM = 355.20;
+const PRO_YEARLY_MONTHLY_EQ = 'R$29,60';
+const PRO_YEARLY_SAVINGS = 'R$88,80';
+
 const PLANS = [
   {
     name: 'free', label: 'Free', price: 'R$0', per: '/mês',
@@ -22,8 +27,8 @@ const PLANS = [
     cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
   },
   {
-    name: 'pro', label: 'Pro', price: 'R$19,90', per: '/1º mês',
-    desc: 'Depois R$39,90/mês',
+    name: 'pro', label: 'Pro', price: 'R$18,50', per: '/1º mês',
+    desc: 'Depois R$37/mês',
     feats: [
       'Áudios ilimitados',
       'Áudios de até 10 min',
@@ -66,9 +71,27 @@ export function PricingInteractive() {
   ));
 
   const [showTable, setShowTable] = useState(true);
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [waitlistEmail, setWaitlistEmail]     = useState('');
   const [waitlistDone, setWaitlistDone]       = useState(false);
   const [waitlistLoading, setWaitlistLoading] = useState(false);
+
+  const isYearly = billingCycle === 'yearly';
+
+  function getPlanPrice(plan: typeof plans[number]) {
+    if (plan.name !== 'pro') return plan;
+    if (isYearly) {
+      return {
+        ...plan,
+        price: PRO_YEARLY_MONTHLY_EQ,
+        per: '/mês (anual)',
+        desc: `${PRO_YEARLY_PRICE_NUM.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/ano`,
+        cta: 'Assinar Pro Anual',
+        href: `/cadastro?cycle=yearly`,
+      };
+    }
+    return plan;
+  }
 
   function submitWaitlist() {
     if (!waitlistEmail.includes('@')) return;
@@ -82,9 +105,43 @@ export function PricingInteractive() {
 
   return (
     <>
+      {/* Billing cycle toggle */}
+      <div className="flex justify-center mb-5">
+        <div className="inline-flex rounded-full p-0.5 gap-0.5"
+          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          {(['monthly', 'yearly'] as const).map(cycle => {
+            const active = billingCycle === cycle;
+            return (
+              <button
+                key={cycle}
+                onClick={() => setBillingCycle(cycle)}
+                className="relative px-4 py-2 rounded-full text-xs font-bold transition-all"
+                style={{
+                  background: active ? 'rgb(var(--color-primary))' : 'transparent',
+                  color: active ? '#04130c' : 'rgb(var(--color-text-muted))',
+                  boxShadow: active ? '0 2px 8px rgba(16,185,129,.3)' : 'none',
+                }}
+              >
+                {cycle === 'monthly' ? 'Mensal' : 'Anual'}
+                {cycle === 'yearly' && (
+                  <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded"
+                    style={{
+                      background: active ? 'rgba(4,19,12,.25)' : 'rgba(16,185,129,.15)',
+                      color: active ? '#04130c' : 'rgb(var(--color-primary))',
+                    }}>
+                    📆 2 meses grátis
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Plan cards */}
       <div className="flex flex-col gap-4">
-        {plans.map((plan, i) => {
+        {plans.map((basePlan, i) => {
+          const plan = getPlanPrice(basePlan);
           const borderCol = plan.popular
             ? 'rgb(var(--color-primary))'
             : plan.accent ? plan.accent + '55' : 'rgb(var(--color-border))';
@@ -101,7 +158,7 @@ export function PricingInteractive() {
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-black text-[11px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wide whitespace-nowrap"
                   style={{ background: 'rgb(var(--color-primary))' }}>
-                  {promo ? <>🔥 50% OFF no 1º mês</> : <>⭐ Mais popular</>}
+                  {isYearly ? <>📆 2 meses grátis</> : promo ? <>🔥 50% OFF no 1º mês</> : <>⭐ Mais popular</>}
                 </div>
               )}
               <div className="flex items-start justify-between mb-4">
@@ -114,9 +171,18 @@ export function PricingInteractive() {
                   <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
                 </div>
               </div>
-              {plan.name === 'pro' && (
+              {plan.name === 'pro' && !isYearly && (
                 <div className="text-xs font-semibold mb-4" style={{ color: 'rgb(var(--color-primary))' }}>
-                  24h trabalhando por você, por apenas R$1,33 ao dia
+                  24h trabalhando por você, por apenas R$1,23 ao dia
+                </div>
+              )}
+              {plan.name === 'pro' && isYearly && (
+                <div className="flex items-center gap-2 mb-4 rounded-xl px-3 py-2 text-xs"
+                  style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.18)' }}>
+                  <span>🤑</span>
+                  <span style={{ color: 'rgb(var(--color-primary))' }}>
+                    Economize <strong>{PRO_YEARLY_SAVINGS}</strong> em 1 ano — <strong>2 meses grátis</strong> vs mensal
+                  </span>
                 </div>
               )}
               <div className="flex flex-col gap-2 mb-5">

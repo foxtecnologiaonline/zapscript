@@ -73,7 +73,7 @@ export default function CampanhasListPage() {
           <div className="text-4xl mb-4">📣</div>
           <h1 className="text-xl font-bold mb-2">Contrate o ZapScript Campanhas</h1>
           <p className="text-neutral-400 mb-6">
-            Disparo em massa compliant via API oficial da Meta — R$ 59,90/mês.
+            Disparo em massa compliant via API oficial da Meta — R$ 67/mês.
           </p>
           <Link
             href="/dashboard/plano?add=campanhas"

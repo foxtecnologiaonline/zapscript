@@ -34,8 +34,8 @@ function formatChargeDate(d?: string): string {
 
 /* ── Preços anuais (20% off — 12× com desconto) ── */
 const CHECKOUT_YEARLY: Record<string, { annual: string; monthlyEq: string; annualNum: number }> = {
-  pro:       { annual: 'R$383,04', monthlyEq: 'R$31,92/mês', annualNum: 383.04 },
-  executive: { annual: 'R$479,04', monthlyEq: 'R$39,92/mês', annualNum: 479.04 },
+  pro:       { annual: 'R$355,20', monthlyEq: 'R$29,60/mês', annualNum: 355.20 },
+  executive: { annual: 'R$643,20', monthlyEq: 'R$53,60/mês', annualNum: 643.20 },
 };
 
 type Method = 'pix' | 'pix_auto' | 'credit_card' | 'debit_card' | 'google_pay' | 'apple_pay' | 'paypal';
@@ -629,7 +629,7 @@ export default function CheckoutInline({
           </div>
           {isYearly && yearlyInfo && !trialMode && (
             <div style={{ fontSize: 9, color: 'rgb(var(--color-primary))', fontWeight: 700 }}>
-              {yearlyInfo.monthlyEq} · 20% off
+              {yearlyInfo.monthlyEq} · 🤑 2 meses grátis
             </div>
           )}
           {trialMode && (
@@ -670,7 +670,7 @@ export default function CheckoutInline({
                     {cycle === 'monthly' ? '📅 Mensal' : '📆 Anual'}
                     {cycle === 'yearly' && (
                       <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, background: 'rgb(var(--color-primary))', color: '#fff', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle' }}>
-                        20% OFF
+                        🤑 2 meses grátis
                       </span>
                     )}
                   </div>

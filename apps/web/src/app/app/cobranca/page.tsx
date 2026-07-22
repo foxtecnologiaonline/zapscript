@@ -264,7 +264,7 @@ export default function CobrancaPage() {
             ))}
           </div>
           <div className="mt-7 flex flex-col items-center gap-1">
-            <div className="text-2xl font-bold text-brand-text">R$29,90<span className="text-sm font-normal text-brand-muted">/mês</span></div>
+            <div className="text-2xl font-bold text-brand-text">R$39<span className="text-sm font-normal text-brand-muted">/mês</span></div>
             <button onClick={() => setShowCheckout(true)} className="btn-primary px-8 py-3 mt-3">
               Contratar agora
             </button>
@@ -277,7 +277,7 @@ export default function CobrancaPage() {
             moduleKey="cobranca"
             moduleLabel="ZapScript Cobrança"
             moduleIcon="💰"
-            priceLabel="R$29,90/mês"
+            priceLabel="R$39/mês"
             features={['Lembrete automático', 'Reenvio manual', 'Sem contrato']}
             user={{ email: me.email, emailVerified: me.emailVerified, document: me.document }}
             onDocumentSaved={doc => setMe(m => m ? { ...m, document: doc } : m)}
