@@ -770,13 +770,32 @@ async function runAutoMigrations() {
         ALTER TABLE "TeamMember" ADD CONSTRAINT "TeamMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
+    // ── Tracking de cliques de afiliados (migração 20260722_public_number_flag parte 2) ──
+    `CREATE TABLE IF NOT EXISTS "AffiliateClick" (
+      "id"          TEXT NOT NULL,
+      "affiliateId" TEXT NOT NULL,
+      "ipHash"      TEXT,
+      "userAgent"   TEXT,
+      "referer"     TEXT,
+      "converted"   BOOLEAN NOT NULL DEFAULT false,
+      "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "AffiliateClick_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "AffiliateClick_affiliateId_createdAt_idx" ON "AffiliateClick"("affiliateId", "createdAt" DESC)`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'AffiliateClick_affiliateId_fkey') THEN
+        ALTER TABLE "AffiliateClick" ADD CONSTRAINT "AffiliateClick_affiliateId_fkey" FOREIGN KEY ("affiliateId") REFERENCES "Affiliate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // ── Número público para demo/lead magnet (migração 20260722_public_number_flag) ──
+    `ALTER TABLE "WhatsappNumber" ADD COLUMN IF NOT EXISTS "isPublic" BOOLEAN NOT NULL DEFAULT false`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
       app.log.warn(`[AutoMigration] ${e.message}`)
     );
   }
-  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt + Cobrança + Legendas + Campanhas)');
+  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt + Cobrança + Legendas + Campanhas + Teams + AffiliateClick + isPublic)');
 }
 
 /**
