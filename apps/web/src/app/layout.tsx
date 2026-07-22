@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import Analytics from '@/components/Analytics';
 import UtmCapture from '@/components/UtmCapture';
 import BreadcrumbServer from '@/components/BreadcrumbServer';
+import SocialProofToast from '@/components/SocialProofToast';
 
 export const metadata: Metadata = {
   title: {
@@ -166,6 +167,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           {children}
           <SupportWidget />
+          <SocialProofToast />
         </ThemeProvider>
         <Analytics />
         <UtmCapture />

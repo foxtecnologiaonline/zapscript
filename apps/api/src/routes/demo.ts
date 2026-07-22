@@ -256,8 +256,15 @@ export default async function demoRoutes(app: FastifyInstance) {
   // ── GET /demo/stats — contador público de atividade (home + prova social) ─
   app.get('/stats', async (_req, reply) => {
     try {
-      const [totalAudios, activeNumbers, totalUsers] = await Promise.all([
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(todayStart);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // domingo
+
+      const [totalAudios, todayAudios, weekAudios, activeNumbers, totalUsers] = await Promise.all([
         prisma.transcription.count().catch(() => 0),
+        prisma.transcription.count({ where: { createdAt: { gte: todayStart } } }).catch(() => 0),
+        prisma.transcription.count({ where: { createdAt: { gte: weekStart } } }).catch(() => 0),
         prisma.whatsappNumber.count({ where: { status: 'connected' } }).catch(() => 0),
         prisma.user.count({ where: { deletedAt: null } }).catch(() => 0),
       ]);
@@ -270,6 +277,8 @@ export default async function demoRoutes(app: FastifyInstance) {
       reply.header('Cache-Control', 'public, max-age=300, s-maxage=600, stale-while-revalidate=3600');
       return {
         totalAudios: safeAudios,
+        todayAudios: Math.max(todayAudios, 0),
+        weekAudios: Math.max(weekAudios, 0),
         activeNumbers,
         totalUsers: safeUsers,
         // Horas economizadas: ~2 min por áudio em média
@@ -278,7 +287,7 @@ export default async function demoRoutes(app: FastifyInstance) {
     } catch (err: any) {
       logger.warn(`[Demo] Stats falhou: ${err.message}`);
       // Fallback estático — mantém a home viva mesmo com DB offline
-      return { totalAudios: 1240, activeNumbers: 0, totalUsers: 380, hoursSaved: 41 };
+      return { totalAudios: 1240, todayAudios: 0, weekAudios: 0, activeNumbers: 0, totalUsers: 380, hoursSaved: 41 };
     }
   });
 }
