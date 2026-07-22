@@ -70,11 +70,8 @@ export function PricingInteractive() {
       : { ...p, price: PRO_FULL_PRICE, per: '/mês', desc: 'Sem fidelidade, cancele quando quiser' }
   ));
 
-  const [showTable, setShowTable] = useState(true);
+  const [showTable, setShowTable] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
-  const [waitlistEmail, setWaitlistEmail]     = useState('');
-  const [waitlistDone, setWaitlistDone]       = useState(false);
-  const [waitlistLoading, setWaitlistLoading] = useState(false);
 
   const isYearly = billingCycle === 'yearly';
 
@@ -91,16 +88,6 @@ export function PricingInteractive() {
       };
     }
     return plan;
-  }
-
-  function submitWaitlist() {
-    if (!waitlistEmail.includes('@')) return;
-    setWaitlistLoading(true);
-    fetch(`${(process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')}/demo/newsletter/interest`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: waitlistEmail }),
-    }).finally(() => { setWaitlistLoading(false); setWaitlistDone(true); });
   }
 
   return (
@@ -265,55 +252,52 @@ export function PricingInteractive() {
         </div>
       )}
 
-      {/* Em breve */}
+      {/* Módulos da Suíte */}
       <div className="mt-10 rounded-2xl p-6" style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(16,185,129,.18)' }}>
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-4"
           style={{ background: 'rgba(16,185,129,.08)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
-          🚀 EM BREVE
+          🧩 MÓDULOS
         </div>
         <h3 className="font-display font-bold text-xl leading-snug mb-2">
-          Mais poder para seus áudios
+          Suíte completa para o seu negócio
         </h3>
-        <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-          Novas funcionalidades chegando em breve. Quer ser o primeiro a saber?
+        <p className="text-sm font-light mb-5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+          Além da transcrição, o ZapScript tem módulos para cada etapa da sua operação no WhatsApp.
         </p>
-        <div className="grid grid-cols-2 gap-2.5 mb-5">
+        <div className="grid grid-cols-1 gap-2.5">
           {[
-            { icon: '👥', label: 'Resumo de Grupos' },
-            { icon: '✅', label: 'Tarefas e Planner de áudios' },
-            { icon: '🗓️', label: 'Organização e Calendário' },
-            { icon: '🔗', label: 'Integração com Sistemas' },
-          ].map((f, i) => (
-            <div key={i} className="flex items-center gap-2 text-xs rounded-xl px-3 py-2.5"
-              style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
-              <span>{f.icon}</span>
-              <span>{f.label}</span>
-            </div>
+            { icon: '🤖', key: 'atende', name: 'ZapScript Atende', tagline: 'Atendimento automático 24/7 no WhatsApp', href: '/atende', status: 'ga' },
+            { icon: '💰', key: 'cobranca', name: 'ZapScript Cobrança', tagline: 'Lembrete e cobrança automática via WhatsApp', href: '/cobranca', status: 'beta' },
+            { icon: '📣', key: 'campanhas', name: 'ZapScript Campanhas', tagline: 'Disparo em massa compliant via API oficial', href: '/campanhas', status: 'beta' },
+            { icon: '📊', key: 'crm', name: 'ZapScript CRM', tagline: 'Funil de vendas dentro do WhatsApp', href: '/crm', status: 'beta' },
+            { icon: '🗣️', key: 'vendas', name: 'ZapScript Vendas', tagline: 'Grave a visita → vira nota no CRM', href: '/vendas', status: 'beta' },
+            { icon: '🎬', key: 'legenda', name: 'ZapScript Legendas', tagline: 'Legenda automática para Reels e Stories', href: '/legendas', status: 'planned' },
+          ].map((m) => (
+            <Link key={m.key} href={m.href}
+              className="flex items-center gap-3 rounded-xl px-4 py-3 transition-all hover:scale-[1.01]"
+              style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))' }}>
+              <span className="text-xl flex-shrink-0">{m.icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-text))' }}>{m.name}</span>
+                  {m.status === 'beta' && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ background: 'rgba(245,158,11,.15)', color: 'rgb(245,158,11)' }}>BETA</span>
+                  )}
+                  {m.status === 'planned' && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ background: 'rgba(148,163,184,.12)', color: 'rgb(148,163,184)' }}>EM BREVE</span>
+                  )}
+                </div>
+                <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{m.tagline}</p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                style={{ color: 'rgb(var(--color-text-muted))', flexShrink: 0 }}>
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </Link>
           ))}
         </div>
-        {waitlistDone ? (
-          <p className="text-sm font-semibold text-center" style={{ color: 'rgb(var(--color-primary))' }}>
-            ✓ Anotado! Você será o primeiro a saber.
-          </p>
-        ) : (
-          <div className="flex gap-2">
-            <input
-              type="email"
-              value={waitlistEmail}
-              onChange={e => setWaitlistEmail(e.target.value)}
-              placeholder="Seu melhor e-mail"
-              className="flex-1 rounded-xl px-4 py-2.5 text-sm outline-none"
-              style={{ border: '1.5px solid rgb(var(--color-border))', background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-text))' }}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitWaitlist(); } }}
-            />
-            <button
-              disabled={waitlistLoading || !waitlistEmail.includes('@')}
-              onClick={submitWaitlist}
-              className="btn-primary px-4 py-2.5 text-sm font-semibold whitespace-nowrap disabled:opacity-50">
-              {waitlistLoading ? '...' : 'Me avise'}
-            </button>
-          </div>
-        )}
       </div>
     </>
   );
