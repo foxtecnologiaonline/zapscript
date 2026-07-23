@@ -50,6 +50,7 @@ model User {
   entitlements            Entitlement[]
   cobrancaClientes        CobrancaCliente[]
   cobrancaCobrancas       CobrancaCobranca[]
+  cobrancaConfig          CobrancaConfig?
   campanhas               Campanha[]
   campanhaOptOuts         CampanhaOptOut[]
   crmStages               CrmStage[]
@@ -560,20 +561,23 @@ model CobrancaCliente {
 }
 
 model CobrancaCobranca {
-  id         String          @id @default(cuid())
-  userId     String
-  clienteId  String
-  descricao  String
-  valor      Float
-  vencimento DateTime // data do vencimento (meia-noite UTC do dia)
-  status     String          @default("pendente") // 'pendente' | 'paga' | 'cancelada'
-  pagoEm     DateTime?
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  deletedAt  DateTime?
-  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  cliente    CobrancaCliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  envios     CobrancaEnvio[]
+  id               String          @id @default(cuid())
+  userId           String
+  clienteId        String
+  descricao        String
+  valor            Float
+  vencimento       DateTime // data do vencimento (meia-noite UTC do dia)
+  status           String          @default("pendente") // 'pendente' | 'paga' | 'cancelada'
+  pagoEm           DateTime?
+  recorrente       Boolean         @default(false) // #5: gera a próxima ocorrência automaticamente ao marcar paga
+  recorrenciaMeses Int? // intervalo em meses (1=mensal, 12=anual etc.)
+  origemVoz        Boolean         @default(false) // #1: criada via comando de voz (self-note)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cliente          CobrancaCliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  envios           CobrancaEnvio[]
 
   @@index([userId, status, vencimento])
   @@index([clienteId])
@@ -582,13 +586,32 @@ model CobrancaCobranca {
 model CobrancaEnvio {
   id         String           @id @default(cuid())
   cobrancaId String
-  tipo       String // 'vence_hoje' | 'venceu' | 'manual'
+  tipo       String // 'vence_hoje' | 'venceu' | 'manual' | 'd+N' | 'd-N'
   enviadoEm  DateTime         @default(now())
   sucesso    Boolean          @default(true)
   erro       String?
   cobranca   CobrancaCobranca @relation(fields: [cobrancaId], references: [id], onDelete: Cascade)
 
   @@index([cobrancaId, tipo])
+}
+
+// CobrancaConfig: preferências do dono (tom de mensagem, régua de lembretes,
+// chave PIX, resumo diário). 1:1 com User; criada com defaults no 1º acesso.
+model CobrancaConfig {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  tom            String   @default("cordial") // 'cordial' | 'formal' | 'direto'
+  escalarTom     Boolean  @default(true) // #10: endurece o tom conforme o atraso aumenta
+  diasAntes      Int[]    @default([1]) // #4: lembra X dias antes do vencimento
+  diasDepois     Int[]    @default([1, 3, 7]) // #4: cobra de novo X dias após vencer
+  pixKey         String? // #9: incluída nas mensagens de lembrete
+  pixKeyType     String? // 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria'
+  resumoDiario   Boolean  @default(false) // #8
+  resumoHora     Int      @default(8) // hora local (BRT) do resumo diário
+  onboardingDone Boolean  @default(false) // #2
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,10 +1,15 @@
 import { FastifyInstance } from 'fastify';
 import { transcriptionQueue, atendeQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
-import { notifyWelcome, notifyReconnected } from '../services/whatsapp-notify';
+import { notifyWelcome, notifyReconnected, notifyCobrancaPossiblePayment } from '../services/whatsapp-notify';
 import { storeQr } from '../lib/qrStore';
 import { getUserModules } from '../lib/moduleGate';
 import { io } from '../index';
+
+// Módulo Cobrança (#6): heurística leve p/ detectar cliente avisando que já
+// pagou — sem LLM aqui (o webhook precisa responder rápido); a mensagem
+// original vai junto na notificação ao dono, que confirma com contexto.
+const COBRANCA_PAGAMENTO_KEYWORDS = /pague?i|\bpago\b|\bpaga\b|quitei|quitad[oa]|comprovante|fiz\s+o\s+pix|mandei\s+o\s+pix|enviei\s+o\s+pix|efetuei|transferi|dep[oó]sit/i;
 
 
 export default async function evolutionWebhookRoutes(app: FastifyInstance) {
@@ -278,6 +283,19 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
             log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado (módulo Atende não contratado/cancelado)`);
           } else {
             log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado`);
+          }
+
+          // ── Módulo Cobrança (#6): cliente pode estar avisando que já pagou ──
+          // Independente do Atende (canal separado: aqui quem é avisado é o
+          // DONO, não o cliente). Fire-and-forget — não atrasa o ACK do webhook.
+          if (number && messageText && COBRANCA_PAGAMENTO_KEYWORDS.test(messageText)) {
+            getUserModules(number.userId)
+              .then((mods) => {
+                if (mods.includes('cobranca')) {
+                  notifyCobrancaPossiblePayment(number.userId, senderPhone, messageText).catch(() => null);
+                }
+              })
+              .catch(() => null);
           }
         }
         return;

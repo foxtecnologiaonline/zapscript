@@ -246,6 +246,8 @@ export const cobrancaCobrancaSchema = z.object({
   descricao: z.string().min(2, 'Descrição deve ter pelo menos 2 caracteres').max(200),
   valor: z.number().positive('Valor deve ser maior que zero').max(1_000_000),
   vencimento: z.coerce.date({ errorMap: () => ({ message: 'Data de vencimento inválida' }) }),
+  recorrente: z.boolean().optional(),
+  recorrenciaMeses: z.number().int().min(1).max(24).optional(),
 });
 
 export const cobrancaCobrancaUpdateSchema = z.object({
@@ -253,6 +255,20 @@ export const cobrancaCobrancaUpdateSchema = z.object({
   valor: z.number().positive().max(1_000_000).optional(),
   vencimento: z.coerce.date().optional(),
   status: z.enum(['pendente', 'paga', 'cancelada']).optional(),
+  recorrente: z.boolean().optional(),
+  recorrenciaMeses: z.number().int().min(1).max(24).optional(),
+});
+
+export const cobrancaConfigSchema = z.object({
+  tom: z.enum(['cordial', 'formal', 'direto']).optional(),
+  escalarTom: z.boolean().optional(),
+  diasAntes: z.array(z.number().int().min(0).max(30)).max(5).optional(),
+  diasDepois: z.array(z.number().int().min(1).max(60)).max(5).optional(),
+  pixKey: z.string().max(140).optional().or(z.literal('')),
+  pixKeyType: z.enum(['cpf', 'cnpj', 'email', 'telefone', 'aleatoria']).optional().or(z.literal('')),
+  resumoDiario: z.boolean().optional(),
+  resumoHora: z.number().int().min(0).max(23).optional(),
+  onboardingDone: z.boolean().optional(),
 });
 
 // ── Atende Schemas ────────────────────────────────────────

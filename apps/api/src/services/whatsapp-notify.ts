@@ -134,3 +134,41 @@ export async function notifyMinuteAlert(
     await sendToOwnNumber(n.zapiInstanceId, n.phoneNumber, msgs[pct]);
   } catch { /* não crítico */ }
 }
+
+// ── 6. Módulo Cobrança: cliente pode ter avisado que já pagou (#6) ───────
+export async function notifyCobrancaPossiblePayment(
+  userId: string,
+  clientePhone: string,
+  messageText: string,
+): Promise<void> {
+  try {
+    const cliente = await (prisma as any).cobrancaCliente.findFirst({
+      where:   { userId, telefone: clientePhone, deletedAt: null },
+      include: { cobrancas: { where: { status: 'pendente', deletedAt: null }, orderBy: { vencimento: 'asc' } } },
+    });
+    if (!cliente || cliente.cobrancas.length === 0) return;
+
+    const n = await (prisma as any).whatsappNumber.findFirst({
+      where: { userId, status: 'connected', zapiInstanceId: { not: null } },
+    });
+    if (!n?.zapiInstanceId || !n?.phoneNumber) return;
+
+    const c = cliente.cobrancas[0];
+    const valorFmt = c.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const dataFmt = new Date(c.vencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+    const extra = cliente.cobrancas.length > 1 ? ` (+${cliente.cobrancas.length - 1} outra(s) em aberto)` : '';
+    const primeiroNome = cliente.nome.trim().split(' ')[0] || cliente.nome;
+
+    const msg = [
+      `💬 *Cobrança* — possível confirmação de pagamento`,
+      '',
+      `*${cliente.nome}* respondeu sobre a cobrança de *${valorFmt}* (vence ${dataFmt})${extra} e pode estar avisando que já pagou:`,
+      '',
+      `"${messageText.slice(0, 200)}"`,
+      '',
+      `Confirme pelo painel ou diga por voz: "marca como paga a cobrança do ${primeiroNome}".`,
+    ].join('\n');
+
+    await sendToOwnNumber(n.zapiInstanceId, n.phoneNumber, msg);
+  } catch { /* não crítico */ }
+}

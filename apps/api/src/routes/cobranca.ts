@@ -8,6 +8,7 @@ import {
   cobrancaClienteUpdateSchema,
   cobrancaCobrancaSchema,
   cobrancaCobrancaUpdateSchema,
+  cobrancaConfigSchema,
 } from '../lib/validation';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -47,21 +48,66 @@ function formatDateBR(d: Date): string {
   return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 }
 
-function buildCobrancaMessage(
-  kind: 'vence_hoje' | 'venceu' | 'manual',
-  opts: { nomeCliente: string; descricao: string; valor: number; vencimento: Date },
-): string {
-  const valorFmt = formatBRL(opts.valor);
-  const dataFmt = formatDateBR(opts.vencimento);
-  const primeiroNome = opts.nomeCliente.trim().split(' ')[0] || opts.nomeCliente;
+type Tom = 'cordial' | 'formal' | 'direto';
+type MsgKind = 'vence_hoje' | 'venceu' | 'manual';
+type MsgOpts = { primeiroNome: string; descricao: string; valorFmt: string; dataFmt: string };
 
-  if (kind === 'vence_hoje') {
-    return `Olá, ${primeiroNome}! Passando para lembrar que *${opts.descricao}* no valor de *${valorFmt}* vence hoje (${dataFmt}). Qualquer dúvida, é só responder por aqui. 🙂`;
-  }
-  if (kind === 'venceu') {
-    return `Olá, ${primeiroNome}! *${opts.descricao}* no valor de *${valorFmt}* venceu em ${dataFmt} e ainda consta em aberto. Se já pagou, pode desconsiderar esta mensagem — qualquer dúvida, é só responder por aqui.`;
-  }
-  return `Olá, ${primeiroNome}! Passando para lembrar sobre *${opts.descricao}*, no valor de *${valorFmt}*, com vencimento em ${dataFmt}. Qualquer dúvida, é só responder por aqui. 🙂`;
+// #3 Tom de mensagem (1 clique) — 1 config por dono, aplicada a lembretes e reenvio manual.
+const TEMPLATES: Record<Tom, Record<MsgKind, (o: MsgOpts) => string>> = {
+  cordial: {
+    vence_hoje: (o) => `Olá, ${o.primeiroNome}! Passando para lembrar que *${o.descricao}* no valor de *${o.valorFmt}* vence hoje (${o.dataFmt}). Qualquer dúvida, é só responder por aqui. 🙂`,
+    venceu: (o) => `Olá, ${o.primeiroNome}! *${o.descricao}* no valor de *${o.valorFmt}* venceu em ${o.dataFmt} e ainda consta em aberto. Se já pagou, pode desconsiderar esta mensagem — qualquer dúvida, é só responder por aqui.`,
+    manual: (o) => `Olá, ${o.primeiroNome}! Passando para lembrar sobre *${o.descricao}*, no valor de *${o.valorFmt}*, com vencimento em ${o.dataFmt}. Qualquer dúvida, é só responder por aqui. 🙂`,
+  },
+  formal: {
+    vence_hoje: (o) => `Prezado(a) ${o.primeiroNome}, informamos que *${o.descricao}*, no valor de *${o.valorFmt}*, vence hoje (${o.dataFmt}). Permanecemos à disposição para qualquer esclarecimento.`,
+    venceu: (o) => `Prezado(a) ${o.primeiroNome}, *${o.descricao}*, no valor de *${o.valorFmt}*, venceu em ${o.dataFmt} e permanece em aberto até o momento. Caso o pagamento já tenha sido efetuado, favor desconsiderar. Permanecemos à disposição.`,
+    manual: (o) => `Prezado(a) ${o.primeiroNome}, informamos sobre *${o.descricao}*, no valor de *${o.valorFmt}*, com vencimento em ${o.dataFmt}. Permanecemos à disposição para qualquer esclarecimento.`,
+  },
+  direto: {
+    vence_hoje: (o) => `${o.primeiroNome}, *${o.descricao}* (*${o.valorFmt}*) vence hoje (${o.dataFmt}).`,
+    venceu: (o) => `${o.primeiroNome}, *${o.descricao}* (*${o.valorFmt}*) venceu em ${o.dataFmt} e segue em aberto. Se já pagou, desconsidere.`,
+    manual: (o) => `${o.primeiroNome}, lembrete de *${o.descricao}* (*${o.valorFmt}*), vencimento em ${o.dataFmt}.`,
+  },
+};
+
+// #9 Chave Pix nas mensagens — anexada quando o dono configura.
+function pixSuffix(pixKey?: string | null): string {
+  return pixKey ? `\n\nPix para pagamento: *${pixKey}*` : '';
+}
+
+function buildCobrancaMessage(
+  kind: MsgKind,
+  opts: { nomeCliente: string; descricao: string; valor: number; vencimento: Date; tom?: string | null; pixKey?: string | null },
+): string {
+  const tom: Tom = opts.tom === 'formal' || opts.tom === 'direto' ? opts.tom : 'cordial';
+  const primeiroNome = opts.nomeCliente.trim().split(' ')[0] || opts.nomeCliente;
+  const base = TEMPLATES[tom][kind]({
+    primeiroNome,
+    descricao: opts.descricao,
+    valorFmt: formatBRL(opts.valor),
+    dataFmt: formatDateBR(opts.vencimento),
+  });
+  return base + pixSuffix(opts.pixKey);
+}
+
+const DEFAULT_COBRANCA_CONFIG = {
+  tom: 'cordial' as const,
+  escalarTom: true,
+  diasAntes: [1],
+  diasDepois: [1, 3, 7],
+  pixKey: null as string | null,
+  pixKeyType: null as string | null,
+  resumoDiario: false,
+  resumoHora: 8,
+  onboardingDone: false,
+};
+
+/** Config do dono (tom/régua/Pix/resumo). Cria com defaults no 1º acesso. */
+async function getOrCreateCobrancaConfig(userId: string) {
+  const existing = await prisma.cobrancaConfig.findUnique({ where: { userId } });
+  if (existing) return existing;
+  return prisma.cobrancaConfig.create({ data: { userId, ...DEFAULT_COBRANCA_CONFIG } });
 }
 
 /** Instância WhatsApp conectada mais recente do usuário — usada para enviar o lembrete. */
@@ -158,7 +204,7 @@ export default async function cobrancaRoutes(app: FastifyInstance) {
   });
 
   // ── POST /cobranca/cobrancas ──────────────────────────────────────────────
-  app.post<{ Body: { clienteId: string; descricao: string; valor: number; vencimento: string } }>(
+  app.post<{ Body: { clienteId: string; descricao: string; valor: number; vencimento: string; recorrente?: boolean; recorrenciaMeses?: number } }>(
     '/cobrancas',
     auth,
     async (req: any, reply) => {
@@ -171,6 +217,7 @@ export default async function cobrancaRoutes(app: FastifyInstance) {
       });
       if (!cliente) return reply.code(404).send({ error: 'Cliente não encontrado.' });
 
+      const recorrente = !!v.data.recorrente;
       const cobranca = await prisma.cobrancaCobranca.create({
         data: {
           userId,
@@ -178,6 +225,8 @@ export default async function cobrancaRoutes(app: FastifyInstance) {
           descricao: v.data.descricao.trim(),
           valor: v.data.valor,
           vencimento: dateOnly(v.data.vencimento),
+          recorrente,
+          recorrenciaMeses: recorrente ? (v.data.recorrenciaMeses || 1) : null,
         },
       });
       return reply.code(201).send(cobranca);
@@ -199,6 +248,8 @@ export default async function cobrancaRoutes(app: FastifyInstance) {
     if (v.data.descricao !== undefined) data.descricao = v.data.descricao.trim();
     if (v.data.valor !== undefined) data.valor = v.data.valor;
     if (v.data.vencimento !== undefined) data.vencimento = dateOnly(v.data.vencimento);
+    if (v.data.recorrente !== undefined) data.recorrente = v.data.recorrente;
+    if (v.data.recorrenciaMeses !== undefined) data.recorrenciaMeses = v.data.recorrenciaMeses;
     if (v.data.status !== undefined) {
       data.status = v.data.status;
       data.pagoEm = v.data.status === 'paga' ? new Date() : null;
@@ -208,7 +259,27 @@ export default async function cobrancaRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Nenhum campo para atualizar.' });
     }
 
-    return prisma.cobrancaCobranca.update({ where: { id }, data });
+    const updated = await prisma.cobrancaCobranca.update({ where: { id }, data });
+
+    // #5 Recorrência: 1ª transição para "paga" numa cobrança recorrente gera a próxima ocorrência.
+    if (existing.status !== 'paga' && updated.status === 'paga' && updated.recorrente) {
+      const meses = updated.recorrenciaMeses || 1;
+      const proximoVencimento = new Date(updated.vencimento);
+      proximoVencimento.setUTCMonth(proximoVencimento.getUTCMonth() + meses);
+      await prisma.cobrancaCobranca.create({
+        data: {
+          userId,
+          clienteId: updated.clienteId,
+          descricao: updated.descricao,
+          valor: updated.valor,
+          vencimento: proximoVencimento,
+          recorrente: true,
+          recorrenciaMeses: meses,
+        },
+      }).catch((err: any) => app.log.error({ err: err.message, cobrancaId: id }, '[Cobrança] Erro ao gerar próxima ocorrência recorrente'));
+    }
+
+    return updated;
   });
 
   // ── DELETE /cobranca/cobrancas/:id ────────────────────────────────────────
@@ -243,11 +314,14 @@ export default async function cobrancaRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Nenhum número WhatsApp conectado. Conecte um número primeiro.' });
     }
 
+    const config = await getOrCreateCobrancaConfig(userId);
     const message = buildCobrancaMessage('manual', {
       nomeCliente: cobranca.cliente.nome,
       descricao: cobranca.descricao,
       valor: cobranca.valor,
       vencimento: cobranca.vencimento,
+      tom: config.tom,
+      pixKey: config.pixKey,
     });
 
     try {
@@ -261,5 +335,37 @@ export default async function cobrancaRoutes(app: FastifyInstance) {
         .catch(() => null);
       return reply.code(502).send({ error: `Erro ao enviar WhatsApp: ${err.message}` });
     }
+  });
+
+  // ── GET /cobranca/config ──────────────────────────────────────────────────
+  // #2/#3/#4/#8/#9/#10: preferências do dono. Cria com defaults no 1º acesso.
+  app.get('/config', auth, async (req: any) => {
+    return getOrCreateCobrancaConfig(req.user.sub);
+  });
+
+  // ── PUT /cobranca/config ──────────────────────────────────────────────────
+  app.put('/config', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const v = validateRequest(cobrancaConfigSchema)(req.body);
+    if (!v.valid) return reply.code(400).send({ error: v.error });
+
+    await getOrCreateCobrancaConfig(userId); // garante linha existente
+
+    const data: any = {};
+    if (v.data.tom !== undefined) data.tom = v.data.tom;
+    if (v.data.escalarTom !== undefined) data.escalarTom = v.data.escalarTom;
+    if (v.data.diasAntes !== undefined) data.diasAntes = v.data.diasAntes;
+    if (v.data.diasDepois !== undefined) data.diasDepois = v.data.diasDepois;
+    if (v.data.pixKey !== undefined) data.pixKey = v.data.pixKey.trim() || null;
+    if (v.data.pixKeyType !== undefined) data.pixKeyType = v.data.pixKeyType || null;
+    if (v.data.resumoDiario !== undefined) data.resumoDiario = v.data.resumoDiario;
+    if (v.data.resumoHora !== undefined) data.resumoHora = v.data.resumoHora;
+    if (v.data.onboardingDone !== undefined) data.onboardingDone = v.data.onboardingDone;
+
+    if (Object.keys(data).length === 0) {
+      return reply.code(400).send({ error: 'Nenhum campo para atualizar.' });
+    }
+
+    return prisma.cobrancaConfig.update({ where: { userId }, data });
   });
 }

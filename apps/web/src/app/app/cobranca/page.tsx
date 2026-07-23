@@ -21,6 +21,13 @@ interface Me {
   id: string; name?: string; email: string; emailVerified: boolean;
   document: string | null; modules?: string[];
 }
+type CobrancaTom = 'cordial' | 'formal' | 'direto';
+interface CobrancaConfig {
+  userId: string; tom: CobrancaTom; escalarTom: boolean;
+  diasAntes: number[]; diasDepois: number[];
+  pixKey: string | null; pixKeyType: string | null;
+  resumoDiario: boolean; resumoHora: number; onboardingDone: boolean;
+}
 
 // ── Spinner inline ────────────────────────────────────────────────────────────
 function Spinner({ size = 4 }: { size?: number }) {
@@ -73,6 +80,28 @@ const MODULE_FEATURES = [
   'Reenvio manual com 1 clique quando quiser',
 ];
 
+const TOM_META: Record<CobrancaTom, { label: string; desc: string }> = {
+  cordial: { label: 'Cordial',  desc: 'Amigável, com emoji' },
+  formal:  { label: 'Formal',   desc: '"Prezado(a)", sem emoji' },
+  direto:  { label: 'Direto',   desc: 'Curto e objetivo' },
+};
+const ANTES_CANDIDATES  = [1, 2, 3, 5, 7];
+const DEPOIS_CANDIDATES = [1, 3, 5, 7, 10, 15, 30];
+const PIX_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'cpf',       label: 'CPF' },
+  { value: 'cnpj',      label: 'CNPJ' },
+  { value: 'email',     label: 'E-mail' },
+  { value: 'telefone',  label: 'Telefone' },
+  { value: 'aleatoria', label: 'Aleatória' },
+];
+const RESUMO_HORAS = Array.from({ length: 24 }, (_, h) => h);
+
+function toggleInArray(arr: number[], val: number, max = 5): number[] {
+  if (arr.includes(val)) return arr.filter(v => v !== val);
+  if (arr.length >= max) return arr;
+  return [...arr, val].sort((a, b) => a - b);
+}
+
 export default function CobrancaPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [loadingMe, setLoadingMe] = useState(true);
@@ -98,6 +127,8 @@ export default function CobrancaPage() {
   const [bDescricao, setBDescricao]     = useState('');
   const [bValor, setBValor]             = useState('');
   const [bVencimento, setBVencimento]   = useState(todayISO());
+  const [bRecorrente, setBRecorrente]           = useState(false);
+  const [bRecorrenciaMeses, setBRecorrenciaMeses] = useState('1');
   const [addingCobranca, setAddingCobranca] = useState(false);
   const [cobrancaError, setCobrancaError]   = useState('');
 
@@ -105,7 +136,23 @@ export default function CobrancaPage() {
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'cliente' | 'cobranca'; id: string; label: string } | null>(null);
 
+  // config / onboarding / configurações persistentes
+  const [config, setConfig] = useState<CobrancaConfig | null>(null);
+  const [obStep, setObStep] = useState(1);
+  const [showSettings, setShowSettings] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configError, setConfigError] = useState('');
+  const [cfgTom, setCfgTom]               = useState<CobrancaTom>('cordial');
+  const [cfgEscalarTom, setCfgEscalarTom] = useState(true);
+  const [cfgDiasAntes, setCfgDiasAntes]   = useState<number[]>([1]);
+  const [cfgDiasDepois, setCfgDiasDepois] = useState<number[]>([1, 3, 7]);
+  const [cfgPixKey, setCfgPixKey]         = useState('');
+  const [cfgPixKeyType, setCfgPixKeyType] = useState('');
+  const [cfgResumoDiario, setCfgResumoDiario] = useState(false);
+  const [cfgResumoHora, setCfgResumoHora]     = useState(8);
+
   const hasModule = !!me?.modules?.includes('cobranca');
+  const showOnboarding = !!config && config.onboardingDone === false;
 
   const loadMe = useCallback(async () => {
     try {
@@ -131,8 +178,68 @@ export default function CobrancaPage() {
     }
   }, []);
 
+  const applyConfigToForm = useCallback((cfg: CobrancaConfig) => {
+    setCfgTom(cfg.tom);
+    setCfgEscalarTom(cfg.escalarTom);
+    setCfgDiasAntes(cfg.diasAntes);
+    setCfgDiasDepois(cfg.diasDepois);
+    setCfgPixKey(cfg.pixKey || '');
+    setCfgPixKeyType(cfg.pixKeyType || '');
+    setCfgResumoDiario(cfg.resumoDiario);
+    setCfgResumoHora(cfg.resumoHora);
+  }, []);
+
+  const loadConfig = useCallback(async () => {
+    try {
+      const cfg = await api.get<CobrancaConfig>('/cobranca/config');
+      setConfig(cfg);
+      applyConfigToForm(cfg);
+    } catch { /* mantém defaults locais; onboarding some ao recarregar */ }
+  }, [applyConfigToForm]);
+
+  async function saveConfig(overrides: Partial<CobrancaConfig> = {}) {
+    setSavingConfig(true); setConfigError('');
+    try {
+      const updated = await api.put<CobrancaConfig>('/cobranca/config', {
+        tom: cfgTom,
+        escalarTom: cfgEscalarTom,
+        diasAntes: cfgDiasAntes,
+        diasDepois: cfgDiasDepois,
+        pixKey: cfgPixKey,
+        pixKeyType: cfgPixKeyType,
+        resumoDiario: cfgResumoDiario,
+        resumoHora: cfgResumoHora,
+        ...overrides,
+      });
+      setConfig(updated);
+      return updated;
+    } catch (err: any) {
+      setConfigError(err.message || 'Erro ao salvar configurações.');
+      throw err;
+    } finally {
+      setSavingConfig(false);
+    }
+  }
+
+  function openSettings() {
+    if (config) applyConfigToForm(config);
+    setConfigError('');
+    setShowSettings(true);
+  }
+
+  async function handleFinishOnboarding() {
+    try { await saveConfig({ onboardingDone: true }); } catch { /* erro exibido no wizard */ }
+  }
+
+  async function handleSaveSettings() {
+    try {
+      await saveConfig();
+      setShowSettings(false);
+    } catch { /* erro exibido no painel */ }
+  }
+
   useEffect(() => { loadMe(); }, [loadMe]);
-  useEffect(() => { if (hasModule) loadData(); }, [hasModule, loadData]);
+  useEffect(() => { if (hasModule) { loadData(); loadConfig(); } }, [hasModule, loadData, loadConfig]);
 
   async function handleAddCliente(e: React.FormEvent) {
     e.preventDefault();
@@ -176,8 +283,11 @@ export default function CobrancaPage() {
         descricao: bDescricao.trim(),
         valor: valorNum,
         vencimento: bVencimento,
+        recorrente: bRecorrente,
+        recorrenciaMeses: bRecorrente ? Number(bRecorrenciaMeses) : undefined,
       });
       setBDescricao(''); setBValor(''); setBVencimento(todayISO());
+      setBRecorrente(false); setBRecorrenciaMeses('1');
       setShowCobrancaForm(false);
       loadData();
     } catch (err: any) {
@@ -312,6 +422,12 @@ export default function CobrancaPage() {
             Clientes e cobranças com lembrete automático via WhatsApp
           </p>
         </div>
+        <button
+          onClick={openSettings}
+          className="text-xs font-semibold text-brand-muted hover:text-brand-text border border-brand-border rounded-lg px-3 py-1.5 flex items-center gap-1.5 flex-shrink-0"
+        >
+          ⚙️ Configurações
+        </button>
       </div>
 
       {/* Stats */}
@@ -432,6 +548,20 @@ export default function CobrancaPage() {
               <input className="field-input" type="date" value={bVencimento}
                 onChange={e => setBVencimento(e.target.value)} required />
             </div>
+            <label className="flex items-center gap-2 text-xs text-brand-text-secondary">
+              <input type="checkbox" checked={bRecorrente} onChange={e => setBRecorrente(e.target.checked)} />
+              Cobrança recorrente (gera a próxima automaticamente ao marcar como paga)
+            </label>
+            {bRecorrente && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-brand-muted">Repetir a cada</span>
+                <input
+                  className="field-input w-20" type="number" min={1} max={24}
+                  value={bRecorrenciaMeses} onChange={e => setBRecorrenciaMeses(e.target.value)}
+                />
+                <span className="text-xs text-brand-muted">mês(es)</span>
+              </div>
+            )}
             {cobrancaError && <p className="text-red-400 text-xs">{cobrancaError}</p>}
             <button type="submit" disabled={addingCobranca} className="btn-primary text-sm px-4 py-2">
               {addingCobranca ? <Spinner size={4} /> : 'Salvar cobrança'}
@@ -532,6 +662,199 @@ export default function CobrancaPage() {
                 className="flex-1 py-2 rounded-xl text-sm font-semibold bg-red-500 text-white hover:bg-red-600"
               >
                 Remover
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Onboarding: 3 perguntas no 1º acesso ── */}
+      {showOnboarding && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="card p-5 sm:p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-sm font-bold text-brand-text">Configuração rápida ({obStep}/3)</p>
+              <button onClick={handleFinishOnboarding} className="text-[11px] text-brand-muted hover:text-brand-text">
+                Pular tudo
+              </button>
+            </div>
+            <div className="flex gap-1 mb-4">
+              {[1, 2, 3].map(s => (
+                <div key={s} className={`h-1 flex-1 rounded-full ${s <= obStep ? 'bg-brand-primary' : 'bg-brand-border'}`} />
+              ))}
+            </div>
+
+            {obStep === 1 && (
+              <div>
+                <p className="text-sm font-semibold text-brand-text mb-1">Qual tom você prefere nas mensagens?</p>
+                <p className="text-xs text-brand-muted mb-3">Pode mudar quando quiser em Configurações.</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.keys(TOM_META) as CobrancaTom[]).map(t => (
+                    <button key={t} onClick={() => setCfgTom(t)}
+                      className={`text-center px-2 py-2.5 rounded-lg border text-xs font-semibold transition-colors ${
+                        cfgTom === t ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-brand-muted bg-brand-elevated border-brand-border hover:text-brand-text'
+                      }`}
+                    >
+                      <div>{TOM_META[t].label}</div>
+                      <div className="text-[10px] font-normal mt-0.5 opacity-80">{TOM_META[t].desc}</div>
+                    </button>
+                  ))}
+                </div>
+                <label className="flex items-center gap-2 mt-4 text-xs text-brand-text-secondary">
+                  <input type="checkbox" checked={cfgEscalarTom} onChange={e => setCfgEscalarTom(e.target.checked)} />
+                  Ficar mais direto automaticamente conforme o atraso aumenta
+                </label>
+              </div>
+            )}
+
+            {obStep === 2 && (
+              <div>
+                <p className="text-sm font-semibold text-brand-text mb-1">Quando avisar o cliente?</p>
+                <p className="text-xs text-brand-muted mb-3">Escolha os dias de lembrete (até 5 de cada).</p>
+                <p className="text-[11px] font-semibold text-brand-muted uppercase tracking-wide mb-1.5">Antes do vencimento</p>
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {ANTES_CANDIDATES.map(n => (
+                    <button key={n} onClick={() => setCfgDiasAntes(a => toggleInArray(a, n))}
+                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+                        cfgDiasAntes.includes(n) ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-brand-muted bg-brand-elevated border-brand-border hover:text-brand-text'
+                      }`}
+                    >
+                      {n}d antes
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] font-semibold text-brand-muted uppercase tracking-wide mb-1.5">Depois do vencimento (em atraso)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {DEPOIS_CANDIDATES.map(n => (
+                    <button key={n} onClick={() => setCfgDiasDepois(a => toggleInArray(a, n))}
+                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+                        cfgDiasDepois.includes(n) ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-brand-muted bg-brand-elevated border-brand-border hover:text-brand-text'
+                      }`}
+                    >
+                      {n}d depois
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {obStep === 3 && (
+              <div>
+                <p className="text-sm font-semibold text-brand-text mb-1">Chave Pix (opcional)</p>
+                <p className="text-xs text-brand-muted mb-3">Incluída automaticamente nas mensagens para facilitar o pagamento.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <select className="field-input" value={cfgPixKeyType} onChange={e => setCfgPixKeyType(e.target.value)}>
+                    <option value="">Tipo da chave...</option>
+                    {PIX_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <input className="field-input" placeholder="Sua chave Pix" value={cfgPixKey}
+                    onChange={e => setCfgPixKey(e.target.value)} maxLength={140} />
+                </div>
+              </div>
+            )}
+
+            {configError && <p className="text-red-400 text-xs mt-3">{configError}</p>}
+
+            <div className="flex gap-2 mt-5">
+              {obStep > 1 && (
+                <button onClick={() => setObStep(s => s - 1)} className="flex-1 py-2 rounded-xl text-sm font-semibold border border-brand-border text-brand-muted">
+                  Voltar
+                </button>
+              )}
+              {obStep < 3 ? (
+                <button onClick={() => setObStep(s => s + 1)} className="flex-1 btn-primary text-sm py-2">
+                  Próximo
+                </button>
+              ) : (
+                <button onClick={handleFinishOnboarding} disabled={savingConfig} className="flex-1 btn-primary text-sm py-2 flex items-center justify-center gap-2">
+                  {savingConfig ? <Spinner size={4} /> : 'Concluir'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Painel de configurações persistente ── */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
+          <div className="card p-5 sm:p-6 max-w-md w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-bold text-brand-text mb-4">⚙️ Configurações da Cobrança</p>
+
+            <p className="text-xs font-semibold text-brand-text mb-1.5">Tom das mensagens</p>
+            <div className="grid grid-cols-3 gap-2 mb-2">
+              {(Object.keys(TOM_META) as CobrancaTom[]).map(t => (
+                <button key={t} onClick={() => setCfgTom(t)}
+                  className={`text-center px-2 py-2 rounded-lg border text-xs font-semibold transition-colors ${
+                    cfgTom === t ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-brand-muted bg-brand-elevated border-brand-border hover:text-brand-text'
+                  }`}
+                >
+                  {TOM_META[t].label}
+                </button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 mb-4 text-xs text-brand-text-secondary">
+              <input type="checkbox" checked={cfgEscalarTom} onChange={e => setCfgEscalarTom(e.target.checked)} />
+              Ficar mais direto automaticamente conforme o atraso aumenta
+            </label>
+
+            <p className="text-xs font-semibold text-brand-text mb-1.5">Antes do vencimento</p>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {ANTES_CANDIDATES.map(n => (
+                <button key={n} onClick={() => setCfgDiasAntes(a => toggleInArray(a, n))}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+                    cfgDiasAntes.includes(n) ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-brand-muted bg-brand-elevated border-brand-border hover:text-brand-text'
+                  }`}
+                >
+                  {n}d antes
+                </button>
+              ))}
+            </div>
+            <p className="text-xs font-semibold text-brand-text mb-1.5">Depois do vencimento</p>
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {DEPOIS_CANDIDATES.map(n => (
+                <button key={n} onClick={() => setCfgDiasDepois(a => toggleInArray(a, n))}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+                    cfgDiasDepois.includes(n) ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-brand-muted bg-brand-elevated border-brand-border hover:text-brand-text'
+                  }`}
+                >
+                  {n}d depois
+                </button>
+              ))}
+            </div>
+
+            <p className="text-xs font-semibold text-brand-text mb-1.5">Chave Pix</p>
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <select className="field-input" value={cfgPixKeyType} onChange={e => setCfgPixKeyType(e.target.value)}>
+                <option value="">Tipo da chave...</option>
+                {PIX_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <input className="field-input" placeholder="Sua chave Pix" value={cfgPixKey}
+                onChange={e => setCfgPixKey(e.target.value)} maxLength={140} />
+            </div>
+
+            <p className="text-xs font-semibold text-brand-text mb-1.5">Resumo diário</p>
+            <label className="flex items-center gap-2 mb-2 text-xs text-brand-text-secondary">
+              <input type="checkbox" checked={cfgResumoDiario} onChange={e => setCfgResumoDiario(e.target.checked)} />
+              Receber um resumo diário no WhatsApp
+            </label>
+            {cfgResumoDiario && (
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-xs text-brand-muted">Horário</span>
+                <select className="field-input w-auto" value={cfgResumoHora} onChange={e => setCfgResumoHora(Number(e.target.value))}>
+                  {RESUMO_HORAS.map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+                </select>
+              </div>
+            )}
+
+            {configError && <p className="text-red-400 text-xs mb-3">{configError}</p>}
+
+            <div className="flex gap-2">
+              <button onClick={() => setShowSettings(false)} className="flex-1 py-2 rounded-xl text-sm font-semibold border border-brand-border text-brand-muted">
+                Cancelar
+              </button>
+              <button onClick={handleSaveSettings} disabled={savingConfig} className="flex-1 btn-primary text-sm py-2 flex items-center justify-center gap-2">
+                {savingConfig ? <Spinner size={4} /> : 'Salvar'}
               </button>
             </div>
           </div>

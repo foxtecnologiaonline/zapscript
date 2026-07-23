@@ -1390,6 +1390,180 @@ async function processTwilioJob(job: Job) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Comando de voz — módulo Cobrança (self-note apenas)
+//  #1: criar cobrança por voz. #7: marcar paga/cancelar por voz.
+//  Roda ANTES do resumo normal da transcrição — se nenhuma intenção bater
+//  (ou o módulo não estiver ativo), cai no fluxo de transcrição de sempre.
+// ─────────────────────────────────────────────────────────────────
+const COBRANCA_VOICE_KEYWORDS = /cobran|cliente|pag(a|o|ou|amento)|cancel|vencime?nto|vence/i;
+
+function cobrancaExtractJson(text: string): any {
+  // Modelo às vezes embrulha em ```json — extrai o primeiro objeto {...}
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Resposta sem JSON');
+  return JSON.parse(match[0]);
+}
+
+interface CobrancaVoiceIntent {
+  intent: 'criar_cobranca' | 'marcar_paga' | 'cancelar' | 'nenhum';
+  nome_cliente?: string | null;
+  telefone?: string | null;
+  valor?: number | null;
+  descricao?: string | null;
+  vencimento?: string | null; // AAAA-MM-DD
+}
+
+async function classifyCobrancaVoiceIntent(text: string): Promise<CobrancaVoiceIntent | null> {
+  const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+  const systemMsg = `Você identifica comandos de voz para o módulo de Cobrança de um sistema de gestão. O usuário grava uma nota de voz para si mesmo (self-note) no WhatsApp.
+
+Hoje é ${hoje}. Responda APENAS com um JSON, sem texto ao redor, no formato:
+{"intent": "criar_cobranca" | "marcar_paga" | "cancelar" | "nenhum", "nome_cliente": string|null, "telefone": string|null, "valor": number|null, "descricao": string|null, "vencimento": "AAAA-MM-DD"|null}
+
+Regras:
+- "criar_cobranca": usuário quer registrar uma nova cobrança/cliente a cobrar. Extraia nome, valor e vencimento (resolva datas relativas como "dia 10", "amanhã", "daqui 30 dias" para AAAA-MM-DD usando hoje como referência). Telefone (com DDD, só dígitos) somente se foi dito explicitamente.
+- "marcar_paga": usuário diz que um cliente pagou/quitou uma cobrança.
+- "cancelar": usuário quer cancelar/desistir de cobrar um cliente.
+- "nenhum": o áudio não é um comando de Cobrança (lembrete pessoal, outro assunto etc.) — use sempre que houver dúvida, não force uma intenção.
+- Nunca invente nome, valor ou telefone que não foram ditos.`;
+
+  try {
+    const res = await claude.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 300,
+      temperature: 0,
+      system: systemMsg,
+      messages: [{ role: 'user', content: `Áudio transcrito: "${text}"` }],
+    });
+    const raw = (res.content[0] as any).text?.trim() || '';
+    return cobrancaExtractJson(raw) as CobrancaVoiceIntent;
+  } catch (err: any) {
+    logger.warn(`[Cobrança][Voz] Classificação falhou: ${err.message}`);
+    return null;
+  }
+}
+
+async function tryHandleCobrancaVoiceCommand(opts: {
+  userId: string;
+  text: string;
+  instanceName: string;
+  ownerPhone: string;
+}): Promise<boolean> {
+  const { userId, text, instanceName, ownerPhone } = opts;
+  if (!COBRANCA_VOICE_KEYWORDS.test(text)) return false;
+
+  const hasCobranca = await prisma.entitlement.findFirst({
+    where: { userId, productKey: 'cobranca', status: { in: ['active', 'trialing'] } },
+    select: { id: true },
+  }).catch(() => null);
+  if (!hasCobranca) return false;
+
+  const parsed = await classifyCobrancaVoiceIntent(text);
+  if (!parsed || parsed.intent === 'nenhum') return false;
+
+  const reply = async (msg: string) => {
+    await sendMessageViaEvolution(instanceName, ownerPhone, msg).catch(() => null);
+  };
+
+  try {
+    if (parsed.intent === 'criar_cobranca') {
+      const nome = (parsed.nome_cliente || '').trim();
+      if (!nome || !parsed.valor || parsed.valor <= 0 || !parsed.vencimento) {
+        await reply('🎙️ Entendi que é pra criar uma cobrança, mas faltou nome, valor ou vencimento. Pode repetir com esses três dados ou cadastrar pelo painel?');
+        return true;
+      }
+      const vencimento = new Date(`${parsed.vencimento}T00:00:00.000Z`);
+      if (isNaN(vencimento.getTime())) {
+        await reply('🎙️ Não consegui entender a data de vencimento. Pode repetir ou cadastrar pelo painel?');
+        return true;
+      }
+
+      // Reaproveita cliente existente pelo nome (evita pedir telefone de novo por voz).
+      let cliente = await prisma.cobrancaCliente.findFirst({
+        where: { userId, deletedAt: null, nome: { contains: nome, mode: 'insensitive' } },
+      });
+      if (!cliente) {
+        const telefoneDigits = (parsed.telefone || '').replace(/\D/g, '');
+        if (telefoneDigits.length < 10 || telefoneDigits.length > 15) {
+          await reply(`🎙️ Não encontrei "${nome}" nos seus clientes e não peguei o telefone direito. Pode repetir com o telefone (com DDD) ou cadastrar pelo painel?`);
+          return true;
+        }
+        cliente = await prisma.cobrancaCliente.create({ data: { userId, nome, telefone: telefoneDigits } });
+      }
+
+      const cobranca = await prisma.cobrancaCobranca.create({
+        data: {
+          userId,
+          clienteId: cliente.id,
+          descricao: (parsed.descricao || 'Cobrança').trim().slice(0, 200) || 'Cobrança',
+          valor: parsed.valor,
+          vencimento,
+          origemVoz: true,
+        },
+      });
+
+      await reply(`✅ Cobrança criada: *${cliente.nome}* — ${formatBRL(cobranca.valor)}, vence ${formatDateBR(vencimento)}.`);
+      return true;
+    }
+
+    if (parsed.intent === 'marcar_paga' || parsed.intent === 'cancelar') {
+      const nome = (parsed.nome_cliente || '').trim();
+      if (!nome) {
+        await reply('🎙️ Entendi o comando, mas não peguei o nome do cliente. Pode repetir?');
+        return true;
+      }
+      const abertas = await prisma.cobrancaCobranca.findMany({
+        where: {
+          userId, status: 'pendente', deletedAt: null,
+          cliente: { nome: { contains: nome, mode: 'insensitive' }, deletedAt: null },
+        },
+        include: { cliente: true },
+        orderBy: { vencimento: 'asc' },
+      });
+
+      if (abertas.length === 0) {
+        await reply(`🎙️ Não encontrei cobrança em aberto de "${nome}".`);
+        return true;
+      }
+      if (abertas.length > 1) {
+        const lista = abertas.map((c) => `• ${formatBRL(c.valor)} — vence ${formatDateBR(c.vencimento)}`).join('\n');
+        await reply(`🎙️ Encontrei ${abertas.length} cobranças em aberto de ${abertas[0].cliente.nome}:\n${lista}\n\nAjusta pelo painel pra eu saber qual.`);
+        return true;
+      }
+
+      const alvo = abertas[0];
+      const novoStatus = parsed.intent === 'marcar_paga' ? 'paga' : 'cancelada';
+      await prisma.cobrancaCobranca.update({
+        where: { id: alvo.id },
+        data: { status: novoStatus, pagoEm: novoStatus === 'paga' ? new Date() : alvo.pagoEm },
+      });
+
+      // #5: recorrência — gera a próxima ocorrência ao marcar paga por voz também.
+      if (novoStatus === 'paga' && alvo.recorrente && alvo.recorrenciaMeses) {
+        const proxVencimento = new Date(alvo.vencimento);
+        proxVencimento.setUTCMonth(proxVencimento.getUTCMonth() + alvo.recorrenciaMeses);
+        await prisma.cobrancaCobranca.create({
+          data: {
+            userId, clienteId: alvo.clienteId, descricao: alvo.descricao, valor: alvo.valor,
+            vencimento: proxVencimento, recorrente: true, recorrenciaMeses: alvo.recorrenciaMeses,
+          },
+        }).catch((err: any) => logger.error(`[Cobrança][Voz] Falha ao gerar próxima recorrência: ${err.message}`));
+      }
+
+      const verbo = novoStatus === 'paga' ? 'marcada como paga' : 'cancelada';
+      await reply(`✅ Cobrança de *${alvo.cliente.nome}* (${formatBRL(alvo.valor)}) ${verbo}.`);
+      return true;
+    }
+  } catch (err: any) {
+    logger.error(`[Cobrança][Voz] Erro ao executar comando: ${err.message}`);
+    await reply('🎙️ Entendi o comando, mas algo deu errado ao executar. Tenta pelo painel?');
+    return true; // já tentamos executar — não cai no resumo normal
+  }
+
+  return false;
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  PIPELINE E — WhatsApp via Evolution API (self-hosted)
 // ─────────────────────────────────────────────────────────────────
 async function processEvolutionJob(job: Job) {
@@ -1458,6 +1632,28 @@ async function processEvolutionJob(job: Job) {
     const durationSec = whisperDuration > 0 ? whisperDuration : Math.max(1, durationHint || 1);
     log(job, `✅ ${durationSec}s — lang:${detectedLanguage} — "${originalText.substring(0, 60)}..."`);
 
+    // Self-note: áudio que o usuário encaminhou para o próprio número (self-chat).
+    // Nesse caso a resposta volta ao próprio chat (senderPhone == número conectado)
+    // e NÃO aplicamos modo privado (cabeçalho dedicado de nota/encaminhado).
+    const isSelfNote = job.data.isSelfNote === true;
+
+    // PASSO 4.5: comando de voz do módulo Cobrança (#1/#7) — só em self-note.
+    // Se bater uma intenção, executa a ação e ENCERRA aqui (não gera resumo
+    // duplicado); se não bater nada, cai no fluxo normal de transcrição abaixo.
+    if (isSelfNote) {
+      const handledByCobranca = await tryHandleCobrancaVoiceCommand({
+        userId,
+        text: originalText,
+        instanceName: instName,
+        ownerPhone: senderPhone,
+      });
+      if (handledByCobranca) {
+        log(job, '✅ Comando de voz da Cobrança executado');
+        await markChatAsUnread(instName, senderPhone).catch(() => null);
+        return { skipped: true, reason: 'cobranca_voice_command' };
+      }
+    }
+
     // PASSO 5: Resumo com Claude (densidade por duração + tradução se não PT-BR)
     log(job, '🤖 Claude resumo...');
     const bullets = await generateBullets(originalText, durationSec, detectedLanguage);
@@ -1465,11 +1661,6 @@ async function processEvolutionJob(job: Job) {
 
     // PASSO 6: Enviar resposta via Evolution API
     log(job, '📤 Enviando resposta via Evolution API...');
-
-    // Self-note: áudio que o usuário encaminhou para o próprio número (self-chat).
-    // Nesse caso a resposta volta ao próprio chat (senderPhone == número conectado)
-    // e NÃO aplicamos modo privado (cabeçalho dedicado de nota/encaminhado).
-    const isSelfNote  = job.data.isSelfNote === true;
 
     // Modo Privado é AUTOMÁTICO em todo plano PAGO: a transcrição vai só ao próprio
     // número (nunca cai na conversa do contato). Free mantém a transcrição na conversa
@@ -2059,7 +2250,8 @@ setInterval(runWeeklyWhatsappDigest, 60 * 60 * 1000);
 // ─────────────────────────────────────────────────────────────────
 //  CRON — Lembretes de Cobrança via WhatsApp (módulo Cobrança)
 //  Roda de hora em hora; dispara só às 12h UTC (~9h BRT) → 1x/dia.
-//  D0: cobrança vence hoje. D+1: venceu ontem (1º dia de atraso).
+//  Régua configurável por dono (CobrancaConfig.diasAntes/diasDepois);
+//  sem config, usa default D-1 (antes) + D0 (vence hoje) + D+1/3/7 (atraso).
 //  Não é gateway de pagamento — só lembrete. Idempotente via CobrancaEnvio
 //  (1 tipo por cobrancaId); reenvio depois disso é manual, via API.
 // ─────────────────────────────────────────────────────────────────
@@ -2075,35 +2267,84 @@ function formatDateBR(d: Date): string {
   return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 }
 
-function buildCobrancaReminderMessage(
-  kind: 'vence_hoje' | 'venceu',
-  opts: { nomeCliente: string; descricao: string; valor: number; vencimento: Date },
-): string {
-  const valorFmt = formatBRL(opts.valor);
-  const dataFmt = formatDateBR(opts.vencimento);
-  const primeiroNome = opts.nomeCliente.trim().split(' ')[0] || opts.nomeCliente;
+type CobrancaTom = 'cordial' | 'formal' | 'direto';
+type CobrancaFase = 'antes' | 'hoje' | 'depois';
 
-  if (kind === 'vence_hoje') {
-    return `Olá, ${primeiroNome}! Passando para lembrar que *${opts.descricao}* no valor de *${valorFmt}* vence hoje (${dataFmt}). Qualquer dúvida, é só responder por aqui. 🙂`;
-  }
-  return `Olá, ${primeiroNome}! *${opts.descricao}* no valor de *${valorFmt}* venceu em ${dataFmt} e ainda consta em aberto. Se já pagou, pode desconsiderar esta mensagem — qualquer dúvida, é só responder por aqui.`;
+// Mesmos templates/tons da API (apps/routes/cobranca.ts) — duplicado de propósito:
+// apps/worker builda isolado de apps/api (rootDir/Docker context próprios).
+const COBRANCA_TEMPLATES: Record<CobrancaTom, Record<CobrancaFase, (o: { primeiroNome: string; descricao: string; valorFmt: string; dataFmt: string }) => string>> = {
+  cordial: {
+    antes:  (o) => `Olá, ${o.primeiroNome}! Passando para avisar que *${o.descricao}* no valor de *${o.valorFmt}* vence em ${o.dataFmt}. Qualquer dúvida, é só responder por aqui. 🙂`,
+    hoje:   (o) => `Olá, ${o.primeiroNome}! Passando para lembrar que *${o.descricao}* no valor de *${o.valorFmt}* vence hoje (${o.dataFmt}). Qualquer dúvida, é só responder por aqui. 🙂`,
+    depois: (o) => `Olá, ${o.primeiroNome}! *${o.descricao}* no valor de *${o.valorFmt}* venceu em ${o.dataFmt} e ainda consta em aberto. Se já pagou, pode desconsiderar esta mensagem — qualquer dúvida, é só responder por aqui.`,
+  },
+  formal: {
+    antes:  (o) => `Prezado(a) ${o.primeiroNome}, informamos que *${o.descricao}*, no valor de *${o.valorFmt}*, vencerá em ${o.dataFmt}. Permanecemos à disposição para qualquer esclarecimento.`,
+    hoje:   (o) => `Prezado(a) ${o.primeiroNome}, informamos que *${o.descricao}*, no valor de *${o.valorFmt}*, vence hoje (${o.dataFmt}). Permanecemos à disposição para qualquer esclarecimento.`,
+    depois: (o) => `Prezado(a) ${o.primeiroNome}, *${o.descricao}*, no valor de *${o.valorFmt}*, venceu em ${o.dataFmt} e permanece em aberto até o momento. Caso o pagamento já tenha sido efetuado, favor desconsiderar. Permanecemos à disposição.`,
+  },
+  direto: {
+    antes:  (o) => `${o.primeiroNome}, *${o.descricao}* (*${o.valorFmt}*) vence em ${o.dataFmt}.`,
+    hoje:   (o) => `${o.primeiroNome}, *${o.descricao}* (*${o.valorFmt}*) vence hoje (${o.dataFmt}).`,
+    depois: (o) => `${o.primeiroNome}, *${o.descricao}* (*${o.valorFmt}*) venceu em ${o.dataFmt} e segue em aberto. Se já pagou, desconsidere.`,
+  },
+};
+
+function cobrancaPixSuffix(pixKey?: string | null): string {
+  return pixKey ? `\n\nPix para pagamento: *${pixKey}*` : '';
 }
 
-async function sendCobrancaReminders(kind: 'vence_hoje' | 'venceu', targetDate: Date) {
-  const start = cobrancaDateOnlyUTC(targetDate);
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+// Endurece o tom conforme os dias de atraso, quando o dono habilita escalarTom.
+function cobrancaTomEfetivo(base: string | null | undefined, escalar: boolean, diasAtraso: number): CobrancaTom {
+  const ordem: CobrancaTom[] = ['cordial', 'formal', 'direto'];
+  let idx = Math.max(0, ordem.indexOf((base as CobrancaTom) || 'cordial'));
+  if (escalar && diasAtraso > 0) {
+    if (diasAtraso >= 7) idx = 2;
+    else if (diasAtraso >= 3) idx = Math.max(idx, 1);
+  }
+  return ordem[idx];
+}
+
+function buildCobrancaReminderMessage(
+  fase: CobrancaFase,
+  opts: { nomeCliente: string; descricao: string; valor: number; vencimento: Date; tom?: string | null; escalarTom?: boolean; diasAtraso: number; pixKey?: string | null },
+): string {
+  const tom = cobrancaTomEfetivo(opts.tom, !!opts.escalarTom, opts.diasAtraso);
+  const primeiroNome = opts.nomeCliente.trim().split(' ')[0] || opts.nomeCliente;
+  const texto = COBRANCA_TEMPLATES[tom][fase]({
+    primeiroNome,
+    descricao: opts.descricao,
+    valorFmt: formatBRL(opts.valor),
+    dataFmt: formatDateBR(opts.vencimento),
+  });
+  return texto + cobrancaPixSuffix(opts.pixKey);
+}
+
+// 'vence_hoje'/'venceu' preservados por compat com envios já feitos em produção;
+// demais offsets (régua configurável) usam 'd+N'/'d-N'.
+function cobrancaEnvioTipo(diasAtraso: number): string {
+  if (diasAtraso === 0) return 'vence_hoje';
+  if (diasAtraso === 1) return 'venceu';
+  return diasAtraso > 0 ? `d+${diasAtraso}` : `d${diasAtraso}`;
+}
+
+async function sendCobrancaReminders() {
+  const today = cobrancaDateOnlyUTC(new Date());
+  const windowStart = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000); // até 60 dias de atraso
+  const windowEnd = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000); // até 30 dias antes do vencimento
 
   const cobrancas = await prisma.cobrancaCobranca.findMany({
     where: {
       status: 'pendente',
       deletedAt: null,
-      vencimento: { gte: start, lt: end },
-      envios: { none: { tipo: kind } },
+      vencimento: { gte: windowStart, lte: windowEnd },
     },
     include: {
       cliente: true,
+      envios: { select: { tipo: true } },
       user: {
         select: {
+          cobrancaConfig: true,
           numbers: {
             where: { status: 'connected', zapiInstanceId: { not: null } },
             orderBy: { connectedAt: 'desc' },
@@ -2115,31 +2356,68 @@ async function sendCobrancaReminders(kind: 'vence_hoje' | 'venceu', targetDate: 
     },
   }).catch(() => [] as any[]);
 
-  let sent = 0;
+  // Agrupa por instância WhatsApp: dentro da MESMA instância os envios ficam
+  // sequenciais (evita rajada no mesmo número, que aumenta risco de bloqueio);
+  // instâncias diferentes (usuários diferentes) enviam em paralelo, já que não
+  // competem por rate limit nem risco de ban entre si.
+  const porInstancia = new Map<string, any[]>();
   for (const c of cobrancas) {
     if (c.cliente.deletedAt) continue;
     const inst = c.user.numbers?.[0]?.zapiInstanceId;
     if (!inst) continue;
 
-    const message = buildCobrancaReminderMessage(kind, {
+    const diasAtraso = Math.round((today.getTime() - cobrancaDateOnlyUTC(c.vencimento).getTime()) / (24 * 60 * 60 * 1000));
+    const config = c.user.cobrancaConfig;
+    const diasAntes: number[] = config?.diasAntes ?? [1];
+    const diasDepois: number[] = config?.diasDepois ?? [1, 3, 7];
+
+    const devido =
+      diasAtraso === 0 ||
+      (diasAtraso < 0 && diasAntes.includes(-diasAtraso)) ||
+      (diasAtraso > 0 && diasDepois.includes(diasAtraso));
+    if (!devido) continue;
+
+    const tipo = cobrancaEnvioTipo(diasAtraso);
+    if (c.envios.some((e: any) => e.tipo === tipo)) continue; // já enviado (idempotência)
+
+    const fase: CobrancaFase = diasAtraso < 0 ? 'antes' : diasAtraso === 0 ? 'hoje' : 'depois';
+    const item = { c, fase, diasAtraso, tipo, config };
+    const grupo = porInstancia.get(inst);
+    if (grupo) grupo.push(item); else porInstancia.set(inst, [item]);
+  }
+
+  let sent = 0;
+  const enviarUm = async (inst: string, item: any) => {
+    const { c, fase, diasAtraso, tipo, config } = item;
+    const message = buildCobrancaReminderMessage(fase, {
       nomeCliente: c.cliente.nome,
       descricao: c.descricao,
       valor: c.valor,
       vencimento: c.vencimento,
+      tom: config?.tom,
+      escalarTom: config?.escalarTom,
+      diasAtraso,
+      pixKey: config?.pixKey,
     });
-
     try {
       await sendMessageViaEvolution(inst, c.cliente.telefone, message);
-      await prisma.cobrancaEnvio.create({ data: { cobrancaId: c.id, tipo: kind, sucesso: true } });
+      await prisma.cobrancaEnvio.create({ data: { cobrancaId: c.id, tipo, sucesso: true } });
       sent++;
     } catch (err: any) {
       await prisma.cobrancaEnvio.create({
-        data: { cobrancaId: c.id, tipo: kind, sucesso: false, erro: String(err?.message || err) },
+        data: { cobrancaId: c.id, tipo, sucesso: false, erro: String(err?.message || err) },
       }).catch(() => null);
-      logger.error(`[Cron][Cobrança] Falha ao enviar lembrete ${kind} (cobrancaId=${c.id}): ${err?.message}`);
+      logger.error(`[Cron][Cobrança] Falha ao enviar lembrete ${tipo} (cobrancaId=${c.id}): ${err?.message}`);
     }
-  }
-  if (sent > 0) logger.info(`[Cron][Cobrança] Lembrete "${kind}" enviado a ${sent} cobrança(s)`);
+  };
+
+  await Promise.all(
+    Array.from(porInstancia.entries()).map(async ([inst, itens]) => {
+      for (const item of itens) await enviarUm(inst, item);
+    }),
+  );
+
+  if (sent > 0) logger.info(`[Cron][Cobrança] ${sent} lembrete(s) enviado(s)`);
 }
 
 async function runCobrancaReminders() {
@@ -2148,9 +2426,7 @@ async function runCobrancaReminders() {
   if (now.getUTCHours() !== 12) return;
 
   try {
-    await sendCobrancaReminders('vence_hoje', now);
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    await sendCobrancaReminders('venceu', yesterday);
+    await sendCobrancaReminders();
   } catch (err) {
     logger.error(`[Cron][Cobrança] Erro no lembrete de cobrança: ${(err as Error).message}`);
   }
@@ -2158,6 +2434,80 @@ async function runCobrancaReminders() {
 
 runCobrancaReminders();
 setInterval(runCobrancaReminders, 60 * 60 * 1000);
+
+// ─────────────────────────────────────────────────────────────────
+//  CRON — Resumo diário de Cobrança via WhatsApp (módulo Cobrança)
+//  Roda de hora em hora; dispara por dono no horário configurado
+//  (CobrancaConfig.resumoHora, horário de Brasília). Texto simples,
+//  enviado ao próprio número conectado (mesmo canal do self-note).
+// ─────────────────────────────────────────────────────────────────
+async function sendCobrancaResumoDiario() {
+  const nowUtcHour = new Date().getUTCHours();
+  const today = cobrancaDateOnlyUTC(new Date());
+  const ontem = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+
+  const configs = await prisma.cobrancaConfig.findMany({ where: { resumoDiario: true } }).catch(() => [] as any[]);
+  const devidos = configs.filter((cfg: any) => nowUtcHour === (cfg.resumoHora + 3) % 24);
+  if (devidos.length === 0) return;
+
+  for (const cfg of devidos) {
+    const numero = await prisma.whatsappNumber.findFirst({
+      where: { userId: cfg.userId, status: 'connected', zapiInstanceId: { not: null } },
+      orderBy: { connectedAt: 'desc' },
+    }).catch(() => null);
+    if (!numero?.zapiInstanceId || !numero.phoneNumber || numero.phoneNumber === 'pending') continue;
+
+    const [vencemHoje, vencidas, recebidasOntem] = await Promise.all([
+      prisma.cobrancaCobranca.findMany({
+        where: { userId: cfg.userId, status: 'pendente', deletedAt: null, vencimento: { gte: today, lt: new Date(today.getTime() + 86400000) } },
+        include: { cliente: true },
+      }),
+      prisma.cobrancaCobranca.findMany({
+        where: { userId: cfg.userId, status: 'pendente', deletedAt: null, vencimento: { lt: today } },
+        include: { cliente: true },
+      }),
+      prisma.cobrancaCobranca.findMany({
+        where: { userId: cfg.userId, status: 'paga', deletedAt: null, pagoEm: { gte: ontem } },
+        include: { cliente: true },
+      }),
+    ]).catch(() => [[], [], []] as any[][]);
+
+    if (vencemHoje.length === 0 && vencidas.length === 0 && recebidasOntem.length === 0) continue;
+
+    const linhas: string[] = ['📊 *Resumo Cobrança — hoje*', ''];
+    if (vencemHoje.length) {
+      linhas.push(`🟡 Vencem hoje (${vencemHoje.length}):`);
+      for (const c of vencemHoje) linhas.push(`  • ${c.cliente.nome} — ${formatBRL(c.valor)}`);
+      linhas.push('');
+    }
+    if (vencidas.length) {
+      linhas.push(`🔴 Em atraso (${vencidas.length}):`);
+      for (const c of vencidas) linhas.push(`  • ${c.cliente.nome} — ${formatBRL(c.valor)} (venceu ${formatDateBR(c.vencimento)})`);
+      linhas.push('');
+    }
+    if (recebidasOntem.length) {
+      const total = recebidasOntem.reduce((s: number, c: any) => s + c.valor, 0);
+      linhas.push(`🟢 Recebidas nas últimas 24h (${recebidasOntem.length}): ${formatBRL(total)}`);
+    }
+
+    try {
+      await sendMessageViaEvolution(numero.zapiInstanceId, numero.phoneNumber, linhas.join('\n').trim());
+    } catch (err: any) {
+      logger.error(`[Cron][Cobrança] Falha ao enviar resumo diário (userId=${cfg.userId}): ${err?.message}`);
+    }
+  }
+}
+
+async function runCobrancaResumoDiario() {
+  try {
+    await sendCobrancaResumoDiario();
+  } catch (err) {
+    logger.error(`[Cron][Cobrança] Erro no resumo diário: ${(err as Error).message}`);
+  }
+}
+
+runCobrancaResumoDiario();
+setInterval(runCobrancaResumoDiario, 60 * 60 * 1000);
 
 // ─────────────────────────────────────────────────────────────────
 //  CRON — Service Health Checker (#6 + #4)

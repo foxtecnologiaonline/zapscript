@@ -585,6 +585,34 @@ async function runAutoMigrations() {
           FOREIGN KEY ("cobrancaId") REFERENCES "CobrancaCobranca"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
+    // ── Cobrança: 10 features (2026-07-22) — recorrência/voz + config do dono ──
+    `ALTER TABLE "CobrancaCobranca" ADD COLUMN IF NOT EXISTS "recorrente" BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE "CobrancaCobranca" ADD COLUMN IF NOT EXISTS "recorrenciaMeses" INTEGER`,
+    `ALTER TABLE "CobrancaCobranca" ADD COLUMN IF NOT EXISTS "origemVoz" BOOLEAN NOT NULL DEFAULT false`,
+    `CREATE TABLE IF NOT EXISTS "CobrancaConfig" (
+      "id"             TEXT NOT NULL,
+      "userId"         TEXT NOT NULL,
+      "tom"            TEXT NOT NULL DEFAULT 'cordial',
+      "escalarTom"     BOOLEAN NOT NULL DEFAULT true,
+      "diasAntes"      INTEGER[] NOT NULL DEFAULT ARRAY[1]::INTEGER[],
+      "diasDepois"     INTEGER[] NOT NULL DEFAULT ARRAY[1,3,7]::INTEGER[],
+      "pixKey"         TEXT,
+      "pixKeyType"     TEXT,
+      "resumoDiario"   BOOLEAN NOT NULL DEFAULT false,
+      "resumoHora"     INTEGER NOT NULL DEFAULT 8,
+      "onboardingDone" BOOLEAN NOT NULL DEFAULT false,
+      "createdAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"      TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "CobrancaConfig_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "CobrancaConfig_userId_key" ON "CobrancaConfig"("userId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CobrancaConfig_userId_fkey') THEN
+        ALTER TABLE "CobrancaConfig"
+          ADD CONSTRAINT "CobrancaConfig_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
     // Ativa o Product no catálogo mesmo se o seed.ts nunca tiver rodado em produção
     // (render.yaml não chama db:seed no startCommand — ver packages/modules/catalog.ts)
     `DO $$ BEGIN
