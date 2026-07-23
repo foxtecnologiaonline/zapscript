@@ -9,8 +9,10 @@
  * 5. Alerta de 100% dos minutos (saldo esgotado)
  */
 
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { prisma } from '../lib/prisma';
-import { sendText } from './evolution';
+import { sendText, sendPtt } from './evolution';
 
 async function sendToOwnNumber(instanceName: string, phone: string, message: string): Promise<void> {
   const clean = phone.replace(/\D/g, '');
@@ -27,19 +29,11 @@ export async function notifyWelcome(numberId: string): Promise<void> {
     });
     if (!n?.zapiInstanceId || !n?.phoneNumber) return;
 
-    const msg = [
-      `👋 Olá${n.user?.name ? `, *${n.user.name}*` : ''}!`,
-      '',
-      '✅ *ZapScript* ativado e conectado!',
-      '',
-      'A configuração está pronta, e seus áudios do WhatsApp agora são convertidos e resumidos automaticamente.',
-      '',
-      '🔒 Privado · Criptografado · Sem armazenamento de áudio.',
-      '',
-      '📊 Painel: zapscript.me/dashboard',
-    ].join('\n');
-
-    await sendToOwnNumber(n.zapiInstanceId, n.phoneNumber, msg);
+    // Enviar áudio de boas-vindas
+    // process.cwd() = raiz do serviço (apps/api/), private/ está na raiz do repo
+    const audioPath = join(process.cwd(), 'private/welcome.mp3');
+    const audioBase64 = readFileSync(audioPath).toString('base64');
+    await sendPtt(n.zapiInstanceId, n.phoneNumber, audioBase64);
   } catch { /* não crítico */ }
 }
 

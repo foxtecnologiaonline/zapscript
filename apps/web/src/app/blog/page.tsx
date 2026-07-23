@@ -1,19 +1,56 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { POSTS } from './posts';
+import NewsletterSignup from '@/components/NewsletterSignup';
 
 export const metadata: Metadata = {
   title:       'Blog — Conversão de Áudio WhatsApp, Dicas e Produtividade',
-  description: 'Guias, comparativos e dicas sobre conversão de áudio do WhatsApp com IA. Aprenda a economizar horas por dia com automação inteligente.',
-  keywords:    'blog conversão whatsapp, dicas produtividade whatsapp, ia conversão audio, como converter audio whatsapp',
+  description: 'Guias práticos, comparativos e dicas sobre conversão de áudio do WhatsApp com IA. Economize horas por dia com automação inteligente.',
+  keywords:    'blog conversão whatsapp, dicas produtividade whatsapp, ia conversão audio, como converter audio whatsapp, transcrição whatsapp blog, guia conversão áudio, comparativo ferramentas whatsapp',
   alternates:  { canonical: 'https://www.zapscript.me/blog' },
   openGraph: {
     title:       'Blog ZapScript — Conversão de Áudio WhatsApp com IA',
-    description: 'Guias, comparativos e dicas sobre conversão de áudio do WhatsApp com IA.',
+    description: 'Guias práticos e comparativos sobre conversão de áudio do WhatsApp com IA.',
     url:         'https://www.zapscript.me/blog',
     type:        'website',
+    siteName:    'ZapScript',
+    locale:      'pt_BR',
   },
 };
+
+/* ── JSON-LD Blog ─────────────────────────────────────────────────── */
+function BlogJsonLd() {
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'Blog',
+    name: 'Blog ZapScript',
+    description: 'Guias práticos, comparativos e dicas sobre conversão de áudio do WhatsApp com IA.',
+    url: 'https://www.zapscript.me/blog',
+    inLanguage: 'pt-BR',
+    publisher: {
+      '@type': 'Organization',
+      name: 'ZapScript',
+      url: 'https://www.zapscript.me',
+    },
+    blogPost: POSTS.map(post => ({
+      '@type': 'BlogPosting',
+      headline: post.title,
+      description: post.description,
+      datePublished: post.publishedAt,
+      dateModified: post.updatedAt ?? post.publishedAt,
+      url: `https://www.zapscript.me/blog/${post.slug}`,
+      author: post.author
+        ? { '@type': 'Person', name: post.author.name }
+        : { '@type': 'Organization', name: 'ZapScript' },
+    })),
+  };
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+    />
+  );
+}
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Guias':        'bg-blue-500/15 text-blue-300 border border-blue-500/20',
@@ -35,6 +72,7 @@ export default function BlogIndex() {
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text">
+      <BlogJsonLd />
       {/* ── Header ────────────────────────────────────────────────── */}
       <header className="border-b border-white/5 sticky top-0 z-50 backdrop-blur-md bg-brand-bg/80">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -121,6 +159,11 @@ export default function BlogIndex() {
               </article>
             </Link>
           ))}
+        </div>
+
+        {/* ── Newsletter ──────────────────────────────────────────── */}
+        <div className="mt-16 mb-8">
+          <NewsletterSignup source="blog-index" />
         </div>
 
         {/* ── CTA ───────────────────────────────────────────────────── */}

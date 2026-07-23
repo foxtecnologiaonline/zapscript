@@ -79,7 +79,7 @@ const FAQS = [
   },
   {
     q: 'Quanto custa?',
-    a: 'R$59,90/mês pela plataforma ZapScript Campanhas. Tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) não estão incluídas nesse valor.',
+    a: 'R$67/mês pela plataforma ZapScript Campanhas. Tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) não estão incluídas nesse valor.',
   },
 ];
 
@@ -171,7 +171,7 @@ export default function CampanhasLandingClient() {
                     <path d="M5 12h14M12 5l7 7-7 7" />
                   </svg>
                 </Link>
-                <span className="block text-center text-xs mt-2 text-brand-muted">R$59,90/mês · sem taxa de adesão</span>
+                <span className="block text-center text-xs mt-2 text-brand-muted">R$67/mês · sem taxa de adesão</span>
               </div>
 
               <div className="flex items-center gap-3">
@@ -309,7 +309,7 @@ export default function CampanhasLandingClient() {
             style={{ background: 'rgb(var(--color-surface))', border: '2px solid rgb(var(--color-primary))', boxShadow: 'var(--shadow-glow)' }}>
             <p className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>ZapScript Campanhas</p>
             <p className="font-display font-bold mt-2" style={{ fontSize: 'clamp(32px, 9vw, 44px)' }}>
-              R$59,90<span className="text-base font-medium" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês</span>
+              R$67<span className="text-base font-medium" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês</span>
             </p>
             <ul className="text-sm text-left mt-5 space-y-2.5">
               {[
@@ -407,7 +407,7 @@ export default function CampanhasLandingClient() {
               className="btn-primary inline-flex items-center justify-center py-4 px-8 text-base gap-2">
               Criar conta e conhecer
             </Link>
-            <span className="block text-sm mt-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>R$59,90/mês</span>
+            <span className="block text-sm mt-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>R$67/mês</span>
           </div>
         </section>
 

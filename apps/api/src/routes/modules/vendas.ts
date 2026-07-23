@@ -64,7 +64,7 @@ export default async function vendasRoutes(app: FastifyInstance) {
     if (!fileBuffer || fileBuffer.length === 0) {
       return reply.code(400).send({ error: 'Áudio não enviado (campo "audio" obrigatório)' });
     }
-    if (!mimetype || (!mimetype.startsWith('audio/') && !mimetype.startsWith('video/'))) {
+    if (mimetype && !mimetype.startsWith('audio/') && !mimetype.startsWith('video/')) {
       return reply.code(400).send({ error: 'Arquivo precisa ser um áudio' });
     }
 

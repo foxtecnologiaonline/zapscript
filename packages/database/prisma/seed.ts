@@ -35,7 +35,7 @@ async function main() {
       minutesPerMonth: 200,
       audiosPerMonth:  PRO_AUDIO_CAP,
       maxNumbers:      2,
-      priceBrl:        39.90,
+      priceBrl:        37,
       features:        JSON.stringify([
         'Áudios ilimitados',
         '2 números WhatsApp',
@@ -56,7 +56,7 @@ async function main() {
       minutesPerMonth: 300,
       audiosPerMonth:  PRO_AUDIO_CAP,
       maxNumbers:      3,
-      priceBrl:        49.90,
+      priceBrl:        67,
       features:        JSON.stringify([
         '300 min/mês',
         '3 números WhatsApp',
@@ -89,7 +89,7 @@ async function main() {
     console.log(`  ✓ ${plan.label} — R$${plan.priceBrl.toFixed(2)}/mês, ${plan.audiosPerMonth} áudios`);
   }
 
-  console.log(`✅ Planos: Grátis (R$0 / ${FREE_AUDIO_QUOTA} áudios), Pro (R$39,90 / ilimitado*${PRO_AUDIO_CAP}), Executive (R$49,90 / ilimitado*${PRO_AUDIO_CAP})`);
+  console.log(`✅ Planos: Grátis (R$0 / ${FREE_AUDIO_QUOTA} áudios), Pro (R$37 / ilimitado*${PRO_AUDIO_CAP}), Executive (R$67 / ilimitado*${PRO_AUDIO_CAP})`);
 
   // ── Catálogo de módulos (Product) — espelha packages/modules/catalog.ts ──
   console.log('🧩 Sincronizando catálogo de módulos...');

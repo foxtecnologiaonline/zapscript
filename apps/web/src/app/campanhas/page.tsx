@@ -4,7 +4,7 @@ import CampanhasLandingClient from './CampanhasLandingClient';
 export const metadata: Metadata = {
   title: 'ZapScript Campanhas — Disparo em Massa Oficial no WhatsApp (API Meta)',
   description:
-    'Perdeu o disparo em massa depois que a Meta reforçou o combate a bots não autorizados? O ZapScript Campanhas dispara pela API oficial da Meta — templates aprovados, opt-out automático, sem risco de banimento. R$59,90/mês.',
+    'Perdeu o disparo em massa depois que a Meta reforçou o combate a bots não autorizados? O ZapScript Campanhas dispara pela API oficial da Meta — templates aprovados, opt-out automático, sem risco de banimento. R$67/mês.',
   keywords:
     'disparo em massa whatsapp, api oficial whatsapp business, whatsapp business platform, campanha whatsapp compliant, envio em massa whatsapp, bot whatsapp banido, alternativa bot whatsapp',
   alternates: { canonical: 'https://www.zapscript.me/campanhas' },
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'ZapScript Campanhas — Disparo em Massa Oficial no WhatsApp',
-    description: 'Dispare em massa pela API oficial da Meta, sem risco de banimento. R$59,90/mês.',
+    description: 'Dispare em massa pela API oficial da Meta, sem risco de banimento. R$67/mês.',
     images: ['/opengraph-image'],
   },
 };
@@ -45,7 +45,7 @@ const softwareSchema = {
   ],
   offers: {
     '@type': 'Offer',
-    price: '59.90',
+    price: '67',
     priceCurrency: 'BRL',
     name: 'ZapScript Campanhas',
   },
@@ -97,7 +97,7 @@ const faqSchema = {
       name: 'Quanto custa o ZapScript Campanhas?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'R$59,90/mês pela plataforma ZapScript Campanhas. Tarifas de mensagem cobradas diretamente pela Meta, conforme categoria do template e política vigente, não estão incluídas nesse valor.',
+        text: 'R$67/mês pela plataforma ZapScript Campanhas. Tarifas de mensagem cobradas diretamente pela Meta, conforme categoria do template e política vigente, não estão incluídas nesse valor.',
       },
     },
   ],

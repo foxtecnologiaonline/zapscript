@@ -1,7 +1,9 @@
 import { FastifyInstance } from 'fastify';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { genAffiliateCode, COMMISSION } from '../lib/affiliate';
 import { sendEmail } from '../lib/mailer';
+import { maskEmail } from '../lib/mask';
 
 /* ─────────────────────────────────────────────────────────
    Programa de Afiliados — rotas self-service (JWT)
@@ -11,42 +13,41 @@ import { sendEmail } from '../lib/mailer';
 const VALID_PIX_TYPES = ['cpf', 'cnpj', 'email', 'phone', 'random'];
 const HOLD_MS = COMMISSION.PAYOUT_HOLD_DAYS * 24 * 60 * 60 * 1000;
 
-// Mascara email para LGPD: "fr***@gmail.com" (mesmo padrão de routes/admin.ts)
-function maskEmail(email: string): string {
-  const [local, domain] = email.split('@');
-  if (!domain) return '***';
-  const masked = local.length > 2 ? local.slice(0, 2) + '***' : '***';
-  return `${masked}@${domain}`;
+function hashIp(ip: string): string {
+  return crypto.createHash('sha256').update(`zs-ip:${ip}`).digest('hex');
 }
 
 /** Agrega estatísticas do afiliado (indicações + comissões, com corte D+30). */
 async function buildAffiliateStats(affiliateId: string) {
-  const [referrals, converted, commissions] = await Promise.all([
+  const cutoff = new Date(Date.now() - HOLD_MS);
+  const [referrals, converted, agg] = await Promise.all([
     prisma.affiliateReferral.count({ where: { affiliateId } }),
     prisma.affiliateReferral.count({ where: { affiliateId, status: 'converted' } }),
-    prisma.affiliateCommission.findMany({
-      where:  { affiliateId },
-      select: { commissionAmount: true, status: true, createdAt: true },
-    }),
+    // Agregação no banco (SUM condicional) em vez de trazer todas as linhas e reduzir em JS
+    prisma.$queryRawUnsafe<{ total: number; available: number; locked: number; paid: number }[]>(
+      `SELECT
+         COUNT(*)::int AS total,
+         COALESCE(SUM(CASE WHEN "status" = 'pending' AND "createdAt" <= $2 THEN "commissionAmount" END), 0) AS available,
+         COALESCE(SUM(CASE WHEN "status" = 'pending' AND "createdAt" >  $2 THEN "commissionAmount" END), 0) AS locked,
+         COALESCE(SUM(CASE WHEN "status" = 'paid' THEN "commissionAmount" END), 0) AS paid
+       FROM "AffiliateCommission"
+       WHERE "affiliateId" = $1`,
+      affiliateId, cutoff,
+    ),
   ]);
 
-  const now = Date.now();
-  const isReleased = (createdAt: Date) => now - createdAt.getTime() >= HOLD_MS;
-
-  const pending = commissions.filter(c => c.status === 'pending');
-  const availableAmount = pending.filter(c => isReleased(c.createdAt)).reduce((s, c) => s + c.commissionAmount, 0);
-  const lockedAmount    = pending.filter(c => !isReleased(c.createdAt)).reduce((s, c) => s + c.commissionAmount, 0);
-  const paidAmount = commissions
-    .filter(c => c.status === 'paid')
-    .reduce((s, c) => s + c.commissionAmount, 0);
+  const row = agg[0] || { total: 0, available: 0, locked: 0, paid: 0 };
+  const availableAmount = Number(row.available) || 0; // liberado para saque (D+30 já vencido)
+  const lockedAmount    = Number(row.locked) || 0;     // em validação (D+30 ainda não vencido)
+  const paidAmount      = Number(row.paid) || 0;
 
   return {
     referrals,
     converted,
-    totalCommissions: commissions.length,
+    totalCommissions: Number(row.total) || 0,
     pendingAmount:    Math.round((availableAmount + lockedAmount) * 100) / 100, // total ainda não pago (liberado + em validação D+30)
-    availableAmount:  Math.round(availableAmount * 100) / 100, // liberado para saque (D+30 já vencido)
-    lockedAmount:     Math.round(lockedAmount * 100) / 100,    // em validação (D+30 ainda não vencido)
+    availableAmount:  Math.round(availableAmount * 100) / 100,
+    lockedAmount:     Math.round(lockedAmount * 100) / 100,
     paidAmount:       Math.round(paidAmount * 100) / 100,
   };
 }
@@ -78,10 +79,24 @@ export default async function affiliateRoutes(app: FastifyInstance) {
     });
     if (!affiliate) return { affiliate: null };
 
-    const [stats, conversionsThisMonth] = await Promise.all([
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [stats, conversionsThisMonth, clicksTotal, clicksToday, clickHistoryRaw] = await Promise.all([
       buildAffiliateStats(affiliate.id),
       countConversionsThisMonth(affiliate.id),
+      prisma.affiliateClick.count({ where: { affiliateId: affiliate.id } }).catch(() => 0),
+      prisma.affiliateClick.count({
+        where: { affiliateId: affiliate.id, createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+      }).catch(() => 0),
+      // Agregação de cliques nos últimos 30 dias (tolerante a migration drift)
+      prisma.$queryRawUnsafe<any[]>(
+        `SELECT DATE("createdAt") as date, COUNT(*)::int as clicks
+         FROM "AffiliateClick"
+         WHERE "affiliateId" = $1 AND "createdAt" >= $2
+         GROUP BY 1 ORDER BY 1`,
+        affiliate.id, thirtyDaysAgo,
+      ).catch(() => []),
     ]);
+    const clickHistory = (clickHistoryRaw || []).map((r: any) => ({ date: r.date, clicks: Number(r.clicks) }));
 
     return {
       affiliate: {
@@ -108,6 +123,11 @@ export default async function affiliateRoutes(app: FastifyInstance) {
         conversionsThisMonth,
         bonusThreshold: COMMISSION.BONUS_THRESHOLD,
         bonusActive:    conversionsThisMonth >= COMMISSION.BONUS_THRESHOLD,
+      },
+      clicks: {
+        total: clicksTotal,
+        today: clicksToday,
+        last30Days: clickHistory,
       },
     };
   });
@@ -261,6 +281,95 @@ export default async function affiliateRoutes(app: FastifyInstance) {
       return { ok: true, message: 'Solicitação de saque registrada! O Pix é processado manualmente pela equipe em até alguns dias úteis.' };
     }
   );
+
+  // ── GET /affiliates/leaderboard — top 10 do mês (público) ───────
+  app.get('/leaderboard', async () => {
+    try {
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const top = await prisma.affiliateCommission.groupBy({
+        by: ['affiliateId'],
+        where: { createdAt: { gte: monthStart }, status: 'pending' },
+        _sum: { commissionAmount: true },
+        orderBy: { _sum: { commissionAmount: 'desc' } },
+        take: 10,
+      });
+      const affiliateIds = top.map(t => t.affiliateId);
+      const affiliates = affiliateIds.length
+        ? await prisma.affiliate.findMany({ where: { id: { in: affiliateIds }, status: 'approved' }, select: { id: true, code: true } })
+        : [];
+      const byId = new Map(affiliates.map(a => [a.id, a]));
+      // Anonimizar: "AFI****" + últimos 2 chars do code
+      function maskCode(code: string): string {
+        if (code.length <= 2) return 'AFI***';
+        return `AFI***${code.slice(-2)}`;
+      }
+      return top.map((t, i) => ({
+        position: i + 1,
+        code: byId.get(t.affiliateId) ? maskCode(byId.get(t.affiliateId)!.code) : 'AFI***',
+        totalCommissions: Math.round((t._sum.commissionAmount || 0) * 100) / 100,
+      }));
+    } catch { return []; }
+  });
+
+  // ── GET /affiliates/me/referrals — lista de indicados com status ──
+  app.get('/me/referrals', auth, async (req: any) => {
+    const userId = req.user.sub;
+    const affiliate = await prisma.affiliate.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!affiliate) return { referrals: [] };
+
+    const refs = await prisma.affiliateReferral.findMany({
+      where: { affiliateId: affiliate.id },
+      include: {
+        referredUser: { select: { name: true, email: true, createdAt: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    return {
+      referrals: refs.map(r => ({
+        id: r.id,
+        name: r.referredUser?.name?.split(' ')[0] || 'Usuário',
+        email: maskEmail(r.referredUser?.email || ''),
+        status: r.status,         // 'pending' | 'converted' | 'canceled'
+        bonusTier: r.bonusTier,
+        convertedAt: r.convertedAt,
+        createdAt: r.createdAt,
+      })),
+    };
+  });
+
+  // ── POST /affiliates/click — registra clique no link de afiliado (público) ──
+  app.post('/click', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req: any, reply) => {
+    const { code } = req.body || {};
+    if (!code || typeof code !== 'string') return reply.code(400).send({ error: 'Código inválido' });
+
+    try {
+      const affiliate = await prisma.affiliate.findUnique({ where: { code }, select: { id: true, status: true } });
+      if (!affiliate || affiliate.status !== 'approved') return reply.code(404).send({ error: 'Afiliado não encontrado' });
+
+      const ip = typeof req.ip === 'string' ? req.ip : (req.socket?.remoteAddress || '');
+      await prisma.affiliateClick.create({
+        data: {
+          affiliateId: affiliate.id,
+          code,
+          ip: ip ? hashIp(ip) : null,
+          userAgent: (req.headers['user-agent'] as string)?.slice(0, 250) || null,
+          referrer: (req.headers['referer'] as string)?.slice(0, 500) || null,
+          country: (req.headers['x-vercel-ip-country'] as string) || null,
+        },
+      });
+      return { ok: true };
+    } catch (err: any) {
+      if (err?.code === 'P2002' || err?.code === 'P2003') return { ok: true }; // duplicado ou FK inválida — silencioso
+      app.log.warn({ err: err?.message }, '[Affiliates] Falha ao registrar clique');
+      return { ok: true }; // nunca quebrar o fluxo do usuário
+    }
+  });
 
   // ── GET /affiliates/commissions — extrato de comissões do afiliado ───────
   app.get('/commissions', auth, async (req: any, reply) => {

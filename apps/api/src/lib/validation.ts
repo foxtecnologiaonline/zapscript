@@ -159,15 +159,6 @@ export const adminUpdateTicketSchema = z.object({
   response: z.string().max(5000).optional(),
 });
 
-// ── Campanhas Schemas ─────────────────────────────────────
-export const createCampanhaSchema = z.object({
-  name:               z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
-  whatsappNumberId:   z.string().cuid('Número inválido'),
-  templateName:       z.string().min(1, 'Selecione um template').max(512),
-  templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
-  templateComponents: z.array(z.record(z.any())).optional(),
-});
-
 // ── CRM Schemas ───────────────────────────────────────────
 export const createCrmStageSchema = z.object({
   name:  z.string().min(1, 'Nome é obrigatório').max(50),
@@ -230,6 +221,28 @@ export const replySupportTicketSchema = z.object({
   message: z.string().min(10, 'Resposta deve ter pelo menos 10 caracteres').max(5000),
 });
 
+// ── Atende Schemas ────────────────────────────────────────
+export const atendeConfigSchema = z.object({
+  enabled:         z.boolean().optional(),
+  businessContext: z.string().max(4000, 'Máximo de 4000 caracteres').optional(),
+  tone:            z.enum(['profissional-amigavel', 'formal', 'descontraido'], {
+    errorMap: () => ({ message: 'Tom inválido' }),
+  }).optional(),
+  fallbackMessage: z.string().min(1, 'Mensagem de fallback não pode ser vazia').max(500).optional(),
+  escalationPhone: z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos').nullable().optional(),
+});
+
+export const atendeKbCreateSchema = z.object({
+  question: z.string().min(3, 'Pergunta muito curta').max(300),
+  answer:   z.string().min(1, 'Resposta é obrigatória').max(2000),
+});
+
+export const atendeKbUpdateSchema = z.object({
+  question: z.string().min(3, 'Pergunta muito curta').max(300).optional(),
+  answer:   z.string().min(1, 'Resposta não pode ser vazia').max(2000).optional(),
+  active:   z.boolean().optional(),
+});
+
 // ── Cobrança Schemas ─────────────────────────────────────
 export const cobrancaClienteSchema = z.object({
   nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
@@ -271,26 +284,20 @@ export const cobrancaConfigSchema = z.object({
   onboardingDone: z.boolean().optional(),
 });
 
-// ── Atende Schemas ────────────────────────────────────────
-export const atendeConfigSchema = z.object({
-  enabled:         z.boolean().optional(),
-  businessContext: z.string().max(4000, 'Máximo de 4000 caracteres').optional(),
-  tone:            z.enum(['profissional-amigavel', 'formal', 'descontraido'], {
-    errorMap: () => ({ message: 'Tom inválido' }),
-  }).optional(),
-  fallbackMessage: z.string().min(1, 'Mensagem de fallback não pode ser vazia').max(500).optional(),
-  escalationPhone: z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos').nullable().optional(),
+// ── Legendas Schemas ──────────────────────────────────────
+export const legendaUploadUrlSchema = z.object({
+  filename:    z.string().min(1).max(200),
+  contentType: z.string().min(3).max(100),
+  sizeBytes:   z.number().positive().max(500 * 1024 * 1024, 'Arquivo acima do limite de 500MB'),
 });
 
-export const atendeKbCreateSchema = z.object({
-  question: z.string().min(3, 'Pergunta muito curta').max(300),
-  answer:   z.string().min(1, 'Resposta é obrigatória').max(2000),
-});
-
-export const atendeKbUpdateSchema = z.object({
-  question: z.string().min(3, 'Pergunta muito curta').max(300).optional(),
-  answer:   z.string().min(1, 'Resposta não pode ser vazia').max(2000).optional(),
-  active:   z.boolean().optional(),
+// ── Campanhas Schemas ─────────────────────────────────────
+export const createCampanhaSchema = z.object({
+  name:               z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+  whatsappNumberId:   z.string().cuid('Número inválido'),
+  templateName:       z.string().min(1, 'Selecione um template').max(512),
+  templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
+  templateComponents: z.array(z.record(z.any())).optional(),
 });
 
 // ── Types Export ──────────────────────────────────────────

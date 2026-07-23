@@ -16,6 +16,9 @@ import type { NextRequest } from 'next/server';
 export function middleware(req: NextRequest) {
   const res = NextResponse.next();
 
+  // Expor o pathname para componentes server-side (BreadcrumbList JSON-LD)
+  res.headers.set('x-pathname', req.nextUrl.pathname);
+
   // HSTS — força HTTPS por 1 ano (só válido em produção com HTTPS real)
   res.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
 

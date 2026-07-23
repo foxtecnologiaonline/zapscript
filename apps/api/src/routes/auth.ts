@@ -371,6 +371,188 @@ export default async function authRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── POST /auth/magic-register ──────────────────────────────────────────────
+  // Fast-path: cadastro expresso pós-demo. O usuário já transcreveu um áudio
+  // grátis, só precisa confirmar o e-mail para criar conta. Sem nome, senha ou
+  // checkboxes — magic link vai direto para o dashboard.
+  //
+  // Se a conta já existir: reenvia o magic link normalmente (sem vazar info).
+  app.post<{ Body: { email: string; name?: string; inviteCode?: string; referralCode?: string } }>(
+    '/magic-register',
+    { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } },
+    async (req, reply) => {
+      const { email, name, inviteCode, referralCode } = req.body;
+      if (!email) return reply.code(400).send({ error: 'E-mail obrigatório.' });
+
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Se já existe, reenvia magic link (sem vazar a existência da conta)
+      const existing = await prisma.user.findUnique({
+        where:  { email: normalizedEmail },
+        select: { id: true },
+      });
+      if (existing) {
+        try {
+          const { data: linkData } = await supabase.auth.admin.generateLink({
+            type:    'magiclink',
+            email:   normalizedEmail,
+            options: { redirectTo: `${APP_URL}/dashboard` },
+          });
+          if (linkData?.properties?.action_link) {
+            await sendEmail(
+              normalizedEmail,
+              'Seu link de acesso ao ZapScript',
+              emailWrapper('⚡', 'Acesse o ZapScript', `
+                <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 6px">
+                  Você já tem uma conta no ZapScript. Clique abaixo para acessar:
+                </p>
+                <div style="text-align:center;margin:24px 0">
+                  <a href="${linkData.properties.action_link}"
+                     style="display:inline-block;background:#10b981;color:#fff;padding:16px 48px;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px">
+                    Entrar no ZapScript →
+                  </a>
+                </div>
+              `, 'Se você não solicitou este link, pode ignorar com segurança.'),
+            ).catch(() => {});
+          }
+        } catch (err: any) {
+          logger.warn(`[Auth] magic-register existente falhou: ${err.message}`);
+        }
+        // Sempre responde igual — não vaza se a conta existe
+        return { ok: true, message: 'Se este e-mail já estiver cadastrado, você receberá um link de acesso.' };
+      }
+
+      // ── Nova conta via magic link ──────────────────────────────────────────
+      let testerInvite: any = null;
+      if (inviteCode) {
+        testerInvite = await prisma.testerInvite.findFirst({
+          where: { code: inviteCode, usedAt: null },
+        });
+      }
+
+      const referrer = referralCode
+        ? await prisma.user.findUnique({ where: { refCode: referralCode }, select: { id: true } })
+        : null;
+
+      // Criar conta no Supabase com senha aleatória (usuário nunca digita)
+      // Node 20: crypto.randomUUID() é nativo.
+      const { randomUUID } = await import('node:crypto');
+      const randomPassword = randomUUID() + randomUUID();
+      const { data, error } = await supabase.auth.admin.createUser({
+        email:        normalizedEmail,
+        password:     randomPassword,
+        email_confirm: true,       // magic link serve como confirmação
+        user_metadata: { name: name || email.split('@')[0] },
+      });
+      if (error || !data?.user) {
+        logger.error(`[Auth] magic-register Supabase falhou: ${error?.message}`);
+        return reply.code(500).send({ error: 'Erro ao criar conta. Tente novamente.' });
+      }
+
+      const now = new Date();
+      const userId = data.user.id;
+
+      try {
+        await prisma.$transaction(async (tx: any) => {
+          await tx.user.create({
+            data: {
+              id:             userId,
+              email:          normalizedEmail,
+              name:           name || email.split('@')[0],
+              refCode:        userId.slice(0, 8),
+              emailVerified:  true,     // magic link já confirma
+              termsAcceptedAt:         now,
+              contractAcceptedAt:      now,
+              privacyPolicyAcceptedAt: now,
+              consentDocVersion:       'tos_v2.0,contrato_v2.0,pp_v2.0',
+              ...(referrer ? { referredBy: referrer.id } : {}),
+            },
+          });
+
+          const plan = testerInvite
+            ? await tx.plan.findFirst({ where: { name: 'pro-tester' } })
+            : await tx.plan.findFirst({ where: { name: 'free' } });
+
+          if (!plan) throw new Error('Plano não encontrado');
+
+          // Freemium: cadastro expresso entra no Free com trial de 7 dias de Pro
+          const trialEndsAt = testerInvite
+            ? null
+            : new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+
+          await tx.subscription.create({
+            data: {
+              userId:      userId,
+              planId:      plan.id,
+              status:      testerInvite ? 'active' : 'trialing',
+              trialEndsAt,
+              currentPeriodEnd: undefined,
+            },
+          });
+
+          // MinuteBalance com cota Free (15 áudios/mês) e benefício de indicação
+          const cycleResetAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+          await tx.minuteBalance.create({
+            data: {
+              userId:           userId,
+              audiosUsed:       referrer ? -5 : 0, // 5 extras para indicado
+              availableMinutes: plan.minutesPerMonth,
+              resetAt:          cycleResetAt,
+            } as any,
+          });
+
+          if (testerInvite) {
+            await tx.testerInvite.update({
+              where: { id: testerInvite.id },
+              data:  { usedAt: now, usedBy: userId },
+            });
+          }
+        });
+      } catch (txErr: any) {
+        await supabase.auth.admin.deleteUser(userId).catch(() => {});
+        return reply.code(500).send({ error: 'Erro ao criar conta. Tente novamente.' });
+      }
+
+      // ── Enviar magic link de acesso ─────────────────────────────────────
+      try {
+        const { data: linkData } = await supabase.auth.admin.generateLink({
+          type:    'magiclink',
+          email:   normalizedEmail,
+          options: { redirectTo: `${APP_URL}/dashboard` },
+        });
+        if (linkData?.properties?.action_link) {
+          const firstName = (name || email).split(/[@\s]/)[0];
+          await sendEmail(
+            normalizedEmail,
+            `Bem-vindo ao ZapScript, ${firstName}!`,
+            emailWrapper('🎉', 'Sua conta está pronta!', `
+              <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 12px">
+                Olá, <strong>${firstName}</strong>! Sua conta gratuita foi criada.
+              </p>
+              <p style="color:#7aa898;font-size:14px;line-height:1.6;margin:0 0 28px">
+                Clique no botão abaixo para acessar seu painel:
+              </p>
+              <div style="text-align:center;margin:24px 0">
+                <a href="${linkData.properties.action_link}"
+                   style="display:inline-block;background:#10b981;color:#fff;padding:16px 48px;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px">
+                  Acessar meu painel →
+                </a>
+              </div>
+              <p style="color:#4a7060;font-size:12px;text-align:center;margin:16px 0 0;line-height:1.6">
+                Você tem <strong>15 áudios grátis</strong> + <strong>7 dias de Pro</strong> para testar (sem cartão).
+              </p>
+            `, 'Se você não criou esta conta, pode ignorar este e-mail com segurança.'),
+          ).catch(() => {});
+        }
+      } catch (err: any) {
+        logger.warn(`[Auth] magic-register e-mail falhou: ${err.message}`);
+      }
+
+      logger.info(`[Auth] magic-register: ${normalizedEmail} → conta criada + magic link enviado`);
+      return { ok: true, message: 'Conta criada! Verifique seu e-mail para acessar.' };
+    }
+  );
+
   // ── POST /auth/login ──────────────────────────────────────────────────────
   // Rate limit: 15 tentativas a cada 15 minutos (proteção contra bruteforce, tolerante a erros humanos)
   app.post<{ Body: { email: string; password: string } }>(

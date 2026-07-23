@@ -5,7 +5,7 @@ import IndiqueClient from './IndiqueClient';
 
 export const metadata: Metadata = {
   title:       'Indique o ZapScript e ganhe áudios grátis — Programa de Indicação',
-  description: 'Indique um amigo para o ZapScript e ganhem 5 áudios grátis de conversão cada um quando ele se cadastrar. Sem limite de indicações.',
+  description: 'Indique um amigo e ganhem 5 áudios grátis cada. Sem limite de indicações. Compartilhe seu link pessoal do ZapScript.',
   keywords:    'indique e ganhe zapscript, programa de indicação whatsapp, link de indicação conversão áudio',
   alternates:  { canonical: 'https://www.zapscript.me/indique' },
   openGraph: {

@@ -309,16 +309,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       data: { status: 'running', startedAt: campanha.startedAt ?? new Date() },
     });
 
-    // jobId determinístico (campanhaId:contatoId) — reenviar /start não duplica jobs em voo.
-    // Mas se a campanha foi pausada antes, os jobs pendentes desta rodada anterior já foram
-    // "completados" pelo worker (retorno {skipped:true} sem erro — ver processCampanhaJob),
-    // e o registro fica no Redis até 48h (removeOnComplete). Sem remover antes, addBulk com o
-    // mesmo jobId seria tratado como duplicata e NÃO voltaria para a fila (ver
-    // handleDuplicatedJob no BullMQ) — o contato ficaria "pending" para sempre. Remoção é
-    // best-effort: se o job já não existe (nunca enfileirado) ou está 'active' nesse instante,
-    // remove() apenas retorna sem lançar erro.
-    await Promise.allSettled(pendentes.map((p) => campanhasQueue.remove(`${id}:${p.id}`)));
-
+    // jobId determinístico (campanhaId:contatoId) — reenviar /start não duplica jobs em voo
     await campanhasQueue.addBulk(
       pendentes.map((p) => ({
         name: 'send',

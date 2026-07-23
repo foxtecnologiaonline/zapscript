@@ -19,7 +19,7 @@ interface Props {
   moduleKey:   string;
   moduleLabel: string;
   moduleIcon?: string;
-  priceLabel:  string;   // ex: "R$29,90/mês"
+  priceLabel:  string;   // ex: "R$39/mês"
   features?:   string[];
   user:        CheckoutUser;
   /** Chamado após salvar CPF/CNPJ, para o chamador sincronizar o estado local do usuário. */

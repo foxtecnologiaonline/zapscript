@@ -17,9 +17,9 @@ import { getQr } from '../lib/qrStore';
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function getApiBase(): string {
-  const url = process.env.API_URL || process.env.RENDER_EXTERNAL_URL;
+  const url = process.env.API_URL || process.env.RENDER_EXTERNAL_URL || process.env.APP_URL;
   if (url) return url.replace(/\/$/, '');
-  console.error('[numbers] ⛔ API_URL não configurado! Configure API_URL no Render.');
+  console.error('[numbers] ⛔ API_URL não configurado! Configure API_URL no .env da Vultr.');
   return '';
 }
 
@@ -84,9 +84,8 @@ export default async function numberRoutes(app: FastifyInstance) {
     }
 
     const number = await prisma.whatsappNumber.create({
-      // Modo Privado nasce ligado (opt-out). Em plano pago o worker força privado
-      // por padrão; usuário pode desligar depois. Setar aqui evita depender da migração.
-      data: { userId, displayName: finalName, privateMode: true, ...(cleanPhone ? { phoneNumber: cleanPhone } : {}) },
+      // Modo Privado nasce desligado (opt-in). Usuário ativa manualmente no painel.
+      data: { userId, displayName: finalName, privateMode: false, ...(cleanPhone ? { phoneNumber: cleanPhone } : {}) },
     });
 
     // Nota: notifyWelcome é disparado via connection.update no webhook Evolution
