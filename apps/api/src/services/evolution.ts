@@ -182,6 +182,31 @@ export async function sendText(instanceNameStr: string, phone: string, message: 
 }
 
 /**
+ * Envia mensagem de áudio (PTT/nota de voz) via Evolution API.
+ * O áudio é enviado como base64 inline — sem depender de URL pública.
+ */
+export async function sendPtt(instanceNameStr: string, phone: string, audioBase64: string): Promise<void> {
+  const base  = evolutionBaseUrl();
+  const clean = phone.replace(/\D/g, '');
+  const res = await fetch(`${base}/message/sendPtt/${instanceNameStr}`, {
+    method:  'POST',
+    headers: evolutionHeaders(),
+    body: JSON.stringify({
+      number: clean,
+      ptt: {
+        base64: audioBase64,
+        caption: '',
+      },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Evolution sendPtt falhou (${res.status}): ${text}`);
+  }
+}
+
+/**
  * Busca áudio de uma mensagem como Buffer (via getBase64FromMediaMessage).
  * messageData = objeto { key, message } extraído do webhook MESSAGES_UPSERT.
  */

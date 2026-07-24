@@ -41,7 +41,7 @@ const schema = {
       name: 'O ZapScript é mais barato que a LuzIA?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'O ZapScript tem plano Free com 15 áudios por mês sem custo. O plano Pro custa R$39,90/mês (R$19,90 no primeiro mês em junho de 2026) e inclui áudios ilimitados, 2 números, resumo com IA e Modo Privado.',
+        text: 'O ZapScript tem plano Free com 15 áudios por mês sem custo. O plano Pro custa R$37/mês (R$18 no primeiro mês) e inclui áudios ilimitados, 2 números, resumo com IA e Modo Privado.',
       },
     },
   ],
@@ -79,7 +79,7 @@ const FAQS = [
   },
   {
     q: 'Quanto custa o ZapScript comparado a usar a LuzIA para isso?',
-    a: 'O plano Free do ZapScript inclui 15 áudios de conversão por mês sem custo e sem cartão. O Pro custa R$39,90/mês (R$19,90 no 1º mês em junho de 2026) e inclui áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico completo.',
+    a: 'O plano Free do ZapScript inclui 15 áudios de conversão por mês sem custo e sem cartão. O Pro custa R$37/mês (R$18 no 1º mês) e inclui áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico completo.',
   },
 ];
 

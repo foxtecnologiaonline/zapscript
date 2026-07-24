@@ -6,6 +6,7 @@ dist/
 .sessions/
 *.ogg
 *.mp3
+!apps/api/private/welcome.mp3
 *.wav
 .DS_Store
 
@@ -39,3 +40,5 @@ scripts/migrate-full-db.mjs
 scripts/migrate-supabase-users.mjs
 scripts/send-migration-notice.mjs
 scripts/send-password-reset.mjs
+
+.env*

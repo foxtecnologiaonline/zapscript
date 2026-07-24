@@ -167,8 +167,8 @@ vercel --prod
 | Plano     | Preço       | Minutos | Números |
 |-----------|-------------|---------|---------|
 | Free      | R$0/mês     | 20      | 1       |
-| Pro       | R$29,90/mês | 100     | 2       |
-| Executive | R$49,90/mês | 300     | 3       |
+| Pro       | R$37/mês    | 200     | 2       |
+| Executive | R$67/mês    | 300     | 3       |
 
 ---
 

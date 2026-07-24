@@ -116,13 +116,18 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
     setDismissed(true);
   }
 
-  /* Checkpoints */
+  /* ── Gamificação ────────────────────────────────────────────────── */
   const steps = [
-    { icon: '✓',  label: 'Conta criada',    done: true,          active: false },
-    { icon: '📱', label: 'Conectar número', done: hasNumber,     active: !hasNumber },
-    { icon: '🎙', label: '1º áudio',        done: hasTranscription, active: hasNumber && !hasTranscription },
+    { icon: '✓',  label: 'Conta criada',     done: true,               active: false },
+    { icon: '📱', label: 'Conectar número',  done: hasNumber,          active: !hasNumber },
+    { icon: '🎙', label: '1º áudio',         done: hasTranscription,   active: hasNumber && !hasTranscription },
   ];
-  const stepIndex = (hasNumber ? 2 : 1); // passo atual em que o usuário está (1, 2 ou 3)
+  const stepIndex  = hasNumber ? 2 : 1;
+  const pct        = Math.round((steps.filter(s => s.done).length / 3) * 100);
+  const progressEmoji = pct === 100 ? '🏆' : pct >= 66 ? '🔥' : pct >= 33 ? '💪' : '🚀';
+  const nextRewardText = !hasNumber
+    ? '🔓 Desbloqueie transcrições automáticas'
+    : '🎯 Ao enviar seu 1º áudio, veja a magia acontecer';
 
   return (
     <>
@@ -151,10 +156,10 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
           </button>
 
           {/* Topo: badge + título */}
-          <div className="flex items-start gap-3 mb-5 pr-6">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          <div className="flex items-start gap-3 mb-4 pr-6">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-lg transition-all duration-500"
               style={{ background: 'rgba(16,185,129,.15)' }}>
-              <span className="text-lg">🚀</span>
+              {progressEmoji}
             </div>
             <div>
               <div className="text-xs font-bold uppercase tracking-widest mb-0.5"
@@ -178,6 +183,27 @@ export default function OnboardingBanner({ hasNumber, hasTranscription }: {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* ── Barra de progresso + milestone preview ── */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-brand-text font-semibold">{pct}% completo</span>
+              <span className="text-brand-muted">{steps.filter(s => s.done).length}/3</span>
+            </div>
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(16,185,129,.1)' }}>
+              <div className="h-full rounded-full transition-all duration-700 ease-out"
+                style={{
+                  width: `${pct}%`,
+                  background: 'linear-gradient(90deg, rgba(16,185,129,.5), rgb(var(--color-primary)))',
+                }} />
+            </div>
+            {!hasTranscription && (
+              <div className="flex items-center gap-1.5 mt-2 text-[11px] text-brand-text-secondary">
+                <span className="text-xs">📌</span>
+                <span>{nextRewardText}</span>
+              </div>
+            )}
           </div>
 
           {/* Checkpoints */}

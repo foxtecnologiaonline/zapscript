@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
    - Não persiste IP; só geo grosseira derivada pela Vercel.
    ───────────────────────────────────────────────────────────────────────── */
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'https://zapscript-api.onrender.com').replace(/\/$/, '');
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'https://api.zapscript.me').replace(/\/$/, '');
 
 export const runtime = 'nodejs';
 

@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
    ───────────────────────────────────────────────────────── */
 
 interface Props {
-  planName:   'pro' | 'executive';
+  planName:   string; // 'pro' | 'executive' (mode 'plan') — ou key do módulo, ex. 'campanhas' (mode 'module')
   planLabel:  string;
   planPrice:  string;
   planFeats:  string[];
@@ -18,6 +18,8 @@ interface Props {
   trialMode?:       boolean;
   /** Data da 1ª cobrança (ISO ou YYYY-MM-DD), exibida no modo trial. */
   trialChargeDate?: string;
+  /** 'module' contrata um módulo avulso via POST /billing/modules/:key/subscribe (planName = key). */
+  mode?: 'plan' | 'module';
   onSuccess:  (planName: string) => void;
   onCancel:   () => void;
 }
@@ -32,8 +34,8 @@ function formatChargeDate(d?: string): string {
 
 /* ── Preços anuais (20% off — 12× com desconto) ── */
 const CHECKOUT_YEARLY: Record<string, { annual: string; monthlyEq: string; annualNum: number }> = {
-  pro:       { annual: 'R$383,04', monthlyEq: 'R$31,92/mês', annualNum: 383.04 },
-  executive: { annual: 'R$479,04', monthlyEq: 'R$39,92/mês', annualNum: 479.04 },
+  pro:       { annual: 'R$355', monthlyEq: 'R$29/mês', annualNum: 355 },
+  executive: { annual: 'R$643', monthlyEq: 'R$53/mês', annualNum: 643 },
 };
 
 type Method = 'pix' | 'pix_auto' | 'credit_card' | 'debit_card' | 'google_pay' | 'apple_pay' | 'paypal';
@@ -419,7 +421,7 @@ function normalizeApiError(err: any): string {
    ══════════════════════════════════════════════════════ */
 export default function CheckoutInline({
   planName, planLabel, planPrice, planFeats, isUpgrade = false,
-  trialMode = false, trialChargeDate, onSuccess, onCancel,
+  trialMode = false, trialChargeDate, mode = 'plan', onSuccess, onCancel,
 }: Props) {
   const [method,        setMethod]        = useState<Method>(trialMode ? 'credit_card' : 'pix');
   const [step,          setStep]          = useState<1|2|3>(2);
@@ -477,14 +479,17 @@ export default function CheckoutInline({
         return;
       }
 
-      const endpoint = isUpgrade ? '/billing/upgrade' : '/billing/checkout';
-      const res = await api.post<any>(endpoint, {
-        [isUpgrade ? 'targetPlan' : 'planName']: planName,
-        paymentMethod: method, // 'credit_card' ou 'debit_card'
-        billingCycle,
-        card: cardPayload,
-        billingAddress,
-      });
+      const endpoint = mode === 'module' ? `/billing/modules/${planName}/subscribe` : (isUpgrade ? '/billing/upgrade' : '/billing/checkout');
+      const body: Record<string, any> = mode === 'module'
+        ? { paymentMethod: method, card: cardPayload, billingAddress }
+        : {
+            [isUpgrade ? 'targetPlan' : 'planName']: planName,
+            paymentMethod: method, // 'credit_card' ou 'debit_card'
+            billingCycle,
+            card: cardPayload,
+            billingAddress,
+          };
+      const res = await api.post<any>(endpoint, body);
       if (res.status === 'active' || res.switched) {
         setStep(3);
         setTimeout(() => onSuccess(planName), 1500);
@@ -502,13 +507,16 @@ export default function CheckoutInline({
   async function handlePixSubmit() {
     setLoading(true); setError('');
     try {
-      const endpoint      = isUpgrade ? '/billing/upgrade' : '/billing/checkout';
+      const endpoint      = mode === 'module' ? `/billing/modules/${planName}/subscribe` : (isUpgrade ? '/billing/upgrade' : '/billing/checkout');
       const backendMethod = toBackendMethod(method);
-      const res = await api.post<any>(endpoint, {
-        [isUpgrade ? 'targetPlan' : 'planName']: planName,
-        paymentMethod: backendMethod,
-        billingCycle,
-      });
+      const body: Record<string, any> = mode === 'module'
+        ? { paymentMethod: backendMethod }
+        : {
+            [isUpgrade ? 'targetPlan' : 'planName']: planName,
+            paymentMethod: backendMethod,
+            billingCycle,
+          };
+      const res = await api.post<any>(endpoint, body);
       if (res.switched || res.status === 'active') {
         setStep(3);
         setTimeout(() => onSuccess(planName), 1500);
@@ -603,7 +611,7 @@ export default function CheckoutInline({
       <div style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.15)', borderRadius: '12px 12px 0 0', padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 'none' }}>
         <div>
           <div style={{ fontSize: 10, color: 'rgb(var(--color-text-muted))' }}>
-            {trialMode ? 'Continue no plano' : isUpgrade ? 'Fazendo upgrade para' : 'Plano selecionado'}
+            {trialMode ? 'Continue no plano' : isUpgrade ? 'Fazendo upgrade para' : mode === 'module' ? 'Módulo selecionado' : 'Plano selecionado'}
           </div>
           <div style={{ fontSize: 15, fontWeight: 800, color: 'rgb(var(--color-text))' }}>
             {planLabel}
@@ -621,7 +629,7 @@ export default function CheckoutInline({
           </div>
           {isYearly && yearlyInfo && !trialMode && (
             <div style={{ fontSize: 9, color: 'rgb(var(--color-primary))', fontWeight: 700 }}>
-              {yearlyInfo.monthlyEq} · 20% off
+              {yearlyInfo.monthlyEq} · 🤑 2 meses grátis
             </div>
           )}
           {trialMode && (
@@ -635,8 +643,8 @@ export default function CheckoutInline({
       {/* Checkout body */}
       <div style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.2)', borderTop: 'none', borderRadius: '0 0 14px 14px', overflow: 'hidden' }}>
 
-        {/* ── Toggle Mensal / Anual (oculto no trial — cobrança mensal cheia) ── */}
-        {!trialMode && (
+        {/* ── Toggle Mensal / Anual (oculto no trial e em módulos — cobrança mensal cheia) ── */}
+        {!trialMode && mode !== 'module' && (
         <div style={{ padding: '14px 16px', background: 'rgba(var(--color-primary)/.04)', borderBottom: '1px solid rgba(var(--color-primary)/.12)' }}>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'rgb(var(--color-text-muted))', marginBottom: 8 }}>
             CICLO DE COBRANÇA
@@ -662,7 +670,7 @@ export default function CheckoutInline({
                     {cycle === 'monthly' ? '📅 Mensal' : '📆 Anual'}
                     {cycle === 'yearly' && (
                       <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, background: 'rgb(var(--color-primary))', color: '#fff', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle' }}>
-                        20% OFF
+                        🤑 2 meses grátis
                       </span>
                     )}
                   </div>

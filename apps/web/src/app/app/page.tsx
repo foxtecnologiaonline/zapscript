@@ -4,41 +4,66 @@
  * Mostra os módulos CONTRATADOS (abrir) e os demais como upsell.
  * Ver MODULOS_ARQUITETURA.md §4.3.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import ModuleCheckout from '@/components/ModuleCheckout';
 import {
   ModuleCatalogItem, MODULE_ICON, moduleRoute,
   STATUS_LABEL, isContractable, formatBrl,
 } from '@/lib/modules';
 
-export default function AppLauncher() {
+interface Me {
+  id: string; name?: string; email: string;
+  emailVerified: boolean; document: string | null;
+  modules?: string[];
+}
+
+function AppLauncherInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [catalog, setCatalog] = useState<ModuleCatalogItem[]>([]);
   const [owned, setOwned] = useState<Set<string>>(new Set());
-  const [name, setName] = useState<string>('');
+  const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [checkoutKey, setCheckoutKey] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
         // /auth/me protege a rota (401 → redireciona no api client) e traz os módulos.
-        const [me, mods] = await Promise.all([
-          api.get<{ name?: string; email?: string; modules?: string[] }>('/auth/me'),
+        const [meRes, mods] = await Promise.all([
+          api.get<Me>('/auth/me'),
           api.get<{ modules: ModuleCatalogItem[] }>('/modules'),
         ]);
-        setName(me?.name || me?.email || '');
-        setOwned(new Set(me?.modules || []));
+        setMe(meRes);
+        setOwned(new Set(meRes?.modules || []));
         setCatalog(mods?.modules || []);
+
+        // ?upsell=<key> (ex: vindo do gate 402 de um módulo não contratado) abre o checkout direto.
+        const upsell = searchParams.get('upsell');
+        if (upsell && !(meRes?.modules || []).includes(upsell)) {
+          const spec = (mods?.modules || []).find((m) => m.key === upsell);
+          if (spec && isContractable(spec.status)) setCheckoutKey(upsell);
+        }
       } catch (e: any) {
         if (e?.statusCode !== 401) setError('Não foi possível carregar seus módulos.');
       } finally {
         setLoading(false);
       }
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
+
+  async function refreshMe() {
+    try {
+      const meRes = await api.get<Me>('/auth/me');
+      setMe(meRes);
+      setOwned(new Set(meRes?.modules || []));
+    } catch { /* ignora — módulo aparece ativo na próxima carga */ }
+  }
 
   if (loading) {
     return (
@@ -50,6 +75,7 @@ export default function AppLauncher() {
 
   const ownedItems = catalog.filter((m) => owned.has(m.key));
   const otherItems = catalog.filter((m) => !owned.has(m.key));
+  const checkoutSpec = checkoutKey ? catalog.find((m) => m.key === checkoutKey) : null;
 
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
@@ -57,7 +83,7 @@ export default function AppLauncher() {
         <header className="mb-8">
           <h1 className="text-2xl font-bold">Seus módulos</h1>
           <p className="text-neutral-400 mt-1">
-            {name ? `Olá, ${name}. ` : ''}Escolha um módulo para abrir ou contrate novos.
+            {me?.name ? `Olá, ${me.name}. ` : ''}Escolha um módulo para abrir ou contrate novos.
           </p>
         </header>
 
@@ -121,12 +147,12 @@ export default function AppLauncher() {
                     )}
                     <div className="mt-4">
                       {contractable ? (
-                        <Link
-                          href={`/dashboard/plano?add=${encodeURIComponent(m.key)}`}
+                        <button
+                          onClick={() => setCheckoutKey(m.key)}
                           className="inline-block rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
                         >
                           Contratar
-                        </Link>
+                        </button>
                       ) : (
                         <span className="inline-block rounded-lg border border-neutral-700 px-3 py-1.5 text-sm text-neutral-500">
                           Em breve
@@ -140,6 +166,31 @@ export default function AppLauncher() {
           </section>
         )}
       </div>
+
+      {checkoutSpec && me && (
+        <ModuleCheckout
+          moduleKey={checkoutSpec.key}
+          moduleLabel={checkoutSpec.name}
+          moduleIcon={MODULE_ICON[checkoutSpec.key] || '🧩'}
+          priceLabel={`${formatBrl(checkoutSpec.priceMonthly)}/mês`}
+          user={{ email: me.email, emailVerified: me.emailVerified, document: me.document }}
+          onDocumentSaved={(doc) => setMe((m) => (m ? { ...m, document: doc } : m))}
+          onSuccess={() => { setCheckoutKey(null); refreshMe(); }}
+          onClose={() => setCheckoutKey(null)}
+        />
+      )}
     </main>
+  );
+}
+
+export default function AppLauncher() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-300">
+        Carregando…
+      </main>
+    }>
+      <AppLauncherInner />
+    </Suspense>
   );
 }
