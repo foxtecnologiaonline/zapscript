@@ -540,6 +540,9 @@ model AtendeConfig {
   tone            String         @default("profissional-amigavel")
   fallbackMessage String         @default("Recebemos sua mensagem! Já já alguém te responde por aqui.")
   escalationPhone String? // opcional: número interno avisado quando escala p/ humano
+  confidenceLevel String         @default("equilibrado") // 'conservador' | 'equilibrado' | 'autonomo' — mapeado p/ threshold em atende-agent.ts
+  digestFrequency String         @default("off") // 'off' | 'daily' | 'weekly' — opt-in, resumo periódico ao dono
+  lastDigestAt    DateTime? // controle de idempotência do digest (delta de tempo, não calendário) — ver runAtendeDigests em apps/worker
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   number          WhatsappNumber @relation(fields: [numberId], references: [id], onDelete: Cascade)
@@ -585,6 +588,7 @@ model AtendeMessage {
   direction      String // 'in' | 'out'
   content        String
   aiGenerated    Boolean            @default(false)
+  humanAuthored  Boolean            @default(false) // true = capturado do fromMe real do dono (takeover), não é o fallback do bot
   confidence     Float?
   createdAt      DateTime           @default(now())
   conversation   AtendeConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

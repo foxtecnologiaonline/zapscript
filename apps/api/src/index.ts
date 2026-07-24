@@ -224,9 +224,10 @@ app.register(rateLimit, {
     retryAfter: context.after,
   }),
 } as any);
-// 15MB: a única rota que consome multipart hoje (/support/ticket) já limita a
-// 10MB no app; o teto global antigo (200MB) era resquício da demo de upload de
-// áudio removida e só ampliava a superfície de DoS por upload.
+// 15MB: teto global para as rotas que consomem multipart (/support/ticket limita a
+// 10MB no app; /atende/setup/* limita a 15MB áudio / 8MB imagem no ai-input.ts). O
+// teto antigo (200MB) era resquício da demo de upload de áudio removida e só
+// ampliava a superfície de DoS por upload.
 app.register(multipart, { limits: { fileSize: 15 * 1024 * 1024 } });
 
 // ── Swagger/OpenAPI Documentation — somente em desenvolvimento ─────────────

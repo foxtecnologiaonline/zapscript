@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import AtendeHeader from './AtendeHeader';
+import SuggestionReview, { QaSuggestion } from './SuggestionReview';
 
 interface ConversationListItem {
   id: string;
@@ -20,6 +21,7 @@ interface Message {
   direction: string;
   content: string;
   aiGenerated: boolean;
+  humanAuthored: boolean;
   confidence: number | null;
   createdAt: string;
 }
@@ -43,6 +45,9 @@ export default function AtendeInboxPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [replyBusy, setReplyBusy] = useState(false);
+  const [kbPrompt, setKbPrompt] = useState<QaSuggestion | null>(null);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -79,7 +84,61 @@ export default function AtendeInboxPage() {
     return () => clearInterval(interval);
   }, [selectedId, loadMessages]);
 
+  useEffect(() => {
+    setReplyText('');
+    setKbPrompt(null);
+  }, [selectedId]);
+
   const selected = conversations.find((c) => c.id === selectedId) || null;
+
+  async function handleSendReply(e: React.FormEvent) {
+    e.preventDefault();
+    const text = replyText.trim();
+    if (!selected || !text) return;
+    setReplyBusy(true);
+    try {
+      const saved = await api.post<Message>(`/atende/conversations/${selected.id}/reply`, { message: text });
+      setMessages((ms) => [...ms, saved]);
+      setReplyText('');
+    } catch (e: any) {
+      alert(e?.message || 'Não foi possível enviar a mensagem.');
+    } finally {
+      setReplyBusy(false);
+    }
+  }
+
+  // Mesma lógica de pareamento do back-end (POST /atende/setup/from-history):
+  // a pergunta do cliente é a mensagem 'in' mais recente antes desta resposta,
+  // mas se outra resposta humana já consumiu esse 'in', não há mais o que parear.
+  function findPairedQuestion(list: Message[], index: number): string | null {
+    for (let i = index - 1; i >= 0; i--) {
+      if (list[i].direction === 'in') return list[i].content;
+      if (list[i].direction === 'out' && list[i].humanAuthored) return null;
+    }
+    return null;
+  }
+
+  function handleSaveAsKb(index: number) {
+    const question = findPairedQuestion(messages, index);
+    if (!question) {
+      alert('Não encontrei a pergunta do cliente correspondente a esta resposta.');
+      return;
+    }
+    setKbPrompt({ question, answer: messages[index].content });
+  }
+
+  async function handleAcceptKbPrompt(items: QaSuggestion[]) {
+    let failed = 0;
+    for (const item of items) {
+      try {
+        await api.post('/atende/kb', item);
+      } catch {
+        failed++;
+      }
+    }
+    setKbPrompt(null);
+    if (failed > 0) alert('Não foi possível salvar. Tente novamente pela Base de Conhecimento.');
+  }
 
   async function handleTakeoverToggle() {
     if (!selected) return;
@@ -198,11 +257,24 @@ export default function AtendeInboxPage() {
                     </button>
                   </div>
 
+                  {kbPrompt && (
+                    <div className="px-4 py-3 border-b border-neutral-800">
+                      <SuggestionReview
+                        kind="qa-list"
+                        title="Salvar como KB"
+                        description="Confirme ou ajuste antes de adicionar à Base de Conhecimento."
+                        items={[kbPrompt]}
+                        onAccept={handleAcceptKbPrompt}
+                        onReject={() => setKbPrompt(null)}
+                      />
+                    </div>
+                  )}
+
                   <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
                     {loadingMessages ? (
                       <p className="text-neutral-500 text-sm">Carregando…</p>
                     ) : (
-                      messages.map((m) => (
+                      messages.map((m, i) => (
                         <div key={m.id} className={`flex ${m.direction === 'out' ? 'justify-end' : 'justify-start'}`}>
                           <div
                             className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
@@ -215,12 +287,41 @@ export default function AtendeInboxPage() {
                             <div className="flex items-center gap-1.5 mt-1 text-[10px] opacity-70">
                               <span>{new Date(m.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                               {m.aiGenerated && <span>· IA</span>}
+                              {m.humanAuthored && <span>· Você</span>}
+                              {m.humanAuthored && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveAsKb(i)}
+                                  className="underline hover:no-underline"
+                                >
+                                  Salvar como KB
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
                       ))
                     )}
                   </div>
+
+                  {selected.humanTakeover && (
+                    <form onSubmit={handleSendReply} className="border-t border-neutral-800 p-3 flex items-center gap-2 flex-shrink-0">
+                      <input
+                        type="text"
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        placeholder="Responder pelo WhatsApp…"
+                        className="flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={replyBusy || !replyText.trim()}
+                        className="flex-shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                      >
+                        {replyBusy ? '…' : 'Enviar'}
+                      </button>
+                    </form>
+                  )}
                 </>
               )}
             </div>
