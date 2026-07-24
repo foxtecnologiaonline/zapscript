@@ -397,8 +397,8 @@ describe('GET /billing/combo/preview', () => {
       corePlanLabel: 'Pro',
       modules:       [{ key: 'atende', name: 'Atende', priceMonthly: 29.9 }],
       discountPct:   0.2,
-      rawTotal:      69.8,
-      newTotal:      55.84,
+      rawTotal:      66.9,
+      newTotal:      53.52,
     });
   });
 });
@@ -475,7 +475,7 @@ describe('POST /billing/combo/subscribe', () => {
       .mockResolvedValueOnce([])   // resolveComboModules (rota)
       .mockResolvedValueOnce([])   // computeAggregateValue
       .mockResolvedValueOnce([]);  // resolveComboModules (dentro de activateCombo)
-    (prisma.plan.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'plan-pro', priceBrl: 39.90, minutesPerMonth: 999999 });
+    (prisma.plan.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'plan-pro', priceBrl: 37, minutesPerMonth: 999999 });
     (prisma.subscription.upsert as jest.Mock).mockResolvedValueOnce({});
     (prisma.minuteBalance.upsert as jest.Mock).mockResolvedValueOnce({});
     (prisma.entitlement.upsert as jest.Mock).mockResolvedValueOnce({});
@@ -496,7 +496,7 @@ describe('POST /billing/combo/subscribe', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual(expect.objectContaining({
-      status: 'active', corePlanName: 'pro', newTotal: 55.84, discountPct: 0.2, modulesActivated: ['atende'],
+      status: 'active', corePlanName: 'pro', newTotal: 53.52, discountPct: 0.2, modulesActivated: ['atende'],
     }));
     expect(prisma.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({ comboDiscountPct: 0.2 }),
@@ -567,7 +567,7 @@ describe('POST /billing/combo/subscribe', () => {
   it('ativa o Combo sem custo adicional quando o ciclo atual já está no fim', async () => {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const subShape = {
-      plan: { name: 'pro', priceBrl: 39.90 },
+      plan: { name: 'pro', priceBrl: 37 },
       currentPeriodEnd: yesterday,
       asaasSubscriptionId: 'sub_old',
       asaasCustomerId: 'cus_1',
@@ -585,7 +585,7 @@ describe('POST /billing/combo/subscribe', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
-    (prisma.plan.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'plan-pro', priceBrl: 39.90, minutesPerMonth: 999999 });
+    (prisma.plan.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'plan-pro', priceBrl: 37, minutesPerMonth: 999999 });
     (prisma.subscription.upsert as jest.Mock).mockResolvedValueOnce({});
     (prisma.minuteBalance.upsert as jest.Mock).mockResolvedValueOnce({});
     (prisma.entitlement.upsert as jest.Mock).mockResolvedValueOnce({});
@@ -603,7 +603,7 @@ describe('POST /billing/combo/subscribe', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual(expect.objectContaining({
-      status: 'active', corePlanName: 'pro', newTotal: 55.84, discountPct: 0.2,
+      status: 'active', corePlanName: 'pro', newTotal: 53.52, discountPct: 0.2,
       modulesActivated: ['atende'], message: 'Combo ativado sem custo adicional.',
     }));
   });
