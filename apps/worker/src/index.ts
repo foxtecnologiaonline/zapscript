@@ -2487,7 +2487,7 @@ async function sendCobrancaResumoDiario() {
       linhas.push('');
     }
     if (recebidasOntem.length) {
-      const total = recebidasOntem.reduce((s: number, c: any) => s + c.valor, 0);
+      const total = (recebidasOntem as any[]).reduce((s: number, c: any) => s + Number(c.valor), 0);
       linhas.push(`🟢 Recebidas nas últimas 24h (${recebidasOntem.length}): ${formatBRL(total)}`);
     }
 

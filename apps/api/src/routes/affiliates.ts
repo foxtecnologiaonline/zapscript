@@ -24,7 +24,7 @@ async function buildAffiliateStats(affiliateId: string) {
     prisma.affiliateReferral.count({ where: { affiliateId } }),
     prisma.affiliateReferral.count({ where: { affiliateId, status: 'converted' } }),
     // Agregação no banco (SUM condicional) em vez de trazer todas as linhas e reduzir em JS
-    prisma.$queryRawUnsafe<{ total: number; available: number; locked: number; paid: number }[]>(
+    prisma.$queryRawUnsafe(
       `SELECT
          COUNT(*)::int AS total,
          COALESCE(SUM(CASE WHEN "status" = 'pending' AND "createdAt" <= $2 THEN "commissionAmount" END), 0) AS available,
@@ -33,7 +33,7 @@ async function buildAffiliateStats(affiliateId: string) {
        FROM "AffiliateCommission"
        WHERE "affiliateId" = $1`,
       affiliateId, cutoff,
-    ),
+    ) as Promise<{ total: number; available: number; locked: number; paid: number }[]>,
   ]);
 
   const row = agg[0] || { total: 0, available: 0, locked: 0, paid: 0 };
@@ -88,15 +88,15 @@ export default async function affiliateRoutes(app: FastifyInstance) {
         where: { affiliateId: affiliate.id, createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
       }).catch(() => 0),
       // Agregação de cliques nos últimos 30 dias (tolerante a migration drift)
-      prisma.$queryRawUnsafe<any[]>(
+      prisma.$queryRawUnsafe(
         `SELECT DATE("createdAt") as date, COUNT(*)::int as clicks
          FROM "AffiliateClick"
          WHERE "affiliateId" = $1 AND "createdAt" >= $2
          GROUP BY 1 ORDER BY 1`,
         affiliate.id, thirtyDaysAgo,
-      ).catch(() => []),
+      ).catch(() => [] as any[]),
     ]);
-    const clickHistory = (clickHistoryRaw || []).map((r: any) => ({ date: r.date, clicks: Number(r.clicks) }));
+    const clickHistory = ((clickHistoryRaw as any[]) || []).map((r: any) => ({ date: r.date, clicks: Number(r.clicks) }));
 
     return {
       affiliate: {
@@ -294,17 +294,17 @@ export default async function affiliateRoutes(app: FastifyInstance) {
         orderBy: { _sum: { commissionAmount: 'desc' } },
         take: 10,
       });
-      const affiliateIds = top.map(t => t.affiliateId);
+      const affiliateIds = top.map((t: any) => t.affiliateId);
       const affiliates = affiliateIds.length
         ? await prisma.affiliate.findMany({ where: { id: { in: affiliateIds }, status: 'approved' }, select: { id: true, code: true } })
         : [];
-      const byId = new Map(affiliates.map(a => [a.id, a]));
+      const byId = new Map(affiliates.map((a: any) => [a.id, a] as const));
       // Anonimizar: "AFI****" + últimos 2 chars do code
       function maskCode(code: string): string {
         if (code.length <= 2) return 'AFI***';
         return `AFI***${code.slice(-2)}`;
       }
-      return top.map((t, i) => ({
+      return top.map((t: any, i: number) => ({
         position: i + 1,
         code: byId.get(t.affiliateId) ? maskCode(byId.get(t.affiliateId)!.code) : 'AFI***',
         totalCommissions: Math.round((t._sum.commissionAmount || 0) * 100) / 100,
@@ -331,7 +331,7 @@ export default async function affiliateRoutes(app: FastifyInstance) {
     });
 
     return {
-      referrals: refs.map(r => ({
+      referrals: refs.map((r: any) => ({
         id: r.id,
         name: r.referredUser?.name?.split(' ')[0] || 'Usuário',
         email: maskEmail(r.referredUser?.email || ''),
@@ -392,15 +392,15 @@ export default async function affiliateRoutes(app: FastifyInstance) {
     });
 
     // Identificação do cliente mascarada (LGPD) — primeiro nome + e-mail parcial.
-    const userIds = [...new Set(commissions.map(c => c.referredUserId))];
+    const userIds = [...new Set(commissions.map((c: any) => c.referredUserId))];
     const users = userIds.length
       ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, email: true } })
       : [];
-    const userById = new Map(users.map(u => [u.id, u]));
+    const userById = new Map(users.map((u: any) => [u.id, u] as const));
 
     const now = Date.now();
     return {
-      commissions: commissions.map(c => {
+      commissions: commissions.map((c: any) => {
         const u = userById.get(c.referredUserId);
         const rateFraction = c.saleAmount > 0 ? c.commissionAmount / c.saleAmount : 0;
         return {

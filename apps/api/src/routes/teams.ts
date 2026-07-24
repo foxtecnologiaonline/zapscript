@@ -82,7 +82,7 @@ export default async function teamRoutes(app: FastifyInstance) {
       ? await prisma.plan.findUnique({ where: { id: ownerSub.planId }, select: { name: true, label: true } })
       : null;
 
-    const activeMembers = team.members.filter(m => m.status === 'active').length;
+    const activeMembers = team.members.filter((m: any) => m.status === 'active').length;
     const totalSeats = team.members.length;
 
     return {
@@ -92,7 +92,7 @@ export default async function teamRoutes(app: FastifyInstance) {
         slug: team.slug,
         ownerId: team.ownerId,
         createdAt: team.createdAt,
-        members: team.members.map(m => ({
+        members: team.members.map((m: any) => ({
           id: m.id,
           name: m.user?.name || m.invitedEmail || 'Convidado',
           email: m.user?.email || m.invitedEmail || '',
@@ -188,7 +188,7 @@ export default async function teamRoutes(app: FastifyInstance) {
       const normalizedEmail = email.trim().toLowerCase();
 
       // Já está no time?
-      const already = team.members.find(m =>
+      const already = team.members.find((m: any) =>
         m.user?.email?.toLowerCase() === normalizedEmail ||
         m.invitedEmail?.toLowerCase() === normalizedEmail
       );

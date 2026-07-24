@@ -206,7 +206,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
         return { pairs: 0, businessContextSuggestion: null, kbSuggestions: [] };
       }
 
-      const conversationIds = [...new Set(humanReplies.map((r) => r.conversationId))];
+      const conversationIds = [...new Set(humanReplies.map((r: any) => r.conversationId))];
       const allMessages = await prisma.atendeMessage.findMany({
         where: { conversationId: { in: conversationIds } },
         orderBy: { createdAt: 'asc' },
@@ -331,7 +331,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
       },
     });
 
-    return conversations.map((c) => ({
+    return conversations.map((c: any) => ({
       id:            c.id,
       contactPhone:  c.contactPhone,
       contactName:   c.contactName,

@@ -65,7 +65,7 @@ export default async function crmRoutes(app: FastifyInstance) {
       byStage.set(c.stageId, list);
     }
 
-    return { stages: stages.map((s) => ({ ...s, contacts: byStage.get(s.id) ?? [] })) };
+    return { stages: stages.map((s: any) => ({ ...s, contacts: byStage.get(s.id) ?? [] })) };
   });
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -121,7 +121,7 @@ export default async function crmRoutes(app: FastifyInstance) {
     if (!v.valid) return reply.code(400).send({ error: v.error });
 
     const stages = await prisma.crmStage.findMany({ where: { userId }, select: { id: true } });
-    const validIds = new Set(stages.map((s) => s.id));
+    const validIds = new Set(stages.map((s: any) => s.id));
     if (v.data.order.length !== stages.length || !v.data.order.every((id) => validIds.has(id))) {
       return reply.code(400).send({ error: 'A lista deve conter exatamente os estágios existentes do funil.' });
     }
@@ -162,7 +162,7 @@ export default async function crmRoutes(app: FastifyInstance) {
     const stages = await getOrSeedStages(userId);
     let stageId = v.data.stageId;
     if (stageId) {
-      if (!stages.some((s) => s.id === stageId)) return reply.code(400).send({ error: 'Estágio inválido.' });
+      if (!stages.some((s: any) => s.id === stageId)) return reply.code(400).send({ error: 'Estágio inválido.' });
     } else {
       stageId = stages[0].id;
     }
@@ -330,7 +330,7 @@ export default async function crmRoutes(app: FastifyInstance) {
     }
 
     const already = new Set(
-      (await prisma.crmContact.findMany({ where: { userId }, select: { phone: true } })).map((c) => c.phone),
+      (await prisma.crmContact.findMany({ where: { userId }, select: { phone: true } })).map((c: any) => c.phone),
     );
 
     const suggestions = [...byPhone.values()]

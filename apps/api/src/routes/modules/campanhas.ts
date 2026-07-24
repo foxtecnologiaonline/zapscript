@@ -82,7 +82,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
 
     const grouped = await prisma.campanhaContato.groupBy({
       by: ['campanhaId', 'status'],
-      where: { campanhaId: { in: campanhas.map((c) => c.id) } },
+      where: { campanhaId: { in: campanhas.map((c: any) => c.id) } },
       _count: true,
     });
     const statsByCampanha = new Map<string, Record<string, number>>();
@@ -92,7 +92,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       statsByCampanha.set(g.campanhaId, m);
     }
 
-    return { campanhas: campanhas.map((c) => ({ ...c, stats: statsByCampanha.get(c.id) || {} })) };
+    return { campanhas: campanhas.map((c: any) => ({ ...c, stats: statsByCampanha.get(c.id) || {} })) };
   });
 
   // ── GET /templates — templates aprovados do WABA conectado ──────────────
@@ -243,8 +243,8 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       prisma.campanhaOptOut.findMany({ where: { userId }, select: { phone: true } }),
       prisma.campanhaContato.findMany({ where: { campanhaId: id }, select: { phone: true } }),
     ]);
-    const optOutSet   = new Set(optOuts.map((o) => o.phone));
-    const existingSet = new Set(existing.map((e) => e.phone));
+    const optOutSet   = new Set(optOuts.map((o: any) => o.phone));
+    const existingSet = new Set(existing.map((e: any) => e.phone));
 
     const seen = new Set<string>();
     let skippedOptOut = 0;
@@ -311,7 +311,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
 
     // jobId determinístico (campanhaId:contatoId) — reenviar /start não duplica jobs em voo
     await campanhasQueue.addBulk(
-      pendentes.map((p) => ({
+      pendentes.map((p: any) => ({
         name: 'send',
         data: { campanhaId: id, contatoId: p.id },
         opts: { jobId: `${id}:${p.id}` },

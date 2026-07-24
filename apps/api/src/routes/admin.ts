@@ -127,7 +127,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       const users = userIds.length
         ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, email: true, name: true } })
         : [];
-      const byId = new Map(users.map(u => [u.id, u]));
+      const byId = new Map(users.map((u: { id: string; email: string | null; name: string | null }) => [u.id, u] as const));
 
       const payments = rows.map(p => {
         const ref = String(p.externalReference || '').split('|');
@@ -1974,13 +1974,13 @@ export default async function adminRoutes(app: FastifyInstance) {
             visitors:  Number(t.visitors  || 0),
             clicks:    Number(t.clicks    || 0),
           },
-          daily:     daily.map(r => ({ day: r.day, pageviews: Number(r.pageviews), visitors: Number(r.visitors), clicks: Number(r.clicks) })),
-          topPages:  topPages.map(r => ({ path: r.path, views: Number(r.views) })),
-          byCountry: byCountry.map(r => ({ country: r.country, views: Number(r.views), visitors: Number(r.visitors) })),
-          byCity:    byCity.map(r => ({ city: r.city, country: r.country, views: Number(r.views) })),
-          topClicks: topClicks.map(r => ({ name: r.name, clicks: Number(r.clicks) })),
-          byDevice:  byDevice.map(r => ({ device: r.device, views: Number(r.views) })),
-          bySource:  bySource.map(r => ({ source: r.source, views: Number(r.views) })),
+          daily:     daily.map((r: any) => ({ day: r.day, pageviews: Number(r.pageviews), visitors: Number(r.visitors), clicks: Number(r.clicks) })),
+          topPages:  topPages.map((r: any) => ({ path: r.path, views: Number(r.views) })),
+          byCountry: byCountry.map((r: any) => ({ country: r.country, views: Number(r.views), visitors: Number(r.visitors) })),
+          byCity:    byCity.map((r: any) => ({ city: r.city, country: r.country, views: Number(r.views) })),
+          topClicks: topClicks.map((r: any) => ({ name: r.name, clicks: Number(r.clicks) })),
+          byDevice:  byDevice.map((r: any) => ({ device: r.device, views: Number(r.views) })),
+          bySource:  bySource.map((r: any) => ({ source: r.source, views: Number(r.views) })),
         };
       } catch (err: any) {
         app.log.warn({ err: err?.message }, '[Admin] analytics/site indisponível (tabela ausente?)');
@@ -2436,7 +2436,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
 
       // Totais de comissão por afiliado
-      const ids = affiliates.map(a => a.id);
+      const ids = affiliates.map((a: { id: string }) => a.id);
       const grouped = ids.length
         ? await prisma.affiliateCommission.groupBy({
             by: ['affiliateId', 'status'],
@@ -2446,10 +2446,10 @@ export default async function adminRoutes(app: FastifyInstance) {
         : [];
 
       const sumBy = (affId: string, st: string) =>
-        Math.round((grouped.find(g => g.affiliateId === affId && g.status === st)?._sum.commissionAmount || 0) * 100) / 100;
+        Math.round((grouped.find((g: any) => g.affiliateId === affId && g.status === st)?._sum.commissionAmount || 0) * 100) / 100;
 
       return {
-        affiliates: affiliates.map(a => ({
+        affiliates: affiliates.map((a: any) => ({
           id:             a.id,
           code:           a.code,
           status:         a.status,
@@ -2550,7 +2550,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
 
       return {
-        commissions: commissions.map(c => ({
+        commissions: commissions.map((c: any) => ({
           id:               c.id,
           affiliateCode:    c.affiliate.code,
           affiliateName:    c.affiliate.payoutName || c.affiliate.user.name,
@@ -2633,11 +2633,11 @@ export default async function adminRoutes(app: FastifyInstance) {
         prisma.affiliateCommission.groupBy({ by: ['affiliateId', 'status'], _sum: { commissionAmount: true } }),
       ]);
 
-      const statusCount = (s: string) => byStatus.find(g => g.status === s)?._count._all || 0;
-      const convOf = (id: string) => convertedGroup.find(g => g.affiliateId === id)?._count._all || 0;
-      const sumOf  = (id: string, st: string) => round2(commGroup.find(g => g.affiliateId === id && g.status === st)?._sum.commissionAmount || 0);
+      const statusCount = (s: string) => byStatus.find((g: any) => g.status === s)?._count._all || 0;
+      const convOf = (id: string) => convertedGroup.find((g: any) => g.affiliateId === id)?._count._all || 0;
+      const sumOf  = (id: string, st: string) => round2(commGroup.find((g: any) => g.affiliateId === id && g.status === st)?._sum.commissionAmount || 0);
 
-      const rows = affiliates.map(a => {
+      const rows = affiliates.map((a: any) => {
         const referrals = a._count.referrals;
         const converted = convOf(a.id);
         const pending   = sumOf(a.id, 'pending');
@@ -2654,22 +2654,22 @@ export default async function adminRoutes(app: FastifyInstance) {
           paid,                       // total já pago
           lifetime:  round2(pending + paid),
         };
-      }).sort((x, y) => y.lifetime - x.lifetime);
+      }).sort((x: any, y: any) => y.lifetime - x.lifetime);
 
-      const totalReferrals = rows.reduce((s, r) => s + r.referrals, 0);
-      const totalConverted = rows.reduce((s, r) => s + r.converted, 0);
+      const totalReferrals = rows.reduce((s: number, r: any) => s + r.referrals, 0);
+      const totalConverted = rows.reduce((s: number, r: any) => s + r.converted, 0);
 
       return {
         summary: {
-          total:          byStatus.reduce((s, g) => s + g._count._all, 0),
+          total:          byStatus.reduce((s: number, g: any) => s + g._count._all, 0),
           approved:       statusCount('approved'),
           pending:        statusCount('pending'),   // solicitações aguardando autorização
           rejected:       statusCount('rejected'),
           totalReferrals,
           totalConverted,
           convRate:       totalReferrals ? Math.round((totalConverted / totalReferrals) * 100) : 0,
-          pendingPayout:  round2(rows.reduce((s, r) => s + r.pending, 0)),
-          paidLifetime:   round2(rows.reduce((s, r) => s + r.paid, 0)),
+          pendingPayout:  round2(rows.reduce((s: number, r: any) => s + r.pending, 0)),
+          paidLifetime:   round2(rows.reduce((s: number, r: any) => s + r.paid, 0)),
         },
         rows,
       };
@@ -2802,7 +2802,7 @@ export default async function adminRoutes(app: FastifyInstance) {
           return {
             dau, wau: Number(a.wau || 0), mau,
             stickiness: mau ? Math.round((dau / mau) * 1000) / 10 : null,
-            cohorts: cohorts.map(c => ({
+            cohorts: cohorts.map((c: any) => ({
               cohort: c.cohort, size: Number(c.size),
               w0: Number(c.w0), w1: Number(c.w1), w2: Number(c.w2), w3: Number(c.w3),
             })),
@@ -2838,15 +2838,15 @@ export default async function adminRoutes(app: FastifyInstance) {
             prisma.user.count({ where: { deletedAt: null } }),
           ]);
 
-          const paying       = activeSubs.filter(s => !s.user.isTester && s.plan.priceBrl > 0);
+          const paying       = activeSubs.filter((s: any) => !s.user.isTester && s.plan.priceBrl > 0);
           const payingCount  = paying.length;
-          const mrr          = Math.round(paying.reduce((a, s) => a + s.plan.priceBrl, 0) * 100) / 100;
+          const mrr          = Math.round(paying.reduce((a: number, s: any) => a + s.plan.priceBrl, 0) * 100) / 100;
           const arpu         = totalUsers  ? Math.round((mrr / totalUsers)  * 100) / 100 : 0;
           const arppu        = payingCount ? Math.round((mrr / payingCount) * 100) / 100 : 0;
 
-          const churnedCustomers = canceledLast30.filter(s => !s.user.isTester && (s.plan?.priceBrl || 0) > 0).length;
-          const churnedMrr = Math.round(canceledLast30.reduce((a, s) => a + (s.user.isTester ? 0 : (s.plan?.priceBrl || 0)), 0) * 100) / 100;
-          const newMrr     = Math.round(newPaidLast30.filter(s => !s.user.isTester && s.plan.priceBrl > 0).reduce((a, s) => a + s.plan.priceBrl, 0) * 100) / 100;
+          const churnedCustomers = canceledLast30.filter((s: any) => !s.user.isTester && (s.plan?.priceBrl || 0) > 0).length;
+          const churnedMrr = Math.round(canceledLast30.reduce((a: number, s: any) => a + (s.user.isTester ? 0 : (s.plan?.priceBrl || 0)), 0) * 100) / 100;
+          const newMrr     = Math.round(newPaidLast30.filter((s: any) => !s.user.isTester && s.plan.priceBrl > 0).reduce((a: number, s: any) => a + s.plan.priceBrl, 0) * 100) / 100;
 
           // churn% mensal aproximado = perdidos / (pagantes atuais + perdidos no período)
           const churnRate = (payingCount + churnedCustomers) > 0

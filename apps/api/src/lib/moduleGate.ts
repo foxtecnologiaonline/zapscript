@@ -33,7 +33,7 @@ export async function getUserModules(userId: string): Promise<string[]> {
       where:  { userId, status: { in: [...ACTIVE_STATUSES] } },
       select: { productKey: true },
     });
-    keys = ents.map((e) => e.productKey);
+    keys = ents.map((e: { productKey: string }) => e.productKey);
   } catch {
     // Tabela ausente (migração ainda não aplicada) ou erro — degrada para vazio
     // em vez de derrubar a rota. O gate então nega (402), que é o padrão seguro.

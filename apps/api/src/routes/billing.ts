@@ -1792,7 +1792,7 @@ export default async function billingRoutes(app: FastifyInstance) {
               where: { userId },
               data:  { availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
             }),
-          ]).catch(err => app.log.error({ err }, 'Erro ao processar downgrade de SUBSCRIPTION_DELETED'));
+          ]).catch((err: any) => app.log.error({ err }, 'Erro ao processar downgrade de SUBSCRIPTION_DELETED'));
           invalidatePlanCache(userId).catch(() => null);
           // Programa de afiliados: cancelamento nos primeiros 30 dias zera comissões pendentes
           clawbackAffiliateCommissionOnCancel(userId).catch(() => null);

@@ -933,7 +933,7 @@ export default async function authRoutes(app: FastifyInstance) {
         where:  { userId: req.user.sub, status: { in: ['active', 'trialing'] } },
         select: { productKey: true },
       });
-      modules = ents.map((e) => e.productKey);
+      modules = ents.map((e: { productKey: string }) => e.productKey);
     } catch (err: any) {
       req.log?.warn(`[Auth] Falha ao ler entitlements (ignorada): ${err?.message}`);
     }
