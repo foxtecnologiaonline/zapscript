@@ -224,9 +224,10 @@ app.register(rateLimit, {
     retryAfter: context.after,
   }),
 } as any);
-// 15MB: a única rota que consome multipart hoje (/support/ticket) já limita a
-// 10MB no app; o teto global antigo (200MB) era resquício da demo de upload de
-// áudio removida e só ampliava a superfície de DoS por upload.
+// 15MB: teto global para as rotas que consomem multipart (/support/ticket limita a
+// 10MB no app; /atende/setup/* limita a 15MB áudio / 8MB imagem no ai-input.ts). O
+// teto antigo (200MB) era resquício da demo de upload de áudio removida e só
+// ampliava a superfície de DoS por upload.
 app.register(multipart, { limits: { fileSize: 15 * 1024 * 1024 } });
 
 // ── Swagger/OpenAPI Documentation — somente em desenvolvimento ─────────────
@@ -660,15 +661,14 @@ async function runAutoMigrations() {
           FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
-    // Módulo mantido oculto (status 'planned') até decisão explícita de lançamento —
-    // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
+    // Módulo lançado como MVP (status 'beta') em 2026-07-24 — ver packages/modules/catalog.ts.
     `DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'legenda') THEN
-        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 37, "priceYearly" = 355
+        UPDATE "Product" SET "status" = 'beta', "priceMonthly" = 37, "priceYearly" = 355
           WHERE "key" = 'legenda' AND "status" NOT IN ('beta', 'ga');
       ELSE
         INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
-        VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'planned', 37, 355, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'beta', 37, 355, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
     // Módulo Campanhas (migração 20260713_campanhas_tables): auto-cura o schema no

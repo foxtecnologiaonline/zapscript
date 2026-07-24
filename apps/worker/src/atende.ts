@@ -2,7 +2,10 @@ import { Worker, Job } from 'bullmq';
 import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
-import { sendMessageViaEvolution } from './services/evolution';
+import { sendMessageViaEvolution, downloadAudioFromEvolution } from './services/evolution';
+import { convertToMp3, estimateMp3DurationSec } from './services/audio';
+import { transcribeAudio } from './services/whisper';
+import { MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS } from './lib/freemium';
 import { runAtendeAgent } from './services/atende-agent';
 
 /**
@@ -17,12 +20,44 @@ interface AtendeJobData {
   instanceName: string;
   senderPhone: string;
   senderName: string;
-  messageText: string;
+  messageText?: string;
+  audio?: { messageData: any; durationHint?: number };
   messageId: string;
 }
 
 async function processAtendeJob(job: Job<AtendeJobData>) {
-  const { userId, numberId, instanceName, senderPhone, senderName, messageText } = job.data;
+  const { userId, numberId, instanceName, senderPhone, senderName, audio } = job.data;
+  let messageText = job.data.messageText;
+
+  // Áudio do cliente (Feature 10): transcreve sob demanda, reaproveitando o
+  // mesmo pipeline Whisper do core — mas SEM a cota free/pro de transcrição
+  // (produto separado; Atende não pode ficar mudo pra quem não assina Pro).
+  // Roda ANTES de qualquer escrita no banco: falha aqui é seguro reprocessar
+  // do zero (BullMQ retry), diferente de falhas depois do AtendeMessage 'in'.
+  if (!messageText && audio) {
+    let mp3Buffer: Buffer | null = null;
+    try {
+      const audioBuffer = await downloadAudioFromEvolution(instanceName, audio.messageData);
+      mp3Buffer = await convertToMp3(audioBuffer);
+      const estDurSec = Math.max(estimateMp3DurationSec(mp3Buffer), audio.durationHint || 0);
+      if (estDurSec > MAX_AUDIO_SECONDS + MAX_AUDIO_MARGIN_SECONDS) {
+        logger.warn(`[Atende] 🔊 Áudio de ${senderName} longo demais (~${estDurSec}s) — ignorado`);
+        return { skipped: true, reason: 'audio_too_long' };
+      }
+      const transcribed = await transcribeAudio(mp3Buffer, { vocab: [senderName] });
+      messageText = transcribed.text;
+    } catch (err: any) {
+      logger.error(`[Atende] ❌ Falha ao transcrever áudio de ${senderName}: ${err.message}`);
+      throw err;
+    } finally {
+      mp3Buffer?.fill(0);
+    }
+  }
+
+  if (!messageText) {
+    logger.warn(`[Atende] Job sem texto nem áudio válido (${senderName}) — ignorado`);
+    return { skipped: true, reason: 'empty_message' };
+  }
 
   logger.info(`[Atende] 📥 ${senderName} (${senderPhone}): "${messageText.slice(0, 60)}"`);
 
@@ -67,7 +102,7 @@ async function processAtendeJob(job: Job<AtendeJobData>) {
   try {
     const result = await runAtendeAgent({
       userId,
-      config: { businessContext: config.businessContext, tone: config.tone },
+      config: { businessContext: config.businessContext, tone: config.tone, confidenceLevel: config.confidenceLevel },
       message: messageText,
       contactName: senderName,
       history: historyText,
@@ -149,5 +184,71 @@ atendeWorker.on('error', (err) => {
 });
 
 logger.info('Worker Atende (respostas automáticas) iniciado');
+
+// ─────────────────────────────────────────────────────────────────
+//  Feature 9 — Digest periódico ao dono (self-chat), opt-in por número
+//  via AtendeConfig.digestFrequency ('daily' | 'weekly'). Idempotência
+//  por delta de tempo (lastDigestAt), não por calendário — mesma ideia
+//  do runWeeklyWhatsappDigest em index.ts, mas sem exigir alinhamento a
+//  um horário fixo (não há tag de período pra casar entre configs com
+//  números diferentes rodando em instantes diferentes).
+// ─────────────────────────────────────────────────────────────────
+const DIGEST_INTERVAL_MS: Record<string, number> = {
+  daily: 24 * 60 * 60 * 1000,
+  weekly: 7 * 24 * 60 * 60 * 1000,
+};
+
+async function runAtendeDigests() {
+  const now = new Date();
+  const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+
+  try {
+    const configs = await prisma.atendeConfig.findMany({
+      where: { digestFrequency: { in: ['daily', 'weekly'] } },
+      include: { number: { select: { zapiInstanceId: true, phoneNumber: true, status: true } } },
+    }).catch(() => [] as any[]);
+
+    for (const cfg of configs) {
+      const intervalMs = DIGEST_INTERVAL_MS[cfg.digestFrequency];
+      if (!intervalMs) continue;
+      if (cfg.lastDigestAt && now.getTime() - cfg.lastDigestAt.getTime() < intervalMs) continue;
+      if (cfg.number?.status !== 'connected' || !cfg.number?.zapiInstanceId || !cfg.number?.phoneNumber) continue;
+
+      const since = new Date(now.getTime() - intervalMs);
+      const [openCount, escalatedCount, periodCount] = await Promise.all([
+        prisma.atendeConversation.count({ where: { numberId: cfg.numberId, status: 'open' } }),
+        prisma.atendeConversation.count({ where: { numberId: cfg.numberId, status: 'escalated' } }),
+        prisma.atendeConversation.count({ where: { numberId: cfg.numberId, lastMessageAt: { gte: since } } }),
+      ]);
+
+      // Sem conversa nenhuma no período: não manda mensagem à toa, só adia a
+      // próxima checagem (evita reprocessar o mesmo config a cada hora).
+      if (periodCount === 0) {
+        await prisma.atendeConfig.update({ where: { id: cfg.id }, data: { lastDigestAt: now } }).catch(() => null);
+        continue;
+      }
+
+      const label = cfg.digestFrequency === 'daily' ? 'do dia' : 'da semana';
+      const msg = [
+        `📊 *Atende* — resumo ${label}`,
+        '',
+        `Conversas com clientes: *${periodCount}*`,
+        `Abertas (bot respondendo): ${openCount}`,
+        `Escaladas pra você: ${escalatedCount}`,
+        '',
+        `Painel: ${APP_URL}/app/atende`,
+      ].join('\n');
+
+      await sendMessageViaEvolution(cfg.number.zapiInstanceId, cfg.number.phoneNumber, msg).catch(() => null);
+      await prisma.atendeConfig.update({ where: { id: cfg.id }, data: { lastDigestAt: now } }).catch(() => null);
+      logger.info(`[Atende] 📊 Digest (${cfg.digestFrequency}) enviado — config ${cfg.id}`);
+    }
+  } catch (err: any) {
+    logger.error(`[Atende] Erro no digest periódico: ${err.message}`);
+  }
+}
+
+runAtendeDigests();
+setInterval(runAtendeDigests, 60 * 60 * 1000);
 
 export { atendeWorker };

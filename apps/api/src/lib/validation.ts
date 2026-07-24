@@ -230,6 +230,12 @@ export const atendeConfigSchema = z.object({
   }).optional(),
   fallbackMessage: z.string().min(1, 'Mensagem de fallback não pode ser vazia').max(500).optional(),
   escalationPhone: z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos').nullable().optional(),
+  confidenceLevel: z.enum(['conservador', 'equilibrado', 'autonomo'], {
+    errorMap: () => ({ message: 'Nível de confiança inválido' }),
+  }).optional(),
+  digestFrequency: z.enum(['off', 'daily', 'weekly'], {
+    errorMap: () => ({ message: 'Frequência de resumo inválida' }),
+  }).optional(),
 });
 
 export const atendeKbCreateSchema = z.object({

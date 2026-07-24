@@ -20,9 +20,15 @@ const AGENT_MODELS = [
 ].filter((v, i, a) => a.indexOf(v) === i);
 
 // Abaixo disso, a resposta da IA não é enviada — cai no fallbackMessage do tenant
-// e a conversa é marcada 'escalated'. Limiar conservador de MVP (favorece escalar
-// a arriscar uma resposta errada em nome do negócio do cliente).
-const CONFIDENCE_THRESHOLD = 60;
+// e a conversa é marcada 'escalated'. Limiar por nível de confiança escolhido pelo
+// dono do negócio (AtendeConfig.confidenceLevel): conservador escala mais (prioriza
+// não errar em nome do negócio do cliente), autônomo escala menos (prioriza responder).
+const CONFIDENCE_THRESHOLDS: Record<string, number> = {
+  conservador: 80,
+  equilibrado: 60,
+  autonomo: 40,
+};
+const DEFAULT_CONFIDENCE_THRESHOLD = CONFIDENCE_THRESHOLDS.equilibrado;
 
 const TONE_LABELS: Record<string, string> = {
   'profissional-amigavel': 'profissional e amigável: cordial, direto, sem gírias em excesso',
@@ -56,6 +62,7 @@ function extractJson(text: string): any {
 export interface AtendeConfigLike {
   businessContext: string | null;
   tone: string;
+  confidenceLevel?: string | null;
 }
 
 export interface AtendeAgentResult {
@@ -110,11 +117,12 @@ export async function runAtendeAgent(params: {
 
       const confidence = typeof parsed.confianca === 'number' ? parsed.confianca : 0;
       const reply = typeof parsed.resposta === 'string' ? parsed.resposta.trim() : '';
+      const threshold = CONFIDENCE_THRESHOLDS[params.config.confidenceLevel ?? ''] ?? DEFAULT_CONFIDENCE_THRESHOLD;
 
       return {
         reply,
         confidence,
-        needsHuman: !!parsed.precisa_humano || confidence < CONFIDENCE_THRESHOLD || !reply,
+        needsHuman: !!parsed.precisa_humano || confidence < threshold || !reply,
       };
     } catch (err: any) {
       lastErr = err;
