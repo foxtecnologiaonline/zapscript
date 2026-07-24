@@ -60,14 +60,7 @@ model User {
   atendeKnowledgeBase     AtendeKnowledgeBase[]
   atendeConversations     AtendeConversation[]
   salesVisits             SalesVisit[]
-  crmStages               CrmStage[]
-  crmContacts             CrmContact[]
-  crmActivities           CrmActivity[]
-  cobrancaClientes        CobrancaCliente[]
-  cobrancaCobrancas       CobrancaCobranca[]
   legendaJobs             LegendaJob[]
-  campanhas               Campanha[]
-  campanhaOptOuts         CampanhaOptOut[]
   ownedTeams              Team[]              @relation("TeamOwner")
   teamMemberships         TeamMember[]
 }
@@ -896,133 +889,6 @@ model SalesVisit {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Módulo CRM — funil de vendas dentro do WhatsApp (ver MODULOS_ARQUITETURA.md).
-// v1 é gerenciado manualmente: usuário arrasta contatos entre estágios e pode
-// importar contatos já existentes no histórico de Transcription (1 clique).
-// Escopo v1 NÃO altera o webhook de mensageria — nenhuma captura automática.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Estágio do funil (colunas do Kanban). Semeado com 5 padrões no primeiro
-// acesso do usuário ao módulo (Novo lead, Contato feito, Negociando, Fechado, Perdido).
-model CrmStage {
-  id        String       @id @default(cuid())
-  userId    String
-  name      String
-  order     Int          @default(0)
-  color     String       @default("#6b7280") // hex — cor do cabeçalho da coluna
-  isWon     Boolean      @default(false) // estágio terminal de sucesso (fecha o deal)
-  isLost    Boolean      @default(false) // estágio terminal de perda
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  contacts  CrmContact[]
-
-  @@index([userId, order])
-}
-
-// Um lead/contato dentro do funil. phone é único por usuário (evita duplicar
-// o mesmo contato ao importar do histórico de transcrições mais de uma vez).
-model CrmContact {
-  id             String          @id @default(cuid())
-  userId         String
-  stageId        String
-  name           String
-  phone          String
-  email          String?
-  company        String?
-  value          Float? // valor estimado do negócio (R$)
-  tags           String[]        @default([])
-  numberId       String? // WhatsappNumber de origem, quando importado
-  source         String          @default("manual") // 'manual' | 'import_whatsapp'
-  lostReason     String?
-  lastActivityAt DateTime        @default(now())
-  closedAt       DateTime? // preenchido quando entra em estágio isWon/isLost
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stage          CrmStage        @relation(fields: [stageId], references: [id], onDelete: Restrict)
-  number         WhatsappNumber? @relation(fields: [numberId], references: [id], onDelete: SetNull)
-  activities     CrmActivity[]
-
-  @@unique([userId, phone])
-  @@index([userId, stageId])
-  @@index([userId, lastActivityAt(sort: Desc)])
-}
-
-// Linha do tempo do contato: notas manuais, mudanças de estágio (log
-// automático) e lembretes (dueAt + completedAt).
-model CrmActivity {
-  id          String     @id @default(cuid())
-  contactId   String
-  userId      String
-  type        String // 'note' | 'stage_change' | 'call' | 'meeting' | 'reminder' | 'whatsapp'
-  content     String
-  dueAt       DateTime? // lembretes: quando vence
-  completedAt DateTime? // lembretes: quando foi concluído
-  createdAt   DateTime   @default(now())
-  contact     CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([contactId, createdAt(sort: Desc)])
-  @@index([userId, dueAt])
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Módulo Cobrança — lembretes automáticos de vencimento via WhatsApp.
-// Não é gateway de pagamento: o usuário registra cliente + valor + vencimento,
-// e o worker envia lembrete (dia do vencimento + 1º dia de atraso) usando a
-// própria instância WhatsApp conectada do usuário. Reenvio manual a qualquer momento.
-// ─────────────────────────────────────────────────────────────────────────────
-model CobrancaCliente {
-  id        String             @id @default(cuid())
-  userId    String
-  nome      String
-  telefone  String // DDI+DDD+número, só dígitos (ex: 5511999999999)
-  documento String? // CPF/CNPJ (opcional)
-  email     String?
-  notas     String?
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-  deletedAt DateTime? // soft delete (LGPD)
-  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  cobrancas CobrancaCobranca[]
-
-  @@index([userId, deletedAt])
-}
-
-model CobrancaCobranca {
-  id         String          @id @default(cuid())
-  userId     String
-  clienteId  String
-  descricao  String
-  valor      Float
-  vencimento DateTime // data do vencimento (meia-noite UTC do dia)
-  status     String          @default("pendente") // 'pendente' | 'paga' | 'cancelada'
-  pagoEm     DateTime?
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  deletedAt  DateTime?
-  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  cliente    CobrancaCliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  envios     CobrancaEnvio[]
-
-  @@index([userId, status, vencimento])
-  @@index([clienteId])
-}
-
-model CobrancaEnvio {
-  id         String           @id @default(cuid())
-  cobrancaId String
-  tipo       String // 'vence_hoje' | 'venceu' | 'manual'
-  enviadoEm  DateTime         @default(now())
-  sucesso    Boolean          @default(true)
-  erro       String?
-  cobranca   CobrancaCobranca @relation(fields: [cobrancaId], references: [id], onDelete: Cascade)
-
-  @@index([cobrancaId, tipo])
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Módulo Legendas — legenda automática para Reels/Stories.
 // Vídeo enviado pelo usuário → áudio extraído → Whisper (com timestamps por
 // segmento, reaproveitado da transcrição) → .srt/.vtt para download. MVP não
@@ -1047,69 +913,6 @@ model LegendaJob {
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ZapScript Campanhas — disparo em massa via WhatsApp API oficial (Meta Cloud API).
-// Exige template pré-aprovado pela Meta (mensagem fora da janela de 24h de sessão).
-// ─────────────────────────────────────────────────────────────────────────────
-model Campanha {
-  id                 String            @id @default(cuid())
-  userId             String
-  whatsappNumberId   String
-  name               String
-  status             String            @default("draft") // draft|scheduled|running|paused|completed|canceled|failed
-  templateName       String
-  templateLanguage   String            @default("pt_BR")
-  templateComponents Json? // estrutura de componentes do template (header/body/botões) usada no envio
-  audienceCount      Int               @default(0)
-  sentCount          Int               @default(0) // contador incremental — único escritor é o worker (evita drift)
-  scheduledAt        DateTime?
-  startedAt          DateTime?
-  completedAt        DateTime?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  whatsappNumber     WhatsappNumber    @relation(fields: [whatsappNumberId], references: [id], onDelete: Cascade)
-  contatos           CampanhaContato[]
-
-  @@index([userId])
-  @@index([whatsappNumberId])
-  @@index([status])
-}
-
-model CampanhaContato {
-  id           String    @id @default(cuid())
-  campanhaId   String
-  phone        String
-  name         String?
-  variables    Json? // valores das variáveis do template para este contato ({{1}}, {{2}}, ...)
-  status       String    @default("pending") // pending|sent|delivered|read|failed|optout
-  wamid        String? // message id da Meta — correlaciona com o status recebido no webhook
-  errorMessage String?
-  sentAt       DateTime?
-  deliveredAt  DateTime?
-  readAt       DateTime?
-  failedAt     DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  campanha     Campanha  @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
-
-  @@index([campanhaId])
-  @@index([campanhaId, status])
-  @@index([wamid]) // correlação de status recebido no webhook (hot path)
-}
-
-model CampanhaOptOut {
-  id        String   @id @default(cuid())
-  userId    String // dono do número Business — opt-out é por conta, não global
-  phone     String
-  reason    String? // palavra-chave detectada (ex: "PARAR")
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, phone])
-  @@index([userId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
