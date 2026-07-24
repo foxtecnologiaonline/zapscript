@@ -286,6 +286,19 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
             } else {
               log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado`);
             }
+
+            // ── Módulo Cobrança (#6): cliente pode estar avisando que já pagou ──
+            // Independente do Atende (canal separado: aqui quem é avisado é o
+            // DONO, não o cliente). Fire-and-forget — não atrasa o ACK do webhook.
+            if (number && messageText && COBRANCA_PAGAMENTO_KEYWORDS.test(messageText)) {
+              getUserModules(number.userId)
+                .then((mods) => {
+                  if (mods.includes('cobranca')) {
+                    notifyCobrancaPossiblePayment(number.userId, senderPhone, messageText).catch(() => null);
+                  }
+                })
+                .catch(() => null);
+            }
           } else if (messageText) {
             const number = await findNumber(false);
 
@@ -337,19 +350,6 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
               });
               log.info(`[Evolution] 📝 Resposta humana capturada (Atende, conversa ${conversation.id})`);
             }
-          }
-
-          // ── Módulo Cobrança (#6): cliente pode estar avisando que já pagou ──
-          // Independente do Atende (canal separado: aqui quem é avisado é o
-          // DONO, não o cliente). Fire-and-forget — não atrasa o ACK do webhook.
-          if (number && messageText && COBRANCA_PAGAMENTO_KEYWORDS.test(messageText)) {
-            getUserModules(number.userId)
-              .then((mods) => {
-                if (mods.includes('cobranca')) {
-                  notifyCobrancaPossiblePayment(number.userId, senderPhone, messageText).catch(() => null);
-                }
-              })
-              .catch(() => null);
           }
         }
         return;
