@@ -5,7 +5,8 @@ import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 import { convertToMp3 } from '../../services/audio';
 import { encryptStr, encryptArr } from '../../services/encryption';
-import { transcribeAudio, generateBullets } from '../../index';
+import { transcribeAudio } from '../../services/whisper';
+import { generateBullets } from '../../index';
 
 // Mesmo bucket efêmero usado pelo Core (audio-temp) — sem retenção de áudio
 // para o módulo Vendas: arquivo é removido no `finally`, sucesso ou falha.

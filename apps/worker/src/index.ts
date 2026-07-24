@@ -20,7 +20,6 @@ import {
   planEfetivo, audioQuotaFor, pickFooterVariant, formatSavedTime,
   MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
 } from './lib/freemium';
-import { processCampanhaJob, markCampanhaJobExhausted } from './modules/campanhas';
 import './atende'; // registra o worker da fila 'atende-replies' (ZapScript Atende)
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
