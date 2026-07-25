@@ -5,7 +5,7 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
-import { redis } from './lib/queue';
+import { redis, voiceCommandQueue } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { convertToMp3, splitMp3ByDuration, estimateMp3DurationSec } from './services/audio';
 import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
@@ -19,6 +19,7 @@ import {
   MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
 } from './lib/freemium';
 import './atende'; // registra o worker da fila 'atende-replies' (ZapScript Atende)
+import './voice-command'; // registra o worker da fila 'voice-commands' (Comando de Voz Universal)
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
 // ── Supabase Storage — download/delete de áudios temporários ─────────────────
@@ -1519,6 +1520,19 @@ async function processEvolutionJob(job: Job) {
       footerShown:   footer.show,
       footerVariant: footer.variantId,
     });
+
+    // Comando de Voz Universal: self-note pode ser também um comando (CRM/Atende/stats).
+    // Fire-and-forget — nunca deve atrasar nem arriscar a entrega da transcrição acima.
+    if (isSelfNote) {
+      voiceCommandQueue.add('classify', {
+        userId,
+        numberId:        whatsappNumber.id,
+        instanceName:    instName,
+        senderPhone,
+        transcriptionId: transcription.id,
+        rawText:         originalText,
+      }).catch((err: any) => logger.error(`[VoiceCommand] Falha ao enfileirar: ${err.message}`));
+    }
 
     // PASSO 8: Notificar dashboard via Socket.IO (fire-and-forget)
     const apiUrl      = process.env.API_URL?.replace(/\/$/, '');

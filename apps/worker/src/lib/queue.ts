@@ -39,3 +39,15 @@ export const transcriptionQueue = new Queue('transcriptions', {
     removeOnFail:     { count: 5_000, age: 7 * 24 * 60 * 60 }, // últimas 5k ou 7 dias
   },
 });
+
+// Comando de Voz Universal: baixo volume (só self-notes), sem necessidade de
+// histórico longo — falha aqui nunca deve reprocessar a transcrição original.
+export const voiceCommandQueue = new Queue('voice-commands', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff:  { type: 'exponential', delay: 5_000 },
+    removeOnComplete: { count: 500, age: 48 * 60 * 60 },
+    removeOnFail:     { count: 1_000, age: 7 * 24 * 60 * 60 },
+  },
+});

@@ -316,6 +316,7 @@ app.register(import('./routes/affiliates'),      { prefix: '/affiliates' });
 app.register(import('./routes/entitlements'),    { prefix: '/modules' });
 app.register(import('./routes/modules/crm'),     { prefix: '/crm' });
 app.register(import('./routes/atende'),          { prefix: '/atende' });
+app.register(import('./routes/voice-commands'),  { prefix: '/voice-commands' });
 // Demo de upload no site removido — vira app/site separado. Rota desativada.
 app.register(import('./routes/analytics'),       { prefix: '/analytics' });
 
@@ -513,6 +514,28 @@ async function runAutoMigrations() {
       CONSTRAINT "FaqSuggestion_pkey" PRIMARY KEY ("id")
     )`,
     `CREATE INDEX IF NOT EXISTS "FaqSuggestion_status_idx" ON "FaqSuggestion"("status")`,
+    // Comando de Voz Universal: self-note interpretada como comando (CRM/Atende/stats).
+    `CREATE TABLE IF NOT EXISTS "VoiceCommand" (
+      "id"              TEXT NOT NULL,
+      "userId"          TEXT NOT NULL,
+      "numberId"        TEXT,
+      "transcriptionId" TEXT,
+      "rawText"         TEXT NOT NULL,
+      "intent"          TEXT NOT NULL,
+      "status"          TEXT NOT NULL DEFAULT 'detected',
+      "resultSummary"   TEXT,
+      "confidence"      DOUBLE PRECISION,
+      "createdAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "VoiceCommand_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "VoiceCommand_userId_createdAt_idx" ON "VoiceCommand"("userId", "createdAt" DESC)`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'VoiceCommand_userId_fkey') THEN
+        ALTER TABLE "VoiceCommand"
+          ADD CONSTRAINT "VoiceCommand_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
