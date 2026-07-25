@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'ZapScript vs ViraTexto — Comparativo completo de conversão WhatsApp',
-  description: 'Comparação detalhada entre ZapScript e ViraTexto: preços, funcionalidades, precisão, privacidade e automação. Veja qual é a melhor opção para converter áudios do WhatsApp.',
+  description: 'ZapScript vs ViraTexto: compare preço, automação, privacidade e resumo com IA. Veja qual a melhor opção para converter áudios do WhatsApp em 2026.',
   keywords: 'zapscript vs viratexto, alternativa viratexto, melhor app converter whatsapp, viratexto alternativa, conversão whatsapp automática',
   alternates: { canonical: 'https://www.zapscript.me/vs/viratexto' },
   openGraph: {
@@ -33,7 +33,7 @@ const schema = {
       name: 'O ZapScript é mais caro que o ViraTexto?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'O ZapScript tem plano Free com 15 áudios por mês sem custo algum. O plano Pro custa R$39,90/mês (ou R$19,90 no primeiro mês em junho de 2026) e inclui áudios ilimitados, 2 números e funcionalidades que o ViraTexto não oferece, como resumo com IA, Modo Privado e exportação em PDF.',
+        text: 'O ZapScript tem plano Free com 15 áudios por mês sem custo algum. O plano Pro custa R$37/mês (ou R$18 no primeiro mês) e inclui áudios ilimitados, 2 números e funcionalidades que o ViraTexto não oferece, como resumo com IA, Modo Privado e exportação em PDF.',
       },
     },
     {
@@ -80,7 +80,7 @@ const FAQS = [
   },
   {
     q: 'Como o ZapScript é mais barato que parece?',
-    a: 'O plano Free inclui 15 áudios de conversão por mês sem custo algum e sem cartão de crédito. Para volume maior, o Pro custa R$39,90/mês e inclui áudios ilimitados, 2 números, resumo com IA, Modo Privado, histórico completo e exportação em PDF — funcionalidades que bots simples como o ViraTexto não oferecem.',
+    a: 'O plano Free inclui 15 áudios de conversão por mês sem custo algum e sem cartão de crédito. Para volume maior, o Pro custa R$37/mês e inclui áudios ilimitados, 2 números, resumo com IA, Modo Privado, histórico completo e exportação em PDF — funcionalidades que bots simples como o ViraTexto não oferecem.',
   },
 ];
 

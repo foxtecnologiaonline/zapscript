@@ -159,6 +159,57 @@ export const adminUpdateTicketSchema = z.object({
   response: z.string().max(5000).optional(),
 });
 
+// ── CRM Schemas ───────────────────────────────────────────
+export const createCrmStageSchema = z.object({
+  name:  z.string().min(1, 'Nome é obrigatório').max(50),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor deve ser hex (#rrggbb)').optional(),
+});
+
+export const updateCrmStageSchema = z.object({
+  name:  z.string().min(1).max(50).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor deve ser hex (#rrggbb)').optional(),
+});
+
+export const reorderCrmStagesSchema = z.object({
+  order: z.array(z.string().cuid()).min(1, 'Informe ao menos um estágio'),
+});
+
+export const createCrmContactSchema = z.object({
+  name:    z.string().min(1, 'Nome é obrigatório').max(100),
+  phone:   z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos'),
+  email:   z.string().email('E-mail inválido').max(150).optional(),
+  company: z.string().max(100).optional(),
+  stageId: z.string().cuid('Estágio inválido').optional(), // se ausente, usa o 1º estágio do funil
+  value:   z.number().min(0).max(100_000_000).optional(),
+  tags:    z.array(z.string().max(30)).max(20).optional(),
+});
+
+export const updateCrmContactSchema = z.object({
+  name:       z.string().min(1).max(100).optional(),
+  phone:      z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos').optional(),
+  email:      z.string().email('E-mail inválido').max(150).nullable().optional(),
+  company:    z.string().max(100).nullable().optional(),
+  value:      z.number().min(0).max(100_000_000).nullable().optional(),
+  tags:       z.array(z.string().max(30)).max(20).optional(),
+  lostReason: z.string().max(300).nullable().optional(),
+});
+
+export const moveCrmContactSchema = z.object({
+  stageId:    z.string().cuid('Estágio inválido'),
+  lostReason: z.string().max(300).optional(), // usado quando o estágio destino é isLost
+});
+
+export const createCrmActivitySchema = z.object({
+  type:    z.enum(['note', 'call', 'meeting', 'reminder']),
+  content: z.string().min(1, 'Descreva a atividade').max(2000),
+  dueAt:   z.coerce.date().optional(), // obrigatório em type=reminder (checado na rota)
+});
+
+export const crmImportSchema = z.object({
+  // lista de telefones (dedupe) escolhidos na tela de sugestões do histórico de transcrições
+  phones: z.array(z.string().regex(/^\d{10,15}$/)).min(1, 'Selecione ao menos um contato').max(200),
+});
+
 // ── Support Schemas ──────────────────────────────────────
 export const createSupportTicketSchema = z.object({
   subject: z.string().min(5, 'Assunto deve ter pelo menos 5 caracteres').max(200),
@@ -168,6 +219,91 @@ export const createSupportTicketSchema = z.object({
 
 export const replySupportTicketSchema = z.object({
   message: z.string().min(10, 'Resposta deve ter pelo menos 10 caracteres').max(5000),
+});
+
+// ── Atende Schemas ────────────────────────────────────────
+export const atendeConfigSchema = z.object({
+  enabled:         z.boolean().optional(),
+  businessContext: z.string().max(4000, 'Máximo de 4000 caracteres').optional(),
+  tone:            z.enum(['profissional-amigavel', 'formal', 'descontraido'], {
+    errorMap: () => ({ message: 'Tom inválido' }),
+  }).optional(),
+  fallbackMessage: z.string().min(1, 'Mensagem de fallback não pode ser vazia').max(500).optional(),
+  escalationPhone: z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos').nullable().optional(),
+  confidenceLevel: z.enum(['conservador', 'equilibrado', 'autonomo'], {
+    errorMap: () => ({ message: 'Nível de confiança inválido' }),
+  }).optional(),
+  digestFrequency: z.enum(['off', 'daily', 'weekly'], {
+    errorMap: () => ({ message: 'Frequência de resumo inválida' }),
+  }).optional(),
+});
+
+export const atendeKbCreateSchema = z.object({
+  question: z.string().min(3, 'Pergunta muito curta').max(300),
+  answer:   z.string().min(1, 'Resposta é obrigatória').max(2000),
+});
+
+export const atendeKbUpdateSchema = z.object({
+  question: z.string().min(3, 'Pergunta muito curta').max(300).optional(),
+  answer:   z.string().min(1, 'Resposta não pode ser vazia').max(2000).optional(),
+  active:   z.boolean().optional(),
+});
+
+// ── Cobrança Schemas ─────────────────────────────────────
+export const cobrancaClienteSchema = z.object({
+  nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+  telefone: z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos (com DDD)'),
+  documento: z.string().max(20).optional(),
+  email: z.string().email('E-mail inválido').optional().or(z.literal('')),
+  notas: z.string().max(500).optional(),
+});
+
+export const cobrancaClienteUpdateSchema = cobrancaClienteSchema.partial();
+
+export const cobrancaCobrancaSchema = z.object({
+  clienteId: z.string().cuid('Cliente inválido'),
+  descricao: z.string().min(2, 'Descrição deve ter pelo menos 2 caracteres').max(200),
+  valor: z.number().positive('Valor deve ser maior que zero').max(1_000_000),
+  vencimento: z.coerce.date({ errorMap: () => ({ message: 'Data de vencimento inválida' }) }),
+  recorrente: z.boolean().optional(),
+  recorrenciaMeses: z.number().int().min(1).max(24).optional(),
+});
+
+export const cobrancaCobrancaUpdateSchema = z.object({
+  descricao: z.string().min(2).max(200).optional(),
+  valor: z.number().positive().max(1_000_000).optional(),
+  vencimento: z.coerce.date().optional(),
+  status: z.enum(['pendente', 'paga', 'cancelada']).optional(),
+  recorrente: z.boolean().optional(),
+  recorrenciaMeses: z.number().int().min(1).max(24).optional(),
+});
+
+export const cobrancaConfigSchema = z.object({
+  tom: z.enum(['cordial', 'formal', 'direto']).optional(),
+  escalarTom: z.boolean().optional(),
+  diasAntes: z.array(z.number().int().min(0).max(30)).max(5).optional(),
+  diasDepois: z.array(z.number().int().min(1).max(60)).max(5).optional(),
+  pixKey: z.string().max(140).optional().or(z.literal('')),
+  pixKeyType: z.enum(['cpf', 'cnpj', 'email', 'telefone', 'aleatoria']).optional().or(z.literal('')),
+  resumoDiario: z.boolean().optional(),
+  resumoHora: z.number().int().min(0).max(23).optional(),
+  onboardingDone: z.boolean().optional(),
+});
+
+// ── Legendas Schemas ──────────────────────────────────────
+export const legendaUploadUrlSchema = z.object({
+  filename:    z.string().min(1).max(200),
+  contentType: z.string().min(3).max(100),
+  sizeBytes:   z.number().positive().max(500 * 1024 * 1024, 'Arquivo acima do limite de 500MB'),
+});
+
+// ── Campanhas Schemas ─────────────────────────────────────
+export const createCampanhaSchema = z.object({
+  name:               z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+  whatsappNumberId:   z.string().cuid('Número inválido'),
+  templateName:       z.string().min(1, 'Selecione um template').max(512),
+  templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
+  templateComponents: z.array(z.record(z.any())).optional(),
 });
 
 // ── Types Export ──────────────────────────────────────────

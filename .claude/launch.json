@@ -10,8 +10,9 @@
     {
       "name": "web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "apps/web"],
-      "port": 3000
+      "runtimeArgs": ["run", "dev", "--prefix", "apps/web", "--", "-p", "3100"],
+      "port": 3100,
+      "autoPort": true
     }
   ]
 }

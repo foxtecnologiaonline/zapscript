@@ -9,6 +9,10 @@ export interface BlogPost {
   category:    string;
   coverEmoji:  string;
   content:     string; // HTML
+  /** Autor do post — exibido no template e no JSON-LD como Person */
+  author?:     { name: string; role: string; linkedin?: string; avatar?: string };
+  /** Referências externas para aumentar autoridade (EEAT) */
+  references?: { title: string; url: string }[];
 }
 
 export const POSTS: BlogPost[] = [
@@ -26,6 +30,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 8,
     category:    'Guias',
     coverEmoji:  '🎙️',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Você abre o WhatsApp e lá estão: seis áudios de dois minutos cada. Do cliente, do chefe, da família. Ouvir todos levaria quase 15 minutos — e você está numa reunião. Se essa cena é familiar, saiba que você não está sozinho: <strong>o Brasil é o país que mais envia mensagens de voz pelo WhatsApp no mundo inteiro</strong>.</p>
 
@@ -210,6 +215,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 6,
     category:    'Produtividade',
     coverEmoji:  '🧠',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Um áudio de 3 minutos pode conter uma única informação importante: o horário de uma reunião, o valor de um orçamento, um endereço. Ouvir tudo para chegar nessa informação é tempo desperdiçado. Em 2026, a IA consegue extrair essa informação em segundos — e entregar um <strong>resumo do áudio do WhatsApp</strong> com os pontos que realmente importam.</p>
 
@@ -333,6 +339,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 5,
     category:    'Dicas',
     coverEmoji:  '🔒',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Você já recebeu um áudio do chefe às 23h e ficou com aquela dúvida: "Se eu ouvir, aparece que eu li — e aí fica a expectativa de resposta imediata"? Ou recebeu um áudio de um cliente em reunião e não quis colocar fone de ouvido em público? O <strong>modo privado no WhatsApp</strong> resolve exatamente isso.</p>
 
@@ -469,6 +476,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 7,
     category:    'Empresas',
     coverEmoji:  '🏢',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>No Brasil, o WhatsApp não é apenas um app de mensagens — é o principal canal de comunicação B2C e até B2B. Mais de <strong>93% das empresas brasileiras usam WhatsApp para se comunicar com clientes</strong>. E a maioria dessas comunicações acontece por áudio.</p>
 
@@ -522,7 +530,7 @@ export const POSTS: BlogPost[] = [
 <h2>Como implementar conversão de áudio no WhatsApp da sua empresa</h2>
 
 <h3>Opção 1: Para profissionais individuais e pequenas empresas</h3>
-<p>O <strong>ZapScript</strong> é ideal: conecta seu número pessoal ou comercial, converte automaticamente tudo que chega e disponibiliza histórico pesquisável. Plano Pro a partir de R$39,90/mês.</p>
+<p>O <strong>ZapScript</strong> é ideal: conecta seu número pessoal ou comercial, converte automaticamente tudo que chega e disponibiliza histórico pesquisável. Plano Pro a partir de R$37/mês.</p>
 
 <h3>Opção 2: Para empresas com múltiplos atendentes</h3>
 <p>Combine o ZapScript com o webhook personalizado (disponível no plano Executive). Cada conversão é enviada automaticamente para seu CRM, Zapier, Make ou qualquer sistema via API. Assim, o histórico do cliente é atualizado em tempo real, sem intervenção manual.</p>
@@ -604,6 +612,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 7,
     category:    'Comparativos',
     coverEmoji:  '⚖️',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Se você pesquisou "como converter áudio do WhatsApp", provavelmente já se deparou com <strong>ViraTexto</strong>, <strong>LuzIA</strong> e <strong>ZapScript</strong>. São as três ferramentas mais mencionadas no Brasil para esse fim — mas funcionam de formas muito diferentes. Neste comparativo, vamos analisar cada uma com honestidade para você escolher a certa para o seu perfil.</p>
 
@@ -759,6 +768,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 4,
     category:    'Produtividade',
     coverEmoji:  '😮‍💨',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Confessa: você já fingiu que ouviu um áudio inteiro só para não pedir para a pessoa repetir. Ou viu um áudio de "8:43" chegar e deixou para depois — e o "depois" nunca veio. Se áudio longo no WhatsApp te esgota, você não está sozinho. E tem solução.</p>
 
@@ -783,7 +793,7 @@ export const POSTS: BlogPost[] = [
 <p>As horas que você perde ouvindo áudio podiam ser trabalho, descanso ou família. Converter não é preguiça — é respeitar o seu tempo.</p>
 
 <h2>Conclusão</h2>
-<p>Chega de ouvir áudio longo. Teste o ZapScript de graça e leia seu primeiro áudio em segundos. No lançamento, o 1º mês do Pro sai por R$ 19,90.</p>
+<p>Chega de ouvir áudio longo. Teste o ZapScript de graça e leia seu primeiro áudio em segundos. No lançamento, o 1º mês do Pro sai por R$ 18.</p>
     `,
   },
 
@@ -799,6 +809,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 5,
     category:    'Comparativos',
     coverEmoji:  '💰',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Existe conversão de áudio para todo bolso — inclusive de graça. Mas "grátis" tem letra miúda. Antes de escolher, veja o que cada opção realmente entrega em <strong>precisão, privacidade, resumo e velocidade</strong>.</p>
 
@@ -812,7 +823,7 @@ export const POSTS: BlogPost[] = [
 </ul>
 
 <h2>As opções pagas</h2>
-<p>Serviços pagos entregam mais precisão, sem limites práticos e, os melhores, com <strong>resumo automático</strong> e integração direta com o WhatsApp. O custo, no lançamento, é baixo: o ZapScript começa em <strong>R$ 19,90 no 1º mês</strong>.</p>
+<p>Serviços pagos entregam mais precisão, sem limites práticos e, os melhores, com <strong>resumo automático</strong> e integração direta com o WhatsApp. O custo, no lançamento, é baixo: o ZapScript começa em <strong>R$ 18 no 1º mês</strong>.</p>
 
 <h2>Critérios que realmente importam</h2>
 <table>
@@ -838,7 +849,7 @@ export const POSTS: BlogPost[] = [
     <tr><td>Resumo com IA</td><td>❌</td><td>✅</td></tr>
     <tr><td>Dentro do WhatsApp</td><td>❌ / parcial</td><td>✅</td></tr>
     <tr><td>LGPD</td><td>Varia</td><td>✅</td></tr>
-    <tr><td>Custo</td><td>R$ 0</td><td>A partir de R$ 19,90/mês</td></tr>
+    <tr><td>Custo</td><td>R$ 0</td><td>A partir de R$ 18/mês</td></tr>
   </tbody>
 </table>
 
@@ -853,7 +864,7 @@ export const POSTS: BlogPost[] = [
 <p>Sim. O ZapScript tem plano gratuito, sem cartão de crédito. Você experimenta a conversão e o resumo antes de decidir.</p>
 
 <h2>Conclusão</h2>
-<p>Grátis serve para uso esporádico; pago compensa para quem trabalha com áudio. Teste sem compromisso no ZapScript — se gostar, o 1º mês do Pro sai por R$ 19,90 no lançamento.</p>
+<p>Grátis serve para uso esporádico; pago compensa para quem trabalha com áudio. Teste sem compromisso no ZapScript — se gostar, o 1º mês do Pro sai por R$ 18 no lançamento.</p>
     `,
   },
 
@@ -869,6 +880,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 5,
     category:    'Guias',
     coverEmoji:  '🛡️',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Antes de jogar o áudio de um cliente numa ferramenta de IA, vale a pergunta certa: <strong>isso é seguro?</strong> A resposta depende de como o serviço trata seus dados. Veja o que observar — e como uma boa ferramenta protege você.</p>
 
@@ -913,7 +925,7 @@ export const POSTS: BlogPost[] = [
 <p>Não, desde que haja base legal, segurança e transparência — exatamente o que o ZapScript oferece. O tratamento é feito para executar o serviço que você contratou.</p>
 
 <h2>Conclusão</h2>
-<p>Conversão de áudio com IA pode ser perfeitamente segura — basta escolher um serviço que leve privacidade a sério. Converta em conformidade com a LGPD: crie sua conta no ZapScript e, no lançamento, garanta o 1º mês do Pro por R$ 19,90.</p>
+<p>Conversão de áudio com IA pode ser perfeitamente segura — basta escolher um serviço que leve privacidade a sério. Converta em conformidade com a LGPD: crie sua conta no ZapScript e, no lançamento, garanta o 1º mês do Pro por R$ 18.</p>
     `,
   },
 
@@ -931,6 +943,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 7,
     category:    'Guias',
     coverEmoji:  '🔄',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Seja um áudio do WhatsApp, a gravação de uma reunião, uma aula gravada ou um podcast que você quer aproveitar em texto — em algum momento todo mundo precisa <strong>converter áudio em texto</strong>. A boa notícia: em 2026, fazer isso leva segundos e não exige nenhum conhecimento técnico. Neste guia, você vai ver como transformar <em>qualquer</em> tipo de áudio em texto, de graça ou com IA automática.</p>
 
@@ -985,7 +998,7 @@ export const POSTS: BlogPost[] = [
 <p>Com o motor Whisper, a precisão fica em torno de 95%+ para português claro.</p>
 
 <h2>Conclusão</h2>
-<p>Converter áudio em texto deixou de ser tarefa técnica. Para um arquivo isolado, um site grátis resolve. Para quem lida com áudio todo dia — WhatsApp, reuniões, atendimento — vale automatizar com IA. <strong>Crie sua conta no ZapScript e converta seu primeiro áudio agora</strong>; no lançamento, o 1º mês do Pro sai por R$ 19,90.</p>
+<p>Converter áudio em texto deixou de ser tarefa técnica. Para um arquivo isolado, um site grátis resolve. Para quem lida com áudio todo dia — WhatsApp, reuniões, atendimento — vale automatizar com IA. <strong>Crie sua conta no ZapScript e converta seu primeiro áudio agora</strong>; no lançamento, o 1º mês do Pro sai por R$ 18.</p>
     `,
   },
 
@@ -1002,6 +1015,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 6,
     category:    'Guias',
     coverEmoji:  '⌨️',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Você tem um áudio importante e precisa dele em texto — agora. Talvez seja a gravação de uma conversa, um recado longo ou uma ideia que você gravou andando. Seja qual for o caso, dá para <strong>converter áudio para texto online</strong> em segundos, direto do navegador, sem instalar nada. Veja como.</p>
 
@@ -1051,7 +1065,7 @@ export const POSTS: BlogPost[] = [
 <p>Não há limite fixo. Áudios muito longos levam um pouco mais para processar.</p>
 
 <h2>Conclusão</h2>
-<p>Converter áudio para texto online nunca foi tão simples: sem instalar nada, em segundos, com resumo automático. <strong>Experimente grátis no ZapScript</strong> e converta seu primeiro áudio agora mesmo — no lançamento, o 1º mês do Pro sai por R$ 19,90.</p>
+<p>Converter áudio para texto online nunca foi tão simples: sem instalar nada, em segundos, com resumo automático. <strong>Experimente grátis no ZapScript</strong> e converta seu primeiro áudio agora mesmo — no lançamento, o 1º mês do Pro sai por R$ 18.</p>
     `,
   },
 
@@ -1068,6 +1082,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 6,
     category:    'Casos de uso',
     coverEmoji:  '🗣️',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Falar de produtividade no abstrato é fácil. Mais útil é ver <strong>como pessoas reais, em rotinas diferentes</strong>, deixaram de perder tempo ouvindo áudio e passaram a ler o resumo. Reunimos 5 casos representativos — a dor de cada um, o que mudou e quanto tempo voltou para a semana.</p>
 
@@ -1117,7 +1132,7 @@ export const POSTS: BlogPost[] = [
 </ol>
 
 <h2>Conclusão</h2>
-<p>De advogada a mãe de família, a história se repete: parar de ouvir e começar a ler devolve horas e reduz o estresse. <strong>Faça o mesmo teste</strong> — crie sua conta no ZapScript e leia seu primeiro áudio hoje. No lançamento, o 1º mês do Pro sai por R$ 19,90.</p>
+<p>De advogada a mãe de família, a história se repete: parar de ouvir e começar a ler devolve horas e reduz o estresse. <strong>Faça o mesmo teste</strong> — crie sua conta no ZapScript e leia seu primeiro áudio hoje. No lançamento, o 1º mês do Pro sai por R$ 18.</p>
     `,
   },
 
@@ -1133,6 +1148,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 5,
     category:    'Nichos',
     coverEmoji:  '⚖️',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Advogados lidam com um volume crescente de comunicação via áudio no WhatsApp — clientes que preferem falar a digitar, colegas que enviam briefings em voz, partes que mandam instruções de última hora. Cada minuto ouvindo é um minuto a menos para trabalho técnico. Este guia mostra <strong>como converter áudio do WhatsApp automaticamente no escritório de advocacia</strong>, com atenção especial ao sigilo profissional.</p>
 
@@ -1172,7 +1188,7 @@ export const POSTS: BlogPost[] = [
 </ul>
 
 <h2>Conclusão</h2>
-<p>Converter áudios do WhatsApp é uma das mudanças mais simples e de maior impacto para advogados. Sem alterar a forma como os clientes se comunicam, você recupera horas de trabalho técnico por semana. Crie sua conta gratuita em <strong>zapscript.me</strong> — 15 áudios/mês sem cartão, Plano Pro por R$ 19,90 no 1º mês.</p>
+<p>Converter áudios do WhatsApp é uma das mudanças mais simples e de maior impacto para advogados. Sem alterar a forma como os clientes se comunicam, você recupera horas de trabalho técnico por semana. Crie sua conta gratuita em <strong>zapscript.me</strong> — 15 áudios/mês sem cartão, Plano Pro por R$ 18 no 1º mês.</p>
     `,
   },
 
@@ -1188,6 +1204,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 5,
     category:    'Nichos',
     coverEmoji:  '🏠',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>No mercado imobiliário, cada mensagem não respondida a tempo pode custar uma venda. Clientes mandam áudios enquanto você está em visita, no cartório ou no trânsito — e quando você ouve, a janela de decisão já pode ter fechado. <strong>Converter áudios do WhatsApp automaticamente</strong> é o que permite ao corretor de imóveis moderno responder rápido sem parar o que está fazendo.</p>
 
@@ -1233,6 +1250,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 6,
     category:    'Nichos',
     coverEmoji:  '📈',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>O pipeline de vendas por WhatsApp tem um ponto cego: as informações mais importantes chegam em voz. Budget, prazo para decidir, objeção real, autoridade de compra — tudo isso aparece em áudios que o vendedor ouve uma vez, anota pela metade e não volta a consultar. <strong>Converter áudios do WhatsApp automaticamente</strong> fecha esse ponto cego.</p>
 
@@ -1275,7 +1293,7 @@ export const POSTS: BlogPost[] = [
 </ol>
 
 <h2>Conclusão</h2>
-<p>Times de vendas que documentam sistematicamente fecham mais e com ciclos mais curtos. Conversão automática de áudio é a peça que faltava para quem opera pelo WhatsApp. Comece gratuitamente em <strong>zapscript.me</strong> — 15 áudios/mês no free, Plano Pro por R$ 19,90 no 1º mês.</p>
+<p>Times de vendas que documentam sistematicamente fecham mais e com ciclos mais curtos. Conversão automática de áudio é a peça que faltava para quem opera pelo WhatsApp. Comece gratuitamente em <strong>zapscript.me</strong> — 15 áudios/mês no free, Plano Pro por R$ 18 no 1º mês.</p>
     `,
   },
 
@@ -1291,6 +1309,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 5,
     category:    'Guias',
     coverEmoji:  '🍎',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>O iPhone é o aparelho com melhor suporte à <strong>conversão de áudio do WhatsApp</strong> no Brasil — mas o recurso nativo tem limites importantes. Veja como usar o que vem de fábrica e como converter <em>todos</em> os áudios automaticamente quando o nativo não dá conta.</p>
 
@@ -1337,6 +1356,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 5,
     category:    'Guias',
     coverEmoji:  '🤖',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>No Android, converter <strong>áudio do WhatsApp</strong> é menos uniforme que no iPhone: o recurso nativo depende do fabricante. Veja as opções reais em 2026 e como converter tudo automaticamente, independente do aparelho.</p>
 
@@ -1382,6 +1402,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 5,
     category:    'Guias',
     coverEmoji:  '💻',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Trabalhar no computador e ter que pegar o celular para ouvir cada áudio do WhatsApp quebra o foco. A boa notícia: dá para <strong>converter áudio do WhatsApp direto no PC</strong>. Veja as formas que funcionam em 2026.</p>
 
@@ -1426,6 +1447,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 6,
     category:    'Nichos',
     coverEmoji:  '🧠',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Entre uma sessão e outra, é comum um paciente mandar um áudio longo contando como foi a semana, um episódio de ansiedade ou uma dúvida antes do próximo encontro. Ouvir cada um por completo, anotar o que for relevante e ainda manter a rotina de atendimentos é desgastante — e fácil de deixar passar um detalhe importante.</p>
 
@@ -1464,6 +1486,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 6,
     category:    'Nichos',
     coverEmoji:  '🛍️',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>"Manda um áudio que é mais rápido" — é assim que boa parte dos pedidos chega para quem vende por WhatsApp: revendedoras, autônomos, lojas de e-commerce que atendem direto pelo número comercial. O problema é que áudio não é pesquisável, não fica registrado em lugar nenhum e, no meio de uma correria de atendimentos, é fácil esquecer um detalhe — cor, tamanho, endereço, forma de pagamento.</p>
 
@@ -1500,6 +1523,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 6,
     category:    'Guias',
     coverEmoji:  '💰',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Antes de assinar qualquer ferramenta, a pergunta é direta: <strong>quanto custa transcrever áudio do WhatsApp</strong>? A resposta depende de quanto áudio você recebe por mês — e do modelo de cobrança da ferramenta. Existem hoje 3 formatos no mercado, com diferenças grandes de custo dependendo do seu volume.</p>
 
@@ -1545,6 +1569,7 @@ export const POSTS: BlogPost[] = [
     readingTime: 6,
     category:    'Empresas',
     coverEmoji:  '🎧',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
 <p>Times de atendimento ao cliente (SAC, suporte, customer success) que operam pelo WhatsApp enfrentam um problema específico: o cliente manda um áudio relatando um problema, e esse relato precisa virar um registro auditável — para o histórico do chamado, para a equipe entender o caso sem reouvir, e para evitar que a mesma reclamação seja repetida em outro canal sem contexto.</p>
 
