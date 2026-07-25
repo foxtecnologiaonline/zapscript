@@ -2166,6 +2166,91 @@ async function checkAndLogServiceHealth() {
 checkAndLogServiceHealth();
 setInterval(checkAndLogServiceHealth, 5 * 60 * 1000);
 
+// ─────────────────────────────────────────────────────────────────
+//  CRON — Relatório periódico do Programa de Afiliados
+//  Cadência ("weekly" | "monthly") e destino (e-mail) configuráveis pelo
+//  admin sem redeploy, via AffiliateConfig chave "reportSchedule" (ver
+//  apps/api/src/lib/affiliateConfig.ts — mesma tabela, lida aqui direto
+//  pelo Prisma pois o worker não importa código de apps/api).
+//  Verifica a cada hora; dispara uma vez por período (semana ISO ou mês)
+//  e é idempotente via chave "reportLastSent" na mesma tabela.
+// ─────────────────────────────────────────────────────────────────
+function monthTag(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+async function runAffiliateReportSchedule(): Promise<void> {
+  try {
+    const [scheduleRow, lastSentRow] = await Promise.all([
+      (prisma as any).affiliateConfig.findUnique({ where: { key: 'reportSchedule' } }),
+      (prisma as any).affiliateConfig.findUnique({ where: { key: 'reportLastSent' } }),
+    ]);
+    const cadence: 'off' | 'weekly' | 'monthly' = scheduleRow?.value?.cadence || 'off';
+    const destination: string = (scheduleRow?.value?.destination || '').trim();
+    if (cadence === 'off' || !destination) return;
+
+    const now = new Date();
+    const tag = cadence === 'weekly' ? isoWeekTag(now) : monthTag(now);
+    if (lastSentRow?.value?.tag === tag) return; // já enviado neste período
+
+    const dayMs       = 24 * 60 * 60 * 1000;
+    const periodStart = new Date(now.getTime() - (cadence === 'weekly' ? 7 : 30) * dayMs);
+
+    const [newAffiliates, conversions, commissionAgg, payoutAffiliates] = await Promise.all([
+      (prisma as any).affiliate.count({ where: { appliedAt: { gte: periodStart } } }),
+      (prisma as any).affiliateReferral.count({ where: { status: 'converted', convertedAt: { gte: periodStart } } }),
+      (prisma as any).affiliateCommission.aggregate({
+        where: { createdAt: { gte: periodStart } },
+        _sum:  { commissionAmount: true },
+        _count: true,
+      }),
+      (prisma as any).affiliate.findMany({
+        where:  { payoutRequestedAt: { not: null }, commissions: { some: { status: 'pending' } } },
+        select: { id: true, commissions: { where: { status: 'pending' }, select: { commissionAmount: true } } },
+      }),
+    ]);
+
+    const payoutCount  = payoutAffiliates.length;
+    const payoutAmount = payoutAffiliates.reduce((sum: number, a: any) =>
+      sum + a.commissions.reduce((s: number, c: any) => s + c.commissionAmount, 0), 0);
+
+    const fmtBRL       = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const periodLabel  = cadence === 'weekly' ? 'nos últimos 7 dias' : 'nos últimos 30 dias';
+    const cadenceLabel = cadence === 'weekly' ? 'semanal' : 'mensal';
+    const APP_URL      = process.env.APP_URL || 'https://zapscript.me';
+
+    const subject = `📊 ZapScript — Relatório ${cadenceLabel} de afiliados`;
+    const body = `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+      <div style="font-size:22px;font-weight:bold;margin-bottom:16px">📊 Relatório ${cadenceLabel} — Programa de Afiliados</div>
+      <div style="font-size:14px;line-height:1.9;color:#a7f3d0">
+        Resumo ${periodLabel}:<br><br>
+        🆕 Novos afiliados: <strong>${newAffiliates}</strong><br>
+        ✅ Conversões (indicados que assinaram): <strong>${conversions}</strong><br>
+        💰 Comissões geradas: <strong>${commissionAgg._count}</strong> (${fmtBRL(commissionAgg._sum.commissionAmount || 0)})<br>
+        💸 Saques pendentes: <strong>${payoutCount}</strong> afiliado(s) — ${fmtBRL(payoutAmount)}
+      </div>
+      <div style="margin:24px 0;text-align:center">
+        <a href="${APP_URL}/g5r8t2" style="background:#10b981;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Ver painel admin →</a>
+      </div>
+      <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+    </div>`;
+
+    await sendEmail(destination, subject, body);
+    await (prisma as any).affiliateConfig.upsert({
+      where:  { key: 'reportLastSent' },
+      create: { key: 'reportLastSent', value: { tag } },
+      update: { value: { tag }, updatedAt: new Date() },
+    });
+    logger.info(`[Afiliados] Relatório ${cadenceLabel} enviado a ${destination} (tag: ${tag})`);
+  } catch (err: any) {
+    logger.error(`[Afiliados] Falha no relatório periódico: ${err?.message}`);
+  }
+}
+
+// Verifica a cada hora se é hora de enviar (idempotente por período — ver acima)
+runAffiliateReportSchedule();
+setInterval(runAffiliateReportSchedule, 60 * 60 * 1000);
+
 // ── Graceful shutdown ────────────────────────────────────────────
 process.on('SIGTERM', async () => {
   logger.info('Worker encerrando...');

@@ -11,6 +11,10 @@ import { sendText } from '../services/evolution';
 import { sendEmail } from '../lib/mailer';
 import { asaas, asaasConfigured, asaasEnv } from '../lib/asaas';
 import { checkAdminTotp } from '../lib/totp';
+import { COMMISSION } from '../lib/affiliate';
+import {
+  getEffectiveCommissionRates, getAutoApproveConfig, getReportScheduleConfig, setAffiliateConfig,
+} from '../lib/affiliateConfig';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -2436,7 +2440,7 @@ export default async function adminRoutes(app: FastifyInstance) {
           id: true, code: true, status: true,
           pixKey: true, pixKeyType: true, payoutName: true,
           audience: true, notes: true, appliedAt: true, approvedAt: true,
-          rejectedReason: true,
+          rejectedReason: true, customRate: true,
           user:   { select: { email: true, name: true } },
           _count: { select: { referrals: true } },
         },
@@ -2473,6 +2477,7 @@ export default async function adminRoutes(app: FastifyInstance) {
           appliedAt:      a.appliedAt,
           approvedAt:     a.approvedAt,
           rejectedReason: a.rejectedReason,
+          customRate:     a.customRate,
         })),
       };
     }
@@ -2680,6 +2685,125 @@ export default async function adminRoutes(app: FastifyInstance) {
         },
         rows,
       };
+    }
+  );
+
+  // ── GET /affiliates/config — parâmetros efetivos do programa (taxas, ─────
+  // auto-aprovação, relatório periódico) + defaults hardcoded p/ referência.
+  app.get('/affiliates/config', { preHandler: [adminAuth] }, async () => {
+    const [rates, autoApprove, reportSchedule] = await Promise.all([
+      getEffectiveCommissionRates(),
+      getAutoApproveConfig(),
+      getReportScheduleConfig(),
+    ]);
+    return {
+      rates, autoApprove, reportSchedule,
+      defaults: { base: COMMISSION.BASE_RATE, bonus: COMMISSION.BONUS_RATE, residual: COMMISSION.RESIDUAL_RATE },
+    };
+  });
+
+  // ── PUT /affiliates/config — grava parâmetros (parcial: só as chaves enviadas) ──
+  app.put<{ Body: { rates?: any; autoApprove?: any; reportSchedule?: any } }>(
+    '/affiliates/config',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { rates, autoApprove, reportSchedule } = req.body || {};
+      const entries: Record<string, any> = {};
+
+      if (rates) {
+        for (const k of ['base', 'bonus', 'residual']) {
+          const v = (rates as any)[k];
+          if (v !== undefined && (!Number.isFinite(v) || v <= 0 || v >= 1)) {
+            return reply.code(400).send({ error: `Taxa "${k}" deve ser uma fração entre 0 e 1 (ex.: 0.3 = 30%).` });
+          }
+        }
+        entries.rates = rates;
+      }
+      if (autoApprove) entries.autoApprove = autoApprove;
+      if (reportSchedule) {
+        if (reportSchedule.cadence && !['off', 'weekly', 'monthly'].includes(reportSchedule.cadence)) {
+          return reply.code(400).send({ error: 'Cadência inválida (use off, weekly ou monthly).' });
+        }
+        entries.reportSchedule = reportSchedule;
+      }
+      if (Object.keys(entries).length === 0) return reply.code(400).send({ error: 'Corpo vazio.' });
+
+      await setAffiliateConfig(entries);
+      app.log.info(`[Admin] Config de afiliados atualizada: ${Object.keys(entries).join(', ')}`);
+      return { ok: true };
+    }
+  );
+
+  // ── GET /affiliates/campaigns — lista campanhas sazonais (todas, +recentes primeiro) ──
+  app.get('/affiliates/campaigns', { preHandler: [adminAuth] }, async () => {
+    const campaigns = await (prisma as any).affiliateCampaign.findMany({ orderBy: { startsAt: 'desc' } });
+    return { campaigns };
+  });
+
+  // ── POST /affiliates/campaigns — cria campanha (ex.: "Black Friday: 50% de 20/11 a 30/11") ──
+  app.post<{ Body: { name?: string; rate?: number; startsAt?: string; endsAt?: string } }>(
+    '/affiliates/campaigns',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { name, rate, startsAt, endsAt } = req.body || {};
+      if (!name?.trim()) return reply.code(400).send({ error: 'Nome da campanha é obrigatório.' });
+      if (!Number.isFinite(rate) || (rate as number) <= 0 || (rate as number) >= 1) {
+        return reply.code(400).send({ error: 'Taxa deve ser uma fração entre 0 e 1 (ex.: 0.5 = 50%).' });
+      }
+      const start = new Date(startsAt || '');
+      const end   = new Date(endsAt || '');
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+        return reply.code(400).send({ error: 'Datas inválidas — o fim deve ser depois do início.' });
+      }
+
+      const campaign = await (prisma as any).affiliateCampaign.create({
+        data: { name: name.trim().slice(0, 100), rate, startsAt: start, endsAt: end, active: true },
+      });
+      app.log.info(`[Admin] Campanha de afiliados criada: "${campaign.name}" (${Math.round((rate as number) * 100)}%, ${start.toISOString().slice(0, 10)}→${end.toISOString().slice(0, 10)})`);
+      return reply.code(201).send({ ok: true, campaign });
+    }
+  );
+
+  // ── PUT /affiliates/campaigns/:id — edita ou (des)ativa uma campanha ─────
+  app.put<{ Params: { id: string }; Body: { active?: boolean; name?: string; rate?: number; startsAt?: string; endsAt?: string } }>(
+    '/affiliates/campaigns/:id',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const existing = await (prisma as any).affiliateCampaign.findUnique({ where: { id: req.params.id } });
+      if (!existing) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+
+      const { active, name, rate, startsAt, endsAt } = req.body || {};
+      const data: any = {};
+      if (active !== undefined) data.active = !!active;
+      if (name !== undefined) data.name = name.trim().slice(0, 100);
+      if (rate !== undefined) {
+        if (!Number.isFinite(rate) || rate <= 0 || rate >= 1) return reply.code(400).send({ error: 'Taxa inválida.' });
+        data.rate = rate;
+      }
+      if (startsAt !== undefined) data.startsAt = new Date(startsAt);
+      if (endsAt !== undefined) data.endsAt = new Date(endsAt);
+
+      const updated = await (prisma as any).affiliateCampaign.update({ where: { id: existing.id }, data });
+      app.log.info(`[Admin] Campanha de afiliados atualizada: ${existing.id}`);
+      return { ok: true, campaign: updated };
+    }
+  );
+
+  // ── PUT /affiliates/:id/custom-rate — taxa individual (override), null remove ──
+  app.put<{ Params: { id: string }; Body: { customRate?: number | null } }>(
+    '/affiliates/:id/custom-rate',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { customRate } = req.body || {};
+      if (customRate !== null && customRate !== undefined && (!Number.isFinite(customRate) || customRate <= 0 || customRate >= 1)) {
+        return reply.code(400).send({ error: 'Taxa deve ser uma fração entre 0 e 1 (ex.: 0.35 = 35%), ou null para remover.' });
+      }
+      const aff = await prisma.affiliate.findUnique({ where: { id: req.params.id }, select: { id: true, code: true } });
+      if (!aff) return reply.code(404).send({ error: 'Afiliado não encontrado.' });
+
+      await prisma.affiliate.update({ where: { id: aff.id }, data: { customRate: customRate ?? null } });
+      app.log.info(`[Admin] Taxa personalizada: ${aff.code} → ${customRate != null ? Math.round(customRate * 100) + '%' : 'removida (usa global)'}`);
+      return { ok: true };
     }
   );
 

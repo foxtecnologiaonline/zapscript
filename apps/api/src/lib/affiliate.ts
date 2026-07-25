@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { logger } from './logger';
 import { sendEmail } from './mailer';
+import { getEffectiveCommissionRates, getActiveCampaign } from './affiliateConfig';
 
 /* ─────────────────────────────────────────────────────────
    Programa de Afiliados — regras de comissão (modelo recorrente)
@@ -16,6 +17,12 @@ import { sendEmail } from './mailer';
    - Atribuição por pagamento é idempotente por (paymentId, affiliateId), mas
      — diferente do modelo antigo — múltiplas comissões por indicado ao longo
      do tempo são esperadas (uma por pagamento confirmado via webhook).
+   - As taxas base/bônus/residual acima são apenas o default (env ou fixo).
+     O admin pode sobrescrevê-las sem redeploy via AffiliateConfig (chave
+     "rates" — ver lib/affiliateConfig.ts). Prioridade da taxa "cheia" (janela
+     dos 12 meses): campanha sazonal ativa > taxa personalizada do afiliado
+     (Affiliate.customRate) > bônus/base. A residual pós-12-meses é sempre a
+     global — nunca afetada por campanha ou taxa personalizada.
    ───────────────────────────────────────────────────────── */
 
 function envRate(v: string | undefined, fallback: number): number {
@@ -106,9 +113,10 @@ export async function attributeAffiliateCommission(
     const daysSinceConversion = convertedAt ? (Date.now() - convertedAt.getTime()) / DAY_MS : 0;
     const withinRecurringWindow = isFirstPayment || daysSinceConversion <= COMMISSION.RECURRING_MONTHS * 30.44;
 
+    const [rates, campaign] = await Promise.all([getEffectiveCommissionRates(), getActiveCampaign()]);
     const rate = !withinRecurringWindow
-      ? COMMISSION.RESIDUAL_RATE
-      : (bonusTier ? COMMISSION.BONUS_RATE : COMMISSION.BASE_RATE);
+      ? rates.residual
+      : (campaign?.rate ?? aff.customRate ?? (bonusTier ? rates.bonus : rates.base));
     const commissionType = isYearly ? 'annual' : 'monthly';
     const commissionAmount = round2(saleAmount * rate);
     if (commissionAmount <= 0) return;
@@ -126,7 +134,10 @@ export async function attributeAffiliateCommission(
       },
     });
 
-    logger.info(`[Afiliado] Comissão atribuída: aff=${aff.id} user=${referredUserId} R$${commissionAmount} (${Math.round(rate * 100)}%, pagamento ${monthIndex})`);
+    const rateSource = withinRecurringWindow
+      ? (campaign ? ` [campanha: ${campaign.name}]` : aff.customRate != null ? ' [taxa personalizada]' : '')
+      : '';
+    logger.info(`[Afiliado] Comissão atribuída: aff=${aff.id} user=${referredUserId} R$${commissionAmount} (${Math.round(rate * 100)}%, pagamento ${monthIndex})${rateSource}`);
 
     // Notificar afiliado por e-mail (best-effort) — só na 1ª comissão do
     // indicado, para não gerar 1 e-mail por mês por cliente recorrente.

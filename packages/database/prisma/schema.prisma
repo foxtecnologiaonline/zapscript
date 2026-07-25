@@ -370,6 +370,7 @@ model Affiliate {
   approvedAt        DateTime?
   approvedBy        String? // adminId que aprovou
   payoutRequestedAt DateTime? // última solicitação de saque do afiliado
+  customRate        Float? // override individual da taxa base (fração, ex.: 0.35) — vazio usa a taxa global
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
   user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -413,6 +414,33 @@ model AffiliateCommission {
 
   @@unique([paymentId, affiliateId])
   @@index([affiliateId, status])
+}
+
+// Configuração do Programa de Afiliados editável pelo admin sem redeploy.
+// Padrão key/value/Json (mesma ideia do AdminAlertConfig) — chaves conhecidas:
+// "rates" | "autoApprove" | "reportSchedule". Ausência de linha = usa o default
+// hardcoded em lib/affiliate.ts (COMMISSION) ou desligado, conforme a chave.
+model AffiliateConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// Campanha sazonal de bônus (ex.: "Black Friday: 50% de 20/11 a 30/11").
+// Enquanto ativa e dentro da janela, sua taxa substitui base/bônus/personalizada
+// na atribuição de novas comissões (ver lib/affiliate.ts). Não afeta a taxa
+// residual (pós 12 meses).
+model AffiliateCampaign {
+  id        String   @id @default(cuid())
+  name      String
+  rate      Float // fração, ex.: 0.5 = 50%
+  startsAt  DateTime
+  endsAt    DateTime
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([active, startsAt, endsAt])
 }
 
 // Leads capturados pela demo pública da landing page ("transcreva 1 áudio grátis").

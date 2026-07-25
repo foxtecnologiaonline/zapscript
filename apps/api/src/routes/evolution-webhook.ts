@@ -3,6 +3,7 @@ import { transcriptionQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected } from '../services/whatsapp-notify';
 import { storeQr } from '../lib/qrStore';
+import { sendText } from '../services/evolution';
 import { io } from '../index';
 
 
@@ -73,6 +74,59 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       if (AUDIO_EXTENSIONS.some(ext => lower.endsWith(ext))) return true;
     }
     return false;
+  }
+
+  // ── Consulta administrativa por texto: saques pendentes (Programa de Afiliados) ──
+  // Permite ao admin perguntar algo como "quantos saques pendentes?" pelo WhatsApp
+  // e receber a resposta na hora — reaproveita o webhook do produto (sem instância
+  // dedicada). Só responde quando o texto bate no padrão E o remetente é o telefone
+  // cadastrado em AdminAlertConfig["alertPhone"] (mesmo config dos alertas de infra);
+  // qualquer outro texto/remetente segue ignorado normalmente. "Saques pendentes" é
+  // definido pragmaticamente como afiliados com payoutRequestedAt setado e ao menos
+  // uma comissão 'pending' — não existe modelo dedicado de solicitação de saque.
+  const PAYOUT_QUERY_RE = /saque/i;
+
+  async function handleAdminPayoutQuery(instanceNameStr: string, senderPhone: string, text: string): Promise<boolean> {
+    if (!PAYOUT_QUERY_RE.test(text)) return false;
+
+    const cfgRow: any = await (prisma as any).adminAlertConfig
+      .findUnique({ where: { key: 'alertPhone' } })
+      .catch(() => null);
+    const alertPhone = cfgRow?.value && cfgRow.value !== 'null' ? String(cfgRow.value) : null;
+    if (!alertPhone || !samePhone(senderPhone, alertPhone)) return false;
+
+    const payoutAffiliates: any[] = await (prisma as any).affiliate.findMany({
+      where: {
+        payoutRequestedAt: { not: null },
+        commissions: { some: { status: 'pending' } },
+      },
+      select: {
+        id:          true,
+        user:        { select: { name: true, email: true } },
+        commissions: { where: { status: 'pending' }, select: { commissionAmount: true } },
+      },
+    }).catch(() => []);
+
+    const fmtBRL   = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const amountOf = (a: any) => a.commissions.reduce((s: number, c: any) => s + c.commissionAmount, 0);
+    const count    = payoutAffiliates.length;
+    const total    = payoutAffiliates.reduce((sum: number, a: any) => sum + amountOf(a), 0);
+
+    let reply: string;
+    if (count === 0) {
+      reply = '💸 *Saques pendentes*\n\nNenhum saque pendente no momento.';
+    } else {
+      const lines = payoutAffiliates
+        .slice(0, 10)
+        .map((a: any) => `• ${a.user?.name || a.user?.email || a.id} — ${fmtBRL(amountOf(a))}`);
+      const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+      reply = `💸 *Saques pendentes*\n\n${count} afiliado(s) — total ${fmtBRL(total)}:\n\n${lines.join('\n')}`
+            + (count > 10 ? `\n\n…e mais ${count - 10}.` : '')
+            + `\n\nPainel: ${APP_URL}/g5r8t2`;
+    }
+
+    await sendText(instanceNameStr, senderPhone, reply);
+    return true;
   }
 
   // ── Processamento assíncrono ─────────────────────────────────────────────────
@@ -242,7 +296,16 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
 
       if (!isAudio) {
         if (messageType === 'conversation' || messageType === 'extendedTextMessage') {
-          log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado`);
+          const text = String(msg?.message?.conversation ?? msg?.message?.extendedTextMessage?.text ?? '');
+          const handled = await handleAdminPayoutQuery(instName, senderPhone, text).catch((err: any) => {
+            log.error({ err: err?.message }, '[Evolution] Erro ao processar consulta admin');
+            return false;
+          });
+          if (handled) {
+            log.info(`[Evolution] 🔐 Consulta admin de saques respondida (${senderPhone})`);
+          } else {
+            log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado`);
+          }
         }
         return;
       }

@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { genAffiliateCode, COMMISSION } from '../lib/affiliate';
 import { sendEmail } from '../lib/mailer';
+import { getAutoApproveConfig, getEffectiveCommissionRates } from '../lib/affiliateConfig';
 
 /* ─────────────────────────────────────────────────────────
    Programa de Afiliados — rotas self-service (JWT)
@@ -9,7 +10,8 @@ import { sendEmail } from '../lib/mailer';
    ───────────────────────────────────────────────────────── */
 
 const VALID_PIX_TYPES = ['cpf', 'cnpj', 'email', 'phone', 'random'];
-const HOLD_MS = COMMISSION.PAYOUT_HOLD_DAYS * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HOLD_MS = COMMISSION.PAYOUT_HOLD_DAYS * DAY_MS;
 
 // Mascara email para LGPD: "fr***@gmail.com" (mesmo padrão de routes/admin.ts)
 function maskEmail(email: string): string {
@@ -63,6 +65,21 @@ async function countConversionsThisMonth(affiliateId: string): Promise<number> {
 
 export default async function affiliateRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
+
+  // ── GET /affiliates/rates — taxas efetivas, público (sem auth) ───────────
+  // Consumido pelo simulador de comissão da LP (afiliados/page.tsx) — sempre
+  // reflete AffiliateConfig atual, nunca o default hardcoded no frontend.
+  app.get('/rates', async () => {
+    const rates = await getEffectiveCommissionRates();
+    return {
+      baseRate:        rates.base,
+      bonusRate:        rates.bonus,
+      residualRate:     rates.residual,
+      recurringMonths:  COMMISSION.RECURRING_MONTHS,
+      bonusThreshold:   COMMISSION.BONUS_THRESHOLD,
+      payoutHoldDays:   COMMISSION.PAYOUT_HOLD_DAYS,
+    };
+  });
 
   // ── GET /affiliates/me — dados + estatísticas do afiliado atual ──────────
   app.get('/me', auth, async (req: any) => {
@@ -147,11 +164,29 @@ export default async function affiliateRoutes(app: FastifyInstance) {
         code = genAffiliateCode();
       }
 
+      // Auto-aprovação configurável (admin liga em Programa de Afiliados →
+      // Config): e-mail verificado + conta com pelo menos X dias.
+      const autoApprove = await getAutoApproveConfig();
+      let willAutoApprove = false;
+      let userForEmail: { email: string; name: string | null } | null = null;
+      if (autoApprove.enabled) {
+        const user = await prisma.user.findUnique({
+          where:  { id: userId },
+          select: { createdAt: true, emailVerified: true, email: true, name: true },
+        });
+        if (user) {
+          const accountDays = (Date.now() - user.createdAt.getTime()) / DAY_MS;
+          willAutoApprove = (!autoApprove.requireVerifiedEmail || user.emailVerified) && accountDays >= autoApprove.minAccountDays;
+          userForEmail = { email: user.email, name: user.name };
+        }
+      }
+
       const affiliate = await prisma.affiliate.create({
         data: {
           userId,
           code,
-          status:         'pending',
+          status:         willAutoApprove ? 'approved' : 'pending',
+          approvedAt:     willAutoApprove ? new Date() : null,
           pixKey:         pixKey?.trim() || null,
           pixKeyType:     pixKeyType || null,
           payoutName:     payoutName?.trim() || null,
@@ -163,10 +198,30 @@ export default async function affiliateRoutes(app: FastifyInstance) {
         },
       });
 
+      if (willAutoApprove && userForEmail?.email) {
+        const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+        const firstName = userForEmail.name?.split(' ')[0] || 'parceiro(a)';
+        sendEmail(
+          userForEmail.email,
+          '🎉 Você foi aprovado como Afiliado ZapScript',
+          `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+            <div style="font-size:22px;font-weight:bold;margin-bottom:12px">🎉 Cadastro de afiliado aprovado!</div>
+            <p style="color:#a7f3d0;line-height:1.7">Olá, ${firstName}! Seu cadastro no Programa de Afiliados do ZapScript foi aprovado automaticamente.</p>
+            <p style="color:#a7f3d0;line-height:1.7">Seu link de divulgação:<br><strong style="color:#10b981">${APP_URL}/?aff=${affiliate.code}</strong></p>
+            <div style="margin:24px 0;text-align:center">
+              <a href="${APP_URL}/dashboard/afiliado" style="background:#10b981;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Acessar painel de afiliado →</a>
+            </div>
+          </div>`,
+        ).catch(err => app.log.error({ err }, 'Erro ao enviar e-mail de auto-aprovação de afiliado'));
+        app.log.info(`[Affiliates] Auto-aprovado: ${affiliate.code}`);
+      }
+
       return reply.code(201).send({
         ok: true,
         affiliate: { id: affiliate.id, code: affiliate.code, status: affiliate.status },
-        message: 'Cadastro enviado! Você receberá um aviso quando for aprovado.',
+        message: willAutoApprove
+          ? 'Cadastro aprovado automaticamente! Seu link de divulgação já está ativo.'
+          : 'Cadastro enviado! Você receberá um aviso quando for aprovado.',
       });
     }
   );
