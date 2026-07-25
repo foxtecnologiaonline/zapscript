@@ -12,7 +12,7 @@ import crypto from 'crypto';
  * Espelha o padrão de api/data-deletion-callback/route.ts.
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'https://zapscript-api.onrender.com';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'https://api.zapscript.me';
 
 function base64UrlDecode(input: string): Buffer {
   const pad = input.length % 4 === 0 ? '' : '='.repeat(4 - (input.length % 4));

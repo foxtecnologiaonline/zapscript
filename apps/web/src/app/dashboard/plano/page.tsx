@@ -66,7 +66,7 @@ const PLANS = [
   {
     name:  'pro',
     label: 'Pro',
-    price: 'R$39,90',
+    price: 'R$37',
     per:   '/mês',
     desc:  'Para profissionais',
     feats: [
@@ -89,7 +89,7 @@ const PLANS = [
   {
     name:  'executive',
     label: 'Executive',
-    price: 'R$49,90',
+    price: 'R$67',
     per:   '/mês',
     desc:  'Para uso profissional e privacidade total',
     feats: [
@@ -111,8 +111,8 @@ const PLANS = [
 
 /* ── Preços anuais (x12 com 20% off) ── */
 const PLAN_PRICES_YEARLY: Record<string, { monthlyDisplay: string; annualDisplay: string }> = {
-  pro:       { monthlyDisplay: 'R$31,92', annualDisplay: 'R$383,04' },
-  executive: { monthlyDisplay: 'R$39,92', annualDisplay: 'R$479,04' },
+  pro:       { monthlyDisplay: 'R$29', annualDisplay: 'R$355' },
+  executive: { monthlyDisplay: 'R$53', annualDisplay: 'R$643' },
 };
 
 type CmpVal = string | boolean;
@@ -134,8 +134,8 @@ interface MinutePkg { id: string; minutes: number; priceBrl: number; label: stri
 
 // Pacotes hardcoded como fallback (se API falhar, a seção ainda aparece)
 const DEFAULT_MINUTE_PKGS: MinutePkg[] = [
-  { id: 'pkg_50',  minutes: 50,  priceBrl: 11.90, label: '50 minutos',  desc: 'Mais econômico' },
-  { id: 'pkg_100', minutes: 100, priceBrl: 19.90, label: '100 minutos', desc: 'Melhor valor' },
+  { id: 'pkg_50',  minutes: 50,  priceBrl: 11, label: '50 minutos',  desc: 'Mais econômico' },
+  { id: 'pkg_100', minutes: 100, priceBrl: 19, label: '100 minutos', desc: 'Melhor valor' },
 ];
 
 function formatDocument(val: string): string {
@@ -731,7 +731,7 @@ function PlanoContent() {
 
   // planName já vem como slug ('free'|'pro'|'executive') — sem precisar de toLowerCase
   const currentPlan = stats?.planName || 'free';
-  // Oferta permanente: 1º mês do Pro a R$19,90 (50% off) em novas assinaturas mensais
+  // Oferta permanente: 1º mês do Pro a R$18 (50% off) em novas assinaturas mensais
   const junePromo = isJunePromoActive() && currentPlan === 'free';
   const PLAN_ORDER: Record<string, number> = { free: 0, pro: 1, executive: 2 };
   const currentPlanOrder = PLAN_ORDER[currentPlan] ?? 0;
@@ -994,7 +994,7 @@ function PlanoContent() {
               <div className="text-xs font-light mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Para profissionais</div>
             </div>
             <div className="text-right">
-              <span className="font-display font-bold text-2xl tracking-tight" style={{ color: 'rgb(var(--color-primary))' }}>R$39,90</span>
+              <span className="font-display font-bold text-2xl tracking-tight" style={{ color: 'rgb(var(--color-primary))' }}>R$37</span>
               <span className="text-xs font-light ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês</span>
             </div>
           </div>
@@ -1005,6 +1005,31 @@ function PlanoContent() {
               </li>
             ))}
           </ul>
+
+          {/* ── Upsell Anual (assinantes mensais Pro) ── */}
+          <div className="mt-4 rounded-2xl p-4 flex items-center gap-4"
+            style={{ background: 'rgba(16,185,129,.06)', border: '1px solid rgba(16,185,129,.22)' }}>
+            <span className="text-2xl flex-shrink-0">📆</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-sm font-bold" style={{ color: 'rgb(var(--color-primary))' }}>
+                  Troque para o plano anual e ganhe 2 meses grátis
+                </span>
+              </div>
+              <p className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                R$29/mês no anual vs R$37/mês no mensal — economia de R$88/ano
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCheckoutPlan('pro');
+              }}
+              className="btn-primary px-4 py-2 text-sm font-semibold whitespace-nowrap"
+            >
+              Ver oferta
+            </button>
+          </div>
 
           {/* Cancelamento — em 1 clique, sem ligação, sem fidelidade */}
           <div className="mt-4 pt-3 flex items-center justify-between gap-3"
@@ -1063,21 +1088,21 @@ function PlanoContent() {
               <div className="text-right">
                 {junePromo ? (
                   <>
-                    <div className="text-xs line-through" style={{ color: 'rgb(var(--color-text-muted))' }}>R$39,90</div>
+                    <div className="text-xs line-through" style={{ color: 'rgb(var(--color-text-muted))' }}>R$37</div>
                     <div className="font-display font-black text-3xl tracking-tight leading-none" style={{ color: 'rgb(var(--color-primary))' }}>
-                      R$19,90
+                      R$18
                     </div>
-                    <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>1º mês · depois R$39,90/mês</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>1º mês · depois R$37/mês</div>
                   </>
                 ) : (
                   <>
                     <div className="font-display font-black text-3xl tracking-tight leading-none" style={{ color: 'rgb(var(--color-primary))' }}>
-                      R$39,90
+                      R$37
                     </div>
                     <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês · cancele quando quiser</div>
                   </>
                 )}
-                <div className="text-[11px] font-medium mt-1.5" style={{ color: 'rgb(var(--color-primary))' }}>24h trabalhando por você, por apenas R$1,33 ao dia</div>
+                <div className="text-[11px] font-medium mt-1.5" style={{ color: 'rgb(var(--color-primary))' }}>24h trabalhando por você, por apenas R$1,23 ao dia</div>
               </div>
             </div>
 
@@ -1128,13 +1153,13 @@ function PlanoContent() {
               {previewLoading
                 ? 'Calculando...'
                 : junePromo
-                  ? 'Assinar Pro por R$19,90 no 1º mês →'
-                  : 'Assinar Pro por R$39,90/mês →'}
+                  ? 'Assinar Pro por R$18 no 1º mês →'
+                  : 'Assinar Pro por R$37/mês →'}
             </button>
 
             <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.6)' }}>
               {junePromo
-                ? '🔥 50% OFF no 1º mês: R$19,90, depois R$39,90/mês · Cancele quando quiser'
+                ? '🔥 50% OFF no 1º mês: R$18, depois R$37/mês · Cancele quando quiser'
                 : '🔒 Pix ou cartão · Cancele a qualquer momento'}
             </p>
           </div>
@@ -1463,21 +1488,34 @@ function PlanoContent() {
         </div>
       )}
 
-      {/* Empresas — Em breve teaser */}
-      <div className="mt-6 rounded-2xl p-4 flex items-center gap-4"
-        style={{ background: 'rgb(var(--color-surface))', border: '1px dashed rgba(var(--color-border)/.6)' }}>
-        <div className="text-2xl flex-shrink-0">🏢</div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <span className="text-sm font-bold">Plano Empresas</span>
-            <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider"
-              style={{ background: 'rgba(var(--color-primary)/.1)', color: 'rgb(var(--color-primary))' }}>
-              Em breve
-            </span>
+      {/* Empresas — card funcional multi-seat */}
+      <div className="mt-6 rounded-2xl p-5"
+        style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.2)' }}>
+        <div className="flex items-center gap-4">
+          <div className="text-2xl flex-shrink-0">🏢</div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-sm font-bold">Plano Empresas</span>
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(var(--color-primary)/.1)', color: 'rgb(var(--color-primary))' }}>
+                Multi-seat
+              </span>
+            </div>
+            <p className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
+              Gerencie seu time: convide membros, compartilhe o plano Pro e pague por seat.
+            </p>
+            <div className="flex items-center gap-3 mt-2">
+              <span className="text-xs font-bold" style={{ color: 'rgb(var(--color-primary))' }}>
+                R$37/seat · mesmo preço do Pro
+              </span>
+            </div>
           </div>
-          <p className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
-            Multi-usuário · Webhook personalizado · Integrações avançadas · Para times e agências
-          </p>
+          <a
+            href="/dashboard/empresarial"
+            className="btn-primary py-2.5 px-5 text-sm shrink-0"
+          >
+            Gerenciar time →
+          </a>
         </div>
       </div>
 
@@ -1505,14 +1543,14 @@ function PlanoContent() {
                     {trialCardMode
                       ? 'Nada é cobrado agora · 1ª cobrança só ao fim do teste · Cancele quando quiser'
                       : junePromo && checkoutPlan === 'pro'
-                        ? '🔥 50% OFF no 1º mês: R$19,90 · depois R$39,90/mês'
+                        ? '🔥 50% OFF no 1º mês: R$18 · depois R$37/mês'
                         : 'Escolha mensal ou anual · Cancele a qualquer momento'}
                   </p>
                 </div>
                 <CheckoutInline
                   planName={checkoutPlan as 'pro' | 'executive'}
                   planLabel={plan.label}
-                  planPrice={trialCardMode ? plan.price : (junePromo && checkoutPlan === 'pro' ? 'R$19,90' : plan.price)}
+                  planPrice={trialCardMode ? plan.price : (junePromo && checkoutPlan === 'pro' ? 'R$18' : plan.price)}
                   planFeats={plan.feats}
                   isUpgrade={!trialCardMode && currentPlan !== 'free'}
                   trialMode={trialCardMode}
@@ -1549,7 +1587,7 @@ function PlanoContent() {
               <ModuleCheckoutInline
                 moduleKey={moduleInfo.key}
                 moduleName={moduleInfo.name}
-                priceLabel={formatBrl(moduleInfo.priceMonthly)}
+                priceMonthly={moduleInfo.priceMonthly}
                 onSuccess={handleModuleSuccess}
                 onCancel={() => setModuleCheckoutOpen(false)}
               />

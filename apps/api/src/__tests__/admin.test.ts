@@ -125,8 +125,8 @@ describe('GET /admin/stats', () => {
   it('calcula MRR pro + executive corretamente', async () => {
     (prisma.user.count as jest.Mock).mockResolvedValue(2);
     (prisma.subscription.findMany as jest.Mock).mockResolvedValue([
-      { plan: { name: 'pro' },       user: { isTester: false } }, // R$39.90
-      { plan: { name: 'executive' }, user: { isTester: false } }, // R$49.90
+      { plan: { name: 'pro' },       user: { isTester: false } }, // R$37
+      { plan: { name: 'executive' }, user: { isTester: false } }, // R$67
     ]);
     (prisma.subscription.groupBy as jest.Mock).mockResolvedValue([
       { status: 'active', _count: { status: 2 } },
@@ -144,7 +144,7 @@ describe('GET /admin/stats', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().mrr).toBeCloseTo(89.80, 1);
+    expect(res.json().mrr).toBeCloseTo(104, 1);
   });
 
   it('calcula conversion rate corretamente', async () => {

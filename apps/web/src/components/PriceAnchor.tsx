@@ -3,13 +3,13 @@
 /* ─────────────────────────────────────────────────────────────────
    PriceAnchor — token de preço padronizado para CTAs.
 
-   Nunca exibe "R$39,90" puro: emoldura o valor em algo cotidiano e
+   Nunca exibe "R$37" puro: emoldura o valor em algo cotidiano e
    barato (café/dia/estacionamento) e faz A/B entre as 3 molduras,
    estável por visitante. A variante é reportada no analytics
    first-party para medir qual converte melhor.
 
-   <PriceAnchor />                         → "menos de R$1,33 por dia"
-   <PriceAnchor prefix="Continue por " />  → "Continue por menos de R$1,33 por dia"
+   <PriceAnchor />                         → "menos de R$1,23 por dia"
+   <PriceAnchor prefix="Continue por " />  → "Continue por menos de R$1,23 por dia"
    <PriceAnchor compare />                 → também mostra a âncora comparativa
 ─────────────────────────────────────────────────────────────── */
 
@@ -30,7 +30,7 @@ export default function PriceAnchor({
   className?: string;
   compareClassName?: string;
 }) {
-  // SSR/1ª render usa a 1ª variante (R$1,33/dia) p/ evitar flash/hidratação divergente.
+  // SSR/1ª render usa a 1ª variante (R$1,23/dia) p/ evitar flash/hidratação divergente.
   const [idx, setIdx] = useState(0);
 
   useEffect(() => {

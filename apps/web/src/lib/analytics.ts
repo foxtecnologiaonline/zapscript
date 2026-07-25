@@ -220,3 +220,68 @@ export function trackClick(name: string, path?: string) {
     ...utmFromUrl(),
   });
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Engajamento: scroll depth (%) + time-on-page (segundos).
+   Dispara buckets de scroll (25, 50, 75, 90%) e o tempo total ao sair
+   da página (via beforeunload). Alimenta métricas de engajamento no admin.
+   ───────────────────────────────────────────────────────────────────────── */
+
+let scrollBucketsFired: Record<string, boolean> = {};
+let pageEnterTime = 0;
+
+if (typeof window !== 'undefined') {
+  pageEnterTime = Date.now();
+}
+
+/** Envia evento de scroll depth (só dispara 1x por bucket por página). */
+export function trackScrollDepth(percent: number, path?: string) {
+  const key = `${path || window.location.pathname}:${percent}`;
+  if (scrollBucketsFired[key]) return;
+  scrollBucketsFired[key] = true;
+  sendEvent({
+    type: 'scroll',
+    path: path || window.location.pathname,
+    visitorId: getVisitorId(),
+    percent,
+    device: deviceClass(),
+  });
+}
+
+/** Envia time-on-page ao sair da página. Chamado no beforeunload. */
+export function trackTimeOnPage(path?: string) {
+  if (pageEnterTime <= 0) return;
+  const seconds = Math.round((Date.now() - pageEnterTime) / 1000);
+  if (seconds < 1) return;
+  sendEvent({
+    type: 'time_on_page',
+    path: path || window.location.pathname,
+    visitorId: getVisitorId(),
+    seconds,
+    device: deviceClass(),
+  });
+  pageEnterTime = Date.now(); // reset p/ SPA
+}
+
+if (typeof window !== 'undefined') {
+  // Scroll depth listener — throttled (100ms)
+  let scrollTicking = false;
+  window.addEventListener('scroll', () => {
+    if (scrollTicking) return;
+    scrollTicking = true;
+    requestAnimationFrame(() => {
+      const docH = document.documentElement.scrollHeight - window.innerHeight;
+      if (docH <= 0) { scrollTicking = false; return; }
+      const pct = Math.round((window.scrollY / docH) * 100);
+      [25, 50, 75, 90].forEach(bucket => {
+        if (pct >= bucket) trackScrollDepth(bucket);
+      });
+      scrollTicking = false;
+    });
+  }, { passive: true });
+
+  // Time-on-page — registra ao sair
+  window.addEventListener('beforeunload', () => {
+    trackTimeOnPage();
+  });
+}

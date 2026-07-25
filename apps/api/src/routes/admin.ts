@@ -11,21 +11,18 @@ import { sendText } from '../services/evolution';
 import { sendEmail } from '../lib/mailer';
 import { asaas, asaasConfigured, asaasEnv } from '../lib/asaas';
 import { checkAdminTotp } from '../lib/totp';
+import { COMMISSION } from '../lib/affiliate';
+import {
+  getEffectiveCommissionRates, getAutoApproveConfig, getReportScheduleConfig, setAffiliateConfig,
+} from '../lib/affiliateConfig';
+import { maskEmail } from '../lib/mask';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!,
 );
 
-const PLAN_PRICES: Record<string, number> = { pro: 39.90, executive: 49.90, free: 0, 'pro-tester': 0 };
-
-// Mascara email para LGPD: "fr***@gmail.com"
-function maskEmail(email: string): string {
-  const [local, domain] = email.split('@');
-  if (!domain) return '***';
-  const masked = local.length > 2 ? local.slice(0, 2) + '***' : '***';
-  return `${masked}@${domain}`;
-}
+const PLAN_PRICES: Record<string, number> = { pro: 37, executive: 67, free: 0, 'pro-tester': 0 };
 
 function safeCompare(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
@@ -134,7 +131,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       const users = userIds.length
         ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, email: true, name: true } })
         : [];
-      const byId = new Map(users.map(u => [u.id, u]));
+      const byId = new Map(users.map((u: { id: string; email: string | null; name: string | null }) => [u.id, u] as const));
 
       const payments = rows.map(p => {
         const ref = String(p.externalReference || '').split('|');
@@ -1981,13 +1978,13 @@ export default async function adminRoutes(app: FastifyInstance) {
             visitors:  Number(t.visitors  || 0),
             clicks:    Number(t.clicks    || 0),
           },
-          daily:     daily.map(r => ({ day: r.day, pageviews: Number(r.pageviews), visitors: Number(r.visitors), clicks: Number(r.clicks) })),
-          topPages:  topPages.map(r => ({ path: r.path, views: Number(r.views) })),
-          byCountry: byCountry.map(r => ({ country: r.country, views: Number(r.views), visitors: Number(r.visitors) })),
-          byCity:    byCity.map(r => ({ city: r.city, country: r.country, views: Number(r.views) })),
-          topClicks: topClicks.map(r => ({ name: r.name, clicks: Number(r.clicks) })),
-          byDevice:  byDevice.map(r => ({ device: r.device, views: Number(r.views) })),
-          bySource:  bySource.map(r => ({ source: r.source, views: Number(r.views) })),
+          daily:     daily.map((r: any) => ({ day: r.day, pageviews: Number(r.pageviews), visitors: Number(r.visitors), clicks: Number(r.clicks) })),
+          topPages:  topPages.map((r: any) => ({ path: r.path, views: Number(r.views) })),
+          byCountry: byCountry.map((r: any) => ({ country: r.country, views: Number(r.views), visitors: Number(r.visitors) })),
+          byCity:    byCity.map((r: any) => ({ city: r.city, country: r.country, views: Number(r.views) })),
+          topClicks: topClicks.map((r: any) => ({ name: r.name, clicks: Number(r.clicks) })),
+          byDevice:  byDevice.map((r: any) => ({ device: r.device, views: Number(r.views) })),
+          bySource:  bySource.map((r: any) => ({ source: r.source, views: Number(r.views) })),
         };
       } catch (err: any) {
         app.log.warn({ err: err?.message }, '[Admin] analytics/site indisponível (tabela ausente?)');
@@ -2436,14 +2433,14 @@ export default async function adminRoutes(app: FastifyInstance) {
           id: true, code: true, status: true,
           pixKey: true, pixKeyType: true, payoutName: true,
           audience: true, notes: true, appliedAt: true, approvedAt: true,
-          rejectedReason: true,
+          rejectedReason: true, customRate: true,
           user:   { select: { email: true, name: true } },
           _count: { select: { referrals: true } },
         },
       });
 
       // Totais de comissão por afiliado
-      const ids = affiliates.map(a => a.id);
+      const ids = affiliates.map((a: { id: string }) => a.id);
       const grouped = ids.length
         ? await prisma.affiliateCommission.groupBy({
             by: ['affiliateId', 'status'],
@@ -2453,10 +2450,10 @@ export default async function adminRoutes(app: FastifyInstance) {
         : [];
 
       const sumBy = (affId: string, st: string) =>
-        Math.round((grouped.find(g => g.affiliateId === affId && g.status === st)?._sum.commissionAmount || 0) * 100) / 100;
+        Math.round((grouped.find((g: any) => g.affiliateId === affId && g.status === st)?._sum.commissionAmount || 0) * 100) / 100;
 
       return {
-        affiliates: affiliates.map(a => ({
+        affiliates: affiliates.map((a: any) => ({
           id:             a.id,
           code:           a.code,
           status:         a.status,
@@ -2473,6 +2470,7 @@ export default async function adminRoutes(app: FastifyInstance) {
           appliedAt:      a.appliedAt,
           approvedAt:     a.approvedAt,
           rejectedReason: a.rejectedReason,
+          customRate:     a.customRate,
         })),
       };
     }
@@ -2557,7 +2555,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
 
       return {
-        commissions: commissions.map(c => ({
+        commissions: commissions.map((c: any) => ({
           id:               c.id,
           affiliateCode:    c.affiliate.code,
           affiliateName:    c.affiliate.payoutName || c.affiliate.user.name,
@@ -2640,11 +2638,11 @@ export default async function adminRoutes(app: FastifyInstance) {
         prisma.affiliateCommission.groupBy({ by: ['affiliateId', 'status'], _sum: { commissionAmount: true } }),
       ]);
 
-      const statusCount = (s: string) => byStatus.find(g => g.status === s)?._count._all || 0;
-      const convOf = (id: string) => convertedGroup.find(g => g.affiliateId === id)?._count._all || 0;
-      const sumOf  = (id: string, st: string) => round2(commGroup.find(g => g.affiliateId === id && g.status === st)?._sum.commissionAmount || 0);
+      const statusCount = (s: string) => byStatus.find((g: any) => g.status === s)?._count._all || 0;
+      const convOf = (id: string) => convertedGroup.find((g: any) => g.affiliateId === id)?._count._all || 0;
+      const sumOf  = (id: string, st: string) => round2(commGroup.find((g: any) => g.affiliateId === id && g.status === st)?._sum.commissionAmount || 0);
 
-      const rows = affiliates.map(a => {
+      const rows = affiliates.map((a: any) => {
         const referrals = a._count.referrals;
         const converted = convOf(a.id);
         const pending   = sumOf(a.id, 'pending');
@@ -2661,25 +2659,144 @@ export default async function adminRoutes(app: FastifyInstance) {
           paid,                       // total já pago
           lifetime:  round2(pending + paid),
         };
-      }).sort((x, y) => y.lifetime - x.lifetime);
+      }).sort((x: any, y: any) => y.lifetime - x.lifetime);
 
-      const totalReferrals = rows.reduce((s, r) => s + r.referrals, 0);
-      const totalConverted = rows.reduce((s, r) => s + r.converted, 0);
+      const totalReferrals = rows.reduce((s: number, r: any) => s + r.referrals, 0);
+      const totalConverted = rows.reduce((s: number, r: any) => s + r.converted, 0);
 
       return {
         summary: {
-          total:          byStatus.reduce((s, g) => s + g._count._all, 0),
+          total:          byStatus.reduce((s: number, g: any) => s + g._count._all, 0),
           approved:       statusCount('approved'),
           pending:        statusCount('pending'),   // solicitações aguardando autorização
           rejected:       statusCount('rejected'),
           totalReferrals,
           totalConverted,
           convRate:       totalReferrals ? Math.round((totalConverted / totalReferrals) * 100) : 0,
-          pendingPayout:  round2(rows.reduce((s, r) => s + r.pending, 0)),
-          paidLifetime:   round2(rows.reduce((s, r) => s + r.paid, 0)),
+          pendingPayout:  round2(rows.reduce((s: number, r: any) => s + r.pending, 0)),
+          paidLifetime:   round2(rows.reduce((s: number, r: any) => s + r.paid, 0)),
         },
         rows,
       };
+    }
+  );
+
+  // ── GET /affiliates/config — parâmetros efetivos do programa (taxas, ─────
+  // auto-aprovação, relatório periódico) + defaults hardcoded p/ referência.
+  app.get('/affiliates/config', { preHandler: [adminAuth] }, async () => {
+    const [rates, autoApprove, reportSchedule] = await Promise.all([
+      getEffectiveCommissionRates(),
+      getAutoApproveConfig(),
+      getReportScheduleConfig(),
+    ]);
+    return {
+      rates, autoApprove, reportSchedule,
+      defaults: { base: COMMISSION.BASE_RATE, bonus: COMMISSION.BONUS_RATE, residual: COMMISSION.RESIDUAL_RATE },
+    };
+  });
+
+  // ── PUT /affiliates/config — grava parâmetros (parcial: só as chaves enviadas) ──
+  app.put<{ Body: { rates?: any; autoApprove?: any; reportSchedule?: any } }>(
+    '/affiliates/config',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { rates, autoApprove, reportSchedule } = req.body || {};
+      const entries: Record<string, any> = {};
+
+      if (rates) {
+        for (const k of ['base', 'bonus', 'residual']) {
+          const v = (rates as any)[k];
+          if (v !== undefined && (!Number.isFinite(v) || v <= 0 || v >= 1)) {
+            return reply.code(400).send({ error: `Taxa "${k}" deve ser uma fração entre 0 e 1 (ex.: 0.3 = 30%).` });
+          }
+        }
+        entries.rates = rates;
+      }
+      if (autoApprove) entries.autoApprove = autoApprove;
+      if (reportSchedule) {
+        if (reportSchedule.cadence && !['off', 'weekly', 'monthly'].includes(reportSchedule.cadence)) {
+          return reply.code(400).send({ error: 'Cadência inválida (use off, weekly ou monthly).' });
+        }
+        entries.reportSchedule = reportSchedule;
+      }
+      if (Object.keys(entries).length === 0) return reply.code(400).send({ error: 'Corpo vazio.' });
+
+      await setAffiliateConfig(entries);
+      app.log.info(`[Admin] Config de afiliados atualizada: ${Object.keys(entries).join(', ')}`);
+      return { ok: true };
+    }
+  );
+
+  // ── GET /affiliates/campaigns — lista campanhas sazonais (todas, +recentes primeiro) ──
+  app.get('/affiliates/campaigns', { preHandler: [adminAuth] }, async () => {
+    const campaigns = await (prisma as any).affiliateCampaign.findMany({ orderBy: { startsAt: 'desc' } });
+    return { campaigns };
+  });
+
+  // ── POST /affiliates/campaigns — cria campanha (ex.: "Black Friday: 50% de 20/11 a 30/11") ──
+  app.post<{ Body: { name?: string; rate?: number; startsAt?: string; endsAt?: string } }>(
+    '/affiliates/campaigns',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { name, rate, startsAt, endsAt } = req.body || {};
+      if (!name?.trim()) return reply.code(400).send({ error: 'Nome da campanha é obrigatório.' });
+      if (!Number.isFinite(rate) || (rate as number) <= 0 || (rate as number) >= 1) {
+        return reply.code(400).send({ error: 'Taxa deve ser uma fração entre 0 e 1 (ex.: 0.5 = 50%).' });
+      }
+      const start = new Date(startsAt || '');
+      const end   = new Date(endsAt || '');
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+        return reply.code(400).send({ error: 'Datas inválidas — o fim deve ser depois do início.' });
+      }
+
+      const campaign = await (prisma as any).affiliateCampaign.create({
+        data: { name: name.trim().slice(0, 100), rate, startsAt: start, endsAt: end, active: true },
+      });
+      app.log.info(`[Admin] Campanha de afiliados criada: "${campaign.name}" (${Math.round((rate as number) * 100)}%, ${start.toISOString().slice(0, 10)}→${end.toISOString().slice(0, 10)})`);
+      return reply.code(201).send({ ok: true, campaign });
+    }
+  );
+
+  // ── PUT /affiliates/campaigns/:id — edita ou (des)ativa uma campanha ─────
+  app.put<{ Params: { id: string }; Body: { active?: boolean; name?: string; rate?: number; startsAt?: string; endsAt?: string } }>(
+    '/affiliates/campaigns/:id',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const existing = await (prisma as any).affiliateCampaign.findUnique({ where: { id: req.params.id } });
+      if (!existing) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+
+      const { active, name, rate, startsAt, endsAt } = req.body || {};
+      const data: any = {};
+      if (active !== undefined) data.active = !!active;
+      if (name !== undefined) data.name = name.trim().slice(0, 100);
+      if (rate !== undefined) {
+        if (!Number.isFinite(rate) || rate <= 0 || rate >= 1) return reply.code(400).send({ error: 'Taxa inválida.' });
+        data.rate = rate;
+      }
+      if (startsAt !== undefined) data.startsAt = new Date(startsAt);
+      if (endsAt !== undefined) data.endsAt = new Date(endsAt);
+
+      const updated = await (prisma as any).affiliateCampaign.update({ where: { id: existing.id }, data });
+      app.log.info(`[Admin] Campanha de afiliados atualizada: ${existing.id}`);
+      return { ok: true, campaign: updated };
+    }
+  );
+
+  // ── PUT /affiliates/:id/custom-rate — taxa individual (override), null remove ──
+  app.put<{ Params: { id: string }; Body: { customRate?: number | null } }>(
+    '/affiliates/:id/custom-rate',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { customRate } = req.body || {};
+      if (customRate !== null && customRate !== undefined && (!Number.isFinite(customRate) || customRate <= 0 || customRate >= 1)) {
+        return reply.code(400).send({ error: 'Taxa deve ser uma fração entre 0 e 1 (ex.: 0.35 = 35%), ou null para remover.' });
+      }
+      const aff = await prisma.affiliate.findUnique({ where: { id: req.params.id }, select: { id: true, code: true } });
+      if (!aff) return reply.code(404).send({ error: 'Afiliado não encontrado.' });
+
+      await prisma.affiliate.update({ where: { id: aff.id }, data: { customRate: customRate ?? null } });
+      app.log.info(`[Admin] Taxa personalizada: ${aff.code} → ${customRate != null ? Math.round(customRate * 100) + '%' : 'removida (usa global)'}`);
+      return { ok: true };
     }
   );
 
@@ -2809,7 +2926,7 @@ export default async function adminRoutes(app: FastifyInstance) {
           return {
             dau, wau: Number(a.wau || 0), mau,
             stickiness: mau ? Math.round((dau / mau) * 1000) / 10 : null,
-            cohorts: cohorts.map(c => ({
+            cohorts: cohorts.map((c: any) => ({
               cohort: c.cohort, size: Number(c.size),
               w0: Number(c.w0), w1: Number(c.w1), w2: Number(c.w2), w3: Number(c.w3),
             })),
@@ -2845,15 +2962,15 @@ export default async function adminRoutes(app: FastifyInstance) {
             prisma.user.count({ where: { deletedAt: null } }),
           ]);
 
-          const paying       = activeSubs.filter(s => !s.user.isTester && s.plan.priceBrl > 0);
+          const paying       = activeSubs.filter((s: any) => !s.user.isTester && s.plan.priceBrl > 0);
           const payingCount  = paying.length;
-          const mrr          = Math.round(paying.reduce((a, s) => a + s.plan.priceBrl, 0) * 100) / 100;
+          const mrr          = Math.round(paying.reduce((a: number, s: any) => a + s.plan.priceBrl, 0) * 100) / 100;
           const arpu         = totalUsers  ? Math.round((mrr / totalUsers)  * 100) / 100 : 0;
           const arppu        = payingCount ? Math.round((mrr / payingCount) * 100) / 100 : 0;
 
-          const churnedCustomers = canceledLast30.filter(s => !s.user.isTester && (s.plan?.priceBrl || 0) > 0).length;
-          const churnedMrr = Math.round(canceledLast30.reduce((a, s) => a + (s.user.isTester ? 0 : (s.plan?.priceBrl || 0)), 0) * 100) / 100;
-          const newMrr     = Math.round(newPaidLast30.filter(s => !s.user.isTester && s.plan.priceBrl > 0).reduce((a, s) => a + s.plan.priceBrl, 0) * 100) / 100;
+          const churnedCustomers = canceledLast30.filter((s: any) => !s.user.isTester && (s.plan?.priceBrl || 0) > 0).length;
+          const churnedMrr = Math.round(canceledLast30.reduce((a: number, s: any) => a + (s.user.isTester ? 0 : (s.plan?.priceBrl || 0)), 0) * 100) / 100;
+          const newMrr     = Math.round(newPaidLast30.filter((s: any) => !s.user.isTester && s.plan.priceBrl > 0).reduce((a: number, s: any) => a + s.plan.priceBrl, 0) * 100) / 100;
 
           // churn% mensal aproximado = perdidos / (pagantes atuais + perdidos no período)
           const churnRate = (payingCount + churnedCustomers) > 0

@@ -224,9 +224,10 @@ app.register(rateLimit, {
     retryAfter: context.after,
   }),
 } as any);
-// 15MB: a única rota que consome multipart hoje (/support/ticket) já limita a
-// 10MB no app; o teto global antigo (200MB) era resquício da demo de upload de
-// áudio removida e só ampliava a superfície de DoS por upload.
+// 15MB: teto global para as rotas que consomem multipart (/support/ticket limita a
+// 10MB no app; /atende/setup/* limita a 15MB áudio / 8MB imagem no ai-input.ts). O
+// teto antigo (200MB) era resquício da demo de upload de áudio removida e só
+// ampliava a superfície de DoS por upload.
 app.register(multipart, { limits: { fileSize: 15 * 1024 * 1024 } });
 
 // ── Swagger/OpenAPI Documentation — somente em desenvolvimento ─────────────
@@ -314,11 +315,20 @@ app.register(import('./routes/nps'),             { prefix: '/nps' });
 app.register(import('./routes/meta-embedded'),   { prefix: '/meta' });
 app.register(import('./routes/affiliates'),      { prefix: '/affiliates' });
 app.register(import('./routes/entitlements'),    { prefix: '/modules' });
+app.register(import('./routes/modules/campanhas'), { prefix: '/modules/campanhas' });
 app.register(import('./routes/modules/crm'),     { prefix: '/crm' });
 app.register(import('./routes/atende'),          { prefix: '/atende' });
 app.register(import('./routes/voice-commands'),  { prefix: '/voice-commands' });
+app.register(import('./routes/modules/vendas'),  { prefix: '/modules/vendas' });
+app.register(import('./routes/cobranca'),        { prefix: '/cobranca' });
+app.register(import('./routes/legendas'),        { prefix: '/legendas' });
+// Plano Empresas — multi-seat MVP
+app.register(import('./routes/teams'),           { prefix: '/teams' });
 // Demo de upload no site removido — vira app/site separado. Rota desativada.
 app.register(import('./routes/analytics'),       { prefix: '/analytics' });
+
+// ── Demo pública (lead magnet) — 1 áudio grátis sem cadastro ─────────
+app.register(import('./routes/demo'),            { prefix: '/demo' });
 
 // ── WhatsApp Webhook (Meta Cloud API) ──────────────────────
 // Registrar sempre — webhook precisa responder para validação mesmo sem token configurado
@@ -536,13 +546,346 @@ async function runAutoMigrations() {
           FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
+    // ── Módulo Cobrança (2026-07-13): auto-cura o schema no boot, mesmo padrão acima ──
+    `CREATE TABLE IF NOT EXISTS "CobrancaCliente" (
+      "id"        TEXT NOT NULL,
+      "userId"    TEXT NOT NULL,
+      "nome"      TEXT NOT NULL,
+      "telefone"  TEXT NOT NULL,
+      "documento" TEXT,
+      "email"     TEXT,
+      "notas"     TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      "deletedAt" TIMESTAMP(3),
+      CONSTRAINT "CobrancaCliente_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "CobrancaCliente_userId_deletedAt_idx" ON "CobrancaCliente"("userId", "deletedAt")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CobrancaCliente_userId_fkey') THEN
+        ALTER TABLE "CobrancaCliente"
+          ADD CONSTRAINT "CobrancaCliente_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CobrancaCobranca" (
+      "id"         TEXT NOT NULL,
+      "userId"     TEXT NOT NULL,
+      "clienteId"  TEXT NOT NULL,
+      "descricao"  TEXT NOT NULL,
+      "valor"      DOUBLE PRECISION NOT NULL,
+      "vencimento" TIMESTAMP(3) NOT NULL,
+      "status"     TEXT NOT NULL DEFAULT 'pendente',
+      "pagoEm"     TIMESTAMP(3),
+      "createdAt"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"  TIMESTAMP(3) NOT NULL,
+      "deletedAt"  TIMESTAMP(3),
+      CONSTRAINT "CobrancaCobranca_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "CobrancaCobranca_userId_status_vencimento_idx" ON "CobrancaCobranca"("userId", "status", "vencimento")`,
+    `CREATE INDEX IF NOT EXISTS "CobrancaCobranca_clienteId_idx" ON "CobrancaCobranca"("clienteId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CobrancaCobranca_userId_fkey') THEN
+        ALTER TABLE "CobrancaCobranca"
+          ADD CONSTRAINT "CobrancaCobranca_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CobrancaCobranca_clienteId_fkey') THEN
+        ALTER TABLE "CobrancaCobranca"
+          ADD CONSTRAINT "CobrancaCobranca_clienteId_fkey"
+          FOREIGN KEY ("clienteId") REFERENCES "CobrancaCliente"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CobrancaEnvio" (
+      "id"         TEXT NOT NULL,
+      "cobrancaId" TEXT NOT NULL,
+      "tipo"       TEXT NOT NULL,
+      "enviadoEm"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "sucesso"    BOOLEAN NOT NULL DEFAULT true,
+      "erro"       TEXT,
+      CONSTRAINT "CobrancaEnvio_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "CobrancaEnvio_cobrancaId_tipo_idx" ON "CobrancaEnvio"("cobrancaId", "tipo")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CobrancaEnvio_cobrancaId_fkey') THEN
+        ALTER TABLE "CobrancaEnvio"
+          ADD CONSTRAINT "CobrancaEnvio_cobrancaId_fkey"
+          FOREIGN KEY ("cobrancaId") REFERENCES "CobrancaCobranca"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // ── Cobrança: 10 features (2026-07-22) — recorrência/voz + config do dono ──
+    `ALTER TABLE "CobrancaCobranca" ADD COLUMN IF NOT EXISTS "recorrente" BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE "CobrancaCobranca" ADD COLUMN IF NOT EXISTS "recorrenciaMeses" INTEGER`,
+    `ALTER TABLE "CobrancaCobranca" ADD COLUMN IF NOT EXISTS "origemVoz" BOOLEAN NOT NULL DEFAULT false`,
+    `CREATE TABLE IF NOT EXISTS "CobrancaConfig" (
+      "id"             TEXT NOT NULL,
+      "userId"         TEXT NOT NULL,
+      "tom"            TEXT NOT NULL DEFAULT 'cordial',
+      "escalarTom"     BOOLEAN NOT NULL DEFAULT true,
+      "diasAntes"      INTEGER[] NOT NULL DEFAULT ARRAY[1]::INTEGER[],
+      "diasDepois"     INTEGER[] NOT NULL DEFAULT ARRAY[1,3,7]::INTEGER[],
+      "pixKey"         TEXT,
+      "pixKeyType"     TEXT,
+      "resumoDiario"   BOOLEAN NOT NULL DEFAULT false,
+      "resumoHora"     INTEGER NOT NULL DEFAULT 8,
+      "onboardingDone" BOOLEAN NOT NULL DEFAULT false,
+      "createdAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"      TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "CobrancaConfig_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "CobrancaConfig_userId_key" ON "CobrancaConfig"("userId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CobrancaConfig_userId_fkey') THEN
+        ALTER TABLE "CobrancaConfig"
+          ADD CONSTRAINT "CobrancaConfig_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // Módulo mantido oculto (status 'planned') até decisão explícita de lançamento —
+    // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'cobranca') THEN
+        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 39, "priceYearly" = 374
+          WHERE "key" = 'cobranca' AND "status" NOT IN ('beta', 'ga');
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('cobranca-product-seed', 'cobranca', 'ZapScript Cobrança', 'planned', 39, 374, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
+    // Módulo Legendas (migração 20260714_legenda_jobs): auto-cura o schema no
+    // boot mesmo se o startCommand de produção não rodar `prisma migrate deploy`.
+    `CREATE TABLE IF NOT EXISTS "LegendaJob" (
+      "id"               TEXT NOT NULL,
+      "userId"           TEXT NOT NULL,
+      "status"           TEXT NOT NULL DEFAULT 'pending',
+      "originalFilename" TEXT,
+      "inputStorageKey"  TEXT NOT NULL,
+      "inputSizeBytes"   INTEGER,
+      "durationSec"      DOUBLE PRECISION,
+      "language"         TEXT NOT NULL DEFAULT 'pt',
+      "srtStorageKey"    TEXT,
+      "vttStorageKey"    TEXT,
+      "errorMessage"     TEXT,
+      "deletedAt"        TIMESTAMP(3),
+      "createdAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"        TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "LegendaJob_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "LegendaJob_userId_createdAt_idx" ON "LegendaJob"("userId", "createdAt" DESC)`,
+    `CREATE INDEX IF NOT EXISTS "LegendaJob_status_idx" ON "LegendaJob"("status")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'LegendaJob_userId_fkey') THEN
+        ALTER TABLE "LegendaJob"
+          ADD CONSTRAINT "LegendaJob_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // Módulo lançado como MVP (status 'beta') em 2026-07-24 — ver packages/modules/catalog.ts.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'legenda') THEN
+        UPDATE "Product" SET "status" = 'beta', "priceMonthly" = 37, "priceYearly" = 355
+          WHERE "key" = 'legenda' AND "status" NOT IN ('beta', 'ga');
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'beta', 37, 355, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
+    // Módulo Campanhas (migração 20260713_campanhas_tables): auto-cura o schema no
+    // boot mesmo se o startCommand de produção não rodar `prisma migrate deploy`.
+    `CREATE TABLE IF NOT EXISTS "Campanha" (
+      "id"                 TEXT NOT NULL,
+      "userId"             TEXT NOT NULL,
+      "whatsappNumberId"   TEXT NOT NULL,
+      "name"               TEXT NOT NULL,
+      "status"             TEXT NOT NULL DEFAULT 'draft',
+      "templateName"       TEXT NOT NULL,
+      "templateLanguage"   TEXT NOT NULL DEFAULT 'pt_BR',
+      "templateComponents" JSONB,
+      "audienceCount"      INTEGER NOT NULL DEFAULT 0,
+      "sentCount"          INTEGER NOT NULL DEFAULT 0,
+      "scheduledAt"        TIMESTAMP(3),
+      "startedAt"          TIMESTAMP(3),
+      "completedAt"        TIMESTAMP(3),
+      "createdAt"          TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"          TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "Campanha_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "Campanha_userId_idx" ON "Campanha"("userId")`,
+    `CREATE INDEX IF NOT EXISTS "Campanha_whatsappNumberId_idx" ON "Campanha"("whatsappNumberId")`,
+    `CREATE INDEX IF NOT EXISTS "Campanha_status_idx" ON "Campanha"("status")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Campanha_userId_fkey') THEN
+        ALTER TABLE "Campanha" ADD CONSTRAINT "Campanha_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Campanha_whatsappNumberId_fkey') THEN
+        ALTER TABLE "Campanha" ADD CONSTRAINT "Campanha_whatsappNumberId_fkey" FOREIGN KEY ("whatsappNumberId") REFERENCES "WhatsappNumber"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CampanhaContato" (
+      "id"           TEXT NOT NULL,
+      "campanhaId"   TEXT NOT NULL,
+      "phone"        TEXT NOT NULL,
+      "name"         TEXT,
+      "variables"    JSONB,
+      "status"       TEXT NOT NULL DEFAULT 'pending',
+      "wamid"        TEXT,
+      "errorMessage" TEXT,
+      "sentAt"       TIMESTAMP(3),
+      "deliveredAt"  TIMESTAMP(3),
+      "readAt"       TIMESTAMP(3),
+      "failedAt"     TIMESTAMP(3),
+      "createdAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"    TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "CampanhaContato_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "CampanhaContato_campanhaId_idx" ON "CampanhaContato"("campanhaId")`,
+    `CREATE INDEX IF NOT EXISTS "CampanhaContato_campanhaId_status_idx" ON "CampanhaContato"("campanhaId", "status")`,
+    `CREATE INDEX IF NOT EXISTS "CampanhaContato_wamid_idx" ON "CampanhaContato"("wamid")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CampanhaContato_campanhaId_fkey') THEN
+        ALTER TABLE "CampanhaContato" ADD CONSTRAINT "CampanhaContato_campanhaId_fkey" FOREIGN KEY ("campanhaId") REFERENCES "Campanha"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CampanhaOptOut" (
+      "id"        TEXT NOT NULL,
+      "userId"    TEXT NOT NULL,
+      "phone"     TEXT NOT NULL,
+      "reason"    TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CampanhaOptOut_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "CampanhaOptOut_userId_phone_key" ON "CampanhaOptOut"("userId", "phone")`,
+    `CREATE INDEX IF NOT EXISTS "CampanhaOptOut_userId_idx" ON "CampanhaOptOut"("userId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CampanhaOptOut_userId_fkey') THEN
+        ALTER TABLE "CampanhaOptOut" ADD CONSTRAINT "CampanhaOptOut_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // Módulo mantido oculto (status 'planned') até decisão explícita de lançamento —
+    // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'campanhas') THEN
+        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 67, "priceYearly" = 643
+          WHERE "key" = 'campanhas' AND "status" NOT IN ('beta', 'ga');
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('campanhas-product-seed', 'campanhas', 'ZapScript Campanhas', 'planned', 67, 643, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
+    // ── Plano Empresas Multi-Seat (migração 20260722_team_multiseat) ──
+    `CREATE TABLE IF NOT EXISTS "Team" (
+      "id"        TEXT NOT NULL,
+      "name"      TEXT NOT NULL,
+      "slug"      TEXT NOT NULL,
+      "ownerId"   TEXT NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "Team_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Team_slug_key" ON "Team"("slug")`,
+    `CREATE INDEX IF NOT EXISTS "Team_ownerId_idx" ON "Team"("ownerId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Team_ownerId_fkey') THEN
+        ALTER TABLE "Team" ADD CONSTRAINT "Team_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "TeamMember" (
+      "id"           TEXT NOT NULL,
+      "teamId"       TEXT NOT NULL,
+      "userId"       TEXT NOT NULL,
+      "role"         TEXT NOT NULL DEFAULT 'member',
+      "status"       TEXT NOT NULL DEFAULT 'active',
+      "inviteCode"   TEXT,
+      "invitedEmail" TEXT,
+      "joinedAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "TeamMember_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "TeamMember_userId_key" ON "TeamMember"("userId")`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "TeamMember_inviteCode_key" ON "TeamMember"("inviteCode")`,
+    `CREATE INDEX IF NOT EXISTS "TeamMember_teamId_idx" ON "TeamMember"("teamId")`,
+    `CREATE INDEX IF NOT EXISTS "TeamMember_userId_idx" ON "TeamMember"("userId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TeamMember_teamId_fkey') THEN
+        ALTER TABLE "TeamMember" ADD CONSTRAINT "TeamMember_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TeamMember_userId_fkey') THEN
+        ALTER TABLE "TeamMember" ADD CONSTRAINT "TeamMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // ── Tracking de cliques de afiliados (migração 20260722_public_number_flag parte 2) ──
+    `CREATE TABLE IF NOT EXISTS "AffiliateClick" (
+      "id"          TEXT NOT NULL,
+      "affiliateId" TEXT NOT NULL,
+      "ipHash"      TEXT,
+      "userAgent"   TEXT,
+      "referer"     TEXT,
+      "converted"   BOOLEAN NOT NULL DEFAULT false,
+      "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "AffiliateClick_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "AffiliateClick_affiliateId_createdAt_idx" ON "AffiliateClick"("affiliateId", "createdAt" DESC)`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'AffiliateClick_affiliateId_fkey') THEN
+        ALTER TABLE "AffiliateClick" ADD CONSTRAINT "AffiliateClick_affiliateId_fkey" FOREIGN KEY ("affiliateId") REFERENCES "Affiliate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // ── Número público para demo/lead magnet (migração 20260722_public_number_flag) ──
+    `ALTER TABLE "WhatsappNumber" ADD COLUMN IF NOT EXISTS "isPublic" BOOLEAN NOT NULL DEFAULT false`,
+    // ── Seed idempotente: número oficial do ZapScript (34 98843-4133) ────────────
+    // Serve 4 papéis simultâneos:
+    //   1. Comunicação e envio de campanhas/mensagens (admin)
+    //   2. Número para Suporte oficial
+    //   3. Conversão automática: todo áudio recebido → texto + resumo
+    //   4. 1º áudio enviado ao usuário assim que ele conecta no ZapScript (onboarding)
+    // userId = primeiro admin encontrado (fallback: cria placeholder se não existir).
+    // isPublic = true → webhook processa áudios de desconhecidos como demo grátis.
+    `DO $$
+    DECLARE
+      _admin_id TEXT;
+      _exists   BOOLEAN;
+    BEGIN
+      SELECT "id" INTO _admin_id FROM "User" WHERE "isAdmin" = true AND "deletedAt" IS NULL ORDER BY "createdAt" ASC LIMIT 1;
+      IF _admin_id IS NULL THEN
+        SELECT "id" INTO _admin_id FROM "User" WHERE "deletedAt" IS NULL ORDER BY "createdAt" ASC LIMIT 1;
+      END IF;
+      -- Se não houver nenhum usuário (DB vazio), usar placeholder (FK exige valor)
+      IF _admin_id IS NULL THEN
+        _admin_id := 'zapscript-oficial-placeholder';
+      END IF;
+
+      SELECT EXISTS(SELECT 1 FROM "WhatsappNumber" WHERE "phoneNumber" = '5534988434133' AND "isPublic" = true)
+        INTO _exists;
+      IF NOT _exists THEN
+        INSERT INTO "WhatsappNumber" ("id", "userId", "phoneNumber", "displayName", "status", "isPublic", "privateMode", "provider", "createdAt", "updatedAt")
+        VALUES (gen_random_uuid()::text, _admin_id, '5534988434133', 'ZapScript Oficial', 'disconnected', true, true, 'evolution', NOW(), NOW());
+        RAISE NOTICE '[Seed] Numero oficial ZapScript (34 98843-4133) criado como isPublic=true';
+      END IF;
+    END $$`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
       app.log.warn(`[AutoMigration] ${e.message}`)
     );
   }
-  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt)');
+  app.log.info('[AutoMigration] ✅ Schema verificado (Evolution API + Testers + CPF encrypt + Cobrança + Legendas + Campanhas + Teams + AffiliateClick + isPublic + privateMode default false)');
+
+  // ── Migração: ALTER DEFAULT privateMode → false (2026-07-22) ──
+  // Anteriormente o default era true (opt-out automático em pago).
+  // Agora é false (opt-in manual). Só altera o DEFAULT — não faz backfill
+  // (usuários existentes que já ativaram mantêm o flag ligado).
+  await prisma.$executeRawUnsafe(
+    `ALTER TABLE "WhatsappNumber" ALTER COLUMN "privateMode" SET DEFAULT false`
+  ).catch((e: any) =>
+    app.log.warn(`[AutoMigration] privateMode default: ${e.message}`)
+  );
+  app.log.info('[AutoMigration] ✅ privateMode default = false');
 }
 
 /**

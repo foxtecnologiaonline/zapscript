@@ -4,20 +4,20 @@ import { api } from '@/lib/api';
 
 /* ─────────────────────────────────────────────────────────
    ModuleCheckoutInline — Checkout Transparente Asaas p/ módulos da suíte
-   Mirror leve de CheckoutInline.tsx (que é tipado só para 'pro'|'executive').
-   Métodos: PIX · Crédito. Chama POST /billing/modules/:key/subscribe.
+   (Atende, Cobrança, Legendas, CRM...). Mirror leve de CheckoutInline.tsx
+   (que é tipado só para 'pro'|'executive'). Métodos: PIX · Crédito · Débito.
+   Chama POST /billing/modules/:key/subscribe.
    ───────────────────────────────────────────────────────── */
 
 interface Props {
-  moduleKey:   string;
-  moduleName:  string;
-  /** Preço mensal já formatado, ex.: "R$49,90" */
-  priceLabel:  string;
-  onSuccess:   (moduleKey: string) => void;
-  onCancel:    () => void;
+  moduleKey:    string;
+  moduleName:   string;
+  priceMonthly: number;
+  onSuccess:    (moduleKey: string) => void;
+  onCancel:     () => void;
 }
 
-type Method = 'pix' | 'credit_card';
+type Method = 'pix' | 'credit_card' | 'debit_card';
 
 interface PixData {
   qrCode:    string | null;
@@ -26,7 +26,14 @@ interface PixData {
   amount:    number;
 }
 
+const METHODS: { id: Method; label: string; icon: string; sub: string }[] = [
+  { id: 'pix',         label: 'PIX',     icon: '⚡', sub: 'QR code — ativa na confirmação' },
+  { id: 'credit_card', label: 'Crédito', icon: '💳', sub: 'Cobrança aprovada na hora' },
+  { id: 'debit_card',  label: 'Débito',  icon: '🏦', sub: 'Débito no cartão' },
+];
+
 /* ── Formatação (mesmas regras do CheckoutInline) ── */
+function formatBrl(v: number) { return `R$ ${v.toFixed(2).replace('.', ',')}`; }
 function formatCardNumber(v: string) { return v.replace(/\D/g,'').slice(0,16).replace(/(.{4})/g,'$1 ').trim(); }
 function formatExpiry(v: string) { const n = v.replace(/\D/g,'').slice(0,4); return n.length > 2 ? `${n.slice(0,2)} / ${n.slice(2)}` : n; }
 function formatPostalCode(v: string) { const n = v.replace(/\D/g,'').slice(0,8); return n.length > 5 ? `${n.slice(0,5)}-${n.slice(5)}` : n; }
@@ -266,13 +273,15 @@ function PixGenerateArea({ loading, error, onGenerate, priceLabel }: {
 /* ═══════════════════════════════════════════════════════
    Componente principal
    ══════════════════════════════════════════════════════ */
-export default function ModuleCheckoutInline({ moduleKey, moduleName, priceLabel, onSuccess, onCancel }: Props) {
+export default function ModuleCheckoutInline({ moduleKey, moduleName, priceMonthly, onSuccess, onCancel }: Props) {
   const [method,  setMethod]  = useState<Method>('pix');
   const [step,    setStep]    = useState<2 | 3>(2);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
   const [pixData, setPixData] = useState<PixData | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
+
+  const priceLabel = formatBrl(priceMonthly);
 
   function handleMethodChange(m: Method) {
     setMethod(m);
@@ -298,7 +307,7 @@ export default function ModuleCheckoutInline({ moduleKey, moduleName, priceLabel
         addressNumber: card.addressNumber || undefined,
       };
       const res = await api.post<any>(`/billing/modules/${moduleKey}/subscribe`, {
-        paymentMethod: 'credit_card',
+        paymentMethod: method,
         card: cardPayload,
         billingAddress,
       });
@@ -331,7 +340,7 @@ export default function ModuleCheckoutInline({ moduleKey, moduleName, priceLabel
           qrCode:    res.qrCode    || null,
           qrCodeUrl: res.qrCodeUrl || null,
           expiresAt: res.expiresAt || null,
-          amount:    res.proratedAmount || 0,
+          amount:    res.proratedAmount ?? priceMonthly,
         });
       } else {
         setError(normalizeApiError(res.error || 'Erro ao gerar PIX. Tente novamente.'));
@@ -395,10 +404,7 @@ export default function ModuleCheckoutInline({ moduleKey, moduleName, priceLabel
       {/* Corpo do checkout */}
       <div style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.2)', borderTop: 'none', borderRadius: '0 0 14px 14px', overflow: 'hidden' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, padding: '13px 15px', background: 'rgb(var(--color-bg))', borderBottom: '1px solid rgb(var(--color-border))' }}>
-          {([
-            { id: 'pix' as const,         label: 'PIX',     icon: '⚡', sub: 'QR code — ativa na confirmação' },
-            { id: 'credit_card' as const, label: 'Crédito', icon: '💳', sub: 'Cobrança aprovada na hora' },
-          ]).map(m => {
+          {METHODS.map(m => {
             const active = method === m.id;
             return (
               <button
@@ -425,14 +431,14 @@ export default function ModuleCheckoutInline({ moduleKey, moduleName, priceLabel
         <div style={{ padding: '20px 18px', minHeight: 260, display: 'flex', flexDirection: 'column' }}>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'rgb(var(--color-text))' }}>
-              {method === 'pix' ? 'PIX' : 'Crédito'}
+              {METHODS.find(m => m.id === method)!.label}
             </div>
             <div style={{ fontSize: 11, color: 'rgb(var(--color-text-muted))', marginTop: 2 }}>
-              {method === 'pix' ? 'QR code — ativa na confirmação' : 'Cobrança aprovada na hora'}
+              {METHODS.find(m => m.id === method)!.sub}
             </div>
           </div>
 
-          {method === 'credit_card' && (
+          {(method === 'credit_card' || method === 'debit_card') && (
             <CardForm
               onSubmit={handleCardSubmit}
               loading={loading}

@@ -1,8 +1,9 @@
+import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ThemeToggleButton } from '@/components/ThemeProvider';
-import { ChatDemo } from '@/components/ChatDemo';
 import ConversationDemo from '@/components/ConversationDemo';
+import LiveStats from '@/components/LiveStats';
 import PriceAnchor from '@/components/PriceAnchor';
 import { FaqSection } from '@/components/FaqSection';
 import { PricingInteractive } from '@/components/PricingInteractive';
@@ -10,6 +11,33 @@ import { Testimonials } from '@/components/Testimonials';
 import { AffiliateCapture } from '@/components/AffiliateCapture';
 import { SupportChatButton } from '@/components/SupportChatButton';
 import { FAQ_ITEMS } from '@/data/faq';
+
+export const metadata: Metadata = {
+  title:       'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
+  description: 'Converta áudios do WhatsApp em texto e resumo com IA. Grátis para começar — 10x mais rápido que ouvir. Para corretores, advogados e vendedores.',
+  keywords:    'converter áudio whatsapp, transcrição whatsapp automática, resumo áudio ia, whatsapp texto, converter áudio em texto, passar áudio para texto, áudio para texto online, transcrever áudio whatsapp grátis, conversão automática whatsapp, mensagem de voz texto',
+  alternates:  { canonical: 'https://www.zapscript.me' },
+  openGraph: {
+    title:       'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
+    description: 'Transforme seus áudios do WhatsApp em textos, resumos e insights com IA. Comece grátis, sem cartão.',
+    url:         'https://www.zapscript.me',
+    siteName:    'ZapScript',
+    locale:      'pt_BR',
+    type:        'website',
+    images: [{
+      url:    '/opengraph-image',
+      width:  1200,
+      height: 630,
+      alt:    'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
+    }],
+  },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'ZapScript — Conversão Inteligente de Áudios do WhatsApp',
+    description: 'Transforme seus áudios do WhatsApp em textos, resumos e insights com IA. Comece grátis.',
+    images:      ['/opengraph-image'],
+  },
+};
 
 /* ── Feature cards ── */
 const FEATURES = [
@@ -72,7 +100,7 @@ const schemaOrg = {
   },
   offers: [
     { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Free', description: '15 áudios por mês, sem cartão' },
-    { '@type': 'Offer', price: '39.90', priceCurrency: 'BRL', name: 'Pro', description: 'Áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico' },
+    { '@type': 'Offer', price: '37', priceCurrency: 'BRL', name: 'Pro', description: 'Áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico' },
   ],
   publisher: {
     '@type': 'Organization',
@@ -125,41 +153,33 @@ export default function HomePage() {
               <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold"
                 style={{ background: 'rgba(var(--color-primary-light)/.6)', color: 'rgb(var(--color-primary))' }}>
                 <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'rgb(var(--color-primary))' }} />
-                Gente ocupada lê
+                Ler é mais rápido que ouvir
               </span>
             </div>
 
             {/* H1 */}
-            <h1 className="font-display font-bold leading-[1.06] tracking-tight mb-3"
-              style={{ fontSize: 'clamp(28px, 8vw, 42px)', animation: 'fadeInUp .6s ease .25s both' }}>
-              <span className="text-brand-text">Pare de ouvir áudio.</span>{' '}
-              <span className="text-gradient">Leia o resumo em 10 segundos.</span>
+            <h1 className="font-display font-bold leading-[1.06] tracking-tight mb-4"
+              style={{ fontSize: 'clamp(26px, 7.5vw, 38px)', animation: 'fadeInUp .6s ease .25s both' }}>
+              <span className="text-brand-text">Todo áudio do WhatsApp</span>{' '}
+              <span className="text-gradient">vira texto e resumo, sozinho.</span>
             </h1>
 
             {/* Subtitle */}
             <p className="text-[15px] leading-relaxed mb-5"
               style={{ color: 'rgb(var(--color-text-secondary))', animation: 'fadeInUp .6s ease .3s both' }}>
-              Todo áudio do seu WhatsApp vira texto e resumo, automaticamente. Você lê o que importa em segundos — sem fone, sem reouvir.
+              Conecte seu número e pronto. A cada áudio recebido, você lê a transcrição e o resumo na mesma conversa — sem ouvir, sem encaminhar, sem fazer nada.
             </p>
 
             {/* CTAs */}
-            <div className="flex flex-col gap-3" style={{ animation: 'fadeInUp .6s ease .35s both' }}>
-              <div>
-                <p className="flex items-center gap-1.5 text-xs font-medium mb-2"
-                  style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                  <span>👋</span> Novo por aqui?
-                </p>
+            <div className="flex flex-col gap-3" style={{ animation: 'fadeInUp .6s ease .38s both' }}>
+              <div className="flex gap-2.5">
                 <Link href="/cadastro" data-cta="home_hero_cadastro"
-                  className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2">
+                  className="btn-primary flex-1 py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2">
                   Quero ler em vez de ouvir
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M12 5l7 7-7 7"/>
                   </svg>
                 </Link>
-                <PriceAnchor
-                  prefix="Grátis para começar · depois, "
-                  className="block text-center text-xs mt-2 text-brand-muted"
-                />
               </div>
 
               <div className="flex items-center gap-3">
@@ -168,24 +188,18 @@ export default function HomePage() {
                 <div className="flex-1 h-px" style={{ background: 'rgb(var(--color-border))' }} />
               </div>
 
-              <div>
-                <p className="flex items-center gap-1.5 text-xs font-medium mb-2"
-                  style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                  <span>🔑</span> Já tem uma conta?
-                </p>
-                <Link href="/login"
-                  className="w-full py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-80 active:scale-[.98]"
-                  style={{
-                    border: '1.5px solid rgb(var(--color-border))',
-                    color: 'rgb(var(--color-text-secondary))',
-                    background: 'rgb(var(--color-surface))',
-                  }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/>
-                  </svg>
-                  Entrar na minha conta
-                </Link>
-              </div>
+              <Link href="/login"
+                className="w-full py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-80 active:scale-[.98]"
+                style={{
+                  border: '1.5px solid rgb(var(--color-border))',
+                  color: 'rgb(var(--color-text-secondary))',
+                  background: 'rgb(var(--color-surface))',
+                }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/>
+                </svg>
+                Entrar na minha conta
+              </Link>
             </div>
 
             {/* Selos de confiança — acima da dobra */}
@@ -202,20 +216,12 @@ export default function HomePage() {
           </div>
         </header>
 
-        {/* ══ STATS GLASS CARD ══ */}
+        {/* ══ LIVE STATS — contador real de atividade ══ */}
         <section className="relative z-20 -mt-10 px-5" style={{ animation: 'fadeInUp .6s ease .4s both' }}>
           <div className="w-full">
             <div className="glass rounded-3xl p-5 border shadow-medium flex justify-around items-center"
               style={{ borderColor: 'rgb(var(--color-border-light))' }}>
-              {[['24/7', 'Sempre ativo'], ['10x', 'Mais rápido'], ['99%', 'Precisão']].map(([val, lbl], i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
-                  {i > 0 && <div style={{ width: 1, height: 40, background: 'rgb(var(--color-border))', marginRight: 20 }} />}
-                  <div className="text-center">
-                    <p className="font-display text-xl font-bold text-brand-text">{val}</p>
-                    <p className="text-[11px] font-medium mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{lbl}</p>
-                  </div>
-                </div>
-              ))}
+              <LiveStats />
             </div>
           </div>
         </section>
@@ -323,11 +329,6 @@ export default function HomePage() {
               </div>
             ))}
           </div>
-        </section>
-
-        {/* ══ CHAT DEMO ══ */}
-        <section className="px-5 pb-16">
-          <ChatDemo />
         </section>
 
         {/* ══ SEGURANÇA & PRIVACIDADE ══ */}

@@ -3,40 +3,60 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { captureAffiliateFromUrl } from '@/lib/affiliate';
+import { api } from '@/lib/api';
 
 /* ─────────────────────────────────────────────────────────
    Landing pública do Programa de Afiliados.
    O cadastro em si exige conta (self-service em /dashboard/afiliado).
-   Modelo: 30% recorrente (12 meses) · 40% bônus (51º+ cliente/mês) ·
-   5% residual vitalício · saldo liberado D+30, sem valor mínimo.
+   Modelo: comissão recorrente (padrão 30%, primeiros 12 meses) · bônus
+   (padrão 40%, a partir do 51º cliente novo/mês) · residual vitalício
+   (padrão 5%) · saldo liberado D+30 (padrão), sem valor mínimo.
+   As taxas são configuráveis pelo admin (AffiliateConfig) — esta página
+   busca os valores reais em GET /affiliates/rates (público) e cai nos
+   defaults abaixo caso a chamada falhe, para nunca deixar a LP em branco.
    ───────────────────────────────────────────────────────── */
 
-const FAQ: { q: string; a: string }[] = [
-  {
-    q: 'O que acontece se o meu indicado cancelar?',
-    a: 'Se ele cancelar até 30 dias após assinar, a comissão pendente desse cliente é zerada. Depois desse prazo, você mantém tudo o que já foi gerado — só para de acumular comissão futura dele.',
-  },
-  {
-    q: 'Como acompanho meu progresso rumo ao bônus de 40%?',
-    a: 'No seu painel de afiliado, uma barra mostra quantos clientes novos você já fechou no mês e quantos faltam para os 50. A partir do 51º, a comissão sobe automaticamente para esses clientes.',
-  },
-  {
-    q: 'Quando o saldo fica disponível para saque?',
-    a: 'Cada comissão é liberada 30 dias depois de gerada. Não há valor mínimo — você pode solicitar o saque de qualquer saldo já disponível, quando quiser.',
-  },
-  {
-    q: 'A comissão de 30% é só na primeira venda?',
-    a: 'Não. Você recebe 30% em todo pagamento aprovado do indicado (mensal ou anual) durante os 12 primeiros meses de assinatura dele — é recorrente, não é um pagamento único.',
-  },
-  {
-    q: 'Como funciona depois dos 12 meses?',
-    a: 'A comissão continua, numa taxa residual vitalícia de 5%, enquanto o indicado seguir assinante do ZapScript.',
-  },
-  {
-    q: 'Quais clientes contam para o bônus de 50 no mês?',
-    a: 'Apenas indicados com pagamento aprovado no mês contam para a meta. Cadastros que ainda não converteram em assinatura paga não entram na contagem.',
-  },
-];
+type AffRates = {
+  baseRate: number; bonusRate: number; residualRate: number;
+  recurringMonths: number; bonusThreshold: number; payoutHoldDays: number;
+};
+const DEFAULT_RATES: AffRates = {
+  baseRate: 0.30, bonusRate: 0.40, residualRate: 0.05,
+  recurringMonths: 12, bonusThreshold: 50, payoutHoldDays: 30,
+};
+const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+function buildFaq(r: AffRates): { q: string; a: string }[] {
+  const basePct = Math.round(r.baseRate * 100);
+  const bonusPct = Math.round(r.bonusRate * 100);
+  const residualPct = Math.round(r.residualRate * 100);
+  return [
+    {
+      q: 'O que acontece se o meu indicado cancelar?',
+      a: 'Se ele cancelar até 30 dias após assinar, a comissão pendente desse cliente é zerada. Depois desse prazo, você mantém tudo o que já foi gerado — só para de acumular comissão futura dele.',
+    },
+    {
+      q: `Como acompanho meu progresso rumo ao bônus de ${bonusPct}%?`,
+      a: `No seu painel de afiliado, uma barra mostra quantos clientes novos você já fechou no mês e quantos faltam para os ${r.bonusThreshold}. A partir do ${r.bonusThreshold + 1}º, a comissão sobe automaticamente para esses clientes.`,
+    },
+    {
+      q: 'Quando o saldo fica disponível para saque?',
+      a: `Cada comissão é liberada ${r.payoutHoldDays} dias depois de gerada. Não há valor mínimo — você pode solicitar o saque de qualquer saldo já disponível, quando quiser.`,
+    },
+    {
+      q: `A comissão de ${basePct}% é só na primeira venda?`,
+      a: `Não. Você recebe ${basePct}% em todo pagamento aprovado do indicado (mensal ou anual) durante os ${r.recurringMonths} primeiros meses de assinatura dele — é recorrente, não é um pagamento único.`,
+    },
+    {
+      q: `Como funciona depois dos ${r.recurringMonths} meses?`,
+      a: `A comissão continua, numa taxa residual vitalícia de ${residualPct}%, enquanto o indicado seguir assinante do ZapScript.`,
+    },
+    {
+      q: `Quais clientes contam para o bônus de ${r.bonusThreshold} no mês?`,
+      a: 'Apenas indicados com pagamento aprovado no mês contam para a meta. Cadastros que ainda não converteram em assinatura paga não entram na contagem.',
+    },
+  ];
+}
 
 const KIT: { key: string; label: string; canal: string; text: string }[] = [
   // ── WhatsApp ───────────────────────────────────────────────────────────────
@@ -63,7 +83,7 @@ const KIT: { key: string; label: string; canal: string; text: string }[] = [
     key: 'grupo-informal',
     canal: 'Grupo',
     label: 'Grupo de WhatsApp — informal',
-    text: `Pessoal! 👋 Dica boa aqui:\n\n*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.\n\nAquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.\n\n🆓 15 áudios/mês grátis, sem cartão:\n👉 [SEU_LINK]\n\n🔥 Pro com áudios ilimitados por R$19,90 no 1º mês\n\nValeu! 😄`,
+    text: `Pessoal! 👋 Dica boa aqui:\n\n*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.\n\nAquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.\n\n🆓 15 áudios/mês grátis, sem cartão:\n👉 [SEU_LINK]\n\n🔥 Pro com áudios ilimitados por R$18 no 1º mês\n\nValeu! 😄`,
   },
   // ── LinkedIn ───────────────────────────────────────────────────────────────
   {
@@ -111,9 +131,15 @@ const CANAIS = ['Todos', 'WhatsApp', 'Grupo', 'LinkedIn', 'Instagram', 'E-mail']
 export default function AfiliadosLanding() {
   const [copied, setCopied] = useState<string | null>(null);
   const [filtro, setFiltro] = useState('Todos');
+  const [rates, setRates] = useState<AffRates>(DEFAULT_RATES);
+  const [planValue, setPlanValue] = useState(39.9);
+  const [referralsPerMonth, setReferralsPerMonth] = useState(5);
 
   // Captura o ?aff= e remove o código da barra de endereços
   useEffect(() => { captureAffiliateFromUrl(); }, []);
+
+  // Taxas reais do programa (admin pode alterar sem redeploy) — cai no default se falhar
+  useEffect(() => { api.get<AffRates>('/affiliates/rates').then(setRates).catch(() => {}); }, []);
 
   function copyKit(key: string, text: string) {
     navigator.clipboard.writeText(text).then(() => {
@@ -123,6 +149,16 @@ export default function AfiliadosLanding() {
   }
 
   const kitFiltrado = filtro === 'Todos' ? KIT : KIT.filter(m => m.canal === filtro);
+  const faq = buildFaq(rates);
+
+  const basePct = Math.round(rates.baseRate * 100);
+  const bonusPct = Math.round(rates.bonusRate * 100);
+  const residualPct = Math.round(rates.residualRate * 100);
+
+  const perReferralMonthly = planValue * rates.baseRate;
+  const perReferral12m = perReferralMonthly * rates.recurringMonths;
+  const perReferralResidualMonthly = planValue * rates.residualRate;
+  const steadyStateMonthly = referralsPerMonth * perReferralMonthly;
 
   return (
     <div className="min-h-screen bg-brand-bg">
@@ -141,7 +177,7 @@ export default function AfiliadosLanding() {
           Indique o ZapScript e <span className="text-brand-primary">ganhe comissão todo mês</span>
         </h1>
         <p className="text-base sm:text-lg text-brand-text-secondary mt-4 max-w-xl mx-auto">
-          Não é comissão única: você recebe 30% em cada pagamento do seu indicado durante os 12 primeiros meses — e até 40% com o bônus de performance.
+          Não é comissão única: você recebe {basePct}% em cada pagamento do seu indicado durante os {rates.recurringMonths} primeiros meses — e até {bonusPct}% com o bônus de performance.
         </p>
         <p className="text-sm text-brand-primary font-medium mt-3 max-w-xl mx-auto">
           Você indica um robô que converte áudio em texto 24 horas por dia — um produto que se explica sozinho.
@@ -166,13 +202,48 @@ export default function AfiliadosLanding() {
           Comissão recorrente — não é um pagamento único na primeira venda.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          <CommCard emoji="💰" title="30%" sub="12 primeiros meses" detail="Em cada pagamento do indicado — mensal ou anual." />
-          <CommCard emoji="🚀" title="40%" sub="bônus de performance" detail="A partir do 51º cliente novo no mês. Trava por 12 meses." />
-          <CommCard emoji="♾️" title="5%" sub="residual vitalício" detail="Após os 12 meses, enquanto o indicado seguir assinante." />
-          <CommCard emoji="💸" title="D+30" sub="saque sem mínimo" detail="Saldo liberado 30 dias após cada comissão gerada." />
+          <CommCard emoji="💰" title={`${basePct}%`} sub={`${rates.recurringMonths} primeiros meses`} detail="Em cada pagamento do indicado — mensal ou anual." />
+          <CommCard emoji="🚀" title={`${bonusPct}%`} sub="bônus de performance" detail={`A partir do ${rates.bonusThreshold + 1}º cliente novo no mês. Trava por ${rates.recurringMonths} meses.`} />
+          <CommCard emoji="♾️" title={`${residualPct}%`} sub="residual vitalício" detail={`Após os ${rates.recurringMonths} meses, enquanto o indicado seguir assinante.`} />
+          <CommCard emoji="💸" title={`D+${rates.payoutHoldDays}`} sub="saque sem mínimo" detail={`Saldo liberado ${rates.payoutHoldDays} dias após cada comissão gerada.`} />
         </div>
-        <div className="mt-5 rounded-xl px-5 py-4 text-sm text-brand-text-secondary text-center leading-relaxed" style={{ background: 'rgba(16,185,129,.06)', border: '1px solid rgba(16,185,129,.12)' }}>
-          Exemplo: seu indicado assina o plano Pro (R$39,90/mês) → você recebe <strong className="text-brand-primary">R$11,97 todo mês</strong>, por 12 meses. Depois disso, <strong className="text-brand-primary">R$1,99/mês</strong> vitalício enquanto ele continuar assinante.
+
+        {/* Simulador ao vivo — usa as taxas reais (GET /affiliates/rates) */}
+        <div className="mt-6 rounded-2xl p-5 sm:p-6" style={{ background: 'rgba(16,185,129,.06)', border: '1px solid rgba(16,185,129,.12)' }}>
+          <p className="text-sm font-bold text-brand-text text-center mb-4">Simule quanto você pode ganhar</p>
+          <div className="grid sm:grid-cols-2 gap-4 max-w-md mx-auto">
+            <label className="text-xs text-brand-muted">
+              Plano do seu indicado (R$/mês)
+              <input
+                type="number" min={0} step="0.01" value={planValue}
+                onChange={e => setPlanValue(Math.max(0, Number(e.target.value) || 0))}
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-brand-text bg-black/20 border border-white/10 focus:outline-none focus:border-brand-primary/50"
+              />
+            </label>
+            <label className="text-xs text-brand-muted">
+              Indicados novos por mês
+              <input
+                type="number" min={0} step={1} value={referralsPerMonth}
+                onChange={e => setReferralsPerMonth(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-brand-text bg-black/20 border border-white/10 focus:outline-none focus:border-brand-primary/50"
+              />
+            </label>
+          </div>
+          <div className="text-sm text-brand-text-secondary text-center leading-relaxed mt-5 space-y-1.5">
+            <p>
+              Por indicado: <strong className="text-brand-primary">{brl(perReferralMonthly)}/mês</strong>, por até {rates.recurringMonths} meses
+              ({brl(perReferral12m)} no total) — depois, <strong className="text-brand-primary">{brl(perReferralResidualMonthly)}/mês</strong> vitalício.
+            </p>
+            {referralsPerMonth > 0 && (
+              <p>
+                Mantendo o ritmo de <strong>{referralsPerMonth}</strong> indicado{referralsPerMonth === 1 ? '' : 's'}/mês, seu saldo mensal recorrente pode chegar a{' '}
+                <strong className="text-brand-primary text-base">{brl(steadyStateMonthly)}</strong>.
+              </p>
+            )}
+            {referralsPerMonth > rates.bonusThreshold && (
+              <p className="text-xs">🚀 Nesse ritmo, os clientes que passarem do {rates.bonusThreshold}º no mês já entram no bônus de {bonusPct}%.</p>
+            )}
+          </div>
         </div>
       </section>
 
@@ -208,12 +279,12 @@ export default function AfiliadosLanding() {
         {/* Regras e condições resumidas */}
         <div className="mt-8 rounded-2xl p-5 space-y-2 text-xs text-brand-muted" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
           <p className="font-semibold text-brand-text-secondary text-sm mb-3">Regras e condições</p>
-          <p>• Comissão de 30% em cada pagamento aprovado do indicado durante os 12 primeiros meses de assinatura (mensal ou anual)</p>
-          <p>• Após 12 meses, comissão residual de 5% enquanto o indicado continuar assinante</p>
-          <p>• Bônus: a partir do 51º cliente novo conquistado no mês, a comissão desses clientes sobe para 40% — travada por 12 meses</p>
-          <p>• Apenas pagamentos aprovados contam para o cálculo e para a meta de 50 clientes/mês</p>
+          <p>• Comissão de {basePct}% em cada pagamento aprovado do indicado durante os {rates.recurringMonths} primeiros meses de assinatura (mensal ou anual)</p>
+          <p>• Após {rates.recurringMonths} meses, comissão residual de {residualPct}% enquanto o indicado continuar assinante</p>
+          <p>• Bônus: a partir do {rates.bonusThreshold + 1}º cliente novo conquistado no mês, a comissão desses clientes sobe para {bonusPct}% — travada por {rates.recurringMonths} meses</p>
+          <p>• Apenas pagamentos aprovados contam para o cálculo e para a meta de {rates.bonusThreshold} clientes/mês</p>
           <p>• Cancelamento do indicado até 30 dias após a assinatura zera as comissões pendentes desse cliente; depois disso, o que já foi gerado é mantido</p>
-          <p>• Saldo liberado 30 dias após cada comissão gerada — saque via Pix a qualquer momento, sem valor mínimo</p>
+          <p>• Saldo liberado {rates.payoutHoldDays} dias após cada comissão gerada — saque via Pix a qualquer momento, sem valor mínimo</p>
           <p>• Pagamento exclusivamente via Pix para conta de titularidade do CPF/CNPJ cadastrado</p>
           <p>• A aprovação da afiliação exige e-mail verificado e CPF/CNPJ cadastrado</p>
           <p>• A ZapScript pode recusar ou cancelar afiliações que violem os termos de uso</p>
@@ -228,7 +299,7 @@ export default function AfiliadosLanding() {
       <section className="px-5 sm:px-8 pb-16 max-w-3xl mx-auto">
         <h2 className="text-xl font-bold text-brand-text text-center mb-7">Perguntas frequentes</h2>
         <div className="space-y-3">
-          {FAQ.map(f => (
+          {faq.map(f => (
             <div key={f.q} className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
               <p className="text-sm font-bold text-brand-text">{f.q}</p>
               <p className="text-xs text-brand-muted mt-1.5 leading-relaxed">{f.a}</p>

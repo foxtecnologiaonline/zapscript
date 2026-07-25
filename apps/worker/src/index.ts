@@ -8,12 +8,14 @@ import ws from 'ws';
 import { redis, voiceCommandQueue } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { convertToMp3, splitMp3ByDuration, estimateMp3DurationSec } from './services/audio';
+import { transcribeAudio, WhisperSegment } from './services/whisper';
 import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
 import { downloadAudioFromTwilio, sendMessageViaTwilio } from './services/twilio';
 import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread } from './services/evolution';
 import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encryption';
 import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
+import { processCampanhaJob, markCampanhaJobExhausted } from './modules/campanhas';
 import {
   planEfetivo, audioQuotaFor, pickFooterVariant, formatSavedTime,
   MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
@@ -83,214 +85,8 @@ if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.startsWith('
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Groq — whisper-large-v3-turbo (mais rápido e preciso para PT-BR)
-// Compatível com API OpenAI — sem dependência extra
-const groq = process.env.GROQ_API_KEY
-  ? new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' })
-  : null;
-
-// ── Prompts para Whisper ────────────────────────────────────────────────────
-// IMPORTANTE: o prompt do Whisper NÃO é uma instrução — é uma amostra de
-// estilo que orienta vocabulário e formatação. Frases imperativas como
-// "Reproduzir exatamente o que foi dito" causam alucinação: quando o áudio
-// é silencioso ou ininteligível, o Whisper "preenche" com o texto do prompt.
-// Usar frases curtas e naturais que soem como fala real em PT-BR.
-
-// Priming coloquial para áudios de WhatsApp
-const PT_BR_PROMPT = 'Tá bom, então. Deixa eu te falar uma coisa.';
-
-// Priming formal/neutro para uploads manuais
-const PT_BR_JURIDICAL_PROMPT = 'Bom dia. Então, o que aconteceu foi o seguinte.';
-
-// ── Detecção de alucinação do Whisper ───────────────────────────────────────
-// Retorna true se o texto for provavelmente alucinado (prompt repetido,
-// saída suspeitamente curta para a duração do áudio, padrões repetitivos).
-function isWhisperHallucination(text: string, durationSec: number): boolean {
-  if (!text || text.length < 3) return true;
-
-  // Padrões conhecidos de alucinação do Whisper
-  const HALLUCINATION_PATTERNS = [
-    /reproduzir exatamente o que foi dito/i,
-    /conversão literal e fiel/i,
-    /conversão em português brasileiro/i,
-    /sem correções ou omissões/i,
-    /thank you for watching/i,
-    /thanks for watching/i,
-    /please subscribe/i,
-  ];
-  if (HALLUCINATION_PATTERNS.some(p => p.test(text))) return true;
-
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-
-  // Texto excessivamente curto para a duração (< 2 palavras por minuto de áudio)
-  const minWords  = Math.floor(durationSec / 60) * 2;
-  if (durationSec > 30 && wordCount < Math.max(minWords, 3)) return true;
-
-  // Densidade impossível de fala: humano fala ~2–3 palavras/seg (rápido ~4).
-  // Áudio de 2s com 50 palavras (25 p/seg) é alucinação clássica do Whisper em
-  // ruído/silêncio. Margem generosa de 6 p/seg + piso absoluto de 8 palavras
-  // para não penalizar respostas curtas e legítimas ("Socorro!", "Tá bom, valeu").
-  const maxPlausibleWords = Math.max(8, durationSec * 6);
-  if (wordCount > maxPlausibleWords) return true;
-
-  // Repetição patológica: mesma palavra/frase curta repetida muitas vezes
-  // (ex.: "obrigado obrigado obrigado…"), outro padrão típico de alucinação.
-  if (wordCount >= 8) {
-    const words  = text.toLowerCase().split(/\s+/).filter(Boolean);
-    const unique = new Set(words).size;
-    if (unique / words.length < 0.35) return true;
-  }
-
-  return false;
-}
-
-// Segmento de fala retornado pelo Whisper verbose_json
-interface WhisperSegment {
-  start:  number;
-  end:    number;
-  text:   string;
-}
-
 /** Bucket Supabase Storage para MP3s de laudos jurídicos (permanente) */
 const AUDIO_JURIDICAL_BUCKET = 'audio-juridical';
-
-// ─────────────────────────────────────────────────────────────────
-//  SHARED HELPERS — usados em ambos os pipelines
-// ─────────────────────────────────────────────────────────────────
-
-// Opções de conversão: vocabulário do usuário melhora a grafia de nomes
-// próprios e jargão (o prompt do Whisper é uma amostra de estilo/vocabulário).
-interface TranscribeOpts {
-  vocab?: (string | null | undefined)[];  // nomes de contato, termos do nicho
-  juridical?: boolean;                     // usa priming formal + retorna segmentos
-}
-
-// Tamanho de cada bloco em áudios longos (segundos). 30 min @64k mono ≈ 14 MB,
-// seguro abaixo do limite de 25 MB da API Whisper. Override via AUDIO_CHUNK_SEC.
-const AUDIO_CHUNK_SEC = parseInt(process.env.AUDIO_CHUNK_SEC || '1800', 10);
-
-/** Monta o prompt de priming do Whisper, anexando vocabulário do usuário. */
-function buildWhisperPrompt(base: string, vocab?: (string | null | undefined)[]): string {
-  if (!vocab?.length) return base;
-  const names = Array.from(new Set(
-    vocab.map(v => (v || '').trim()).filter(v => v && v.toLowerCase() !== 'manual' && v.length > 1),
-  )).slice(0, 20);
-  return names.length ? `${base} (${names.join(', ')})` : base;
-}
-
-/** Uma chamada única à API Whisper. Sem language → auto-detecção de idioma. */
-async function runWhisper(
-  client: OpenAI, model: string, audioFile: File, prompt: string | undefined, temperature: number,
-): Promise<{ text: string; durationSec: number; language: string; raw: any }> {
-  const result: any = await client.audio.transcriptions.create({
-    file:            audioFile,
-    model,
-    response_format: 'verbose_json',
-    temperature,
-    ...(prompt ? { prompt } : {}),   // sem prompt na tentativa de recuperação
-  } as any);
-  const text = result.text?.trim();
-  if (!text) throw new Error('Whisper retornou texto vazio');
-  return {
-    text,
-    durationSec: Math.max(1, Math.round(result.duration ?? 0)),
-    language:    result.language || 'pt',
-    raw:         result,
-  };
-}
-
-const parseSegments = (raw: any[]): WhisperSegment[] =>
-  (raw || []).map(s => ({
-    start: typeof s.start === 'number' ? s.start : 0,
-    end:   typeof s.end   === 'number' ? s.end   : 0,
-    text:  (s.text || '').trim(),
-  })).filter(s => s.text.length > 0);
-
-/**
- * Converte um único bloco de áudio (≤ limite da API) com Whisper.
- *
- * Cadeia com RECUPERAÇÃO em vez de falha imediata:
- *   1. Groq turbo + prompt (temp 0, determinístico)
- *   2. Groq turbo SEM prompt (temp 0.2)   ← recupera alucinação por priming/silêncio
- *   3. OpenAI whisper-1 + prompt (temp 0)
- *   4. OpenAI whisper-1 SEM prompt (temp 0.2)
- * Retorna a primeira tentativa que passa no detector de alucinação.
- * Auto-detecta o idioma (sem language fixo).
- */
-async function transcribeBuffer(
-  mp3Buffer: Buffer, opts: TranscribeOpts = {},
-): Promise<{ text: string; durationSec: number; language: string; segments: WhisperSegment[] }> {
-  const audioFile = new File([mp3Buffer], 'audio.mp3', { type: 'audio/mpeg' });
-  const base      = opts.juridical ? PT_BR_JURIDICAL_PROMPT : PT_BR_PROMPT;
-  const prompt    = buildWhisperPrompt(base, opts.vocab);
-
-  type Attempt = { label: string; client: OpenAI; model: string; prompt?: string; temperature: number };
-  const attempts: Attempt[] = [];
-  if (groq) {
-    attempts.push({ label: 'Groq',          client: groq,   model: 'whisper-large-v3-turbo', prompt,            temperature: 0   });
-    attempts.push({ label: 'Groq+recovery', client: groq,   model: 'whisper-large-v3-turbo', prompt: undefined, temperature: 0.2 });
-  }
-  attempts.push({ label: 'OpenAI',          client: openai, model: 'whisper-1',              prompt,            temperature: 0   });
-  attempts.push({ label: 'OpenAI+recovery', client: openai, model: 'whisper-1',              prompt: undefined, temperature: 0.2 });
-
-  let lastErr: Error | null = null;
-  for (const a of attempts) {
-    try {
-      const r = await runWhisper(a.client, a.model, audioFile, a.prompt, a.temperature);
-      if (isWhisperHallucination(r.text, r.durationSec)) {
-        throw new Error('alucinação detectada (prompt/silêncio)');
-      }
-      const segments = opts.juridical ? parseSegments(r.raw.segments) : [];
-      logger.info(`[Whisper] ${a.label} ✅ ${r.durationSec}s — lang:${r.language}${opts.juridical ? ` — ${segments.length} seg` : ''}`);
-      return { text: r.text, durationSec: r.durationSec, language: r.language, segments };
-    } catch (err: any) {
-      lastErr = err;
-      logger.warn(`[Whisper] ${a.label} falhou: ${err.message}`);
-    }
-  }
-  throw new Error(`Conversão falhou após ${attempts.length} tentativa(s): ${lastErr?.message}`);
-}
-
-/**
- * Converte áudio de qualquer duração, fatiando em blocos de AUDIO_CHUNK_SEC
- * quando excede o limite seguro da API Whisper. Blocos são convertidos em
- * sequência (respeita rate limit) e concatenados; os segmentos têm o timestamp
- * deslocado pela duração acumulada (modo jurídico).
- */
-async function transcribeAudio(
-  mp3Buffer: Buffer, opts: TranscribeOpts = {},
-): Promise<{ text: string; durationSec: number; language: string; segments: WhisperSegment[] }> {
-  const estDur = estimateMp3DurationSec(mp3Buffer);
-
-  // Cabe num único request (com margem de 60s) → caminho rápido
-  if (estDur <= AUDIO_CHUNK_SEC + 60) {
-    return transcribeBuffer(mp3Buffer, opts);
-  }
-
-  const chunks = await splitMp3ByDuration(mp3Buffer, AUDIO_CHUNK_SEC);
-  logger.info(`[Whisper] Áudio longo (~${Math.round(estDur / 60)}min) → ${chunks.length} bloco(s) de ${AUDIO_CHUNK_SEC / 60}min`);
-
-  let fullText = '';
-  let totalDur = 0;
-  let language = 'pt';
-  const allSegments: WhisperSegment[] = [];
-
-  for (let i = 0; i < chunks.length; i++) {
-    const r = await transcribeBuffer(chunks[i], opts);
-    if (opts.juridical) {
-      for (const s of r.segments) {
-        allSegments.push({ start: s.start + totalDur, end: s.end + totalDur, text: s.text });
-      }
-    }
-    fullText += (fullText ? ' ' : '') + r.text;
-    totalDur += r.durationSec;
-    if (i === 0) language = r.language;
-    chunks[i].fill(0);  // limpa buffer sensível
-    logger.info(`[Whisper] Bloco ${i + 1}/${chunks.length} ✅ (${r.durationSec}s)`);
-  }
-
-  return { text: fullText.trim(), durationSec: totalDur, language, segments: allSegments };
-}
 
 /**
  * Constrói conversão com marcação temporal a partir dos segmentos do Whisper.
@@ -401,7 +197,7 @@ function summaryMode(text: string, durationSec: number): SummaryMode {
  * Retorna string[] possivelmente com sentinels ::H:: (seção) e ::P:: (pendência).
  * Cadeia: [modelo do tier] → claude-3-5-haiku → claude-3-haiku → gpt-4o-mini → placeholder.
  */
-async function generateBullets(originalText: string, durationSec = 0, language?: string): Promise<string[]> {
+export async function generateBullets(originalText: string, durationSec = 0, language?: string): Promise<string[]> {
   const mode        = summaryMode(originalText, durationSec);
   const needsTransl = language && !/^pt(-br)?$/i.test(language);
   const ptNote      = needsTransl ? ' Responda sempre em português brasileiro (PT-BR).' : '';
@@ -1032,7 +828,7 @@ function decideFooter(
 
 /**
  * Avisa o PRÓPRIO usuário (WhatsApp + e-mail) que a cota FREE do mês acabou,
- * com CTA de upgrade ancorado em "menos de R$1,33/dia". Throttle: 1x por ciclo.
+ * com CTA de upgrade ancorado em "menos de R$1,23/dia". Throttle: 1x por ciclo.
  * NUNCA responde na conversa do contato que enviou o áudio.
  */
 async function triggerQuotaBlockNotice(userId: string): Promise<void> {
@@ -1044,7 +840,7 @@ async function triggerQuotaBlockNotice(userId: string): Promise<void> {
     const APP_URL = process.env.APP_URL || 'https://zapscript.me';
     const waMsg =
       `🔓 *ZapScript* — Você usou seus ${FREE_AUDIO_QUOTA} áudios grátis do mês\n\n` +
-      `Continue lendo seus áudios *sem limite*, por *menos de R$1,33/dia*.\n` +
+      `Continue lendo seus áudios *sem limite*, por *menos de R$1,23/dia*.\n` +
       `Não volte a ouvir áudio:\n👉 ${APP_URL}/dashboard/plano`;
 
     const n = await prisma.whatsappNumber.findFirst({
@@ -1063,7 +859,7 @@ async function triggerQuotaBlockNotice(userId: string): Promise<void> {
             Olá, <strong>${firstName}</strong>!<br><br>
             Você usou seus <strong>${FREE_AUDIO_QUOTA} áudios grátis</strong> deste mês.
             Quem tem vida corrida não para pra ouvir áudio — lê.<br><br>
-            Volte a ler tudo, sem limite, por <strong>menos de R$1,33/dia</strong>:
+            Volte a ler tudo, sem limite, por <strong>menos de R$1,23/dia</strong>:
           </div>
           <div style="margin:24px 0;text-align:center">
             <a href="${APP_URL}/dashboard/plano" style="background:#10b981;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Ativar o Pro →</a>
@@ -1390,6 +1186,180 @@ async function processTwilioJob(job: Job) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Comando de voz — módulo Cobrança (self-note apenas)
+//  #1: criar cobrança por voz. #7: marcar paga/cancelar por voz.
+//  Roda ANTES do resumo normal da transcrição — se nenhuma intenção bater
+//  (ou o módulo não estiver ativo), cai no fluxo de transcrição de sempre.
+// ─────────────────────────────────────────────────────────────────
+const COBRANCA_VOICE_KEYWORDS = /cobran|cliente|pag(a|o|ou|amento)|cancel|vencime?nto|vence/i;
+
+function cobrancaExtractJson(text: string): any {
+  // Modelo às vezes embrulha em ```json — extrai o primeiro objeto {...}
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Resposta sem JSON');
+  return JSON.parse(match[0]);
+}
+
+interface CobrancaVoiceIntent {
+  intent: 'criar_cobranca' | 'marcar_paga' | 'cancelar' | 'nenhum';
+  nome_cliente?: string | null;
+  telefone?: string | null;
+  valor?: number | null;
+  descricao?: string | null;
+  vencimento?: string | null; // AAAA-MM-DD
+}
+
+async function classifyCobrancaVoiceIntent(text: string): Promise<CobrancaVoiceIntent | null> {
+  const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+  const systemMsg = `Você identifica comandos de voz para o módulo de Cobrança de um sistema de gestão. O usuário grava uma nota de voz para si mesmo (self-note) no WhatsApp.
+
+Hoje é ${hoje}. Responda APENAS com um JSON, sem texto ao redor, no formato:
+{"intent": "criar_cobranca" | "marcar_paga" | "cancelar" | "nenhum", "nome_cliente": string|null, "telefone": string|null, "valor": number|null, "descricao": string|null, "vencimento": "AAAA-MM-DD"|null}
+
+Regras:
+- "criar_cobranca": usuário quer registrar uma nova cobrança/cliente a cobrar. Extraia nome, valor e vencimento (resolva datas relativas como "dia 10", "amanhã", "daqui 30 dias" para AAAA-MM-DD usando hoje como referência). Telefone (com DDD, só dígitos) somente se foi dito explicitamente.
+- "marcar_paga": usuário diz que um cliente pagou/quitou uma cobrança.
+- "cancelar": usuário quer cancelar/desistir de cobrar um cliente.
+- "nenhum": o áudio não é um comando de Cobrança (lembrete pessoal, outro assunto etc.) — use sempre que houver dúvida, não force uma intenção.
+- Nunca invente nome, valor ou telefone que não foram ditos.`;
+
+  try {
+    const res = await claude.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 300,
+      temperature: 0,
+      system: systemMsg,
+      messages: [{ role: 'user', content: `Áudio transcrito: "${text}"` }],
+    });
+    const raw = (res.content[0] as any).text?.trim() || '';
+    return cobrancaExtractJson(raw) as CobrancaVoiceIntent;
+  } catch (err: any) {
+    logger.warn(`[Cobrança][Voz] Classificação falhou: ${err.message}`);
+    return null;
+  }
+}
+
+async function tryHandleCobrancaVoiceCommand(opts: {
+  userId: string;
+  text: string;
+  instanceName: string;
+  ownerPhone: string;
+}): Promise<boolean> {
+  const { userId, text, instanceName, ownerPhone } = opts;
+  if (!COBRANCA_VOICE_KEYWORDS.test(text)) return false;
+
+  const hasCobranca = await prisma.entitlement.findFirst({
+    where: { userId, productKey: 'cobranca', status: { in: ['active', 'trialing'] } },
+    select: { id: true },
+  }).catch(() => null);
+  if (!hasCobranca) return false;
+
+  const parsed = await classifyCobrancaVoiceIntent(text);
+  if (!parsed || parsed.intent === 'nenhum') return false;
+
+  const reply = async (msg: string) => {
+    await sendMessageViaEvolution(instanceName, ownerPhone, msg).catch(() => null);
+  };
+
+  try {
+    if (parsed.intent === 'criar_cobranca') {
+      const nome = (parsed.nome_cliente || '').trim();
+      if (!nome || !parsed.valor || parsed.valor <= 0 || !parsed.vencimento) {
+        await reply('🎙️ Entendi que é pra criar uma cobrança, mas faltou nome, valor ou vencimento. Pode repetir com esses três dados ou cadastrar pelo painel?');
+        return true;
+      }
+      const vencimento = new Date(`${parsed.vencimento}T00:00:00.000Z`);
+      if (isNaN(vencimento.getTime())) {
+        await reply('🎙️ Não consegui entender a data de vencimento. Pode repetir ou cadastrar pelo painel?');
+        return true;
+      }
+
+      // Reaproveita cliente existente pelo nome (evita pedir telefone de novo por voz).
+      let cliente = await prisma.cobrancaCliente.findFirst({
+        where: { userId, deletedAt: null, nome: { contains: nome, mode: 'insensitive' } },
+      });
+      if (!cliente) {
+        const telefoneDigits = (parsed.telefone || '').replace(/\D/g, '');
+        if (telefoneDigits.length < 10 || telefoneDigits.length > 15) {
+          await reply(`🎙️ Não encontrei "${nome}" nos seus clientes e não peguei o telefone direito. Pode repetir com o telefone (com DDD) ou cadastrar pelo painel?`);
+          return true;
+        }
+        cliente = await prisma.cobrancaCliente.create({ data: { userId, nome, telefone: telefoneDigits } });
+      }
+
+      const cobranca = await prisma.cobrancaCobranca.create({
+        data: {
+          userId,
+          clienteId: cliente.id,
+          descricao: (parsed.descricao || 'Cobrança').trim().slice(0, 200) || 'Cobrança',
+          valor: parsed.valor,
+          vencimento,
+          origemVoz: true,
+        },
+      });
+
+      await reply(`✅ Cobrança criada: *${cliente.nome}* — ${formatBRL(cobranca.valor)}, vence ${formatDateBR(vencimento)}.`);
+      return true;
+    }
+
+    if (parsed.intent === 'marcar_paga' || parsed.intent === 'cancelar') {
+      const nome = (parsed.nome_cliente || '').trim();
+      if (!nome) {
+        await reply('🎙️ Entendi o comando, mas não peguei o nome do cliente. Pode repetir?');
+        return true;
+      }
+      const abertas = await prisma.cobrancaCobranca.findMany({
+        where: {
+          userId, status: 'pendente', deletedAt: null,
+          cliente: { nome: { contains: nome, mode: 'insensitive' }, deletedAt: null },
+        },
+        include: { cliente: true },
+        orderBy: { vencimento: 'asc' },
+      });
+
+      if (abertas.length === 0) {
+        await reply(`🎙️ Não encontrei cobrança em aberto de "${nome}".`);
+        return true;
+      }
+      if (abertas.length > 1) {
+        const lista = abertas.map((c) => `• ${formatBRL(c.valor)} — vence ${formatDateBR(c.vencimento)}`).join('\n');
+        await reply(`🎙️ Encontrei ${abertas.length} cobranças em aberto de ${abertas[0].cliente.nome}:\n${lista}\n\nAjusta pelo painel pra eu saber qual.`);
+        return true;
+      }
+
+      const alvo = abertas[0];
+      const novoStatus = parsed.intent === 'marcar_paga' ? 'paga' : 'cancelada';
+      await prisma.cobrancaCobranca.update({
+        where: { id: alvo.id },
+        data: { status: novoStatus, pagoEm: novoStatus === 'paga' ? new Date() : alvo.pagoEm },
+      });
+
+      // #5: recorrência — gera a próxima ocorrência ao marcar paga por voz também.
+      if (novoStatus === 'paga' && alvo.recorrente && alvo.recorrenciaMeses) {
+        const proxVencimento = new Date(alvo.vencimento);
+        proxVencimento.setUTCMonth(proxVencimento.getUTCMonth() + alvo.recorrenciaMeses);
+        await prisma.cobrancaCobranca.create({
+          data: {
+            userId, clienteId: alvo.clienteId, descricao: alvo.descricao, valor: alvo.valor,
+            vencimento: proxVencimento, recorrente: true, recorrenciaMeses: alvo.recorrenciaMeses,
+          },
+        }).catch((err: any) => logger.error(`[Cobrança][Voz] Falha ao gerar próxima recorrência: ${err.message}`));
+      }
+
+      const verbo = novoStatus === 'paga' ? 'marcada como paga' : 'cancelada';
+      await reply(`✅ Cobrança de *${alvo.cliente.nome}* (${formatBRL(alvo.valor)}) ${verbo}.`);
+      return true;
+    }
+  } catch (err: any) {
+    logger.error(`[Cobrança][Voz] Erro ao executar comando: ${err.message}`);
+    await reply('🎙️ Entendi o comando, mas algo deu errado ao executar. Tenta pelo painel?');
+    return true; // já tentamos executar — não cai no resumo normal
+  }
+
+  return false;
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  PIPELINE E — WhatsApp via Evolution API (self-hosted)
 // ─────────────────────────────────────────────────────────────────
 async function processEvolutionJob(job: Job) {
@@ -1400,34 +1370,44 @@ async function processEvolutionJob(job: Job) {
   let mp3Buffer: Buffer | null = null;
 
   try {
-    // PASSO 1: Verificar saldo e buscar o número exato que recebeu o áudio
-    const [balance, whatsappNumber] = await Promise.all([
-      prisma.minuteBalance.upsert({
-        where:  { userId },
-        update: {},
-        create: { userId, availableMinutes: 0, accumulatedMinutes: 0, resetAt: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
-      }),
-      numberId
-        ? prisma.whatsappNumber.findUnique({ where: { id: numberId } })
-        : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
-    ]);
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🆕 DEMO PÚBLICA (número público) — estranho envia áudio, respondemos
+    // com transcrição + CTA de cadastro. NÃO conta quota, NÃO salva no DB.
+    // ═══════════════════════════════════════════════════════════════════════
+    const isPublicDemo = job.data.isPublicDemo === true;
+
+    // PASSO 1: Verificar saldo e buscar o número (skippado para demo pública)
+    const [balance, whatsappNumber] = isPublicDemo
+      ? [null, numberId
+            ? await prisma.whatsappNumber.findUnique({ where: { id: numberId } })
+            : null]
+      : await Promise.all([
+          prisma.minuteBalance.upsert({
+            where:  { userId },
+            update: {},
+            create: { userId, availableMinutes: 0, accumulatedMinutes: 0, resetAt: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
+          }),
+          numberId
+            ? prisma.whatsappNumber.findUnique({ where: { id: numberId } })
+            : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+        ]);
 
     // Cota por ÁUDIOS (métrica primária). FREE atinge o limite → bloqueia + upsell
     // (aviso só ao próprio usuário). PRO → teto oculto de segurança (500/mês), skip silencioso.
-    const usage = await loadUsage(userId);
-    if (!usage.allowed) {
-      log(job, `⚠️  Cota de áudios atingida (${usage.used}/${usage.quota}, plano ${usage.plan})`);
-      if (usage.plan === 'free') {
-        // NUNCA responde na conversa do contato — só avisa o próprio usuário.
-        triggerQuotaBlockNotice(userId).catch(() => null);
+    // ⚠️ Demo pública NÃO conta quota — cu$to de aquisição.
+    if (!isPublicDemo) {
+      const usage = await loadUsage(userId);
+      if (!usage.allowed) {
+        log(job, `⚠️  Cota de áudios atingida (${usage.used}/${usage.quota}, plano ${usage.plan})`);
+        if (usage.plan === 'free') {
+          triggerQuotaBlockNotice(userId).catch(() => null);
+        }
+        return { skipped: true, reason: usage.plan === 'free' ? 'free_quota_reached' : 'pro_cap_reached' };
       }
-      return { skipped: true, reason: usage.plan === 'free' ? 'free_quota_reached' : 'pro_cap_reached' };
+      log(job, `✅ Cota OK: ${usage.used}/${usage.quota} áudios (${usage.plan})`);
+    } else {
+      log(job, `🆕 Demo pública: quota ignorada`);
     }
-    if (!whatsappNumber) {
-      log(job, '⚠️  Número não encontrado no banco');
-      return { skipped: true, reason: 'no_number' };
-    }
-    log(job, `✅ Cota OK: ${usage.used}/${usage.quota} áudios (${usage.plan})`);
 
     // PASSO 2: Baixar áudio via Evolution API (getBase64FromMediaMessage)
     const instName = instanceName ?? whatsappNumber.zapiInstanceId;
@@ -1458,6 +1438,28 @@ async function processEvolutionJob(job: Job) {
     const durationSec = whisperDuration > 0 ? whisperDuration : Math.max(1, durationHint || 1);
     log(job, `✅ ${durationSec}s — lang:${detectedLanguage} — "${originalText.substring(0, 60)}..."`);
 
+    // Self-note: áudio que o usuário encaminhou para o próprio número (self-chat).
+    // Nesse caso a resposta volta ao próprio chat (senderPhone == número conectado)
+    // e NÃO aplicamos modo privado (cabeçalho dedicado de nota/encaminhado).
+    const isSelfNote = job.data.isSelfNote === true;
+
+    // PASSO 4.5: comando de voz do módulo Cobrança (#1/#7) — só em self-note.
+    // Se bater uma intenção, executa a ação e ENCERRA aqui (não gera resumo
+    // duplicado); se não bater nada, cai no fluxo normal de transcrição abaixo.
+    if (isSelfNote) {
+      const handledByCobranca = await tryHandleCobrancaVoiceCommand({
+        userId,
+        text: originalText,
+        instanceName: instName,
+        ownerPhone: senderPhone,
+      });
+      if (handledByCobranca) {
+        log(job, '✅ Comando de voz da Cobrança executado');
+        await markChatAsUnread(instName, senderPhone).catch(() => null);
+        return { skipped: true, reason: 'cobranca_voice_command' };
+      }
+    }
+
     // PASSO 5: Resumo com Claude (densidade por duração + tradução se não PT-BR)
     log(job, '🤖 Claude resumo...');
     const bullets = await generateBullets(originalText, durationSec, detectedLanguage);
@@ -1466,22 +1468,49 @@ async function processEvolutionJob(job: Job) {
     // PASSO 6: Enviar resposta via Evolution API
     log(job, '📤 Enviando resposta via Evolution API...');
 
-    // Self-note: áudio que o usuário encaminhou para o próprio número (self-chat).
-    // Nesse caso a resposta volta ao próprio chat (senderPhone == número conectado)
-    // e NÃO aplicamos modo privado (cabeçalho dedicado de nota/encaminhado).
-    const isSelfNote  = job.data.isSelfNote === true;
+    // 🆕 Demo pública: responde ao estranho com transcrição + CTA de cadastro.
+    if (isPublicDemo) {
+      const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+      const demoHeader = `🔊 *Transcrição gratuita — ZapScript*${durationSec ? ` • ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60}s` : `${durationSec}s`}` : ''}`;
+      const bulletsStr = bullets.length > 0
+        ? `\n\n📋 *Resumo*\n${bullets.map((b: string) => `• ${b}`).join('\n')}`
+        : '';
+      const ctaBlock =
+        `\n\n━━━━━━━━━━━━━━━━━━\n` +
+        `⚡ *ZapScript* faz isso automático no seu WhatsApp — 24h por dia.\n` +
+        `👉 ${APP_URL}/cadastro?ref=public\n\n` +
+        `_15 áudios grátis · sem cartão de crédito · cancele quando quiser_`;
 
-    // Modo Privado é AUTOMÁTICO em todo plano PAGO: a transcrição vai só ao próprio
-    // número (nunca cai na conversa do contato). Free mantém a transcrição na conversa
-    // (loop viral). O flag manual `privateMode` segue valendo como reforço, mas o plano
-    // pago já força privado sem depender dele. Guard: phoneNumber resolvido (≠ 'pending');
-    // desativado em self-notes (áudio que o próprio usuário encaminhou).
-    // Pago: Modo Privado é o padrão (opt-out). Só cai na conversa do contato se o
-    // usuário desligou explicitamente (privateMode === false). Free nunca é privado.
+      // Cabeçalho de áudio público (não privado, não self-note)
+      const header = `🎙️ *${senderName || fmtPhone(senderPhone)}*${bullets.length > 0 ? `\n→ ${bullets[0]}` : ''}`;
+
+      const messages: string[] = [];
+      // Bloco 1: transcrição completa (corta se > 1000 chars)
+      const fullText = `🔊 *Transcrição*\n\n${originalText}`;
+      messages.push(fullText.length > 1200 ? fullText.slice(0, 1197) + '…' : fullText);
+
+      // Bloco 2: resumo + CTA
+      const summaryBlock = bullets.length > 0 ? `📋 *Resumo*\n${bullets.map((b: string) => `• ${b}`).join('\n')}` : '';
+      messages.push(summaryBlock + ctaBlock);
+
+      for (const m of messages) {
+        await sendMessageViaEvolution(instName, senderPhone, m);
+      }
+      log(job, `✅ Demo pública: ${messages.length} msg(ns) enviada(s) → ${senderPhone}`);
+
+      // NÃO salva no banco, NÃO debita cota
+      return { ok: true, isPublicDemo: true };
+    }
+
+    // Modo Privado é OPT-IN: usuário ativa manualmente no painel.
+    // Disponível apenas para planos pagos. Quando ligado (privateMode === true),
+    // a transcrição vai só ao próprio número (nunca cai na conversa do contato).
+    // Desativado em self-notes (áudio que o próprio usuário encaminhou).
+    const usage = await loadUsage(userId);
     const isPaidPlan  = usage.plan === 'pro';
     const isPrivate   = !isSelfNote
                         && isPaidPlan
-                        && whatsappNumber.privateMode !== false
+                        && !!whatsappNumber.privateMode
                         && !!whatsappNumber.phoneNumber
                         && whatsappNumber.phoneNumber !== 'pending';
     const targetPhone = isPrivate ? whatsappNumber.phoneNumber! : senderPhone;
@@ -1562,6 +1591,139 @@ async function processEvolutionJob(job: Job) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  PIPELINE D — Legendas (upload de vídeo → .srt/.vtt), fila própria
+// ─────────────────────────────────────────────────────────────────
+const LEGENDA_UPLOADS_BUCKET   = 'legenda-uploads';
+const LEGENDA_OUTPUT_BUCKET    = 'legenda-output';
+const LEGENDA_MAX_DURATION_SEC = 10 * 60; // teto de custo (Whisper + CPU de extração)
+
+async function downloadFromBucket(bucket: string, storageKey: string): Promise<Buffer> {
+  const sb = getSupabaseClient();
+  if (!sb) throw new Error('Supabase não configurado no worker (SUPABASE_URL / SUPABASE_SERVICE_KEY)');
+  const { data, error } = await sb.storage.from(bucket).download(storageKey);
+  if (error) throw new Error(`Supabase Storage download falhou (${bucket}): ${error.message}`);
+  return Buffer.from(await data.arrayBuffer());
+}
+
+async function uploadToBucket(bucket: string, storageKey: string, buffer: Buffer, contentType: string): Promise<void> {
+  const sb = getSupabaseClient();
+  if (!sb) throw new Error('Supabase não configurado no worker (SUPABASE_URL / SUPABASE_SERVICE_KEY)');
+  await sb.storage.createBucket(bucket, { public: false }).catch(() => null);
+  const { error } = await sb.storage.from(bucket).upload(storageKey, buffer, { contentType, upsert: true });
+  if (error) throw new Error(`Supabase Storage upload falhou (${bucket}): ${error.message}`);
+}
+
+async function deleteFromBucket(bucket: string, storageKey: string): Promise<void> {
+  try {
+    const sb = getSupabaseClient();
+    if (!sb) return;
+    await sb.storage.from(bucket).remove([storageKey]);
+  } catch { /* non-fatal */ }
+}
+
+function srtTimestamp(sec: number): string {
+  const h  = Math.floor(sec / 3600);
+  const m  = Math.floor((sec % 3600) / 60);
+  const s  = Math.floor(sec % 60);
+  const ms = Math.round((sec - Math.floor(sec)) * 1000);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},${String(ms).padStart(3,'0')}`;
+}
+
+/** Mesma base do .srt, trocando vírgula por ponto nos milissegundos (spec WebVTT) */
+function vttTimestamp(sec: number): string {
+  return srtTimestamp(sec).replace(',', '.');
+}
+
+function buildSrt(segments: WhisperSegment[]): string {
+  return segments
+    .map((seg, i) => `${i + 1}\n${srtTimestamp(seg.start)} --> ${srtTimestamp(seg.end)}\n${seg.text.trim()}\n`)
+    .join('\n');
+}
+
+function buildVtt(segments: WhisperSegment[]): string {
+  const body = segments
+    .map((seg) => `${vttTimestamp(seg.start)} --> ${vttTimestamp(seg.end)}\n${seg.text.trim()}\n`)
+    .join('\n');
+  return `WEBVTT\n\n${body}`;
+}
+
+async function processLegendaJob(job: Job) {
+  const { legendaJobId, userId, storageKey, originalFilename } = job.data;
+
+  log(job, `📥 Legendas: job ${legendaJobId} (${originalFilename})`);
+
+  let mp3Buffer: Buffer | null = null;
+
+  try {
+    await prisma.legendaJob.update({ where: { id: legendaJobId }, data: { status: 'processing' } });
+
+    // PASSO 1: baixar vídeo do bucket de upload
+    log(job, `☁️ Baixando vídeo: ${storageKey}`);
+    const videoBuffer = await downloadFromBucket(LEGENDA_UPLOADS_BUCKET, storageKey);
+    log(job, `✅ Baixado: ${(videoBuffer.length / 1024 / 1024).toFixed(1)} MB`);
+
+    // PASSO 2: extrair áudio — convertToMp3 já lida com containers de vídeo (ex. MOV/MP4)
+    log(job, '🔄 Extraindo áudio do vídeo...');
+    const ext = (originalFilename?.split('.').pop() || 'mp4').toLowerCase();
+    mp3Buffer = await convertToMp3(videoBuffer, ext);
+    log(job, `✅ Áudio extraído: ${(mp3Buffer.length / 1024).toFixed(0)} KB`);
+
+    // PASSO 3: teto de duração — rejeita antes de gastar Whisper
+    const estDur = estimateMp3DurationSec(mp3Buffer);
+    if (estDur > LEGENDA_MAX_DURATION_SEC) {
+      throw new Error(`Vídeo acima do limite de ${LEGENDA_MAX_DURATION_SEC / 60} min (~${Math.round(estDur / 60)} min detectado)`);
+    }
+
+    // PASSO 4: Whisper com timestamps por segmento.
+    // juridical:true é o único flag que faz transcribeAudio devolver `segments`
+    // (reaproveitado aqui só pela marcação temporal, não pelo conteúdo do prompt).
+    log(job, '🎙️ Whisper — segmentos com timestamp...');
+    const { durationSec, language, segments } = await transcribeAudio(mp3Buffer, { juridical: true });
+    log(job, `✅ ${durationSec}s — lang:${language} — ${segments.length} segmento(s)`);
+
+    if (!segments.length) {
+      throw new Error('Nenhuma fala detectada no vídeo');
+    }
+
+    // PASSO 5: gerar .srt e .vtt
+    const srt = buildSrt(segments);
+    const vtt = buildVtt(segments);
+
+    // PASSO 6: salvar arquivos de saída
+    const srtKey = `${userId}/${legendaJobId}.srt`;
+    const vttKey = `${userId}/${legendaJobId}.vtt`;
+    await uploadToBucket(LEGENDA_OUTPUT_BUCKET, srtKey, Buffer.from(srt, 'utf-8'), 'text/plain; charset=utf-8');
+    await uploadToBucket(LEGENDA_OUTPUT_BUCKET, vttKey, Buffer.from(vtt, 'utf-8'), 'text/vtt; charset=utf-8');
+    log(job, `✅ Legendas salvas: ${srtKey} / ${vttKey}`);
+
+    // PASSO 7: concluir job e limpar upload original (só após sucesso — ver nota no catch)
+    await prisma.legendaJob.update({
+      where: { id: legendaJobId },
+      data: { status: 'done', durationSec, language, srtStorageKey: srtKey, vttStorageKey: vttKey },
+    });
+    await deleteFromBucket(LEGENDA_UPLOADS_BUCKET, storageKey);
+
+    log(job, `✅ Legenda concluída — ${legendaJobId}`);
+    return { legendaJobId };
+
+  } catch (err) {
+    log(job, `❌ Erro no job de legenda: ${(err as Error).message}`);
+    await prisma.legendaJob.update({
+      where: { id: legendaJobId },
+      data: { status: 'error', errorMessage: (err as Error).message.slice(0, 500) },
+    }).catch(() => null);
+
+    // Diferente do pipeline manual: só apaga o upload original na ÚLTIMA tentativa,
+    // para permitir retry do BullMQ sem perder o arquivo fonte em falhas transitórias.
+    const isLastAttempt = job.attemptsMade + 1 >= (job.opts?.attempts ?? 1);
+    if (isLastAttempt) await deleteFromBucket(LEGENDA_UPLOADS_BUCKET, storageKey);
+    throw err;
+  } finally {
+    mp3Buffer?.fill(0);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  ROUTER — decide qual pipeline usar
 // ─────────────────────────────────────────────────────────────────
 async function routeJob(job: Job) {
@@ -1569,6 +1731,7 @@ async function routeJob(job: Job) {
   if (source === 'manual')          return processManualJob(job);
   if (source === 'whatsapp-twilio') return processTwilioJob(job);
   if (source === 'whatsapp-evolution') return processEvolutionJob(job);
+  if (source === 'vendas')          return (await import('./modules/vendas/process')).processVendasJob(job);
   // transcribe-official / whatsapp-meta = WhatsApp Cloud API (Meta)
   return processOfficialWhatsAppJob(job);
 }
@@ -1619,6 +1782,77 @@ worker.on('error', (err) => {
 logger.info('Worker de conversão iniciado (WhatsApp + Upload manual)');
 
 // ─────────────────────────────────────────────────────────────────
+//  WORKER SETUP — Legendas (fila própria, isolada da fila de WhatsApp)
+// ─────────────────────────────────────────────────────────────────
+const legendaWorker = new Worker('legendas', processLegendaJob, {
+  connection:      redis as any,
+  concurrency:     parseInt(process.env.LEGENDA_WORKER_CONCURRENCY || '1'),
+  lockDuration:    15 * 60_000, // extração de vídeo + Whisper pode passar do tempo de um áudio
+  lockRenewTime:   Math.floor(15 * 60_000 / 2),
+  stalledInterval: 30_000,
+  maxStalledCount: 2,
+});
+
+legendaWorker.on('completed', (job) => {
+  logger.info(`[LegendaWorker] ✅ Job ${job.id} concluído`);
+});
+
+legendaWorker.on('failed', (job, err) => {
+  const attempts = job?.attemptsMade ?? 0;
+  const maxAttempts = job?.opts?.attempts ?? 2;
+  logger.error(`[LegendaWorker] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
+});
+
+legendaWorker.on('stalled', (jobId) => {
+  logger.warn(`[LegendaWorker] ⚠️ Job ${jobId} ficou stalled`);
+});
+
+legendaWorker.on('error', (err) => {
+  logger.error('[LegendaWorker] Erro interno', { err: err.message });
+});
+
+logger.info('Worker de Legendas iniciado');
+
+// ─────────────────────────────────────────────────────────────────
+//  WORKER — Campanhas (disparo em massa via Meta Cloud API)
+// ─────────────────────────────────────────────────────────────────
+// Fila e worker separados da fila 'transcriptions': domínio isolado, permite
+// tunar concorrência/rate limit sem afetar o pipeline de transcrição.
+const CAMPANHAS_CONCURRENCY = parseInt(process.env.CAMPANHAS_WORKER_CONCURRENCY || '3', 10);
+
+const campanhasWorker = new Worker('campanhas', processCampanhaJob, {
+  connection:  redis as any,
+  concurrency: CAMPANHAS_CONCURRENCY,
+  limiter:     { max: 10, duration: 1_000 }, // teto de segurança: 10 envios/seg à Graph API
+});
+
+campanhasWorker.on('completed', (job, result) => {
+  if (result?.skipped) {
+    logger.warn(`[Campanhas] Job ${job.id} ignorado — motivo: ${result.reason}`);
+  } else {
+    logger.info(`[Campanhas] ✅ Job ${job.id} concluído`);
+  }
+});
+
+campanhasWorker.on('failed', (job, err) => {
+  const attempts    = job?.attemptsMade ?? 0;
+  const maxAttempts = job?.opts?.attempts ?? 3;
+  logger.error(`[Campanhas] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
+  // Só marca o contato como 'failed' quando as tentativas realmente se esgotaram —
+  // o evento 'failed' dispara a cada tentativa, não só na exaustão (ver comentário em modules/campanhas.ts).
+  if (job && attempts >= maxAttempts) {
+    markCampanhaJobExhausted(job, err).catch((e) =>
+      logger.error(`[Campanhas] Falha ao marcar contato como failed: ${e.message}`));
+  }
+});
+
+campanhasWorker.on('error', (err) => {
+  logger.error('[Campanhas] Erro interno', { err: err.message });
+});
+
+logger.info('Worker de campanhas iniciado (Meta Cloud API)');
+
+// ─────────────────────────────────────────────────────────────────
 //  CRON — Reset automático de minutos mensais
 //  Roda a cada hora e reseta saldos cujo resetAt já passou
 // ─────────────────────────────────────────────────────────────────
@@ -1646,11 +1880,11 @@ function trialNoticeContent(
     return {
       wa: `⏳ *ZapScript* — faltam ${daysLeft} dias do seu período Pro\n\n` +
           `Você está lendo seus áudios *sem limite* e com *Modo Privado* ativo. Isso termina em ${daysLeft} dias.\n\n` +
-          `Continue Pro por *menos de R$1,33/dia* e não volte a parar pra ouvir áudio:\n${cta}`,
+          `Continue Pro por *menos de R$1,23/dia* e não volte a parar pra ouvir áudio:\n${cta}`,
       subject: '⏳ ZapScript — faltam poucos dias do seu Pro',
       html: wrap('⏳ Seu período Pro está acabando',
         `Faltam <strong>${daysLeft} dias</strong> do seu período Pro — áudios sem limite e Modo Privado.<br><br>` +
-        `Quem tem vida corrida não para pra ouvir áudio: lê. Continue Pro por <strong>menos de R$1,33/dia</strong>.`,
+        `Quem tem vida corrida não para pra ouvir áudio: lê. Continue Pro por <strong>menos de R$1,23/dia</strong>.`,
         'Continuar Pro →'),
     };
   }
@@ -1658,22 +1892,22 @@ function trialNoticeContent(
     return {
       wa: `⏳ *ZapScript* — seu período Pro termina hoje\n\n` +
           `A partir de amanhã sua conta volta ao plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês) e o Modo Privado é desligado.\n\n` +
-          `Fique Pro por *menos de R$1,33/dia*:\n${cta}`,
+          `Fique Pro por *menos de R$1,23/dia*:\n${cta}`,
       subject: '⏳ ZapScript — seu Pro termina hoje',
       html: wrap('⏳ Seu período Pro termina hoje',
         `A partir de amanhã sua conta volta ao <strong>plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês)</strong> e o Modo Privado é desligado.<br><br>` +
-        `Mantenha tudo como está por <strong>menos de R$1,33/dia</strong>.`,
+        `Mantenha tudo como está por <strong>menos de R$1,23/dia</strong>.`,
         'Ativar o Pro →'),
     };
   }
   return {
     wa: `🔓 *ZapScript* — seu período Pro terminou\n\n` +
         `Sua conta voltou ao plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês) e o Modo Privado foi desligado.\n\n` +
-        `Volte a ler tudo sem limite por *menos de R$1,33/dia*:\n${cta}`,
+        `Volte a ler tudo sem limite por *menos de R$1,23/dia*:\n${cta}`,
     subject: '🔓 ZapScript — seu período Pro terminou',
     html: wrap('🔓 Seu período Pro terminou',
       `Sua conta voltou ao <strong>plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês)</strong> e o Modo Privado foi desligado.<br><br>` +
-      `Volte a ler tudo sem limite por <strong>menos de R$1,33/dia</strong>.`,
+      `Volte a ler tudo sem limite por <strong>menos de R$1,23/dia</strong>.`,
       'Voltar ao Pro →'),
   };
 }
@@ -1759,8 +1993,7 @@ async function processTrialTransitions() {
             create: { userId: sub.userId, availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
             update: { availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
           }),
-          // Não mexe em privateMode: isPrivate já exige isPaidPlan, então FREE nunca é privado
-          // mesmo com a flag ligada — e assim ela fica pronta caso o usuário reassine o Pro.
+          // Não mexe em privateMode: o flag é opt-in e sobrevive a downgrades.
         ]);
         await redis.del(`plan:${sub.userId}`).catch(() => null); // invalida cache de plano da API
         logger.info(`[Trial] Downgrade D8: ${sub.user.email} → FREE`);
@@ -2030,6 +2263,268 @@ runWeeklyWhatsappDigest();
 setInterval(runWeeklyWhatsappDigest, 60 * 60 * 1000);
 
 // ─────────────────────────────────────────────────────────────────
+//  CRON — Lembretes de Cobrança via WhatsApp (módulo Cobrança)
+//  Roda de hora em hora; dispara só às 12h UTC (~9h BRT) → 1x/dia.
+//  Régua configurável por dono (CobrancaConfig.diasAntes/diasDepois);
+//  sem config, usa default D-1 (antes) + D0 (vence hoje) + D+1/3/7 (atraso).
+//  Não é gateway de pagamento — só lembrete. Idempotente via CobrancaEnvio
+//  (1 tipo por cobrancaId); reenvio depois disso é manual, via API.
+// ─────────────────────────────────────────────────────────────────
+function cobrancaDateOnlyUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+function formatBRL(v: number): string {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function formatDateBR(d: Date): string {
+  return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+}
+
+type CobrancaTom = 'cordial' | 'formal' | 'direto';
+type CobrancaFase = 'antes' | 'hoje' | 'depois';
+
+// Mesmos templates/tons da API (apps/routes/cobranca.ts) — duplicado de propósito:
+// apps/worker builda isolado de apps/api (rootDir/Docker context próprios).
+const COBRANCA_TEMPLATES: Record<CobrancaTom, Record<CobrancaFase, (o: { primeiroNome: string; descricao: string; valorFmt: string; dataFmt: string }) => string>> = {
+  cordial: {
+    antes:  (o) => `Olá, ${o.primeiroNome}! Passando para avisar que *${o.descricao}* no valor de *${o.valorFmt}* vence em ${o.dataFmt}. Qualquer dúvida, é só responder por aqui. 🙂`,
+    hoje:   (o) => `Olá, ${o.primeiroNome}! Passando para lembrar que *${o.descricao}* no valor de *${o.valorFmt}* vence hoje (${o.dataFmt}). Qualquer dúvida, é só responder por aqui. 🙂`,
+    depois: (o) => `Olá, ${o.primeiroNome}! *${o.descricao}* no valor de *${o.valorFmt}* venceu em ${o.dataFmt} e ainda consta em aberto. Se já pagou, pode desconsiderar esta mensagem — qualquer dúvida, é só responder por aqui.`,
+  },
+  formal: {
+    antes:  (o) => `Prezado(a) ${o.primeiroNome}, informamos que *${o.descricao}*, no valor de *${o.valorFmt}*, vencerá em ${o.dataFmt}. Permanecemos à disposição para qualquer esclarecimento.`,
+    hoje:   (o) => `Prezado(a) ${o.primeiroNome}, informamos que *${o.descricao}*, no valor de *${o.valorFmt}*, vence hoje (${o.dataFmt}). Permanecemos à disposição para qualquer esclarecimento.`,
+    depois: (o) => `Prezado(a) ${o.primeiroNome}, *${o.descricao}*, no valor de *${o.valorFmt}*, venceu em ${o.dataFmt} e permanece em aberto até o momento. Caso o pagamento já tenha sido efetuado, favor desconsiderar. Permanecemos à disposição.`,
+  },
+  direto: {
+    antes:  (o) => `${o.primeiroNome}, *${o.descricao}* (*${o.valorFmt}*) vence em ${o.dataFmt}.`,
+    hoje:   (o) => `${o.primeiroNome}, *${o.descricao}* (*${o.valorFmt}*) vence hoje (${o.dataFmt}).`,
+    depois: (o) => `${o.primeiroNome}, *${o.descricao}* (*${o.valorFmt}*) venceu em ${o.dataFmt} e segue em aberto. Se já pagou, desconsidere.`,
+  },
+};
+
+function cobrancaPixSuffix(pixKey?: string | null): string {
+  return pixKey ? `\n\nPix para pagamento: *${pixKey}*` : '';
+}
+
+// Endurece o tom conforme os dias de atraso, quando o dono habilita escalarTom.
+function cobrancaTomEfetivo(base: string | null | undefined, escalar: boolean, diasAtraso: number): CobrancaTom {
+  const ordem: CobrancaTom[] = ['cordial', 'formal', 'direto'];
+  let idx = Math.max(0, ordem.indexOf((base as CobrancaTom) || 'cordial'));
+  if (escalar && diasAtraso > 0) {
+    if (diasAtraso >= 7) idx = 2;
+    else if (diasAtraso >= 3) idx = Math.max(idx, 1);
+  }
+  return ordem[idx];
+}
+
+function buildCobrancaReminderMessage(
+  fase: CobrancaFase,
+  opts: { nomeCliente: string; descricao: string; valor: number; vencimento: Date; tom?: string | null; escalarTom?: boolean; diasAtraso: number; pixKey?: string | null },
+): string {
+  const tom = cobrancaTomEfetivo(opts.tom, !!opts.escalarTom, opts.diasAtraso);
+  const primeiroNome = opts.nomeCliente.trim().split(' ')[0] || opts.nomeCliente;
+  const texto = COBRANCA_TEMPLATES[tom][fase]({
+    primeiroNome,
+    descricao: opts.descricao,
+    valorFmt: formatBRL(opts.valor),
+    dataFmt: formatDateBR(opts.vencimento),
+  });
+  return texto + cobrancaPixSuffix(opts.pixKey);
+}
+
+// 'vence_hoje'/'venceu' preservados por compat com envios já feitos em produção;
+// demais offsets (régua configurável) usam 'd+N'/'d-N'.
+function cobrancaEnvioTipo(diasAtraso: number): string {
+  if (diasAtraso === 0) return 'vence_hoje';
+  if (diasAtraso === 1) return 'venceu';
+  return diasAtraso > 0 ? `d+${diasAtraso}` : `d${diasAtraso}`;
+}
+
+async function sendCobrancaReminders() {
+  const today = cobrancaDateOnlyUTC(new Date());
+  const windowStart = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000); // até 60 dias de atraso
+  const windowEnd = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000); // até 30 dias antes do vencimento
+
+  const cobrancas = await prisma.cobrancaCobranca.findMany({
+    where: {
+      status: 'pendente',
+      deletedAt: null,
+      vencimento: { gte: windowStart, lte: windowEnd },
+    },
+    include: {
+      cliente: true,
+      envios: { select: { tipo: true } },
+      user: {
+        select: {
+          cobrancaConfig: true,
+          numbers: {
+            where: { status: 'connected', zapiInstanceId: { not: null } },
+            orderBy: { connectedAt: 'desc' },
+            take: 1,
+            select: { zapiInstanceId: true },
+          },
+        },
+      },
+    },
+  }).catch(() => [] as any[]);
+
+  // Agrupa por instância WhatsApp: dentro da MESMA instância os envios ficam
+  // sequenciais (evita rajada no mesmo número, que aumenta risco de bloqueio);
+  // instâncias diferentes (usuários diferentes) enviam em paralelo, já que não
+  // competem por rate limit nem risco de ban entre si.
+  const porInstancia = new Map<string, any[]>();
+  for (const c of cobrancas) {
+    if (c.cliente.deletedAt) continue;
+    const inst = c.user.numbers?.[0]?.zapiInstanceId;
+    if (!inst) continue;
+
+    const diasAtraso = Math.round((today.getTime() - cobrancaDateOnlyUTC(c.vencimento).getTime()) / (24 * 60 * 60 * 1000));
+    const config = c.user.cobrancaConfig;
+    const diasAntes: number[] = config?.diasAntes ?? [1];
+    const diasDepois: number[] = config?.diasDepois ?? [1, 3, 7];
+
+    const devido =
+      diasAtraso === 0 ||
+      (diasAtraso < 0 && diasAntes.includes(-diasAtraso)) ||
+      (diasAtraso > 0 && diasDepois.includes(diasAtraso));
+    if (!devido) continue;
+
+    const tipo = cobrancaEnvioTipo(diasAtraso);
+    if (c.envios.some((e: any) => e.tipo === tipo)) continue; // já enviado (idempotência)
+
+    const fase: CobrancaFase = diasAtraso < 0 ? 'antes' : diasAtraso === 0 ? 'hoje' : 'depois';
+    const item = { c, fase, diasAtraso, tipo, config };
+    const grupo = porInstancia.get(inst);
+    if (grupo) grupo.push(item); else porInstancia.set(inst, [item]);
+  }
+
+  let sent = 0;
+  const enviarUm = async (inst: string, item: any) => {
+    const { c, fase, diasAtraso, tipo, config } = item;
+    const message = buildCobrancaReminderMessage(fase, {
+      nomeCliente: c.cliente.nome,
+      descricao: c.descricao,
+      valor: c.valor,
+      vencimento: c.vencimento,
+      tom: config?.tom,
+      escalarTom: config?.escalarTom,
+      diasAtraso,
+      pixKey: config?.pixKey,
+    });
+    try {
+      await sendMessageViaEvolution(inst, c.cliente.telefone, message);
+      await prisma.cobrancaEnvio.create({ data: { cobrancaId: c.id, tipo, sucesso: true } });
+      sent++;
+    } catch (err: any) {
+      await prisma.cobrancaEnvio.create({
+        data: { cobrancaId: c.id, tipo, sucesso: false, erro: String(err?.message || err) },
+      }).catch(() => null);
+      logger.error(`[Cron][Cobrança] Falha ao enviar lembrete ${tipo} (cobrancaId=${c.id}): ${err?.message}`);
+    }
+  };
+
+  await Promise.all(
+    Array.from(porInstancia.entries()).map(async ([inst, itens]) => {
+      for (const item of itens) await enviarUm(inst, item);
+    }),
+  );
+
+  if (sent > 0) logger.info(`[Cron][Cobrança] ${sent} lembrete(s) enviado(s)`);
+}
+
+async function runCobrancaReminders() {
+  const now = new Date();
+  // Roda de hora em hora; dispara só às 12h UTC (~9h BRT) → 1x/dia.
+  if (now.getUTCHours() !== 12) return;
+
+  try {
+    await sendCobrancaReminders();
+  } catch (err) {
+    logger.error(`[Cron][Cobrança] Erro no lembrete de cobrança: ${(err as Error).message}`);
+  }
+}
+
+runCobrancaReminders();
+setInterval(runCobrancaReminders, 60 * 60 * 1000);
+
+// ─────────────────────────────────────────────────────────────────
+//  CRON — Resumo diário de Cobrança via WhatsApp (módulo Cobrança)
+//  Roda de hora em hora; dispara por dono no horário configurado
+//  (CobrancaConfig.resumoHora, horário de Brasília). Texto simples,
+//  enviado ao próprio número conectado (mesmo canal do self-note).
+// ─────────────────────────────────────────────────────────────────
+async function sendCobrancaResumoDiario() {
+  const nowUtcHour = new Date().getUTCHours();
+  const today = cobrancaDateOnlyUTC(new Date());
+  const ontem = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+
+  const configs = await prisma.cobrancaConfig.findMany({ where: { resumoDiario: true } }).catch(() => [] as any[]);
+  const devidos = configs.filter((cfg: any) => nowUtcHour === (cfg.resumoHora + 3) % 24);
+  if (devidos.length === 0) return;
+
+  for (const cfg of devidos) {
+    const numero = await prisma.whatsappNumber.findFirst({
+      where: { userId: cfg.userId, status: 'connected', zapiInstanceId: { not: null } },
+      orderBy: { connectedAt: 'desc' },
+    }).catch(() => null);
+    if (!numero?.zapiInstanceId || !numero.phoneNumber || numero.phoneNumber === 'pending') continue;
+
+    const [vencemHoje, vencidas, recebidasOntem] = await Promise.all([
+      prisma.cobrancaCobranca.findMany({
+        where: { userId: cfg.userId, status: 'pendente', deletedAt: null, vencimento: { gte: today, lt: new Date(today.getTime() + 86400000) } },
+        include: { cliente: true },
+      }),
+      prisma.cobrancaCobranca.findMany({
+        where: { userId: cfg.userId, status: 'pendente', deletedAt: null, vencimento: { lt: today } },
+        include: { cliente: true },
+      }),
+      prisma.cobrancaCobranca.findMany({
+        where: { userId: cfg.userId, status: 'paga', deletedAt: null, pagoEm: { gte: ontem } },
+        include: { cliente: true },
+      }),
+    ]).catch(() => [[], [], []] as any[][]);
+
+    if (vencemHoje.length === 0 && vencidas.length === 0 && recebidasOntem.length === 0) continue;
+
+    const linhas: string[] = ['📊 *Resumo Cobrança — hoje*', ''];
+    if (vencemHoje.length) {
+      linhas.push(`🟡 Vencem hoje (${vencemHoje.length}):`);
+      for (const c of vencemHoje) linhas.push(`  • ${c.cliente.nome} — ${formatBRL(c.valor)}`);
+      linhas.push('');
+    }
+    if (vencidas.length) {
+      linhas.push(`🔴 Em atraso (${vencidas.length}):`);
+      for (const c of vencidas) linhas.push(`  • ${c.cliente.nome} — ${formatBRL(c.valor)} (venceu ${formatDateBR(c.vencimento)})`);
+      linhas.push('');
+    }
+    if (recebidasOntem.length) {
+      const total = (recebidasOntem as any[]).reduce((s: number, c: any) => s + Number(c.valor), 0);
+      linhas.push(`🟢 Recebidas nas últimas 24h (${recebidasOntem.length}): ${formatBRL(total)}`);
+    }
+
+    try {
+      await sendMessageViaEvolution(numero.zapiInstanceId, numero.phoneNumber, linhas.join('\n').trim());
+    } catch (err: any) {
+      logger.error(`[Cron][Cobrança] Falha ao enviar resumo diário (userId=${cfg.userId}): ${err?.message}`);
+    }
+  }
+}
+
+async function runCobrancaResumoDiario() {
+  try {
+    await sendCobrancaResumoDiario();
+  } catch (err) {
+    logger.error(`[Cron][Cobrança] Erro no resumo diário: ${(err as Error).message}`);
+  }
+}
+
+runCobrancaResumoDiario();
+setInterval(runCobrancaResumoDiario, 60 * 60 * 1000);
+
+// ─────────────────────────────────────────────────────────────────
 //  CRON — Service Health Checker (#6 + #4)
 //  Verifica saúde dos serviços a cada 5 minutos e persiste no DB.
 //  Se thresholds de alerta forem excedidos, envia notificação via WhatsApp.
@@ -2181,6 +2676,91 @@ async function checkAndLogServiceHealth() {
 checkAndLogServiceHealth();
 setInterval(checkAndLogServiceHealth, 5 * 60 * 1000);
 
+// ─────────────────────────────────────────────────────────────────
+//  CRON — Relatório periódico do Programa de Afiliados
+//  Cadência ("weekly" | "monthly") e destino (e-mail) configuráveis pelo
+//  admin sem redeploy, via AffiliateConfig chave "reportSchedule" (ver
+//  apps/api/src/lib/affiliateConfig.ts — mesma tabela, lida aqui direto
+//  pelo Prisma pois o worker não importa código de apps/api).
+//  Verifica a cada hora; dispara uma vez por período (semana ISO ou mês)
+//  e é idempotente via chave "reportLastSent" na mesma tabela.
+// ─────────────────────────────────────────────────────────────────
+function monthTag(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+async function runAffiliateReportSchedule(): Promise<void> {
+  try {
+    const [scheduleRow, lastSentRow] = await Promise.all([
+      (prisma as any).affiliateConfig.findUnique({ where: { key: 'reportSchedule' } }),
+      (prisma as any).affiliateConfig.findUnique({ where: { key: 'reportLastSent' } }),
+    ]);
+    const cadence: 'off' | 'weekly' | 'monthly' = scheduleRow?.value?.cadence || 'off';
+    const destination: string = (scheduleRow?.value?.destination || '').trim();
+    if (cadence === 'off' || !destination) return;
+
+    const now = new Date();
+    const tag = cadence === 'weekly' ? isoWeekTag(now) : monthTag(now);
+    if (lastSentRow?.value?.tag === tag) return; // já enviado neste período
+
+    const dayMs       = 24 * 60 * 60 * 1000;
+    const periodStart = new Date(now.getTime() - (cadence === 'weekly' ? 7 : 30) * dayMs);
+
+    const [newAffiliates, conversions, commissionAgg, payoutAffiliates] = await Promise.all([
+      (prisma as any).affiliate.count({ where: { appliedAt: { gte: periodStart } } }),
+      (prisma as any).affiliateReferral.count({ where: { status: 'converted', convertedAt: { gte: periodStart } } }),
+      (prisma as any).affiliateCommission.aggregate({
+        where: { createdAt: { gte: periodStart } },
+        _sum:  { commissionAmount: true },
+        _count: true,
+      }),
+      (prisma as any).affiliate.findMany({
+        where:  { payoutRequestedAt: { not: null }, commissions: { some: { status: 'pending' } } },
+        select: { id: true, commissions: { where: { status: 'pending' }, select: { commissionAmount: true } } },
+      }),
+    ]);
+
+    const payoutCount  = payoutAffiliates.length;
+    const payoutAmount = payoutAffiliates.reduce((sum: number, a: any) =>
+      sum + a.commissions.reduce((s: number, c: any) => s + c.commissionAmount, 0), 0);
+
+    const fmtBRL       = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const periodLabel  = cadence === 'weekly' ? 'nos últimos 7 dias' : 'nos últimos 30 dias';
+    const cadenceLabel = cadence === 'weekly' ? 'semanal' : 'mensal';
+    const APP_URL      = process.env.APP_URL || 'https://zapscript.me';
+
+    const subject = `📊 ZapScript — Relatório ${cadenceLabel} de afiliados`;
+    const body = `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+      <div style="font-size:22px;font-weight:bold;margin-bottom:16px">📊 Relatório ${cadenceLabel} — Programa de Afiliados</div>
+      <div style="font-size:14px;line-height:1.9;color:#a7f3d0">
+        Resumo ${periodLabel}:<br><br>
+        🆕 Novos afiliados: <strong>${newAffiliates}</strong><br>
+        ✅ Conversões (indicados que assinaram): <strong>${conversions}</strong><br>
+        💰 Comissões geradas: <strong>${commissionAgg._count}</strong> (${fmtBRL(commissionAgg._sum.commissionAmount || 0)})<br>
+        💸 Saques pendentes: <strong>${payoutCount}</strong> afiliado(s) — ${fmtBRL(payoutAmount)}
+      </div>
+      <div style="margin:24px 0;text-align:center">
+        <a href="${APP_URL}/g5r8t2" style="background:#10b981;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Ver painel admin →</a>
+      </div>
+      <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+    </div>`;
+
+    await sendEmail(destination, subject, body);
+    await (prisma as any).affiliateConfig.upsert({
+      where:  { key: 'reportLastSent' },
+      create: { key: 'reportLastSent', value: { tag } },
+      update: { value: { tag }, updatedAt: new Date() },
+    });
+    logger.info(`[Afiliados] Relatório ${cadenceLabel} enviado a ${destination} (tag: ${tag})`);
+  } catch (err: any) {
+    logger.error(`[Afiliados] Falha no relatório periódico: ${err?.message}`);
+  }
+}
+
+// Verifica a cada hora se é hora de enviar (idempotente por período — ver acima)
+runAffiliateReportSchedule();
+setInterval(runAffiliateReportSchedule, 60 * 60 * 1000);
+
 // ── Graceful shutdown ────────────────────────────────────────────
 process.on('SIGTERM', async () => {
   logger.info('Worker encerrando...');
@@ -2190,6 +2770,8 @@ process.on('SIGTERM', async () => {
   }, 30_000);
   try {
     await worker.close();
+    await legendaWorker.close();
+    await campanhasWorker.close();
     await prisma.$disconnect();
     clearTimeout(forceExit);
     process.exit(0);

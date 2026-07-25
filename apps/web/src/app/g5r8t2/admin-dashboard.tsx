@@ -1385,13 +1385,15 @@ const COMM_STATUS_CLS: Record<string, string> = {
 function AffiliatesPanel({ apiBase, token, notify }: {
   apiBase: string; token: string; notify: (t: string, type?: 'ok' | 'err' | 'warn') => void;
 }) {
-  const [view, setView]       = useState<'desempenho' | 'cadastros' | 'comissoes'>('desempenho');
+  const [view, setView]       = useState<'desempenho' | 'cadastros' | 'comissoes' | 'config'>('desempenho');
   const [affStatus, setAffStatus]   = useState('pending');
   const [commStatus, setCommStatus] = useState('pending');
   const [affiliates, setAffiliates] = useState<any[]>([]);
   const [commissions, setCommissions] = useState<any[]>([]);
   const [perf, setPerf]         = useState<{ summary: any; rows: any[] } | null>(null);
   const [loading, setLoading]   = useState(false);
+  const [editingRate, setEditingRate] = useState<string | null>(null);
+  const [rateInput, setRateInput]     = useState('');
 
   const hdr = { 'x-admin-token': token } as Record<string, string>;
 
@@ -1458,13 +1460,32 @@ function AffiliatesPanel({ apiBase, token, notify }: {
     } catch { notify('Erro ao marcar pagamento', 'err'); }
   }
 
+  async function saveCustomRate(id: string) {
+    const raw = rateInput.trim();
+    const value = raw === '' ? null : Number(raw) / 100;
+    if (value !== null && (!Number.isFinite(value) || value <= 0 || value >= 1)) {
+      notify('Taxa inválida — use um número entre 1 e 99', 'warn');
+      return;
+    }
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates/${id}/custom-rate`, {
+        method: 'PUT', headers: { ...hdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customRate: value }),
+      });
+      if (!r.ok) throw new Error();
+      notify('Taxa personalizada atualizada ✓', 'ok');
+      setEditingRate(null);
+      loadAffiliates(affStatus);
+    } catch { notify('Erro ao salvar taxa personalizada', 'err'); }
+  }
+
   const totalPending = commissions.filter(c => c.status === 'pending').reduce((s, c) => s + c.commissionAmount, 0);
 
   return (
     <div className="space-y-4">
       {/* Sub-abas */}
       <div className="flex gap-2">
-        {([['desempenho', 'Desempenho'], ['cadastros', 'Cadastros'], ['comissoes', 'Comissões']] as [typeof view, string][]).map(([v, l]) => (
+        {([['desempenho', 'Desempenho'], ['cadastros', 'Cadastros'], ['comissoes', 'Comissões'], ['config', 'Configuração']] as [typeof view, string][]).map(([v, l]) => (
           <button key={v} onClick={() => setView(v)}
             className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
               view === v ? 'bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.2)]' : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7] border border-transparent'
@@ -1563,12 +1584,33 @@ function AffiliatesPanel({ apiBase, token, notify }: {
                       <button onClick={() => reject(a.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-400/10 text-red-400 border border-red-400/20 hover:bg-red-400/20">Recusar</button>
                     </div>
                   )}
+                  {a.status === 'approved' && (
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[rgba(16,185,129,.06)]">
+                      <span className="text-[11px] text-[rgba(16,185,129,.4)]">Taxa personalizada:</span>
+                      {editingRate === a.id ? (
+                        <>
+                          <input autoFocus type="number" value={rateInput} onChange={e => setRateInput(e.target.value)}
+                            placeholder="global" className="w-20 bg-[#132621] border border-[rgba(16,185,129,.2)] rounded-lg px-2 py-1 text-xs text-[#d1fae5] focus:outline-none focus:border-[rgba(16,185,129,.4)]" />
+                          <span className="text-[11px] text-[rgba(16,185,129,.4)]">%</span>
+                          <button onClick={() => saveCustomRate(a.id)} className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.25)] hover:bg-[rgba(16,185,129,.25)]">Salvar</button>
+                          <button onClick={() => setEditingRate(null)} className="px-2 py-1 rounded-lg text-[10px] text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]">Cancelar</button>
+                        </>
+                      ) : (
+                        <button onClick={() => { setEditingRate(a.id); setRateInput(a.customRate != null ? String(Math.round(a.customRate * 100)) : ''); }}
+                          className="text-[11px] font-semibold text-[#6ee7b7] hover:underline">
+                          {a.customRate != null ? `${Math.round(a.customRate * 100)}% (editar)` : 'usa taxa global (editar)'}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </>
       )}
+
+      {view === 'config' && <AffiliateConfigPanel apiBase={apiBase} token={token} notify={notify} />}
 
       {view === 'comissoes' && (
         <>
@@ -1619,6 +1661,291 @@ function AffiliatesPanel({ apiBase, token, notify }: {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/* ── Configuração do Programa de Afiliados (taxas, auto-aprovação, relatório, campanhas) ── */
+function AffiliateConfigPanel({ apiBase, token, notify }: {
+  apiBase: string; token: string; notify: (t: string, type?: 'ok' | 'err' | 'warn') => void;
+}) {
+  const [mode, setMode]       = useState<'form' | 'wizard'>('form');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [defaults, setDefaults] = useState({ base: 0.30, bonus: 0.40, residual: 0.05 });
+  const [rates, setRates]     = useState({ base: 0.30, bonus: 0.40, residual: 0.05 });
+  const [autoApprove, setAutoApprove] = useState({ enabled: false, requireVerifiedEmail: true, minAccountDays: 7 });
+  const [reportSchedule, setReportSchedule] = useState<{ cadence: 'off' | 'weekly' | 'monthly'; destination: string }>({ cadence: 'off', destination: '' });
+
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [newCampaign, setNewCampaign] = useState({ name: '', rate: '', startsAt: '', endsAt: '' });
+
+  const hdr = { 'x-admin-token': token, 'Content-Type': 'application/json' } as Record<string, string>;
+
+  const loadConfig = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates/config`, { headers: hdr });
+      const d = await r.json();
+      if (d.defaults) setDefaults(d.defaults);
+      if (d.rates) setRates(d.rates);
+      if (d.autoApprove) setAutoApprove(d.autoApprove);
+      if (d.reportSchedule) setReportSchedule(d.reportSchedule);
+    } catch { notify('Erro ao carregar configuração', 'err'); }
+    finally { setLoading(false); }
+  }, [apiBase, token]);
+
+  const loadCampaigns = useCallback(async () => {
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates/campaigns`, { headers: hdr });
+      const d = await r.json();
+      setCampaigns(d.campaigns || []);
+    } catch { notify('Erro ao carregar campanhas', 'err'); }
+  }, [apiBase, token]);
+
+  useEffect(() => { loadConfig(); loadCampaigns(); }, [loadConfig, loadCampaigns]);
+
+  async function saveConfig(patch: Record<string, any>, okMsg = 'Configuração salva ✓') {
+    setSaving(true);
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates/config`, { method: 'PUT', headers: hdr, body: JSON.stringify(patch) });
+      if (!r.ok) throw new Error();
+      notify(okMsg, 'ok');
+      await loadConfig();
+    } catch { notify('Erro ao salvar configuração', 'err'); }
+    finally { setSaving(false); }
+  }
+
+  async function createCampaign() {
+    const rateNum = Number(newCampaign.rate) / 100;
+    if (!newCampaign.name.trim()) { notify('Dê um nome à campanha', 'warn'); return; }
+    if (!Number.isFinite(rateNum) || rateNum <= 0 || rateNum >= 1) { notify('Taxa inválida (1-99%)', 'warn'); return; }
+    if (!newCampaign.startsAt || !newCampaign.endsAt) { notify('Preencha início e fim da campanha', 'warn'); return; }
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates/campaigns`, {
+        method: 'POST', headers: hdr,
+        body: JSON.stringify({ name: newCampaign.name.trim(), rate: rateNum, startsAt: newCampaign.startsAt, endsAt: newCampaign.endsAt }),
+      });
+      if (!r.ok) throw new Error();
+      notify('Campanha criada ✓', 'ok');
+      setNewCampaign({ name: '', rate: '', startsAt: '', endsAt: '' });
+      loadCampaigns();
+    } catch { notify('Erro ao criar campanha', 'err'); }
+  }
+
+  async function toggleCampaign(id: string, active: boolean) {
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/affiliates/campaigns/${id}`, { method: 'PUT', headers: hdr, body: JSON.stringify({ active }) });
+      if (!r.ok) throw new Error();
+      notify(active ? 'Campanha reativada' : 'Campanha encerrada', 'ok');
+      loadCampaigns();
+    } catch { notify('Erro ao atualizar campanha', 'err'); }
+  }
+
+  const inputCls = 'w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] focus:outline-none focus:border-[rgba(16,185,129,.4)]';
+  const labelCls = 'text-xs text-[rgba(16,185,129,.5)] mb-1 block';
+  const sectionCls = 'bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4 space-y-3';
+  const saveBtnCls = 'px-4 py-2 rounded-lg text-xs font-semibold bg-[rgba(16,185,129,.15)] text-[#10b981] border border-[rgba(16,185,129,.25)] hover:bg-[rgba(16,185,129,.25)] disabled:opacity-50';
+
+  if (loading) return <div className="text-[rgba(16,185,129,.4)] text-sm py-6">Carregando...</div>;
+
+  const now = Date.now();
+  const activeCampaign = campaigns.find(c => c.active && new Date(c.startsAt).getTime() <= now && new Date(c.endsAt).getTime() >= now);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button onClick={() => setMode('form')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${mode === 'form' ? 'bg-[rgba(16,185,129,.15)] text-[#10b981]' : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'}`}>Formulário</button>
+        <button onClick={() => setMode('wizard')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${mode === 'wizard' ? 'bg-[rgba(16,185,129,.15)] text-[#10b981]' : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'}`}>✨ Assistente guiado</button>
+      </div>
+
+      {mode === 'wizard' ? (
+        <ConfigWizard defaults={defaults} rates={rates} autoApprove={autoApprove} reportSchedule={reportSchedule} saving={saving}
+          onFinish={patch => saveConfig(patch, 'Configuração aplicada ✓')} />
+      ) : (
+        <>
+          <section className={sectionCls}>
+            <div className="text-sm font-semibold text-[#d1fae5]">Taxas de comissão</div>
+            <div className="text-[11px] text-[rgba(16,185,129,.4)]">Padrão do sistema: base {Math.round(defaults.base * 100)}% · bônus {Math.round(defaults.bonus * 100)}% · residual {Math.round(defaults.residual * 100)}%</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div><label className={labelCls}>Base (12 meses) %</label><input type="number" className={inputCls} value={Math.round(rates.base * 100)} onChange={e => setRates({ ...rates, base: Number(e.target.value) / 100 })} /></div>
+              <div><label className={labelCls}>Bônus (nº51+ do mês) %</label><input type="number" className={inputCls} value={Math.round(rates.bonus * 100)} onChange={e => setRates({ ...rates, bonus: Number(e.target.value) / 100 })} /></div>
+              <div><label className={labelCls}>Residual (após 12m) %</label><input type="number" className={inputCls} value={Math.round(rates.residual * 100)} onChange={e => setRates({ ...rates, residual: Number(e.target.value) / 100 })} /></div>
+            </div>
+            <button disabled={saving} onClick={() => saveConfig({ rates })} className={saveBtnCls}>Salvar taxas</button>
+          </section>
+
+          <section className={sectionCls}>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-[#d1fae5]">Auto-aprovação de afiliados</div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={autoApprove.enabled} onChange={e => setAutoApprove({ ...autoApprove, enabled: e.target.checked })} className="accent-[#10b981]" />
+                <span className="text-xs text-[rgba(16,185,129,.5)]">{autoApprove.enabled ? 'Ativada' : 'Desativada'}</span>
+              </label>
+            </div>
+            {autoApprove.enabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className={labelCls}>Conta com no mínimo (dias)</label><input type="number" className={inputCls} value={autoApprove.minAccountDays} onChange={e => setAutoApprove({ ...autoApprove, minAccountDays: Number(e.target.value) })} /></div>
+                <label className="flex items-center gap-2 mt-5 cursor-pointer">
+                  <input type="checkbox" checked={autoApprove.requireVerifiedEmail} onChange={e => setAutoApprove({ ...autoApprove, requireVerifiedEmail: e.target.checked })} className="accent-[#10b981]" />
+                  <span className="text-xs text-[rgba(16,185,129,.5)]">Exigir e-mail verificado</span>
+                </label>
+              </div>
+            )}
+            <button disabled={saving} onClick={() => saveConfig({ autoApprove })} className={saveBtnCls}>Salvar auto-aprovação</button>
+          </section>
+
+          <section className={sectionCls}>
+            <div className="text-sm font-semibold text-[#d1fae5]">Relatório periódico</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Frequência</label>
+                <select className={inputCls} value={reportSchedule.cadence} onChange={e => setReportSchedule({ ...reportSchedule, cadence: e.target.value as any })}>
+                  <option value="off">Desligado</option>
+                  <option value="weekly">Semanal</option>
+                  <option value="monthly">Mensal</option>
+                </select>
+              </div>
+              <div><label className={labelCls}>E-mail de destino</label><input type="email" className={inputCls} value={reportSchedule.destination} onChange={e => setReportSchedule({ ...reportSchedule, destination: e.target.value })} placeholder="voce@empresa.com" /></div>
+            </div>
+            <button disabled={saving} onClick={() => saveConfig({ reportSchedule })} className={saveBtnCls}>Salvar relatório</button>
+          </section>
+        </>
+      )}
+
+      {/* Campanhas sazonais — visível nos dois modos */}
+      <section className={sectionCls}>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="text-sm font-semibold text-[#d1fae5]">Campanhas sazonais de bônus</div>
+          {activeCampaign && <Badge label={`Ativa agora: ${activeCampaign.name}`} cls="text-green-400 bg-green-400/10 border-green-400/20" />}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+          <input className={inputCls} placeholder="Nome (ex.: Black Friday)" value={newCampaign.name} onChange={e => setNewCampaign({ ...newCampaign, name: e.target.value })} />
+          <input className={inputCls} type="number" placeholder="Taxa %" value={newCampaign.rate} onChange={e => setNewCampaign({ ...newCampaign, rate: e.target.value })} />
+          <input className={inputCls} type="date" value={newCampaign.startsAt} onChange={e => setNewCampaign({ ...newCampaign, startsAt: e.target.value })} />
+          <input className={inputCls} type="date" value={newCampaign.endsAt} onChange={e => setNewCampaign({ ...newCampaign, endsAt: e.target.value })} />
+        </div>
+        <button onClick={createCampaign} className={saveBtnCls}>+ Criar campanha</button>
+
+        <div className="space-y-1.5 pt-2">
+          {campaigns.length === 0 && <div className="text-[11px] text-[rgba(16,185,129,.35)]">Nenhuma campanha criada.</div>}
+          {campaigns.map(c => {
+            const isNow = c.active && new Date(c.startsAt).getTime() <= now && new Date(c.endsAt).getTime() >= now;
+            return (
+              <div key={c.id} className="flex items-center justify-between bg-[#132621] rounded-lg px-3 py-2 gap-2">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-[#d1fae5]">{c.name} · {Math.round(c.rate * 100)}%</div>
+                  <div className="text-[10px] text-[rgba(16,185,129,.4)]">{fmt(c.startsAt)} → {fmt(c.endsAt)} {isNow && <span className="text-green-400">· ativa agora</span>}</div>
+                </div>
+                <button onClick={() => toggleCampaign(c.id, !c.active)}
+                  className={`px-3 py-1 rounded-lg text-[10px] font-semibold border shrink-0 ${c.active ? 'text-red-400 bg-red-400/10 border-red-400/20 hover:bg-red-400/20' : 'text-[rgba(16,185,129,.5)] bg-[rgba(16,185,129,.08)] border-[rgba(16,185,129,.2)] hover:bg-[rgba(16,185,129,.15)]'}`}>
+                  {c.active ? 'Encerrar' : 'Reativar'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ── Assistente de configuração por perguntas guiadas (traduz respostas simples em AffiliateConfig) ── */
+function ConfigWizard({ defaults, rates, autoApprove, reportSchedule, saving, onFinish }: {
+  defaults: { base: number; bonus: number; residual: number };
+  rates: { base: number; bonus: number; residual: number };
+  autoApprove: { enabled: boolean; requireVerifiedEmail: boolean; minAccountDays: number };
+  reportSchedule: { cadence: 'off' | 'weekly' | 'monthly'; destination: string };
+  saving: boolean;
+  onFinish: (patch: Record<string, any>) => void;
+}) {
+  const [basePct, setBasePct]       = useState(Math.round(rates.base * 100));
+  const [giveBonus, setGiveBonus]   = useState(rates.bonus > rates.base);
+  const [bonusExtra, setBonusExtra] = useState(Math.max(1, Math.round((rates.bonus - rates.base) * 100)) || 10);
+  const [approvalMode, setApprovalMode] = useState<'auto' | 'manual'>(autoApprove.enabled ? 'auto' : 'manual');
+  const [minDays, setMinDays]         = useState(autoApprove.minAccountDays);
+  const [requireEmail, setRequireEmail] = useState(autoApprove.requireVerifiedEmail);
+  const [cadence, setCadence]         = useState<'off' | 'weekly' | 'monthly'>(reportSchedule.cadence);
+  const [destination, setDestination] = useState(reportSchedule.destination);
+
+  const inputCls = 'bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] focus:outline-none focus:border-[rgba(16,185,129,.4)]';
+  const qCls = 'bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4 space-y-3';
+  const qTitle = 'text-sm font-semibold text-[#d1fae5]';
+  const opt = (active: boolean) => `px-4 py-2 rounded-lg text-xs font-semibold border transition-colors ${active ? 'bg-[rgba(16,185,129,.15)] text-[#10b981] border-[rgba(16,185,129,.3)]' : 'text-[rgba(16,185,129,.4)] border-[rgba(16,185,129,.12)] hover:text-[#6ee7b7]'}`;
+
+  function apply() {
+    const base = Math.min(0.99, Math.max(0.01, (Number(basePct) || 0) / 100));
+    const bonus = giveBonus ? Math.min(0.99, base + Math.max(1, Number(bonusExtra) || 0) / 100) : base;
+    onFinish({
+      rates: { base, bonus, residual: rates.residual },
+      autoApprove: { enabled: approvalMode === 'auto', requireVerifiedEmail: requireEmail, minAccountDays: Number(minDays) || 0 },
+      reportSchedule: { cadence, destination },
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="text-[11px] text-[rgba(16,185,129,.4)]">Responda em linguagem simples — a gente traduz para a configuração técnica.</div>
+
+      <div className={qCls}>
+        <div className={qTitle}>1. Quanto quer pagar de comissão por indicação, todo mês, nos primeiros 12 meses?</div>
+        <div className="flex items-center gap-2">
+          <input type="number" className={inputCls} style={{ width: 90 }} value={basePct} onChange={e => setBasePct(Number(e.target.value))} />
+          <span className="text-xs text-[rgba(16,185,129,.5)]">% do valor pago pelo indicado (padrão sugerido: {Math.round(defaults.base * 100)}%)</span>
+        </div>
+      </div>
+
+      <div className={qCls}>
+        <div className={qTitle}>2. Quer premiar quem trouxer muitos clientes no mês?</div>
+        <div className="flex gap-2">
+          <button className={opt(giveBonus)} onClick={() => setGiveBonus(true)}>Sim, dar bônus</button>
+          <button className={opt(!giveBonus)} onClick={() => setGiveBonus(false)}>Não, taxa única</button>
+        </div>
+        {giveBonus && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-[rgba(16,185,129,.5)]">+</span>
+            <input type="number" className={inputCls} style={{ width: 70 }} value={bonusExtra} onChange={e => setBonusExtra(Number(e.target.value))} />
+            <span className="text-xs text-[rgba(16,185,129,.5)]">pontos percentuais para quem passar de 50 indicações convertidas no mês → {(Number(basePct) || 0) + (Number(bonusExtra) || 0)}% total</span>
+          </div>
+        )}
+      </div>
+
+      <div className={qCls}>
+        <div className={qTitle}>3. Aprovar cadastro de afiliado automaticamente ou revisar cada um manualmente?</div>
+        <div className="flex gap-2">
+          <button className={opt(approvalMode === 'manual')} onClick={() => setApprovalMode('manual')}>Revisar cada um</button>
+          <button className={opt(approvalMode === 'auto')} onClick={() => setApprovalMode('auto')}>Aprovar automaticamente</button>
+        </div>
+        {approvalMode === 'auto' && (
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[rgba(16,185,129,.5)]">Conta com no mínimo</span>
+              <input type="number" className={inputCls} style={{ width: 70 }} value={minDays} onChange={e => setMinDays(Number(e.target.value))} />
+              <span className="text-xs text-[rgba(16,185,129,.5)]">dias</span>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={requireEmail} onChange={e => setRequireEmail(e.target.checked)} className="accent-[#10b981]" />
+              <span className="text-xs text-[rgba(16,185,129,.5)]">exigir e-mail verificado</span>
+            </label>
+          </div>
+        )}
+      </div>
+
+      <div className={qCls}>
+        <div className={qTitle}>4. Quer receber um resumo periódico por e-mail?</div>
+        <div className="flex gap-2">
+          <button className={opt(cadence === 'off')} onClick={() => setCadence('off')}>Não</button>
+          <button className={opt(cadence === 'weekly')} onClick={() => setCadence('weekly')}>Semanal</button>
+          <button className={opt(cadence === 'monthly')} onClick={() => setCadence('monthly')}>Mensal</button>
+        </div>
+        {cadence !== 'off' && (
+          <input type="email" className={inputCls + ' w-full max-w-xs'} placeholder="voce@empresa.com" value={destination} onChange={e => setDestination(e.target.value)} />
+        )}
+      </div>
+
+      <button disabled={saving} onClick={apply} className="px-5 py-2.5 rounded-lg text-sm font-bold bg-[#10b981] text-[#04130c] hover:bg-[#0ea975] disabled:opacity-50">
+        {saving ? 'Aplicando...' : '✓ Aplicar configuração'}
+      </button>
     </div>
   );
 }
@@ -3620,7 +3947,7 @@ O plano Pro resolve de vez:
 📤 Exportação em CSV para organizar tudo
 📱 Conecte até 3 números simultâneos
 
-Tudo por R$39,90/mês — menos que uma pizza. Cancele quando quiser.
+Tudo por R$37/mês — menos que uma pizza. Cancele quando quiser.
 
 👉 Fazer upgrade: https://www.zapscript.me/dashboard/plano
 
@@ -3644,7 +3971,7 @@ O plano Executive foi feito para quem usa de verdade:
 📤 Exportação em PDF, DOCX, CSV e XLS
 📱 Até 3 números simultâneos
 
-Por apenas R$20,00/mês a mais — ou seja, R$49,90 total.
+Por apenas R$30,00/mês a mais — ou seja, R$67 total.
 
 👉 Ver plano Executive: https://www.zapscript.me/dashboard/plano
 
@@ -3669,7 +3996,7 @@ Por isso criamos o plano Executive — feito para empresas:
 📱 Números ilimitados para cada membro do time
 🏷️ Tags e exportação avançada para relatórios
 
-Tudo por R$49,90/mês — sem taxa de implantação, sem fidelidade.
+Tudo por R$67/mês — sem taxa de implantação, sem fidelidade.
 
 👉 Ver plano Executive: https://www.zapscript.me/dashboard/plano
 

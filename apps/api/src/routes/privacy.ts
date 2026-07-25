@@ -294,7 +294,7 @@ export default async function privacyRoutes(app: FastifyInstance) {
     const now = new Date();
 
     try {
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         await tx.user.update({
           where: { id: userId },
           data: {

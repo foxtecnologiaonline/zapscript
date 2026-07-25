@@ -102,19 +102,19 @@ export default function AffiliateRequest({ user }: { user: UserData | null }) {
   );
 }
 
-/* ── Resumo de comissões (novo modelo fixo) ── */
+/* ── Resumo de comissões (alinhado com affiliate.ts) ── */
 function CommissionInfo() {
   return (
     <div className="grid sm:grid-cols-2 gap-3 mb-4">
       <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-        <div className="text-[10px] font-mono uppercase tracking-widest text-brand-muted mb-1">Plano Mensal</div>
-        <div className="text-xl font-black text-brand-primary">50%</div>
-        <p className="text-[11px] text-brand-text-secondary mt-1">do 1º pagamento do indicado que assinar o plano mensal.</p>
+        <div className="text-[10px] font-mono uppercase tracking-widest text-brand-muted mb-1">Taxa Base</div>
+        <div className="text-xl font-black text-brand-primary">30%</div>
+        <p className="text-[11px] text-brand-text-secondary mt-1">recorrente por 12 meses sobre cada pagamento do indicado.</p>
       </div>
       <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-        <div className="text-[10px] font-mono uppercase tracking-widest text-brand-muted mb-1">Plano Anual</div>
-        <div className="text-xl font-black text-brand-primary">20%</div>
-        <p className="text-[11px] text-brand-text-secondary mt-1">do valor pago pelo indicado que assinar o plano anual.</p>
+        <div className="text-[10px] font-mono uppercase tracking-widest text-brand-muted mb-1">Bônus + Residual</div>
+        <div className="text-xl font-black text-brand-primary">40%</div>
+        <p className="text-[11px] text-brand-text-secondary mt-1">bônus com 50+ clientes/mês. Após 12 meses: 5% vitalício.</p>
       </div>
       <div className="sm:col-span-2 rounded-xl px-3 py-2 text-[11px] text-brand-muted" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
         💳 Pagamentos via Pix nos dias <strong className="text-brand-text">10 e 25</strong> de cada mês, contemplando as conversões do período.

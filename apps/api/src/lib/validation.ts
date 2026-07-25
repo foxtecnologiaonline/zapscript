@@ -230,6 +230,12 @@ export const atendeConfigSchema = z.object({
   }).optional(),
   fallbackMessage: z.string().min(1, 'Mensagem de fallback não pode ser vazia').max(500).optional(),
   escalationPhone: z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos').nullable().optional(),
+  confidenceLevel: z.enum(['conservador', 'equilibrado', 'autonomo'], {
+    errorMap: () => ({ message: 'Nível de confiança inválido' }),
+  }).optional(),
+  digestFrequency: z.enum(['off', 'daily', 'weekly'], {
+    errorMap: () => ({ message: 'Frequência de resumo inválida' }),
+  }).optional(),
 });
 
 export const atendeKbCreateSchema = z.object({
@@ -241,6 +247,63 @@ export const atendeKbUpdateSchema = z.object({
   question: z.string().min(3, 'Pergunta muito curta').max(300).optional(),
   answer:   z.string().min(1, 'Resposta não pode ser vazia').max(2000).optional(),
   active:   z.boolean().optional(),
+});
+
+// ── Cobrança Schemas ─────────────────────────────────────
+export const cobrancaClienteSchema = z.object({
+  nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+  telefone: z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos (com DDD)'),
+  documento: z.string().max(20).optional(),
+  email: z.string().email('E-mail inválido').optional().or(z.literal('')),
+  notas: z.string().max(500).optional(),
+});
+
+export const cobrancaClienteUpdateSchema = cobrancaClienteSchema.partial();
+
+export const cobrancaCobrancaSchema = z.object({
+  clienteId: z.string().cuid('Cliente inválido'),
+  descricao: z.string().min(2, 'Descrição deve ter pelo menos 2 caracteres').max(200),
+  valor: z.number().positive('Valor deve ser maior que zero').max(1_000_000),
+  vencimento: z.coerce.date({ errorMap: () => ({ message: 'Data de vencimento inválida' }) }),
+  recorrente: z.boolean().optional(),
+  recorrenciaMeses: z.number().int().min(1).max(24).optional(),
+});
+
+export const cobrancaCobrancaUpdateSchema = z.object({
+  descricao: z.string().min(2).max(200).optional(),
+  valor: z.number().positive().max(1_000_000).optional(),
+  vencimento: z.coerce.date().optional(),
+  status: z.enum(['pendente', 'paga', 'cancelada']).optional(),
+  recorrente: z.boolean().optional(),
+  recorrenciaMeses: z.number().int().min(1).max(24).optional(),
+});
+
+export const cobrancaConfigSchema = z.object({
+  tom: z.enum(['cordial', 'formal', 'direto']).optional(),
+  escalarTom: z.boolean().optional(),
+  diasAntes: z.array(z.number().int().min(0).max(30)).max(5).optional(),
+  diasDepois: z.array(z.number().int().min(1).max(60)).max(5).optional(),
+  pixKey: z.string().max(140).optional().or(z.literal('')),
+  pixKeyType: z.enum(['cpf', 'cnpj', 'email', 'telefone', 'aleatoria']).optional().or(z.literal('')),
+  resumoDiario: z.boolean().optional(),
+  resumoHora: z.number().int().min(0).max(23).optional(),
+  onboardingDone: z.boolean().optional(),
+});
+
+// ── Legendas Schemas ──────────────────────────────────────
+export const legendaUploadUrlSchema = z.object({
+  filename:    z.string().min(1).max(200),
+  contentType: z.string().min(3).max(100),
+  sizeBytes:   z.number().positive().max(500 * 1024 * 1024, 'Arquivo acima do limite de 500MB'),
+});
+
+// ── Campanhas Schemas ─────────────────────────────────────
+export const createCampanhaSchema = z.object({
+  name:               z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+  whatsappNumberId:   z.string().cuid('Número inválido'),
+  templateName:       z.string().min(1, 'Selecione um template').max(512),
+  templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
+  templateComponents: z.array(z.record(z.any())).optional(),
 });
 
 // ── Types Export ──────────────────────────────────────────

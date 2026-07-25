@@ -1,7 +1,10 @@
 import { FastifyInstance } from 'fastify';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { genAffiliateCode, COMMISSION } from '../lib/affiliate';
 import { sendEmail } from '../lib/mailer';
+import { getAutoApproveConfig, getEffectiveCommissionRates } from '../lib/affiliateConfig';
+import { maskEmail } from '../lib/mask';
 
 /* ─────────────────────────────────────────────────────────
    Programa de Afiliados — rotas self-service (JWT)
@@ -9,44 +12,44 @@ import { sendEmail } from '../lib/mailer';
    ───────────────────────────────────────────────────────── */
 
 const VALID_PIX_TYPES = ['cpf', 'cnpj', 'email', 'phone', 'random'];
-const HOLD_MS = COMMISSION.PAYOUT_HOLD_DAYS * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HOLD_MS = COMMISSION.PAYOUT_HOLD_DAYS * DAY_MS;
 
-// Mascara email para LGPD: "fr***@gmail.com" (mesmo padrão de routes/admin.ts)
-function maskEmail(email: string): string {
-  const [local, domain] = email.split('@');
-  if (!domain) return '***';
-  const masked = local.length > 2 ? local.slice(0, 2) + '***' : '***';
-  return `${masked}@${domain}`;
+function hashIp(ip: string): string {
+  return crypto.createHash('sha256').update(`zs-ip:${ip}`).digest('hex');
 }
 
 /** Agrega estatísticas do afiliado (indicações + comissões, com corte D+30). */
 async function buildAffiliateStats(affiliateId: string) {
-  const [referrals, converted, commissions] = await Promise.all([
+  const cutoff = new Date(Date.now() - HOLD_MS);
+  const [referrals, converted, agg] = await Promise.all([
     prisma.affiliateReferral.count({ where: { affiliateId } }),
     prisma.affiliateReferral.count({ where: { affiliateId, status: 'converted' } }),
-    prisma.affiliateCommission.findMany({
-      where:  { affiliateId },
-      select: { commissionAmount: true, status: true, createdAt: true },
-    }),
+    // Agregação no banco (SUM condicional) em vez de trazer todas as linhas e reduzir em JS
+    prisma.$queryRawUnsafe(
+      `SELECT
+         COUNT(*)::int AS total,
+         COALESCE(SUM(CASE WHEN "status" = 'pending' AND "createdAt" <= $2 THEN "commissionAmount" END), 0) AS available,
+         COALESCE(SUM(CASE WHEN "status" = 'pending' AND "createdAt" >  $2 THEN "commissionAmount" END), 0) AS locked,
+         COALESCE(SUM(CASE WHEN "status" = 'paid' THEN "commissionAmount" END), 0) AS paid
+       FROM "AffiliateCommission"
+       WHERE "affiliateId" = $1`,
+      affiliateId, cutoff,
+    ) as Promise<{ total: number; available: number; locked: number; paid: number }[]>,
   ]);
 
-  const now = Date.now();
-  const isReleased = (createdAt: Date) => now - createdAt.getTime() >= HOLD_MS;
-
-  const pending = commissions.filter(c => c.status === 'pending');
-  const availableAmount = pending.filter(c => isReleased(c.createdAt)).reduce((s, c) => s + c.commissionAmount, 0);
-  const lockedAmount    = pending.filter(c => !isReleased(c.createdAt)).reduce((s, c) => s + c.commissionAmount, 0);
-  const paidAmount = commissions
-    .filter(c => c.status === 'paid')
-    .reduce((s, c) => s + c.commissionAmount, 0);
+  const row = agg[0] || { total: 0, available: 0, locked: 0, paid: 0 };
+  const availableAmount = Number(row.available) || 0; // liberado para saque (D+30 já vencido)
+  const lockedAmount    = Number(row.locked) || 0;     // em validação (D+30 ainda não vencido)
+  const paidAmount      = Number(row.paid) || 0;
 
   return {
     referrals,
     converted,
-    totalCommissions: commissions.length,
+    totalCommissions: Number(row.total) || 0,
     pendingAmount:    Math.round((availableAmount + lockedAmount) * 100) / 100, // total ainda não pago (liberado + em validação D+30)
-    availableAmount:  Math.round(availableAmount * 100) / 100, // liberado para saque (D+30 já vencido)
-    lockedAmount:     Math.round(lockedAmount * 100) / 100,    // em validação (D+30 ainda não vencido)
+    availableAmount:  Math.round(availableAmount * 100) / 100,
+    lockedAmount:     Math.round(lockedAmount * 100) / 100,
     paidAmount:       Math.round(paidAmount * 100) / 100,
   };
 }
@@ -64,6 +67,21 @@ async function countConversionsThisMonth(affiliateId: string): Promise<number> {
 export default async function affiliateRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
 
+  // ── GET /affiliates/rates — taxas efetivas, público (sem auth) ───────────
+  // Consumido pelo simulador de comissão da LP (afiliados/page.tsx) — sempre
+  // reflete AffiliateConfig atual, nunca o default hardcoded no frontend.
+  app.get('/rates', async () => {
+    const rates = await getEffectiveCommissionRates();
+    return {
+      baseRate:        rates.base,
+      bonusRate:        rates.bonus,
+      residualRate:     rates.residual,
+      recurringMonths:  COMMISSION.RECURRING_MONTHS,
+      bonusThreshold:   COMMISSION.BONUS_THRESHOLD,
+      payoutHoldDays:   COMMISSION.PAYOUT_HOLD_DAYS,
+    };
+  });
+
   // ── GET /affiliates/me — dados + estatísticas do afiliado atual ──────────
   app.get('/me', auth, async (req: any) => {
     const userId = req.user.sub;
@@ -78,10 +96,24 @@ export default async function affiliateRoutes(app: FastifyInstance) {
     });
     if (!affiliate) return { affiliate: null };
 
-    const [stats, conversionsThisMonth] = await Promise.all([
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [stats, conversionsThisMonth, clicksTotal, clicksToday, clickHistoryRaw] = await Promise.all([
       buildAffiliateStats(affiliate.id),
       countConversionsThisMonth(affiliate.id),
+      prisma.affiliateClick.count({ where: { affiliateId: affiliate.id } }).catch(() => 0),
+      prisma.affiliateClick.count({
+        where: { affiliateId: affiliate.id, createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+      }).catch(() => 0),
+      // Agregação de cliques nos últimos 30 dias (tolerante a migration drift)
+      prisma.$queryRawUnsafe(
+        `SELECT DATE("createdAt") as date, COUNT(*)::int as clicks
+         FROM "AffiliateClick"
+         WHERE "affiliateId" = $1 AND "createdAt" >= $2
+         GROUP BY 1 ORDER BY 1`,
+        affiliate.id, thirtyDaysAgo,
+      ).catch(() => [] as any[]),
     ]);
+    const clickHistory = ((clickHistoryRaw as any[]) || []).map((r: any) => ({ date: r.date, clicks: Number(r.clicks) }));
 
     return {
       affiliate: {
@@ -108,6 +140,11 @@ export default async function affiliateRoutes(app: FastifyInstance) {
         conversionsThisMonth,
         bonusThreshold: COMMISSION.BONUS_THRESHOLD,
         bonusActive:    conversionsThisMonth >= COMMISSION.BONUS_THRESHOLD,
+      },
+      clicks: {
+        total: clicksTotal,
+        today: clicksToday,
+        last30Days: clickHistory,
       },
     };
   });
@@ -147,11 +184,29 @@ export default async function affiliateRoutes(app: FastifyInstance) {
         code = genAffiliateCode();
       }
 
+      // Auto-aprovação configurável (admin liga em Programa de Afiliados →
+      // Config): e-mail verificado + conta com pelo menos X dias.
+      const autoApprove = await getAutoApproveConfig();
+      let willAutoApprove = false;
+      let userForEmail: { email: string; name: string | null } | null = null;
+      if (autoApprove.enabled) {
+        const user = await prisma.user.findUnique({
+          where:  { id: userId },
+          select: { createdAt: true, emailVerified: true, email: true, name: true },
+        });
+        if (user) {
+          const accountDays = (Date.now() - user.createdAt.getTime()) / DAY_MS;
+          willAutoApprove = (!autoApprove.requireVerifiedEmail || user.emailVerified) && accountDays >= autoApprove.minAccountDays;
+          userForEmail = { email: user.email, name: user.name };
+        }
+      }
+
       const affiliate = await prisma.affiliate.create({
         data: {
           userId,
           code,
-          status:         'pending',
+          status:         willAutoApprove ? 'approved' : 'pending',
+          approvedAt:     willAutoApprove ? new Date() : null,
           pixKey:         pixKey?.trim() || null,
           pixKeyType:     pixKeyType || null,
           payoutName:     payoutName?.trim() || null,
@@ -163,10 +218,30 @@ export default async function affiliateRoutes(app: FastifyInstance) {
         },
       });
 
+      if (willAutoApprove && userForEmail?.email) {
+        const APP_URL = process.env.APP_URL || 'https://zapscript.me';
+        const firstName = userForEmail.name?.split(' ')[0] || 'parceiro(a)';
+        sendEmail(
+          userForEmail.email,
+          '🎉 Você foi aprovado como Afiliado ZapScript',
+          `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+            <div style="font-size:22px;font-weight:bold;margin-bottom:12px">🎉 Cadastro de afiliado aprovado!</div>
+            <p style="color:#a7f3d0;line-height:1.7">Olá, ${firstName}! Seu cadastro no Programa de Afiliados do ZapScript foi aprovado automaticamente.</p>
+            <p style="color:#a7f3d0;line-height:1.7">Seu link de divulgação:<br><strong style="color:#10b981">${APP_URL}/?aff=${affiliate.code}</strong></p>
+            <div style="margin:24px 0;text-align:center">
+              <a href="${APP_URL}/dashboard/afiliado" style="background:#10b981;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Acessar painel de afiliado →</a>
+            </div>
+          </div>`,
+        ).catch(err => app.log.error({ err }, 'Erro ao enviar e-mail de auto-aprovação de afiliado'));
+        app.log.info(`[Affiliates] Auto-aprovado: ${affiliate.code}`);
+      }
+
       return reply.code(201).send({
         ok: true,
         affiliate: { id: affiliate.id, code: affiliate.code, status: affiliate.status },
-        message: 'Cadastro enviado! Você receberá um aviso quando for aprovado.',
+        message: willAutoApprove
+          ? 'Cadastro aprovado automaticamente! Seu link de divulgação já está ativo.'
+          : 'Cadastro enviado! Você receberá um aviso quando for aprovado.',
       });
     }
   );
@@ -262,6 +337,95 @@ export default async function affiliateRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── GET /affiliates/leaderboard — top 10 do mês (público) ───────
+  app.get('/leaderboard', async () => {
+    try {
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const top = await prisma.affiliateCommission.groupBy({
+        by: ['affiliateId'],
+        where: { createdAt: { gte: monthStart }, status: 'pending' },
+        _sum: { commissionAmount: true },
+        orderBy: { _sum: { commissionAmount: 'desc' } },
+        take: 10,
+      });
+      const affiliateIds = top.map((t: any) => t.affiliateId);
+      const affiliates = affiliateIds.length
+        ? await prisma.affiliate.findMany({ where: { id: { in: affiliateIds }, status: 'approved' }, select: { id: true, code: true } })
+        : [];
+      const byId = new Map(affiliates.map((a: any) => [a.id, a] as const));
+      // Anonimizar: "AFI****" + últimos 2 chars do code
+      function maskCode(code: string): string {
+        if (code.length <= 2) return 'AFI***';
+        return `AFI***${code.slice(-2)}`;
+      }
+      return top.map((t: any, i: number) => ({
+        position: i + 1,
+        code: byId.get(t.affiliateId) ? maskCode(byId.get(t.affiliateId)!.code) : 'AFI***',
+        totalCommissions: Math.round((t._sum.commissionAmount || 0) * 100) / 100,
+      }));
+    } catch { return []; }
+  });
+
+  // ── GET /affiliates/me/referrals — lista de indicados com status ──
+  app.get('/me/referrals', auth, async (req: any) => {
+    const userId = req.user.sub;
+    const affiliate = await prisma.affiliate.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!affiliate) return { referrals: [] };
+
+    const refs = await prisma.affiliateReferral.findMany({
+      where: { affiliateId: affiliate.id },
+      include: {
+        referredUser: { select: { name: true, email: true, createdAt: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    return {
+      referrals: refs.map((r: any) => ({
+        id: r.id,
+        name: r.referredUser?.name?.split(' ')[0] || 'Usuário',
+        email: maskEmail(r.referredUser?.email || ''),
+        status: r.status,         // 'pending' | 'converted' | 'canceled'
+        bonusTier: r.bonusTier,
+        convertedAt: r.convertedAt,
+        createdAt: r.createdAt,
+      })),
+    };
+  });
+
+  // ── POST /affiliates/click — registra clique no link de afiliado (público) ──
+  app.post('/click', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req: any, reply) => {
+    const { code } = req.body || {};
+    if (!code || typeof code !== 'string') return reply.code(400).send({ error: 'Código inválido' });
+
+    try {
+      const affiliate = await prisma.affiliate.findUnique({ where: { code }, select: { id: true, status: true } });
+      if (!affiliate || affiliate.status !== 'approved') return reply.code(404).send({ error: 'Afiliado não encontrado' });
+
+      const ip = typeof req.ip === 'string' ? req.ip : (req.socket?.remoteAddress || '');
+      await prisma.affiliateClick.create({
+        data: {
+          affiliateId: affiliate.id,
+          code,
+          ip: ip ? hashIp(ip) : null,
+          userAgent: (req.headers['user-agent'] as string)?.slice(0, 250) || null,
+          referrer: (req.headers['referer'] as string)?.slice(0, 500) || null,
+          country: (req.headers['x-vercel-ip-country'] as string) || null,
+        },
+      });
+      return { ok: true };
+    } catch (err: any) {
+      if (err?.code === 'P2002' || err?.code === 'P2003') return { ok: true }; // duplicado ou FK inválida — silencioso
+      app.log.warn({ err: err?.message }, '[Affiliates] Falha ao registrar clique');
+      return { ok: true }; // nunca quebrar o fluxo do usuário
+    }
+  });
+
   // ── GET /affiliates/commissions — extrato de comissões do afiliado ───────
   app.get('/commissions', auth, async (req: any, reply) => {
     const userId = req.user.sub;
@@ -283,15 +447,15 @@ export default async function affiliateRoutes(app: FastifyInstance) {
     });
 
     // Identificação do cliente mascarada (LGPD) — primeiro nome + e-mail parcial.
-    const userIds = [...new Set(commissions.map(c => c.referredUserId))];
+    const userIds = [...new Set(commissions.map((c: any) => c.referredUserId))];
     const users = userIds.length
       ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, email: true } })
       : [];
-    const userById = new Map(users.map(u => [u.id, u]));
+    const userById = new Map(users.map((u: any) => [u.id, u] as const));
 
     const now = Date.now();
     return {
-      commissions: commissions.map(c => {
+      commissions: commissions.map((c: any) => {
         const u = userById.get(c.referredUserId);
         const rateFraction = c.saleAmount > 0 ? c.commissionAmount / c.saleAmount : 0;
         return {

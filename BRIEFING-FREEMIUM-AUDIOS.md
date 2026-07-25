@@ -57,7 +57,7 @@
 
 ### Web
 - `apps/web/src/app/page.tsx`: badge de identidade → "Gente ocupada lê" (C2).
-- `apps/web/src/app/dashboard/page.tsx`: KPI "Áudios lidos"; banner de trial com contagem regressiva + CTA ancorado; contador C3 "Você economizou Xh lendo áudios este mês" (valor real do backend); card de plano por áudios (used/quota ou "ilimitado"); upsell ancorado "menos de R$1,33/dia".
+- `apps/web/src/app/dashboard/page.tsx`: KPI "Áudios lidos"; banner de trial com contagem regressiva + CTA ancorado; contador C3 "Você economizou Xh lendo áudios este mês" (valor real do backend); card de plano por áudios (used/quota ou "ilimitado"); upsell ancorado "menos de R$1,23/dia".
 
 ---
 
@@ -99,10 +99,10 @@
 | `dash.kpi.audios` | dashboard | "Áudios lidos" · sub "de {q}/mês" \| "ilimitado" |
 | `dash.saved` (C3) | dashboard | "Você economizou {Xh} lendo áudios este mês — em vez de ouvir {n} áudios inteiros." |
 | `dash.trial.left` | dashboard | "Faltam {d} dias do seu Pro." / "Seu Pro termina hoje." |
-| `dash.trial.cta` | dashboard | "Áudios ilimitados e Modo Privado ativos. Continue por menos de R$1,33/dia." |
-| `dash.quota.warn` | dashboard | "Você já usou {p}% dos seus áudios. Leia sem limite por menos de R$1,33/dia e não volte a ouvir áudio." |
+| `dash.trial.cta` | dashboard | "Áudios ilimitados e Modo Privado ativos. Continue por menos de R$1,23/dia." |
+| `dash.quota.warn` | dashboard | "Você já usou {p}% dos seus áudios. Leia sem limite por menos de R$1,23/dia e não volte a ouvir áudio." |
 | `wa.reject_too_long` | worker | "🎧 Esse áudio passa de 10 minutos. Por aqui eu transcrevo áudios de até 10 min — peça pra dividir em partes que eu cuido do resto. (não descontou nada da sua cota)" |
-| `wa.quota_block` | worker | "🔓 Você usou seus {q} áudios grátis do mês. Continue lendo sem limite por menos de R$1,33/dia. Não volte a ouvir áudio: {url}" |
+| `wa.quota_block` | worker | "🔓 Você usou seus {q} áudios grátis do mês. Continue lendo sem limite por menos de R$1,23/dia. Não volte a ouvir áudio: {url}" |
 | `wa.trial_d5` / `wa.trial_d7` / `wa.trial_downgrade` | worker | ver `trialNoticeContent()` |
 | `footer.v1..v6` | worker | 6 variações (§8) |
 

@@ -1,7 +1,11 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import AtendeHeader from '../AtendeHeader';
+import VoiceRecorder from '../VoiceRecorder';
+import SuggestionReview, { QaSuggestion } from '../SuggestionReview';
+import { NICHE_TEMPLATES } from '../nicheTemplates';
 
 interface KbEntry {
   id: string;
@@ -11,7 +15,10 @@ interface KbEntry {
   createdAt: string;
 }
 
-export default function AtendeKbPage() {
+function AtendeKbContent() {
+  const searchParams = useSearchParams();
+  const templateKey = searchParams.get('template');
+  const fromHistory = searchParams.get('fromHistory');
   const [entries, setEntries] = useState<KbEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +33,12 @@ export default function AtendeKbPage() {
   const [editAnswer, setEditAnswer] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuggestion, setImportSuggestion] = useState<QaSuggestion[] | null>(null);
+  const [importSourceLabel, setImportSourceLabel] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
   function load() {
     setLoading(true);
     api.get<KbEntry[]>('/atende/kb')
@@ -35,6 +48,31 @@ export default function AtendeKbPage() {
   }
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (!templateKey) return;
+    const template = NICHE_TEMPLATES.find((t) => t.key === templateKey);
+    if (template && template.kb.length > 0) {
+      setImportSuggestion(template.kb);
+      setImportSourceLabel(template.label);
+    }
+  }, [templateKey]);
+
+  useEffect(() => {
+    if (!fromHistory) return;
+    const raw = sessionStorage.getItem('atende_kb_from_history');
+    sessionStorage.removeItem('atende_kb_from_history');
+    if (!raw) return;
+    try {
+      const items = JSON.parse(raw);
+      if (Array.isArray(items) && items.length > 0) {
+        setImportSuggestion(items);
+        setImportSourceLabel('Histórico de conversas');
+      }
+    } catch {
+      // ignora payload inválido
+    }
+  }, [fromHistory]);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -79,6 +117,48 @@ export default function AtendeKbPage() {
     } catch (e: any) {
       setEntries(prev);
       alert(e?.message || 'Não foi possível excluir.');
+    }
+  }
+
+  async function handleImportUpload(blob: Blob, filename: string) {
+    setImportError(null);
+    setImportSuggestion(null);
+    setImportSourceLabel(null);
+    setImportBusy(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', blob, filename);
+      const res = await api.postFormData<{ rawText: string; items: QaSuggestion[] }>(
+        '/atende/setup/kb-import',
+        formData,
+      );
+      if (res.items.length === 0) {
+        setImportError('Não consegui identificar perguntas e respostas nesse conteúdo.');
+      } else {
+        setImportSuggestion(res.items);
+      }
+    } catch (e: any) {
+      setImportError(e?.message || 'Não foi possível processar o arquivo. Tente novamente.');
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function handleAcceptImport(items: QaSuggestion[]) {
+    const created: KbEntry[] = [];
+    let failed = 0;
+    for (const item of items) {
+      try {
+        created.push(await api.post<KbEntry>('/atende/kb', item));
+      } catch {
+        failed++;
+      }
+    }
+    setEntries((es) => [...created, ...es]);
+    setImportSuggestion(null);
+    setImportSourceLabel(null);
+    if (failed > 0) {
+      alert(`${failed} ${failed === 1 ? 'item não foi salvo' : 'itens não foram salvos'}. Tente adicionar manualmente.`);
     }
   }
 
@@ -145,6 +225,60 @@ export default function AtendeKbPage() {
               {adding ? 'Adicionando…' : 'Adicionar'}
             </button>
           </form>
+        </div>
+
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5 mb-6">
+          <h2 className="font-medium mb-1">Importar em massa</h2>
+          <p className="text-xs text-neutral-500 mb-4">
+            Grave um áudio contando as perguntas e respostas mais comuns, ou envie uma foto de um
+            cardápio ou tabela de preços — a IA organiza tudo em pares de pergunta e resposta pra
+            você revisar antes de salvar.
+          </p>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <VoiceRecorder
+              onRecorded={(blob) => handleImportUpload(blob, 'kb-import.webm')}
+              disabled={importBusy}
+            />
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              ref={photoInputRef}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImportUpload(file, file.name);
+                e.target.value = '';
+              }}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={importBusy}
+              className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:border-neutral-600 disabled:opacity-50"
+            >
+              Enviar foto
+            </button>
+            {importBusy && <span className="text-xs text-neutral-400">Processando…</span>}
+          </div>
+
+          {importError && <p className="text-xs text-red-400 mt-3">{importError}</p>}
+
+          {importSuggestion && (
+            <div className="mt-4">
+              <SuggestionReview
+                kind="qa-list"
+                title={importSourceLabel ? `Perguntas prontas — ${importSourceLabel}` : 'Itens identificados'}
+                description="Revise, edite ou desmarque antes de salvar."
+                items={importSuggestion}
+                onAccept={handleAcceptImport}
+                onReject={() => {
+                  setImportSuggestion(null);
+                  setImportSourceLabel(null);
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {error && (
@@ -243,5 +377,13 @@ export default function AtendeKbPage() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function AtendeKbPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-neutral-950" />}>
+      <AtendeKbContent />
+    </Suspense>
   );
 }

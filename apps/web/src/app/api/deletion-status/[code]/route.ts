@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'https://zapscript-api.onrender.com';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'https://api.zapscript.me';
 
 export async function GET(
   req: NextRequest,
