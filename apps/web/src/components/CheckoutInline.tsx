@@ -429,7 +429,7 @@ export default function CheckoutInline({
   const [error,         setError]         = useState('');
   const [pixData,       setPixData]       = useState<PixData | null>(null);
   const [hasApplePay,   setHasApplePay]   = useState(false);
-  const [billingCycle,  setBillingCycle]  = useState<'monthly' | 'yearly'>('monthly');
+  const [billingCycle,  setBillingCycle]  = useState<'monthly' | 'yearly'>('yearly');
 
   const isYearly    = billingCycle === 'yearly';
   const yearlyInfo  = CHECKOUT_YEARLY[planName];
@@ -650,7 +650,7 @@ export default function CheckoutInline({
             CICLO DE COBRANÇA
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {(['monthly', 'yearly'] as const).map(cycle => {
+            {(['yearly', 'monthly'] as const).map(cycle => {
               const active = billingCycle === cycle;
               return (
                 <button

@@ -71,7 +71,7 @@ export function PricingInteractive() {
   ));
 
   const [showTable, setShowTable] = useState(false);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
 
   const isYearly = billingCycle === 'yearly';
 
@@ -96,7 +96,7 @@ export function PricingInteractive() {
       <div className="flex justify-center mb-5">
         <div className="inline-flex rounded-full p-0.5 gap-0.5"
           style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          {(['monthly', 'yearly'] as const).map(cycle => {
+          {(['yearly', 'monthly'] as const).map(cycle => {
             const active = billingCycle === cycle;
             return (
               <button
