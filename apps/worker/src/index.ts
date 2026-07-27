@@ -2052,7 +2052,17 @@ async function resetExpiredMinutes() {
             create: { userId: sub.userId, availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
             update: { availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
           }),
+          // Tiers ZapScript 2.0: falta de pagamento cancela o tier → revoga os
+          // módulos que vieram no pacote (source='bundle'). Módulos comprados
+          // avulso (source='paid') seguem sua própria cobrança agregada.
+          prisma.entitlement.updateMany({
+            where: { userId: sub.userId, source: 'bundle', status: { in: ['active', 'trialing'] } },
+            data:  { status: 'canceled', canceledAt: now },
+          }),
         ]);
+        // Mesma chave de cache usada por moduleGate.ts (apps/api) — invalida para
+        // o 402/entitlement refletir a revogação sem esperar o TTL de 60s.
+        await redis.del(`ent:${sub.userId}`).catch(() => null);
 
         logger.info(`[Cron] Downgrade: ${sub.user.email} (${sub.plan.name} → free) por falta de pagamento`);
 

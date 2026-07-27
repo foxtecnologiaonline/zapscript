@@ -46,9 +46,19 @@ async function markProcessed(paymentId: string): Promise<void> {
 }
 
 /* ── Preços ── */
-const PLAN_PRICES:        Record<string, number> = { pro: 37,  executive: 67  };
-const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 355, executive: 643 }; // x12 com 20% off
-const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive' };
+const PLAN_PRICES:        Record<string, number> = { pro: 37,  executive: 67,  atende: 59,  profissional: 109,   empresas: 179  };
+const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 355, executive: 643, atende: 680, profissional: 1308, empresas: 2148 }; // x12 com 20% off (pro/executive); atende/profissional/empresas seguem os valores fechados do SPEC ZapScript 2.0
+const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive', atende: 'Atende', profissional: 'Profissional', empresas: 'Empresas' };
+
+/* ── Tiers ZapScript 2.0 (SPEC Jul/2026): "tiers absorvem os módulos" — cada
+   tier paga empacota um conjunto fixo de módulos já existentes na suíte.
+   Sincronizado em activatePlan() via Entitlement(source='bundle'), nunca
+   mexendo em módulos comprados avulso (source='paid'). Ver MODULOS_ARQUITETURA.md. ── */
+const TIER_MODULE_BUNDLES: Record<string, string[]> = {
+  atende:       ['atende'],
+  profissional: ['atende', 'crm', 'vendas'],
+  empresas:     ['atende', 'crm', 'vendas', 'campanhas', 'cobranca'],
+};
 
 /* ── Combo (Core + módulos disponíveis): % fixo sobre a soma do valor agregado ── */
 const COMBO_DISCOUNT_PCT = 0.20;
@@ -247,6 +257,16 @@ async function activatePlan(userId: string, planName: string, opts: {
 
   // M6: Invalidar cache de plano após mudança de subscription
   invalidatePlanCache(userId).catch(() => null);
+
+  // ── Tiers ZapScript 2.0: sincroniza os módulos inclusos no pacote, com o
+  // mesmo período de cobrança do tier (mensal ou anual). Módulos comprados
+  // avulso (source='paid') não são afetados.
+  const bundleKeys = TIER_MODULE_BUNDLES[planName];
+  if (bundleKeys) {
+    for (const key of bundleKeys) {
+      await activateModuleEntitlement(userId, key, { periodDays: cycleDays, source: 'bundle' });
+    }
+  }
 }
 
 /* ── Valor agregado atual: core pago (se houver) + módulos pagos ativos ──
@@ -307,13 +327,17 @@ async function reissueAggregateSubscription(opts: {
 /* ── Ativar entitlement de módulo no banco (upsert) ──
    'pending' (PIX aguardando confirmação) nunca concede acesso — ver moduleGate.ts ACTIVE_STATUSES. */
 async function activateModuleEntitlement(userId: string, productKey: string, opts: {
-  paymentId?: string;
+  paymentId?:  string;
+  periodDays?: number; // padrão 30 (módulo avulso mensal); tiers passam o ciclo do Plan (30 ou 365)
+  source?:     string; // padrão 'paid' (avulso); tiers passam 'bundle'
 } = {}): Promise<void> {
-  const nextPeriod = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const periodDays = opts.periodDays ?? 30;
+  const source      = opts.source ?? 'paid';
+  const nextPeriod = new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000);
   await prisma.entitlement.upsert({
     where:  { userId_productKey: { userId, productKey } },
-    create: { userId, productKey, status: 'active', source: 'paid', currentPeriodEnd: nextPeriod },
-    update: { status: 'active', source: 'paid', currentPeriodEnd: nextPeriod, canceledAt: null },
+    create: { userId, productKey, status: 'active', source, currentPeriodEnd: nextPeriod },
+    update: { status: 'active', source, currentPeriodEnd: nextPeriod, canceledAt: null },
   });
   if (opts.paymentId) await markProcessed(opts.paymentId);
   invalidateModuleCache(userId).catch(() => null);
@@ -997,7 +1021,15 @@ export default async function billingRoutes(app: FastifyInstance) {
         where: { userId },
         data:  { availableMinutes: freePlan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null },
       }),
+      // Tiers ZapScript 2.0: cancelar o tier revoga os módulos que vieram no
+      // pacote (source='bundle'). Módulos comprados avulso (source='paid')
+      // continuam ativos — cancelamento deles é feito à parte, por módulo.
+      prisma.entitlement.updateMany({
+        where: { userId, source: 'bundle', status: { in: ['active', 'trialing'] } },
+        data:  { status: 'canceled', canceledAt: new Date() },
+      }),
     ]);
+    invalidateModuleCache(userId).catch(() => null);
 
     // Programa de afiliados: cancelamento nos primeiros 30 dias zera comissões pendentes
     clawbackAffiliateCommissionOnCancel(userId).catch(() => null);

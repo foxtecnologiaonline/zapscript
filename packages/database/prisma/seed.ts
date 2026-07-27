@@ -71,6 +71,54 @@ async function main() {
         'Webhook personalizado',
       ]),
     },
+    // ── ZapScript 2.0 — Tiers anuais (SPEC Jul/2026) ──
+    // Absorvem módulos existentes (ver TIER_MODULE_BUNDLES em billing.ts).
+    // free/pro/executive acima continuam intocados; catálogo à parte.
+    {
+      name:            'atende',
+      label:           'Atende',
+      minutesPerMonth: 300,
+      audiosPerMonth:  PRO_AUDIO_CAP,
+      maxNumbers:      2,
+      priceBrl:        59,
+      features:        JSON.stringify([
+        'Áudios ilimitados',
+        '2 números WhatsApp',
+        '🎙️ Conversão automática',
+        '✨ Resumo com IA',
+        '🤖 Atendimento automático 24/7 no WhatsApp',
+        '📚 Base de conhecimento própria',
+      ]),
+    },
+    {
+      name:            'profissional',
+      label:           'Profissional',
+      minutesPerMonth: 400,
+      audiosPerMonth:  PRO_AUDIO_CAP,
+      maxNumbers:      3,
+      priceBrl:        109,
+      features:        JSON.stringify([
+        'Tudo do Atende',
+        '📊 CRM — funil de vendas no WhatsApp',
+        '🗣️ Vendas — grave a visita, vira nota no CRM',
+        '3 números WhatsApp',
+      ]),
+    },
+    {
+      name:            'empresas',
+      label:           'Empresas',
+      minutesPerMonth: 500,
+      audiosPerMonth:  PRO_AUDIO_CAP,
+      maxNumbers:      5,
+      priceBrl:        179,
+      features:        JSON.stringify([
+        'Tudo do Profissional',
+        '📣 Campanhas — disparo em massa via API oficial',
+        '💰 Cobrança — lembrete automático de vencimento',
+        '👥 Equipe — múltiplos usuários',
+        '5 números WhatsApp',
+      ]),
+    },
   ];
 
   for (const plan of plans) {

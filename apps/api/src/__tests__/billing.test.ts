@@ -11,7 +11,7 @@ jest.mock('../lib/prisma', () => ({
     minuteBalance:    { update: jest.fn(), upsert: jest.fn() },
     plan:             { findUnique: jest.fn() },
     user:             { findUnique: jest.fn() },
-    entitlement:      { findUnique: jest.fn(), findMany: jest.fn(), upsert: jest.fn(), update: jest.fn() },
+    entitlement:      { findUnique: jest.fn(), findMany: jest.fn(), upsert: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     product:          { findUnique: jest.fn(), findMany: jest.fn() },
     processedWebhook: { findUnique: jest.fn(), upsert: jest.fn() },
     $transaction:     jest.fn(async (ops: any[]) => Promise.all(ops)),

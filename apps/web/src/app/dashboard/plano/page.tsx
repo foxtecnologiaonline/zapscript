@@ -107,13 +107,72 @@ const PLANS = [
     pop:   true,
     accent: null as string | null,
   },
+  // ── ZapScript 2.0 — Tiers anuais (SPEC Jul/2026) ──
+  // Cada tier empacota módulos já existentes na suíte (Atende/CRM/Vendas/
+  // Campanhas/Cobrança). Compra nova apenas — ver seção "Tiers" abaixo.
+  {
+    name:  'atende',
+    label: 'Atende',
+    price: 'R$59',
+    per:   '/mês',
+    desc:  'Transcrição + atendimento automático 24/7 no WhatsApp',
+    feats: [
+      'Áudios ilimitados',
+      '2 números WhatsApp',
+      '🤖 Atendimento automático 24/7',
+      '📚 Base de conhecimento própria',
+      '✨ Resumo com IA',
+    ],
+    excl:  [],
+    pop:   false,
+    accent: null as string | null,
+  },
+  {
+    name:  'profissional',
+    label: 'Profissional',
+    price: 'R$109',
+    per:   '/mês',
+    desc:  'Atende + funil de vendas e registro de visitas',
+    feats: [
+      'Tudo do Atende',
+      '📊 CRM — funil de vendas no WhatsApp',
+      '🗣️ Vendas — grave a visita, vira nota no CRM',
+      '3 números WhatsApp',
+    ],
+    excl:  [],
+    pop:   false,
+    accent: null as string | null,
+  },
+  {
+    name:  'empresas',
+    label: 'Empresas',
+    price: 'R$179',
+    per:   '/mês',
+    desc:  'Suíte completa para equipes: campanhas, cobrança e múltiplos usuários',
+    feats: [
+      'Tudo do Profissional',
+      '📣 Campanhas — disparo em massa via API oficial',
+      '💰 Cobrança — lembrete automático de vencimento',
+      '👥 Equipe — múltiplos usuários',
+      '5 números WhatsApp',
+    ],
+    excl:  [],
+    pop:   false,
+    accent: null as string | null,
+  },
 ];
 
 /* ── Preços anuais (x12 com 20% off) ── */
 const PLAN_PRICES_YEARLY: Record<string, { monthlyDisplay: string; annualDisplay: string }> = {
-  pro:       { monthlyDisplay: 'R$29', annualDisplay: 'R$355' },
-  executive: { monthlyDisplay: 'R$53', annualDisplay: 'R$643' },
+  pro:          { monthlyDisplay: 'R$29',  annualDisplay: 'R$355' },
+  executive:    { monthlyDisplay: 'R$53',  annualDisplay: 'R$643' },
+  atende:       { monthlyDisplay: 'R$57',  annualDisplay: 'R$680' },
+  profissional: { monthlyDisplay: 'R$109', annualDisplay: 'R$1.308' },
+  empresas:     { monthlyDisplay: 'R$179', annualDisplay: 'R$2.148' },
 };
+
+/** Tiers ZapScript 2.0 vendidos como compra nova (ver TIER_MODULE_BUNDLES em billing.ts). */
+const TIER_PLAN_NAMES = ['atende', 'profissional', 'empresas'] as const;
 
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
@@ -1166,6 +1225,48 @@ function PlanoContent() {
         </div>
       )}
 
+      {/* ── ZapScript 2.0 — Tiers anuais (Atende / Profissional / Empresas) ──
+          Compra nova, direto (sem simulação de proration — só relevante para
+          quem já paga free→pro/executive). Visível apenas no plano Free. ── */}
+      {currentPlan === 'free' && (
+        <div className="mt-6">
+          <h2 className="font-display font-bold text-base mb-1">Ou leve a suíte completa</h2>
+          <p className="text-xs font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+            Transcrição + módulos da suíte ZapScript num só pacote anual (ou mensal, sem fidelidade).
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {TIER_PLAN_NAMES.map((name) => {
+              const tier = PLANS.find(p => p.name === name)!;
+              const yearly = PLAN_PRICES_YEARLY[name];
+              return (
+                <div key={name} className="rounded-2xl p-4 flex flex-col"
+                  style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))' }}>
+                  <div className="font-display font-bold text-sm">{tier.label}</div>
+                  <p className="text-[11px] font-light mt-0.5 mb-3 flex-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                    {tier.desc}
+                  </p>
+                  <div className="mb-3">
+                    <span className="font-display font-black text-xl" style={{ color: 'rgb(var(--color-primary))' }}>{tier.price}</span>
+                    <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês</span>
+                    {yearly && (
+                      <div className="text-[10px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                        ou {yearly.annualDisplay}/ano
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => doCheckout(name)}
+                    className="w-full py-2.5 rounded-xl text-xs font-bold transition-all"
+                    style={{ border: '1.5px solid rgb(var(--color-primary))', color: 'rgb(var(--color-primary))', background: 'transparent' }}>
+                    Assinar {tier.label} →
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Toggle comparativo — apenas para usuários Free */}
       {currentPlan === 'free' && (
         <>
@@ -1548,7 +1649,7 @@ function PlanoContent() {
                   </p>
                 </div>
                 <CheckoutInline
-                  planName={checkoutPlan as 'pro' | 'executive'}
+                  planName={checkoutPlan!}
                   planLabel={plan.label}
                   planPrice={trialCardMode ? plan.price : (junePromo && checkoutPlan === 'pro' ? 'R$18' : plan.price)}
                   planFeats={plan.feats}
