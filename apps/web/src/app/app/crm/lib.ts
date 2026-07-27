@@ -67,6 +67,25 @@ export interface ImportSuggestion {
   count: number;
 }
 
+export interface CrmDashboardTopCliente {
+  id: string;
+  name: string;
+  phone: string;
+  company: string | null;
+  value: number | null;
+  activityCount: number;
+}
+
+export interface CrmDashboard {
+  periodDays: number;
+  faturamentoFechado: number;
+  negociosFechados: number;
+  negociosPerdidos: number;
+  novosLeads: number;
+  atendimentosSemana: number;
+  topClientes: CrmDashboardTopCliente[];
+}
+
 export const ACTIVITY_ICON: Record<CrmActivity['type'], string> = {
   note: '📝',
   stage_change: '🔄',

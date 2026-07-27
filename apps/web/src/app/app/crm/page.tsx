@@ -150,6 +150,12 @@ export default function CrmBoardPage() {
               placeholder="Buscar nome, telefone, empresa..."
               className="w-48 sm:w-64 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-600 focus:outline-none focus:border-emerald-600"
             />
+            <Link
+              href="/app/crm/dashboard"
+              className="rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm hover:border-neutral-700"
+            >
+              📈 Dashboard
+            </Link>
             <button
               onClick={() => setShowReminders(true)}
               className="relative rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm hover:border-neutral-700"

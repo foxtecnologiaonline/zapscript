@@ -304,6 +304,59 @@ export default async function crmRoutes(app: FastifyInstance) {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // Dashboard — KPIs de negócio (módulo Profissional/Empresas do SPEC
+  // ZapScript 2.0). Lê só dados já existentes (CrmContact/CrmActivity +
+  // AtendeConversation, quando o usuário também tem o módulo Atende).
+  // ═══════════════════════════════════════════════════════════════════════
+  app.get('/dashboard', async (req: any) => {
+    const userId = req.user.sub;
+    const days  = Math.min(365, Math.max(1, parseInt((req.query as any)?.days, 10) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const [wonContacts, negociosPerdidos, novosLeads, atendimentosSemana, topActivity] = await Promise.all([
+      prisma.crmContact.findMany({
+        where:  { userId, closedAt: { gte: since }, stage: { isWon: true } },
+        select: { id: true, value: true },
+      }),
+      prisma.crmContact.count({ where: { userId, closedAt: { gte: since }, stage: { isLost: true } } }),
+      prisma.crmContact.count({ where: { userId, createdAt: { gte: since } } }),
+      prisma.atendeConversation.count({ where: { userId, lastMessageAt: { gte: weekAgo } } }).catch(() => 0),
+      prisma.crmActivity.groupBy({
+        by:      ['contactId'],
+        where:   { userId, createdAt: { gte: since } },
+        _count:  { contactId: true },
+        orderBy: { _count: { contactId: 'desc' } },
+        take:    5,
+      }),
+    ]);
+
+    const topIds = topActivity.map((t: any) => t.contactId);
+    const topContacts = topIds.length
+      ? await prisma.crmContact.findMany({
+          where:  { id: { in: topIds } },
+          select: { id: true, name: true, phone: true, company: true, value: true },
+        })
+      : [];
+    const topClientes = topActivity
+      .map((t: any) => {
+        const c = topContacts.find((x: any) => x.id === t.contactId);
+        return c ? { ...c, activityCount: t._count.contactId } : null;
+      })
+      .filter(Boolean);
+
+    return {
+      periodDays:         days,
+      faturamentoFechado: wonContacts.reduce((sum: number, c: any) => sum + (c.value || 0), 0),
+      negociosFechados:   wonContacts.length,
+      negociosPerdidos,
+      novosLeads,
+      atendimentosSemana,
+      topClientes,
+    };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // Importar do WhatsApp — sugestões a partir do histórico de Transcription
   // (zero alteração no webhook de mensageria; só lê dados já existentes)
   // ═══════════════════════════════════════════════════════════════════════
