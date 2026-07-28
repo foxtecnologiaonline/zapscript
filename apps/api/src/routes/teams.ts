@@ -2,12 +2,16 @@ import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
+import { resolveTeamScope } from '../lib/teamScope';
 
 /* ─────────────────────────────────────────────────────────
-   Plano Empresas Multi-Seat — MVP
-   Um dono de time paga por todos os seats (Pro cada membro).
-   Cada membro herda o tier do dono. Sem RBAC complexo.
+   Plano Empresas Multi-Seat
+   Um dono de time paga por todos os seats. Papéis: admin/manager/agent
+   (ver lib/teamScope.ts) — hoje compartilhados de verdade só no módulo
+   Atende (Fase 3); os demais módulos seguem por conta individual.
    ───────────────────────────────────────────────────────── */
+
+const INVITE_ROLES = new Set(['admin', 'manager', 'agent']);
 
 const SEAT_PRICE_MONTHLY = 37;   // R$37/mês por seat (preço Pro)
 const SEAT_PRICE_YEARLY  = 355; // R$355/ano por seat
@@ -165,14 +169,18 @@ export default async function teamRoutes(app: FastifyInstance) {
   );
 
   // ── POST /teams/invite — convidar membro por e-mail ──────────────
-  app.post<{ Body: { email: string } }>(
+  app.post<{ Body: { email: string; role?: string } }>(
     '/invite',
     { ...auth, config: { rateLimit: { max: 10, timeWindow: '1 hour' } } },
     async (req: any, reply) => {
       const userId = req.user.sub;
-      const { email } = req.body || {};
+      const { email, role } = req.body || {};
       if (!email || typeof email !== 'string' || !email.includes('@')) {
         return reply.code(400).send({ error: 'E-mail inválido.' });
+      }
+      const memberRole = role ?? 'agent';
+      if (!INVITE_ROLES.has(memberRole)) {
+        return reply.code(400).send({ error: 'Papel inválido. Use admin, manager ou agent.' });
       }
 
       const team = await getOwnedTeam(userId);
@@ -212,7 +220,7 @@ export default async function teamRoutes(app: FastifyInstance) {
         data: {
           teamId: team.id,
           userId: existingUser?.id || 'pending', // placeholder — será atualizado ao aceitar
-          role: 'member',
+          role: memberRole,
           status: 'invited',
           inviteCode,
           invitedEmail: normalizedEmail,
@@ -288,6 +296,36 @@ export default async function teamRoutes(app: FastifyInstance) {
       };
     }
   );
+
+  // ── PATCH /teams/members/:id/role — trocar papel de um membro (owner apenas) ──
+  app.patch<{ Params: { id: string }; Body: { role: string } }>('/members/:id/role', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { id } = req.params;
+    const { role } = req.body || {};
+    if (!INVITE_ROLES.has(role)) {
+      return reply.code(400).send({ error: 'Papel inválido. Use admin, manager ou agent.' });
+    }
+
+    const member = await prisma.teamMember.findUnique({ where: { id } });
+    if (!member) return reply.code(404).send({ error: 'Membro não encontrado.' });
+
+    const requesterMembership = await prisma.teamMember.findUnique({ where: { userId } });
+    if (!requesterMembership || requesterMembership.teamId !== member.teamId || requesterMembership.role !== 'owner') {
+      return reply.code(403).send({ error: 'Apenas o dono do time pode alterar papéis.' });
+    }
+    if (member.role === 'owner') {
+      return reply.code(400).send({ error: 'O dono do time não muda de papel.' });
+    }
+
+    const updated = await prisma.teamMember.update({ where: { id }, data: { role } });
+    return { ok: true, member: { id: updated.id, role: updated.role } };
+  });
+
+  // ── GET /teams/my-role — papel efetivo do usuário logado (para a UI mostrar/ocultar ações) ──
+  app.get('/my-role', auth, async (req: any) => {
+    const scope = await resolveTeamScope(req.user.sub);
+    return { role: scope.role };
+  });
 
   // ── DELETE /teams/members/:id — remover membro (owner apenas) ────
   app.delete('/members/:id', auth, async (req: any, reply) => {

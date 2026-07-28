@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { requireModule } from '../lib/moduleGate';
+import { requireModuleShared, requireTeamRole } from '../lib/teamScope';
 import {
   validateRequest,
   atendeConfigSchema,
@@ -54,17 +54,23 @@ async function readSingleUpload(req: any): Promise<{ buffer: Buffer; mimetype: s
 
 /**
  * Rotas do módulo ZapScript Atende (resposta automática por IA no WhatsApp).
- * Todas exigem entitlement ativo — ver requireModule('atende') (moduleGate.ts).
+ * Todas exigem entitlement ativo do DONO dos dados — ver requireModuleShared()
+ * (teamScope.ts), que resolve o compartilhamento de time: membros do time do
+ * dono (Empresas) enxergam/atuam nos mesmos dados, não numa conta separada.
+ *
+ * `auth`       — qualquer papel do time (agent+): ver/responder conversas.
+ * `authManage` — manager+: configurar o bot e a base de conhecimento.
  */
 export default async function atendeRoutes(app: FastifyInstance) {
-  const auth = { preHandler: [(app as any).authenticate, requireModule('atende')] };
+  const auth       = { preHandler: [(app as any).authenticate, requireModuleShared('atende')] };
+  const authManage = { preHandler: [(app as any).authenticate, requireModuleShared('atende'), requireTeamRole('manager')] };
 
   // ── GET /atende/config/:numberId ─────────────────────────────────────────
-  app.get<{ Params: { numberId: string } }>('/config/:numberId', auth, async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.get<{ Params: { numberId: string } }>('/config/:numberId', authManage, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const { numberId } = req.params;
 
-    const number = await prisma.whatsappNumber.findFirst({ where: { id: numberId, userId } });
+    const number = await prisma.whatsappNumber.findFirst({ where: { id: numberId, userId: ownerId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
     const config = await prisma.atendeConfig.findUnique({ where: { numberId } });
@@ -72,7 +78,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
     // o shape default em vez de 404, pra UI renderizar o form sem tratamento especial.
     return config ?? {
       numberId,
-      userId,
+      userId: ownerId,
       enabled: false,
       businessContext: null,
       tone: 'profissional-amigavel',
@@ -84,14 +90,14 @@ export default async function atendeRoutes(app: FastifyInstance) {
   });
 
   // ── PUT /atende/config/:numberId ─────────────────────────────────────────
-  app.put<{ Params: { numberId: string }; Body: any }>('/config/:numberId', auth, async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.put<{ Params: { numberId: string }; Body: any }>('/config/:numberId', authManage, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const { numberId } = req.params;
 
     const v = validateRequest(atendeConfigSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
 
-    const number = await prisma.whatsappNumber.findFirst({ where: { id: numberId, userId } });
+    const number = await prisma.whatsappNumber.findFirst({ where: { id: numberId, userId: ownerId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
     const data = v.data;
@@ -113,7 +119,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
       update: { ...data, ...(escalationPhone !== undefined ? { escalationPhone } : {}) },
       create: {
         numberId,
-        userId,
+        userId: ownerId,
         enabled: data.enabled ?? false,
         businessContext: data.businessContext,
         tone: data.tone ?? 'profissional-amigavel',
@@ -132,7 +138,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // SUGESTÃO de businessContext (texto), pronta para revisão no SuggestionReview.
   // Não salva nada — o front confirma via PUT /config/:numberId normalmente.
   app.post('/setup/voice-context', {
-    ...auth,
+    ...authManage,
     config: { rateLimit: { max: 10, timeWindow: '10 minutes' } },
   }, async (req: any, reply) => {
     try {
@@ -156,7 +162,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // preços, anotação). Detecta o tipo pelo mimetype do upload. Devolve uma lista
   // de sugestões — nada é salvo até o front confirmar via POST /kb (um por item).
   app.post('/setup/kb-import', {
-    ...auth,
+    ...authManage,
     config: { rateLimit: { max: 10, timeWindow: '10 minutes' } },
   }, async (req: any, reply) => {
     try {
@@ -190,14 +196,14 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // webhook durante takeover — ver evolution-webhook.ts). Sem histórico
   // suficiente, devolve pairs=0 sem chamar a IA (nada a estruturar).
   app.post('/setup/from-history', {
-    ...auth,
+    ...authManage,
     config: { rateLimit: { max: 10, timeWindow: '10 minutes' } },
   }, async (req: any, reply) => {
     try {
-      const userId = req.user.sub;
+      const { ownerId } = req.teamScope;
 
       const humanReplies = await prisma.atendeMessage.findMany({
-        where: { humanAuthored: true, conversation: { userId } },
+        where: { humanAuthored: true, conversation: { userId: ownerId } },
         orderBy: { createdAt: 'desc' },
         take: 60,
         select: { conversationId: true },
@@ -263,21 +269,21 @@ export default async function atendeRoutes(app: FastifyInstance) {
   });
 
   // ── GET /atende/kb ────────────────────────────────────────────────────────
-  app.get('/kb', auth, async (req: any) => {
+  app.get('/kb', authManage, async (req: any) => {
     return prisma.atendeKnowledgeBase.findMany({
-      where:   { userId: req.user.sub },
+      where:   { userId: req.teamScope.ownerId },
       orderBy: { createdAt: 'desc' },
     });
   });
 
   // ── POST /atende/kb ───────────────────────────────────────────────────────
-  app.post<{ Body: { question: string; answer: string } }>('/kb', auth, async (req: any, reply) => {
+  app.post<{ Body: { question: string; answer: string } }>('/kb', authManage, async (req: any, reply) => {
     const v = validateRequest(atendeKbCreateSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
 
     const entry = await prisma.atendeKnowledgeBase.create({
       data: {
-        userId:   req.user.sub,
+        userId:   req.teamScope.ownerId,
         question: v.data.question.trim(),
         answer:   v.data.answer.trim(),
       },
@@ -286,11 +292,11 @@ export default async function atendeRoutes(app: FastifyInstance) {
   });
 
   // ── PUT /atende/kb/:id ────────────────────────────────────────────────────
-  app.put<{ Params: { id: string }; Body: any }>('/kb/:id', auth, async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.put<{ Params: { id: string }; Body: any }>('/kb/:id', authManage, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const { id } = req.params;
 
-    const existing = await prisma.atendeKnowledgeBase.findFirst({ where: { id, userId } });
+    const existing = await prisma.atendeKnowledgeBase.findFirst({ where: { id, userId: ownerId } });
     if (!existing) return reply.code(404).send({ error: 'Item não encontrado' });
 
     const v = validateRequest(atendeKbUpdateSchema)(req.body);
@@ -308,11 +314,11 @@ export default async function atendeRoutes(app: FastifyInstance) {
   });
 
   // ── DELETE /atende/kb/:id ─────────────────────────────────────────────────
-  app.delete<{ Params: { id: string } }>('/kb/:id', auth, async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.delete<{ Params: { id: string } }>('/kb/:id', authManage, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const { id } = req.params;
 
-    const existing = await prisma.atendeKnowledgeBase.findFirst({ where: { id, userId } });
+    const existing = await prisma.atendeKnowledgeBase.findFirst({ where: { id, userId: ownerId } });
     if (!existing) return reply.code(404).send({ error: 'Item não encontrado' });
 
     await prisma.atendeKnowledgeBase.delete({ where: { id } });
@@ -322,7 +328,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // ── GET /atende/conversations ─────────────────────────────────────────────
   app.get('/conversations', auth, async (req: any) => {
     const conversations = await prisma.atendeConversation.findMany({
-      where:   { userId: req.user.sub },
+      where:   { userId: req.teamScope.ownerId },
       orderBy: { lastMessageAt: 'desc' },
       take:    100,
       include: {
@@ -345,10 +351,10 @@ export default async function atendeRoutes(app: FastifyInstance) {
 
   // ── GET /atende/conversations/:id/messages ────────────────────────────────
   app.get<{ Params: { id: string } }>('/conversations/:id/messages', auth, async (req: any, reply) => {
-    const userId = req.user.sub;
+    const { ownerId } = req.teamScope;
     const { id } = req.params;
 
-    const conversation = await prisma.atendeConversation.findFirst({ where: { id, userId } });
+    const conversation = await prisma.atendeConversation.findFirst({ where: { id, userId: ownerId } });
     if (!conversation) return reply.code(404).send({ error: 'Conversa não encontrada' });
 
     const messages = await prisma.atendeMessage.findMany({
@@ -363,10 +369,10 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // ── POST /atende/conversations/:id/takeover ───────────────────────────────
   // Dono assume a conversa manualmente — desliga a resposta automática só aqui.
   app.post<{ Params: { id: string } }>('/conversations/:id/takeover', auth, async (req: any, reply) => {
-    const userId = req.user.sub;
+    const { ownerId } = req.teamScope;
     const { id } = req.params;
 
-    const conversation = await prisma.atendeConversation.findFirst({ where: { id, userId } });
+    const conversation = await prisma.atendeConversation.findFirst({ where: { id, userId: ownerId } });
     if (!conversation) return reply.code(404).send({ error: 'Conversa não encontrada' });
 
     return prisma.atendeConversation.update({ where: { id }, data: { humanTakeover: true } });
@@ -378,13 +384,13 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // (mesmo helper de convites/campanhas/health-monitor) e grava a mensagem
   // como humanAuthored=true, alimentando também a Feature 5.
   app.post<{ Params: { id: string }; Body: { message?: string } }>('/conversations/:id/reply', auth, async (req: any, reply) => {
-    const userId = req.user.sub;
+    const { ownerId } = req.teamScope;
     const { id } = req.params;
     const message = (req.body?.message || '').trim();
     if (!message) return reply.code(400).send({ error: 'Mensagem vazia.' });
 
     const conversation = await prisma.atendeConversation.findFirst({
-      where: { id, userId },
+      where: { id, userId: ownerId },
       include: { number: { select: { zapiInstanceId: true } } },
     });
     if (!conversation) return reply.code(404).send({ error: 'Conversa não encontrada' });
@@ -413,10 +419,10 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // ── POST /atende/conversations/:id/release ────────────────────────────────
   // Devolve a conversa para o bot (contrapartida do takeover).
   app.post<{ Params: { id: string } }>('/conversations/:id/release', auth, async (req: any, reply) => {
-    const userId = req.user.sub;
+    const { ownerId } = req.teamScope;
     const { id } = req.params;
 
-    const conversation = await prisma.atendeConversation.findFirst({ where: { id, userId } });
+    const conversation = await prisma.atendeConversation.findFirst({ where: { id, userId: ownerId } });
     if (!conversation) return reply.code(404).send({ error: 'Conversa não encontrada' });
 
     return prisma.atendeConversation.update({ where: { id }, data: { humanTakeover: false } });

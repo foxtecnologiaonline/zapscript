@@ -41,8 +41,10 @@ function EmpresarialContent() {
   const [createError, setCreateError] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'admin' | 'manager' | 'agent'>('agent');
   const [inviteError, setInviteError] = useState('');
   const [inviteOk, setInviteOk] = useState('');
+  const [roleChanging, setRoleChanging] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState('');
   const [removing, setRemoving] = useState<string | null>(null);
@@ -108,14 +110,27 @@ function EmpresarialContent() {
     setInviteOk('');
     setInviting(true);
     try {
-      const res = await api.post<any>('/teams/invite', { email: inviteEmail });
+      const res = await api.post<any>('/teams/invite', { email: inviteEmail, role: inviteRole });
       setInviteEmail('');
+      setInviteRole('agent');
       setInviteOk(res.message || 'Convite enviado!');
       load();
     } catch (err: any) {
       setInviteError(err?.message || 'Erro ao convidar.');
     } finally {
       setInviting(false);
+    }
+  }
+
+  async function handleRoleChange(memberId: string, role: string) {
+    setRoleChanging(memberId);
+    try {
+      await api.patch(`/teams/members/${memberId}/role`, { role });
+      load();
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao alterar papel.');
+    } finally {
+      setRoleChanging(null);
     }
   }
 
@@ -320,10 +335,24 @@ function EmpresarialContent() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                        style={{ background: 'rgba(var(--color-primary)/.08)', color: 'rgb(var(--color-text-muted))' }}>
-                        {m.role === 'owner' ? 'Dono' : 'Membro'}
-                      </span>
+                      {isOwner && m.role !== 'owner' ? (
+                        <select
+                          value={m.role}
+                          onChange={e => handleRoleChange(m.id, e.target.value)}
+                          disabled={roleChanging === m.id}
+                          className="text-[10px] font-medium px-2 py-1 rounded-full border-0 disabled:opacity-50"
+                          style={{ background: 'rgba(var(--color-primary)/.08)', color: 'rgb(var(--color-text-muted))' }}
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="manager">Manager</option>
+                          <option value="agent">Agent</option>
+                        </select>
+                      ) : (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                          style={{ background: 'rgba(var(--color-primary)/.08)', color: 'rgb(var(--color-text-muted))' }}>
+                          {m.role === 'owner' ? 'Dono' : m.role === 'admin' ? 'Admin' : m.role === 'manager' ? 'Manager' : 'Agent'}
+                        </span>
+                      )}
                       {isOwner && m.role !== 'owner' && (
                         <button
                           onClick={() => handleRemove(m.id)}
@@ -352,6 +381,16 @@ function EmpresarialContent() {
                   onChange={e => { setInviteEmail(e.target.value); setInviteError(''); setInviteOk(''); }}
                   required
                 />
+                <select
+                  className="field-input shrink-0 w-28"
+                  value={inviteRole}
+                  onChange={e => setInviteRole(e.target.value as 'admin' | 'manager' | 'agent')}
+                  title="Papel do membro — admin/manager configuram o Atende, agent só responde conversas"
+                >
+                  <option value="admin">Admin</option>
+                  <option value="manager">Manager</option>
+                  <option value="agent">Agent</option>
+                </select>
                 <button
                   type="submit"
                   disabled={inviting || !inviteEmail.includes('@')}
