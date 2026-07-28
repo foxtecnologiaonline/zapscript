@@ -246,7 +246,7 @@ describe('POST /billing/upgrade', () => {
     const future = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
     (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(upgradeUser);
     (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce({
-      plan: { name: 'atende', priceBrl: 59 },
+      plan: { name: 'pro', priceBrl: 37 },
       asaasCustomerId: 'cus_1', asaasSubscriptionId: 'sub_old', currentPeriodEnd: future,
     });
     (global.fetch as jest.Mock)

@@ -46,11 +46,11 @@ async function markProcessed(paymentId: string): Promise<void> {
 }
 
 /* ── Preços ──
-   profissional/empresas: valores placeholder — preço ainda não definido na
-   revisão de tiers (ver conversa de negócio); ajustar aqui + migration
-   quando fechar. */
-const PLAN_PRICES:        Record<string, number> = { pro: 37,  executive: 67,  profissional: 109,   empresas: 179  };
-const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 355, executive: 643, profissional: 1308, empresas: 2148 };
+   profissional/empresas: "aluguel" = mensal (PLAN_PRICES), "compra" = anual
+   (PLAN_PRICES_YEARLY) — sistemática inicial de preços, definida em
+   conversa de negócio (2026-07-29). */
+const PLAN_PRICES:        Record<string, number> = { pro: 37,  executive: 67,  profissional: 49,  empresas: 99  };
+const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 355, executive: 643, profissional: 295, empresas: 595 };
 const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive', profissional: 'Profissional', empresas: 'Empresas' };
 
 /* ── Tiers ZapScript 2.0 (revisão): "tiers absorvem os módulos" — cada tier

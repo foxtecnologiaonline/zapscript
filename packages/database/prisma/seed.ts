@@ -71,37 +71,26 @@ async function main() {
         'Webhook personalizado',
       ]),
     },
-    // ── ZapScript 2.0 — Tiers anuais (SPEC Jul/2026) ──
+    // ── ZapScript 2.0 — Tiers (revisão) ──
     // Absorvem módulos existentes (ver TIER_MODULE_BUNDLES em billing.ts).
     // free/pro/executive acima continuam intocados; catálogo à parte.
-    {
-      name:            'atende',
-      label:           'Atende',
-      minutesPerMonth: 300,
-      audiosPerMonth:  PRO_AUDIO_CAP,
-      maxNumbers:      2,
-      priceBrl:        59,
-      features:        JSON.stringify([
-        'Áudios ilimitados',
-        '2 números WhatsApp',
-        '🎙️ Conversão automática',
-        '✨ Resumo com IA',
-        '🤖 Atendimento automático 24/7 no WhatsApp',
-        '📚 Base de conhecimento própria',
-      ]),
-    },
+    // Preço: "aluguel" (mensal) = priceBrl; "compra" (anual) vive em
+    // PLAN_PRICES_YEARLY (apps/api/src/routes/billing.ts).
     {
       name:            'profissional',
       label:           'Profissional',
       minutesPerMonth: 400,
       audiosPerMonth:  PRO_AUDIO_CAP,
-      maxNumbers:      3,
-      priceBrl:        109,
+      maxNumbers:      1,
+      priceBrl:        49,
       features:        JSON.stringify([
-        'Tudo do Atende',
-        '📊 CRM — funil de vendas no WhatsApp',
-        '🗣️ Vendas — grave a visita, vira nota no CRM',
-        '3 números WhatsApp',
+        'Tudo do Core, sem limite de áudios',
+        '🤖 Atendimento automático 24/7 por IA',
+        '📥 Fila de conversas + assumir manualmente',
+        '📊 Métricas de atendimento e efetividade',
+        '📨 Avisos ao cliente (cobrança, agendamento, mercadoria pronta...)',
+        '📚 Base de conhecimento própria',
+        '1 número WhatsApp',
       ]),
     },
     {
@@ -109,14 +98,13 @@ async function main() {
       label:           'Empresas',
       minutesPerMonth: 500,
       audiosPerMonth:  PRO_AUDIO_CAP,
-      maxNumbers:      5,
-      priceBrl:        179,
+      maxNumbers:      2,
+      priceBrl:        99,
       features:        JSON.stringify([
         'Tudo do Profissional',
-        '📣 Campanhas — disparo em massa via API oficial',
-        '💰 Cobrança — lembrete automático de vencimento',
-        '👥 Equipe — múltiplos usuários',
-        '5 números WhatsApp',
+        '📊 CRM — funil de vendas no WhatsApp',
+        '✅ Tarefas — designação e controle na equipe',
+        '👥 Até 5 usuários com papéis (admin/manager/agent)',
       ]),
     },
   ];

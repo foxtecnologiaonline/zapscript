@@ -109,7 +109,7 @@ const PLANS = [
   {
     name:  'profissional',
     label: 'Profissional',
-    price: 'R$109',
+    price: 'R$49',
     per:   '/mês',
     desc:  'Core + atendimento automático por IA no WhatsApp',
     feats: [
@@ -128,7 +128,7 @@ const PLANS = [
   {
     name:  'empresas',
     label: 'Empresas',
-    price: 'R$179',
+    price: 'R$99',
     per:   '/mês',
     desc:  'Profissional + CRM, Tarefas e equipe (até 5 usuários)',
     feats: [
@@ -147,8 +147,8 @@ const PLANS = [
 const PLAN_PRICES_YEARLY: Record<string, { monthlyDisplay: string; annualDisplay: string }> = {
   pro:          { monthlyDisplay: 'R$29',  annualDisplay: 'R$355' },
   executive:    { monthlyDisplay: 'R$53',  annualDisplay: 'R$643' },
-  profissional: { monthlyDisplay: 'R$109', annualDisplay: 'R$1.308' },
-  empresas:     { monthlyDisplay: 'R$179', annualDisplay: 'R$2.148' },
+  profissional: { monthlyDisplay: 'R$49',  annualDisplay: 'R$295' },
+  empresas:     { monthlyDisplay: 'R$99',  annualDisplay: 'R$595' },
 };
 
 /** Todos os planos pagos — usados na migração livre entre planos (qualquer direção). */
