@@ -75,7 +75,7 @@ const FAQS = [
   },
   {
     q: 'Quanto custa o ZapScript?',
-    a: 'O plano Free inclui 15 áudios de conversão por mês, em real, sem cartão. O Pro custa R$37/mês (R$18 no 1º mês) com áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico.',
+    a: 'O plano Core inclui até 100 áudios de conversão por mês, em real, sem cartão. O Profissional custa R$49/mês (ou R$295/ano) com áudios ilimitados, atendimento automático por IA, resumo com IA, Modo Privado e histórico.',
   },
 ];
 
@@ -209,7 +209,7 @@ export default function VsOtterPage() {
 
         <div className="text-center py-12 rounded-2xl border border-brand-primary/20" style={{ background: 'rgba(16,185,129,.05)' }}>
           <h2 className="text-2xl font-bold text-white mb-3">Comece grátis — sem cartão de crédito</h2>
-          <p className="text-brand-muted mb-6">15 áudios por mês grátis. Upgrade quando quiser. Cancele a qualquer hora.</p>
+          <p className="text-brand-muted mb-6">Até 100 áudios por mês grátis. Upgrade quando quiser. Cancele a qualquer hora.</p>
           <Link href="/cadastro" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
             Criar minha conta grátis →
           </Link>

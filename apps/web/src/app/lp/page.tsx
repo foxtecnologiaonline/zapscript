@@ -58,7 +58,7 @@ const META: Record<string, { title: string; description: string }> = {
   },
   b2b: {
     title:       'Conversão de Áudios WhatsApp para Empresas — ZapScript',
-    description: 'Equipes de vendas e atendimento perdem horas com áudios. ZapScript converte e resume tudo automaticamente. Planos a partir de R$37/mês.',
+    description: 'Equipes de vendas e atendimento perdem horas com áudios. ZapScript converte e resume tudo automaticamente. Comece grátis — planos pagos a partir de R$49/mês.',
   },
   problema: {
     title:       'Para de Ouvir Áudios do WhatsApp — Leia o Texto em Segundos — ZapScript',

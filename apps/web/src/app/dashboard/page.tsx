@@ -19,8 +19,8 @@ interface Stats {
   minutesPct: number;
   activeNumbers: number;
   avgConfidence: number;
-  planName: string;   // slug: 'free' | 'pro' | 'ultra' | 'executive'
-  planLabel: string;  // exibível: 'Grátis' | 'Pro' | 'Ultra' | 'Executive'
+  planName: string;   // slug: 'free' | 'pro' | 'executive' | 'profissional' | 'empresas'
+  planLabel: string;  // exibível: 'Grátis' | 'Pro' | 'Executive' | 'Profissional' | 'Empresas'
   planStatus: string;
   refCode: string | null;
   renewAt: string | null;
@@ -97,17 +97,17 @@ export default function DashboardPage() {
         <p className="text-sm text-brand-text-secondary font-light mt-1">Visão geral da sua operação</p>
       </div>
 
-      {/* ── 50% off no 1º mês (Free → Pro), oferta permanente ── */}
+      {/* ── Upsell Core → Profissional ── */}
       {stats?.planName === 'free' && (
         <Link href="/dashboard/plano"
           className="flex items-center gap-3 rounded-xl px-4 py-3 mb-6 hover:opacity-90 transition-opacity"
           style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.12), rgba(245,158,11,.08))', border: '1px solid rgba(16,185,129,.25)' }}>
-          <span className="text-lg flex-shrink-0">🔥</span>
+          <span className="text-lg flex-shrink-0">🤖</span>
           <p className="text-xs text-brand-text flex-1">
-            <span className="font-bold text-brand-primary">50% OFF no 1º mês:</span>{' '}
-            assine o Pro por <strong>R$18</strong> (depois R$37/mês).
+            <span className="font-bold text-brand-primary">Profissional:</span>{' '}
+            áudios ilimitados + atendimento automático por IA, <strong>R$49/mês</strong>.
           </p>
-          <span className="text-brand-primary text-xs font-bold flex-shrink-0">Aproveitar →</span>
+          <span className="text-brand-primary text-xs font-bold flex-shrink-0">Ver plano →</span>
         </Link>
       )}
 
@@ -144,7 +144,7 @@ export default function DashboardPage() {
             <div className="text-3xl sm:text-4xl font-black text-brand-text leading-none">{stats.savedLabelMonth}</div>
             <div className="text-xs text-brand-muted mt-1.5">
               Você leu <strong className="text-brand-text">{stats.transcriptionsMonth}</strong> áudio{stats.transcriptionsMonth !== 1 ? 's' : ''} em vez de ouvir tudo.
-              {stats.planName === 'free' && <> Imagine sem limite — <Link href="/dashboard/plano" className="text-brand-primary font-semibold hover:underline">menos de R$1,23/dia</Link>.</>}
+              {stats.planName === 'free' && <> Imagine sem limite — <Link href="/dashboard/plano" className="text-brand-primary font-semibold hover:underline">menos de R$1,63/dia</Link>.</>}
             </div>
           </div>
         </div>

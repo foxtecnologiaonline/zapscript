@@ -80,7 +80,7 @@ export default function AchievementBanner({
                 ? `Neste mês você já economizou ${savedLabelMonth}.`
                 : 'Cada áudio vira texto e resumo automaticamente.'
               }
-              {' '}Com o <strong>Pro</strong>, você desbloqueia áudios ilimitados e Modo Privado.
+              {' '}Com o <strong>Profissional</strong>, você desbloqueia áudios ilimitados e atendimento automático por IA.
             </p>
           </div>
         </div>
@@ -95,13 +95,13 @@ export default function AchievementBanner({
           </div>
           <div style={{ width: 1, height: 28, background: 'rgba(16,185,129,.2)' }} />
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-semibold text-brand-text">Modo Privado</div>
-            <div className="text-[11px] text-brand-muted">Resumo só no seu WhatsApp</div>
+            <div className="text-xs font-semibold text-brand-text">Atendimento 24/7</div>
+            <div className="text-[11px] text-brand-muted">IA responde o cliente sozinha</div>
           </div>
           <div style={{ width: 1, height: 28, background: 'rgba(16,185,129,.2)' }} />
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-semibold text-brand-text">2 números</div>
-            <div className="text-[11px] text-brand-muted">WhatsApp comercial + pessoal</div>
+            <div className="text-xs font-semibold text-brand-text">Avisos</div>
+            <div className="text-[11px] text-brand-muted">Alertas manuais ao cliente</div>
           </div>
         </div>
 
@@ -110,11 +110,11 @@ export default function AchievementBanner({
           <div>
             <div className="text-xs text-brand-text-secondary">A partir de</div>
             <div className="flex items-baseline gap-1">
-              <span className="font-display font-black text-2xl text-brand-primary">R$37</span>
+              <span className="font-display font-black text-2xl text-brand-primary">R$49</span>
               <span className="text-xs text-brand-muted">/mês</span>
             </div>
-            {(!planLabel || planLabel === 'Free') && (
-              <div className="text-[11px] text-brand-muted mt-0.5">menos de R$1,23/dia</div>
+            {(!planLabel || planLabel === 'Grátis' || planLabel === 'Core') && (
+              <div className="text-[11px] text-brand-muted mt-0.5">menos de R$1,63/dia</div>
             )}
           </div>
           <Link
@@ -122,7 +122,7 @@ export default function AchievementBanner({
             className="btn-primary flex items-center justify-center gap-2 py-2.5 px-6 text-sm font-bold"
             style={{ borderRadius: '0.875rem' }}
           >
-            {(!planLabel || planLabel === 'Free') ? 'Assinar Pro →' : 'Ver planos →'}
+            {(!planLabel || planLabel === 'Grátis' || planLabel === 'Core') ? 'Assinar Profissional →' : 'Ver planos →'}
           </Link>
           <button
             onClick={() => setVisible(false)}

@@ -1632,14 +1632,14 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                     /* Upsell para Free em conversões não-manuais */
                     <div className="flex flex-col items-center justify-center py-6 text-center">
                       <div className="text-3xl mb-3">🔒</div>
-                      <p className="font-semibold text-brand-text mb-1">Disponível no plano Pro</p>
+                      <p className="font-semibold text-brand-text mb-1">Disponível em planos pagos</p>
                       <p className="text-sm text-brand-muted mb-3 max-w-xs">
                         Exporte em PDF, DOCX, CSV e XLS individualmente ou em massa.
                       </p>
                       <a href="/dashboard/plano"
                         className="text-xs font-bold px-4 py-2 rounded-full"
                         style={{ background: 'rgba(var(--color-primary)/.12)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(var(--color-primary)/.25)' }}>
-                        Assinar Pro →
+                        Ver planos →
                       </a>
                     </div>
                   ) : null}

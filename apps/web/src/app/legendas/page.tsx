@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'ZapScript Legendas — Legenda automática para Reels, Stories e Shorts',
-  description: 'Envie o vídeo e receba a legenda pronta em .srt e .vtt em minutos, via IA (Whisper). Sem editar na mão, sem plugin de vídeo. R$37/mês.',
+  description: 'Envie o vídeo e receba a legenda pronta em .srt e .vtt em minutos, via IA (Whisper). Sem editar na mão, sem plugin de vídeo. Módulo em breve — comece grátis no ZapScript.',
   keywords: 'legenda automática vídeo, legenda reels, legenda stories, gerar srt automatico, legenda shorts, transcrição de vídeo ia',
   alternates: { canonical: 'https://www.zapscript.me/legendas' },
   openGraph: {
@@ -41,7 +41,7 @@ const schema = {
       name: 'Quanto custa o ZapScript Legendas?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'R$37 por mês, com uso ilimitado de envios dentro da sua conta. Pagamento via Pix ou cartão, sem fidelidade — cancele quando quiser.',
+        text: 'O módulo Legendas está em breve — ainda não é vendido separadamente. Enquanto isso, crie uma conta grátis no ZapScript (Core) para transcrição e resumo de áudios do WhatsApp.',
       },
     },
     {
@@ -80,7 +80,7 @@ const PAINS = [
 const FAQS = [
   { q: 'Como funciona o ZapScript Legendas?', a: 'Você envia o vídeo (MP4, MOV, WebM, MKV, 3GP ou AVI, até 500MB). A IA transcreve a fala automaticamente com marcação de tempo, e você baixa a legenda pronta em .srt e .vtt.' },
   { q: 'Quais formatos de legenda são gerados?', a: 'Geramos .srt (aceito pela maioria dos editores e redes sociais) e .vtt (usado em players web), ambos já sincronizados com o áudio do vídeo.' },
-  { q: 'Quanto custa?', a: 'R$37/mês, com uso ilimitado de envios. Pix ou cartão, sem fidelidade — cancele quando quiser direto no painel.' },
+  { q: 'Quanto custa?', a: 'O módulo ainda está em breve — não é vendido separadamente por enquanto. Você pode começar grátis no ZapScript (Core) já hoje.' },
   { q: 'Preciso editar o vídeo depois?', a: 'Não. Basta importar o .srt no seu editor (CapCut, Premiere, InShot) ou usar o .vtt direto em players web — a legenda já vem sincronizada.' },
   { q: 'Funciona com qualquer tamanho de vídeo?', a: 'Aceitamos arquivos de até 500MB nos formatos MP4, MOV, WebM, MKV, 3GP e AVI — suficiente para a maioria dos Reels, Stories e Shorts.' },
 ];
@@ -107,7 +107,7 @@ export default function LegendasPage() {
 
         <div className="text-center mb-16">
           <div className="inline-flex items-center gap-2 bg-brand-primary/10 border border-brand-primary/20 rounded-full px-4 py-1.5 text-sm font-medium text-brand-primary mb-6">
-            🎬 Novo módulo ZapScript
+            🎬 Módulo ZapScript · Em breve
           </div>
           <h1 className="text-3xl sm:text-5xl font-bold text-white leading-tight mb-5">
             Legenda automática<br />
@@ -118,9 +118,9 @@ export default function LegendasPage() {
           </p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link href="/cadastro?utm_source=seo&utm_campaign=legendas" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-base px-8 py-3.5 rounded-2xl hover:opacity-90 transition-opacity">
-              Criar conta e testar →
+              Começar grátis no ZapScript →
             </Link>
-            <span className="text-sm text-brand-muted">R$37/mês · Pix ou cartão · cancele quando quiser</span>
+            <span className="text-sm text-brand-muted">🚧 Legendas em breve · Core é grátis</span>
           </div>
         </div>
 
@@ -153,14 +153,13 @@ export default function LegendasPage() {
           ))}
         </div>
 
-        {/* Pricing */}
+        {/* Status */}
         <div className="mb-16 rounded-2xl p-8 border border-brand-primary/30 text-center" style={{ background: 'rgba(16,185,129,.06)' }}>
           <div className="text-xs font-mono uppercase tracking-widest text-brand-primary mb-3">ZapScript Legendas</div>
           <div className="flex items-baseline justify-center gap-1 mb-2">
-            <span className="text-4xl font-black text-white">R$37</span>
-            <span className="text-brand-muted">/mês</span>
+            <span className="text-2xl font-black text-white">🚧 Em breve</span>
           </div>
-          <p className="text-sm text-brand-muted mb-6">Envios ilimitados dentro da sua conta · sem fidelidade</p>
+          <p className="text-sm text-brand-muted mb-6">Ainda não é vendido separadamente — enquanto isso, comece grátis no Core.</p>
           <ul className="space-y-2 text-sm text-brand-muted text-left max-w-sm mx-auto mb-6">
             <li>✅ Legenda automática via IA (Whisper)</li>
             <li>✅ Formatos .srt e .vtt prontos para uso</li>
@@ -168,7 +167,7 @@ export default function LegendasPage() {
             <li>✅ Mesmo login da sua conta ZapScript</li>
           </ul>
           <Link href="/cadastro?utm_source=seo&utm_campaign=legendas" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold px-8 py-3.5 rounded-2xl hover:opacity-90 transition-opacity">
-            Criar conta e contratar →
+            Começar grátis no ZapScript →
           </Link>
         </div>
 
@@ -192,7 +191,7 @@ export default function LegendasPage() {
 
         <div className="text-center py-12 rounded-2xl border border-brand-primary/20" style={{ background: 'rgba(16,185,129,.05)' }}>
           <h2 className="text-2xl font-bold text-white mb-3">Pare de legendar na mão</h2>
-          <p className="text-brand-muted mb-6">Crie sua conta ZapScript e contrate o módulo Legendas em menos de 2 minutos.</p>
+          <p className="text-brand-muted mb-6">O módulo Legendas está em breve. Crie sua conta grátis no ZapScript enquanto isso.</p>
           <Link href="/cadastro?utm_source=seo&utm_campaign=legendas" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
             Criar minha conta →
           </Link>

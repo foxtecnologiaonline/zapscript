@@ -99,8 +99,9 @@ const schemaOrg = {
     audienceType: 'Corretores, advogados, vendedores, contadores e profissionais que recebem muitos áudios no WhatsApp',
   },
   offers: [
-    { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Free', description: '15 áudios por mês, sem cartão' },
-    { '@type': 'Offer', price: '37', priceCurrency: 'BRL', name: 'Pro', description: 'Áudios ilimitados, 2 números, resumo com IA, Modo Privado e histórico' },
+    { '@type': 'Offer', price: '0', priceCurrency: 'BRL', name: 'Core', description: 'Até 100 áudios por mês, sem cartão' },
+    { '@type': 'Offer', price: '49', priceCurrency: 'BRL', name: 'Profissional', description: 'Áudios ilimitados, atendimento automático por IA, resumo com IA, Modo Privado e histórico' },
+    { '@type': 'Offer', price: '99', priceCurrency: 'BRL', name: 'Empresas', description: 'Tudo do Profissional + CRM, Tarefas e até 5 usuários' },
   ],
   publisher: {
     '@type': 'Organization',
