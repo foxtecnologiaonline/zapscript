@@ -98,6 +98,7 @@ export default async function teamRoutes(app: FastifyInstance) {
         createdAt: team.createdAt,
         members: team.members.map((m: any) => ({
           id: m.id,
+          userId: m.userId, // usado por outros módulos (ex.: Tarefas) para atribuir a um membro
           name: m.user?.name || m.invitedEmail || 'Convidado',
           email: m.user?.email || m.invitedEmail || '',
           role: m.role,

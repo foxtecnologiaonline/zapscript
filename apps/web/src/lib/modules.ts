@@ -26,6 +26,7 @@ export const MODULE_ICON: Record<string, string> = {
   legenda: '🎬',
   vendas: '🗣️',
   multicanal: '📷',
+  tarefas: '✅',
 };
 
 /** Rota interna para "Abrir" um módulo contratado. core reutiliza o dashboard atual. */

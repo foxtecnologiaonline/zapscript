@@ -5,9 +5,11 @@ import { usePathname } from 'next/navigation';
 import { api } from '@/lib/api';
 
 const ALL_TABS = [
-  { href: '/app/atende',        label: 'Conversas',            minRole: 'agent' },
-  { href: '/app/atende/config', label: 'Configuração',         minRole: 'manager' },
-  { href: '/app/atende/kb',     label: 'Base de conhecimento', minRole: 'manager' },
+  { href: '/app/atende',           label: 'Conversas',            minRole: 'agent' },
+  { href: '/app/atende/avisos',    label: 'Avisos',               minRole: 'agent' },
+  { href: '/app/atende/dashboard', label: 'Dashboard',            minRole: 'agent' },
+  { href: '/app/atende/config',    label: 'Configuração',         minRole: 'manager' },
+  { href: '/app/atende/kb',        label: 'Base de conhecimento', minRole: 'manager' },
 ] as const;
 
 const ROLE_RANK: Record<string, number> = { agent: 0, manager: 1, admin: 2, owner: 3 };
