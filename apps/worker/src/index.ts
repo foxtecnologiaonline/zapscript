@@ -794,7 +794,7 @@ async function loadUsage(userId: string): Promise<{ plan: 'pro' | 'free'; quota:
   const [user, bal] = await Promise.all([
     prisma.user.findUnique({
       where:  { id: userId },
-      select: { isTester: true, subscription: { select: { status: true, trialEndsAt: true, plan: { select: { name: true } } } } },
+      select: { isTester: true, subscription: { select: { status: true, plan: { select: { name: true } } } } },
     }),
     prisma.minuteBalance.findUnique({ where: { userId }, select: { audiosUsed: true } }),
   ]);

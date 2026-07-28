@@ -2937,10 +2937,10 @@ export default async function adminRoutes(app: FastifyInstance) {
         }
       }
 
-      // ── 3 + 4) Unit economics + MRR movement + churn + trial→pago ──────────
+      // ── 3 + 4) Unit economics + MRR movement + churn + conversão cadastro→pago ──
       async function economics() {
         try {
-          const [activeSubs, canceledLast30, newPaidLast30, paidCohort60, trialFinished60, totalUsers] = await Promise.all([
+          const [activeSubs, canceledLast30, newPaidLast30, paidCohort60, signupsAged60, totalUsers] = await Promise.all([
             prisma.subscription.findMany({
               where:   { status: 'active' },
               include: { plan: { select: { priceBrl: true } }, user: { select: { isTester: true } } },
@@ -2953,11 +2953,11 @@ export default async function adminRoutes(app: FastifyInstance) {
               where:   { status: 'active', createdAt: { gte: d30 } },
               include: { plan: { select: { priceBrl: true } }, user: { select: { isTester: true } } },
             }),
-            // pagantes não-tester que entraram nos últimos 60 dias (conversões do funil de trial)
+            // pagantes não-tester que entraram nos últimos 60 dias (conversões do funil de cadastro, sem trial)
             prisma.subscription.count({
               where: { status: 'active', plan: { priceBrl: { gt: 0 } }, user: { isTester: false }, createdAt: { gte: d60 } },
             }),
-            // usuários cujo trial (D7) já terminou: criados entre 60 e 7 dias atrás — denominador da conversão
+            // usuários com pelo menos 7 dias de conta: criados entre 60 e 7 dias atrás — denominador da conversão
             prisma.user.count({ where: { deletedAt: null, createdAt: { gte: d60, lte: d7 } } }),
             prisma.user.count({ where: { deletedAt: null } }),
           ]);
@@ -2978,14 +2978,14 @@ export default async function adminRoutes(app: FastifyInstance) {
             : null;
           // LTV = ARPPU / churn mensal (fração). Sem churn medido → null.
           const ltv = (churnRate && churnRate > 0) ? Math.round((arppu / (churnRate / 100)) * 100) / 100 : null;
-          // trial → pago D7: pagantes (≤60d) / usuários cujo D7 já passou (7–60d)
-          const trialToPaidRate = trialFinished60 > 0 ? Math.round((paidCohort60 / trialFinished60) * 1000) / 10 : null;
+          // conversão cadastro→pago em até 60 dias: pagantes (≤60d) / usuários com ≥7 dias de conta (7–60d)
+          const signupToPaidRate60d = signupsAged60 > 0 ? Math.round((paidCohort60 / signupsAged60) * 1000) / 10 : null;
 
           return {
             mrr, payingCount, totalUsers, arpu, arppu, ltv,
             churnRate, churnedCustomers, churnedMrr, newMrr,
             netNewMrr: Math.round((newMrr - churnedMrr) * 100) / 100,
-            trialToPaidRate,
+            signupToPaidRate60d,
             // CAC / payback dependem de investimento em mídia (não está no banco) → informados pelo painel Financeiro
             cac: null, ltvCacRatio: null, paybackMonths: null,
           };

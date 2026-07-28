@@ -2223,9 +2223,9 @@ function GrowthMetricsPanel({ apiBase, token }: { apiBase: string; token: string
             {stat('Novo MRR', brl(e.newMrr), '#10b981')}
             {stat('MRR perdido', brl(e.churnedMrr), '#f87171')}
             {stat('MRR líquido', brl(e.netNewMrr), e.netNewMrr >= 0 ? '#10b981' : '#f87171')}
-            {stat('Trial→Pago D7', e.trialToPaidRate != null ? `${e.trialToPaidRate}%` : '—', '#34d399')}
+            {stat('Cadastro→Pago (60d)', e.signupToPaidRate60d != null ? `${e.signupToPaidRate60d}%` : '—', '#34d399')}
           </div>
-          <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-2">{e.churnedCustomers} cliente(s) cancelado(s) nos últimos 30 dias. Trial→Pago = pagantes / usuários cujo D7 já passou (7–60d).</div>
+          <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-2">{e.churnedCustomers} cliente(s) cancelado(s) nos últimos 30 dias. Cadastro→Pago = pagantes (≤60d) / usuários com ≥7 dias de conta (7–60d). Sem trial — ZapScript 2.0 é freemium direto.</div>
         </div>
       )}
 

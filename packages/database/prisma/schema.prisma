@@ -72,7 +72,7 @@ model User {
 
 model Plan {
   id              String         @id @default(cuid())
-  name            String         @unique // "free" | "pro" | "ultra"
+  name            String         @unique // "free" | "pro" | "executive" | "profissional" | "empresas"
   label           String
   minutesPerMonth Int // [LEGADO] mantido só como métrica interna de custo
   audiosPerMonth  Int            @default(0) // Métrica primária de cota: nº de áudios/mês. FREE=15, PRO=500 (teto oculto)
@@ -92,9 +92,12 @@ model Subscription {
   paymentMethod       String? // 'credit_card' | 'pix'
   status              String    @default("active") // 'trialing' | 'active' | 'past_due' | 'canceled'
   currentPeriodEnd    DateTime?
-  // ── Trial Freemium: novo usuário entra com 7 dias de PRO grátis ──
-  trialEndsAt         DateTime? // fim do trial PRO (D7); job diário rebaixa para FREE em D8
-  trialDowngradedAt   DateTime? // marca quando o rebaixamento automático ocorreu (idempotência)
+  // ── [LEGADO] Trial Freemium removido (ZapScript 2.0 é freemium direto,
+  //    sem cartão/trial no cadastro). Campos órfãos — nada mais escreve ou
+  //    lê estas duas colunas; mantidas só para não quebrar linhas antigas.
+  //    Candidatas a remoção numa migração futura, após confirmar uso zero. ──
+  trialEndsAt         DateTime?
+  trialDowngradedAt   DateTime?
   testerRenewalsUsed  Int       @default(0) // Renovações mensais isentas consumidas (máx 12)
   comboDiscountPct    Float? // % fixo (ex.: 0.20) aplicado sobre o valor agregado — setado ao contratar o Combo (Core+módulos)
   createdAt           DateTime  @default(now())
