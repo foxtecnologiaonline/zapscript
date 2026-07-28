@@ -306,6 +306,12 @@ export const createCampanhaSchema = z.object({
   templateComponents: z.array(z.record(z.any())).optional(),
 });
 
+// ── API pública (tier Empresas) ────────────────────────────
+export const createApiKeySchema = z.object({
+  name:   z.string().min(2, 'Nome precisa ter pelo menos 2 caracteres').max(60),
+  scopes: z.array(z.enum(['conversations:read', 'contacts:read'])).min(1, 'Escolha ao menos 1 escopo'),
+});
+
 // ── Types Export ──────────────────────────────────────────
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

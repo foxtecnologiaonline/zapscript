@@ -324,6 +324,9 @@ app.register(import('./routes/cobranca'),        { prefix: '/cobranca' });
 app.register(import('./routes/legendas'),        { prefix: '/legendas' });
 // Plano Empresas — multi-seat MVP
 app.register(import('./routes/teams'),           { prefix: '/teams' });
+// API pública ZapScript 2.0 (tier Empresas) — gestão de chaves (sessão) + consumo externo (X-Api-Key)
+app.register(import('./routes/apiKeys'),         { prefix: '/api-keys' });
+app.register(import('./routes/publicApi'),       { prefix: '/public/v1' });
 // Demo de upload no site removido — vira app/site separado. Rota desativada.
 app.register(import('./routes/analytics'),       { prefix: '/analytics' });
 

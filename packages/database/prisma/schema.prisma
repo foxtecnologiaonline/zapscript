@@ -64,6 +64,7 @@ model User {
   legendaJobs             LegendaJob[]
   ownedTeams              Team[]              @relation("TeamOwner")
   teamMemberships         TeamMember[]
+  apiKeys                 ApiKey[]
 }
 
 model Plan {
@@ -976,5 +977,26 @@ model TeamMember {
   createdAt DateTime @default(now())
 
   @@index([teamId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API pública ZapScript 2.0 (tier Empresas) — chaves para integrar com Zapier,
+// Make etc. Só o DONO do tier Empresas cria chaves (nunca membro de time — ver
+// lib/teamScope.ts). O valor real da chave é mostrado 1x na criação; só o hash
+// (SHA-256) fica no banco.
+// ─────────────────────────────────────────────────────────────────────────────
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  name       String // rótulo livre escolhido pelo dono (ex.: "Zapier")
+  keyHash    String    @unique // SHA-256 do token real
+  keyPrefix  String // primeiros caracteres do token, só para exibição/identificação
+  scopes     String[]  @default([]) // 'conversations:read' | 'contacts:read'
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }

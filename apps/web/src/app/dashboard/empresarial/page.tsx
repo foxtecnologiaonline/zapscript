@@ -2,6 +2,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import ApiKeysPanel from './ApiKeysPanel';
 
 interface TeamMember {
   id: string;
@@ -464,6 +465,9 @@ function EmpresarialContent() {
               ))}
             </div>
           </div>
+
+          {/* API pública — só faz sentido pro dono do tier Empresas */}
+          {isOwner && team.ownerPlan?.name === 'empresas' && <ApiKeysPanel />}
         </>
       )}
     </div>
