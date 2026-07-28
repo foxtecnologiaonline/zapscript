@@ -685,14 +685,18 @@ async function runAutoMigrations() {
           FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
-    // Módulo lançado como MVP (status 'beta') em 2026-07-24 — ver packages/modules/catalog.ts.
+    // Módulo Legendas retirado de venda (ajuste de negócio) — força 'planned'
+    // (oculto do catálogo/menu/marketplace) a cada boot, mesmo tendo rodado
+    // como 'beta' antes. Rotas, dados (LegendaJob) e o acesso de quem já
+    // tinha o módulo continuam intactos — só novas contratações são bloqueadas
+    // (ver checagem de status em routes/billing.ts). Não promover sem decisão
+    // explícita — ver packages/modules/catalog.ts.
     `DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'legenda') THEN
-        UPDATE "Product" SET "status" = 'beta', "priceMonthly" = 37, "priceYearly" = 355
-          WHERE "key" = 'legenda' AND "status" NOT IN ('beta', 'ga');
+        UPDATE "Product" SET "status" = 'planned' WHERE "key" = 'legenda';
       ELSE
         INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
-        VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'beta', 37, 355, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'planned', 37, 355, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
     // Módulo Campanhas (migração 20260713_campanhas_tables): auto-cura o schema no

@@ -130,7 +130,10 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '🎬',
     tagline: 'Legenda automática para Reels e Stories',
     jtbd: 'Faço vídeo curto e preciso de legenda sem editar na mão.',
-    status: 'beta',
+    // Retirado de venda (ajuste de negócio) — código e dados (LegendaJob)
+    // seguem intactos; quem já tinha o módulo mantém acesso. Não promover
+    // sem decisão explícita. Ver o force-heal em apps/api/src/index.ts.
+    status: 'planned',
     priceMonthly: 37,
     priceYearly: 355,
     dependsOn: [],

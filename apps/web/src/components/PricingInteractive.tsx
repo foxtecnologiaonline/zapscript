@@ -109,7 +109,7 @@ export function PricingInteractive() {
                   boxShadow: active ? '0 2px 8px rgba(16,185,129,.3)' : 'none',
                 }}
               >
-                {cycle === 'monthly' ? 'Mensal' : 'Anual'}
+                {cycle === 'monthly' ? 'Aluguel (mensal)' : 'Compra (anual)'}
                 {cycle === 'yearly' && (
                   <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded"
                     style={{

@@ -10,7 +10,7 @@ function escHtml(s: string | null | undefined): string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 import { calculateProration } from '../lib/proration';
-import { validateRequest, billingCheckoutSchema, billingUpgradeSchema, billingTrialCardSchema, moduleSubscribeSchema } from '../lib/validation';
+import { validateRequest, billingCheckoutSchema, billingUpgradeSchema, moduleSubscribeSchema } from '../lib/validation';
 import { invalidatePlanCache } from '../lib/planGate';
 import { attributeAffiliateCommission, clawbackAffiliateCommissionOnCancel } from '../lib/affiliate';
 import { invalidateModuleCache } from '../lib/moduleGate';
@@ -259,14 +259,22 @@ async function activatePlan(userId: string, planName: string, opts: {
   invalidatePlanCache(userId).catch(() => null);
 
   // ── Tiers ZapScript 2.0: sincroniza os módulos inclusos no pacote, com o
-  // mesmo período de cobrança do tier (mensal ou anual). Módulos comprados
-  // avulso (source='paid') não são afetados.
-  const bundleKeys = TIER_MODULE_BUNDLES[planName];
-  if (bundleKeys) {
-    for (const key of bundleKeys) {
-      await activateModuleEntitlement(userId, key, { periodDays: cycleDays, source: 'bundle' });
-    }
+  // mesmo período de cobrança do tier (mensal ou anual). Ativa os do bundle
+  // novo E revoga os que só existiam por causa de um tier anterior (migração
+  // entre tiers, ex.: empresas → atende perde campanhas/cobrança). Módulos
+  // comprados avulso (source='paid') nunca são afetados.
+  const bundleKeys = TIER_MODULE_BUNDLES[planName] ?? [];
+  for (const key of bundleKeys) {
+    await activateModuleEntitlement(userId, key, { periodDays: cycleDays, source: 'bundle' });
   }
+  await prisma.entitlement.updateMany({
+    where: {
+      userId, source: 'bundle', status: { in: ['active', 'trialing'] },
+      ...(bundleKeys.length ? { productKey: { notIn: bundleKeys } } : {}),
+    },
+    data: { status: 'canceled', canceledAt: new Date() },
+  });
+  invalidateModuleCache(userId).catch(() => null);
 }
 
 /* ── Valor agregado atual: core pago (se houver) + módulos pagos ativos ──
@@ -683,112 +691,15 @@ export default async function billingRoutes(app: FastifyInstance) {
     }
   );
 
-  // ── POST /billing/trial-card ─────────────────────────────
-  // Trial com cartão (OPCIONAL). Durante o trial PRO o usuário pode cadastrar um
-  // cartão para garantir a continuidade. O Asaas cria uma assinatura cujo 1º
-  // vencimento é o FIM do trial (D+7) — nada é cobrado agora. Quando o pagamento
-  // é confirmado em D+7, o webhook chama activatePlan (trialing → active).
-  app.post<{ Body: any }>(
-    '/trial-card',
-    { ...auth, config: { rateLimit: { max: 8, timeWindow: '1 minute' } } },
-    async (req: any, reply) => {
-      const v = validateRequest(billingTrialCardSchema)(req.body);
-      if (!v.valid) return reply.code(400).send({ error: v.error });
-
-      const { card, billingAddress } = v.data;
-      const userId = req.user.sub;
-
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (!user) return reply.code(401).send({ error: 'Usuário não encontrado' });
-
-      // ── Mesmo gate da assinatura: e-mail verificado + CPF/CNPJ ──
-      if (!user.emailVerified) {
-        return reply.code(403).send({
-          code:  'EMAIL_NOT_VERIFIED',
-          error: 'Confirme seu e-mail antes de cadastrar um cartão.',
-        });
-      }
-      if (!user.document) {
-        return reply.code(400).send({
-          code:  'DOCUMENT_REQUIRED',
-          error: 'Informe seu CPF/CNPJ para cadastrar um cartão.',
-        });
-      }
-
-      // ── Só faz sentido durante o trial PRO ativo ──
-      const sub = await prisma.subscription.findUnique({ where: { userId } });
-      const now = new Date();
-      const onTrial = sub?.status === 'trialing' && !!sub.trialEndsAt && sub.trialEndsAt > now;
-      if (!onTrial || !sub?.trialEndsAt) {
-        return reply.code(400).send({ error: 'Cadastro de cartão disponível apenas durante o período de teste.' });
-      }
-      // Idempotência: cartão já garantido neste trial
-      if (sub.paymentMethod === 'credit_card' && sub.asaasSubscriptionId) {
-        return { status: 'already_set', chargeDate: sub.trialEndsAt.toISOString().slice(0, 10) };
-      }
-
-      // ── Criar/buscar cliente no Asaas ──
-      let asaasCustomerId: string;
-      try {
-        asaasCustomerId = sub.asaasCustomerId || await getOrCreateCustomer(user);
-      } catch (err: any) {
-        app.log.error({ err }, 'Asaas customer error (trial-card)');
-        return reply.code(503).send({ error: 'Serviço de pagamento indisponível. Tente novamente.' });
-      }
-
-      // 1º vencimento = fim do trial (D+7). Nada é cobrado agora; o cartão é tokenizado.
-      const nextDue  = sub.trialEndsAt.toISOString().slice(0, 10);
-      const remoteIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
-      const cardObj  = {
-        holderName:  card.holderName.toUpperCase(),
-        number:      card.number.replace(/\s/g, ''),
-        expiryMonth: card.expiryMonth,
-        expiryYear:  card.expiryYear.length === 2 ? `20${card.expiryYear}` : card.expiryYear,
-        ccv:         card.ccv,
-      };
-
-      const subRes = await asaas('/subscriptions', {
-        method: 'POST',
-        body: JSON.stringify({
-          customer:             asaasCustomerId,
-          billingType:          'CREDIT_CARD',
-          value:                PLAN_PRICES.pro,
-          nextDueDate:          nextDue,
-          cycle:                'MONTHLY',
-          description:          `ZapScript ${PLAN_LABELS.pro} — Assinatura mensal (após teste grátis)`,
-          externalReference:    encodeRef(userId, 'pro'),
-          creditCard:           cardObj,
-          creditCardHolderInfo: buildHolderInfo(user, billingAddress),
-          remoteIp,
-        }),
-      }).then(r => r.json()).catch(() => null) as any;
-
-      if (!subRes?.id) {
-        const errMsg = subRes?.errors?.[0]?.description || subRes?.message || 'Cartão não aprovado. Verifique os dados e tente novamente.';
-        app.log.warn({ subRes }, 'Asaas trial-card subscription error');
-        return reply.code(402).send({ status: 'declined', error: errMsg });
-      }
-
-      // Mantém o status 'trialing' — apenas anexa o cartão e a assinatura futura.
-      // O webhook PAYMENT_CONFIRMED em D+7 chama activatePlan → 'active'.
-      await prisma.subscription.update({
-        where: { userId },
-        data:  { asaasSubscriptionId: subRes.id, asaasCustomerId, paymentMethod: 'credit_card' },
-      }).catch((e: any) => app.log.warn({ err: e.message, userId }, '[TrialCard] Falha ao anexar cartão à subscription'));
-
-      app.log.info(`Trial-card cadastrado: userId=${userId} sub=${subRes.id} 1ºvenc=${nextDue} valor=${PLAN_PRICES.pro}`);
-      return { status: 'trial_card_set', chargeDate: nextDue };
-    }
-  );
-
   // ── GET /billing/upgrade-preview ─────────────────────
-  app.get<{ Querystring: { targetPlan: string } }>(
+  app.get<{ Querystring: { targetPlan: string; billingCycle?: string } }>(
     '/upgrade-preview',
     auth,
     async (req: any, reply) => {
       const { targetPlan } = req.query;
+      const isYearly = req.query.billingCycle === 'yearly';
       const userId  = req.user.sub;
-      const newPrice = PLAN_PRICES[targetPlan];
+      const newPrice = isYearly ? PLAN_PRICES_YEARLY[targetPlan] : PLAN_PRICES[targetPlan];
       if (!newPrice) return reply.code(400).send({ error: 'Plano inválido' });
 
       const sub = await prisma.subscription.findUnique({
@@ -798,10 +709,10 @@ export default async function billingRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Use /billing/checkout para sair do plano gratuito.' });
       }
       const currentPrice = sub.plan.priceBrl;
-      if (newPrice <= currentPrice) {
-        return reply.code(400).send({ error: 'Plano destino deve ser mais caro que o atual.' });
-      }
 
+      // Migração livre entre planos pagos — pode ser mais caro (upgrade, cobra
+      // proration) ou mais barato (downgrade, troca sem custo adicional, ver
+      // calculateProration: diferença negativa vira 0).
       const proration = calculateProration(currentPrice, newPrice, sub.currentPeriodEnd);
       return {
         currentPlanName:  sub.plan.name,
@@ -809,6 +720,7 @@ export default async function billingRoutes(app: FastifyInstance) {
         currentPlanPrice: currentPrice,
         targetPlanName:   targetPlan,
         targetPlanPrice:  newPrice,
+        billingCycle:     isYearly ? 'yearly' : 'monthly',
         remainingDays:    proration.remainingDays,
         totalDays:        proration.totalDays,
         proratedAmount:   proration.proratedAmount,
@@ -819,7 +731,8 @@ export default async function billingRoutes(app: FastifyInstance) {
   );
 
   // ── POST /billing/upgrade ─────────────────────────────
-  // Upgrade de plano pago → pago (cobra proration + cria nova assinatura)
+  // Migração entre planos pagos (qualquer direção — upgrade cobra proration,
+  // downgrade troca sem custo adicional na hora, ver calculateProration).
   app.post<{ Body: any }>(
     '/upgrade',
     { ...auth, config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
@@ -827,14 +740,15 @@ export default async function billingRoutes(app: FastifyInstance) {
       const v = validateRequest(billingUpgradeSchema)(req.body);
       if (!v.valid) return reply.code(400).send({ error: v.error });
 
-      const { targetPlan, paymentMethod, card, billingAddress } = v.data;
+      const { targetPlan, paymentMethod, card, billingAddress, billingCycle } = v.data;
+      const isYearly = billingCycle === 'yearly';
       const userId = req.user.sub;
 
       if (isCardMethod(paymentMethod) && !card) {
         return reply.code(400).send({ error: 'Dados do cartão são obrigatórios.' });
       }
 
-      const newPrice = PLAN_PRICES[targetPlan];
+      const newPrice = isYearly ? PLAN_PRICES_YEARLY[targetPlan] : PLAN_PRICES[targetPlan];
       if (!newPrice) return reply.code(400).send({ error: 'Plano inválido' });
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -846,12 +760,11 @@ export default async function billingRoutes(app: FastifyInstance) {
       if (!sub?.plan || sub.plan.priceBrl === 0) {
         return reply.code(400).send({ error: 'Use /billing/checkout para sair do plano gratuito.' });
       }
-
-      const currentPrice = sub.plan.priceBrl;
-      if (newPrice <= currentPrice) {
-        return reply.code(400).send({ error: 'Plano destino deve ser mais caro que o atual.' });
+      if (sub.plan.name === targetPlan) {
+        return reply.code(400).send({ error: 'Você já está neste plano.' });
       }
 
+      const currentPrice = sub.plan.priceBrl;
       const proration = calculateProration(currentPrice, newPrice, sub.currentPeriodEnd);
 
       // Buscar/criar customer
@@ -873,8 +786,8 @@ export default async function billingRoutes(app: FastifyInstance) {
             billingType:       toAsaasBillingType(paymentMethod),
             value:             newPrice,
             nextDueDate:       todayStr(),
-            cycle:             'MONTHLY',
-            description:       `ZapScript ${PLAN_LABELS[targetPlan]} — Assinatura mensal`,
+            cycle:             isYearly ? 'YEARLY' : 'MONTHLY',
+            description:       `ZapScript ${PLAN_LABELS[targetPlan]} — Assinatura ${isYearly ? 'anual' : 'mensal'}`,
             externalReference: encodeRef(userId, targetPlan),
           }),
         }).then(r => r.json()).catch(() => null) as any;
@@ -894,6 +807,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           asaasSubscriptionId: newSubRes.id,
           asaasCustomerId,
           paymentMethod,
+          yearly: isYearly,
         });
         return { switched: true, status: 'active', planName: targetPlan, message: 'Plano atualizado sem custo adicional.' };
       }
@@ -904,8 +818,8 @@ export default async function billingRoutes(app: FastifyInstance) {
         billingType:       toAsaasBillingType(paymentMethod),
         value:             proration.proratedAmount,
         dueDate:           todayStr(),
-        description:       `Upgrade ZapScript: ${sub.plan.label} → ${PLAN_LABELS[targetPlan]}`,
-        externalReference: encodeRef(userId, targetPlan, 'upgrade'),
+        description:       `Migração ZapScript: ${sub.plan.label} → ${PLAN_LABELS[targetPlan]}`,
+        externalReference: encodeRef(userId, targetPlan, isYearly ? 'upgrade_yearly' : 'upgrade'),
       };
 
       if (isCardMethod(paymentMethod) && card) {
@@ -951,8 +865,8 @@ export default async function billingRoutes(app: FastifyInstance) {
               billingType:       toAsaasBillingType(paymentMethod),
               value:             newPrice,
               nextDueDate:       todayStr(),
-              cycle:             'MONTHLY',
-              description:       `ZapScript ${PLAN_LABELS[targetPlan]} — Assinatura mensal`,
+              cycle:             isYearly ? 'YEARLY' : 'MONTHLY',
+              description:       `ZapScript ${PLAN_LABELS[targetPlan]} — Assinatura ${isYearly ? 'anual' : 'mensal'}`,
               externalReference: encodeRef(userId, targetPlan),
             }),
           }).then(r => r.json()).catch(() => null) as any;
@@ -962,8 +876,9 @@ export default async function billingRoutes(app: FastifyInstance) {
             asaasCustomerId,
             paymentMethod,
             paymentId: charge.id,
+            yearly: isYearly,
           });
-          app.log.info(`Upgrade cartão aprovado: userId=${userId} plan=${targetPlan} method=${paymentMethod}`);
+          app.log.info(`Migração de plano (cartão) aprovada: userId=${userId} plan=${targetPlan} method=${paymentMethod} cycle=${isYearly ? 'yearly' : 'monthly'}`);
           return { status: 'active', switched: true, planName: targetPlan };
         }
         return reply.code(402).send({ status: 'declined', error: 'Pagamento não aprovado.' });
@@ -1713,8 +1628,9 @@ export default async function billingRoutes(app: FastifyInstance) {
         return reply.send({ received: true });
       }
 
-      if (type === 'upgrade') {
-        // ── Cobrança de proration do upgrade aprovada ──
+      if (type === 'upgrade' || type === 'upgrade_yearly') {
+        // ── Cobrança de proration da migração de plano aprovada ──
+        const isYearlyUpgrade = type === 'upgrade_yearly';
         const sub = await prisma.subscription.findUnique({ where: { userId } }).catch(() => null);
         const asaasCustomerId = sub?.asaasCustomerId || payment?.customer;
 
@@ -1729,10 +1645,10 @@ export default async function billingRoutes(app: FastifyInstance) {
           body: JSON.stringify({
             customer:          asaasCustomerId,
             billingType:       payment.billingType || 'PIX',
-            value:             PLAN_PRICES[planName] ?? 0,
+            value:             (isYearlyUpgrade ? PLAN_PRICES_YEARLY[planName] : PLAN_PRICES[planName]) ?? 0,
             nextDueDate:       todayStr(),
-            cycle:             'MONTHLY',
-            description:       `ZapScript ${PLAN_LABELS[planName]} — Assinatura mensal`,
+            cycle:             isYearlyUpgrade ? 'YEARLY' : 'MONTHLY',
+            description:       `ZapScript ${PLAN_LABELS[planName]} — Assinatura ${isYearlyUpgrade ? 'anual' : 'mensal'}`,
             externalReference: encodeRef(userId, planName),
           }),
         }).then(r => r.json()).catch(() => null) as any;
@@ -1742,8 +1658,9 @@ export default async function billingRoutes(app: FastifyInstance) {
           asaasCustomerId,
           paymentMethod:       payment.billingType === 'CREDIT_CARD' ? 'credit_card' : payment.billingType === 'DEBIT_CARD' ? 'debit_card' : 'pix',
           paymentId:           payment.id,
+          yearly:              isYearlyUpgrade,
         });
-        app.log.info(`Upgrade via webhook: userId=${userId} plan=${planName}`);
+        app.log.info(`Migração de plano via webhook: userId=${userId} plan=${planName} cycle=${isYearlyUpgrade ? 'yearly' : 'monthly'}`);
 
       } else {
         // ── Pagamento de assinatura normal (mensal ou anual) ──

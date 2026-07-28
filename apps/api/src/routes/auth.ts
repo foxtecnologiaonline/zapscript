@@ -5,7 +5,6 @@ import { sendEmail } from '../lib/mailer';
 import { logger } from '../lib/logger';
 import { validateRequest, registerSchema, loginSchema } from '../lib/validation';
 import { encryptStr, decryptStr, documentHash as computeDocHash } from '../services/encryption';
-import { TRIAL_DAYS } from '../lib/freemium';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -200,16 +199,13 @@ export default async function authRoutes(app: FastifyInstance) {
       });
       if (error) return reply.code(400).send({ error: error.message });
 
-      // Freemium: TODO novo usuário começa no PRO.
+      // Sem trial: usuário comum entra direto no Free/Core.
       //  • Tester      → PRO permanente (isTester, isenção 12 meses via testerRenewalsUsed)
-      //  • Não-tester  → TRIAL de 7 dias de PRO (status 'trialing'); ao expirar, o worker
-      //    faz downgrade automático para FREE no dia seguinte (D8), sem depender de login.
-      const plan = await prisma.plan.findUnique({ where: { name: 'pro' } });
+      //  • Não-tester  → Free, ativo, sem período de teste.
+      const plan = await prisma.plan.findUnique({ where: { name: testerInvite ? 'pro' : 'free' } });
       if (!plan) return reply.code(500).send({ error: 'Planos não configurados. Rode o seed.' });
 
-      const now          = new Date();
-      const isTrial      = !testerInvite;
-      const trialEndsAt  = isTrial ? new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000) : null;
+      const now = new Date();
 
       // Criar User + Subscription + MinuteBalance em transação atômica
       // Se falhar: rollback do usuário Supabase para evitar conta órfã (autenticada mas sem dados)
@@ -243,9 +239,8 @@ export default async function authRoutes(app: FastifyInstance) {
             data: {
               userId:          u.id,
               planId:          plan.id,
-              // Tester = PRO ativo permanente; não-tester = trial de 7 dias.
-              status:          isTrial ? 'trialing' : 'active',
-              trialEndsAt:     trialEndsAt,
+              // Tester = PRO ativo permanente; não-tester = Free ativo (sem trial).
+              status:          'active',
               // Tester e free seguem ciclo mensal — renovação a partir de balance.resetAt
               // (a isenção do tester é controlada por testerRenewalsUsed, máx 12 renovações)
               currentPeriodEnd: undefined,
@@ -475,17 +470,12 @@ export default async function authRoutes(app: FastifyInstance) {
 
           if (!plan) throw new Error('Plano não encontrado');
 
-          // Freemium: cadastro expresso entra no Free com trial de 7 dias de Pro
-          const trialEndsAt = testerInvite
-            ? null
-            : new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
-
+          // Sem trial: cadastro expresso entra direto no Free (ou Pro, se tester).
           await tx.subscription.create({
             data: {
-              userId:      userId,
-              planId:      plan.id,
-              status:      testerInvite ? 'active' : 'trialing',
-              trialEndsAt,
+              userId:           userId,
+              planId:           plan.id,
+              status:           'active',
               currentPeriodEnd: undefined,
             },
           });

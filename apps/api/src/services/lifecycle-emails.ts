@@ -344,78 +344,6 @@ async function runUpgradeActiveFree(log: any) {
   return sent;
 }
 
-/* ── D+6 do trial: véspera do fim → reforça economia + custo/dia ──────────────
-   Trial de 7 dias. Disparamos quando faltam ~24h (último dia cheio de Pro),
-   mostrando o tempo JÁ economizado no mês como prova de valor concreta.
-   Tag one-shot (um usuário só faz trial uma vez). ────────── */
-async function runTrialEndingD6(log: any) {
-  const now     = new Date();
-  const horizon = new Date(now.getTime() + 30 * 60 * 60 * 1000); // próximas ~30h
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const tag     = 'trial_ending';
-
-  const users = await prisma.user.findMany({
-    where: {
-      deletedAt: null,
-      subscription: { status: 'trialing', trialEndsAt: { gt: now, lte: horizon } },
-    },
-    select: {
-      id: true, email: true, name: true, lifecycleEmailsSent: true,
-      subscription: { select: { paymentMethod: true, asaasSubscriptionId: true } },
-    },
-  }).catch(() => [] as any[]);
-
-  let sent = 0;
-  for (const u of users) {
-    if (u.lifecycleEmailsSent.includes(tag)) continue;
-
-    // Cartão já garantido → não cobramos por upgrade; avisamos da cobrança automática.
-    const cardOnFile = u.subscription?.paymentMethod === 'credit_card' && !!u.subscription?.asaasSubscriptionId;
-
-    const agg = await prisma.transcription.aggregate({
-      where:  { userId: u.id, createdAt: { gte: monthStart } },
-      _sum:   { durationSec: true },
-      _count: true,
-    }).catch(() => null);
-    const savedSec   = agg?._sum.durationSec || 0;
-    const cnt        = agg?._count || 0;
-    const savedLabel = formatSavedTime(savedSec);
-
-    const firstName = firstNameOf(u.name);
-    const savedLine = savedSec > 0
-      ? `Nestes dias de Pro, você já economizou <strong style="color:#6ee7b7">${savedLabel}</strong>${cnt > 0 ? ` lendo ${cnt} áudio${cnt !== 1 ? 's' : ''} em vez de ouvir tudo` : ''} este mês.`
-      : `Seu período de Pro está terminando.`;
-    const subject = cardOnFile
-      ? `${firstName}, seu cartão será cobrado amanhã`
-      : savedSec > 0
-        ? `${firstName}, você economizou ${savedLabel} este mês`
-        : `${firstName}, seu Pro termina amanhã`;
-    const bodyCta = cardOnFile
-      ? `
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">${savedLine}</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Seu cartão será cobrado <strong>amanhã (R$37/mês)</strong> e seu Pro continua sem interrupção — áudios ilimitados e Modo Privado. Não precisa fazer nada.</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Se preferir não continuar, <strong>cancele antes da cobrança e não paga nada</strong>.</p>
-          ${btn(`${APP_URL}/dashboard/plano`, 'Ver meu plano →')}
-        `
-      : `
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">${savedLine}</p>
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">Para manter os áudios ilimitados e o Modo Privado sem interrupção, é <strong>menos de R$1,23 por dia</strong> — ${proPriceLine()}.</p>
-          ${btn(`${APP_URL}/dashboard/plano`, 'Continuar com o Pro →')}
-        `;
-    try {
-      await sendEmail(
-        u.email,
-        subject,
-        wrapper(firstName, cardOnFile ? `Seu Pro continua amanhã, ${firstName}` : `Seu Pro termina amanhã, ${firstName}`, bodyCta),
-      );
-      await markSent(u.id, tag);
-      sent++;
-    } catch (e: any) {
-      log?.warn?.(`[Lifecycle] Falha ao enviar ${tag} para ${u.email}: ${e.message}`);
-    }
-  }
-  return sent;
-}
 
 /** Identificador de semana ISO (ex.: "2026-W26") para idempotência semanal. */
 function isoWeekTag(d: Date): string {
@@ -491,9 +419,8 @@ async function runOnce(log: any) {
     const activeFree = await runUpgradeActiveFree(log);
     const firstTx   = await runFirstTranscription(log);
     const winback   = await runWinBack(log);
-    const trialEnd  = await runTrialEndingD6(log);
     const digest    = await runWeeklyDigest(log);
-    log?.info?.(`[Lifecycle] Ciclo concluído — candidatos d1=${d1} d3=${d3} conexao_incompleta_enviados=${incomplete} upgrades_enviados=${upgrade} upgrade_free_ativo=${activeFree} primeira_transcricao=${firstTx} winback=${winback} trial_ending=${trialEnd} resumo_semanal=${digest}`);
+    log?.info?.(`[Lifecycle] Ciclo concluído — candidatos d1=${d1} d3=${d3} conexao_incompleta_enviados=${incomplete} upgrades_enviados=${upgrade} upgrade_free_ativo=${activeFree} primeira_transcricao=${firstTx} winback=${winback} resumo_semanal=${digest}`);
   } catch (e: any) {
     log?.error?.(`[Lifecycle] Erro no ciclo de e-mails: ${e.message}`);
   }

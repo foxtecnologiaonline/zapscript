@@ -94,9 +94,12 @@ export const billingCheckoutSchema = z.object({
   billingAddress: billingAddressSchema,
 });
 
+// Migração entre planos: qualquer plano pago do catálogo (legado + tiers 2.0)
+// — free não entra aqui porque downgrade pra free é /billing/cancel.
 export const billingUpgradeSchema = z.object({
-  targetPlan:     z.enum(['pro', 'executive'], { errorMap: () => ({ message: 'Plano inválido.' }) }),
+  targetPlan:     z.enum(['pro', 'executive', 'atende', 'profissional', 'empresas'], { errorMap: () => ({ message: 'Plano inválido.' }) }),
   paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
+  billingCycle:   z.enum(['monthly', 'yearly']).default('monthly'),
   card:           cardSchema.optional(),
   billingAddress: billingAddressSchema,
 });
@@ -105,13 +108,6 @@ export const billingUpgradeSchema = z.object({
 export const moduleSubscribeSchema = z.object({
   paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
   card:           cardSchema.optional(),
-  billingAddress: billingAddressSchema,
-});
-
-// Trial com cartão (opcional): nada é cobrado agora — só CPF/cartão para a
-// assinatura cujo 1º vencimento é o fim do trial (D+7).
-export const billingTrialCardSchema = z.object({
-  card:           cardSchema,
   billingAddress: billingAddressSchema,
 });
 

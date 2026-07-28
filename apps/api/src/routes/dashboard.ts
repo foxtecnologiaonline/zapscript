@@ -45,7 +45,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     // ── Métrica primária: ÁUDIOS do ciclo ──────────────────────────────────
     const now           = new Date();
     const effPlan       = planEfetivo(
-      { isTester: userTester?.isTester, subscription: sub ? { status: sub.status, trialEndsAt: sub.trialEndsAt, plan: { name: sub.plan.name } } : null },
+      { isTester: userTester?.isTester, subscription: sub ? { status: sub.status, plan: { name: sub.plan.name } } : null },
       now,
     );
     const audiosQuota   = audioQuotaFor(effPlan);
@@ -53,12 +53,6 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     const audiosUsed    = Math.max(0, balance?.audiosUsed || 0);
     // PRO comunica "ilimitado" — não expõe o teto oculto na UI.
     const audiosUnlimited = effPlan === 'pro';
-
-    // ── Trial (7 dias de PRO) ──────────────────────────────────────────────
-    const isTrial       = sub?.status === 'trialing' && !!sub.trialEndsAt && sub.trialEndsAt > now;
-    const trialDaysLeft = isTrial && sub?.trialEndsAt
-      ? Math.max(0, Math.ceil((sub.trialEndsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
-      : null;
 
     // ── Tempo economizado no mês (C3) ──────────────────────────────────────
     const savedSecondsMonth = savedAgg._sum.durationSec || 0;
@@ -93,13 +87,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       audiosQuota,
       audiosUnlimited,
       audiosPct:           audiosUnlimited ? 0 : (audiosQuota > 0 ? Math.min(100, Math.round((audiosUsed / audiosQuota) * 100)) : 0),
-      effectivePlan:       effPlan, // 'pro' | 'free' (efetivo, considerando trial/tester)
-      // ── Trial freemium ──
-      isTrial,
-      trialEndsAt:         isTrial ? sub?.trialEndsAt?.toISOString() ?? null : null,
-      trialDaysLeft,
-      // Cartão garantido para o trial (assinatura Asaas com 1ª cobrança em D+7)
-      cardOnFile:          sub?.paymentMethod === 'credit_card' && !!sub?.asaasSubscriptionId,
+      effectivePlan:       effPlan, // 'pro' | 'free' (efetivo, considerando tester)
       // ── Tempo economizado no mês (C3) ──
       savedSecondsMonth,
       savedLabelMonth:     formatSavedTime(savedSecondsMonth),

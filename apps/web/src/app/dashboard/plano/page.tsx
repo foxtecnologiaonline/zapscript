@@ -27,11 +27,6 @@ interface Stats {
   audiosUnlimited: boolean;
   audiosPct: number;
   effectivePlan: 'pro' | 'free';
-  // ── Trial freemium ──
-  isTrial: boolean;
-  trialEndsAt: string | null;
-  trialDaysLeft: number | null;
-  cardOnFile: boolean;   // cartão já garantido para a cobrança em D+7
 }
 
 interface User {
@@ -171,8 +166,8 @@ const PLAN_PRICES_YEARLY: Record<string, { monthlyDisplay: string; annualDisplay
   empresas:     { monthlyDisplay: 'R$179', annualDisplay: 'R$2.148' },
 };
 
-/** Tiers ZapScript 2.0 vendidos como compra nova (ver TIER_MODULE_BUNDLES em billing.ts). */
-const TIER_PLAN_NAMES = ['atende', 'profissional', 'empresas'] as const;
+/** Todos os planos pagos — usados na migração livre entre planos (qualquer direção). */
+const ALL_PAID_PLAN_NAMES = ['pro', 'executive', 'atende', 'profissional', 'empresas'] as const;
 
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
@@ -271,7 +266,7 @@ function UpgradeModal({
             ⭐
           </div>
           <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
-            Upgrade para {targetLabel}
+            Migrar para {targetLabel}
           </h3>
           <p className="text-xs mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
             {preview.currentPlanLabel} → {targetLabel}
@@ -371,7 +366,7 @@ function UpgradeModal({
             ? 'Aguarde...'
             : preview.shouldCharge
             ? `Pagar ${brl(preview.proratedAmount)} →`
-            : 'Confirmar upgrade →'}
+            : 'Confirmar troca →'}
         </button>
         <button onClick={onCancel} disabled={loading}
           className="w-full py-2 text-xs transition-colors disabled:opacity-50"
@@ -562,7 +557,6 @@ function PlanoContent() {
   const [user, setUser]               = useState<User | null>(null);
   const [loading, setLoading]         = useState(true);
   const [checkoutPlan, setCheckoutPlan]     = useState<string | null>(null);  // plano com checkout inline aberto
-  const [trialCardMode, setTrialCardMode]   = useState(false);                // checkout em modo "garantir cartão do trial"
   const [docModal, setDocModal]             = useState<string | null>(null);
   const [verifyModal, setVerifyModal]       = useState(false);
   const [showTable, setShowTable]           = useState(false);
@@ -573,7 +567,6 @@ function PlanoContent() {
   const [invoicesMeta, setInvoicesMeta]       = useState<{ isTester?: boolean; testerRenewalsUsed?: number; testerRenewalsTotal?: number }>({});
   const justUpgraded = searchParams.get('upgrade') === 'success';
   const justCanceled = searchParams.get('canceled') === '1';
-  const trialCardSet = searchParams.get('trialcardset') === '1';
   const addModuleKey  = searchParams.get('add');
   const moduleAddedKey = searchParams.get('moduleadded');
   const comboAdded    = searchParams.get('combo') === '1';
@@ -648,26 +641,6 @@ function PlanoContent() {
     setMinutePkgs([]);
   }, []);
 
-  // ── Trial com cartão: abre o checkout em modo "garantir cartão" (D+7) ──
-  // Reaproveita o gate de e-mail verificado + CPF antes de tokenizar o cartão.
-  function startTrialCard() {
-    setTrialCardMode(true);
-    if (!user?.emailVerified) { setVerifyModal(true); return; }
-    if (!user?.document)      { setDocModal('pro');   return; }
-    setUpgradePreview(null);
-    setCheckoutPlan('pro');
-  }
-
-  // Dispara o fluxo de cartão do trial quando vier de ?trialcard=1 (CTA do banner).
-  const trialcardParam = searchParams.get('trialcard') === '1';
-  useEffect(() => {
-    if (!trialcardParam || !stats || !user) return;
-    if (!stats.isTrial || stats.cardOnFile) return;
-    if (trialCardMode || checkoutPlan || verifyModal || docModal) return;
-    startTrialCard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trialcardParam, stats, user]);
-
   // Abre o checkout inline para o plano
   function doCheckout(planName: string) {
     setCheckoutPlan(planName);
@@ -675,7 +648,6 @@ function PlanoContent() {
   }
 
   async function upgrade(planName: string) {
-    setTrialCardMode(false);  // fluxo normal de assinatura/upgrade (não é cartão de trial)
     // Opção A: gate de assinatura — e-mail verificado vem antes do CPF/checkout.
     if (!user?.emailVerified) {
       setVerifyModal(true);
@@ -704,12 +676,6 @@ function PlanoContent() {
   function handleCheckoutSuccess(planName: string) {
     setCheckoutPlan(null);
     setUpgradePreview(null);
-    // Trial: nada foi cobrado agora — só recarrega para refletir cardOnFile.
-    if (trialCardMode) {
-      setTrialCardMode(false);
-      window.location.href = `/dashboard/plano?trialcardset=1`;
-      return;
-    }
     window.location.href = `/dashboard/plano?upgrade=success`;
   }
 
@@ -815,20 +781,6 @@ function PlanoContent() {
           <div>
             <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Upgrade realizado com sucesso!</div>
             <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>Seu plano foi atualizado.</div>
-          </div>
-        </div>
-      )}
-
-      {/* Cartão do trial garantido */}
-      {trialCardSet && (
-        <div className="rounded-xl px-5 py-3.5 mb-5 flex items-center gap-3"
-          style={{ background: 'rgba(var(--color-primary)/.1)', border: '1px solid rgba(var(--color-primary)/.3)' }}>
-          <span className="text-xl">🔒</span>
-          <div>
-            <div className="font-bold text-sm" style={{ color: 'rgb(var(--color-primary))' }}>Pro garantido!</div>
-            <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Seu cartão foi cadastrado. Nada foi cobrado agora — a 1ª cobrança será só ao fim do teste. Cancele antes e não paga nada.
-            </div>
           </div>
         </div>
       )}
@@ -1225,47 +1177,48 @@ function PlanoContent() {
         </div>
       )}
 
-      {/* ── ZapScript 2.0 — Tiers anuais (Atende / Profissional / Empresas) ──
-          Compra nova, direto (sem simulação de proration — só relevante para
-          quem já paga free→pro/executive). Visível apenas no plano Free. ── */}
-      {currentPlan === 'free' && (
-        <div className="mt-6">
-          <h2 className="font-display font-bold text-base mb-1">Ou leve a suíte completa</h2>
-          <p className="text-xs font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-            Transcrição + módulos da suíte ZapScript num só pacote anual (ou mensal, sem fidelidade).
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {TIER_PLAN_NAMES.map((name) => {
-              const tier = PLANS.find(p => p.name === name)!;
-              const yearly = PLAN_PRICES_YEARLY[name];
-              return (
-                <div key={name} className="rounded-2xl p-4 flex flex-col"
-                  style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))' }}>
-                  <div className="font-display font-bold text-sm">{tier.label}</div>
-                  <p className="text-[11px] font-light mt-0.5 mb-3 flex-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                    {tier.desc}
-                  </p>
-                  <div className="mb-3">
-                    <span className="font-display font-black text-xl" style={{ color: 'rgb(var(--color-primary))' }}>{tier.price}</span>
-                    <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês</span>
-                    {yearly && (
-                      <div className="text-[10px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                        ou {yearly.annualDisplay}/ano
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => doCheckout(name)}
-                    className="w-full py-2.5 rounded-xl text-xs font-bold transition-all"
-                    style={{ border: '1.5px solid rgb(var(--color-primary))', color: 'rgb(var(--color-primary))', background: 'transparent' }}>
-                    Assinar {tier.label} →
-                  </button>
+      {/* ── Migração livre entre planos — qualquer plano pago pode trocar para
+          qualquer outro (upgrade ou downgrade). Free usa doCheckout direto;
+          quem já paga passa pela simulação de proration em upgrade(). ── */}
+      <div className="mt-6">
+        <h2 className="font-display font-bold text-base mb-1">
+          {currentPlan === 'free' ? 'Ou escolha outro plano' : 'Trocar de plano'}
+        </h2>
+        <p className="text-xs font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+          Aluguel mensal (sem fidelidade) ou compra anual — PIX ou cartão, troque quando quiser.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {ALL_PAID_PLAN_NAMES.filter(name => name !== currentPlan).map((name) => {
+            const tier = PLANS.find(p => p.name === name)!;
+            const yearly = PLAN_PRICES_YEARLY[name];
+            return (
+              <div key={name} className="rounded-2xl p-4 flex flex-col"
+                style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))' }}>
+                <div className="font-display font-bold text-sm">{tier.label}</div>
+                <p className="text-[11px] font-light mt-0.5 mb-3 flex-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                  {tier.desc}
+                </p>
+                <div className="mb-3">
+                  <span className="font-display font-black text-xl" style={{ color: 'rgb(var(--color-primary))' }}>{tier.price}</span>
+                  <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês (aluguel)</span>
+                  {yearly && (
+                    <div className="text-[10px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                      ou {yearly.annualDisplay}/ano (compra)
+                    </div>
+                  )}
                 </div>
-              );
-            })}
-          </div>
+                <button
+                  onClick={() => upgrade(name)}
+                  disabled={previewLoading}
+                  className="w-full py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                  style={{ border: '1.5px solid rgb(var(--color-primary))', color: 'rgb(var(--color-primary))', background: 'transparent' }}>
+                  {currentPlan === 'free' ? `Assinar ${tier.label} →` : `Migrar para ${tier.label} →`}
+                </button>
+              </div>
+            );
+          })}
         </div>
-      )}
+      </div>
 
       {/* Toggle comparativo — apenas para usuários Free */}
       {currentPlan === 'free' && (
@@ -1626,7 +1579,7 @@ function PlanoContent() {
         return (
           <div
             className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 overflow-y-auto"
-            onClick={() => { setCheckoutPlan(null); setTrialCardMode(false); }}
+            onClick={() => setCheckoutPlan(null)}
           >
             <div className="min-h-full flex items-start justify-center py-8 px-4">
               <div
@@ -1636,28 +1589,22 @@ function PlanoContent() {
               >
                 <div className="mb-5">
                   <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
-                    {trialCardMode
-                      ? 'Garanta seu Pro sem interrupção'
-                      : currentPlan !== 'free' ? `Upgrade para ${plan.label}` : `Assinar plano ${plan.label}`}
+                    {currentPlan !== 'free' ? `Migrar para ${plan.label}` : `Assinar plano ${plan.label}`}
                   </h3>
                   <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                    {trialCardMode
-                      ? 'Nada é cobrado agora · 1ª cobrança só ao fim do teste · Cancele quando quiser'
-                      : junePromo && checkoutPlan === 'pro'
-                        ? '🔥 50% OFF no 1º mês: R$18 · depois R$37/mês'
-                        : 'Escolha mensal ou anual · Cancele a qualquer momento'}
+                    {junePromo && checkoutPlan === 'pro'
+                      ? '🔥 50% OFF no 1º mês: R$18 · depois R$37/mês'
+                      : 'Aluguel mensal ou compra anual · PIX ou cartão'}
                   </p>
                 </div>
                 <CheckoutInline
                   planName={checkoutPlan!}
                   planLabel={plan.label}
-                  planPrice={trialCardMode ? plan.price : (junePromo && checkoutPlan === 'pro' ? 'R$18' : plan.price)}
+                  planPrice={junePromo && checkoutPlan === 'pro' ? 'R$18' : plan.price}
                   planFeats={plan.feats}
-                  isUpgrade={!trialCardMode && currentPlan !== 'free'}
-                  trialMode={trialCardMode}
-                  trialChargeDate={trialCardMode ? (stats?.trialEndsAt ?? undefined) : undefined}
+                  isUpgrade={currentPlan !== 'free'}
                   onSuccess={handleCheckoutSuccess}
-                  onCancel={() => { setCheckoutPlan(null); setTrialCardMode(false); }}
+                  onCancel={() => setCheckoutPlan(null)}
                 />
               </div>
             </div>

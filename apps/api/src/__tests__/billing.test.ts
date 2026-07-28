@@ -168,6 +168,103 @@ describe('POST /billing/cancel', () => {
   });
 });
 
+// ── Upgrade/Downgrade Tests (migração livre entre planos) ────────────
+describe('POST /billing/upgrade', () => {
+  let app: Awaited<ReturnType<typeof buildApp>>;
+
+  beforeAll(async () => {
+    app = await buildApp();
+    process.env.ASAAS_API_KEY = 'test-key';
+  });
+  afterAll(async () => { await app.close(); });
+  beforeEach(() => jest.clearAllMocks());
+
+  const upgradeUser = {
+    id: 'u1', email: 'x@x.com', emailVerified: true, document: '12345678900',
+  };
+
+  it('permite downgrade (plano mais barato) sem bloquear — troca sem custo adicional', async () => {
+    const future = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000); // meio do ciclo — necessário p/ shouldCharge=false num downgrade
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(upgradeUser);
+    (prisma.subscription.findUnique as jest.Mock)
+      .mockResolvedValueOnce({
+        plan: { name: 'executive', priceBrl: 67 },
+        asaasCustomerId: 'cus_1', asaasSubscriptionId: 'sub_old', currentPeriodEnd: future,
+      })
+      .mockResolvedValueOnce({ currentPeriodEnd: future }); // chamada interna do activatePlan
+    (prisma.plan.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'plan-pro', minutesPerMonth: 200 });
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'newsub_1' }) }) // criar nova assinatura
+      .mockResolvedValueOnce({ ok: true }); // cancelar a antiga
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/billing/upgrade',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { targetPlan: 'pro', paymentMethod: 'pix' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ switched: true, status: 'active', planName: 'pro' });
+  });
+
+  it('retorna 400 quando o plano destino é o mesmo que o atual', async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(upgradeUser);
+    (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce({
+      plan: { name: 'pro', priceBrl: 37 }, asaasCustomerId: 'cus_1',
+    });
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/billing/upgrade',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { targetPlan: 'pro', paymentMethod: 'pix' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/já está/i);
+  });
+
+  it('retorna 400 quando o usuário está no plano free (deve usar /billing/checkout)', async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(upgradeUser);
+    (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce({
+      plan: { name: 'free', priceBrl: 0 },
+    });
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/billing/upgrade',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { targetPlan: 'atende', paymentMethod: 'pix' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/checkout/i);
+  });
+
+  it('aceita os novos tiers ZapScript 2.0 como destino via PIX — upgrade cobra proration (ex.: profissional)', async () => {
+    const future = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(upgradeUser);
+    (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce({
+      plan: { name: 'atende', priceBrl: 59 },
+      asaasCustomerId: 'cus_1', asaasSubscriptionId: 'sub_old', currentPeriodEnd: future,
+    });
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'charge_1' }) }) // cobrança de proration
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ payload: 'pixcopiaecola', encodedImage: 'base64img' }) }); // QR code
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/billing/upgrade',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { targetPlan: 'profissional', paymentMethod: 'pix' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('pending_pix');
+  });
+});
+
 // ── Module Subscribe Tests ───────────────────────────────────────────
 const baseUser = {
   id: 'u1', email: 'x@x.com', name: 'Test User',

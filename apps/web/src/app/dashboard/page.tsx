@@ -30,11 +30,6 @@ interface Stats {
   audiosUnlimited: boolean;
   audiosPct: number;
   effectivePlan: 'pro' | 'free';
-  // ── Trial freemium ──
-  isTrial: boolean;
-  trialEndsAt: string | null;
-  trialDaysLeft: number | null;
-  cardOnFile: boolean;   // cartão garantido p/ cobrança em D+7
   // ── Tempo economizado no mês (C3) ──
   savedSecondsMonth: number;
   savedLabelMonth: string;
@@ -102,35 +97,8 @@ export default function DashboardPage() {
         <p className="text-sm text-brand-text-secondary font-light mt-1">Visão geral da sua operação</p>
       </div>
 
-      {/* ── Trial PRO (7 dias): contagem regressiva + CTA ── */}
-      {stats?.isTrial && (
-        <Link href={stats.cardOnFile ? '/dashboard/plano' : '/dashboard/plano?trialcard=1'}
-          className="flex items-center gap-3 rounded-xl px-4 py-3 mb-6 hover:opacity-90 transition-opacity"
-          style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.14), rgba(16,185,129,.04))', border: '1px solid rgba(16,185,129,.3)' }}>
-          <span className="text-lg flex-shrink-0">{stats.cardOnFile ? '🔒' : '✨'}</span>
-          <p className="text-xs text-brand-text flex-1">
-            <span className="font-bold text-brand-primary">
-              {stats.trialDaysLeft === 0
-                ? 'Seu Pro termina hoje.'
-                : `Faltam ${stats.trialDaysLeft} dia${stats.trialDaysLeft !== 1 ? 's' : ''} do seu Pro.`}
-            </span>{' '}
-            {stats.cardOnFile ? (
-              <>Pro garantido — a 1ª cobrança será só ao fim do teste. Cancele antes e não paga nada.</>
-            ) : (stats.trialDaysLeft ?? 99) <= 1 && stats.savedSecondsMonth > 0 ? (
-              /* D6 — no fim do trial, reforça o valor já entregue */
-              <>Você já economizou <strong className="text-brand-primary">{stats.savedLabelMonth}</strong> este mês. <strong>Garanta seu Pro</strong> e não perca o acesso.</>
-            ) : (
-              <>Áudios ilimitados e Modo Privado automático. <strong>Garanta seu Pro</strong> antes que o teste acabe.</>
-            )}
-          </p>
-          <span className="text-brand-primary text-xs font-bold flex-shrink-0">
-            {stats.cardOnFile ? 'Gerenciar →' : 'Garantir meu Pro →'}
-          </span>
-        </Link>
-      )}
-
       {/* ── 50% off no 1º mês (Free → Pro), oferta permanente ── */}
-      {stats?.planName === 'free' && !stats?.isTrial && (
+      {stats?.planName === 'free' && (
         <Link href="/dashboard/plano"
           className="flex items-center gap-3 rounded-xl px-4 py-3 mb-6 hover:opacity-90 transition-opacity"
           style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.12), rgba(245,158,11,.08))', border: '1px solid rgba(16,185,129,.25)' }}>
@@ -176,7 +144,7 @@ export default function DashboardPage() {
             <div className="text-3xl sm:text-4xl font-black text-brand-text leading-none">{stats.savedLabelMonth}</div>
             <div className="text-xs text-brand-muted mt-1.5">
               Você leu <strong className="text-brand-text">{stats.transcriptionsMonth}</strong> áudio{stats.transcriptionsMonth !== 1 ? 's' : ''} em vez de ouvir tudo.
-              {stats.planName === 'free' && !stats.isTrial && <> Imagine sem limite — <Link href="/dashboard/plano" className="text-brand-primary font-semibold hover:underline">menos de R$1,23/dia</Link>.</>}
+              {stats.planName === 'free' && <> Imagine sem limite — <Link href="/dashboard/plano" className="text-brand-primary font-semibold hover:underline">menos de R$1,23/dia</Link>.</>}
             </div>
           </div>
         </div>
@@ -260,8 +228,8 @@ export default function DashboardPage() {
                 </span>
               </div>
             )}
-            {/* Renovação — só planos pagos (oculto durante o trial) */}
-            {stats.renewAt && stats.planName !== 'free' && !stats.isTrial && (() => {
+            {/* Renovação — só planos pagos */}
+            {stats.renewAt && stats.planName !== 'free' && (() => {
               const today    = new Date(); today.setHours(0,0,0,0);
               const renew    = new Date(stats.renewAt); renew.setHours(0,0,0,0);
               const daysLeft = Math.round((renew.getTime() - today.getTime()) / (1000*60*60*24));
@@ -283,7 +251,7 @@ export default function DashboardPage() {
               );
             })()}
             <Link href="/dashboard/plano" className="btn-primary block w-full text-center text-sm py-2">
-              {stats.isTrial ? 'Assinar Pro' : stats.planName === 'free' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
+              {stats.planName === 'free' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
             </Link>
           </div>
         )}
