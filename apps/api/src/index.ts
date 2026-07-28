@@ -19,6 +19,7 @@ import { syncAllEvolutionConfigs } from './services/evolution-sync';
 import { startHeartbeat }         from './services/evolution-heartbeat';
 import { startHealthMonitor }     from './services/health-monitor';
 import { startLifecycleEmails }   from './services/lifecycle-emails';
+import { startLifecycleWhatsapp } from './services/lifecycle-whatsapp';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -454,6 +455,7 @@ async function runAutoMigrations() {
     `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "utmCampaign" TEXT`,
     `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "utmMedium" TEXT`,
     `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lifecycleEmailsSent" TEXT[] DEFAULT '{}'`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lifecycleWhatsappSent" TEXT[] DEFAULT '{}'`,
     // Agente de Suporte (migração 20260616_support_agent): auto-cura o schema no
     // boot mesmo se o startCommand de produção não rodar `prisma migrate deploy`.
     `CREATE TABLE IF NOT EXISTS "SupportAtendimento" (
@@ -996,6 +998,10 @@ async function start() {
 
     // ── E-mails de ciclo de vida — ativação D1/D3 e upgrade por uso, 1x/dia ──
     startLifecycleEmails(app.log);
+
+    // ── Onboarding automático via WhatsApp — nudge de 1º áudio, comemoração
+    //    da 1ª transcrição e dica de funcionalidade, a cada 6h ──
+    startLifecycleWhatsapp(app.log);
 
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 
