@@ -78,7 +78,9 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '💰',
     tagline: 'Lembrete e cobrança automática via WhatsApp',
     jtbd: 'Sou MEI e não tenho tempo de cobrar quem venceu/vence hoje; perco receita por inadimplência.',
-    status: 'beta',
+    // Retirado de venda (revisão de tiers) — absorvido pelo recurso de Avisos
+    // do Profissional. Código e dados seguem intactos. Ver index.ts.
+    status: 'planned',
     priceMonthly: 39,
     priceYearly: 374,
     dependsOn: [],
@@ -146,12 +148,27 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '🗣️',
     tagline: 'Grave a visita/ligação → vira nota no CRM',
     jtbd: 'Vendedor externo perde o registro da visita; queremos transcrever e lançar como atividade.',
-    status: 'beta',
+    // Retirado de venda (revisão de tiers) — código e dados seguem intactos.
+    status: 'planned',
     priceMonthly: 57,
     priceYearly: 547,
     dependsOn: [], // sinergia (não dependência) com 'crm'
     reuses: ['transcricao', 'ia'],
     phase: 5,
+  },
+  {
+    key: 'tarefas',
+    name: 'ZapScript Tarefas',
+    icon: '✅',
+    tagline: 'Designação e controle de tarefas na equipe',
+    jtbd: 'Preciso distribuir tarefas pro time e saber o que está pendente/atrasado.',
+    // Empacotado só no tier Empresas — não é vendido avulso.
+    status: 'planned',
+    priceMonthly: 0,
+    priceYearly: 0,
+    dependsOn: [],
+    reuses: ['mensageria'],
+    phase: 3,
   },
   {
     key: 'multicanal',

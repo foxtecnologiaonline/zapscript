@@ -24,8 +24,7 @@ interface Props {
 const CHECKOUT_YEARLY: Record<string, { annual: string; monthlyEq: string; annualNum: number }> = {
   pro:          { annual: 'R$355',   monthlyEq: 'R$29/mês',  annualNum: 355 },
   executive:    { annual: 'R$643',   monthlyEq: 'R$53/mês',  annualNum: 643 },
-  // ZapScript 2.0 — tiers anuais (valores fechados do SPEC, sem desconto adicional)
-  atende:       { annual: 'R$680',   monthlyEq: 'R$57/mês',  annualNum: 680 },
+  // ZapScript 2.0 — tiers (preço placeholder, ver revisão de tiers)
   profissional: { annual: 'R$1.308', monthlyEq: 'R$109/mês', annualNum: 1308 },
   empresas:     { annual: 'R$2.148', monthlyEq: 'R$179/mês', annualNum: 2148 },
 };

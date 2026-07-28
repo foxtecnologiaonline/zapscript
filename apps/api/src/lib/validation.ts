@@ -87,7 +87,7 @@ const billingAddressSchema = z.object({
 }).optional();
 
 export const billingCheckoutSchema = z.object({
-  planName:       z.enum(['pro', 'executive', 'atende', 'profissional', 'empresas'], { errorMap: () => ({ message: 'Plano inválido.' }) }),
+  planName:       z.enum(['pro', 'executive', 'profissional', 'empresas'], { errorMap: () => ({ message: 'Plano inválido.' }) }),
   paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
   billingCycle:   z.enum(['monthly', 'yearly']).default('monthly'),
   card:           cardSchema.optional(),   // obrigatório se paymentMethod === 'credit_card' | 'debit_card'
@@ -97,7 +97,7 @@ export const billingCheckoutSchema = z.object({
 // Migração entre planos: qualquer plano pago do catálogo (legado + tiers 2.0)
 // — free não entra aqui porque downgrade pra free é /billing/cancel.
 export const billingUpgradeSchema = z.object({
-  targetPlan:     z.enum(['pro', 'executive', 'atende', 'profissional', 'empresas'], { errorMap: () => ({ message: 'Plano inválido.' }) }),
+  targetPlan:     z.enum(['pro', 'executive', 'profissional', 'empresas'], { errorMap: () => ({ message: 'Plano inválido.' }) }),
   paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
   billingCycle:   z.enum(['monthly', 'yearly']).default('monthly'),
   card:           cardSchema.optional(),
@@ -243,6 +243,33 @@ export const atendeKbUpdateSchema = z.object({
   question: z.string().min(3, 'Pergunta muito curta').max(300).optional(),
   answer:   z.string().min(1, 'Resposta não pode ser vazia').max(2000).optional(),
   active:   z.boolean().optional(),
+});
+
+// ── Tarefas Schemas (tier Empresas) ──────────────────────
+export const createTaskSchema = z.object({
+  title:        z.string().min(1, 'Título é obrigatório').max(150),
+  description:  z.string().max(2000).optional(),
+  assignedToId: z.string().cuid('Responsável inválido').optional(),
+  dueAt:        z.coerce.date().optional(),
+});
+
+export const updateTaskSchema = z.object({
+  title:        z.string().min(1).max(150).optional(),
+  description:  z.string().max(2000).nullable().optional(),
+  assignedToId: z.string().cuid('Responsável inválido').nullable().optional(),
+  dueAt:        z.coerce.date().nullable().optional(),
+  status:       z.enum(['pending', 'done']).optional(),
+});
+
+// Avisos (tier Profissional) — disparo manual de mensagem pro cliente
+export const avisoCreateSchema = z.object({
+  numberId:     z.string().cuid('Número inválido'),
+  contactPhone: z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos'),
+  contactName:  z.string().max(100).optional(),
+  category:     z.enum(['cobranca', 'agendamento', 'mercadoria_pronta', 'outro'], {
+    errorMap: () => ({ message: 'Categoria inválida' }),
+  }),
+  message:      z.string().min(1, 'Mensagem não pode ser vazia').max(1000),
 });
 
 // ── Cobrança Schemas ─────────────────────────────────────

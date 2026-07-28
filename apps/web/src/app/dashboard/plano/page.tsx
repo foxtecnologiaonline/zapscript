@@ -41,15 +41,16 @@ interface User {
 const PLANS = [
   {
     name:  'free',
-    label: 'Free',
+    label: 'Core',
     price: 'R$0',
     per:   '/mês',
-    desc:  'Para experimentar',
+    desc:  'Completo e grátis',
     feats: [
-      '15 áudios/mês',
+      'Até 100 áudios/mês',
       '1 número WhatsApp',
       '🎙️ Conversão automática',
       '✨ Resumo com IA',
+      '🔒 Modo Privado (opcional)',
       '📋 Histórico de conversões',
       '📅 Filtros por data e contato',
       '🔍 Busca por conversão',
@@ -102,37 +103,23 @@ const PLANS = [
     pop:   true,
     accent: null as string | null,
   },
-  // ── ZapScript 2.0 — Tiers anuais (SPEC Jul/2026) ──
-  // Cada tier empacota módulos já existentes na suíte (Atende/CRM/Vendas/
-  // Campanhas/Cobrança). Compra nova apenas — ver seção "Tiers" abaixo.
-  {
-    name:  'atende',
-    label: 'Atende',
-    price: 'R$59',
-    per:   '/mês',
-    desc:  'Transcrição + atendimento automático 24/7 no WhatsApp',
-    feats: [
-      'Áudios ilimitados',
-      '2 números WhatsApp',
-      '🤖 Atendimento automático 24/7',
-      '📚 Base de conhecimento própria',
-      '✨ Resumo com IA',
-    ],
-    excl:  [],
-    pop:   false,
-    accent: null as string | null,
-  },
+  // ── ZapScript 2.0 — Tiers (revisão) ──
+  // Profissional = Core + Atende. Empresas = Core + Atende + CRM + Tarefas.
+  // Compra nova apenas — ver seção "Trocar de plano" abaixo.
   {
     name:  'profissional',
     label: 'Profissional',
     price: 'R$109',
     per:   '/mês',
-    desc:  'Atende + funil de vendas e registro de visitas',
+    desc:  'Core + atendimento automático por IA no WhatsApp',
     feats: [
-      'Tudo do Atende',
-      '📊 CRM — funil de vendas no WhatsApp',
-      '🗣️ Vendas — grave a visita, vira nota no CRM',
-      '3 números WhatsApp',
+      'Tudo do Core, sem limite de áudios',
+      '🤖 Atendimento automático 24/7 por IA',
+      '📥 Fila de conversas + assumir manualmente',
+      '📊 Métricas de atendimento e efetividade',
+      '📨 Avisos ao cliente (cobrança, agendamento, mercadoria pronta...)',
+      '📚 Base de conhecimento própria',
+      '1 número WhatsApp',
     ],
     excl:  [],
     pop:   false,
@@ -143,13 +130,12 @@ const PLANS = [
     label: 'Empresas',
     price: 'R$179',
     per:   '/mês',
-    desc:  'Suíte completa para equipes: campanhas, cobrança e múltiplos usuários',
+    desc:  'Profissional + CRM, Tarefas e equipe (até 5 usuários)',
     feats: [
       'Tudo do Profissional',
-      '📣 Campanhas — disparo em massa via API oficial',
-      '💰 Cobrança — lembrete automático de vencimento',
-      '👥 Equipe — múltiplos usuários',
-      '5 números WhatsApp',
+      '📊 CRM — funil de vendas no WhatsApp',
+      '✅ Tarefas — designação e controle na equipe',
+      '👥 Até 5 usuários com papéis (admin/manager/agent)',
     ],
     excl:  [],
     pop:   false,
@@ -161,13 +147,12 @@ const PLANS = [
 const PLAN_PRICES_YEARLY: Record<string, { monthlyDisplay: string; annualDisplay: string }> = {
   pro:          { monthlyDisplay: 'R$29',  annualDisplay: 'R$355' },
   executive:    { monthlyDisplay: 'R$53',  annualDisplay: 'R$643' },
-  atende:       { monthlyDisplay: 'R$57',  annualDisplay: 'R$680' },
   profissional: { monthlyDisplay: 'R$109', annualDisplay: 'R$1.308' },
   empresas:     { monthlyDisplay: 'R$179', annualDisplay: 'R$2.148' },
 };
 
 /** Todos os planos pagos — usados na migração livre entre planos (qualquer direção). */
-const ALL_PAID_PLAN_NAMES = ['pro', 'executive', 'atende', 'profissional', 'empresas'] as const;
+const ALL_PAID_PLAN_NAMES = ['pro', 'executive', 'profissional', 'empresas'] as const;
 
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
@@ -1071,8 +1056,8 @@ function PlanoContent() {
                 Atual
               </span>
               <div>
-                <span className="text-sm font-bold">Free</span>
-                <span className="text-xs ml-2" style={{ color: 'rgb(var(--color-text-muted))' }}>15 áudios · 1 número · básico</span>
+                <span className="text-sm font-bold">Core</span>
+                <span className="text-xs ml-2" style={{ color: 'rgb(var(--color-text-muted))' }}>até 100 áudios · 1 número</span>
               </div>
             </div>
             <span className="font-bold text-sm" style={{ color: 'rgb(var(--color-text-muted))' }}>R$0</span>
@@ -1738,7 +1723,7 @@ function PlanoContent() {
             <div className="text-2xl mb-2">😔</div>
             <h3 className="font-display font-bold text-lg mb-1">Cancelar assinatura?</h3>
             <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Você volta para o plano <strong>Free</strong> (15 áudios/mês). Continua com acesso até o fim do período já pago e pode reativar quando quiser — sem fidelidade.
+              Você volta para o plano <strong>Core</strong> (até 100 áudios/mês). Continua com acesso até o fim do período já pago e pode reativar quando quiser — sem fidelidade.
             </p>
             {cancelError && (
               <p className="text-xs mb-3 px-3 py-2 rounded-lg" style={{ background: 'rgba(248,113,113,.1)', color: '#f87171' }}>

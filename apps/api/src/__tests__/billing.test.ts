@@ -235,7 +235,7 @@ describe('POST /billing/upgrade', () => {
     const res = await app.inject({
       method: 'POST', url: '/billing/upgrade',
       headers: { authorization: `Bearer ${token}` },
-      payload: { targetPlan: 'atende', paymentMethod: 'pix' },
+      payload: { targetPlan: 'profissional', paymentMethod: 'pix' },
     });
 
     expect(res.statusCode).toBe(400);

@@ -45,19 +45,24 @@ async function markProcessed(paymentId: string): Promise<void> {
   });
 }
 
-/* ── Preços ── */
-const PLAN_PRICES:        Record<string, number> = { pro: 37,  executive: 67,  atende: 59,  profissional: 109,   empresas: 179  };
-const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 355, executive: 643, atende: 680, profissional: 1308, empresas: 2148 }; // x12 com 20% off (pro/executive); atende/profissional/empresas seguem os valores fechados do SPEC ZapScript 2.0
-const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive', atende: 'Atende', profissional: 'Profissional', empresas: 'Empresas' };
+/* ── Preços ──
+   profissional/empresas: valores placeholder — preço ainda não definido na
+   revisão de tiers (ver conversa de negócio); ajustar aqui + migration
+   quando fechar. */
+const PLAN_PRICES:        Record<string, number> = { pro: 37,  executive: 67,  profissional: 109,   empresas: 179  };
+const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 355, executive: 643, profissional: 1308, empresas: 2148 };
+const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive', profissional: 'Profissional', empresas: 'Empresas' };
 
-/* ── Tiers ZapScript 2.0 (SPEC Jul/2026): "tiers absorvem os módulos" — cada
-   tier paga empacota um conjunto fixo de módulos já existentes na suíte.
+/* ── Tiers ZapScript 2.0 (revisão): "tiers absorvem os módulos" — cada tier
+   paga empacota um conjunto fixo de módulos já existentes na suíte.
+   Core (free) = transcrição + resumo, sem módulo algum.
+   Profissional = Core + Atende (1 usuário/1 conexão).
+   Empresas = Core + Atende + CRM + Tarefas (até 5 usuários).
    Sincronizado em activatePlan() via Entitlement(source='bundle'), nunca
    mexendo em módulos comprados avulso (source='paid'). Ver MODULOS_ARQUITETURA.md. ── */
 const TIER_MODULE_BUNDLES: Record<string, string[]> = {
-  atende:       ['atende'],
-  profissional: ['atende', 'crm', 'vendas'],
-  empresas:     ['atende', 'crm', 'vendas', 'campanhas', 'cobranca'],
+  profissional: ['atende'],
+  empresas:     ['atende', 'crm', 'tarefas'],
 };
 
 /* ── Combo (Core + módulos disponíveis): % fixo sobre a soma do valor agregado ── */

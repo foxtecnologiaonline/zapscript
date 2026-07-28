@@ -317,6 +317,7 @@ app.register(import('./routes/affiliates'),      { prefix: '/affiliates' });
 app.register(import('./routes/entitlements'),    { prefix: '/modules' });
 app.register(import('./routes/modules/campanhas'), { prefix: '/modules/campanhas' });
 app.register(import('./routes/modules/crm'),     { prefix: '/crm' });
+app.register(import('./routes/modules/tarefas'), { prefix: '/tarefas' });
 app.register(import('./routes/atende'),          { prefix: '/atende' });
 app.register(import('./routes/voice-commands'),  { prefix: '/voice-commands' });
 app.register(import('./routes/modules/vendas'),  { prefix: '/modules/vendas' });
@@ -646,15 +647,24 @@ async function runAutoMigrations() {
           FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
-    // Módulo mantido oculto (status 'planned') até decisão explícita de lançamento —
-    // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
+    // Módulo retirado de venda (revisão de tiers — absorvido pelo Avisos do
+    // Profissional) — força 'planned' a cada boot. Código/dados mantidos
+    // pra quem já usa. Ver packages/modules/catalog.ts.
     `DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'cobranca') THEN
-        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 39, "priceYearly" = 374
-          WHERE "key" = 'cobranca' AND "status" NOT IN ('beta', 'ga');
+        UPDATE "Product" SET "status" = 'planned' WHERE "key" = 'cobranca';
       ELSE
         INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
         VALUES ('cobranca-product-seed', 'cobranca', 'ZapScript Cobrança', 'planned', 39, 374, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
+    // Módulo Vendas — mesma decisão: retirado de venda, código/dados mantidos.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'vendas') THEN
+        UPDATE "Product" SET "status" = 'planned' WHERE "key" = 'vendas';
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('vendas-product-seed', 'vendas', 'ZapScript Vendas', 'planned', 57, 547, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
     // Módulo Legendas (migração 20260714_legenda_jobs): auto-cura o schema no

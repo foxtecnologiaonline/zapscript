@@ -6,6 +6,7 @@ import {
   atendeConfigSchema,
   atendeKbCreateSchema,
   atendeKbUpdateSchema,
+  avisoCreateSchema,
 } from '../lib/validation';
 import {
   transcribeVoiceSetup,
@@ -426,5 +427,82 @@ export default async function atendeRoutes(app: FastifyInstance) {
     if (!conversation) return reply.code(404).send({ error: 'Conversa não encontrada' });
 
     return prisma.atendeConversation.update({ where: { id }, data: { humanTakeover: false } });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Avisos (tier Profissional) — disparo manual de mensagem pro cliente do
+  // usuário (ex.: "pagamento hoje", "mercadoria pronta pra retirada").
+  // Categorias fixas no MVP. Qualquer papel do time pode enviar (agent+),
+  // igual à permissão de responder conversas.
+  // ═══════════════════════════════════════════════════════════════════════
+  app.get('/avisos', auth, async (req: any) => {
+    return prisma.aviso.findMany({
+      where:   { userId: req.teamScope.ownerId },
+      orderBy: { createdAt: 'desc' },
+      take:    100,
+    });
+  });
+
+  app.post<{ Body: any }>('/avisos', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const v = validateRequest(avisoCreateSchema)(req.body);
+    if (!v.valid) return reply.code(400).send({ error: v.error });
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id: v.data.numberId, userId: ownerId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+    if (!number.zapiInstanceId) return reply.code(422).send({ error: 'Número não está conectado.' });
+
+    try {
+      await sendText(number.zapiInstanceId, v.data.contactPhone, v.data.message);
+    } catch (err: any) {
+      req.log.error({ err: err.message }, '[Atende] Falha ao enviar aviso');
+      return reply.code(502).send({ error: 'Falha ao enviar a mensagem pelo WhatsApp.' });
+    }
+
+    const aviso = await prisma.aviso.create({
+      data: {
+        userId:       ownerId,
+        numberId:     v.data.numberId,
+        contactPhone: v.data.contactPhone,
+        contactName:  v.data.contactName,
+        category:     v.data.category,
+        message:      v.data.message,
+      },
+    });
+    return reply.code(201).send(aviso);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Dashboard — métricas simples de atendimento e efetividade (tier
+  // Profissional). Lê só dados já existentes (AtendeConversation/Message).
+  // ═══════════════════════════════════════════════════════════════════════
+  app.get('/dashboard', auth, async (req: any) => {
+    const { ownerId } = req.teamScope;
+    const days  = Math.min(365, Math.max(1, parseInt((req.query as any)?.days, 10) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+
+    const [conversasNoPeriodo, conversasHoje, semTakeover, escaladas, mensagensEnviadas, mensagensRecebidas] = await Promise.all([
+      prisma.atendeConversation.count({ where: { userId: ownerId, createdAt: { gte: since } } }),
+      prisma.atendeConversation.count({ where: { userId: ownerId, createdAt: { gte: todayStart } } }),
+      prisma.atendeConversation.count({ where: { userId: ownerId, createdAt: { gte: since }, humanTakeover: false } }),
+      prisma.atendeConversation.count({ where: { userId: ownerId, createdAt: { gte: since }, status: 'escalated' } }),
+      prisma.atendeMessage.count({ where: { direction: 'out', createdAt: { gte: since }, conversation: { userId: ownerId } } }),
+      prisma.atendeMessage.count({ where: { direction: 'in', createdAt: { gte: since }, conversation: { userId: ownerId } } }),
+    ]);
+
+    const taxaResolucaoAutomatica = conversasNoPeriodo > 0
+      ? Math.round((semTakeover / conversasNoPeriodo) * 100)
+      : 0;
+
+    return {
+      periodDays: days,
+      conversasNoPeriodo,
+      conversasHoje,
+      conversasEscaladas: escaladas,
+      taxaResolucaoAutomatica,
+      mensagensEnviadas,
+      mensagensRecebidas,
+    };
   });
 }

@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../../lib/prisma';
-import { requireModule } from '../../../lib/moduleGate';
+import { requireModuleShared, requireTeamRole } from '../../../lib/teamScope';
 import {
   validateRequest,
   createCrmStageSchema,
@@ -22,7 +22,10 @@ import {
  * a partir de mensagens do WhatsApp nesta versão (ver evolution-webhook.ts,
  * que continua intocado) — isso fica para uma fase 2.
  *
- * Toda rota exige o módulo `crm` contratado (Entitlement).
+ * Compartilhado de verdade via teamScope (tier Empresas — ver lib/teamScope.ts):
+ * membros do time do dono enxergam/atuam no mesmo funil, não numa conta
+ * separada. `auth` = qualquer papel (agent+); `authManage` = manager+, pra
+ * configuração do funil (estágios).
  */
 
 const DEFAULT_STAGES = [
@@ -44,17 +47,17 @@ async function getOrSeedStages(userId: string) {
 }
 
 export default async function crmRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', (app as any).authenticate);
-  app.addHook('preHandler', requireModule('crm'));
+  const auth       = { preHandler: [(app as any).authenticate, requireModuleShared('crm')] };
+  const authManage = { preHandler: [(app as any).authenticate, requireModuleShared('crm'), requireTeamRole('manager')] };
 
   // ═══════════════════════════════════════════════════════════════════════
   // Board — 1 request com estágios + contatos, para montar o Kanban
   // ═══════════════════════════════════════════════════════════════════════
-  app.get('/board', async (req: any) => {
-    const userId = req.user.sub;
-    const stages = await getOrSeedStages(userId);
+  app.get('/board', auth, async (req: any) => {
+    const { ownerId } = req.teamScope;
+    const stages = await getOrSeedStages(ownerId);
     const contacts = await prisma.crmContact.findMany({
-      where:   { userId },
+      where:   { userId: ownerId },
       orderBy: { lastActivityAt: 'desc' },
     });
 
@@ -69,41 +72,41 @@ export default async function crmRoutes(app: FastifyInstance) {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Estágios (colunas do Kanban)
+  // Estágios (colunas do Kanban) — configuração do funil, manager+
   // ═══════════════════════════════════════════════════════════════════════
-  app.get('/stages', async (req: any) => getOrSeedStages(req.user.sub));
+  app.get('/stages', auth, async (req: any) => getOrSeedStages(req.teamScope.ownerId));
 
-  app.post('/stages', async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.post('/stages', authManage, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const v = validateRequest(createCrmStageSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
 
-    const count = await prisma.crmStage.count({ where: { userId } });
+    const count = await prisma.crmStage.count({ where: { userId: ownerId } });
     if (count >= 20) return reply.code(400).send({ error: 'Limite de 20 estágios no funil.' });
 
     const stage = await prisma.crmStage.create({
-      data: { userId, name: v.data.name, color: v.data.color ?? '#6b7280', order: count },
+      data: { userId: ownerId, name: v.data.name, color: v.data.color ?? '#6b7280', order: count },
     });
     return reply.code(201).send(stage);
   });
 
-  app.patch('/stages/:id', async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.patch('/stages/:id', authManage, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const v = validateRequest(updateCrmStageSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
 
-    const stage = await prisma.crmStage.findFirst({ where: { id: req.params.id, userId } });
+    const stage = await prisma.crmStage.findFirst({ where: { id: req.params.id, userId: ownerId } });
     if (!stage) return reply.code(404).send({ error: 'Estágio não encontrado.' });
 
     return prisma.crmStage.update({ where: { id: stage.id }, data: v.data });
   });
 
-  app.delete('/stages/:id', async (req: any, reply) => {
-    const userId = req.user.sub;
-    const stage = await prisma.crmStage.findFirst({ where: { id: req.params.id, userId } });
+  app.delete('/stages/:id', authManage, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const stage = await prisma.crmStage.findFirst({ where: { id: req.params.id, userId: ownerId } });
     if (!stage) return reply.code(404).send({ error: 'Estágio não encontrado.' });
 
-    const totalStages = await prisma.crmStage.count({ where: { userId } });
+    const totalStages = await prisma.crmStage.count({ where: { userId: ownerId } });
     if (totalStages <= 1) return reply.code(400).send({ error: 'O funil precisa de ao menos 1 estágio.' });
 
     const contactCount = await prisma.crmContact.count({ where: { stageId: stage.id } });
@@ -115,12 +118,12 @@ export default async function crmRoutes(app: FastifyInstance) {
     return reply.code(204).send();
   });
 
-  app.post('/stages/reorder', async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.post('/stages/reorder', authManage, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const v = validateRequest(reorderCrmStagesSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
 
-    const stages = await prisma.crmStage.findMany({ where: { userId }, select: { id: true } });
+    const stages = await prisma.crmStage.findMany({ where: { userId: ownerId }, select: { id: true } });
     const validIds = new Set(stages.map((s: any) => s.id));
     if (v.data.order.length !== stages.length || !v.data.order.every((id) => validIds.has(id))) {
       return reply.code(400).send({ error: 'A lista deve conter exatamente os estágios existentes do funil.' });
@@ -135,31 +138,31 @@ export default async function crmRoutes(app: FastifyInstance) {
   // ═══════════════════════════════════════════════════════════════════════
   // Contatos
   // ═══════════════════════════════════════════════════════════════════════
-  app.get('/contacts', async (req: any) => {
-    const userId = req.user.sub;
+  app.get('/contacts', auth, async (req: any) => {
+    const { ownerId } = req.teamScope;
     const { stageId } = req.query as { stageId?: string };
     return prisma.crmContact.findMany({
-      where:   { userId, ...(stageId ? { stageId } : {}) },
+      where:   { userId: ownerId, ...(stageId ? { stageId } : {}) },
       orderBy: { lastActivityAt: 'desc' },
     });
   });
 
-  app.get('/contacts/:id', async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.get('/contacts/:id', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const contact = await prisma.crmContact.findFirst({
-      where:   { id: req.params.id, userId },
+      where:   { id: req.params.id, userId: ownerId },
       include: { stage: true, activities: { orderBy: { createdAt: 'desc' } } },
     });
     if (!contact) return reply.code(404).send({ error: 'Contato não encontrado.' });
     return contact;
   });
 
-  app.post('/contacts', async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.post('/contacts', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const v = validateRequest(createCrmContactSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
 
-    const stages = await getOrSeedStages(userId);
+    const stages = await getOrSeedStages(ownerId);
     let stageId = v.data.stageId;
     if (stageId) {
       if (!stages.some((s: any) => s.id === stageId)) return reply.code(400).send({ error: 'Estágio inválido.' });
@@ -170,7 +173,7 @@ export default async function crmRoutes(app: FastifyInstance) {
     try {
       const contact = await prisma.crmContact.create({
         data: {
-          userId,
+          userId: ownerId,
           stageId,
           name:    v.data.name,
           phone:   v.data.phone,
@@ -188,12 +191,12 @@ export default async function crmRoutes(app: FastifyInstance) {
     }
   });
 
-  app.patch('/contacts/:id', async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.patch('/contacts/:id', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const v = validateRequest(updateCrmContactSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
 
-    const contact = await prisma.crmContact.findFirst({ where: { id: req.params.id, userId } });
+    const contact = await prisma.crmContact.findFirst({ where: { id: req.params.id, userId: ownerId } });
     if (!contact) return reply.code(404).send({ error: 'Contato não encontrado.' });
 
     try {
@@ -206,18 +209,18 @@ export default async function crmRoutes(app: FastifyInstance) {
 
   // Mover contato entre estágios (drag-and-drop do Kanban). Loga stage_change
   // e fecha o negócio (closedAt) quando o estágio destino é isWon/isLost.
-  app.patch('/contacts/:id/move', async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.patch('/contacts/:id/move', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const v = validateRequest(moveCrmContactSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
 
     const contact = await prisma.crmContact.findFirst({
-      where:   { id: req.params.id, userId },
+      where:   { id: req.params.id, userId: ownerId },
       include: { stage: true },
     });
     if (!contact) return reply.code(404).send({ error: 'Contato não encontrado.' });
 
-    const targetStage = await prisma.crmStage.findFirst({ where: { id: v.data.stageId, userId } });
+    const targetStage = await prisma.crmStage.findFirst({ where: { id: v.data.stageId, userId: ownerId } });
     if (!targetStage) return reply.code(400).send({ error: 'Estágio inválido.' });
 
     if (targetStage.id === contact.stageId) return contact; // no-op
@@ -236,7 +239,7 @@ export default async function crmRoutes(app: FastifyInstance) {
       prisma.crmActivity.create({
         data: {
           contactId: contact.id,
-          userId,
+          userId:    ownerId,
           type:      'stage_change',
           content:   `Moveu de "${contact.stage.name}" para "${targetStage.name}"`,
         },
@@ -246,9 +249,9 @@ export default async function crmRoutes(app: FastifyInstance) {
     return updated;
   });
 
-  app.delete('/contacts/:id', async (req: any, reply) => {
-    const userId = req.user.sub;
-    const contact = await prisma.crmContact.findFirst({ where: { id: req.params.id, userId } });
+  app.delete('/contacts/:id', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const contact = await prisma.crmContact.findFirst({ where: { id: req.params.id, userId: ownerId } });
     if (!contact) return reply.code(404).send({ error: 'Contato não encontrado.' });
     await prisma.crmContact.delete({ where: { id: contact.id } });
     return reply.code(204).send();
@@ -257,22 +260,22 @@ export default async function crmRoutes(app: FastifyInstance) {
   // ═══════════════════════════════════════════════════════════════════════
   // Atividades — notas, ligações, reuniões e lembretes na timeline do contato
   // ═══════════════════════════════════════════════════════════════════════
-  app.post('/contacts/:id/activities', async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.post('/contacts/:id/activities', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const v = validateRequest(createCrmActivitySchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
     if (v.data.type === 'reminder' && !v.data.dueAt) {
       return reply.code(400).send({ error: 'Lembretes exigem uma data (dueAt).' });
     }
 
-    const contact = await prisma.crmContact.findFirst({ where: { id: req.params.id, userId } });
+    const contact = await prisma.crmContact.findFirst({ where: { id: req.params.id, userId: ownerId } });
     if (!contact) return reply.code(404).send({ error: 'Contato não encontrado.' });
 
     const [activity] = await prisma.$transaction([
       prisma.crmActivity.create({
         data: {
           contactId: contact.id,
-          userId,
+          userId:    ownerId,
           type:      v.data.type,
           content:   v.data.content,
           dueAt:     v.data.dueAt,
@@ -284,9 +287,9 @@ export default async function crmRoutes(app: FastifyInstance) {
     return reply.code(201).send(activity);
   });
 
-  app.patch('/activities/:id/complete', async (req: any, reply) => {
-    const userId = req.user.sub;
-    const activity = await prisma.crmActivity.findFirst({ where: { id: req.params.id, userId } });
+  app.patch('/activities/:id/complete', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const activity = await prisma.crmActivity.findFirst({ where: { id: req.params.id, userId: ownerId } });
     if (!activity) return reply.code(404).send({ error: 'Atividade não encontrada.' });
     if (activity.type !== 'reminder') return reply.code(400).send({ error: 'Somente lembretes podem ser concluídos.' });
 
@@ -294,37 +297,36 @@ export default async function crmRoutes(app: FastifyInstance) {
   });
 
   // Lembretes pendentes de todos os contatos (widget de "hoje"/atrasados).
-  app.get('/reminders', async (req: any) => {
-    const userId = req.user.sub;
+  app.get('/reminders', auth, async (req: any) => {
+    const { ownerId } = req.teamScope;
     return prisma.crmActivity.findMany({
-      where:   { userId, type: 'reminder', completedAt: null },
+      where:   { userId: ownerId, type: 'reminder', completedAt: null },
       orderBy: { dueAt: 'asc' },
       include: { contact: { select: { id: true, name: true, phone: true, stageId: true } } },
     });
   });
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Dashboard — KPIs de negócio (módulo Profissional/Empresas do SPEC
-  // ZapScript 2.0). Lê só dados já existentes (CrmContact/CrmActivity +
-  // AtendeConversation, quando o usuário também tem o módulo Atende).
+  // Dashboard — KPIs de negócio (tier Empresas). Lê só dados já existentes
+  // (CrmContact/CrmActivity + AtendeConversation).
   // ═══════════════════════════════════════════════════════════════════════
-  app.get('/dashboard', async (req: any) => {
-    const userId = req.user.sub;
+  app.get('/dashboard', auth, async (req: any) => {
+    const { ownerId } = req.teamScope;
     const days  = Math.min(365, Math.max(1, parseInt((req.query as any)?.days, 10) || 30));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     const [wonContacts, negociosPerdidos, novosLeads, atendimentosSemana, topActivity] = await Promise.all([
       prisma.crmContact.findMany({
-        where:  { userId, closedAt: { gte: since }, stage: { isWon: true } },
+        where:  { userId: ownerId, closedAt: { gte: since }, stage: { isWon: true } },
         select: { id: true, value: true },
       }),
-      prisma.crmContact.count({ where: { userId, closedAt: { gte: since }, stage: { isLost: true } } }),
-      prisma.crmContact.count({ where: { userId, createdAt: { gte: since } } }),
-      prisma.atendeConversation.count({ where: { userId, lastMessageAt: { gte: weekAgo } } }).catch(() => 0),
+      prisma.crmContact.count({ where: { userId: ownerId, closedAt: { gte: since }, stage: { isLost: true } } }),
+      prisma.crmContact.count({ where: { userId: ownerId, createdAt: { gte: since } } }),
+      prisma.atendeConversation.count({ where: { userId: ownerId, lastMessageAt: { gte: weekAgo } } }).catch(() => 0),
       prisma.crmActivity.groupBy({
         by:      ['contactId'],
-        where:   { userId, createdAt: { gte: since } },
+        where:   { userId: ownerId, createdAt: { gte: since } },
         _count:  { contactId: true },
         orderBy: { _count: { contactId: 'desc' } },
         take:    5,
@@ -360,11 +362,11 @@ export default async function crmRoutes(app: FastifyInstance) {
   // Importar do WhatsApp — sugestões a partir do histórico de Transcription
   // (zero alteração no webhook de mensageria; só lê dados já existentes)
   // ═══════════════════════════════════════════════════════════════════════
-  app.get('/import/suggestions', async (req: any) => {
-    const userId = req.user.sub;
+  app.get('/import/suggestions', auth, async (req: any) => {
+    const { ownerId } = req.teamScope;
 
     const rows = await prisma.transcription.findMany({
-      where:   { userId },
+      where:   { userId: ownerId },
       select:  { contactPhone: true, contactName: true, numberId: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
       take:    2000,
@@ -383,7 +385,7 @@ export default async function crmRoutes(app: FastifyInstance) {
     }
 
     const already = new Set(
-      (await prisma.crmContact.findMany({ where: { userId }, select: { phone: true } })).map((c: any) => c.phone),
+      (await prisma.crmContact.findMany({ where: { userId: ownerId }, select: { phone: true } })).map((c: any) => c.phone),
     );
 
     const suggestions = [...byPhone.values()]
@@ -394,16 +396,16 @@ export default async function crmRoutes(app: FastifyInstance) {
     return { suggestions };
   });
 
-  app.post('/import', async (req: any, reply) => {
-    const userId = req.user.sub;
+  app.post('/import', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
     const v = validateRequest(crmImportSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
 
-    const stages = await getOrSeedStages(userId);
+    const stages = await getOrSeedStages(ownerId);
     const defaultStageId = stages[0].id;
 
     const rows = await prisma.transcription.findMany({
-      where:   { userId, contactPhone: { in: v.data.phones } },
+      where:   { userId: ownerId, contactPhone: { in: v.data.phones } },
       select:  { contactPhone: true, contactName: true, numberId: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -423,7 +425,7 @@ export default async function crmRoutes(app: FastifyInstance) {
       try {
         const contact = await prisma.crmContact.create({
           data: {
-            userId,
+            userId: ownerId,
             stageId:  defaultStageId,
             name:     info.name || phone,
             phone,
@@ -434,7 +436,7 @@ export default async function crmRoutes(app: FastifyInstance) {
         await prisma.crmActivity.create({
           data: {
             contactId: contact.id,
-            userId,
+            userId:    ownerId,
             type:      'note',
             content:   'Importado do histórico de transcrições do WhatsApp.',
           },
