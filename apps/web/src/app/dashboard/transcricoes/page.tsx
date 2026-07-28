@@ -770,7 +770,7 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   const canHistory      = PLAN_HISTORY.includes(planName);
   const canFilters      = PLAN_FILTERS.includes(planName);
   const canSearch       = PLAN_SEARCH.includes(planName);
-  const canExport       = planName === 'pro' || planName === 'pro-tester' || planName === 'executive';
+  const canExport       = true; // exportação liberada para todos os planos (Core incluso)
   const hasFilters      = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource);
   const hasActiveFilters = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo);
 
@@ -977,71 +977,43 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         </div>
 
         {/* Exportar */}
-        {canExport ? (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={e => { e.stopPropagation(); setShowExportMenu(v => !v); }}
-              disabled={exporting}
-              className="flex items-center gap-2 text-sm px-3.5 py-2 rounded-xl border transition-colors disabled:opacity-50"
-              style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              {exporting ? 'Exportando…' : 'Exportar'}
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </button>
-            {showExportMenu && (
-              <div className="absolute left-0 top-full mt-1 z-30 rounded-xl border shadow-xl overflow-hidden"
-                style={{ background: 'rgb(var(--color-surface-elevated))', borderColor: 'rgb(var(--color-border))', minWidth: 185 }}>
-                {[
-                  { fmt: 'pdf',  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
-                  { fmt: 'docx', icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
-                  { fmt: 'csv',  icon: '📊', label: 'CSV',  sub: 'Planilhas'         },
-                  { fmt: 'xls',  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
-                ].map(({ fmt, icon, label, sub }) => (
-                  <button key={fmt} type="button"
-                    onClick={() => handleExport(fmt as any)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-brand-primary/8 transition-colors flex items-center gap-3">
-                    <span className="text-base flex-shrink-0">{icon}</span>
-                    <div>
-                      <div className="text-sm font-medium" style={{ color: 'rgb(var(--color-text))' }}>{label}</div>
-                      <div className="text-[10px]" style={{ color: 'rgb(var(--color-text-muted))' }}>{sub}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="relative group">
-            <button type="button" disabled
-              className="flex items-center gap-2 text-sm px-3.5 py-2 rounded-xl border opacity-50 cursor-not-allowed"
-              style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              Exportar
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                style={{ background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>
-                Executive
-              </span>
-            </button>
-            <div className="absolute left-0 top-full mt-1.5 z-30 w-52 rounded-xl p-3 shadow-xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(245,158,11,.25)' }}>
-              <div className="text-xs font-semibold mb-1" style={{ color: 'rgb(var(--color-text))' }}>🔒 Disponível no Executive</div>
-              <div className="text-[11px] mb-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                Exporte em PDF, DOCX, CSV ou XLS.
-              </div>
-              <a href="/dashboard/plano" className="text-[11px] font-bold hover:underline pointer-events-auto"
-                style={{ color: 'rgb(var(--color-primary))' }}>
-                Fazer upgrade →
-              </a>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setShowExportMenu(v => !v); }}
+            disabled={exporting}
+            className="flex items-center gap-2 text-sm px-3.5 py-2 rounded-xl border transition-colors disabled:opacity-50"
+            style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            {exporting ? 'Exportando…' : 'Exportar'}
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          {showExportMenu && (
+            <div className="absolute left-0 top-full mt-1 z-30 rounded-xl border shadow-xl overflow-hidden"
+              style={{ background: 'rgb(var(--color-surface-elevated))', borderColor: 'rgb(var(--color-border))', minWidth: 185 }}>
+              {[
+                { fmt: 'pdf',  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
+                { fmt: 'docx', icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
+                { fmt: 'csv',  icon: '📊', label: 'CSV',  sub: 'Planilhas'         },
+                { fmt: 'xls',  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
+              ].map(({ fmt, icon, label, sub }) => (
+                <button key={fmt} type="button"
+                  onClick={() => handleExport(fmt as any)}
+                  className="w-full text-left px-4 py-2.5 hover:bg-brand-primary/8 transition-colors flex items-center gap-3">
+                  <span className="text-base flex-shrink-0">{icon}</span>
+                  <div>
+                    <div className="text-sm font-medium" style={{ color: 'rgb(var(--color-text))' }}>{label}</div>
+                    <div className="text-[10px]" style={{ color: 'rgb(var(--color-text-muted))' }}>{sub}</div>
+                  </div>
+                </button>
+              ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ── ACTIVE FILTER CHIPS ─────────────────────────────────────────── */}
@@ -1603,46 +1575,30 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                     </div>
                   )}
 
-                  {/* ── Seção: Exports padrão (Pro+) ─────────────────────── */}
-                  {canExport ? (
-                    <div>
-                      {selected.source !== 'manual' && (
-                        <p className="text-xs text-brand-muted mb-4">Exportar esta conversão individualmente:</p>
-                      )}
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { fn: () => exportSinglePdf(selected),  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
-                          { fn: () => exportSingleDocx(selected), icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
-                          { fn: () => exportSingleCsv(selected),  icon: '📊', label: 'CSV',  sub: 'Planilhas, dados'  },
-                          { fn: () => exportSingleXls(selected),  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
-                        ].map(({ fn, icon, label, sub }) => (
-                          <button key={label} type="button" onClick={fn}
-                            className="flex flex-col items-center gap-1.5 py-4 rounded-xl border border-brand-border/50 hover:border-brand-primary/40 hover:bg-brand-primary/5 transition-colors">
-                            <span className="text-xl">{icon}</span>
-                            <span className="text-sm font-semibold text-brand-text">{label}</span>
-                            <span className="text-[10px] text-brand-muted">{sub}</span>
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-[10px] text-brand-muted mt-4 text-center">
-                        Para exportar todas as conversões do mês, use o botão <b>Exportar</b> na lista.
-                      </p>
+                  {/* ── Seção: Exports padrão (todos os planos) ─────────────────────── */}
+                  <div>
+                    {selected.source !== 'manual' && (
+                      <p className="text-xs text-brand-muted mb-4">Exportar esta conversão individualmente:</p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { fn: () => exportSinglePdf(selected),  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
+                        { fn: () => exportSingleDocx(selected), icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
+                        { fn: () => exportSingleCsv(selected),  icon: '📊', label: 'CSV',  sub: 'Planilhas, dados'  },
+                        { fn: () => exportSingleXls(selected),  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
+                      ].map(({ fn, icon, label, sub }) => (
+                        <button key={label} type="button" onClick={fn}
+                          className="flex flex-col items-center gap-1.5 py-4 rounded-xl border border-brand-border/50 hover:border-brand-primary/40 hover:bg-brand-primary/5 transition-colors">
+                          <span className="text-xl">{icon}</span>
+                          <span className="text-sm font-semibold text-brand-text">{label}</span>
+                          <span className="text-[10px] text-brand-muted">{sub}</span>
+                        </button>
+                      ))}
                     </div>
-                  ) : selected.source !== 'manual' ? (
-                    /* Upsell para Free em conversões não-manuais */
-                    <div className="flex flex-col items-center justify-center py-6 text-center">
-                      <div className="text-3xl mb-3">🔒</div>
-                      <p className="font-semibold text-brand-text mb-1">Disponível em planos pagos</p>
-                      <p className="text-sm text-brand-muted mb-3 max-w-xs">
-                        Exporte em PDF, DOCX, CSV e XLS individualmente ou em massa.
-                      </p>
-                      <a href="/dashboard/plano"
-                        className="text-xs font-bold px-4 py-2 rounded-full"
-                        style={{ background: 'rgba(var(--color-primary)/.12)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(var(--color-primary)/.25)' }}>
-                        Ver planos →
-                      </a>
-                    </div>
-                  ) : null}
+                    <p className="text-[10px] text-brand-muted mt-4 text-center">
+                      Para exportar todas as conversões do mês, use o botão <b>Exportar</b> na lista.
+                    </p>
+                  </div>
 
                 </div>
               )}
