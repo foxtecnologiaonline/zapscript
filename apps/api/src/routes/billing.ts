@@ -49,8 +49,8 @@ async function markProcessed(paymentId: string): Promise<void> {
    profissional/empresas: "aluguel" = mensal (PLAN_PRICES), "compra" = anual
    (PLAN_PRICES_YEARLY) — sistemática inicial de preços, definida em
    conversa de negócio (2026-07-29). */
-const PLAN_PRICES:        Record<string, number> = { pro: 37,  executive: 67,  profissional: 49,  empresas: 99  };
-const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 355, executive: 643, profissional: 295, empresas: 595 };
+export const PLAN_PRICES:        Record<string, number> = { pro: 37,  executive: 67,  profissional: 49,  empresas: 99  };
+export const PLAN_PRICES_YEARLY: Record<string, number> = { pro: 355, executive: 643, profissional: 295, empresas: 595 };
 const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Executive', profissional: 'Profissional', empresas: 'Empresas' };
 
 /* ── Tiers ZapScript 2.0 (revisão): "tiers absorvem os módulos" — cada tier
@@ -984,6 +984,9 @@ export default async function billingRoutes(app: FastifyInstance) {
       if (!user) return reply.code(401).send({ error: 'Usuário não encontrado' });
       if (!product || product.status === 'planned' || product.status === 'discovery') {
         return reply.code(400).send({ error: 'Módulo indisponível para contratação.' });
+      }
+      if (product.status === 'bundled') {
+        return reply.code(400).send({ error: 'Este módulo não é vendido avulso — ele já vem incluso no plano Profissional/Empresas. Veja /dashboard/plano.' });
       }
       if (existing?.status === 'active') {
         return reply.code(400).send({ error: 'Você já tem este módulo ativo.' });

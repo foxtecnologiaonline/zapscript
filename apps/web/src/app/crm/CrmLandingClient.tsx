@@ -3,7 +3,14 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { captureAffiliateFromUrl } from '@/lib/affiliate';
 
-const CTA_HREF = '/cadastro?utm_source=seo&utm_campaign=crm';
+/* CRM vem incluso no plano Empresas (não é vendido avulso) — CTA leva
+   direto para a escolha de plano. */
+const CTA_HREF = '/dashboard/plano?utm_source=seo&utm_campaign=crm';
+
+/* Preço do plano que inclui o CRM (Empresas) — espelha PLAN_PRICES em
+   apps/api/src/routes/billing.ts. O módulo em si não tem preço avulso. */
+const EMPRESAS_PRICE_MONTHLY = 'R$99';
+const EMPRESAS_PRICE_YEARLY = 'R$595';
 
 /* ── Dados estáticos da página ─────────────────────────────────────── */
 const PAINS = [
@@ -33,13 +40,13 @@ const COMPARISON: [string, string, string, string][] = [
   ['Funil arrastar-e-soltar',            '❌', '✅', '✅'],
   ['Lembretes por contato',              '⚠️ Manual', '✅', '✅'],
   ['Tempo de configuração',              '—', '⚠️ Dias', '✅ Minutos'],
-  ['Custo mensal',                       '✅ Grátis', '⚠️ Alto', '✅ R$47'],
+  ['Custo mensal',                       '✅ Grátis', '⚠️ Alto', '✅ Incluso no Empresas'],
 ];
 
 const FAQS = [
   {
-    q: 'Preciso ter o ZapScript principal para usar o CRM?',
-    a: 'Sim — o CRM é um módulo da plataforma ZapScript, não um produto separado. Ele usa o mesmo login e, quando disponível, o histórico de conversas já transcritas para sugerir importações.',
+    q: 'Preciso ter outro plano do ZapScript para usar o CRM?',
+    a: 'Sim — o CRM vem incluso no plano Empresas (R$99/mês), junto do Atende e do Tarefas, para até 5 usuários. Não é vendido separado. Ele usa o mesmo login e, quando disponível, o histórico de conversas já transcritas para sugerir importações.',
   },
   {
     q: 'Como funciona a importação automática de contatos?',
@@ -165,7 +172,7 @@ export default function CrmLandingClient() {
             className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 active:scale-95 transition-all shadow-lg"
             style={{ boxShadow: '0 0 30px rgba(16,185,129,0.3)' }}
           >
-            Ativar CRM — R$47/mês
+            Ver plano Empresas
             <span>→</span>
           </Link>
 
@@ -233,7 +240,7 @@ export default function CrmLandingClient() {
             className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-base px-8 py-3.5 rounded-2xl hover:opacity-90 active:scale-95 transition-all mt-10"
             style={{ boxShadow: '0 0 30px rgba(16,185,129,0.3)' }}
           >
-            Ativar CRM — R$47/mês
+            Ver plano Empresas
             <span>→</span>
           </Link>
         </div>
@@ -310,28 +317,27 @@ export default function CrmLandingClient() {
       </section>
 
       {/* ════════════════════════════════════════════════════════════
-          PREÇO
+          PREÇO — incluso no Empresas
       ════════════════════════════════════════════════════════════ */}
       <section className="py-12 px-4">
         <div className="max-w-3xl mx-auto">
-          <h2 className="text-2xl font-bold text-white text-center mb-3">Preço simples e transparente</h2>
-          <p className="text-brand-muted text-center mb-10">Um módulo, um preço. Sem letras miúdas.</p>
+          <h2 className="text-2xl font-bold text-white text-center mb-3">Incluso no plano Empresas</h2>
+          <p className="text-brand-muted text-center mb-10">O CRM não é vendido separado — vem junto do Atende e do Tarefas, para até 5 usuários.</p>
           <div className="max-w-xs mx-auto rounded-2xl p-6 border border-brand-primary bg-brand-primary/8 relative">
             <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-primary text-black text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap">
-              📊 Módulo CRM
+              📊 CRM · Empresas
             </div>
-            <h3 className="font-bold text-white mb-1">ZapScript CRM</h3>
+            <h3 className="font-bold text-white mb-1">ZapScript Empresas</h3>
             <div className="flex items-baseline gap-1.5 mb-4">
-              <span className="text-2xl font-bold text-white">R$47</span>
-              <span className="text-brand-muted text-sm">/mês</span>
+              <span className="text-2xl font-bold text-white">{EMPRESAS_PRICE_MONTHLY}</span>
+              <span className="text-brand-muted text-sm">/mês (aluguel) · {EMPRESAS_PRICE_YEARLY}/ano (compra)</span>
             </div>
             <ul className="space-y-2 mb-6">
               {[
-                'Contatos ilimitados',
-                'Estágios personalizáveis',
-                'Notas, ligações, reuniões e lembretes',
-                'Importação com 1 clique do WhatsApp',
-                'Busca por nome, telefone ou empresa',
+                'Tudo do Profissional (Atende incluso)',
+                'CRM — contatos e funil ilimitados',
+                'Tarefas — designação e controle na equipe',
+                'Até 5 usuários com papéis (admin/manager/agent)',
               ].map(f => (
                 <li key={f} className="flex items-start gap-2 text-sm">
                   <span className="text-brand-primary shrink-0 mt-0.5">✓</span>
@@ -344,11 +350,11 @@ export default function CrmLandingClient() {
               data-cta="crm_plano_cta"
               className="block text-center font-semibold py-2.5 rounded-xl transition-all text-sm bg-brand-primary text-black hover:opacity-90"
             >
-              Ativar CRM
+              Ver plano Empresas
             </Link>
           </div>
           <p className="text-center text-brand-muted text-xs mt-6">
-            Requer uma conta ZapScript ativa — o CRM é um módulo, não um produto separado. Pagamento via PIX ou cartão · Cancele quando quiser
+            Requer o plano Empresas — o CRM é um módulo da suíte, não um produto separado. Pagamento via PIX ou cartão · Cancele quando quiser
           </p>
         </div>
       </section>
@@ -385,7 +391,7 @@ export default function CrmLandingClient() {
             className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-xl px-12 py-5 rounded-2xl hover:opacity-90 active:scale-95 transition-all"
             style={{ boxShadow: '0 0 40px rgba(16,185,129,0.35)' }}
           >
-            Ativar CRM — R$47/mês
+            Ver plano Empresas
             <span>→</span>
           </Link>
           <p className="mt-5 text-sm text-brand-muted">

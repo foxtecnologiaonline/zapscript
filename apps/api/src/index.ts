@@ -709,6 +709,28 @@ async function runAutoMigrations() {
         VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'planned', 37, 355, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
+    // Atende e CRM: retirados da venda avulsa (revisão de tiers ZapScript
+    // 2.0) — viraram exclusivos do Profissional/Empresas (ver
+    // TIER_MODULE_BUNDLES em routes/billing.ts). Força 'bundled' a cada
+    // boot; quem já era assinante avulso (source='paid') mantém acesso, só
+    // a contratação nova é bloqueada (ver checagem de status em
+    // routes/billing.ts). Ver packages/modules/catalog.ts.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'atende') THEN
+        UPDATE "Product" SET "status" = 'bundled' WHERE "key" = 'atende';
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('atende-product-seed', 'atende', 'ZapScript Atende', 'bundled', 67, 643, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'crm') THEN
+        UPDATE "Product" SET "status" = 'bundled' WHERE "key" = 'crm';
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('crm-product-seed', 'crm', 'ZapScript CRM', 'bundled', 47, 451, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
     // Módulo Campanhas (migração 20260713_campanhas_tables): auto-cura o schema no
     // boot mesmo se o startCommand de produção não rodar `prisma migrate deploy`.
     `CREATE TABLE IF NOT EXISTS "Campanha" (

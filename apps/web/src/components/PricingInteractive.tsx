@@ -266,11 +266,12 @@ export function PricingInteractive() {
         </p>
         <div className="grid grid-cols-1 gap-2.5">
           {[
-            { icon: '🤖', key: 'atende', name: 'ZapScript Atende', tagline: 'Atendimento automático 24/7 no WhatsApp', href: '/atende', status: 'ga' },
-            { icon: '💰', key: 'cobranca', name: 'ZapScript Cobrança', tagline: 'Lembrete e cobrança automática via WhatsApp', href: '/cobranca', status: 'beta' },
+            { icon: '🤖', key: 'atende', name: 'ZapScript Atende', tagline: 'Incluso no plano Profissional', href: '/atende', status: 'bundled' },
+            { icon: '📊', key: 'crm', name: 'ZapScript CRM', tagline: 'Incluso no plano Empresas', href: '/crm', status: 'bundled' },
+            { icon: '✅', key: 'tarefas', name: 'ZapScript Tarefas', tagline: 'Incluso no plano Empresas', href: '/dashboard/plano', status: 'bundled' },
             { icon: '📣', key: 'campanhas', name: 'ZapScript Campanhas', tagline: 'Disparo em massa compliant via API oficial', href: '/campanhas', status: 'beta' },
-            { icon: '📊', key: 'crm', name: 'ZapScript CRM', tagline: 'Funil de vendas dentro do WhatsApp', href: '/crm', status: 'beta' },
-            { icon: '🗣️', key: 'vendas', name: 'ZapScript Vendas', tagline: 'Grave a visita → vira nota no CRM', href: '/vendas', status: 'beta' },
+            { icon: '💰', key: 'cobranca', name: 'ZapScript Cobrança', tagline: 'Lembrete e cobrança automática via WhatsApp', href: '/cobranca', status: 'planned' },
+            { icon: '🗣️', key: 'vendas', name: 'ZapScript Vendas', tagline: 'Grave a visita → vira nota no CRM', href: '/modulos/vendas', status: 'planned' },
             { icon: '🎬', key: 'legenda', name: 'ZapScript Legendas', tagline: 'Legenda automática para Reels e Stories', href: '/legendas', status: 'planned' },
           ].map((m) => (
             <Link key={m.key} href={m.href}
@@ -287,6 +288,10 @@ export function PricingInteractive() {
                   {m.status === 'planned' && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                       style={{ background: 'rgba(148,163,184,.12)', color: 'rgb(148,163,184)' }}>EM BREVE</span>
+                  )}
+                  {m.status === 'bundled' && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ background: 'rgba(16,185,129,.12)', color: 'rgb(var(--color-primary))' }}>INCLUSO NO PLANO</span>
                   )}
                 </div>
                 <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{m.tagline}</p>

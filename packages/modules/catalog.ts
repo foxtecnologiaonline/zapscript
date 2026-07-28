@@ -15,7 +15,8 @@ export type ModuleStatus =
   | 'ga'        // disponível a todos
   | 'beta'      // liberado, em amadurecimento
   | 'planned'   // no roadmap, ainda não construído
-  | 'discovery'; // especulativo — validar demanda antes de construir
+  | 'discovery' // especulativo — validar demanda antes de construir
+  | 'bundled';  // só via tier (Profissional/Empresas) — não vendido avulso
 
 export interface ModuleSpec {
   /** Chave estável (== Product.key no banco, == segmento de rota /app/<key>). */
@@ -65,7 +66,11 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '🤖',
     tagline: 'Atendimento automático 24/7 no WhatsApp',
     jtbd: 'Preciso responder cliente na hora sem contratar equipe.',
-    status: 'ga',
+    // Retirado da venda avulsa (revisão de tiers ZapScript 2.0) — passou a
+    // vir incluso no Profissional/Empresas (ver TIER_MODULE_BUNDLES em
+    // routes/billing.ts). Quem já era assinante avulso mantém acesso; só a
+    // contratação nova é bloqueada. Preço aqui é só referência histórica.
+    status: 'bundled',
     priceMonthly: 67,
     priceYearly: 643,
     dependsOn: [],
@@ -106,7 +111,10 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '📊',
     tagline: 'Funil de vendas dentro do WhatsApp',
     jtbd: 'Respondo no WhatsApp mas não organizo quem é lead novo, quem está negociando e quem fechou.',
-    status: 'beta',
+    // Retirado da venda avulsa (revisão de tiers ZapScript 2.0) — exclusivo
+    // do Empresas (ver TIER_MODULE_BUNDLES em routes/billing.ts). Quem já
+    // era assinante avulso mantém acesso. Preço aqui é só referência histórica.
+    status: 'bundled',
     priceMonthly: 47,
     priceYearly: 451,
     dependsOn: [],

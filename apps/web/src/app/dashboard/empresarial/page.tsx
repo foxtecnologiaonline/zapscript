@@ -20,12 +20,10 @@ interface TeamData {
   ownerId: string;
   createdAt: string;
   members: TeamMember[];
-  seats: { active: number; total: number };
+  seats: { active: number; total: number; max: number };
   billing: {
-    seatPriceMonthly: number;
-    seatPriceYearly: number;
-    monthlyTotal: number;
-    yearlyTotal: number;
+    planPriceMonthly: number;
+    planPriceYearly: number;
   };
   ownerPlan: { name: string; label: string } | null;
 }
@@ -201,25 +199,20 @@ function EmpresarialContent() {
             <div className="text-4xl mb-3">🏢</div>
             <h2 className="font-bold text-lg mb-2">Crie seu time</h2>
             <p className="text-sm max-w-md mx-auto" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              Convide sua equipe e compartilhe o acesso Pro. Cada membro ganha seu próprio número
-              e acesso a todos os recursos. <strong>Você paga uma fatura única pelo time.</strong>
+              Convide sua equipe e compartilhe o acesso Empresas (Atende + CRM + Tarefas).
+              <strong> Um preço fixo para até 5 usuários</strong> — não é cobrança por seat.
             </p>
           </div>
 
-          {/* Preços */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            <div className="rounded-xl p-4 text-center"
-              style={{ background: 'rgba(var(--color-primary)/.06)', border: '1px solid rgba(var(--color-primary)/.15)' }}>
-              <div className="text-xs font-bold mb-1" style={{ color: 'rgb(var(--color-text-muted))' }}>Por seat / mês</div>
-              <div className="font-black text-2xl" style={{ color: 'rgb(var(--color-primary))' }}>R$37</div>
-              <div className="text-[10px]" style={{ color: 'rgb(var(--color-text-muted))' }}>mesmo preço do Pro</div>
-            </div>
-            <div className="rounded-xl p-4 text-center"
-              style={{ background: 'rgba(var(--color-primary)/.04)', border: '1px solid rgba(var(--color-primary)/.1)' }}>
-              <div className="text-xs font-bold mb-1" style={{ color: 'rgb(var(--color-text-muted))' }}>Por seat / ano</div>
-              <div className="font-black text-2xl" style={{ color: 'rgb(var(--color-primary))' }}>R$29</div>
-              <div className="text-[10px]" style={{ color: 'rgb(var(--color-text-muted))' }}>R$355/ano · 2 meses grátis</div>
-            </div>
+          {/* Preço */}
+          <div className="rounded-xl p-4 text-center mb-6"
+            style={{ background: 'rgba(var(--color-primary)/.06)', border: '1px solid rgba(var(--color-primary)/.15)' }}>
+            <div className="text-xs font-bold mb-1" style={{ color: 'rgb(var(--color-text-muted))' }}>Plano Empresas · até 5 usuários</div>
+            <div className="font-black text-2xl" style={{ color: 'rgb(var(--color-primary))' }}>R$99/mês</div>
+            <div className="text-[10px]" style={{ color: 'rgb(var(--color-text-muted))' }}>ou R$595/ano (compra)</div>
+            <a href="/dashboard/plano" className="text-[11px] font-semibold mt-2 inline-block underline" style={{ color: 'rgb(var(--color-primary))' }}>
+              Não está no Empresas ainda? Ver planos →
+            </a>
           </div>
 
           <form onSubmit={handleCreate} className="space-y-3">
@@ -266,8 +259,8 @@ function EmpresarialContent() {
                   <h2 className="font-display font-bold text-lg">{team.name}</h2>
                 </div>
                 <p className="text-xs mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                  {team.seats.active} membro{team.seats.active !== 1 ? 's' : ''} ativo{team.seats.active !== 1 ? 's' : ''}
-                  {isOwner && <> · Plano: <strong style={{ color: 'rgb(var(--color-primary))' }}>{team.ownerPlan?.label || 'Pro'}</strong></>}
+                  {team.seats.active} de {team.seats.max} membro{team.seats.max !== 1 ? 's' : ''}
+                  {isOwner && <> · Plano: <strong style={{ color: 'rgb(var(--color-primary))' }}>{team.ownerPlan?.label || 'Empresas'}</strong></>}
                 </p>
               </div>
               {isOwner && (
@@ -284,14 +277,14 @@ function EmpresarialContent() {
                 style={{ background: 'rgba(var(--color-primary)/.06)', border: '1px solid rgba(var(--color-primary)/.15)' }}>
                 <div className="flex items-center justify-between text-sm">
                   <span style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                    {team.seats.active} seat{team.seats.active !== 1 ? 's' : ''} × {brl(team.billing.seatPriceMonthly)}
+                    Plano Empresas · {team.seats.active} de {team.seats.max} usuários incluídos
                   </span>
                   <span className="font-black text-lg" style={{ color: 'rgb(var(--color-primary))' }}>
-                    {brl(team.billing.monthlyTotal)}<span className="text-xs font-normal">/mês</span>
+                    {brl(team.billing.planPriceMonthly)}<span className="text-xs font-normal">/mês</span>
                   </span>
                 </div>
                 <div className="text-[10px] mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                  Cobrado na sua fatura mensal. Módulos adicionais contratados individualmente.
+                  Preço fixo do plano — não é cobrança por seat. Módulos avulsos, quando houver, são cobrados à parte.
                 </div>
               </div>
             )}

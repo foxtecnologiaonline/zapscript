@@ -9,7 +9,7 @@
 export interface ModuleCatalogItem {
   key: string;
   name: string;
-  status: 'ga' | 'beta' | 'planned' | 'discovery';
+  status: 'ga' | 'beta' | 'planned' | 'discovery' | 'bundled';
   priceMonthly: number;
   priceYearly: number;
   dependsOn: string[];
@@ -41,9 +41,10 @@ export const STATUS_LABEL: Record<ModuleCatalogItem['status'], string> = {
   beta: 'Beta',
   planned: 'Em breve',
   discovery: 'Em estudo',
+  bundled: 'Incluso no plano',
 };
 
-/** Um módulo pode ser contratado agora? (planned/discovery ainda não). */
+/** Um módulo pode ser contratado agora avulso? (planned/discovery/bundled não). */
 export function isContractable(status: ModuleCatalogItem['status']): boolean {
   return status === 'ga' || status === 'beta';
 }
