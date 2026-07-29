@@ -328,11 +328,7 @@ export default function CrmLandingClient() {
               📊 CRM · Empresas
             </div>
             <h3 className="font-bold text-white mb-1">ZapScript Empresas</h3>
-            <div className="flex items-baseline gap-1.5 mb-4">
-              <span className="text-2xl font-bold text-white">{EMPRESAS_PRICE_MONTHLY}</span>
-              <span className="text-brand-muted text-sm">/mês (aluguel) · {EMPRESAS_PRICE_YEARLY}/ano (compra)</span>
-            </div>
-            <ul className="space-y-2 mb-6">
+            <ul className="space-y-2 mb-6 mt-4">
               {[
                 'Tudo do Profissional (Atende incluso)',
                 'CRM — contatos e funil ilimitados',
@@ -346,11 +342,18 @@ export default function CrmLandingClient() {
               ))}
             </ul>
             <Link
-              href={CTA_HREF}
-              data-cta="crm_plano_cta"
+              href={`${CTA_HREF}&cycle=yearly`}
+              data-cta="crm_plano_cta_comprar"
               className="block text-center font-semibold py-2.5 rounded-xl transition-all text-sm bg-brand-primary text-black hover:opacity-90"
             >
-              Ver plano Empresas
+              Comprar por {EMPRESAS_PRICE_YEARLY}
+            </Link>
+            <Link
+              href={`${CTA_HREF}&cycle=monthly`}
+              data-cta="crm_plano_cta_alugar"
+              className="block text-center text-xs text-brand-muted hover:text-white transition-colors mt-2"
+            >
+              ou alugar por {EMPRESAS_PRICE_MONTHLY}
             </Link>
           </div>
           <p className="text-center text-brand-muted text-xs mt-6">

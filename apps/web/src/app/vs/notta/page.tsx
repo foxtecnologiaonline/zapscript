@@ -53,7 +53,7 @@ const ROWS = [
   { feature: 'Idioma',                 zap: 'Português do Brasil nativo', other: 'Multi-idioma genérico' },
   { feature: 'Conecta no WhatsApp',    zap: '✅ Sim, via QR Code', other: '❌ Não nativo' },
   { feature: 'Resumo com IA',          zap: '✅ Incluído em toda conversão', other: '✅ Em planos pagos' },
-  { feature: 'Preço',                  zap: 'Em real (R$), plano Free', other: 'Em dólar (US$)' },
+  { feature: 'Preço',                  zap: 'Em real (R$), plano Core', other: 'Em dólar (US$)' },
   { feature: 'Modo Privado',           zap: '✅ Incluído',         other: '❌ Não aplicável' },
   { feature: 'Áudio armazenado',       zap: '❌ Nunca (descartado)', other: 'Arquivos ficam na nuvem' },
   { feature: 'Servidores no Brasil',   zap: '✅ São Paulo',        other: '❌ Exterior' },

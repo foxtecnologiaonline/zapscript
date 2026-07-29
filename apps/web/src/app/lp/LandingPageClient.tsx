@@ -5,7 +5,7 @@ import { captureAffiliateFromUrl } from '@/lib/affiliate';
 import { Testimonials } from '@/components/Testimonials';
 import ConversationDemo from '@/components/ConversationDemo';
 import PriceAnchor from '@/components/PriceAnchor';
-import { CORE_AUDIO_QUOTA, PROFISSIONAL_PRICE_MONTHLY, EMPRESAS_PRICE_MONTHLY } from '@/lib/promo';
+import { CORE_AUDIO_QUOTA, PROFISSIONAL_PRICE_MONTHLY, PROFISSIONAL_PRICE_YEARLY, EMPRESAS_PRICE_MONTHLY, EMPRESAS_PRICE_YEARLY } from '@/lib/promo';
 
 /* ── Tipos ──────────────────────────────────────────────────────────── */
 export interface Variant {
@@ -95,8 +95,8 @@ const PLANS = [
   },
   {
     name: 'Profissional',
-    price: PROFISSIONAL_PRICE_MONTHLY,
-    period: '/mês',
+    buyPrice: PROFISSIONAL_PRICE_YEARLY,
+    rentPrice: PROFISSIONAL_PRICE_MONTHLY,
     highlight: true,
     badge: '⭐ Mais popular',
     features: [
@@ -106,12 +106,11 @@ const PLANS = [
       'Avisos ao cliente (cobrança, agendamento...)',
       'Base de conhecimento própria',
     ],
-    cta: 'Assinar Profissional',
   },
   {
     name: 'Empresas',
-    price: EMPRESAS_PRICE_MONTHLY,
-    period: '/mês',
+    buyPrice: EMPRESAS_PRICE_YEARLY,
+    rentPrice: EMPRESAS_PRICE_MONTHLY,
     highlight: false,
     features: [
       'Tudo do Profissional',
@@ -119,7 +118,6 @@ const PLANS = [
       'Tarefas — designação e controle na equipe',
       'Até 5 usuários com papéis',
     ],
-    cta: 'Assinar Empresas',
   },
 ];
 
@@ -488,10 +486,14 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
                   </div>
                 )}
                 <h3 className="font-bold text-white mb-1">{plan.name}</h3>
-                <div className="flex items-baseline gap-1.5 mb-4 flex-wrap">
-                  <span className="text-2xl font-bold text-white">{plan.price}</span>
-                  <span className="text-brand-muted text-sm">{plan.period}</span>
-                </div>
+                {'price' in plan ? (
+                  <div className="flex items-baseline gap-1.5 mb-4 flex-wrap">
+                    <span className="text-2xl font-bold text-white">{plan.price}</span>
+                    <span className="text-brand-muted text-sm">{plan.period}</span>
+                  </div>
+                ) : (
+                  <div className="mb-4" />
+                )}
                 <ul className="space-y-2 mb-6">
                   {plan.features.map(f => (
                     <li key={f} className="flex items-start gap-2 text-sm">
@@ -500,16 +502,38 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
                     </li>
                   ))}
                 </ul>
-                <Link
-                  href="/cadastro"
-                  data-cta={`lp_plano_${plan.name}`}
-                  className={`block text-center font-semibold py-2.5 rounded-xl transition-all text-sm ${plan.highlight
-                    ? 'bg-brand-primary text-black hover:opacity-90'
-                    : 'bg-white/8 text-white border border-white/10 hover:bg-white/12'
-                  }`}
-                >
-                  {plan.cta}
-                </Link>
+                {'price' in plan ? (
+                  <Link
+                    href="/cadastro"
+                    data-cta={`lp_plano_${plan.name}`}
+                    className={`block text-center font-semibold py-2.5 rounded-xl transition-all text-sm ${plan.highlight
+                      ? 'bg-brand-primary text-black hover:opacity-90'
+                      : 'bg-white/8 text-white border border-white/10 hover:bg-white/12'
+                    }`}
+                  >
+                    {plan.cta}
+                  </Link>
+                ) : (
+                  <>
+                    <Link
+                      href="/cadastro?cycle=yearly"
+                      data-cta={`lp_plano_${plan.name}_comprar`}
+                      className={`block text-center font-semibold py-2.5 rounded-xl transition-all text-sm ${plan.highlight
+                        ? 'bg-brand-primary text-black hover:opacity-90'
+                        : 'bg-white/8 text-white border border-white/10 hover:bg-white/12'
+                      }`}
+                    >
+                      Comprar por {plan.buyPrice}
+                    </Link>
+                    <Link
+                      href="/cadastro?cycle=monthly"
+                      data-cta={`lp_plano_${plan.name}_alugar`}
+                      className="block text-center text-xs text-brand-muted hover:text-white transition-colors mt-2"
+                    >
+                      ou alugar por {plan.rentPrice}
+                    </Link>
+                  </>
+                )}
               </div>
             ))}
           </div>

@@ -5,11 +5,19 @@ import { CORE_AUDIO_QUOTA, PROFISSIONAL_PRICE_MONTHLY, PROFISSIONAL_PRICE_YEARLY
 
 type CmpVal = string | boolean;
 
-const PROFISSIONAL_YEARLY_MONTHLY_EQ = 'R$25'; // R$295/ano ÷ 12
-const EMPRESAS_YEARLY_MONTHLY_EQ = 'R$50';     // R$595/ano ÷ 12
+interface PlanCommon {
+  name: string; label: string; desc: string; feats: string[]; excl: string[];
+  popular: boolean; accent: string | null;
+}
+/** Core (grátis): preço único exibido direto. */
+interface FreePlanCard extends PlanCommon { kind: 'free'; price: string; per: string; cta: string; href: string }
+/** Planos pagos: "Comprar por X" (anual) em destaque, "ou alugar por Y" (mensal) discreto. */
+interface PaidPlanCard extends PlanCommon { kind: 'paid'; buyPrice: string; rentPrice: string }
+type PlanCard = FreePlanCard | PaidPlanCard;
 
-const PLANS = [
+const PLANS: PlanCard[] = [
   {
+    kind: 'free',
     name: 'core', label: 'Core', price: 'R$0', per: '/mês',
     desc: 'Completo e grátis',
     feats: [
@@ -21,10 +29,12 @@ const PLANS = [
       '📋 Histórico, filtros e busca',
     ],
     excl: ['🤖 Atendimento automático'],
-    cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
+    cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null,
   },
   {
-    name: 'profissional', label: 'Profissional', price: PROFISSIONAL_PRICE_MONTHLY, per: '/mês',
+    kind: 'paid',
+    name: 'profissional', label: 'Profissional',
+    buyPrice: PROFISSIONAL_PRICE_YEARLY, rentPrice: PROFISSIONAL_PRICE_MONTHLY,
     desc: 'Sem fidelidade, cancele quando quiser',
     feats: [
       'Tudo do Core, sem limite de áudios',
@@ -34,10 +44,12 @@ const PLANS = [
       '📚 Base de conhecimento própria',
     ],
     excl: [],
-    cta: 'Assinar Profissional', href: '/cadastro', popular: true, accent: '#3b82f6' as string | null,
+    popular: true, accent: '#3b82f6',
   },
   {
-    name: 'empresas', label: 'Empresas', price: EMPRESAS_PRICE_MONTHLY, per: '/mês',
+    kind: 'paid',
+    name: 'empresas', label: 'Empresas',
+    buyPrice: EMPRESAS_PRICE_YEARLY, rentPrice: EMPRESAS_PRICE_MONTHLY,
     desc: 'Até 5 usuários incluídos',
     feats: [
       'Tudo do Profissional',
@@ -46,7 +58,7 @@ const PLANS = [
       '👥 Até 5 usuários com papéis',
     ],
     excl: [],
-    cta: 'Assinar Empresas', href: '/cadastro', popular: false, accent: null as string | null,
+    popular: false, accent: null,
   },
 ];
 
@@ -61,77 +73,13 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
 ];
 
 export function PricingInteractive() {
-  const plans = PLANS;
-
   const [showTable, setShowTable] = useState(false);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
-
-  const isYearly = billingCycle === 'yearly';
-
-  function getPlanPrice(plan: typeof plans[number]) {
-    if (!isYearly || plan.name === 'core') return plan;
-    if (plan.name === 'profissional') {
-      return {
-        ...plan,
-        price: PROFISSIONAL_YEARLY_MONTHLY_EQ,
-        per: '/mês (anual)',
-        desc: `${PROFISSIONAL_PRICE_YEARLY}/ano (compra)`,
-        cta: 'Assinar Profissional Anual',
-        href: `/cadastro?cycle=yearly`,
-      };
-    }
-    if (plan.name === 'empresas') {
-      return {
-        ...plan,
-        price: EMPRESAS_YEARLY_MONTHLY_EQ,
-        per: '/mês (anual)',
-        desc: `${EMPRESAS_PRICE_YEARLY}/ano (compra)`,
-        cta: 'Assinar Empresas Anual',
-        href: `/cadastro?cycle=yearly`,
-      };
-    }
-    return plan;
-  }
 
   return (
     <>
-      {/* Billing cycle toggle */}
-      <div className="flex justify-center mb-5">
-        <div className="inline-flex rounded-full p-0.5 gap-0.5"
-          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          {(['yearly', 'monthly'] as const).map(cycle => {
-            const active = billingCycle === cycle;
-            return (
-              <button
-                key={cycle}
-                onClick={() => setBillingCycle(cycle)}
-                className="relative px-4 py-2 rounded-full text-xs font-bold transition-all"
-                style={{
-                  background: active ? 'rgb(var(--color-primary))' : 'transparent',
-                  color: active ? '#04130c' : 'rgb(var(--color-text-muted))',
-                  boxShadow: active ? '0 2px 8px rgba(16,185,129,.3)' : 'none',
-                }}
-              >
-                {cycle === 'monthly' ? 'Aluguel (mensal)' : 'Compra (anual)'}
-                {cycle === 'yearly' && (
-                  <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded"
-                    style={{
-                      background: active ? 'rgba(4,19,12,.25)' : 'rgba(16,185,129,.15)',
-                      color: active ? '#04130c' : 'rgb(var(--color-primary))',
-                    }}>
-                    📆 2 meses grátis
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Plan cards */}
       <div className="flex flex-col gap-4">
-        {plans.map((basePlan, i) => {
-          const plan = getPlanPrice(basePlan);
+        {PLANS.map((plan, i) => {
           const borderCol = plan.popular
             ? 'rgb(var(--color-primary))'
             : plan.accent ? plan.accent + '55' : 'rgb(var(--color-border))';
@@ -148,7 +96,7 @@ export function PricingInteractive() {
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-black text-[11px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wide whitespace-nowrap"
                   style={{ background: 'rgb(var(--color-primary))' }}>
-                  {isYearly ? <>📆 2 meses grátis</> : <>⭐ Mais popular</>}
+                  ⭐ Mais popular
                 </div>
               )}
               <div className="flex items-start justify-between mb-4">
@@ -156,29 +104,13 @@ export function PricingInteractive() {
                   <p className="font-display font-bold text-lg">{plan.label}</p>
                   <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.desc}</p>
                 </div>
-                <div className="text-right">
-                  <span className="font-display font-bold text-2xl" style={{ color: priceCol }}>{plan.price}</span>
-                  <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
-                </div>
+                {plan.kind === 'free' && (
+                  <div className="text-right">
+                    <span className="font-display font-bold text-2xl" style={{ color: priceCol }}>{plan.price}</span>
+                    <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
+                  </div>
+                )}
               </div>
-              {plan.name === 'profissional' && isYearly && (
-                <div className="flex items-center gap-2 mb-4 rounded-xl px-3 py-2 text-xs"
-                  style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.18)' }}>
-                  <span>🤑</span>
-                  <span style={{ color: 'rgb(var(--color-primary))' }}>
-                    Economize <strong>R$293</strong> em 1 ano — <strong>2 meses grátis</strong> vs mensal
-                  </span>
-                </div>
-              )}
-              {plan.name === 'empresas' && isYearly && (
-                <div className="flex items-center gap-2 mb-4 rounded-xl px-3 py-2 text-xs"
-                  style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.18)' }}>
-                  <span>🤑</span>
-                  <span style={{ color: 'rgb(var(--color-primary))' }}>
-                    Economize <strong>R$593</strong> em 1 ano — <strong>2 meses grátis</strong> vs mensal
-                  </span>
-                </div>
-              )}
               <div className="flex flex-col gap-2 mb-5">
                 {plan.feats.map((f, fi) => (
                   <div key={fi} className="flex items-center gap-2">
@@ -198,16 +130,36 @@ export function PricingInteractive() {
                   </div>
                 ))}
               </div>
-              <Link href={plan.href}
-                className="block w-full py-3 rounded-2xl text-sm font-semibold text-center transition-all"
-                style={{
-                  background:  plan.popular ? 'rgb(var(--color-primary))' : 'transparent',
-                  border:      plan.popular ? 'none' : `1.5px solid ${plan.accent || 'rgb(var(--color-border))'}`,
-                  color:       plan.popular ? '#fff' : plan.accent || 'rgb(var(--color-text))',
-                  boxShadow:   plan.popular ? 'rgba(16,185,129,.25) 0 4px 14px' : 'none',
-                }}>
-                {plan.cta}
-              </Link>
+              {plan.kind === 'free' ? (
+                <Link href={plan.href}
+                  className="block w-full py-3 rounded-2xl text-sm font-semibold text-center transition-all"
+                  style={{
+                    background:  plan.popular ? 'rgb(var(--color-primary))' : 'transparent',
+                    border:      plan.popular ? 'none' : `1.5px solid ${plan.accent || 'rgb(var(--color-border))'}`,
+                    color:       plan.popular ? '#fff' : plan.accent || 'rgb(var(--color-text))',
+                    boxShadow:   plan.popular ? 'rgba(16,185,129,.25) 0 4px 14px' : 'none',
+                  }}>
+                  {plan.cta}
+                </Link>
+              ) : (
+                <>
+                  <Link href="/cadastro?cycle=yearly"
+                    className="block w-full py-3 rounded-2xl text-sm font-semibold text-center transition-all"
+                    style={{
+                      background:  plan.popular ? 'rgb(var(--color-primary))' : 'transparent',
+                      border:      plan.popular ? 'none' : `1.5px solid ${plan.accent || 'rgb(var(--color-border))'}`,
+                      color:       plan.popular ? '#fff' : plan.accent || 'rgb(var(--color-text))',
+                      boxShadow:   plan.popular ? 'rgba(16,185,129,.25) 0 4px 14px' : 'none',
+                    }}>
+                    Comprar por {plan.buyPrice}
+                  </Link>
+                  <Link href="/cadastro?cycle=monthly"
+                    className="block text-center text-xs mt-2 transition-colors"
+                    style={{ color: 'rgb(var(--color-text-muted))' }}>
+                    ou alugar por {plan.rentPrice}
+                  </Link>
+                </>
+              )}
             </div>
           );
         })}

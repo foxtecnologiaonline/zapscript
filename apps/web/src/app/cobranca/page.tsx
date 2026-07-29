@@ -278,7 +278,7 @@ export default function CobrancaPage() {
         <div className="mb-16 text-center">
           <h2 className="text-2xl font-bold text-white mb-3">Incluso no plano Profissional</h2>
           <p className="text-brand-muted mb-6 max-w-xl mx-auto">
-            <span className="text-brand-primary font-semibold">R$49/mês</span> (ou R$295/ano), clientes e cobranças ilimitados, sem fidelidade. Cancele quando quiser, direto no painel.
+            <span className="text-brand-primary font-semibold">Comprar por R$295</span> (ou alugar por R$49), clientes e cobranças ilimitados, sem fidelidade. Cancele quando quiser, direto no painel.
           </p>
           <Link href="/cadastro?utm_source=lp&utm_campaign=cobranca" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
             Criar conta grátis →

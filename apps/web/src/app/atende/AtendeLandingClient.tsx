@@ -254,11 +254,7 @@ export default function AtendeLandingClient() {
             <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-primary text-black text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap">
               🤖 {mod.name} · Profissional
             </div>
-            <div className="flex items-baseline gap-1.5 mb-4 mt-2 justify-center">
-              <span className="text-3xl font-bold text-white">{PROFISSIONAL_PRICE_MONTHLY}</span>
-              <span className="text-brand-muted text-sm">/mês (aluguel) · {PROFISSIONAL_PRICE_YEARLY}/ano (compra)</span>
-            </div>
-            <ul className="space-y-2 mb-6">
+            <ul className="space-y-2 mb-6 mt-2">
               {[
                 'Tudo do Core, sem limite de áudios',
                 'Atendimento automático 24/7',
@@ -273,11 +269,18 @@ export default function AtendeLandingClient() {
               ))}
             </ul>
             <Link
-              href={CTA_HREF}
-              data-cta="atende_plano_cta"
+              href={`${CTA_HREF}&cycle=yearly`}
+              data-cta="atende_plano_cta_comprar"
               className="block text-center font-semibold py-2.5 rounded-xl transition-all text-sm bg-brand-primary text-black hover:opacity-90"
             >
-              Ver plano Profissional
+              Comprar por {PROFISSIONAL_PRICE_YEARLY}
+            </Link>
+            <Link
+              href={`${CTA_HREF}&cycle=monthly`}
+              data-cta="atende_plano_cta_alugar"
+              className="block text-center text-xs text-brand-muted hover:text-white transition-colors mt-2"
+            >
+              ou alugar por {PROFISSIONAL_PRICE_MONTHLY}
             </Link>
           </div>
           <p className="text-center text-brand-muted text-xs mt-6">

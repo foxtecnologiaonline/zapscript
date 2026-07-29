@@ -53,7 +53,7 @@ const ROWS = [
   { feature: 'Idioma principal',       zap: 'Português do Brasil', other: 'Multilíngue genérico' },
   { feature: 'Conecta no WhatsApp',    zap: '✅ Sim, via QR Code', other: '❌ Não nativo' },
   { feature: 'Resumo com IA',          zap: '✅ Incluído em toda conversão', other: '✅ Em planos pagos' },
-  { feature: 'Preço',                  zap: 'Em real (R$), plano Free', other: 'Em dólar (US$), por créditos/minutos' },
+  { feature: 'Preço',                  zap: 'Em real (R$), plano Core', other: 'Em dólar (US$), por créditos/minutos' },
   { feature: 'Modo Privado',           zap: '✅ Incluído',         other: '❌ Não aplicável' },
   { feature: 'Criptografia',           zap: 'AES-256-GCM',         other: 'Documentada (foco internacional)' },
   { feature: 'Servidores no Brasil',   zap: '✅ São Paulo',        other: '❌ Exterior' },

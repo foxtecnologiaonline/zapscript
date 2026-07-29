@@ -3941,13 +3941,13 @@ A chata: no plano gratuito são até 100 áudios por mês — e podem acabar log
 
 Quando zerar, você fica sem conversões até o próximo ciclo. Já imaginou perder um áudio importante por isso?
 
-O plano Pro resolve de vez:
+O plano Profissional resolve de vez:
 ⚡ Áudios ilimitados — nunca mais se preocupe com limite
-🔍 Busca nas suas conversões antigas
-📤 Exportação em CSV para organizar tudo
-📱 Conecte até 3 números simultâneos
+🤖 Atendimento automático 24/7 por IA
+📨 Avisos ao cliente (cobrança, agendamento, mercadoria pronta...)
+📚 Base de conhecimento própria
 
-Tudo por R$37/mês — menos que uma pizza. Cancele quando quiser.
+Tudo por R$49/mês (ou R$295/ano) — menos que uma pizza por semana. Cancele quando quiser.
 
 👉 Fazer upgrade: https://www.zapscript.me/dashboard/plano
 
@@ -3957,23 +3957,20 @@ Equipe ZapScript`,
     },
     {
       icon: '💎',
-      name: 'Upgrade Executive',
-      desc: 'Pro · upsell Executive',
-      applyFilters: () => { setPlans(['pro']); setFree(false); setNeverUsed(false); setMinDays(''); setHasDocument(false); setTesters(false); },
-      subject: '💎 Você usa muito o ZapScript — hora de ir para o Executive',
-      msg: `Olá! Você é um dos nossos usuários mais ativos no plano Pro. Isso é incrível! 🎉
+      name: 'Upgrade Empresas',
+      desc: 'Profissional · upsell Empresas',
+      applyFilters: () => { setPlans(['profissional']); setFree(false); setNeverUsed(false); setMinDays(''); setHasDocument(false); setTesters(false); },
+      subject: '💎 Sua equipe também pode usar o ZapScript — conheça o Empresas',
+      msg: `Olá! Você é um dos nossos usuários mais ativos no plano Profissional. Isso é incrível! 🎉
 
-Mas percebemos que usuários no seu perfil precisam de ainda mais recursos — e a gente quer te dar o melhor.
+Se seu time também lida com vendas ou atendimento pelo WhatsApp, o plano Empresas foi feito pra isso:
+📊 CRM — funil de vendas direto no WhatsApp
+✅ Tarefas — designação e controle na equipe
+👥 Até 5 usuários com papéis (admin/manager/agent)
 
-O plano Executive foi feito para quem usa de verdade:
-💎 Áudios ilimitados com prioridade de processamento
-🔒 Modo Privado: conversão enviada só para você, não para o remetente
-📤 Exportação em PDF, DOCX, CSV e XLS
-📱 Até 3 números simultâneos
+Por R$99/mês (ou R$595/ano) — tudo incluso, sem cobrança por usuário.
 
-Por apenas R$30,00/mês a mais — ou seja, R$67 total.
-
-👉 Ver plano Executive: https://www.zapscript.me/dashboard/plano
+👉 Ver plano Empresas: https://www.zapscript.me/dashboard/plano
 
 Se quiser conversar antes de decidir, é só responder este e-mail.
 
@@ -3989,16 +3986,16 @@ Equipe ZapScript`,
 
 Empresas que usam o ZapScript para times de vendas, jurídico ou atendimento normalmente precisam de mais do que os planos individuais oferecem.
 
-Por isso criamos o plano Executive — feito para empresas:
-💎 Áudios ilimitados para toda a equipe
-🔒 Modo privado: conversões chegam só no número da empresa, não para o contato
-🔗 Webhook personalizado: integre com CRM, ERP ou qualquer sistema via API
-📱 Números ilimitados para cada membro do time
-🏷️ Tags e exportação avançada para relatórios
+Por isso criamos o plano Empresas — feito para times:
+🤖 Atendimento automático 24/7 por IA (todo o time)
+📊 CRM — funil de vendas direto no WhatsApp
+✅ Tarefas — designação e controle na equipe
+👥 Até 5 usuários com papéis (admin/manager/agent)
+🔗 Webhook/API: integre com CRM, ERP ou qualquer sistema
 
-Tudo por R$67/mês — sem taxa de implantação, sem fidelidade.
+Tudo por R$99/mês (ou R$595/ano) — preço fixo para o time todo, sem cobrança por usuário.
 
-👉 Ver plano Executive: https://www.zapscript.me/dashboard/plano
+👉 Ver plano Empresas: https://www.zapscript.me/dashboard/plano
 
 Ou se preferir, me responda que conversamos sobre o que faz mais sentido para o seu caso.
 
