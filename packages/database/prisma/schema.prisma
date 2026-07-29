@@ -33,6 +33,7 @@ model User {
   utmCampaign             String? // ex: "corretores", "advogados"
   utmMedium               String? // ex: "cpc", "organic"
   lifecycleEmailsSent     String[]              @default([]) // tags de e-mails de ciclo de vida já enviados (idempotência)
+  lifecycleWhatsappSent   String[]              @default([]) // tags de onboarding/alertas via WhatsApp já enviados (idempotência)
   createdAt               DateTime              @default(now())
   updatedAt               DateTime              @updatedAt
   subscription            Subscription?
