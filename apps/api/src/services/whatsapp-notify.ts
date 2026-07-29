@@ -14,7 +14,7 @@ import { join } from 'path';
 import { prisma } from '../lib/prisma';
 import { sendText, sendPtt } from './evolution';
 
-async function sendToOwnNumber(instanceName: string, phone: string, message: string): Promise<void> {
+export async function sendToOwnNumber(instanceName: string, phone: string, message: string): Promise<void> {
   const clean = phone.replace(/\D/g, '');
   if (!clean || clean.length < 10) return;
   await sendText(instanceName, clean, message);
