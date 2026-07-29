@@ -2223,9 +2223,9 @@ function GrowthMetricsPanel({ apiBase, token }: { apiBase: string; token: string
             {stat('Novo MRR', brl(e.newMrr), '#10b981')}
             {stat('MRR perdido', brl(e.churnedMrr), '#f87171')}
             {stat('MRR líquido', brl(e.netNewMrr), e.netNewMrr >= 0 ? '#10b981' : '#f87171')}
-            {stat('Trial→Pago D7', e.trialToPaidRate != null ? `${e.trialToPaidRate}%` : '—', '#34d399')}
+            {stat('Cadastro→Pago (60d)', e.signupToPaidRate60d != null ? `${e.signupToPaidRate60d}%` : '—', '#34d399')}
           </div>
-          <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-2">{e.churnedCustomers} cliente(s) cancelado(s) nos últimos 30 dias. Trial→Pago = pagantes / usuários cujo D7 já passou (7–60d).</div>
+          <div className="text-[10px] text-[rgba(16,185,129,.3)] mt-2">{e.churnedCustomers} cliente(s) cancelado(s) nos últimos 30 dias. Cadastro→Pago = pagantes (≤60d) / usuários com ≥7 dias de conta (7–60d). Sem trial — ZapScript 2.0 é freemium direto.</div>
         </div>
       )}
 
@@ -3893,7 +3893,7 @@ Sabe aquele áudio longo que você recebe no WhatsApp e fica com preguiça de ou
 2. Clique em "Números" e conecte seu WhatsApp (leva menos de 1 minuto)
 3. Receba qualquer áudio — o ZapScript converte automaticamente!
 
-Seu plano gratuito já vem com 15 áudios por mês prontos para usar 😉
+Seu plano gratuito já vem com até 100 áudios por mês prontos para usar 😉
 
 👉 https://www.zapscript.me/dashboard
 
@@ -3920,7 +3920,7 @@ Como fazer:
 3️⃣ Abra o WhatsApp no celular → Menu → Dispositivos conectados → Escanear QR code
 4️⃣ Pronto! A partir daí, todo áudio que você receber será convertido automaticamente.
 
-Sem mensalidade agora, sem cartão de crédito. O plano gratuito já te dá 15 áudios por mês para experimentar.
+Sem mensalidade agora, sem cartão de crédito. O plano gratuito já te dá até 100 áudios por mês para experimentar.
 
 👉 Conectar agora: https://www.zapscript.me/dashboard/numeros
 
@@ -3937,7 +3937,7 @@ Equipe ZapScript`,
       msg: `Olá! Boas notícias e uma notícia chata 😅
 
 A boa: você já está usando o ZapScript e sabe como ele economiza tempo.
-A chata: no plano gratuito são 15 áudios por mês — e podem acabar logo.
+A chata: no plano gratuito são até 100 áudios por mês — e podem acabar logo.
 
 Quando zerar, você fica sem conversões até o próximo ciclo. Já imaginou perder um áudio importante por isso?
 

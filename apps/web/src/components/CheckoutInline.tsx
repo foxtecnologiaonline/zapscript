@@ -14,28 +14,19 @@ interface Props {
   planPrice:  string;
   planFeats:  string[];
   isUpgrade?: boolean;
-  /** Trial com cartão: nada é cobrado agora — só tokeniza o cartão para a 1ª cobrança em D+7. */
-  trialMode?:       boolean;
-  /** Data da 1ª cobrança (ISO ou YYYY-MM-DD), exibida no modo trial. */
-  trialChargeDate?: string;
   /** 'module' contrata um módulo avulso via POST /billing/modules/:key/subscribe (planName = key). */
   mode?: 'plan' | 'module';
   onSuccess:  (planName: string) => void;
   onCancel:   () => void;
 }
 
-function formatChargeDate(d?: string): string {
-  if (!d) return '';
-  try {
-    const dt = d.length <= 10 ? new Date(d + 'T12:00:00') : new Date(d);
-    return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' });
-  } catch { return ''; }
-}
-
 /* ── Preços anuais (20% off — 12× com desconto) ── */
 const CHECKOUT_YEARLY: Record<string, { annual: string; monthlyEq: string; annualNum: number }> = {
-  pro:       { annual: 'R$355', monthlyEq: 'R$29/mês', annualNum: 355 },
-  executive: { annual: 'R$643', monthlyEq: 'R$53/mês', annualNum: 643 },
+  pro:          { annual: 'R$355',   monthlyEq: 'R$29/mês',  annualNum: 355 },
+  executive:    { annual: 'R$643',   monthlyEq: 'R$53/mês',  annualNum: 643 },
+  // ZapScript 2.0 — tiers (sistemática inicial de preços, 2026-07-29)
+  profissional: { annual: 'R$295', monthlyEq: 'R$49/mês', annualNum: 295 },
+  empresas:     { annual: 'R$595', monthlyEq: 'R$99/mês', annualNum: 595 },
 };
 
 type Method = 'pix' | 'pix_auto' | 'credit_card' | 'debit_card' | 'google_pay' | 'apple_pay' | 'paypal';
@@ -421,20 +412,19 @@ function normalizeApiError(err: any): string {
    ══════════════════════════════════════════════════════ */
 export default function CheckoutInline({
   planName, planLabel, planPrice, planFeats, isUpgrade = false,
-  trialMode = false, trialChargeDate, mode = 'plan', onSuccess, onCancel,
+  mode = 'plan', onSuccess, onCancel,
 }: Props) {
-  const [method,        setMethod]        = useState<Method>(trialMode ? 'credit_card' : 'pix');
+  const [method,        setMethod]        = useState<Method>('pix');
   const [step,          setStep]          = useState<1|2|3>(2);
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState('');
   const [pixData,       setPixData]       = useState<PixData | null>(null);
   const [hasApplePay,   setHasApplePay]   = useState(false);
-  const [billingCycle,  setBillingCycle]  = useState<'monthly' | 'yearly'>('monthly');
+  const [billingCycle,  setBillingCycle]  = useState<'monthly' | 'yearly'>('yearly');
 
   const isYearly    = billingCycle === 'yearly';
   const yearlyInfo  = CHECKOUT_YEARLY[planName];
   const displayPrice = isYearly ? yearlyInfo?.annual ?? planPrice : planPrice;
-  const chargeDateLabel = formatChargeDate(trialChargeDate);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'ApplePaySession' in window) {
@@ -466,18 +456,6 @@ export default function CheckoutInline({
         postalCode:    card.postalCode?.replace(/\D/g, '') || undefined,
         addressNumber: card.addressNumber || undefined,
       };
-
-      // ── Trial com cartão: nada é cobrado agora; agenda a 1ª cobrança em D+7 ──
-      if (trialMode) {
-        const res = await api.post<any>('/billing/trial-card', { card: cardPayload, billingAddress });
-        if (res.status === 'trial_card_set' || res.status === 'already_set') {
-          setStep(3);
-          setTimeout(() => onSuccess(planName), 1500);
-        } else {
-          setError(normalizeApiError(res.error || 'Cartão não aprovado. Verifique os dados e tente novamente.'));
-        }
-        return;
-      }
 
       const endpoint = mode === 'module' ? `/billing/modules/${planName}/subscribe` : (isUpgrade ? '/billing/upgrade' : '/billing/checkout');
       const body: Record<string, any> = mode === 'module'
@@ -565,14 +543,10 @@ export default function CheckoutInline({
           ✓
         </div>
         <div style={{ fontSize: 18, fontWeight: 800, color: 'rgb(var(--color-primary))', marginBottom: 6 }}>
-          {trialMode ? 'Cartão cadastrado!' : 'Plano ativado!'}
+          Plano ativado!
         </div>
         <div style={{ fontSize: 13, color: 'rgb(var(--color-text-secondary))' }}>
-          {trialMode ? (
-            <>Seu <strong>Pro</strong> continua sem interrupção. {chargeDateLabel ? <>1ª cobrança em <strong>{chargeDateLabel}</strong>.</> : null} Cancele antes e não paga nada.</>
-          ) : (
-            <>Seu plano <strong>{planLabel}</strong> está ativo. Redirecionando...</>
-          )}
+          Seu plano <strong>{planLabel}</strong> está ativo. Redirecionando...
         </div>
       </div>
     );
@@ -611,7 +585,7 @@ export default function CheckoutInline({
       <div style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.15)', borderRadius: '12px 12px 0 0', padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 'none' }}>
         <div>
           <div style={{ fontSize: 10, color: 'rgb(var(--color-text-muted))' }}>
-            {trialMode ? 'Continue no plano' : isUpgrade ? 'Fazendo upgrade para' : mode === 'module' ? 'Módulo selecionado' : 'Plano selecionado'}
+            {isUpgrade ? 'Migrando para' : mode === 'module' ? 'Módulo selecionado' : 'Plano selecionado'}
           </div>
           <div style={{ fontSize: 15, fontWeight: 800, color: 'rgb(var(--color-text))' }}>
             {planLabel}
@@ -627,14 +601,9 @@ export default function CheckoutInline({
               {isYearly ? '/ano' : '/mês'}
             </span>
           </div>
-          {isYearly && yearlyInfo && !trialMode && (
+          {isYearly && yearlyInfo && (
             <div style={{ fontSize: 9, color: 'rgb(var(--color-primary))', fontWeight: 700 }}>
               {yearlyInfo.monthlyEq} · 🤑 2 meses grátis
-            </div>
-          )}
-          {trialMode && (
-            <div style={{ fontSize: 9, color: 'rgb(var(--color-primary))', fontWeight: 700 }}>
-              após o teste grátis
             </div>
           )}
         </div>
@@ -643,14 +612,14 @@ export default function CheckoutInline({
       {/* Checkout body */}
       <div style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.2)', borderTop: 'none', borderRadius: '0 0 14px 14px', overflow: 'hidden' }}>
 
-        {/* ── Toggle Mensal / Anual (oculto no trial e em módulos — cobrança mensal cheia) ── */}
-        {!trialMode && mode !== 'module' && (
+        {/* ── Toggle Aluguel (mensal) / Compra (anual) — oculto em módulos (cobrança mensal cheia) ── */}
+        {mode !== 'module' && (
         <div style={{ padding: '14px 16px', background: 'rgba(var(--color-primary)/.04)', borderBottom: '1px solid rgba(var(--color-primary)/.12)' }}>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'rgb(var(--color-text-muted))', marginBottom: 8 }}>
-            CICLO DE COBRANÇA
+            ALUGUEL OU COMPRA
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {(['monthly', 'yearly'] as const).map(cycle => {
+            {(['yearly', 'monthly'] as const).map(cycle => {
               const active = billingCycle === cycle;
               return (
                 <button
@@ -667,7 +636,7 @@ export default function CheckoutInline({
                   }}
                 >
                   <div style={{ fontSize: 12, fontWeight: 700 }}>
-                    {cycle === 'monthly' ? '📅 Mensal' : '📆 Anual'}
+                    {cycle === 'monthly' ? '📅 Aluguel (mensal)' : '📆 Compra (anual)'}
                     {cycle === 'yearly' && (
                       <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, background: 'rgb(var(--color-primary))', color: '#fff', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle' }}>
                         🤑 2 meses grátis
@@ -688,8 +657,7 @@ export default function CheckoutInline({
         </div>
         )}
 
-        {/* ── Seletor de método (oculto no trial — só cartão) ── */}
-        {!trialMode && (
+        {/* ── Seletor de método (PIX ou cartão) ── */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, padding: '13px 15px', background: 'rgb(var(--color-bg))', borderBottom: '1px solid rgb(var(--color-border))' }}>
           {METHODS.map(m => {
             const active   = method === m.id;
@@ -728,32 +696,19 @@ export default function CheckoutInline({
             );
           })}
         </div>
-        )}
 
         {/* ── Área do formulário ── */}
         <div style={{ padding: '20px 18px', minHeight: 300, display: 'flex', flexDirection: 'column' }}>
 
-          {/* Cabeçalho — banner de trial ou método ativo */}
-          {trialMode ? (
-            <div style={{ marginBottom: 14, background: 'rgba(var(--color-primary)/.08)', border: '1px solid rgba(var(--color-primary)/.25)', borderRadius: 10, padding: '12px 14px' }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: 'rgb(var(--color-primary))', marginBottom: 4 }}>
-                🔒 Garanta seu Pro sem interrupção
-              </div>
-              <div style={{ fontSize: 11.5, color: 'rgb(var(--color-text-secondary))', lineHeight: 1.6 }}>
-                Nada é cobrado agora. {chargeDateLabel ? <>Sua 1ª cobrança de <strong>{planPrice}/mês</strong> será em <strong>{chargeDateLabel}</strong>.</> : <>Sua 1ª cobrança de <strong>{planPrice}/mês</strong> será ao fim do teste.</>}{' '}
-                <strong>Cancele antes e não paga nada.</strong>
-              </div>
+          {/* Cabeçalho — método ativo */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'rgb(var(--color-text))' }}>
+              {activeMethod.label}
             </div>
-          ) : (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'rgb(var(--color-text))' }}>
-                {activeMethod.label}
-              </div>
-              <div style={{ fontSize: 11, color: 'rgb(var(--color-text-muted))', marginTop: 2 }}>
-                {activeMethod.sub}
-              </div>
+            <div style={{ fontSize: 11, color: 'rgb(var(--color-text-muted))', marginTop: 2 }}>
+              {activeMethod.sub}
             </div>
-          )}
+          </div>
 
           {/* Cartão de crédito / débito */}
           {isCardMethod(method) && (
@@ -761,9 +716,7 @@ export default function CheckoutInline({
               onSubmit={handleCardSubmit}
               loading={loading}
               error={error}
-              submitLabel={trialMode
-                ? `Garantir meu Pro — cobra em ${chargeDateLabel || 'D+7'}`
-                : `${isUpgrade ? 'Confirmar upgrade' : 'Assinar'} — ${planPrice}/${billingCycle === 'yearly' ? 'ano' : 'mês'}`}
+              submitLabel={`${isUpgrade ? 'Confirmar troca' : 'Assinar'} — ${planPrice}/${billingCycle === 'yearly' ? 'ano' : 'mês'}`}
             />
           )}
 

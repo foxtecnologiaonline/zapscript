@@ -10,13 +10,16 @@ import jwt from '@fastify/jwt';
 // ── Mocks ──────────────────────────────────────────────────────────
 jest.mock('../lib/prisma', () => ({
   prisma: {
-    crmStage:      { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), createMany: jest.fn(), update: jest.fn(), delete: jest.fn(), count: jest.fn() },
-    crmContact:    { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), count: jest.fn() },
-    crmActivity:   { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
-    transcription: { findMany: jest.fn() },
-    entitlement:   { findMany: jest.fn() },
-    product:       { findMany: jest.fn() },
-    $transaction:  jest.fn(async (ops: any[]) => Promise.all(ops)),
+    crmStage:       { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), createMany: jest.fn(), update: jest.fn(), delete: jest.fn(), count: jest.fn() },
+    crmContact:     { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), count: jest.fn() },
+    crmActivity:    { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), groupBy: jest.fn() },
+    atendeConversation: { count: jest.fn() },
+    transcription:  { findMany: jest.fn() },
+    entitlement:    { findMany: jest.fn() },
+    product:        { findMany: jest.fn() },
+    teamMember:     { findUnique: jest.fn() },
+    team:           { findUnique: jest.fn() },
+    $transaction:   jest.fn(async (ops: any[]) => Promise.all(ops)),
   },
 }));
 
@@ -42,10 +45,10 @@ function makeToken(app: any, userId = 'u1') {
   return app.jwt.sign({ sub: userId, email: 'x@x.com' });
 }
 
-/** Faz o preHandler requireModule('crm') passar (usuário possui o módulo, sem dependências). */
+/** Faz o preHandler requireModuleShared('crm') passar — sem time (ownerId = próprio usuário) e com o módulo. */
 function mockModuleOwned() {
+  (prisma.teamMember.findUnique as jest.Mock).mockResolvedValueOnce(null);
   (prisma.entitlement.findMany as jest.Mock).mockResolvedValueOnce([{ productKey: 'crm' }]);
-  (prisma.product.findMany as jest.Mock).mockResolvedValueOnce([]);
 }
 
 const userId = 'u1';

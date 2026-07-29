@@ -318,6 +318,7 @@ app.register(import('./routes/affiliates'),      { prefix: '/affiliates' });
 app.register(import('./routes/entitlements'),    { prefix: '/modules' });
 app.register(import('./routes/modules/campanhas'), { prefix: '/modules/campanhas' });
 app.register(import('./routes/modules/crm'),     { prefix: '/crm' });
+app.register(import('./routes/modules/tarefas'), { prefix: '/tarefas' });
 app.register(import('./routes/atende'),          { prefix: '/atende' });
 app.register(import('./routes/voice-commands'),  { prefix: '/voice-commands' });
 app.register(import('./routes/modules/vendas'),  { prefix: '/modules/vendas' });
@@ -325,6 +326,9 @@ app.register(import('./routes/cobranca'),        { prefix: '/cobranca' });
 app.register(import('./routes/legendas'),        { prefix: '/legendas' });
 // Plano Empresas — multi-seat MVP
 app.register(import('./routes/teams'),           { prefix: '/teams' });
+// API pública ZapScript 2.0 (tier Empresas) — gestão de chaves (sessão) + consumo externo (X-Api-Key)
+app.register(import('./routes/apiKeys'),         { prefix: '/api-keys' });
+app.register(import('./routes/publicApi'),       { prefix: '/public/v1' });
 // Demo de upload no site removido — vira app/site separado. Rota desativada.
 app.register(import('./routes/analytics'),       { prefix: '/analytics' });
 
@@ -645,15 +649,24 @@ async function runAutoMigrations() {
           FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
-    // Módulo mantido oculto (status 'planned') até decisão explícita de lançamento —
-    // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
+    // Módulo retirado de venda (revisão de tiers — absorvido pelo Avisos do
+    // Profissional) — força 'planned' a cada boot. Código/dados mantidos
+    // pra quem já usa. Ver packages/modules/catalog.ts.
     `DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'cobranca') THEN
-        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 39, "priceYearly" = 374
-          WHERE "key" = 'cobranca' AND "status" NOT IN ('beta', 'ga');
+        UPDATE "Product" SET "status" = 'planned' WHERE "key" = 'cobranca';
       ELSE
         INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
         VALUES ('cobranca-product-seed', 'cobranca', 'ZapScript Cobrança', 'planned', 39, 374, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
+    // Módulo Vendas — mesma decisão: retirado de venda, código/dados mantidos.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'vendas') THEN
+        UPDATE "Product" SET "status" = 'planned' WHERE "key" = 'vendas';
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('vendas-product-seed', 'vendas', 'ZapScript Vendas', 'planned', 57, 547, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
     // Módulo Legendas (migração 20260714_legenda_jobs): auto-cura o schema no
@@ -684,14 +697,40 @@ async function runAutoMigrations() {
           FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
-    // Módulo lançado como MVP (status 'beta') em 2026-07-24 — ver packages/modules/catalog.ts.
+    // Módulo Legendas retirado de venda (ajuste de negócio) — força 'planned'
+    // (oculto do catálogo/menu/marketplace) a cada boot, mesmo tendo rodado
+    // como 'beta' antes. Rotas, dados (LegendaJob) e o acesso de quem já
+    // tinha o módulo continuam intactos — só novas contratações são bloqueadas
+    // (ver checagem de status em routes/billing.ts). Não promover sem decisão
+    // explícita — ver packages/modules/catalog.ts.
     `DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'legenda') THEN
-        UPDATE "Product" SET "status" = 'beta', "priceMonthly" = 37, "priceYearly" = 355
-          WHERE "key" = 'legenda' AND "status" NOT IN ('beta', 'ga');
+        UPDATE "Product" SET "status" = 'planned' WHERE "key" = 'legenda';
       ELSE
         INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
-        VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'beta', 37, 355, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        VALUES ('legenda-product-seed', 'legenda', 'ZapScript Legendas', 'planned', 37, 355, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
+    // Atende e CRM: retirados da venda avulsa (revisão de tiers ZapScript
+    // 2.0) — viraram exclusivos do Profissional/Empresas (ver
+    // TIER_MODULE_BUNDLES em routes/billing.ts). Força 'bundled' a cada
+    // boot; quem já era assinante avulso (source='paid') mantém acesso, só
+    // a contratação nova é bloqueada (ver checagem de status em
+    // routes/billing.ts). Ver packages/modules/catalog.ts.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'atende') THEN
+        UPDATE "Product" SET "status" = 'bundled' WHERE "key" = 'atende';
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('atende-product-seed', 'atende', 'ZapScript Atende', 'bundled', 67, 643, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'crm') THEN
+        UPDATE "Product" SET "status" = 'bundled' WHERE "key" = 'crm';
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('crm-product-seed', 'crm', 'ZapScript CRM', 'bundled', 47, 451, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
     // Módulo Campanhas (migração 20260713_campanhas_tables): auto-cura o schema no

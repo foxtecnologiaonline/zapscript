@@ -15,7 +15,8 @@ export type ModuleStatus =
   | 'ga'        // disponível a todos
   | 'beta'      // liberado, em amadurecimento
   | 'planned'   // no roadmap, ainda não construído
-  | 'discovery'; // especulativo — validar demanda antes de construir
+  | 'discovery' // especulativo — validar demanda antes de construir
+  | 'bundled';  // só via tier (Profissional/Empresas) — não vendido avulso
 
 export interface ModuleSpec {
   /** Chave estável (== Product.key no banco, == segmento de rota /app/<key>). */
@@ -65,7 +66,11 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '🤖',
     tagline: 'Atendimento automático 24/7 no WhatsApp',
     jtbd: 'Preciso responder cliente na hora sem contratar equipe.',
-    status: 'ga',
+    // Retirado da venda avulsa (revisão de tiers ZapScript 2.0) — passou a
+    // vir incluso no Profissional/Empresas (ver TIER_MODULE_BUNDLES em
+    // routes/billing.ts). Quem já era assinante avulso mantém acesso; só a
+    // contratação nova é bloqueada. Preço aqui é só referência histórica.
+    status: 'bundled',
     priceMonthly: 67,
     priceYearly: 643,
     dependsOn: [],
@@ -78,7 +83,9 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '💰',
     tagline: 'Lembrete e cobrança automática via WhatsApp',
     jtbd: 'Sou MEI e não tenho tempo de cobrar quem venceu/vence hoje; perco receita por inadimplência.',
-    status: 'beta',
+    // Retirado de venda (revisão de tiers) — absorvido pelo recurso de Avisos
+    // do Profissional. Código e dados seguem intactos. Ver index.ts.
+    status: 'planned',
     priceMonthly: 39,
     priceYearly: 374,
     dependsOn: [],
@@ -104,7 +111,10 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '📊',
     tagline: 'Funil de vendas dentro do WhatsApp',
     jtbd: 'Respondo no WhatsApp mas não organizo quem é lead novo, quem está negociando e quem fechou.',
-    status: 'beta',
+    // Retirado da venda avulsa (revisão de tiers ZapScript 2.0) — exclusivo
+    // do Empresas (ver TIER_MODULE_BUNDLES em routes/billing.ts). Quem já
+    // era assinante avulso mantém acesso. Preço aqui é só referência histórica.
+    status: 'bundled',
     priceMonthly: 47,
     priceYearly: 451,
     dependsOn: [],
@@ -130,7 +140,10 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '🎬',
     tagline: 'Legenda automática para Reels e Stories',
     jtbd: 'Faço vídeo curto e preciso de legenda sem editar na mão.',
-    status: 'beta',
+    // Retirado de venda (ajuste de negócio) — código e dados (LegendaJob)
+    // seguem intactos; quem já tinha o módulo mantém acesso. Não promover
+    // sem decisão explícita. Ver o force-heal em apps/api/src/index.ts.
+    status: 'planned',
     priceMonthly: 37,
     priceYearly: 355,
     dependsOn: [],
@@ -143,12 +156,27 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '🗣️',
     tagline: 'Grave a visita/ligação → vira nota no CRM',
     jtbd: 'Vendedor externo perde o registro da visita; queremos transcrever e lançar como atividade.',
-    status: 'beta',
+    // Retirado de venda (revisão de tiers) — código e dados seguem intactos.
+    status: 'planned',
     priceMonthly: 57,
     priceYearly: 547,
     dependsOn: [], // sinergia (não dependência) com 'crm'
     reuses: ['transcricao', 'ia'],
     phase: 5,
+  },
+  {
+    key: 'tarefas',
+    name: 'ZapScript Tarefas',
+    icon: '✅',
+    tagline: 'Designação e controle de tarefas na equipe',
+    jtbd: 'Preciso distribuir tarefas pro time e saber o que está pendente/atrasado.',
+    // Empacotado só no tier Empresas — não é vendido avulso.
+    status: 'planned',
+    priceMonthly: 0,
+    priceYearly: 0,
+    dependsOn: [],
+    reuses: ['mensageria'],
+    phase: 3,
   },
   {
     key: 'multicanal',

@@ -794,7 +794,7 @@ async function loadUsage(userId: string): Promise<{ plan: 'pro' | 'free'; quota:
   const [user, bal] = await Promise.all([
     prisma.user.findUnique({
       where:  { id: userId },
-      select: { isTester: true, subscription: { select: { status: true, trialEndsAt: true, plan: { select: { name: true } } } } },
+      select: { isTester: true, subscription: { select: { status: true, plan: { select: { name: true } } } } },
     }),
     prisma.minuteBalance.findUnique({ where: { userId }, select: { audiosUsed: true } }),
   ]);
@@ -1856,162 +1856,6 @@ logger.info('Worker de campanhas iniciado (Meta Cloud API)');
 //  CRON — Reset automático de minutos mensais
 //  Roda a cada hora e reseta saldos cujo resetAt já passou
 // ─────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────
-//  CRON — Transições de Trial (avisos D5/D7, downgrade D8 → FREE)
-//  Server-side, idempotente, NÃO depende de login do usuário.
-//  Trial = 7 dias de PRO. Ao expirar: vira FREE no dia seguinte (D8),
-//  reativa rodapé (plano free) e desliga Modo Privado.
-// ─────────────────────────────────────────────────────────────────
-function trialNoticeContent(
-  firstName: string, kind: 'd5' | 'd7' | 'downgrade', daysLeft: number, APP_URL: string,
-): { wa: string; subject: string; html: string } {
-  const cta = `👉 ${APP_URL}/dashboard/plano`;
-  const btn = (label: string) =>
-    `<div style="margin:24px 0;text-align:center"><a href="${APP_URL}/dashboard/plano" style="background:#10b981;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">${label}</a></div>`;
-  const wrap = (title: string, body: string, label: string) =>
-    `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
-      <div style="font-size:22px;font-weight:bold;margin-bottom:16px">${title}</div>
-      <div style="font-size:14px;line-height:1.7;color:#a7f3d0">Olá, <strong>${escHtml(firstName)}</strong>!<br><br>${body}</div>
-      ${btn(label)}
-      <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
-    </div>`;
-
-  if (kind === 'd5') {
-    return {
-      wa: `⏳ *ZapScript* — faltam ${daysLeft} dias do seu período Pro\n\n` +
-          `Você está lendo seus áudios *sem limite* e com *Modo Privado* ativo. Isso termina em ${daysLeft} dias.\n\n` +
-          `Continue Pro por *menos de R$1,23/dia* e não volte a parar pra ouvir áudio:\n${cta}`,
-      subject: '⏳ ZapScript — faltam poucos dias do seu Pro',
-      html: wrap('⏳ Seu período Pro está acabando',
-        `Faltam <strong>${daysLeft} dias</strong> do seu período Pro — áudios sem limite e Modo Privado.<br><br>` +
-        `Quem tem vida corrida não para pra ouvir áudio: lê. Continue Pro por <strong>menos de R$1,23/dia</strong>.`,
-        'Continuar Pro →'),
-    };
-  }
-  if (kind === 'd7') {
-    return {
-      wa: `⏳ *ZapScript* — seu período Pro termina hoje\n\n` +
-          `A partir de amanhã sua conta volta ao plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês) e o Modo Privado é desligado.\n\n` +
-          `Fique Pro por *menos de R$1,23/dia*:\n${cta}`,
-      subject: '⏳ ZapScript — seu Pro termina hoje',
-      html: wrap('⏳ Seu período Pro termina hoje',
-        `A partir de amanhã sua conta volta ao <strong>plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês)</strong> e o Modo Privado é desligado.<br><br>` +
-        `Mantenha tudo como está por <strong>menos de R$1,23/dia</strong>.`,
-        'Ativar o Pro →'),
-    };
-  }
-  return {
-    wa: `🔓 *ZapScript* — seu período Pro terminou\n\n` +
-        `Sua conta voltou ao plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês) e o Modo Privado foi desligado.\n\n` +
-        `Volte a ler tudo sem limite por *menos de R$1,23/dia*:\n${cta}`,
-    subject: '🔓 ZapScript — seu período Pro terminou',
-    html: wrap('🔓 Seu período Pro terminou',
-      `Sua conta voltou ao <strong>plano gratuito (${FREE_AUDIO_QUOTA} áudios/mês)</strong> e o Modo Privado foi desligado.<br><br>` +
-      `Volte a ler tudo sem limite por <strong>menos de R$1,23/dia</strong>.`,
-      'Voltar ao Pro →'),
-  };
-}
-
-async function sendTrialNotice(
-  user: { id: string; email: string | null; name: string | null },
-  kind: 'd5' | 'd7' | 'downgrade', daysLeft: number,
-): Promise<void> {
-  const APP_URL   = process.env.APP_URL || 'https://zapscript.me';
-  const firstName = user.name?.split(' ')[0] || 'você';
-  const c = trialNoticeContent(firstName, kind, daysLeft, APP_URL);
-
-  const n = await prisma.whatsappNumber.findFirst({
-    where:   { userId: user.id, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } },
-    orderBy: { connectedAt: 'desc' },
-  }).catch(() => null);
-  if (n?.zapiInstanceId && n?.phoneNumber) {
-    await sendMessageViaEvolution(n.zapiInstanceId, n.phoneNumber, c.wa).catch(() => null);
-  }
-  if (user.email) sendEmail(user.email, c.subject, c.html).catch(() => null);
-}
-
-/** Envia um aviso de trial no máximo 1x (throttle via lastAlertSent). */
-async function maybeSendTrialAlert(
-  userId: string, token: 'trial_d5' | 'trial_d7', send: () => Promise<void>,
-): Promise<void> {
-  try {
-    const bal = await prisma.minuteBalance.findUnique({ where: { userId }, select: { lastAlertSent: true } });
-    if (bal?.lastAlertSent === token) return; // já avisou
-    await send();
-    await prisma.minuteBalance.update({ where: { userId }, data: { lastAlertSent: token } }).catch(() => null);
-  } catch (e: any) {
-    logger.warn(`[Trial] Falha ao enviar ${token}: ${e.message}`);
-  }
-}
-
-async function processTrialTransitions() {
-  const now = new Date();
-  try {
-    const trials = await prisma.subscription.findMany({
-      where:   { status: 'trialing', trialEndsAt: { not: null } },
-      include: { user: { select: { id: true, email: true, name: true, isTester: true } } },
-    });
-    if (trials.length === 0) return;
-
-    const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
-
-    for (const sub of trials) {
-      if (!sub.trialEndsAt) continue;
-      if (sub.user.isTester) continue; // tester = PRO real (1 ano), não expira por aqui
-
-      const msLeft   = sub.trialEndsAt.getTime() - now.getTime();
-      const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
-
-      // ── D8: trial expirou ──
-      if (msLeft <= 0) {
-        if (sub.trialDowngradedAt || !freePlan) continue;
-
-        // Trial COM cartão: o Asaas cobra em D+7 e o webhook ativa o Pro.
-        // Não rebaixar para Free — transiciona trialing → active (mantém o plano
-        // Pro), ancorando currentPeriodEnd na data de vencimento. Se a cobrança
-        // falhar, o webhook PAYMENT_OVERDUE marca past_due e o job de tolerância
-        // rebaixa. trialDowngradedAt garante idempotência.
-        if (sub.paymentMethod === 'credit_card' && sub.asaasSubscriptionId) {
-          await prisma.subscription.update({
-            where: { id: sub.id },
-            data:  { status: 'active', trialDowngradedAt: now, currentPeriodEnd: sub.trialEndsAt },
-          });
-          await redis.del(`plan:${sub.userId}`).catch(() => null);
-          logger.info(`[Trial] D8 com cartão: ${sub.user.email} → Pro (cobrança Asaas em ${sub.trialEndsAt.toISOString().slice(0, 10)})`);
-          continue;
-        }
-
-        // ── Sem cartão: downgrade idempotente para FREE ──
-        const nextReset = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        await prisma.$transaction([
-          prisma.subscription.update({
-            where: { id: sub.id },
-            data:  { planId: freePlan.id, status: 'active', trialDowngradedAt: now },
-          }),
-          prisma.minuteBalance.upsert({
-            where:  { userId: sub.userId },
-            create: { userId: sub.userId, availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
-            update: { availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
-          }),
-          // Não mexe em privateMode: o flag é opt-in e sobrevive a downgrades.
-        ]);
-        await redis.del(`plan:${sub.userId}`).catch(() => null); // invalida cache de plano da API
-        logger.info(`[Trial] Downgrade D8: ${sub.user.email} → FREE`);
-        await sendTrialNotice(sub.user, 'downgrade', 0).catch(() => null);
-        continue;
-      }
-
-      // ── D7: último dia ── / ── D5: faltam ~2 dias ──
-      if (daysLeft <= 1) {
-        await maybeSendTrialAlert(sub.userId, 'trial_d7', () => sendTrialNotice(sub.user, 'd7', daysLeft));
-      } else if (daysLeft <= 2) {
-        await maybeSendTrialAlert(sub.userId, 'trial_d5', () => sendTrialNotice(sub.user, 'd5', daysLeft));
-      }
-    }
-  } catch (err) {
-    logger.error(`[Trial] Erro nas transições de trial: ${(err as Error).message}`);
-  }
-}
 
 async function resetExpiredMinutes() {
   const now = new Date();
@@ -2052,7 +1896,17 @@ async function resetExpiredMinutes() {
             create: { userId: sub.userId, availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
             update: { availableMinutes: freePlan.minutesPerMonth, audiosUsed: 0, resetAt: nextReset, lastAlertSent: null },
           }),
+          // Tiers ZapScript 2.0: falta de pagamento cancela o tier → revoga os
+          // módulos que vieram no pacote (source='bundle'). Módulos comprados
+          // avulso (source='paid') seguem sua própria cobrança agregada.
+          prisma.entitlement.updateMany({
+            where: { userId: sub.userId, source: 'bundle', status: { in: ['active', 'trialing'] } },
+            data:  { status: 'canceled', canceledAt: now },
+          }),
         ]);
+        // Mesma chave de cache usada por moduleGate.ts (apps/api) — invalida para
+        // o 402/entitlement refletir a revogação sem esperar o TTL de 60s.
+        await redis.del(`ent:${sub.userId}`).catch(() => null);
 
         logger.info(`[Cron] Downgrade: ${sub.user.email} (${sub.plan.name} → free) por falta de pagamento`);
 
@@ -2175,10 +2029,6 @@ async function resetExpiredMinutes() {
 // Executa na inicialização e a cada hora
 resetExpiredMinutes();
 setInterval(resetExpiredMinutes, 60 * 60 * 1000);
-
-// Transições de trial (avisos D5/D7 + downgrade D8) — a cada hora, sem depender de login
-processTrialTransitions();
-setInterval(processTrialTransitions, 60 * 60 * 1000);
 
 // ─────────────────────────────────────────────────────────────────
 //  CRON — Resumo semanal via WhatsApp ao próprio número (Lote B #5c)

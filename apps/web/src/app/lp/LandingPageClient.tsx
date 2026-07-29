@@ -5,7 +5,7 @@ import { captureAffiliateFromUrl } from '@/lib/affiliate';
 import { Testimonials } from '@/components/Testimonials';
 import ConversationDemo from '@/components/ConversationDemo';
 import PriceAnchor from '@/components/PriceAnchor';
-import { isJunePromoActive } from '@/lib/promo';
+import { CORE_AUDIO_QUOTA, PROFISSIONAL_PRICE_MONTHLY, EMPRESAS_PRICE_MONTHLY } from '@/lib/promo';
 
 /* ── Tipos ──────────────────────────────────────────────────────────── */
 export interface Variant {
@@ -76,43 +76,51 @@ function FAQAccordion({ items }: { items: { q: string; a: string }[] }) {
   );
 }
 
-/* ── Planos ─────────────────────────────────────────────────────────── */
+/* ── Planos (ZapScript 2.0) ─────────────────────────────────────────── */
 const PLANS = [
   {
-    name: 'Free',
+    name: 'Core',
     price: 'R$0',
     period: '/mês',
     highlight: false,
     features: [
-      '15 áudios/mês',
-      '1 número conectado',
+      `Até ${CORE_AUDIO_QUOTA} áudios/mês`,
+      '1 número WhatsApp',
       'Conversão automática',
       'Resumo por IA',
-      'Histórico de conversões',
-      'Filtros por data e contato',
-      'Busca por conversão',
+      'Modo Privado (opcional)',
+      'Histórico, filtros e busca',
     ],
     cta: 'Começar Grátis',
   },
   {
-    name: 'Pro',
-    price: 'R$37',
+    name: 'Profissional',
+    price: PROFISSIONAL_PRICE_MONTHLY,
     period: '/mês',
     highlight: true,
     badge: '⭐ Mais popular',
     features: [
-      'Áudios ilimitados (até 10 min cada)',
-      '2 números conectados',
-      'Conversão automática + áudios no site',
-      'Resumo por IA',
-      'Histórico, filtros e busca',
-      'Exportar áudios em PDF, Docx, Csv e Excel',
-      'Conversão Profissional (PDF com marcação temporal)',
-      'Modo Privado de conversão',
+      'Tudo do Core, sem limite de áudios',
+      'Atendimento automático 24/7 por IA',
+      'Fila de conversas + métricas',
+      'Avisos ao cliente (cobrança, agendamento...)',
+      'Base de conhecimento própria',
     ],
-    cta: 'Assinar Pro',
+    cta: 'Assinar Profissional',
   },
-  // Executive: plano legacy — não exibido na landing page
+  {
+    name: 'Empresas',
+    price: EMPRESAS_PRICE_MONTHLY,
+    period: '/mês',
+    highlight: false,
+    features: [
+      'Tudo do Profissional',
+      'CRM — funil de vendas no WhatsApp',
+      'Tarefas — designação e controle na equipe',
+      'Até 5 usuários com papéis',
+    ],
+    cta: 'Assinar Empresas',
+  },
 ];
 
 /* ── Landing por dor ────────────────────────────────────────────────────
@@ -157,12 +165,6 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
     } catch { /* noop */ }
   }, []);
   const hero = pain ? { ...variant, ...pain } : variant;
-
-  // 50% off no 1º mês — oferta permanente, espelha lib/promo.ts
-  const junePromo = isJunePromoActive();
-  const plans = PLANS.map(p => p.name !== 'Pro' ? p : junePromo
-    ? { ...p, price: 'R$18', period: '/1º mês · depois R$37', badge: '🔥 50% OFF no 1º mês' }
-    : p);
 
   const faqs = variant.faqs ?? FAQS;
   const faqJsonLd = {
@@ -468,11 +470,11 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
           PLANOS — rápidos
       ════════════════════════════════════════════════════════════ */}
       <section className="py-12 px-4 bg-white/2 border-y border-white/5">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold text-white text-center mb-3">Planos simples e transparentes</h2>
-          <p className="text-brand-muted text-center mb-10">Comece grátis. Faça upgrade quando quiser.</p>
-          <div className="grid sm:grid-cols-2 gap-4 max-w-xl mx-auto">
-            {plans.map(plan => (
+          <p className="text-brand-muted text-center mb-10">Comece grátis. Faça upgrade quando quiser — aluguel (mensal) ou compra (anual), via PIX ou cartão.</p>
+          <div className="grid sm:grid-cols-3 gap-4">
+            {PLANS.map(plan => (
               <div
                 key={plan.name}
                 className={`rounded-2xl p-6 border ${plan.highlight
@@ -487,15 +489,9 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
                 )}
                 <h3 className="font-bold text-white mb-1">{plan.name}</h3>
                 <div className="flex items-baseline gap-1.5 mb-4 flex-wrap">
-                  {plan.name === 'Pro' && junePromo && (
-                    <span className="text-sm text-brand-muted line-through">R$37</span>
-                  )}
                   <span className="text-2xl font-bold text-white">{plan.price}</span>
                   <span className="text-brand-muted text-sm">{plan.period}</span>
                 </div>
-                {plan.name === 'Pro' && (
-                  <div className="text-xs font-medium text-brand-primary mb-3">24h trabalhando por você, por apenas R$1,23 ao dia</div>
-                )}
                 <ul className="space-y-2 mb-6">
                   {plan.features.map(f => (
                     <li key={f} className="flex items-start gap-2 text-sm">
@@ -516,15 +512,6 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
                 </Link>
               </div>
             ))}
-          </div>
-          {/* Empresas teaser */}
-          <div className="max-w-xl mx-auto mt-4 rounded-2xl border border-white/10 bg-white/3 px-5 py-4 flex items-center justify-between gap-3">
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-widest text-brand-muted">Em breve</span>
-              <p className="font-bold text-white">🏢 Plano Empresas</p>
-              <p className="text-xs text-brand-muted mt-0.5">Multi-usuário · Webhook · Para times e agências</p>
-            </div>
-            <span className="shrink-0 text-xs border border-white/15 text-brand-muted rounded-full px-3 py-1">Em breve</span>
           </div>
           <p className="text-center text-brand-muted text-xs mt-6">
             Pagamento via PIX ou cartão de crédito · Cancele quando quiser · Sem fidelidade
@@ -573,7 +560,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
             ✓ Grátis &nbsp;·&nbsp; ✓ Sem cartão &nbsp;·&nbsp; ✓ Cancele quando quiser &nbsp;·&nbsp; ✓ LGPD
           </p>
           <PriceAnchor
-            prefix="Plano Pro por "
+            prefix="Plano Profissional por "
             compare
             className="block text-sm text-brand-muted mt-4"
             compareClassName="block text-xs text-brand-muted/70 mt-1"

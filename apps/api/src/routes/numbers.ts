@@ -1,7 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { notifyDisconnected } from '../services/whatsapp-notify';
-import { getUserPlan, requirePlan } from '../lib/planGate';
 import { validateRequest, createNumberSchema } from '../lib/validation';
 import {
   evolutionBaseUrl,
@@ -111,8 +110,8 @@ export default async function numberRoutes(app: FastifyInstance) {
       }
 
       if (req.body.privateMode !== undefined) {
-        const plan = await getUserPlan(userId);
-        if (!requirePlan(plan, ['pro', 'pro-tester', 'executive'], reply)) return;
+        // Modo Privado disponível em todos os planos (Core incluso) — desligado por
+        // padrão, o usuário liga se quiser. Ver revisão de tiers ZapScript 2.0.
         data.privateMode = Boolean(req.body.privateMode);
       }
 

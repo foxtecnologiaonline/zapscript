@@ -33,7 +33,7 @@ const schema = {
       name: 'O ZapScript é mais caro que o ViraTexto?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'O ZapScript tem plano Free com 15 áudios por mês sem custo algum. O plano Pro custa R$37/mês (ou R$18 no primeiro mês) e inclui áudios ilimitados, 2 números e funcionalidades que o ViraTexto não oferece, como resumo com IA, Modo Privado e exportação em PDF.',
+        text: 'O ZapScript tem plano Core com até 100 áudios por mês sem custo algum. O plano Profissional custa R$49/mês (ou R$295/ano) e inclui áudios ilimitados, atendimento automático por IA e funcionalidades que o ViraTexto não oferece, como resumo com IA, Modo Privado e exportação em PDF.',
       },
     },
     {
@@ -54,7 +54,7 @@ const ROWS = [
   { feature: 'Histórico pesquisável',  zap: '✅ Incluído',            vira: '❌ Não disponível' },
   { feature: 'Exportar (PDF/Docx)',    zap: '✅ No plano Pro',        vira: '❌ Não disponível' },
   { feature: 'Instalar no celular',    zap: '❌ Não precisa',         vira: '✅ Necessário encaminhar' },
-  { feature: 'Plano gratuito',         zap: '✅ 15 áudios/mês',       vira: '⚠️ Limitado' },
+  { feature: 'Plano gratuito',         zap: '✅ 100 áudios/mês',      vira: '⚠️ Limitado' },
   { feature: 'Precisão PT-BR',         zap: '99% (Whisper OpenAI)',   vira: 'Variável' },
   { feature: 'Criptografia',           zap: 'AES-256-GCM',            vira: 'Não especificado' },
   { feature: 'Conformidade LGPD',      zap: '✅ Completo',            vira: '⚠️ Não documentado' },
@@ -80,7 +80,7 @@ const FAQS = [
   },
   {
     q: 'Como o ZapScript é mais barato que parece?',
-    a: 'O plano Free inclui 15 áudios de conversão por mês sem custo algum e sem cartão de crédito. Para volume maior, o Pro custa R$37/mês e inclui áudios ilimitados, 2 números, resumo com IA, Modo Privado, histórico completo e exportação em PDF — funcionalidades que bots simples como o ViraTexto não oferecem.',
+    a: 'O plano Core inclui até 100 áudios de conversão por mês sem custo algum e sem cartão de crédito. Para volume maior, o Profissional custa R$49/mês (ou R$295/ano) e inclui áudios ilimitados, atendimento automático por IA, resumo com IA, Modo Privado, histórico completo e exportação em PDF — funcionalidades que bots simples como o ViraTexto não oferecem.',
   },
 ];
 
@@ -221,7 +221,7 @@ export default function VsViratextoPage() {
         {/* CTA final */}
         <div className="text-center py-12 rounded-2xl border border-brand-primary/20" style={{ background: 'rgba(16,185,129,.05)' }}>
           <h2 className="text-2xl font-bold text-white mb-3">Comece grátis — sem cartão de crédito</h2>
-          <p className="text-brand-muted mb-6">15 áudios por mês grátis. Upgrade quando quiser. Cancele a qualquer hora.</p>
+          <p className="text-brand-muted mb-6">Até 100 áudios por mês grátis. Upgrade quando quiser. Cancele a qualquer hora.</p>
           <Link href="/cadastro" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
             Criar minha conta grátis →
           </Link>

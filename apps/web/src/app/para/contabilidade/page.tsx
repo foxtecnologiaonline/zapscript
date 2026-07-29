@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { isJunePromoActive, PRO_FULL_PRICE, PRO_PROMO_PRICE } from '@/lib/promo';
+import { PROFISSIONAL_PRICE_MONTHLY } from '@/lib/promo';
 import ConversationDemo from '@/components/ConversationDemo';
 
 export const metadata: Metadata = {
@@ -21,10 +21,7 @@ export const metadata: Metadata = {
   },
 };
 
-const promo = isJunePromoActive();
-const proPriceLabel = promo
-  ? `${PRO_PROMO_PRICE} no 1º mês (depois ${PRO_FULL_PRICE}/mês)`
-  : `${PRO_FULL_PRICE}/mês`;
+const proPriceLabel = `${PROFISSIONAL_PRICE_MONTHLY}/mês`;
 
 const DORES = [
   {
@@ -100,7 +97,7 @@ const FAQS = [
   },
   {
     q: 'Posso testar sem custo?',
-    a: 'Pode. O plano gratuito inclui 15 áudios de conversão por mês, sem cartão de crédito. É o suficiente para sentir o ganho de tempo antes de decidir pelo plano Pro.',
+    a: 'Pode. O plano gratuito (Core) inclui até 100 áudios de conversão por mês, sem cartão de crédito. É o suficiente para sentir o ganho de tempo antes de decidir pelo plano Profissional.',
   },
 ];
 
@@ -163,7 +160,7 @@ export default function ParaContabilidadePage() {
             <Link href="/cadastro?utm_source=lp&utm_campaign=contabilidade" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-8 py-4 rounded-2xl hover:opacity-90 transition-opacity">
               Testar grátis no meu escritório →
             </Link>
-            <span className="text-xs text-brand-muted">✓ Sem cartão · ✓ 15 áudios/mês grátis</span>
+            <span className="text-xs text-brand-muted">✓ Sem cartão · ✓ 100 áudios/mês grátis</span>
           </div>
         </div>
 
@@ -235,7 +232,7 @@ export default function ParaContabilidadePage() {
         <div className="mb-16 text-center">
           <h2 className="text-2xl font-bold text-white mb-3">Comece grátis, evolua quando precisar</h2>
           <p className="text-brand-muted mb-6 max-w-xl mx-auto">
-            15 áudios por mês no plano gratuito, sem cartão. Para o volume de um escritório, o plano Pro sai por <span className="text-brand-primary font-semibold">{proPriceLabel}</span> — com áudios ilimitados, vários números, resumo com IA e exportação em PDF.
+            Até 100 áudios por mês no plano gratuito (Core), sem cartão. Para o volume de um escritório, o plano Profissional sai por <span className="text-brand-primary font-semibold">{proPriceLabel}</span> — com áudios ilimitados, atendimento automático por IA, resumo com IA e exportação em PDF.
           </p>
           <Link href="/cadastro?utm_source=lp&utm_campaign=contabilidade" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
             Criar conta grátis →

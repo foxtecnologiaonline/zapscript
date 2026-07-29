@@ -35,7 +35,7 @@ const variant: Variant = {
     { q: 'Funciona com vários clientes ao mesmo tempo?', a: 'Sim. Todos os áudios recebidos no seu número conectado são convertidos automaticamente e ficam organizados no histórico, pesquisáveis por nome do cliente, bairro ou valor. Nenhum lead se perde.' },
     { q: 'Preciso encaminhar o áudio para algum bot?', a: 'Não. Você conecta seu número via QR code uma única vez e a conversão acontece em segundo plano, automaticamente, para cada áudio que chega. Nada é instalado no celular.' },
     { q: 'Meus contatos de clientes ficam seguros?', a: 'Sim. Todas as conversões são criptografadas com AES-256-GCM, servidores em São Paulo e conformidade total com a LGPD. O áudio não é armazenado — apenas o texto.' },
-    { q: 'Quanto custa para começar?', a: 'Grátis. O plano Free inclui 15 áudios de conversão por mês, sem cartão de crédito. Para volume maior, o plano Pro (R$37/mês) oferece áudios ilimitados e 2 números conectados.' },
+    { q: 'Quanto custa para começar?', a: 'Grátis. O plano Core inclui até 100 áudios de conversão por mês, sem cartão de crédito. Para volume maior, o plano Profissional (R$49/mês) oferece áudios ilimitados e atendimento automático por IA.' },
   ],
 };
 

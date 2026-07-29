@@ -65,11 +65,15 @@ model User {
   legendaJobs             LegendaJob[]
   ownedTeams              Team[]              @relation("TeamOwner")
   teamMemberships         TeamMember[]
+  apiKeys                 ApiKey[]
+  avisos                  Aviso[]
+  tasks                   Task[]              @relation("TaskOwner")
+  assignedTasks           Task[]              @relation("TaskAssignee")
 }
 
 model Plan {
   id              String         @id @default(cuid())
-  name            String         @unique // "free" | "pro" | "ultra"
+  name            String         @unique // "free" | "pro" | "executive" | "profissional" | "empresas"
   label           String
   minutesPerMonth Int // [LEGADO] mantido só como métrica interna de custo
   audiosPerMonth  Int            @default(0) // Métrica primária de cota: nº de áudios/mês. FREE=15, PRO=500 (teto oculto)
@@ -89,9 +93,12 @@ model Subscription {
   paymentMethod       String? // 'credit_card' | 'pix'
   status              String    @default("active") // 'trialing' | 'active' | 'past_due' | 'canceled'
   currentPeriodEnd    DateTime?
-  // ── Trial Freemium: novo usuário entra com 7 dias de PRO grátis ──
-  trialEndsAt         DateTime? // fim do trial PRO (D7); job diário rebaixa para FREE em D8
-  trialDowngradedAt   DateTime? // marca quando o rebaixamento automático ocorreu (idempotência)
+  // ── [LEGADO] Trial Freemium removido (ZapScript 2.0 é freemium direto,
+  //    sem cartão/trial no cadastro). Campos órfãos — nada mais escreve ou
+  //    lê estas duas colunas; mantidas só para não quebrar linhas antigas.
+  //    Candidatas a remoção numa migração futura, após confirmar uso zero. ──
+  trialEndsAt         DateTime?
+  trialDowngradedAt   DateTime?
   testerRenewalsUsed  Int       @default(0) // Renovações mensais isentas consumidas (máx 12)
   comboDiscountPct    Float? // % fixo (ex.: 0.20) aplicado sobre o valor agregado — setado ao contratar o Combo (Core+módulos)
   createdAt           DateTime  @default(now())
@@ -146,6 +153,7 @@ model WhatsappNumber {
   atendeConversations AtendeConversation[]
   crmContacts         CrmContact[]
   campanhas           Campanha[]
+  avisos              Aviso[]
 
   @@index([userId]) // A2: listagem de números por usuário
   @@index([zapiInstanceId]) // A2: busca de instância em webhook (hot path)
@@ -978,4 +986,69 @@ model TeamMember {
 
   @@index([teamId])
   @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API pública ZapScript 2.0 (tier Empresas) — chaves para integrar com Zapier,
+// Make etc. Só o DONO do tier Empresas cria chaves (nunca membro de time — ver
+// lib/teamScope.ts). O valor real da chave é mostrado 1x na criação; só o hash
+// (SHA-256) fica no banco.
+// ─────────────────────────────────────────────────────────────────────────────
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  name       String // rótulo livre escolhido pelo dono (ex.: "Zapier")
+  keyHash    String    @unique // SHA-256 do token real
+  keyPrefix  String // primeiros caracteres do token, só para exibição/identificação
+  scopes     String[]  @default([]) // 'conversations:read' | 'contacts:read'
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Avisos (tier Profissional) — o dono dispara manualmente uma mensagem pra um
+// contato do WhatsApp (ex.: "pagamento hoje", "mercadoria pronta pra retirada").
+// Diferente de Cobrança (retirado de venda): sem régua automática/agendada,
+// é 1 envio manual por vez, com categoria fixa pra organizar o histórico.
+// ─────────────────────────────────────────────────────────────────────────────
+model Aviso {
+  id           String         @id @default(cuid())
+  userId       String
+  numberId     String
+  contactPhone String
+  contactName  String?
+  category     String // 'cobranca' | 'agendamento' | 'mercadoria_pronta' | 'outro'
+  message      String
+  createdAt    DateTime       @default(now())
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number       WhatsappNumber @relation(fields: [numberId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tarefas (tier Empresas) — designação e controle de tarefas dentro do time.
+// userId = dono do time (mesmo padrão de teamScope.ownerId); assignedToId
+// aponta pro userId do membro responsável (qualquer papel do time).
+// ─────────────────────────────────────────────────────────────────────────────
+model Task {
+  id           String    @id @default(cuid())
+  userId       String
+  title        String
+  description  String?
+  assignedToId String?
+  status       String    @default("pending") // 'pending' | 'done'
+  dueAt        DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation("TaskOwner", fields: [userId], references: [id], onDelete: Cascade)
+  assignedTo   User?     @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([userId, dueAt])
 }

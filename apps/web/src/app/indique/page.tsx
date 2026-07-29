@@ -23,7 +23,7 @@ const FAQS = [
   { q: 'Existe limite de indicações?', a: 'Não. Você pode indicar quantas pessoas quiser e acumular 5 áudios grátis por cada cadastro válido feito pelo seu link.' },
   { q: 'Onde encontro meu link de indicação?', a: 'Faça login na sua conta ZapScript e acesse o Dashboard — seu link pessoal está no card "Indique o ZapScript", com botão para copiar ou compartilhar direto no WhatsApp.' },
   { q: 'Ainda não tenho conta, posso indicar?', a: 'Você precisa de uma conta ZapScript (mesmo no plano Free, grátis) para gerar seu link pessoal de indicação. Crie sua conta grátis e o link aparece automaticamente no seu painel.' },
-  { q: 'Os áudios grátis somam com o plano que eu já tenho?', a: 'Sim. Os 5 áudios de cada indicação são creditados na sua conta e somam à cota mensal do seu plano atual (Free ou Pro).' },
+  { q: 'Os áudios grátis somam com o plano que eu já tenho?', a: 'Sim. Os 5 áudios de cada indicação são creditados na sua conta e somam à cota mensal do seu plano atual (Core, Profissional ou Empresas).' },
 ];
 
 const faqJsonLd = {

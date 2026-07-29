@@ -152,8 +152,9 @@ function CadastroForm() {
               <div className="rounded-xl px-4 py-3 mb-4 text-left"
                 style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.2)' }}>
                 <p className="text-xs text-brand-text leading-relaxed">
-                  <span className="font-bold text-brand-primary">🔥 50% OFF no 1º mês:</span>{' '}
-                  confirme seu e-mail e assine o Pro por <strong>R$18 no 1º mês</strong> (depois R$37/mês).
+                  <span className="font-bold text-brand-primary">✨ Core é grátis:</span>{' '}
+                  confirme seu e-mail e comece a usar — sem cartão. Quer atendimento automático 24/7?
+                  Assine o <strong>Profissional por R$49/mês</strong> quando quiser.
                 </p>
               </div>
             )}
@@ -200,7 +201,7 @@ function CadastroForm() {
                 Para quem prefere ler a ouvir.
               </h1>
               <p className="text-brand-text-secondary text-sm mt-1.5 font-light">
-                Comece com 15 áudios grátis — sem cartão de crédito.
+                Comece grátis, sem cartão de crédito.
               </p>
             </>
           )}

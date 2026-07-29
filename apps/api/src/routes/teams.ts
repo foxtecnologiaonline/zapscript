@@ -2,15 +2,22 @@ import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
+import { resolveTeamScope } from '../lib/teamScope';
+import { PLAN_PRICES, PLAN_PRICES_YEARLY } from './billing';
 
 /* ─────────────────────────────────────────────────────────
-   Plano Empresas Multi-Seat — MVP
-   Um dono de time paga por todos os seats (Pro cada membro).
-   Cada membro herda o tier do dono. Sem RBAC complexo.
+   Plano Empresas Multi-Seat
+   Preço FLAT do tier (R$99/mês ou R$595/ano) já cobre até
+   EMPRESAS_MAX_SEATS usuários — não é cobrança por seat. Só o dono de um
+   time no plano Empresas pode criar/convidar. Papéis: admin/manager/agent
+   (ver lib/teamScope.ts) — hoje compartilhados de verdade nos módulos
+   Atende/CRM/Tarefas (bundle do Empresas); os demais módulos seguem por
+   conta individual.
    ───────────────────────────────────────────────────────── */
 
-const SEAT_PRICE_MONTHLY = 37;   // R$37/mês por seat (preço Pro)
-const SEAT_PRICE_YEARLY  = 355; // R$355/ano por seat
+const INVITE_ROLES = new Set(['admin', 'manager', 'agent']);
+
+const EMPRESAS_MAX_SEATS = 5; // até 5 usuários incluídos no plano Empresas
 
 function genInviteCode(): string {
   return crypto.randomBytes(16).toString('hex'); // 32 chars
@@ -94,18 +101,18 @@ export default async function teamRoutes(app: FastifyInstance) {
         createdAt: team.createdAt,
         members: team.members.map((m: any) => ({
           id: m.id,
+          userId: m.userId, // usado por outros módulos (ex.: Tarefas) para atribuir a um membro
           name: m.user?.name || m.invitedEmail || 'Convidado',
           email: m.user?.email || m.invitedEmail || '',
           role: m.role,
           status: m.status,
           joinedAt: m.joinedAt,
         })),
-        seats: { active: activeMembers, total: totalSeats },
+        seats: { active: activeMembers, total: totalSeats, max: EMPRESAS_MAX_SEATS },
         billing: {
-          seatPriceMonthly: SEAT_PRICE_MONTHLY,
-          seatPriceYearly: SEAT_PRICE_YEARLY,
-          monthlyTotal: activeMembers * SEAT_PRICE_MONTHLY,
-          yearlyTotal: activeMembers * SEAT_PRICE_YEARLY,
+          // Preço flat do tier Empresas — não é cobrança por seat.
+          planPriceMonthly: PLAN_PRICES.empresas,
+          planPriceYearly:  PLAN_PRICES_YEARLY.empresas,
         },
         ownerPlan: plan ? { name: plan.name, label: plan.label } : null,
       },
@@ -121,6 +128,12 @@ export default async function teamRoutes(app: FastifyInstance) {
       const { name } = req.body || {};
       if (!name || typeof name !== 'string' || name.trim().length < 2) {
         return reply.code(400).send({ error: 'Nome do time precisa ter pelo menos 2 caracteres.' });
+      }
+
+      // Multiusuário é exclusivo do plano Empresas.
+      const sub = await prisma.subscription.findUnique({ where: { userId }, include: { plan: true } });
+      if (sub?.plan?.name !== 'empresas') {
+        return reply.code(402).send({ error: 'Times multiusuário são exclusivos do plano Empresas. Veja /dashboard/plano.' });
       }
 
       // Um usuário só pode ter 1 time (como owner ou member)
@@ -165,14 +178,18 @@ export default async function teamRoutes(app: FastifyInstance) {
   );
 
   // ── POST /teams/invite — convidar membro por e-mail ──────────────
-  app.post<{ Body: { email: string } }>(
+  app.post<{ Body: { email: string; role?: string } }>(
     '/invite',
     { ...auth, config: { rateLimit: { max: 10, timeWindow: '1 hour' } } },
     async (req: any, reply) => {
       const userId = req.user.sub;
-      const { email } = req.body || {};
+      const { email, role } = req.body || {};
       if (!email || typeof email !== 'string' || !email.includes('@')) {
         return reply.code(400).send({ error: 'E-mail inválido.' });
+      }
+      const memberRole = role ?? 'agent';
+      if (!INVITE_ROLES.has(memberRole)) {
+        return reply.code(400).send({ error: 'Papel inválido. Use admin, manager ou agent.' });
       }
 
       const team = await getOwnedTeam(userId);
@@ -180,9 +197,16 @@ export default async function teamRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: 'Apenas o dono do time pode convidar membros.' });
       }
 
-      // Limite MVP: 10 membros no total
-      if (team.members.length >= 10) {
-        return reply.code(400).send({ error: 'Limite de 10 membros atingido no MVP. Entre em contato para times maiores.' });
+      // Multiusuário é exclusivo do plano Empresas — revalida a cada convite
+      // (cobre o caso de o dono ter feito downgrade após criar o time).
+      const ownerSub = await prisma.subscription.findUnique({ where: { userId }, include: { plan: true } });
+      if (ownerSub?.plan?.name !== 'empresas') {
+        return reply.code(402).send({ error: 'Times multiusuário são exclusivos do plano Empresas. Veja /dashboard/plano.' });
+      }
+
+      // Até EMPRESAS_MAX_SEATS membros no total (já incluído no preço flat do Empresas)
+      if (team.members.length >= EMPRESAS_MAX_SEATS) {
+        return reply.code(400).send({ error: `Limite de ${EMPRESAS_MAX_SEATS} membros do plano Empresas atingido.` });
       }
 
       const normalizedEmail = email.trim().toLowerCase();
@@ -212,7 +236,7 @@ export default async function teamRoutes(app: FastifyInstance) {
         data: {
           teamId: team.id,
           userId: existingUser?.id || 'pending', // placeholder — será atualizado ao aceitar
-          role: 'member',
+          role: memberRole,
           status: 'invited',
           inviteCode,
           invitedEmail: normalizedEmail,
@@ -229,7 +253,7 @@ export default async function teamRoutes(app: FastifyInstance) {
         `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
           <div style="font-size:20px;font-weight:bold;margin-bottom:12px">🏢 Convite para o time "${team.name}"</div>
           <p>Você foi convidado(a) para fazer parte do time <strong>${team.name}</strong> no ZapScript.</p>
-          <p>Ao aceitar, você terá acesso ao plano <strong>Pro</strong> compartilhado com os demais membros do time, sem custo adicional para você.</p>
+          <p>Ao aceitar, você terá acesso ao plano <strong>Empresas</strong> compartilhado com os demais membros do time, sem custo adicional para você.</p>
           <div style="margin:24px 0;text-align:center">
             <a href="${acceptUrl}" style="background:#10b981;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:16px">Aceitar convite →</a>
           </div>
@@ -284,10 +308,40 @@ export default async function teamRoutes(app: FastifyInstance) {
       return {
         ok: true,
         team: { id: member.team.id, name: member.team.name },
-        message: `Bem-vindo ao time "${member.team.name}"! Você agora tem acesso ao plano Pro via time.`,
+        message: `Bem-vindo ao time "${member.team.name}"! Você agora tem acesso ao plano Empresas via time.`,
       };
     }
   );
+
+  // ── PATCH /teams/members/:id/role — trocar papel de um membro (owner apenas) ──
+  app.patch<{ Params: { id: string }; Body: { role: string } }>('/members/:id/role', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { id } = req.params;
+    const { role } = req.body || {};
+    if (!INVITE_ROLES.has(role)) {
+      return reply.code(400).send({ error: 'Papel inválido. Use admin, manager ou agent.' });
+    }
+
+    const member = await prisma.teamMember.findUnique({ where: { id } });
+    if (!member) return reply.code(404).send({ error: 'Membro não encontrado.' });
+
+    const requesterMembership = await prisma.teamMember.findUnique({ where: { userId } });
+    if (!requesterMembership || requesterMembership.teamId !== member.teamId || requesterMembership.role !== 'owner') {
+      return reply.code(403).send({ error: 'Apenas o dono do time pode alterar papéis.' });
+    }
+    if (member.role === 'owner') {
+      return reply.code(400).send({ error: 'O dono do time não muda de papel.' });
+    }
+
+    const updated = await prisma.teamMember.update({ where: { id }, data: { role } });
+    return { ok: true, member: { id: updated.id, role: updated.role } };
+  });
+
+  // ── GET /teams/my-role — papel efetivo do usuário logado (para a UI mostrar/ocultar ações) ──
+  app.get('/my-role', auth, async (req: any) => {
+    const scope = await resolveTeamScope(req.user.sub);
+    return { role: scope.role };
+  });
 
   // ── DELETE /teams/members/:id — remover membro (owner apenas) ────
   app.delete('/members/:id', auth, async (req: any, reply) => {

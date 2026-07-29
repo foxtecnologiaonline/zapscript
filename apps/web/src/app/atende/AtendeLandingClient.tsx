@@ -5,9 +5,11 @@ import { captureAffiliateFromUrl } from '@/lib/affiliate';
 import { Testimonials } from '@/components/Testimonials';
 import AtendeChatDemo from '@/components/AtendeChatDemo';
 import { api } from '@/lib/api';
-import { ModuleCatalogItem, formatBrl } from '@/lib/modules';
+import { ModuleCatalogItem } from '@/lib/modules';
 
-const CTA_HREF = '/cadastro?utm_source=seo&utm_campaign=atende';
+/* Atende vem incluso no plano Profissional (não é vendido avulso) —
+   CTA leva direto para a escolha de plano. */
+const CTA_HREF = '/dashboard/plano?utm_source=seo&utm_campaign=atende';
 
 /* Espelha packages/modules/catalog.ts (MODULE_BY_KEY.atende) — usado como
    valor inicial para a página nunca renderizar sem preço; GET /modules
@@ -15,11 +17,16 @@ const CTA_HREF = '/cadastro?utm_source=seo&utm_campaign=atende';
 const FALLBACK_MODULE: ModuleCatalogItem = {
   key: 'atende',
   name: 'ZapScript Atende',
-  status: 'beta',
+  status: 'bundled',
   priceMonthly: 67,
   priceYearly: 643,
   dependsOn: [],
 };
+
+/* Preço do plano que inclui o Atende (Profissional) — espelha PLAN_PRICES
+   em apps/api/src/routes/billing.ts. O módulo em si não tem preço avulso. */
+const PROFISSIONAL_PRICE_MONTHLY = 'R$49';
+const PROFISSIONAL_PRICE_YEARLY = 'R$295';
 
 /* ── FAQ ────────────────────────────────────────────────────────────── */
 const FAQS = [
@@ -41,7 +48,7 @@ const FAQS = [
   },
   {
     q: 'Preciso ter outro plano do ZapScript para usar o Atende?',
-    a: 'Não. O Atende é um módulo independente — funciona com qualquer conta ZapScript que tenha um número de WhatsApp conectado, sem depender de nenhum outro módulo.',
+    a: 'Sim — o Atende vem incluso no plano Profissional (R$49/mês), que já inclui o Core sem limite de áudios. Não é vendido separado.',
   },
   {
     q: 'Posso cancelar quando quiser?',
@@ -162,7 +169,7 @@ export default function AtendeLandingClient() {
             className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 active:scale-95 transition-all shadow-lg"
             style={{ boxShadow: '0 0 30px rgba(16,185,129,0.3)' }}
           >
-            Contratar Atende
+            Ver plano Profissional
             <span>→</span>
           </Link>
 
@@ -236,23 +243,24 @@ export default function AtendeLandingClient() {
       <Testimonials />
 
       {/* ════════════════════════════════════════════════════════════
-          PREÇO — único, sem tiers
+          PREÇO — incluso no Profissional
       ════════════════════════════════════════════════════════════ */}
       <section className="py-12 px-4 bg-white/2 border-y border-white/5">
         <div className="max-w-md mx-auto">
-          <h2 className="text-2xl font-bold text-white text-center mb-3">Um preço, sem pegadinha</h2>
-          <p className="text-brand-muted text-center mb-10">Ativa sobre o número que você já tem no ZapScript.</p>
+          <h2 className="text-2xl font-bold text-white text-center mb-3">Incluso no plano Profissional</h2>
+          <p className="text-brand-muted text-center mb-10">O Atende não é vendido separado — vem junto do Core sem limite de áudios.</p>
 
           <div className="rounded-2xl p-6 border border-brand-primary bg-brand-primary/8 relative">
             <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-primary text-black text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap">
-              🤖 {mod.name}
+              🤖 {mod.name} · Profissional
             </div>
             <div className="flex items-baseline gap-1.5 mb-4 mt-2 justify-center">
-              <span className="text-3xl font-bold text-white">{formatBrl(mod.priceMonthly)}</span>
-              <span className="text-brand-muted text-sm">/mês</span>
+              <span className="text-3xl font-bold text-white">{PROFISSIONAL_PRICE_MONTHLY}</span>
+              <span className="text-brand-muted text-sm">/mês (aluguel) · {PROFISSIONAL_PRICE_YEARLY}/ano (compra)</span>
             </div>
             <ul className="space-y-2 mb-6">
               {[
+                'Tudo do Core, sem limite de áudios',
                 'Atendimento automático 24/7',
                 'Base de conhecimento própria',
                 'Escalonamento humano incluído',
@@ -269,11 +277,11 @@ export default function AtendeLandingClient() {
               data-cta="atende_plano_cta"
               className="block text-center font-semibold py-2.5 rounded-xl transition-all text-sm bg-brand-primary text-black hover:opacity-90"
             >
-              Contratar Atende
+              Ver plano Profissional
             </Link>
           </div>
           <p className="text-center text-brand-muted text-xs mt-6">
-            Cobrança proporcional ao ativar no meio do ciclo · Cancele quando quiser · Sem fidelidade
+            Pagamento via PIX ou cartão · Cancele quando quiser · Sem fidelidade
           </p>
         </div>
       </section>
@@ -312,11 +320,11 @@ export default function AtendeLandingClient() {
             className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-xl px-12 py-5 rounded-2xl hover:opacity-90 active:scale-95 transition-all"
             style={{ boxShadow: '0 0 40px rgba(16,185,129,0.35)' }}
           >
-            Contratar Atende
+            Ver plano Profissional
             <span>→</span>
           </Link>
           <p className="mt-5 text-sm text-brand-muted">
-            ✓ {formatBrl(mod.priceMonthly)}/mês &nbsp;·&nbsp; ✓ Sem fidelidade &nbsp;·&nbsp; ✓ Cancele quando quiser &nbsp;·&nbsp; ✓ LGPD
+            ✓ {PROFISSIONAL_PRICE_MONTHLY}/mês &nbsp;·&nbsp; ✓ Sem fidelidade &nbsp;·&nbsp; ✓ Cancele quando quiser &nbsp;·&nbsp; ✓ LGPD
           </p>
         </div>
       </section>

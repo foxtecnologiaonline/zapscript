@@ -7,8 +7,8 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Atualizando planos ZapScript v3.0...');
 
-  // FREE_AUDIO_QUOTA parametrizável por env (default 15). PRO = teto oculto 500.
-  const FREE_AUDIO_QUOTA = parseInt(process.env.FREE_AUDIO_QUOTA || '15', 10);
+  // FREE_AUDIO_QUOTA parametrizável por env (default 100 — revisão de tiers ZapScript 2.0). PRO = teto oculto 500.
+  const FREE_AUDIO_QUOTA = parseInt(process.env.FREE_AUDIO_QUOTA || '100', 10);
   const PRO_AUDIO_CAP    = parseInt(process.env.PRO_AUDIO_CAP    || '500', 10);
 
   const plans = [
@@ -69,6 +69,42 @@ async function main() {
         'Exportação PDF · DOCX · CSV · XLS',
         'Modo Privado de transcrição',
         'Webhook personalizado',
+      ]),
+    },
+    // ── ZapScript 2.0 — Tiers (revisão) ──
+    // Absorvem módulos existentes (ver TIER_MODULE_BUNDLES em billing.ts).
+    // free/pro/executive acima continuam intocados; catálogo à parte.
+    // Preço: "aluguel" (mensal) = priceBrl; "compra" (anual) vive em
+    // PLAN_PRICES_YEARLY (apps/api/src/routes/billing.ts).
+    {
+      name:            'profissional',
+      label:           'Profissional',
+      minutesPerMonth: 400,
+      audiosPerMonth:  PRO_AUDIO_CAP,
+      maxNumbers:      1,
+      priceBrl:        49,
+      features:        JSON.stringify([
+        'Tudo do Core, sem limite de áudios',
+        '🤖 Atendimento automático 24/7 por IA',
+        '📥 Fila de conversas + assumir manualmente',
+        '📊 Métricas de atendimento e efetividade',
+        '📨 Avisos ao cliente (cobrança, agendamento, mercadoria pronta...)',
+        '📚 Base de conhecimento própria',
+        '1 número WhatsApp',
+      ]),
+    },
+    {
+      name:            'empresas',
+      label:           'Empresas',
+      minutesPerMonth: 500,
+      audiosPerMonth:  PRO_AUDIO_CAP,
+      maxNumbers:      2,
+      priceBrl:        99,
+      features:        JSON.stringify([
+        'Tudo do Profissional',
+        '📊 CRM — funil de vendas no WhatsApp',
+        '✅ Tarefas — designação e controle na equipe',
+        '👥 Até 5 usuários com papéis (admin/manager/agent)',
       ]),
     },
   ];

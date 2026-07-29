@@ -172,17 +172,17 @@ function ApprovedPanel({ affiliate, stats, rates, progress, commissions, onUpdat
     {
       key: 'whatsapp',
       label: 'WhatsApp (direto)',
-      text: `Oi! Criei um app que transforma áudio do WhatsApp em texto + resumo em segundos 🎧➡️📝\nTesta grátis, sem cadastro 👉 ${link} 🚀\n(15 áudios grátis/mês 🆓 · Pro R$18 no 1º mês 🔥)`,
+      text: `Oi! Criei um app que transforma áudio do WhatsApp em texto + resumo em segundos 🎧➡️📝\nTesta grátis, sem cadastro 👉 ${link} 🚀\n(100 áudios grátis/mês 🆓 · Profissional R$49/mês 🤖)`,
     },
     {
       key: 'grupo',
       label: 'Grupo de WhatsApp',
-      text: `Pessoal! 👋 Criei o *ZapScript* 🎧➡️📝 — transforma *áudio do WhatsApp em texto + resumo* em segundos. Aquele áudio de 5 min que chega na pior hora? Lido em 10 segundos 🙌\nTesta grátis, sem cadastro 👉 ${link} 🚀 (15 áudios grátis/mês 🆓 · Pro R$18 no 1º mês 🔥)`,
+      text: `Pessoal! 👋 Criei o *ZapScript* 🎧➡️📝 — transforma *áudio do WhatsApp em texto + resumo* em segundos. Aquele áudio de 5 min que chega na pior hora? Lido em 10 segundos 🙌\nTesta grátis, sem cadastro 👉 ${link} 🚀 (100 áudios grátis/mês 🆓 · Profissional R$49/mês 🤖)`,
     },
     {
       key: 'linkedin',
       label: 'LinkedIn (post)',
-      text: `Áudio de WhatsApp é ladrão de tempo. ⏱️\n\nO ZapScript transforma áudio em texto + resumo automático 🎧➡️📝\nVocê lê em segundos o que levaria minutos ouvindo.\n\n🆓 15 áudios grátis/mês · 🔥 Pro R$18 no 1º mês\nDemo sem cadastro 👉 ${link}\n\n#produtividade #IA #whatsapp`,
+      text: `Áudio de WhatsApp é ladrão de tempo. ⏱️\n\nO ZapScript transforma áudio em texto + resumo automático 🎧➡️📝\nVocê lê em segundos o que levaria minutos ouvindo.\n\n🆓 100 áudios grátis/mês · 🤖 Profissional R$49/mês\nDemo sem cadastro 👉 ${link}\n\n#produtividade #IA #whatsapp`,
     },
   ];
 

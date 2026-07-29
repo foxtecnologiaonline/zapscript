@@ -1,89 +1,92 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { isJunePromoActive, PRO_FULL_PRICE, PRO_PROMO_PRICE } from '@/lib/promo';
+import { CORE_AUDIO_QUOTA, PROFISSIONAL_PRICE_MONTHLY, PROFISSIONAL_PRICE_YEARLY, EMPRESAS_PRICE_MONTHLY, EMPRESAS_PRICE_YEARLY } from '@/lib/promo';
 
 type CmpVal = string | boolean;
 
-const PRO_FULL_PRICE_NUM = 37;
-const PRO_YEARLY_PRICE_NUM = 355;
-const PRO_YEARLY_MONTHLY_EQ = 'R$29';
-const PRO_YEARLY_SAVINGS = 'R$88';
+const PROFISSIONAL_YEARLY_MONTHLY_EQ = 'R$25'; // R$295/ano ÷ 12
+const EMPRESAS_YEARLY_MONTHLY_EQ = 'R$50';     // R$595/ano ÷ 12
 
 const PLANS = [
   {
-    name: 'free', label: 'Free', price: 'R$0', per: '/mês',
-    desc: 'Para experimentar',
+    name: 'core', label: 'Core', price: 'R$0', per: '/mês',
+    desc: 'Completo e grátis',
     feats: [
-      '15 áudios/mês',
+      `Até ${CORE_AUDIO_QUOTA} áudios/mês`,
       '1 número WhatsApp',
-      '🎙️ Conversão automática',
+      '🎙️ Transcrição automática',
       '✨ Resumo com IA',
-      '📋 Histórico de conversões',
-      '📅 Filtros por data e contato',
-      '🔍 Busca por conversão',
+      '🔒 Modo Privado (opcional)',
+      '📋 Histórico, filtros e busca',
     ],
-    excl: ['🖥️ Conversão de áudios no site'],
+    excl: ['🤖 Atendimento automático'],
     cta: 'Começar grátis', href: '/cadastro', popular: false, accent: null as string | null,
   },
   {
-    name: 'pro', label: 'Pro', price: 'R$18', per: '/1º mês',
-    desc: 'Depois R$37/mês',
+    name: 'profissional', label: 'Profissional', price: PROFISSIONAL_PRICE_MONTHLY, per: '/mês',
+    desc: 'Sem fidelidade, cancele quando quiser',
     feats: [
-      'Áudios ilimitados',
-      'Áudios de até 10 min',
-      '2 números WhatsApp',
-      '🎙️ Conversão automática',
-      '🖥️ Conversão de áudios no site',
-      '✨ Resumo com IA',
-      '📋 Histórico de conversões',
-      '📅 Filtros por data e contato',
-      '🔍 Busca por conversão',
-      '📤 Exportar áudios em PDF, Docx, Csv e Excel',
-      '📄 Conversão Profissional (PDF com marcação temporal)',
-      '🔒 Modo Privado de conversão',
+      'Tudo do Core, sem limite de áudios',
+      '🤖 Atendimento automático 24/7 por IA',
+      '📥 Fila de conversas + métricas',
+      '📨 Avisos ao cliente (cobrança, agendamento...)',
+      '📚 Base de conhecimento própria',
     ],
     excl: [],
-    cta: 'Assinar Pro', href: '/cadastro', popular: true, accent: '#3b82f6' as string | null,
+    cta: 'Assinar Profissional', href: '/cadastro', popular: true, accent: '#3b82f6' as string | null,
+  },
+  {
+    name: 'empresas', label: 'Empresas', price: EMPRESAS_PRICE_MONTHLY, per: '/mês',
+    desc: 'Até 5 usuários incluídos',
+    feats: [
+      'Tudo do Profissional',
+      '📊 CRM — funil de vendas no WhatsApp',
+      '✅ Tarefas — designação e controle na equipe',
+      '👥 Até 5 usuários com papéis',
+    ],
+    excl: [],
+    cta: 'Assinar Empresas', href: '/cadastro', popular: false, accent: null as string | null,
   },
 ];
 
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Áudios/mês',                         vals: ['15', 'Ilimitado'] },
-  { feature: 'Números WhatsApp',                   vals: ['1', '2'] },
-  { feature: '🎙️ Conversão automática',           vals: [true, true] },
-  { feature: '✨ Resumo com IA',                    vals: [true, true] },
-  { feature: '📋 Histórico de conversões',        vals: [true, true] },
-  { feature: '📅 Filtros por data e contato',       vals: [true, true] },
-  { feature: '🔍 Busca por conversão',             vals: [true, true] },
-  { feature: '🖥️ Conversão no site (upload)',     vals: [false, true] },
-  { feature: '📤 Exportar áudios (PDF/Docx/Csv/Excel)', vals: [false, true] },
-  { feature: '📄 Conversão Profissional (PDF)',    vals: [false, true] },
-  { feature: '🔒 Modo Privado de conversão',       vals: [false, true] },
+  { feature: 'Áudios/mês',                        vals: [`${CORE_AUDIO_QUOTA}`, 'Ilimitado', 'Ilimitado'] },
+  { feature: '🎙️ Transcrição + resumo IA',        vals: [true, true, true] },
+  { feature: '🔒 Modo Privado',                    vals: [true, true, true] },
+  { feature: '🤖 Atendimento automático 24/7',     vals: [false, true, true] },
+  { feature: '📊 CRM (funil de vendas)',           vals: [false, false, true] },
+  { feature: '✅ Tarefas (equipe)',                vals: [false, false, true] },
+  { feature: '👥 Usuários incluídos',              vals: ['1', '1', 'Até 5'] },
 ];
 
 export function PricingInteractive() {
-  const promo = isJunePromoActive();
-  const plans = PLANS.map(p => p.name !== 'pro' ? p : (
-    promo
-      ? { ...p, price: PRO_PROMO_PRICE, per: '/1º mês', desc: `Depois ${PRO_FULL_PRICE}/mês` }
-      : { ...p, price: PRO_FULL_PRICE, per: '/mês', desc: 'Sem fidelidade, cancele quando quiser' }
-  ));
+  const plans = PLANS;
 
   const [showTable, setShowTable] = useState(false);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
 
   const isYearly = billingCycle === 'yearly';
 
   function getPlanPrice(plan: typeof plans[number]) {
-    if (plan.name !== 'pro') return plan;
-    if (isYearly) {
+    if (!isYearly || plan.name === 'core') return plan;
+    if (plan.name === 'profissional') {
       return {
         ...plan,
-        price: PRO_YEARLY_MONTHLY_EQ,
+        price: PROFISSIONAL_YEARLY_MONTHLY_EQ,
         per: '/mês (anual)',
-        desc: `${PRO_YEARLY_PRICE_NUM.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/ano`,
-        cta: 'Assinar Pro Anual',
+        desc: `${PROFISSIONAL_PRICE_YEARLY}/ano (compra)`,
+        cta: 'Assinar Profissional Anual',
+        href: `/cadastro?cycle=yearly`,
+      };
+    }
+    if (plan.name === 'empresas') {
+      return {
+        ...plan,
+        price: EMPRESAS_YEARLY_MONTHLY_EQ,
+        per: '/mês (anual)',
+        desc: `${EMPRESAS_PRICE_YEARLY}/ano (compra)`,
+        cta: 'Assinar Empresas Anual',
         href: `/cadastro?cycle=yearly`,
       };
     }
@@ -96,7 +99,7 @@ export function PricingInteractive() {
       <div className="flex justify-center mb-5">
         <div className="inline-flex rounded-full p-0.5 gap-0.5"
           style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          {(['monthly', 'yearly'] as const).map(cycle => {
+          {(['yearly', 'monthly'] as const).map(cycle => {
             const active = billingCycle === cycle;
             return (
               <button
@@ -109,7 +112,7 @@ export function PricingInteractive() {
                   boxShadow: active ? '0 2px 8px rgba(16,185,129,.3)' : 'none',
                 }}
               >
-                {cycle === 'monthly' ? 'Mensal' : 'Anual'}
+                {cycle === 'monthly' ? 'Aluguel (mensal)' : 'Compra (anual)'}
                 {cycle === 'yearly' && (
                   <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded"
                     style={{
@@ -145,7 +148,7 @@ export function PricingInteractive() {
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-black text-[11px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wide whitespace-nowrap"
                   style={{ background: 'rgb(var(--color-primary))' }}>
-                  {isYearly ? <>📆 2 meses grátis</> : promo ? <>🔥 50% OFF no 1º mês</> : <>⭐ Mais popular</>}
+                  {isYearly ? <>📆 2 meses grátis</> : <>⭐ Mais popular</>}
                 </div>
               )}
               <div className="flex items-start justify-between mb-4">
@@ -158,17 +161,21 @@ export function PricingInteractive() {
                   <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.per}</span>
                 </div>
               </div>
-              {plan.name === 'pro' && !isYearly && (
-                <div className="text-xs font-semibold mb-4" style={{ color: 'rgb(var(--color-primary))' }}>
-                  24h trabalhando por você, por apenas R$1,23 ao dia
-                </div>
-              )}
-              {plan.name === 'pro' && isYearly && (
+              {plan.name === 'profissional' && isYearly && (
                 <div className="flex items-center gap-2 mb-4 rounded-xl px-3 py-2 text-xs"
                   style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.18)' }}>
                   <span>🤑</span>
                   <span style={{ color: 'rgb(var(--color-primary))' }}>
-                    Economize <strong>{PRO_YEARLY_SAVINGS}</strong> em 1 ano — <strong>2 meses grátis</strong> vs mensal
+                    Economize <strong>R$293</strong> em 1 ano — <strong>2 meses grátis</strong> vs mensal
+                  </span>
+                </div>
+              )}
+              {plan.name === 'empresas' && isYearly && (
+                <div className="flex items-center gap-2 mb-4 rounded-xl px-3 py-2 text-xs"
+                  style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.18)' }}>
+                  <span>🤑</span>
+                  <span style={{ color: 'rgb(var(--color-primary))' }}>
+                    Economize <strong>R$593</strong> em 1 ano — <strong>2 meses grátis</strong> vs mensal
                   </span>
                 </div>
               )}
@@ -266,11 +273,12 @@ export function PricingInteractive() {
         </p>
         <div className="grid grid-cols-1 gap-2.5">
           {[
-            { icon: '🤖', key: 'atende', name: 'ZapScript Atende', tagline: 'Atendimento automático 24/7 no WhatsApp', href: '/atende', status: 'ga' },
-            { icon: '💰', key: 'cobranca', name: 'ZapScript Cobrança', tagline: 'Lembrete e cobrança automática via WhatsApp', href: '/cobranca', status: 'beta' },
+            { icon: '🤖', key: 'atende', name: 'ZapScript Atende', tagline: 'Incluso no plano Profissional', href: '/atende', status: 'bundled' },
+            { icon: '📊', key: 'crm', name: 'ZapScript CRM', tagline: 'Incluso no plano Empresas', href: '/crm', status: 'bundled' },
+            { icon: '✅', key: 'tarefas', name: 'ZapScript Tarefas', tagline: 'Incluso no plano Empresas', href: '/dashboard/plano', status: 'bundled' },
             { icon: '📣', key: 'campanhas', name: 'ZapScript Campanhas', tagline: 'Disparo em massa compliant via API oficial', href: '/campanhas', status: 'beta' },
-            { icon: '📊', key: 'crm', name: 'ZapScript CRM', tagline: 'Funil de vendas dentro do WhatsApp', href: '/crm', status: 'beta' },
-            { icon: '🗣️', key: 'vendas', name: 'ZapScript Vendas', tagline: 'Grave a visita → vira nota no CRM', href: '/vendas', status: 'beta' },
+            { icon: '💰', key: 'cobranca', name: 'ZapScript Cobrança', tagline: 'Lembrete e cobrança automática via WhatsApp', href: '/cobranca', status: 'planned' },
+            { icon: '🗣️', key: 'vendas', name: 'ZapScript Vendas', tagline: 'Grave a visita → vira nota no CRM', href: '/modulos/vendas', status: 'planned' },
             { icon: '🎬', key: 'legenda', name: 'ZapScript Legendas', tagline: 'Legenda automática para Reels e Stories', href: '/legendas', status: 'planned' },
           ].map((m) => (
             <Link key={m.key} href={m.href}
@@ -287,6 +295,10 @@ export function PricingInteractive() {
                   {m.status === 'planned' && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                       style={{ background: 'rgba(148,163,184,.12)', color: 'rgb(148,163,184)' }}>EM BREVE</span>
+                  )}
+                  {m.status === 'bundled' && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ background: 'rgba(16,185,129,.12)', color: 'rgb(var(--color-primary))' }}>INCLUSO NO PLANO</span>
                   )}
                 </div>
                 <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{m.tagline}</p>

@@ -7,7 +7,7 @@
  */
 
 // ── Parâmetros de cota (parametrizáveis por env, sem hardcode no fluxo) ──────
-export const FREE_AUDIO_QUOTA = parseInt(process.env.FREE_AUDIO_QUOTA || '15', 10);
+export const FREE_AUDIO_QUOTA = parseInt(process.env.FREE_AUDIO_QUOTA || '100', 10);
 export const PRO_AUDIO_CAP    = parseInt(process.env.PRO_AUDIO_CAP    || '500', 10);
 
 // ── Teto de duração por áudio: 10 min. Acima → rejeita (não conta cota) ──────
@@ -15,34 +15,27 @@ export const MAX_AUDIO_SECONDS = parseInt(process.env.MAX_AUDIO_SECONDS || '600'
 // Margem de tolerância para imprecisão da estimativa de duração do MP3.
 export const MAX_AUDIO_MARGIN_SECONDS = parseInt(process.env.MAX_AUDIO_MARGIN_SECONDS || '30', 10);
 
-// ── Trial: 7 dias de PRO para novo usuário ──────────────────────────────────
-export const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
-
 export type PlanEfetivo = 'pro' | 'free';
 
 interface PlanEfetivoInput {
   isTester?: boolean | null;
   subscription?: {
     status?: string | null;
-    trialEndsAt?: Date | null;
     plan?: { name?: string | null } | null;
   } | null;
 }
 
 /**
  * Plano efetivo do usuário para fins de cota e rodapé:
- *   PRO  se: tester válido OU trial ativo OU assinante pagante (pro/executive ativo)
- *   FREE caso contrário.
+ *   PRO  se: tester válido OU assinante pagante (qualquer plano != free) ativo
+ *   FREE caso contrário. Sem trial — ver histórico do repo se precisar do
+ *   comportamento antigo (TRIAL_DAYS/trialEndsAt).
  */
-export function planEfetivo(u: PlanEfetivoInput, now: Date = new Date()): PlanEfetivo {
+export function planEfetivo(u: PlanEfetivoInput, _now: Date = new Date()): PlanEfetivo {
   if (u.isTester) return 'pro';
   const sub = u.subscription;
   if (!sub) return 'free';
 
-  // Trial ativo
-  if (sub.status === 'trialing' && sub.trialEndsAt && sub.trialEndsAt > now) return 'pro';
-
-  // Assinante pagante de plano PRO/Executive
   const planName = (sub.plan?.name || 'free').toLowerCase();
   if (sub.status === 'active' && planName !== 'free') return 'pro';
 

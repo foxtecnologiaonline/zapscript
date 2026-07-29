@@ -34,8 +34,8 @@ const variant: Variant = {
     { q: 'Como o ZapScript ajuda quem trabalha com vendas?', a: 'Leads frequentemente mandam áudio perguntando preço, condição e disponibilidade. O ZapScript converte e resume cada áudio na hora, destacando a intenção de compra — produto, orçamento e urgência — para você responder rápido e com a oferta certa.' },
     { q: 'Por que a velocidade de resposta importa tanto?', a: 'Em vendas, quem responde primeiro geralmente fecha. Cada áudio que fica sem ser ouvido é uma oportunidade esfriando. Com a conversão automática, você lê a intenção do lead em segundos em vez de parar tudo para ouvir minutos de áudio.' },
     { q: 'Consigo acompanhar todos os leads que mandaram áudio?', a: 'Sim. Todas as conversões ficam salvas e pesquisáveis por nome, produto ou data. Você acompanha cada oportunidade sem precisar reouvir os áudios.' },
-    { q: 'Funciona para a minha equipe de atendimento?', a: 'O plano Pro permite conectar 2 números. Um plano Empresas multi-usuário (com webhook para integrar ao CRM) está a caminho, ideal para times de vendas e atendimento.' },
-    { q: 'Quanto custa para começar?', a: 'Grátis. O plano Free inclui 15 áudios de conversão por mês, sem cartão de crédito. O plano Pro (R$37/mês) oferece áudios ilimitados e 2 números conectados.' },
+    { q: 'Funciona para a minha equipe de atendimento?', a: 'Sim — o plano Empresas (R$99/mês) é multiusuário: inclui Atende, CRM e Tarefas para até 5 pessoas do seu time, ideal para vendas e atendimento.' },
+    { q: 'Quanto custa para começar?', a: 'Grátis. O plano Core inclui até 100 áudios de conversão por mês, sem cartão de crédito. O plano Profissional (R$49/mês) oferece áudios ilimitados e atendimento automático por IA.' },
   ],
 };
 

@@ -143,10 +143,6 @@ function buildGCalUrl(title: string, start: Date, details: string): string {
 /* ─── Constants ───────────────────────────────────────────────────────────── */
 const LIMIT       = 20;
 
-const PLAN_HISTORY = ['free', 'pro', 'pro-tester', 'executive'];
-const PLAN_FILTERS = ['free', 'pro', 'pro-tester', 'executive'];
-const PLAN_SEARCH  = ['free', 'pro', 'pro-tester', 'executive'];
-
 const SORT_OPTIONS = [
   { value: 'date_desc',    label: 'Data — Mais recente', icon: '📅' },
   { value: 'date_asc',     label: 'Data — Mais antiga',  icon: '📅' },
@@ -298,14 +294,14 @@ function TagInput({ tags, onChange, disabled }: {
 
 /* ─── FilterDrawer ─────────────────────────────────────────────────────────── */
 function FilterDrawer({
-  onClose, canFilters,
+  onClose,
   filterContact, setFilterContact,
   filterLang, setFilterLang,
   dateFrom, setDateFrom,
   dateTo, setDateTo,
   onApply, onClear,
 }: {
-  onClose: () => void; canFilters: boolean;
+  onClose: () => void;
   filterContact: string; setFilterContact: (v: string) => void;
   filterLang: string;   setFilterLang:    (v: string) => void;
   dateFrom: string;     setDateFrom:      (v: string) => void;
@@ -342,17 +338,12 @@ function FilterDrawer({
             <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-2"
               style={{ color: 'rgb(var(--color-text-muted))' }}>
               👤 Contato
-              {!canFilters && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded ml-1"
-                  style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.25)' }}>Pro+</span>
-              )}
             </label>
             <input
-              className={`input w-full text-sm ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
-              placeholder={canFilters ? 'Nome ou telefone...' : '🔒 Disponível no plano Pro'}
+              className="input w-full text-sm"
+              placeholder="Nome ou telefone..."
               value={filterContact}
-              onChange={e => canFilters && setFilterContact(e.target.value)}
-              readOnly={!canFilters}
+              onChange={e => setFilterContact(e.target.value)}
             />
           </div>
 
@@ -361,32 +352,26 @@ function FilterDrawer({
             <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-2"
               style={{ color: 'rgb(var(--color-text-muted))' }}>
               📅 Período
-              {!canFilters && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded ml-1"
-                  style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.25)' }}>Pro+</span>
-              )}
             </label>
             <div className="grid grid-cols-2 gap-2">
               <div className="relative">
                 <input type="date"
-                  className={`input w-full text-sm ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className="input w-full text-sm"
                   value={dateFrom}
-                  onChange={e => canFilters && setDateFrom(e.target.value)}
-                  disabled={!canFilters}
+                  onChange={e => setDateFrom(e.target.value)}
                   aria-label="De" />
-                {!dateFrom && canFilters && (
+                {!dateFrom && (
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none"
                     style={{ color: 'rgb(var(--color-text-muted))' }}>De</span>
                 )}
               </div>
               <div className="relative">
                 <input type="date"
-                  className={`input w-full text-sm ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className="input w-full text-sm"
                   value={dateTo}
-                  onChange={e => canFilters && setDateTo(e.target.value)}
-                  disabled={!canFilters}
+                  onChange={e => setDateTo(e.target.value)}
                   aria-label="Até" />
-                {!dateTo && canFilters && (
+                {!dateTo && (
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none"
                     style={{ color: 'rgb(var(--color-text-muted))' }}>Até</span>
                 )}
@@ -399,16 +384,11 @@ function FilterDrawer({
             <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-2"
               style={{ color: 'rgb(var(--color-text-muted))' }}>
               🌐 Idioma
-              {!canFilters && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded ml-1"
-                  style={{ background: 'rgba(245,158,11,.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.25)' }}>Pro+</span>
-              )}
             </label>
             <select
-              className={`input w-full text-sm ${!canFilters ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className="input w-full text-sm"
               value={filterLang}
-              onChange={e => canFilters && setFilterLang(e.target.value)}
-              disabled={!canFilters}>
+              onChange={e => setFilterLang(e.target.value)}>
               <option value="">Todos os idiomas</option>
               <option value="pt">🇧🇷 Português</option>
               <option value="en">🇺🇸 English</option>
@@ -417,19 +397,6 @@ function FilterDrawer({
               <option value="de">🇩🇪 Deutsch</option>
             </select>
           </div>
-
-          {/* Upgrade banner — free plan */}
-          {!canFilters && (
-            <div className="rounded-xl px-4 py-3 text-center"
-              style={{ background: 'rgba(16,185,129,.05)', border: '1px solid rgba(16,185,129,.15)' }}>
-              <p className="text-xs mb-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                🔒 Filtros disponíveis no plano <span className="font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>Pro</span>
-              </p>
-              <a href="/dashboard/plano"
-                className="text-xs font-bold hover:underline"
-                style={{ color: 'rgb(var(--color-primary))' }}>Ver planos →</a>
-            </div>
-          )}
         </div>
 
         {/* Footer */}
@@ -474,7 +441,6 @@ export default function TranscricoesPage() {
   /* — Page UI state — */
   const [showFilterDrawer, setShowFilterDrawer]   = useState(false);
   const [showSortMenu, setShowSortMenu]           = useState(false);
-  const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
 
   /* — Detail modal state — */
   const [selected, setSelected]             = useState<Transcription | null>(null);
@@ -484,9 +450,6 @@ export default function TranscricoesPage() {
   /* — Export — */
   const [exporting, setExporting]                 = useState(false);
   const [showExportMenu, setShowExportMenu]       = useState(false);
-
-  /* — Plan — */
-  const [planName, setPlanName]             = useState('free');
 
   /* — Failed queue — */
   const [failedCount, setFailedCount]       = useState(0);
@@ -510,9 +473,6 @@ export default function TranscricoesPage() {
 
   /* ── Boot ──────────────────────────────────────────────────────────────── */
   useEffect(() => {
-    api.get<any>('/auth/me')
-      .then(u => setPlanName(u.subscription?.plan?.name || 'free'))
-      .catch(() => null);
     api.get<{ failed: number; waiting: number; active: number }>('/transcriptions/queue/status')
       .then(s => setFailedCount(s.failed || 0))
       .catch(() => null);
@@ -767,10 +727,8 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
   }
 
   /* ── Derived ───────────────────────────────────────────────────────────── */
-  const canHistory      = PLAN_HISTORY.includes(planName);
-  const canFilters      = PLAN_FILTERS.includes(planName);
-  const canSearch       = PLAN_SEARCH.includes(planName);
-  const canExport       = planName === 'pro' || planName === 'pro-tester' || planName === 'executive';
+  // Histórico, filtros, busca e exportação liberados para todos os planos (Core incluso).
+  const canExport       = true;
   const hasFilters      = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo || filterSource);
   const hasActiveFilters = !!(search || filterTag || filterLang || filterContact || dateFrom || dateTo);
 
@@ -844,38 +802,19 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
               </svg>
             </div>
             <input
-              className={`input pr-4 py-3 w-full text-sm rounded-xl ${!canSearch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className="input pr-4 py-3 w-full text-sm rounded-xl"
               style={{ paddingLeft: '2.5rem' }}
-              placeholder={canSearch
-                ? 'Buscar por contato, texto ou resumo…'
-                : '🔒 Busca disponível no plano Pro'}
+              placeholder="Buscar por contato, texto ou resumo…"
               value={search}
-              onChange={e => canSearch && setSearch(e.target.value)}
-              onClick={!canSearch ? () => setShowUpgradeBanner(b => !b) : undefined}
-              readOnly={!canSearch}
+              onChange={e => setSearch(e.target.value)}
               aria-label="Buscar conversões"
             />
           </div>
-          <button type="submit" disabled={!canSearch}
+          <button type="submit"
             className="btn-primary px-5 text-sm disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
             Buscar
           </button>
         </div>
-
-        {/* Banner upgrade — exibido ao clicar na busca bloqueada */}
-        {showUpgradeBanner && !canSearch && (
-          <div className="mt-2 flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl"
-            style={{ background: 'rgba(16,185,129,.06)', border: '1px solid rgba(16,185,129,.2)' }}>
-            <span className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              🔒 Busca disponível no plano <strong style={{ color: 'rgb(var(--color-primary))' }}>Pro</strong>
-            </span>
-            <a href="/dashboard/plano"
-              className="text-xs font-bold flex-shrink-0 hover:underline"
-              style={{ color: 'rgb(var(--color-primary))' }}>
-              Ver planos →
-            </a>
-          </div>
-        )}
       </form>
 
       {/* ── FAILED QUEUE BANNER ─────────────────────────────────────────── */}
@@ -977,71 +916,43 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         </div>
 
         {/* Exportar */}
-        {canExport ? (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={e => { e.stopPropagation(); setShowExportMenu(v => !v); }}
-              disabled={exporting}
-              className="flex items-center gap-2 text-sm px-3.5 py-2 rounded-xl border transition-colors disabled:opacity-50"
-              style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              {exporting ? 'Exportando…' : 'Exportar'}
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </button>
-            {showExportMenu && (
-              <div className="absolute left-0 top-full mt-1 z-30 rounded-xl border shadow-xl overflow-hidden"
-                style={{ background: 'rgb(var(--color-surface-elevated))', borderColor: 'rgb(var(--color-border))', minWidth: 185 }}>
-                {[
-                  { fmt: 'pdf',  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
-                  { fmt: 'docx', icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
-                  { fmt: 'csv',  icon: '📊', label: 'CSV',  sub: 'Planilhas'         },
-                  { fmt: 'xls',  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
-                ].map(({ fmt, icon, label, sub }) => (
-                  <button key={fmt} type="button"
-                    onClick={() => handleExport(fmt as any)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-brand-primary/8 transition-colors flex items-center gap-3">
-                    <span className="text-base flex-shrink-0">{icon}</span>
-                    <div>
-                      <div className="text-sm font-medium" style={{ color: 'rgb(var(--color-text))' }}>{label}</div>
-                      <div className="text-[10px]" style={{ color: 'rgb(var(--color-text-muted))' }}>{sub}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="relative group">
-            <button type="button" disabled
-              className="flex items-center gap-2 text-sm px-3.5 py-2 rounded-xl border opacity-50 cursor-not-allowed"
-              style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              Exportar
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                style={{ background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>
-                Executive
-              </span>
-            </button>
-            <div className="absolute left-0 top-full mt-1.5 z-30 w-52 rounded-xl p-3 shadow-xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(245,158,11,.25)' }}>
-              <div className="text-xs font-semibold mb-1" style={{ color: 'rgb(var(--color-text))' }}>🔒 Disponível no Executive</div>
-              <div className="text-[11px] mb-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                Exporte em PDF, DOCX, CSV ou XLS.
-              </div>
-              <a href="/dashboard/plano" className="text-[11px] font-bold hover:underline pointer-events-auto"
-                style={{ color: 'rgb(var(--color-primary))' }}>
-                Fazer upgrade →
-              </a>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setShowExportMenu(v => !v); }}
+            disabled={exporting}
+            className="flex items-center gap-2 text-sm px-3.5 py-2 rounded-xl border transition-colors disabled:opacity-50"
+            style={{ borderColor: 'rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            {exporting ? 'Exportando…' : 'Exportar'}
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          {showExportMenu && (
+            <div className="absolute left-0 top-full mt-1 z-30 rounded-xl border shadow-xl overflow-hidden"
+              style={{ background: 'rgb(var(--color-surface-elevated))', borderColor: 'rgb(var(--color-border))', minWidth: 185 }}>
+              {[
+                { fmt: 'pdf',  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
+                { fmt: 'docx', icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
+                { fmt: 'csv',  icon: '📊', label: 'CSV',  sub: 'Planilhas'         },
+                { fmt: 'xls',  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
+              ].map(({ fmt, icon, label, sub }) => (
+                <button key={fmt} type="button"
+                  onClick={() => handleExport(fmt as any)}
+                  className="w-full text-left px-4 py-2.5 hover:bg-brand-primary/8 transition-colors flex items-center gap-3">
+                  <span className="text-base flex-shrink-0">{icon}</span>
+                  <div>
+                    <div className="text-sm font-medium" style={{ color: 'rgb(var(--color-text))' }}>{label}</div>
+                    <div className="text-[10px]" style={{ color: 'rgb(var(--color-text-muted))' }}>{sub}</div>
+                  </div>
+                </button>
+              ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ── ACTIVE FILTER CHIPS ─────────────────────────────────────────── */}
@@ -1075,7 +986,6 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
       {showFilterDrawer && (
         <FilterDrawer
           onClose={() => setShowFilterDrawer(false)}
-          canFilters={canFilters}
           filterContact={filterContact} setFilterContact={setFilterContact}
           filterLang={filterLang}       setFilterLang={setFilterLang}
           dateFrom={dateFrom}           setDateFrom={setDateFrom}
@@ -1252,44 +1162,27 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
         )}
       </div>
 
-      {/* ── PAGINATION / HISTORY GATE ───────────────────────────────────── */}
+      {/* ── PAGINATION ───────────────────────────────────────────────────── */}
       {total > LIMIT && (
-        canHistory ? (
-          <div className="flex items-center justify-center gap-3 mt-4">
-            <button
-              type="button"
-              className="btn-ghost text-xs py-1.5 px-4 disabled:opacity-40"
-              disabled={offset === 0}
-              onClick={() => { const o = offset - LIMIT; setOffset(o); load(search, o, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); }}>
-              ← Anterior
-            </button>
-            <span className="text-xs text-brand-muted min-w-[80px] text-center">
-              {currentPage} de {totalPages}
-            </span>
-            <button
-              type="button"
-              className="btn-ghost text-xs py-1.5 px-4 disabled:opacity-40"
-              disabled={offset + LIMIT >= total}
-              onClick={() => { const o = offset + LIMIT; setOffset(o); load(search, o, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); }}>
-              Próxima →
-            </button>
-          </div>
-        ) : (
-          <div className="mt-4 rounded-xl px-5 py-4 text-center"
-            style={{ background: 'rgba(16,185,129,.05)', border: '1px solid rgba(16,185,129,.15)' }}>
-            <div className="text-sm font-semibold mb-1" style={{ color: 'rgb(var(--color-primary))' }}>
-              📋 Histórico completo — plano Pro
-            </div>
-            <p className="text-xs mb-3" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              Acesse conversões além da página atual com o plano Pro.
-            </p>
-            <a href="/dashboard/plano"
-              className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl transition-colors"
-              style={{ background: 'rgb(var(--color-primary))', color: '#030d06' }}>
-              Ver planos →
-            </a>
-          </div>
-        )
+        <div className="flex items-center justify-center gap-3 mt-4">
+          <button
+            type="button"
+            className="btn-ghost text-xs py-1.5 px-4 disabled:opacity-40"
+            disabled={offset === 0}
+            onClick={() => { const o = offset - LIMIT; setOffset(o); load(search, o, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); }}>
+            ← Anterior
+          </button>
+          <span className="text-xs text-brand-muted min-w-[80px] text-center">
+            {currentPage} de {totalPages}
+          </span>
+          <button
+            type="button"
+            className="btn-ghost text-xs py-1.5 px-4 disabled:opacity-40"
+            disabled={offset + LIMIT >= total}
+            onClick={() => { const o = offset + LIMIT; setOffset(o); load(search, o, filterTag, filterLang, filterContact, dateFrom, dateTo, sortOrder, filterSource); }}>
+            Próxima →
+          </button>
+        </div>
       )}
 
       {/* Upload manual de áudio desativado — função movida para app/site separado. */}
@@ -1603,46 +1496,30 @@ ${t.tags?.length ? `<p><b>Tags:</b> ${t.tags.join(', ')}</p>` : ''}
                     </div>
                   )}
 
-                  {/* ── Seção: Exports padrão (Pro+) ─────────────────────── */}
-                  {canExport ? (
-                    <div>
-                      {selected.source !== 'manual' && (
-                        <p className="text-xs text-brand-muted mb-4">Exportar esta conversão individualmente:</p>
-                      )}
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { fn: () => exportSinglePdf(selected),  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
-                          { fn: () => exportSingleDocx(selected), icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
-                          { fn: () => exportSingleCsv(selected),  icon: '📊', label: 'CSV',  sub: 'Planilhas, dados'  },
-                          { fn: () => exportSingleXls(selected),  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
-                        ].map(({ fn, icon, label, sub }) => (
-                          <button key={label} type="button" onClick={fn}
-                            className="flex flex-col items-center gap-1.5 py-4 rounded-xl border border-brand-border/50 hover:border-brand-primary/40 hover:bg-brand-primary/5 transition-colors">
-                            <span className="text-xl">{icon}</span>
-                            <span className="text-sm font-semibold text-brand-text">{label}</span>
-                            <span className="text-[10px] text-brand-muted">{sub}</span>
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-[10px] text-brand-muted mt-4 text-center">
-                        Para exportar todas as conversões do mês, use o botão <b>Exportar</b> na lista.
-                      </p>
+                  {/* ── Seção: Exports padrão (todos os planos) ─────────────────────── */}
+                  <div>
+                    {selected.source !== 'manual' && (
+                      <p className="text-xs text-brand-muted mb-4">Exportar esta conversão individualmente:</p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { fn: () => exportSinglePdf(selected),  icon: '📄', label: 'PDF',  sub: 'Imprimir / salvar' },
+                        { fn: () => exportSingleDocx(selected), icon: '📝', label: 'DOCX', sub: 'Word / LibreOffice' },
+                        { fn: () => exportSingleCsv(selected),  icon: '📊', label: 'CSV',  sub: 'Planilhas, dados'  },
+                        { fn: () => exportSingleXls(selected),  icon: '📗', label: 'XLS',  sub: 'Excel nativo'      },
+                      ].map(({ fn, icon, label, sub }) => (
+                        <button key={label} type="button" onClick={fn}
+                          className="flex flex-col items-center gap-1.5 py-4 rounded-xl border border-brand-border/50 hover:border-brand-primary/40 hover:bg-brand-primary/5 transition-colors">
+                          <span className="text-xl">{icon}</span>
+                          <span className="text-sm font-semibold text-brand-text">{label}</span>
+                          <span className="text-[10px] text-brand-muted">{sub}</span>
+                        </button>
+                      ))}
                     </div>
-                  ) : selected.source !== 'manual' ? (
-                    /* Upsell para Free em conversões não-manuais */
-                    <div className="flex flex-col items-center justify-center py-6 text-center">
-                      <div className="text-3xl mb-3">🔒</div>
-                      <p className="font-semibold text-brand-text mb-1">Disponível no plano Pro</p>
-                      <p className="text-sm text-brand-muted mb-3 max-w-xs">
-                        Exporte em PDF, DOCX, CSV e XLS individualmente ou em massa.
-                      </p>
-                      <a href="/dashboard/plano"
-                        className="text-xs font-bold px-4 py-2 rounded-full"
-                        style={{ background: 'rgba(var(--color-primary)/.12)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(var(--color-primary)/.25)' }}>
-                        Assinar Pro →
-                      </a>
-                    </div>
-                  ) : null}
+                    <p className="text-[10px] text-brand-muted mt-4 text-center">
+                      Para exportar todas as conversões do mês, use o botão <b>Exportar</b> na lista.
+                    </p>
+                  </div>
 
                 </div>
               )}
