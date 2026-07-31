@@ -1,0 +1,109 @@
+# ops.yml — Ações operacionais disparadas manualmente (deploy no Vultr,
+# migração de usuários para o Core, comando SSH avulso), sem precisar de
+# acesso SSH direto de fora do GitHub Actions.
+#
+# Uso: aba Actions → "Ops — Vultr / Migração" → Run workflow → escolher a ação.
+#
+# Duas famílias de job, por necessidade real de rede:
+#   - migrate_core_*: só precisa falar com Supabase (DATABASE_URL) e Asaas
+#     (ASAAS_API_KEY) — roda direto no runner do GitHub, sem SSH nenhum.
+#   - deploy / custom_ssh: precisa mesmo rodar no servidor (docker compose,
+#     filesystem) — únicos casos que usam SSH.
+#
+# Configuração única (Settings → Secrets and variables → Actions):
+#   VULTR_HOST     IP do servidor (ex.: 216.238.114.73)
+#   VULTR_SSH_KEY  chave PRIVADA ed25519 dedicada a este workflow — gerar com
+#                  `ssh-keygen -t ed25519 -f vultr_ops -C "github-actions-ops" -N ""`
+#                  e adicionar o conteúdo de vultr_ops.pub em
+#                  /root/.ssh/authorized_keys no servidor. NÃO reaproveitar
+#                  a chave/senha de root existente — esta deve ser revogável
+#                  isoladamente (remover a linha do authorized_keys encerra
+#                  o acesso deste workflow sem afetar o resto).
+#   DATABASE_URL   connection string do Supabase (mesma do .env de produção)
+#   ASAAS_API_KEY  necessária só para o action = migrate_core_apply
+
+name: Ops — Vultr / Migração
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'O que rodar'
+        required: true
+        type: choice
+        default: deploy
+        options:
+          - deploy
+          - migrate_core_dry_run
+          - migrate_core_apply
+          - custom_ssh
+      custom_command:
+        description: 'Comando shell remoto (usado só quando action = custom_ssh)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Migração de usuários para o Core — sem SSH, roda no runner mesmo. ──
+  migrate:
+    if: inputs.action == 'migrate_core_dry_run' || inputs.action == 'migrate_core_apply'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar dependência do script (pg)
+        run: npm install pg --prefix scripts_temp --silent
+
+      - name: Dry-run (padrão — nada é alterado)
+        if: inputs.action == 'migrate_core_dry_run'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/migrate-users-to-core.mjs
+
+      - name: Aplicar de verdade
+        if: inputs.action == 'migrate_core_apply'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+        run: node scripts/migrate-users-to-core.mjs --apply --i-understand-this-cancels-paid-subscriptions
+
+  # ── Deploy e comandos avulsos — únicos que precisam mesmo do servidor. ──
+  remote-ssh:
+    if: inputs.action == 'deploy' || inputs.action == 'custom_ssh'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configurar chave SSH
+        env:
+          SSH_KEY:  ${{ secrets.VULTR_SSH_KEY }}
+          SSH_HOST: ${{ secrets.VULTR_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Montar comando
+        id: cmd
+        env:
+          ACTION: ${{ inputs.action }}
+          CUSTOM: ${{ inputs.custom_command }}
+        run: |
+          if [ "$ACTION" = "deploy" ]; then
+            CMD='cd /opt/zapscript && docker compose pull api worker && docker compose up -d api worker && docker compose ps'
+          else
+            CMD="$CUSTOM"
+          fi
+          {
+            echo "cmd<<__EOF__"
+            echo "$CMD"
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Executar no Vultr
+        env:
+          SSH_HOST:   ${{ secrets.VULTR_HOST }}
+          REMOTE_CMD: ${{ steps.cmd.outputs.cmd }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "root@$SSH_HOST" "$REMOTE_CMD"
