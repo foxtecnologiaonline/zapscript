@@ -156,7 +156,7 @@ const ALL_PAID_PLAN_NAMES = ['pro', 'executive', 'profissional', 'empresas'] as 
 
 type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Áudios/mês',                         vals: ['15', 'Ilimitado'] },
+  { feature: 'Áudios/mês',                         vals: ['100', 'Ilimitado'] },
   { feature: 'Números WhatsApp',                   vals: ['1', '2'] },
   { feature: '🎙️ Conversão automática',           vals: [true, true] },
   { feature: '✨ Resumo com IA',                    vals: [true, true] },
@@ -743,10 +743,6 @@ function PlanoContent() {
   const currentPlan = stats?.planName || 'free';
   // Oferta permanente: 1º mês do Pro a R$18 (50% off) em novas assinaturas mensais
   const junePromo = isJunePromoActive() && currentPlan === 'free';
-  const PLAN_ORDER: Record<string, number> = { free: 0, pro: 1, executive: 2 };
-  const currentPlanOrder = PLAN_ORDER[currentPlan] ?? 0;
-  // Exibir apenas Free e Pro — Executive continua suportado para usuários existentes
-  const displayedPlans = PLANS.filter(p => p.name !== 'executive');
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl">
