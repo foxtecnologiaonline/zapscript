@@ -1,13 +1,15 @@
 // Fonte única da verdade da oferta comercial do Pro (plano LEGADO — não
 // vendido a usuários novos, mas ainda suportado para quem já assina; usado
 // hoje só no fluxo de troca de plano em dashboard/plano/page.tsx).
-// Oferta permanente: 1º mês com 50% off (R$18), depois R$37/mês.
+// Promoção do Pro legado desativada — o funil atual gira em torno dos
+// planos novos (Profissional/Empresas), vendidos em aluguel (mensal) ou
+// compra (anual). Reative aqui se/quando houver uma campanha real.
 export const PRO_FULL_PRICE = 'R$37';
 export const PRO_PROMO_PRICE = 'R$18';
 
-/** Desconto do 1º mês está ativo? Oferta permanente — sempre true. */
+/** Desconto do 1º mês está ativo? Desligado — ver comentário acima. */
 export function isJunePromoActive(_now: Date = new Date()): boolean {
-  return true;
+  return false;
 }
 
 /** Preço do Pro a exibir: 1º mês com desconto, sempre. */

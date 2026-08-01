@@ -14,7 +14,7 @@ interface Stats {
   extraMinutes?: number;            // saldo avulso/indicação válido (60 dias)
   extraExpiresAt?: string | null;   // validade do saldo extra
   planName: string;   // slug: 'free' | 'pro' | 'ultra' | 'executive'
-  planLabel: string;  // exibível: 'Grátis' | 'Pro' | 'Ultra' | 'Executive'
+  planLabel: string;  // exibível: 'Core' | 'Pro' | 'Ultra' | 'Executive'
   planStatus: string;
   renewAt: string | null;
   isTester: boolean;
@@ -1217,7 +1217,7 @@ function PlanoContent() {
                 <thead>
                   <tr style={{ background: 'rgb(var(--color-surface-elevated))' }}>
                     <th className="text-left px-4 py-2.5 font-semibold" style={{ color: 'rgb(var(--color-text-muted))' }}>Recurso</th>
-                    <th className="px-3 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-text-muted))' }}>Free</th>
+                    <th className="px-3 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-text-muted))' }}>Core</th>
                     <th className="px-3 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-primary))' }}>Pro</th>
                   </tr>
                 </thead>

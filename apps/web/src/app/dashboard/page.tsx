@@ -20,7 +20,7 @@ interface Stats {
   activeNumbers: number;
   avgConfidence: number;
   planName: string;   // slug: 'free' | 'pro' | 'executive' | 'profissional' | 'empresas'
-  planLabel: string;  // exibível: 'Grátis' | 'Pro' | 'Executive' | 'Profissional' | 'Empresas'
+  planLabel: string;  // exibível: 'Core' | 'Pro' | 'Executive' | 'Profissional' | 'Empresas'
   planStatus: string;
   refCode: string | null;
   renewAt: string | null;

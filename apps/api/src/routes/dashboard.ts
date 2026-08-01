@@ -71,9 +71,9 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       activeNumbers,
       avgConfidence:       +(avgConf._avg.confidenceScore || 99.1).toFixed(1),
       // planName = slug do plano ('free'|'pro'|'ultra'|'executive') — usado para gating
-      // planLabel = label exibível ('Grátis'|'Pro'|'Ultra'|'Executive')
+      // planLabel = label exibível ('Core'|'Pro'|'Ultra'|'Executive')
       planName:            sub?.plan.name  || 'free',
-      planLabel:           sub?.plan.label || 'Free',
+      planLabel:           sub?.plan.label || 'Core',
       planStatus:          sub?.status || 'active',
       // Fallback: se currentPeriodEnd não estiver setado (ex.: tester/admin), usa balance.resetAt
       renewAt:             sub?.currentPeriodEnd?.toISOString() ?? balance?.resetAt?.toISOString() ?? null,

@@ -93,7 +93,7 @@ function NavContent({
               <div className="text-xs font-semibold truncate">{user.name || user.email}</div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className={`text-[10px] capitalize font-semibold ${PLAN_COLORS[user.subscription?.plan?.name || 'free']}`}>
-                  {user.subscription?.plan?.label || 'Grátis'}
+                  {user.subscription?.plan?.label || 'Core'}
                 </span>
                 {user.isTester && (
                   <span

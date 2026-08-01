@@ -81,9 +81,9 @@ type MethodDef = {
   sub:          string;
   comingSoon?:  boolean;
 };
+// PIX Automático removido temporariamente do checkout (fora do ar por ora).
 const METHODS: MethodDef[] = [
   { id: 'pix',         label: 'PIX',         Icon: '⚡',        sub: 'QR code por ciclo mensal' },
-  { id: 'pix_auto',   label: 'PIX Auto',     Icon: '🔄',        sub: 'Débito automático via PIX' },
   { id: 'credit_card', label: 'Crédito',     Icon: '💳',        sub: 'Cobrança mensal automática' },
   { id: 'debit_card',  label: 'Débito',      Icon: '🏦',        sub: 'Débito no cartão' },
   { id: 'google_pay',  label: 'Google Pay',  Icon: GooglePaySvg, sub: 'Pague com Google Pay' },

@@ -189,7 +189,7 @@ describe('executeVoiceCommand — stats_query', () => {
     const result = await executeVoiceCommand(userId, 'stats_query', {});
 
     expect(result.status).toBe('executed');
-    expect(result.resultSummary).toContain('Grátis');
+    expect(result.resultSummary).toContain('Core');
     expect(result.resultSummary).toContain('5');
   });
 
