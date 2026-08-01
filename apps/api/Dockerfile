@@ -54,9 +54,21 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/node_modules/.prisma        ./apps/api/node_modules/.prisma
 COPY --from=builder /app/apps/api/node_modules/@prisma/client ./apps/api/node_modules/@prisma/client
 
+# CLI do Prisma (só o pacote, sem o resto de devDependencies) — usado no start
+# para rodar `migrate deploy` antes do servidor subir. Existe porque nenhum
+# passo do deploy no Vultr roda isso hoje (docker-compose só faz `up -d`), o
+# que já deixou o schema de produção ~5 semanas atrás do código e derrubou o
+# pipeline de conversão (ver incidente de 2026-08-01 / runAutoMigrations acima).
+COPY --from=builder /app/apps/api/node_modules/prisma ./apps/api/node_modules/prisma
+
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3001/health',(r)=>{process.exit(r.statusCode===200?0:1)})" || exit 1
 
-CMD ["node", "apps/api/dist/index.js"]
+# `migrate deploy` roda direto do entrypoint do container (sem depender de CI
+# nem de disparo manual do ops.yml). Não-fatal por design: se falhar (ex.:
+# DB momentaneamente inacessível no boot), loga e sobe o servidor mesmo assim
+# — runAutoMigrations() dentro do index.ts continua como segunda rede de
+# segurança, igual já era antes desta mudança.
+CMD ["sh", "-c", "node apps/api/node_modules/prisma/build/index.js migrate deploy --schema=packages/database/prisma/schema.prisma || echo '[Migrate] prisma migrate deploy falhou ou não pôde rodar — seguindo com runAutoMigrations() como rede de seguranca'; exec node apps/api/dist/index.js"]
