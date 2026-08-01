@@ -1,0 +1,143 @@
+# ── ZapScript — Stack para o Coolify (Vultr) ──────────────────────────────────
+# Este arquivo é o "resource" que o Coolify implanta (tipo: Docker Compose,
+# apontando pra este arquivo neste repo). Diferente do infra/docker-compose.prod.yml
+# (usado no deploy manual via SSH), aqui:
+#   - Não publicamos portas pro host (127.0.0.1:xxxx) — o proxy do Coolify
+#     (Traefik) fala com os containers pela rede interna do Docker.
+#   - Domínio/HTTPS de cada serviço é configurado na UI do Coolify (ou via
+#     variável mágica SERVICE_FQDN_<SERVICO>, ver README.md).
+#   - ${VAR} é substituído pelas "Environment Variables" cadastradas no
+#     projeto dentro da UI do Coolify no momento do deploy — não precisa de
+#     .env no servidor.
+#
+# Uso: Coolify → Project "zapscript" → New Resource → Docker Compose →
+#      repo foxtecnologiaonline/zapscript, branch master, compose path
+#      infra/coolify/docker-compose.coolify.yml
+
+services:
+
+  api:
+    image: ghcr.io/foxtecnologiaonline/zapscript-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://default:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      MONITOR_TOKEN: ${MONITOR_TOKEN}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      ASAAS_API_KEY: ${ASAAS_API_KEY}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN}
+      APP_URL: ${APP_URL}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL}
+      EVOLUTION_API_URL: http://evolution:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+    # Magic variable: o Coolify lê isto e configura o domínio + HTTPS sozinho.
+    # Ajuste para o domínio real antes do primeiro deploy (ver README.md).
+    # SERVICE_FQDN_API=api.zapscript.me
+    ports:
+      - "3001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e",
+        "require('http').get('http://localhost:3001/health',(r)=>{process.exit(r.statusCode===200?0:1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  worker:
+    image: ghcr.io/foxtecnologiaonline/zapscript-worker:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://default:${REDIS_PASSWORD}@redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      API_URL: http://api:3001
+      FFMPEG_TIMEOUT_MS: ${FFMPEG_TIMEOUT_MS:-300000}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      WORKER_LOCK_MINUTES: ${WORKER_LOCK_MINUTES:-5}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      EVOLUTION_API_URL: http://evolution:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  evolution:
+    image: atendai/evolution-api:latest
+    restart: unless-stopped
+    environment:
+      SERVER_URL: ${EVOLUTION_PUBLIC_URL}
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
+      DATABASE_ENABLED: "false"
+      REDIS_ENABLED: "false"
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      DEL_INSTANCE: "false"
+      QRCODE_LIMIT: "10"
+    # Só exponha via domínio público se realmente precisar acessar a Evolution
+    # de fora (normalmente não precisa — a API fala com ela pela rede interna).
+    # SERVICE_FQDN_EVOLUTION=evo.zapscript.me
+    volumes:
+      - evolution_data:/evolution/instances
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
+
+volumes:
+  redis_data:
+  evolution_data:

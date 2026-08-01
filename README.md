@@ -113,6 +113,12 @@ Acessar:
 
 ## 🌐 Deploy em Produção
 
+> **Nota:** em produção hoje a API/Worker rodam via Docker Compose num VPS
+> Vultr (ver `MIGRACAO_VULTR.md`), não no Railway — as seções abaixo
+> descrevem a opção Railway como alternativa. Para o plano de migrar o
+> gerenciamento desses containers pro Coolify (deploy por Git, HTTPS
+> automático, painel único), ver `infra/coolify/README.md`.
+
 ### Railway (API + Worker)
 
 ```bash
