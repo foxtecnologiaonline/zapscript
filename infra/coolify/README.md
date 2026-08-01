@@ -14,6 +14,62 @@ nginx + certbot na unha, documentado em `MIGRACAO_VULTR.md`).
 
 ---
 
+## Caminho automatizado (recomendado)
+
+Reduz os passos manuais ao mínimo tecnicamente possível. Rode a partir de uma
+máquina com internet normal (sua máquina local ou um runner de CI) — **não**
+dentro de uma sessão do Claude Code neste ambiente, porque a rede daqui
+bloqueia por política tanto `api.vultr.com` quanto `api.vercel.com` (testado;
+ver detalhes na seção [Limitações deste ambiente](#limitações-deste-ambiente)).
+
+```bash
+# 1) Provisiona o VPS na Vultr E instala o Coolify sozinho no primeiro boot
+#    (embute infra/coolify/install-coolify.sh via cloud-init — sem SSH manual)
+export VULTR_API_KEY="..."                         # my.vultr.com → Account → API
+export VULTR_SSH_PUBLIC_KEY="$(cat ~/.ssh/id_ed25519.pub)"
+./infra/coolify/vultr-provision.sh
+# → imprime o IP quando o servidor sobe; aguarde ~5min o cloud-init terminar
+#   (acompanhar: ssh root@IP 'tail -f /var/log/coolify-install.log')
+
+# 2) [MANUAL, inevitável] Criar o registro DNS coolify.zapscript.me → IP
+#    no painel da Vercel (Domains) — não existe API/tool disponível aqui
+#    pra automatizar essa parte.
+
+# 3) [MANUAL, inevitável — só existe pelo navegador]
+#    Acesse http://IP:8000, crie o usuário admin, configure o domínio em
+#    Settings → Instance, e gere um token em Keys & Tokens → Create New Token.
+#    Depois: New Project "zapscript" → New Resource → Docker Compose →
+#    conectar o GitHub → branch master →
+#    infra/coolify/docker-compose.coolify.yml. Copie o UUID do application
+#    da URL (…/application/<UUID>).
+
+# 4) Sobe TODAS as env vars de uma vez (em vez de colar uma por uma) e
+#    dispara o deploy
+cp infra/coolify/env.coolify.example infra/coolify/.env.coolify.local
+# preencha infra/coolify/.env.coolify.local com os valores reais (já no
+# .gitignore, não é commitado)
+export COOLIFY_URL="https://coolify.zapscript.me"
+export COOLIFY_API_TOKEN="..."
+export COOLIFY_APP_UUID="..."
+./infra/coolify/bootstrap-coolify.sh infra/coolify/.env.coolify.local
+```
+
+Os dois passos manuais que sobram (DNS na Vercel e o primeiro login no
+Coolify) são inerentes às ferramentas em si — nem Vultr nem Vercel expõem
+"criar admin"/"registro DNS" de um jeito que dê pra automatizar daqui sem
+credenciais extras que envolvem risco desproporcional pra economia de 2
+cliques.
+
+### Limitações deste ambiente
+
+Testado nesta sessão: chamadas a `api.vultr.com` e `api.vercel.com` retornam
+`403` do proxy de rede desta sessão (política de egress da organização, não
+um bug) — por isso os scripts acima precisam rodar de fora daqui. Os arquivos
+já estão prontos e commitados neste branch; só faltou a execução, que requer
+uma rede sem esse bloqueio.
+
+---
+
 ## Sumário
 
 1. [Decisão: servidor novo vs. servidor existente](#1-decisão-servidor-novo-vs-servidor-existente)
@@ -92,6 +148,12 @@ DNS (no seu provedor de domínio, ex. Registro.br/Cloudflare):
   acontece no [cutover](#8-cutover), depois de validar tudo.
 
 ## 4. Instalar o Coolify **[SCRIPT]**
+
+> Se você já provisionou o servidor com `vultr-provision.sh` (seção
+> [Caminho automatizado](#caminho-automatizado-recomendado)), pode pular esta
+> seção — o cloud-init já roda este mesmo script sozinho no primeiro boot.
+> Use os passos abaixo só se criou o VPS manualmente (seção 3) ou se quiser
+> reinstalar/depurar.
 
 ```bash
 ssh root@NOVO_IP
@@ -204,14 +266,13 @@ dependência do Coolify.
 
 ## Checklist resumido
 
-- [ ] Provisionar VPS Vultr novo (4GB, São Paulo) — `infra/coolify/README.md#3`
-- [ ] DNS de teste `coolify.zapscript.me` → novo IP
-- [ ] `./infra/coolify/install-coolify.sh` no servidor novo
-- [ ] Setup inicial do Coolify pelo navegador (usuário admin, domínio, HTTPS)
-- [ ] Criar projeto `zapscript` + resource Docker Compose apontando pro repo
-- [ ] Cadastrar env vars (`infra/coolify/env.coolify.example` preenchido)
-- [ ] Domínio de teste no serviço `api` + DNS correspondente
-- [ ] Deploy de teste + `curl /health` + teste de conexão WhatsApp
+- [ ] `./infra/coolify/vultr-provision.sh` (cria o VPS + instala o Coolify sozinho)
+- [ ] DNS de teste `coolify.zapscript.me` → IP impresso pelo script **[manual — Vercel]**
+- [ ] Criar usuário admin + gerar API token na UI do Coolify **[manual — só existe assim]**
+- [ ] Criar projeto `zapscript` + resource Docker Compose apontando pro repo **[manual — UI]**
+- [ ] `./infra/coolify/bootstrap-coolify.sh` (sobe todas as env vars + dispara deploy)
+- [ ] Domínio de teste no serviço `api` + DNS correspondente **[manual — Vercel]**
+- [ ] `curl /health` + teste de conexão WhatsApp
 - [ ] Validar com o dono do produto antes do cutover
 - [ ] Cutover: DNS real + segredos de produção + Vercel + Asaas
 - [ ] Ativar auto-deploy e backups
