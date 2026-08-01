@@ -7,6 +7,7 @@ import ModuleCheckoutInline from '@/components/ModuleCheckoutInline';
 import ComboCheckoutInline from '@/components/ComboCheckoutInline';
 import { isJunePromoActive } from '@/lib/promo';
 import { ModuleCatalogItem, MODULE_ICON, moduleRoute, isContractable, formatBrl } from '@/lib/modules';
+import { PLAN_PRICING, PaidPlanName } from '@/lib/planPricing';
 
 interface Stats {
   minutesUsed: number; minutesAvailable: number;
@@ -65,6 +66,7 @@ const PLANS = [
     price: 'R$37',
     per:   '/mês',
     desc:  'Para profissionais',
+    forWhom: 'Pra quem só precisa converter e organizar áudios sem limite',
     feats: [
       'Áudios ilimitados',
       'Áudios de até 10 min',
@@ -88,6 +90,7 @@ const PLANS = [
     price: 'R$67',
     per:   '/mês',
     desc:  'Para uso profissional e privacidade total',
+    forWhom: 'Legado — mantido pra quem já assina, com privacidade máxima',
     feats: [
       'Áudios ilimitados',
       '3 números WhatsApp',
@@ -112,6 +115,7 @@ const PLANS = [
     price: 'R$49',
     per:   '/mês',
     desc:  'Core + atendimento automático por IA no WhatsApp',
+    forWhom: 'Ideal para autônomos e pequenos negócios que atendem pelo WhatsApp',
     feats: [
       'Tudo do Core, sem limite de áudios',
       '🤖 Atendimento automático 24/7 por IA',
@@ -131,6 +135,7 @@ const PLANS = [
     price: 'R$99',
     per:   '/mês',
     desc:  'Profissional + CRM, Tarefas e equipe (até 5 usuários)',
+    forWhom: 'Pra times que precisam de CRM e tarefas compartilhadas',
     feats: [
       'Tudo do Profissional',
       '📊 CRM — funil de vendas no WhatsApp',
@@ -142,14 +147,6 @@ const PLANS = [
     accent: null as string | null,
   },
 ];
-
-/* ── Preços anuais (x12 com 20% off) ── */
-const PLAN_PRICES_YEARLY: Record<string, { monthlyDisplay: string; annualDisplay: string }> = {
-  pro:          { monthlyDisplay: 'R$29',  annualDisplay: 'R$355' },
-  executive:    { monthlyDisplay: 'R$53',  annualDisplay: 'R$643' },
-  profissional: { monthlyDisplay: 'R$49',  annualDisplay: 'R$295' },
-  empresas:     { monthlyDisplay: 'R$99',  annualDisplay: 'R$595' },
-};
 
 /** Todos os planos pagos — usados na migração livre entre planos (qualquer direção). */
 const ALL_PAID_PLAN_NAMES = ['pro', 'executive', 'profissional', 'empresas'] as const;
@@ -1040,10 +1037,10 @@ function PlanoContent() {
           </div>
         </div>
       ) : (
-        /* Usuários Free: comparativo rápido + Pro como herói */
+        /* Usuários Free: Core (gratuito e completo) + Profissional como herói */
         <div className="space-y-3">
 
-          {/* Free — card compacto de contexto */}
+          {/* Core — card compacto de contexto */}
           <div className="rounded-xl px-4 py-3 flex items-center justify-between"
             style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))' }}>
             <div className="flex items-center gap-3">
@@ -1053,13 +1050,15 @@ function PlanoContent() {
               </span>
               <div>
                 <span className="text-sm font-bold">Core</span>
-                <span className="text-xs ml-2" style={{ color: 'rgb(var(--color-text-muted))' }}>até 100 áudios · 1 número</span>
+                <span className="text-xs ml-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                  grátis e completo · converte, resume e protege (Modo Privado)
+                </span>
               </div>
             </div>
             <span className="font-bold text-sm" style={{ color: 'rgb(var(--color-text-muted))' }}>R$0</span>
           </div>
 
-          {/* Pro — card herói */}
+          {/* Profissional — card herói (foco atual: os planos novos) */}
           <div className="relative rounded-2xl p-5 pt-7"
             style={{
               background: 'rgb(var(--color-surface-elevated))',
@@ -1068,41 +1067,29 @@ function PlanoContent() {
             }}>
             <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[11px] font-black px-4 py-1 rounded-full uppercase tracking-wider"
               style={{ background: 'rgb(var(--color-primary))', color: '#030d06' }}>
-              {junePromo ? '🔥 50% OFF no 1º mês' : '⭐ Mais completo'}
+              🤖 Atendimento automático por IA
             </span>
 
             {/* Preço + nome */}
             <div className="flex items-start justify-between mb-4">
               <div>
-                <div className="font-display font-bold text-xl">Pro</div>
-                <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Para profissionais que precisam de mais</div>
+                <div className="font-display font-bold text-xl">Profissional</div>
+                <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Core + atendimento automático no WhatsApp</div>
               </div>
               <div className="text-right">
-                {junePromo ? (
-                  <>
-                    <div className="text-xs line-through" style={{ color: 'rgb(var(--color-text-muted))' }}>R$37</div>
-                    <div className="font-display font-black text-3xl tracking-tight leading-none" style={{ color: 'rgb(var(--color-primary))' }}>
-                      R$18
-                    </div>
-                    <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>1º mês · depois R$37/mês</div>
-                  </>
-                ) : (
-                  <>
-                    <div className="font-display font-black text-3xl tracking-tight leading-none" style={{ color: 'rgb(var(--color-primary))' }}>
-                      R$37
-                    </div>
-                    <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês · cancele quando quiser</div>
-                  </>
-                )}
-                <div className="text-[11px] font-medium mt-1.5" style={{ color: 'rgb(var(--color-primary))' }}>24h trabalhando por você, por apenas R$1,23 ao dia</div>
+                <div className="font-display font-black text-3xl tracking-tight leading-none" style={{ color: 'rgb(var(--color-primary))' }}>
+                  R$49
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês · cancele quando quiser</div>
+                <div className="text-[11px] font-medium mt-1.5" style={{ color: 'rgb(var(--color-primary))' }}>24h atendendo por você, por menos de R$1,63 ao dia</div>
               </div>
             </div>
 
             {/* Stats rápidos */}
             <div className="grid grid-cols-2 gap-2 mb-4">
               {[
-                { val: '∞', label: 'áudios/mês', icon: '⏱' },
-                { val: '2', label: 'números WhatsApp', icon: '📱' },
+                { val: '∞',    label: 'áudios/mês' },
+                { val: '24/7', label: 'atendimento por IA' },
               ].map(s => (
                 <div key={s.label} className="rounded-xl p-3 text-center"
                   style={{ background: 'rgba(var(--color-primary)/.06)', border: '1px solid rgba(var(--color-primary)/.15)' }}>
@@ -1115,15 +1102,15 @@ function PlanoContent() {
             {/* Features: o que você ganha */}
             <div className="mb-1">
               <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                Tudo do Free, mais:
+                Tudo do Core, mais:
               </p>
               <ul className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-4">
                 {[
-                  '📋 Histórico de conversões',
-                  '📅 Filtros por data e contato',
-                  '🔍 Busca por conversão',
-                  '🔒 Modo Privado automático',
-                  '📄 Conversão profissional PDF',
+                  '🤖 Atendimento automático 24/7 por IA',
+                  '📥 Fila de conversas + assumir manualmente',
+                  '📊 Métricas de atendimento e efetividade',
+                  '📨 Avisos automáticos ao cliente',
+                  '📚 Base de conhecimento própria',
                 ].map(f => (
                   <li key={f} className="flex items-center gap-2 text-xs" style={{ color: 'rgb(var(--color-text-secondary))' }}>
                     <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>{f}
@@ -1135,24 +1122,18 @@ function PlanoContent() {
             {/* CTA */}
             <button
               disabled={previewLoading}
-              onClick={() => upgrade('pro')}
+              onClick={() => upgrade('profissional')}
               className="w-full mt-5 py-3.5 rounded-xl text-sm font-black tracking-wide transition-all disabled:opacity-50"
               style={{
                 background: 'rgb(var(--color-primary))',
                 color: '#030d06',
                 boxShadow: 'rgba(var(--color-primary)/.35) 0 6px 20px',
               }}>
-              {previewLoading
-                ? 'Calculando...'
-                : junePromo
-                  ? 'Assinar Pro por R$18 no 1º mês →'
-                  : 'Assinar Pro por R$37/mês →'}
+              {previewLoading ? 'Calculando...' : 'Assinar Profissional por R$49/mês →'}
             </button>
 
             <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.6)' }}>
-              {junePromo
-                ? '🔥 50% OFF no 1º mês: R$18, depois R$37/mês · Cancele quando quiser'
-                : '🔒 Pix ou cartão · Cancele a qualquer momento'}
+              🔒 Pix ou cartão · Cancele a qualquer momento
             </p>
           </div>
         </div>
@@ -1169,22 +1150,30 @@ function PlanoContent() {
           Aluguel mensal (sem fidelidade) ou compra anual — PIX ou cartão, troque quando quiser.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {ALL_PAID_PLAN_NAMES.filter(name => name !== currentPlan).map((name) => {
-            const tier = PLANS.find(p => p.name === name)!;
-            const yearly = PLAN_PRICES_YEARLY[name];
+          {ALL_PAID_PLAN_NAMES
+            // Profissional já aparece como card-herói para quem é Free — evita duplicar.
+            .filter(name => name !== currentPlan && !(currentPlan === 'free' && name === 'profissional'))
+            .map((name) => {
+            const tier    = PLANS.find(p => p.name === name)!;
+            const pricing = PLAN_PRICING[name as PaidPlanName];
             return (
               <div key={name} className="rounded-2xl p-4 flex flex-col"
                 style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))' }}>
                 <div className="font-display font-bold text-sm">{tier.label}</div>
-                <p className="text-[11px] font-light mt-0.5 mb-3 flex-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                <p className="text-[11px] font-light mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
                   {tier.desc}
                 </p>
+                {tier.forWhom && (
+                  <p className="text-[11px] font-medium mt-1.5 mb-3 flex-1" style={{ color: 'rgb(var(--color-primary))' }}>
+                    🎯 {tier.forWhom}
+                  </p>
+                )}
                 <div className="mb-3">
                   <span className="font-display font-black text-xl" style={{ color: 'rgb(var(--color-primary))' }}>{tier.price}</span>
                   <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês (aluguel)</span>
-                  {yearly && (
+                  {pricing && (
                     <div className="text-[10px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                      ou {yearly.annualDisplay}/ano (compra)
+                      ou {pricing.annual}/ano (compra)
                     </div>
                   )}
                 </div>
