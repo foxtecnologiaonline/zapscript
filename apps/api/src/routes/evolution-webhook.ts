@@ -322,8 +322,10 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
 
           if (!fromMe) {
             const number = messageText ? await findNumber(false) : null;
+            // .catch(): erro aqui (ex.: drift de schema) nunca pode derrubar o
+            // fluxo — na pior hipótese, trata como Atende desabilitado.
             const cfg = number
-              ? await prisma.atendeConfig.findUnique({ where: { numberId: number.id } })
+              ? await prisma.atendeConfig.findUnique({ where: { numberId: number.id } }).catch(() => null)
               : null;
             // Entitlement é a fonte da verdade (mesmo gate de requireModule('atende')) —
             // AtendeConfig.enabled sozinho não reflete cancelamento do módulo (billing.ts
@@ -537,7 +539,10 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       // Mesmo double-gate do texto (cfg.enabled + entitlement real, já que o
       // cancelamento de billing só mexe no Entitlement, nunca no AtendeConfig).
       if (!isSelfNote) {
-        const cfg = await prisma.atendeConfig.findUnique({ where: { numberId: whatsappNumber.id } });
+        // .catch(): um erro aqui (ex.: drift de schema) NUNCA pode impedir o
+        // job de transcrição de ser enfileirado mais abaixo — na pior hipótese,
+        // trata como Atende desabilitado e segue o fluxo normal de conversão.
+        const cfg = await prisma.atendeConfig.findUnique({ where: { numberId: whatsappNumber.id } }).catch(() => null);
         const hasAtende = cfg?.enabled
           ? (await getUserModules(whatsappNumber.userId)).includes('atende')
           : false;

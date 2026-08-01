@@ -552,6 +552,113 @@ async function runAutoMigrations() {
           FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
+    // ── Atende: nível de confiança + digest periódico (migrations 20260722/20260723,
+    // nunca aplicadas — causa raiz do incidente "nenhuma conversão" de 2026-08-01:
+    // evolution-webhook.ts consultava AtendeConfig sem try/catch e o SELECT do
+    // Prisma quebrava em toda mensagem não-self-note antes de enfileirar a
+    // transcrição) — auto-cura o schema no boot, mesmo padrão acima ──
+    `ALTER TABLE "AtendeConfig" ADD COLUMN IF NOT EXISTS "confidenceLevel" TEXT NOT NULL DEFAULT 'equilibrado'`,
+    `ALTER TABLE "AtendeConfig" ADD COLUMN IF NOT EXISTS "digestFrequency" TEXT NOT NULL DEFAULT 'off'`,
+    `ALTER TABLE "AtendeConfig" ADD COLUMN IF NOT EXISTS "lastDigestAt" TIMESTAMP(3)`,
+    `ALTER TABLE "AtendeMessage" ADD COLUMN IF NOT EXISTS "humanAuthored" BOOLEAN NOT NULL DEFAULT false`,
+    // ── Afiliados: taxa customizada + config/campanhas (migração 20260722_affiliate_config_campaigns) ──
+    `ALTER TABLE "Affiliate" ADD COLUMN IF NOT EXISTS "customRate" DOUBLE PRECISION`,
+    `CREATE TABLE IF NOT EXISTS "AffiliateConfig" (
+      "id"        TEXT NOT NULL,
+      "key"       TEXT NOT NULL,
+      "value"     JSONB NOT NULL,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "AffiliateConfig_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "AffiliateConfig_key_key" ON "AffiliateConfig"("key")`,
+    `CREATE TABLE IF NOT EXISTS "AffiliateCampaign" (
+      "id"        TEXT NOT NULL,
+      "name"      TEXT NOT NULL,
+      "rate"      DOUBLE PRECISION NOT NULL,
+      "startsAt"  TIMESTAMP(3) NOT NULL,
+      "endsAt"    TIMESTAMP(3) NOT NULL,
+      "active"    BOOLEAN NOT NULL DEFAULT true,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "AffiliateCampaign_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "AffiliateCampaign_active_startsAt_endsAt_idx" ON "AffiliateCampaign"("active", "startsAt", "endsAt")`,
+    // ── API pública tier Empresas (migração 20260728_api_keys) ──
+    `CREATE TABLE IF NOT EXISTS "ApiKey" (
+      "id"         TEXT NOT NULL,
+      "userId"     TEXT NOT NULL,
+      "name"       TEXT NOT NULL,
+      "keyHash"    TEXT NOT NULL,
+      "keyPrefix"  TEXT NOT NULL,
+      "scopes"     TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      "lastUsedAt" TIMESTAMP(3),
+      "revokedAt"  TIMESTAMP(3),
+      "createdAt"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "ApiKey_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "ApiKey_keyHash_key" ON "ApiKey"("keyHash")`,
+    `CREATE INDEX IF NOT EXISTS "ApiKey_userId_idx" ON "ApiKey"("userId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ApiKey_userId_fkey') THEN
+        ALTER TABLE "ApiKey" ADD CONSTRAINT "ApiKey_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // ── Avisos (Profissional) + Tarefas (Empresas) — migração 20260729_avisos_tarefas ──
+    `CREATE TABLE IF NOT EXISTS "Aviso" (
+      "id"           TEXT NOT NULL,
+      "userId"       TEXT NOT NULL,
+      "numberId"     TEXT NOT NULL,
+      "contactPhone" TEXT NOT NULL,
+      "contactName"  TEXT,
+      "category"     TEXT NOT NULL,
+      "message"      TEXT NOT NULL,
+      "createdAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "Aviso_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "Aviso_userId_createdAt_idx" ON "Aviso"("userId", "createdAt" DESC)`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Aviso_userId_fkey') THEN
+        ALTER TABLE "Aviso" ADD CONSTRAINT "Aviso_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Aviso_numberId_fkey') THEN
+        ALTER TABLE "Aviso" ADD CONSTRAINT "Aviso_numberId_fkey" FOREIGN KEY ("numberId") REFERENCES "WhatsappNumber"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "Task" (
+      "id"           TEXT NOT NULL,
+      "userId"       TEXT NOT NULL,
+      "title"        TEXT NOT NULL,
+      "description"  TEXT,
+      "assignedToId" TEXT,
+      "status"       TEXT NOT NULL DEFAULT 'pending',
+      "dueAt"        TIMESTAMP(3),
+      "completedAt"  TIMESTAMP(3),
+      "createdAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"    TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "Task_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "Task_userId_status_idx" ON "Task"("userId", "status")`,
+    `CREATE INDEX IF NOT EXISTS "Task_userId_dueAt_idx" ON "Task"("userId", "dueAt")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Task_userId_fkey') THEN
+        ALTER TABLE "Task" ADD CONSTRAINT "Task_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Task_assignedToId_fkey') THEN
+        ALTER TABLE "Task" ADD CONSTRAINT "Task_assignedToId_fkey" FOREIGN KEY ("assignedToId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // ── Tiers ZapScript 2.0 (migração 20260727_tier_plans): seed SÓ se ausente —
+    // ao contrário do resto desta função, preço/feature de tier é decisão de
+    // negócio editada por migration própria depois; não sobrescrever no boot.
+    `INSERT INTO "Plan" (id, name, label, "minutesPerMonth", "audiosPerMonth", "maxNumbers", "priceBrl", features)
+      VALUES
+        (gen_random_uuid()::text, 'atende', 'Atende', 300, 500, 2, 59, '[]'::jsonb),
+        (gen_random_uuid()::text, 'profissional', 'Profissional', 400, 500, 1, 49, '[]'::jsonb),
+        (gen_random_uuid()::text, 'empresas', 'Empresas', 500, 500, 2, 99, '[]'::jsonb)
+      ON CONFLICT ("name") DO NOTHING`,
     // ── Módulo Cobrança (2026-07-13): auto-cura o schema no boot, mesmo padrão acima ──
     `CREATE TABLE IF NOT EXISTS "CobrancaCliente" (
       "id"        TEXT NOT NULL,
