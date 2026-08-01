@@ -282,14 +282,16 @@ function PixDisplay({ data, onPaid, onExpire, loading }: { data: PixData; onPaid
 }
 
 /* ── Área de geração PIX (antes do QR) ── */
-function PixGenerateArea({ method, hasApplePay, loading, error, onGenerate, planPrice, isUpgrade }: {
-  method:      Method;
-  hasApplePay: boolean;
-  loading:     boolean;
-  error:       string;
-  onGenerate:  () => void;
-  planPrice:   string;
-  isUpgrade:   boolean;
+function PixGenerateArea({ method, hasApplePay, loading, error, onGenerate, planPrice, displayPrice, isYearly, isUpgrade }: {
+  method:       Method;
+  hasApplePay:  boolean;
+  loading:      boolean;
+  error:        string;
+  onGenerate:   () => void;
+  planPrice:    string;
+  displayPrice: string;
+  isYearly:     boolean;
+  isUpgrade:    boolean;
 }) {
   if (method === 'apple_pay' && !hasApplePay) {
     return (
@@ -313,7 +315,7 @@ function PixGenerateArea({ method, hasApplePay, loading, error, onGenerate, plan
   };
 
   const btnLabels: Partial<Record<Method, string>> = {
-    pix:        `⚡ Gerar QR Code PIX — ${planPrice}`,
+    pix:        `⚡ Gerar QR Code PIX — ${displayPrice}${isYearly ? '/ano' : ''}`,
     pix_auto:   `🔄 Ativar PIX Automático — ${planPrice}/mês`,
     google_pay: '⚡ Gerar QR Code PIX',
     apple_pay:  '⚡ Gerar QR Code PIX',
@@ -716,7 +718,7 @@ export default function CheckoutInline({
               onSubmit={handleCardSubmit}
               loading={loading}
               error={error}
-              submitLabel={`${isUpgrade ? 'Confirmar troca' : 'Assinar'} — ${planPrice}/${billingCycle === 'yearly' ? 'ano' : 'mês'}`}
+              submitLabel={`${isUpgrade ? 'Confirmar troca' : 'Assinar'} — ${displayPrice}/${isYearly ? 'ano' : 'mês'}`}
             />
           )}
 
@@ -729,6 +731,8 @@ export default function CheckoutInline({
               error={error}
               onGenerate={handlePixSubmit}
               planPrice={planPrice}
+              displayPrice={displayPrice}
+              isYearly={isYearly}
               isUpgrade={isUpgrade}
             />
           )}
