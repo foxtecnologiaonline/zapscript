@@ -20,6 +20,19 @@ export async function sendToOwnNumber(instanceName: string, phone: string, messa
   await sendText(instanceName, clean, message);
 }
 
+// Caminho do áudio resolvido a partir do próprio arquivo compilado (__dirname),
+// não de process.cwd() — este último varia com o comando/CMD usado pra subir o
+// processo (ex.: `cd apps/api && node dist/index.js` vs `node apps/api/dist/index.js`
+// direto de /app no Docker) e por isso é frágil. dist/services/ → sobe 2 níveis → apps/api/.
+let cachedAudioBase64: string | undefined;
+function getWelcomeAudioBase64(): string {
+  if (cachedAudioBase64 !== undefined) return cachedAudioBase64;
+  const audioPath = join(__dirname, '../../private/welcome.mp3');
+  const base64 = readFileSync(audioPath).toString('base64');
+  cachedAudioBase64 = base64;
+  return base64;
+}
+
 // ── 0. Boas-vindas ao cadastrar — pelo número de SUPORTE ──────────────────
 // Diferente do #1 abaixo: dispara no cadastro (auth.ts), antes de o usuário
 // ter conectado qualquer número próprio, então usa a instância de suporte
@@ -31,13 +44,13 @@ export async function notifySignupWelcome(phone: string | null | undefined): Pro
     const clean = phone.replace(/\D/g, '');
     if (!clean || clean.length < 10) return;
 
-    const audioPath = join(process.cwd(), 'private/welcome.mp3');
-    const audioBase64 = readFileSync(audioPath).toString('base64');
-    await sendPtt(instance, clean, audioBase64);
+    await sendPtt(instance, clean, getWelcomeAudioBase64());
   } catch { /* não crítico */ }
 }
 
-// ── 1. Boas-vindas ao adicionar número ────────────────────────────────────
+// ── 1. Boas-vindas ao adicionar/conectar número (qualquer transição para
+//    "conectado" vinda de um estado não-conectado — número novo, readicionado
+//    ou reconectado após queda) ────────────────────────────────────────────
 export async function notifyWelcome(numberId: string): Promise<void> {
   try {
     const n = await (prisma as any).whatsappNumber.findUnique({
@@ -46,11 +59,7 @@ export async function notifyWelcome(numberId: string): Promise<void> {
     });
     if (!n?.zapiInstanceId || !n?.phoneNumber) return;
 
-    // Enviar áudio de boas-vindas
-    // process.cwd() = raiz do serviço (apps/api/), private/ está na raiz do repo
-    const audioPath = join(process.cwd(), 'private/welcome.mp3');
-    const audioBase64 = readFileSync(audioPath).toString('base64');
-    await sendPtt(n.zapiInstanceId, n.phoneNumber, audioBase64);
+    await sendPtt(n.zapiInstanceId, n.phoneNumber, getWelcomeAudioBase64());
   } catch { /* não crítico */ }
 }
 

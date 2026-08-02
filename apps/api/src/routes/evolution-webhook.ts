@@ -197,12 +197,14 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
 
           // Notificações: apenas quando muda de estado real
           // 'connected' → 'connected': evento redundante (keepalive/restart) — sem notificação
-          // 'disconnected' → 'connected': reconexão real → notifyReconnected
-          // qualquer outro → 'connected': primeira conexão → notifyWelcome
-          if (prevStatus === 'disconnected') {
-            notifyReconnected(number.id).catch(() => null);
-          } else if (prevStatus !== 'connected') {
+          // qualquer outro → 'connected': número novo, readicionado ou reconectado — sempre
+          // manda o áudio de boas-vindas; se for reconexão de fato, manda também o texto
+          // extra explicando que as conversões foram retomadas.
+          if (prevStatus !== 'connected') {
             notifyWelcome(number.id).catch(() => null);
+            if (prevStatus === 'disconnected') {
+              notifyReconnected(number.id).catch(() => null);
+            }
           }
           // prevStatus === 'connected' → sem notificação (evento de keepalive/restart)
         } else {
