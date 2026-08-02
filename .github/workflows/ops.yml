@@ -7,8 +7,27 @@
 # Duas famílias de job, por necessidade real de rede:
 #   - migrate_core_*: só precisa falar com Supabase (DATABASE_URL) e Asaas
 #     (ASAAS_API_KEY) — roda direto no runner do GitHub, sem SSH nenhum.
-#   - deploy / custom_ssh: precisa mesmo rodar no servidor (docker compose,
-#     filesystem) — únicos casos que usam SSH.
+#   - deploy / rollback / custom_ssh: precisa mesmo rodar no servidor (docker
+#     build/compose, filesystem) — únicos casos que usam SSH.
+#
+# COMO O DEPLOY REALMENTE FUNCIONA NESTE SERVIDOR (não é "docker compose
+# pull" — o servidor builda a imagem localmente a partir do código-fonte):
+#   1. git clone --depth 1 do master para /root/zapscript-build-new
+#   2. docker build das imagens api/worker com tag :new (isolado — não toca
+#      no que está rodando enquanto builda)
+#   3. tag do :latest atual → :previous (rede de segurança pro rollback)
+#   4. tag do :new → :latest
+#   5. sobe a api primeiro e espera o healthcheck ficar "healthy" via polling
+#      real (não um sleep fixo — o healthcheck da api pode levar 30-90s,
+#      e um sleep curto demais deixa o worker preso em "Created" porque ele
+#      tem depends_on: condition: service_healthy)
+#   6. só then sobe o worker
+#   7. limpa a tag :new e promove /root/zapscript-build-new a
+#      /root/zapscript-build (guardando o anterior como -old)
+#
+# Rollback (action = rollback) simplesmente inverte o passo 3/4: promove de
+# volta a tag :previous → :latest e reinicia na mesma ordem (api, espera
+# ficar healthy, worker).
 #
 # Configuração única (Settings → Secrets and variables → Actions):
 #   VULTR_HOST     IP do servidor (ex.: 216.238.114.73)
@@ -34,6 +53,7 @@ on:
         default: deploy
         options:
           - deploy
+          - rollback
           - migrate_core_dry_run
           - migrate_core_apply
           - custom_ssh
@@ -69,9 +89,9 @@ jobs:
           ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
         run: node scripts/migrate-users-to-core.mjs --apply --i-understand-this-cancels-paid-subscriptions
 
-  # ── Deploy e comandos avulsos — únicos que precisam mesmo do servidor. ──
+  # ── Deploy, rollback e comandos avulsos — únicos que precisam do servidor. ──
   remote-ssh:
-    if: inputs.action == 'deploy' || inputs.action == 'custom_ssh'
+    if: inputs.action == 'deploy' || inputs.action == 'rollback' || inputs.action == 'custom_ssh'
     runs-on: ubuntu-latest
     steps:
       - name: Configurar chave SSH
@@ -91,7 +111,81 @@ jobs:
           CUSTOM: ${{ inputs.custom_command }}
         run: |
           if [ "$ACTION" = "deploy" ]; then
-            CMD='cd /opt/zapscript && docker compose pull api worker && docker compose up -d api worker && docker compose ps'
+            CMD=$(cat <<'REMOTE'
+          set -e
+          BUILD_DIR=/root/zapscript-build
+          NEW_DIR=/root/zapscript-build-new
+          OLD_DIR=/root/zapscript-build-old
+          COMPOSE_FILE=/root/docker-compose.zapscript.yml
+
+          echo "== clonando master =="
+          rm -rf "$NEW_DIR"
+          git clone --depth 1 --branch master https://github.com/foxtecnologiaonline/zapscript.git "$NEW_DIR"
+          cd "$NEW_DIR"
+          git log -1 --oneline
+
+          echo "== build api =="
+          docker build -f apps/api/Dockerfile -t zapscript-api:new .
+          echo "== build worker =="
+          docker build -f apps/worker/Dockerfile -t zapscript-worker:new .
+
+          docker tag zapscript-api:latest zapscript-api:previous 2>/dev/null || true
+          docker tag zapscript-worker:latest zapscript-worker:previous 2>/dev/null || true
+          docker tag zapscript-api:new zapscript-api:latest
+          docker tag zapscript-worker:new zapscript-worker:latest
+
+          echo "== subindo api =="
+          docker compose -f "$COMPOSE_FILE" up -d api
+          echo "== aguardando api ficar healthy (poll, nao sleep fixo) =="
+          for i in $(seq 1 30); do
+            status=$(docker inspect --format='{{.State.Health.Status}}' zapscript-api 2>/dev/null || echo unknown)
+            if [ "$status" = "healthy" ]; then echo "api healthy apos ${i}x5s"; break; fi
+            if [ "$i" = "30" ]; then echo "TIMEOUT esperando api ficar healthy"; docker logs zapscript-api --tail 60; exit 1; fi
+            sleep 5
+          done
+
+          echo "== subindo worker =="
+          docker compose -f "$COMPOSE_FILE" up -d worker
+          sleep 5
+          docker compose -f "$COMPOSE_FILE" ps
+
+          docker image rm zapscript-api:new zapscript-worker:new 2>/dev/null || true
+          docker image prune -f
+          rm -rf "$OLD_DIR"
+          [ -d "$BUILD_DIR" ] && mv "$BUILD_DIR" "$OLD_DIR"
+          mv "$NEW_DIR" "$BUILD_DIR"
+          echo "DEPLOY_OK"
+          REMOTE
+          )
+          elif [ "$ACTION" = "rollback" ]; then
+            CMD=$(cat <<'REMOTE'
+          set -e
+          COMPOSE_FILE=/root/docker-compose.zapscript.yml
+
+          if ! docker image inspect zapscript-api:previous >/dev/null 2>&1; then
+            echo "Sem imagem :previous salva — nao ha rollback disponivel (so existe apos um deploy via este workflow)."
+            exit 1
+          fi
+
+          docker tag zapscript-api:previous zapscript-api:latest
+          docker tag zapscript-worker:previous zapscript-worker:latest
+
+          echo "== subindo api (versao anterior) =="
+          docker compose -f "$COMPOSE_FILE" up -d api
+          for i in $(seq 1 30); do
+            status=$(docker inspect --format='{{.State.Health.Status}}' zapscript-api 2>/dev/null || echo unknown)
+            if [ "$status" = "healthy" ]; then echo "api healthy apos ${i}x5s"; break; fi
+            if [ "$i" = "30" ]; then echo "TIMEOUT esperando api ficar healthy"; docker logs zapscript-api --tail 60; exit 1; fi
+            sleep 5
+          done
+
+          echo "== subindo worker (versao anterior) =="
+          docker compose -f "$COMPOSE_FILE" up -d worker
+          sleep 5
+          docker compose -f "$COMPOSE_FILE" ps
+          echo "ROLLBACK_OK"
+          REMOTE
+          )
           else
             CMD="$CUSTOM"
           fi
