@@ -1,12 +1,21 @@
-# deploy.yml — Render auto-deploy via Branch Tracking
+# deploy.yml — CI de validação (build & type check) antes do deploy real.
 #
-# O Render monitora a branch "master" diretamente.
-# Este workflow apenas valida o build antes do merge/push,
-# garantindo que código com erro não chegue à branch principal.
+# Este workflow NÃO deploya nada — só garante que API, Worker e Web buildam
+# sem erro antes do código chegar em master/main. O deploy de fato acontece
+# em dois lugares separados, fora deste workflow:
 #
-# O deploy para o Render acontece automaticamente quando
-# o push chega na branch master — sem necessidade de SSH
-# ou Docker Hub. O Render faz o build pelo próprio render.yaml.
+#   Web (Next.js)   → Vercel. Integração Git nativa: todo push em master
+#                      dispara build + deploy automático na Vercel — não
+#                      depende do GitHub Actions.
+#   API + Worker    → Vultr (Docker). O workflow build-and-push.yml builda
+#                      e publica as imagens no ghcr.io a cada push em master
+#                      (quando apps/api, apps/worker ou packages/database
+#                      mudam). O deploy em si no servidor Vultr é manual,
+#                      via workflow_dispatch do ops.yml (action=deploy), que
+#                      faz SSH e roda `docker compose pull && up -d`.
+#
+# Render foi descomissionado (ver MIGRACAO_VULTR.md) — não use como
+# referência para onde o deploy acontece.
 
 name: CI — Validate before deploy
 
@@ -65,10 +74,12 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
           NEXT_PUBLIC_APP_NAME: ZapScript
-        continue-on-error: true   # não bloqueia — Web é deployado no Render separado
+        continue-on-error: true   # não bloqueia — a Vercel builda e deploya o Web por conta própria
 
       - name: Summary
         if: always()
         run: |
-          echo "✅ CI concluído — deploy automático no Render via branch tracking"
-          echo "   Verifique: https://dashboard.render.com"
+          echo "✅ CI de validação concluído."
+          echo "   Web:        deploy automático na Vercel (integração Git nativa)."
+          echo "   API/Worker: imagens publicadas em ghcr.io por build-and-push.yml;"
+          echo "               deploy no Vultr é manual via ops.yml (workflow_dispatch, action=deploy)."

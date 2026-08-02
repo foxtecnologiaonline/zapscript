@@ -51,7 +51,7 @@ npm install -g pnpm
 | Asaas        | Pagamentos (PIX + cartão)             | https://asaas.com                  |
 | Evolution API| WhatsApp self-hosted                  | https://github.com/EvolutionAPI    |
 | Resend       | E-mail transacional                   | https://resend.com                 |
-| Railway      | Hospedagem API + Worker               | https://railway.app                |
+| Vultr        | Hospedagem API + Worker (Docker, self-hosted) | https://vultr.com          |
 | Vercel       | Hospedagem Frontend                   | https://vercel.com                 |
 
 ---
@@ -113,28 +113,31 @@ Acessar:
 
 ## 🌐 Deploy em Produção
 
-### Railway (API + Worker)
+### Vultr (API + Worker, Docker self-hosted)
+
+O deploy é em dois passos, sem plataforma de PaaS:
+
+1. **Build & push das imagens** — automático a cada push em `master` que toque
+   `apps/api`, `apps/worker` ou `packages/database`, via o workflow
+   `.github/workflows/build-and-push.yml` (publica em `ghcr.io`).
+2. **Deploy no servidor** — manual, via `workflow_dispatch` do
+   `.github/workflows/ops.yml` com `action: deploy` (faz SSH no Vultr e roda
+   `docker compose pull && docker compose up -d`). Guia completo em
+   [`MIGRACAO_VULTR.md`](./MIGRACAO_VULTR.md).
 
 ```bash
-npm install -g @railway/cli
-railway login
-railway init
-railway up
-
-# Configurar variáveis no Railway dashboard
-# Rodar migrations em produção:
-railway run npx prisma migrate deploy --schema=packages/database/prisma/schema.prisma
+# Rodar migrations em produção (a partir de qualquer máquina com acesso ao DB):
+DATABASE_URL=... npx prisma migrate deploy --schema=packages/database/prisma/schema.prisma
 ```
 
 ### Vercel (Frontend)
 
-```bash
-npm install -g vercel
-cd apps/web
-vercel --prod
+Integração Git nativa — todo push em `master` builda e deploya automaticamente,
+sem passo manual.
 
+```bash
 # Variáveis no Vercel dashboard:
-# NEXT_PUBLIC_API_URL=https://zapscript-api.railway.app
+# NEXT_PUBLIC_API_URL=https://api.zapscript.me
 # NEXT_PUBLIC_SUPABASE_URL=...
 # NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
@@ -157,7 +160,7 @@ vercel --prod
 | E-mail       | Resend API                         |
 | Criptografia | AES-256-GCM (dados sensíveis)      |
 | Error tracking | Sentry                           |
-| Deploy API   | Railway                            |
+| Deploy API   | Vultr (Docker, self-hosted)        |
 | Deploy Web   | Vercel                             |
 
 ---
