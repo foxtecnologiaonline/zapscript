@@ -7,7 +7,7 @@ import ModuleCheckoutInline from '@/components/ModuleCheckoutInline';
 import ComboCheckoutInline from '@/components/ComboCheckoutInline';
 import { isJunePromoActive } from '@/lib/promo';
 import { ModuleCatalogItem, MODULE_ICON, moduleRoute, isContractable, formatBrl } from '@/lib/modules';
-import { PLAN_PRICING, PaidPlanName } from '@/lib/planPricing';
+import { PLAN_PRICING, PaidPlanName, annualMonthlyEquivalent, annualFreeMonthsLabel } from '@/lib/planPricing';
 
 interface Stats {
   minutesUsed: number; minutesAvailable: number;
@@ -148,21 +148,20 @@ const PLANS = [
   },
 ];
 
-/** Todos os planos pagos — usados na migração livre entre planos (qualquer direção). */
-const ALL_PAID_PLAN_NAMES = ['pro', 'executive', 'profissional', 'empresas'] as const;
+/** Planos pagos vendidos ativamente — "Pro" e "Executive" são legado (mantidos
+ *  apenas para quem já assina) e não devem ser oferecidos como opção de compra. */
+const VISIBLE_PAID_PLAN_NAMES = ['profissional', 'empresas'] as const;
 
 type CmpVal = string | boolean;
+// Comparativo resumido — Core × Profissional × Empresas (o Pro legado saiu
+// de linha, ver VISIBLE_PAID_PLAN_NAMES). Linhas agrupadas por bloco de
+// funcionalidade em vez de 1 linha por recurso, pra caber numa leitura rápida.
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Áudios/mês',                         vals: ['100', 'Ilimitado'] },
-  { feature: 'Números WhatsApp',                   vals: ['1', '2'] },
-  { feature: '🎙️ Conversão automática',           vals: [true, true] },
-  { feature: '✨ Resumo com IA',                    vals: [true, true] },
-  { feature: '📋 Histórico de conversões',        vals: [true, true] },
-  { feature: '📅 Filtros por data e contato',       vals: [true, true] },
-  { feature: '🔍 Busca por conversão',             vals: [true, true] },
-  { feature: '📤 Exportar áudios (PDF/Docx/Csv/Excel)', vals: [false, true] },
-  { feature: '📄 Conversão Profissional (PDF)',    vals: [false, true] },
-  { feature: '🔒 Modo Privado automático',       vals: [false, true] },
+  { feature: 'Áudios/mês',                                                                          vals: ['100', 'Ilimitado', 'Ilimitado'] },
+  { feature: '🎙️ Recursos essenciais (conversão, resumo com IA, Modo Privado, histórico e busca)', vals: [true, true, true] },
+  { feature: '🤖 Atendimento automático por IA (24/7, fila, métricas, avisos, base de conhecimento)', vals: [false, true, true] },
+  { feature: '📊 CRM + Tarefas em equipe',                                                          vals: [false, false, true] },
+  { feature: '👥 Usuários incluídos',                                                                vals: ['1', '1', 'até 5'] },
 ];
 
 // Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento
@@ -881,17 +880,23 @@ function PlanoContent() {
           <div className="flex items-center justify-between mb-3">
             <div>
               <span className="font-bold">Plano atual: </span>
-              <span className="font-bold" style={{ color: 'rgb(var(--color-primary))' }}>{stats.planLabel ?? stats.planName}</span>
+              <span className="font-bold" style={{ color: 'rgb(var(--color-primary))' }}>
+                {currentPlan === 'free' ? 'Core' : (stats.planLabel ?? stats.planName)}
+              </span>
             </div>
-            <span className={`text-xs font-bold px-3 py-1 rounded-full border ${
-              stats.planStatus === 'active'   ? 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10' :
-              stats.planStatus === 'past_due' ? 'text-amber-400 border-amber-400/20 bg-amber-400/10' :
-              'text-red-400 border-red-400/20 bg-red-400/10'
-            }`}>
-              {stats.planStatus === 'active' ? '● Ativo' :
-               stats.planStatus === 'past_due' ? '⚠ Pagamento pendente' :
-               '✕ Cancelado'}
-            </span>
+            {/* Badge de status só faz sentido para planos pagos — no Core (grátis)
+                não existe assinatura "ativa" nem "cancelada" para exibir. */}
+            {currentPlan !== 'free' && (
+              <span className={`text-xs font-bold px-3 py-1 rounded-full border ${
+                stats.planStatus === 'active'   ? 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10' :
+                stats.planStatus === 'past_due' ? 'text-amber-400 border-amber-400/20 bg-amber-400/10' :
+                'text-red-400 border-red-400/20 bg-red-400/10'
+              }`}>
+                {stats.planStatus === 'active' ? '● Ativo' :
+                 stats.planStatus === 'past_due' ? '⚠ Pagamento pendente' :
+                 '✕ Cancelado'}
+              </span>
+            )}
           </div>
 
           {/* Data de renovação + dias restantes */}
@@ -1040,22 +1045,26 @@ function PlanoContent() {
         /* Usuários Free: Core (gratuito e completo) + Profissional como herói */
         <div className="space-y-3">
 
-          {/* Core — card compacto de contexto */}
-          <div className="rounded-xl px-4 py-3 flex items-center justify-between"
-            style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))' }}>
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                style={{ background: 'rgba(var(--color-primary)/.1)', color: 'rgb(var(--color-primary))' }}>
-                Atual
-              </span>
-              <div>
-                <span className="text-sm font-bold">Core</span>
-                <span className="text-xs ml-2" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                  grátis e completo · converte, resume e protege (Modo Privado)
+          {/* Core — card de contexto com o que está incluso */}
+          <div className="rounded-2xl p-4" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(var(--color-primary)/.1)', color: 'rgb(var(--color-primary))' }}>
+                  Atual
                 </span>
+                <span className="text-sm font-bold">Core</span>
+                <span className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>grátis e completo</span>
               </div>
+              <span className="font-bold text-sm" style={{ color: 'rgb(var(--color-text-muted))' }}>R$0</span>
             </div>
-            <span className="font-bold text-sm" style={{ color: 'rgb(var(--color-text-muted))' }}>R$0</span>
+            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-4">
+              {PLANS.find(p => p.name === 'free')!.feats.map(f => (
+                <li key={f} className="flex items-center gap-2 text-xs" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                  <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>{f}
+                </li>
+              ))}
+            </ul>
           </div>
 
           {/* Profissional — card herói (foco atual: os planos novos) */}
@@ -1077,11 +1086,18 @@ function PlanoContent() {
                 <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>Core + atendimento automático no WhatsApp</div>
               </div>
               <div className="text-right">
+                {/* Compra (anual) sempre em destaque — é a opção que queremos priorizar */}
                 <div className="font-display font-black text-3xl tracking-tight leading-none" style={{ color: 'rgb(var(--color-primary))' }}>
-                  R$49
+                  {PLAN_PRICING.profissional.annual}
                 </div>
-                <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês · cancele quando quiser</div>
-                <div className="text-[11px] font-medium mt-1.5" style={{ color: 'rgb(var(--color-primary))' }}>24h atendendo por você, por menos de R$1,63 ao dia</div>
+                <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/ano · compra à vista</div>
+                <div className="text-[11px] font-bold mt-1.5 px-2 py-0.5 rounded-full inline-block"
+                  style={{ background: 'rgba(var(--color-primary)/.12)', color: 'rgb(var(--color-primary))' }}>
+                  🤑 {annualFreeMonthsLabel('profissional')} · equivale a {annualMonthlyEquivalent('profissional')}
+                </div>
+                <div className="text-[10px] mt-1.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                  ou {PLAN_PRICING.profissional.monthly}/mês (aluguel, sem fidelidade)
+                </div>
               </div>
             </div>
 
@@ -1129,11 +1145,11 @@ function PlanoContent() {
                 color: '#030d06',
                 boxShadow: 'rgba(var(--color-primary)/.35) 0 6px 20px',
               }}>
-              {previewLoading ? 'Calculando...' : 'Assinar Profissional por R$49/mês →'}
+              {previewLoading ? 'Calculando...' : `Ativar Profissional por ${PLAN_PRICING.profissional.annual}/ano →`}
             </button>
 
             <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.6)' }}>
-              🔒 Pix ou cartão · Cancele a qualquer momento
+              🔒 Pix ou cartão · também disponível no aluguel mensal, sem fidelidade
             </p>
           </div>
         </div>
@@ -1147,11 +1163,12 @@ function PlanoContent() {
           {currentPlan === 'free' ? 'Ou escolha outro plano' : 'Trocar de plano'}
         </h2>
         <p className="text-xs font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-          Aluguel mensal (sem fidelidade) ou compra anual — PIX ou cartão, troque quando quiser.
+          Compra anual em destaque (mais econômica) — ou aluguel mensal sem fidelidade. PIX ou cartão, troque quando quiser.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {ALL_PAID_PLAN_NAMES
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {VISIBLE_PAID_PLAN_NAMES
             // Profissional já aparece como card-herói para quem é Free — evita duplicar.
+            // Pro/Executive (legado) só aparecem aqui se forem o próprio plano atual do usuário.
             .filter(name => name !== currentPlan && !(currentPlan === 'free' && name === 'profissional'))
             .map((name) => {
             const tier    = PLANS.find(p => p.name === name)!;
@@ -1169,20 +1186,26 @@ function PlanoContent() {
                   </p>
                 )}
                 <div className="mb-3">
-                  <span className="font-display font-black text-xl" style={{ color: 'rgb(var(--color-primary))' }}>{tier.price}</span>
-                  <span className="text-xs ml-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês (aluguel)</span>
+                  {/* Compra (anual) sempre primeiro e em destaque */}
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-display font-black text-xl" style={{ color: 'rgb(var(--color-primary))' }}>{pricing?.annual ?? tier.price}</span>
+                    <span className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>/ano (compra)</span>
+                  </div>
                   {pricing && (
-                    <div className="text-[10px] mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
-                      ou {pricing.annual}/ano (compra)
+                    <div className="text-[10px] font-bold mt-1" style={{ color: 'rgb(var(--color-primary))' }}>
+                      🤑 {annualFreeMonthsLabel(name)} · equivale a {annualMonthlyEquivalent(name)}
                     </div>
                   )}
+                  <div className="text-[10px] mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                    ou {tier.price}/mês (aluguel)
+                  </div>
                 </div>
                 <button
                   onClick={() => upgrade(name)}
                   disabled={previewLoading}
                   className="w-full py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
                   style={{ border: '1.5px solid rgb(var(--color-primary))', color: 'rgb(var(--color-primary))', background: 'transparent' }}>
-                  {currentPlan === 'free' ? `Assinar ${tier.label} →` : `Migrar para ${tier.label} →`}
+                  {currentPlan === 'free' ? `Ativar ${tier.label} →` : `Migrar para ${tier.label} →`}
                 </button>
               </div>
             );
@@ -1197,30 +1220,31 @@ function PlanoContent() {
             onClick={() => setShowTable(v => !v)}
             className="w-full mt-4 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2"
             style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))', background: 'transparent' }}>
-            {showTable ? 'Ocultar comparativo ↑' : 'Ver comparativo completo ↓'}
+            {showTable ? 'Ocultar comparativo ↑' : 'Ver comparativo resumido ↓'}
           </button>
 
           {showTable && (
-            <div className="mt-3 rounded-2xl overflow-hidden" style={{ border: '1px solid rgb(var(--color-border))' }}>
+            <div className="mt-3 rounded-2xl overflow-hidden overflow-x-auto" style={{ border: '1px solid rgb(var(--color-border))' }}>
               <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'rgb(var(--color-surface-elevated))' }}>
                     <th className="text-left px-4 py-2.5 font-semibold" style={{ color: 'rgb(var(--color-text-muted))' }}>Recurso</th>
-                    <th className="px-3 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-text-muted))' }}>Core</th>
-                    <th className="px-3 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-primary))' }}>Pro</th>
+                    <th className="px-2 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-text-muted))' }}>Core</th>
+                    <th className="px-2 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-primary))' }}>Profissional</th>
+                    <th className="px-2 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-primary))' }}>Empresas</th>
                   </tr>
                 </thead>
                 <tbody>
                   {TABLE_ROWS.map((row, ri) => (
                     <tr key={ri} style={{ borderTop: '1px solid rgb(var(--color-border-light))' }}>
                       <td className="px-4 py-2.5 font-medium" style={{ color: 'rgb(var(--color-text-secondary))' }}>{row.feature}</td>
-                      {row.vals.slice(0, 2).map((v, vi) => (
-                        <td key={vi} className="px-3 py-2.5 text-center">
+                      {row.vals.map((v, vi) => (
+                        <td key={vi} className="px-2 py-2.5 text-center">
                           {typeof v === 'boolean' ? (
                             v ? <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>
                               : <span style={{ color: 'rgb(var(--color-text-muted))', opacity: .4 }}>✗</span>
                           ) : (
-                            <span className="font-mono font-bold" style={{ color: vi === 1 ? 'rgb(var(--color-primary))' : 'rgb(var(--color-text))' }}>{v}</span>
+                            <span className="font-mono font-bold" style={{ color: vi >= 1 ? 'rgb(var(--color-primary))' : 'rgb(var(--color-text))' }}>{v}</span>
                           )}
                         </td>
                       ))}
@@ -1512,37 +1536,6 @@ function PlanoContent() {
         </div>
       )}
 
-      {/* Empresas — card funcional multi-seat */}
-      <div className="mt-6 rounded-2xl p-5"
-        style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.2)' }}>
-        <div className="flex items-center gap-4">
-          <div className="text-2xl flex-shrink-0">🏢</div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-sm font-bold">Plano Empresas</span>
-              <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
-                style={{ background: 'rgba(var(--color-primary)/.1)', color: 'rgb(var(--color-primary))' }}>
-                Multi-seat
-              </span>
-            </div>
-            <p className="text-xs" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              Gerencie seu time: convide membros, compartilhe o plano Pro e pague por seat.
-            </p>
-            <div className="flex items-center gap-3 mt-2">
-              <span className="text-xs font-bold" style={{ color: 'rgb(var(--color-primary))' }}>
-                R$37/seat · mesmo preço do Pro
-              </span>
-            </div>
-          </div>
-          <a
-            href="/dashboard/empresarial"
-            className="btn-primary py-2.5 px-5 text-sm shrink-0"
-          >
-            Gerenciar time →
-          </a>
-        </div>
-      </div>
-
       {/* ── Checkout inline Asaas ── */}
       {checkoutPlan && checkoutPlan !== 'free' && (() => {
         const plan = PLANS.find(p => p.name === checkoutPlan) ?? { label: checkoutPlan, price: '', per: '/mês', feats: [] as string[] };
@@ -1559,7 +1552,7 @@ function PlanoContent() {
               >
                 <div className="mb-5">
                   <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
-                    {currentPlan !== 'free' ? `Migrar para ${plan.label}` : `Assinar plano ${plan.label}`}
+                    {currentPlan !== 'free' ? `Migrar para ${plan.label}` : `Ativar plano ${plan.label}`}
                   </h3>
                   <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
                     {junePromo && checkoutPlan === 'pro'

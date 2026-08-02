@@ -44,14 +44,13 @@ npm install -g pnpm
 | Serviço      | Para quê                              | URL                                |
 |--------------|---------------------------------------|------------------------------------|
 | Supabase     | Banco PostgreSQL                      | https://supabase.com               |
-| Upstash      | Redis (filas BullMQ)                  | https://upstash.com                |
 | OpenAI       | Whisper API (transcrição)             | https://platform.openai.com        |
 | Groq         | Whisper turbo (primário, mais rápido) | https://console.groq.com           |
 | Anthropic    | Claude API (resumos)                  | https://console.anthropic.com      |
 | Asaas        | Pagamentos (PIX + cartão)             | https://asaas.com                  |
 | Evolution API| WhatsApp self-hosted                  | https://github.com/EvolutionAPI    |
 | Resend       | E-mail transacional                   | https://resend.com                 |
-| Railway      | Hospedagem API + Worker               | https://railway.app                |
+| Vultr        | Servidor único: API + Worker + Redis + Evolution (Docker) | https://vultr.com     |
 | Vercel       | Hospedagem Frontend                   | https://vercel.com                 |
 
 ---
@@ -113,28 +112,34 @@ Acessar:
 
 ## 🌐 Deploy em Produção
 
-### Railway (API + Worker)
+### Vultr (API + Worker, Docker self-hosted)
+
+O deploy é **sempre manual** — nada acontece sozinho quando o código chega em
+`master`:
+
+- Aba **Actions → "Ops — Vultr / Migração" → Run workflow → `action: deploy`**
+  (`.github/workflows/ops.yml`). O workflow faz SSH no servidor, clona o
+  `master` mais recente e builda as imagens da API e do Worker **direto no
+  próprio servidor** (não usa imagens do `ghcr.io`), troca `:latest` sem
+  downtime (API primeiro, espera healthcheck, depois Worker) e mantém a
+  imagem anterior como `:previous` para rollback.
+- Para reverter: mesma aba, `action: rollback`.
+- Guia de referência (histórico da migração Render→Vultr, ainda útil para
+  entender o servidor): [`MIGRACAO_VULTR.md`](./MIGRACAO_VULTR.md).
 
 ```bash
-npm install -g @railway/cli
-railway login
-railway init
-railway up
-
-# Configurar variáveis no Railway dashboard
-# Rodar migrations em produção:
-railway run npx prisma migrate deploy --schema=packages/database/prisma/schema.prisma
+# Rodar migrations em produção (a partir de qualquer máquina com acesso ao DB):
+DATABASE_URL=... npx prisma migrate deploy --schema=packages/database/prisma/schema.prisma
 ```
 
 ### Vercel (Frontend)
 
-```bash
-npm install -g vercel
-cd apps/web
-vercel --prod
+Integração Git nativa — todo push em `master` builda e deploya automaticamente,
+sem passo manual.
 
+```bash
 # Variáveis no Vercel dashboard:
-# NEXT_PUBLIC_API_URL=https://zapscript-api.railway.app
+# NEXT_PUBLIC_API_URL=https://api.zapscript.me
 # NEXT_PUBLIC_SUPABASE_URL=...
 # NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
@@ -148,7 +153,7 @@ vercel --prod
 | Frontend     | Next.js 14, Tailwind CSS           |
 | API          | Fastify, TypeScript                |
 | WebSocket    | Socket.io + Redis adapter          |
-| Worker/Filas | BullMQ + Redis (Upstash)           |
+| Worker/Filas | BullMQ + Redis (container local no Vultr) |
 | WhatsApp     | Evolution API (instâncias dedicadas)|
 | Transcrição  | Groq whisper-large-v3-turbo (primary) + OpenAI whisper-1 (fallback) |
 | Resumos      | Anthropic Claude Haiku (primary) + GPT-4o-mini (fallback) |
@@ -157,7 +162,7 @@ vercel --prod
 | E-mail       | Resend API                         |
 | Criptografia | AES-256-GCM (dados sensíveis)      |
 | Error tracking | Sentry                           |
-| Deploy API   | Railway                            |
+| Deploy API   | Vultr (Docker, self-hosted)        |
 | Deploy Web   | Vercel                             |
 
 ---

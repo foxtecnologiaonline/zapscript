@@ -15,7 +15,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       prisma.transcription.count({ where: { userId, createdAt: { gte: month } } }),
       prisma.transcription.count({ where: { userId } }),
       prisma.minuteBalance.findUnique({ where: { userId } }),
-      prisma.whatsappNumber.count({ where: { userId, status: 'connected' } }),
+      prisma.whatsappNumber.count({ where: { userId, status: 'connected', isPublic: false } as any }),
       prisma.transcription.aggregate({
         where: { userId },
         _avg:  { confidenceScore: true },

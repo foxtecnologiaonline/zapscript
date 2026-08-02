@@ -78,6 +78,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
   const [qrLoading, setQrLoading]     = useState(false);
   const [qrCountdown, setQrCountdown] = useState(25);
   const [copied, setCopied]           = useState(false);
+  const [showSecurityInfo, setShowSecurityInfo] = useState(false);
 
   // Detecta telefone fixo: 10 dígitos = DDD(2) + 8 dígitos (sem o "9" do celular)
   const isLandline = phoneInput.replace(/\D/g, '').length === 10;
@@ -248,70 +249,89 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
                 </p>
               </div>
 
-              {/* ── O que o ZapScript FAZ ── */}
-              <div className="bg-green-400/5 border border-green-400/20 rounded-xl p-4 space-y-2.5">
-                <p className="text-xs font-bold text-green-400 flex items-center gap-1.5">
-                  <span>✅</span> O que o ZapScript vai fazer:
-                </p>
-                {[
-                  'Ouvir apenas áudios que você recebe e convertê-los em texto',
-                  'Entregar a transcrição e o resumo no seu próprio WhatsApp',
-                  'Funcionar 24h por dia — você nem precisa abrir o app',
-                ].map((t, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[11px] text-brand-text-secondary leading-relaxed">
-                    <span className="text-green-400 mt-0.5 flex-shrink-0">▸</span>
-                    {t}
-                  </div>
-                ))}
-              </div>
-
-              {/* ── O que o ZapScript NÃO FAZ ── */}
-              <div className="bg-red-400/5 border border-red-400/20 rounded-xl p-4 space-y-2.5">
-                <p className="text-xs font-bold text-red-400 flex items-center gap-1.5">
-                  <span>🚫</span> O que o ZapScript <strong>NÃO</strong> faz:
-                </p>
-                {[
-                  'Não lê suas mensagens de texto — só processa áudios',
-                  'Nenhum humano vê suas conversas — é tudo automatizado',
-                  'Não envia mensagens nem notifica seus contatos',
-                  'Não acessa sua lista de contatos nem grupos',
-                ].map((t, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[11px] text-brand-text-secondary leading-relaxed">
-                    <span className="text-red-400 mt-0.5 flex-shrink-0">✕</span>
-                    {t}
-                  </div>
-                ))}
-              </div>
-
-              {/* ── Selos de segurança ── */}
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { icon: '🔒', title: 'Criptografado', sub: 'AES-256' },
-                  { icon: '🇧🇷', title: 'Servidores', sub: 'No Brasil (LGPD)' },
-                  { icon: '🗑️', title: 'Áudio', sub: 'Descartado após uso' },
-                ].map(s => (
-                  <div key={s.title} className="text-center bg-brand-elevated rounded-xl py-2.5 px-1">
-                    <div className="text-lg">{s.icon}</div>
-                    <div className="text-[10px] font-semibold text-brand-text mt-1">{s.title}</div>
-                    <div className="text-[9px] text-brand-muted">{s.sub}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* ── Depoimento social proof ── */}
-              <div className="text-center bg-brand-elevated rounded-xl px-3 py-2.5">
-                <p className="text-[11px] text-brand-text-secondary italic leading-relaxed">
-                  &ldquo;Funciona igual WhatsApp Web — seu celular nem precisa estar ligado. E se quiser, desconecta em 1 clique.&rdquo;
-                </p>
-              </div>
-
               {/* ── CTA principal ── */}
               <button
                 onClick={startConnection}
                 className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-sm font-semibold"
               >
-                📱 Entendi — quero conectar meu WhatsApp
+                📱 Continuar
               </button>
+
+              {/* ── Toggle: Informações Adicionais de Segurança ── */}
+              <button
+                type="button"
+                onClick={() => setShowSecurityInfo(v => !v)}
+                className="w-full flex items-center justify-center gap-1.5 text-[11px] text-brand-muted hover:text-brand-text transition-colors font-medium"
+              >
+                Informações Adicionais de Segurança
+                <svg
+                  width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                  className={`transition-transform ${showSecurityInfo ? 'rotate-180' : ''}`}
+                >
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+
+              {showSecurityInfo && (
+                <div className="space-y-4">
+                  {/* ── O que o ZapScript FAZ ── */}
+                  <div className="bg-green-400/5 border border-green-400/20 rounded-xl p-4 space-y-2.5">
+                    <p className="text-xs font-bold text-green-400 flex items-center gap-1.5">
+                      <span>✅</span> O que o ZapScript vai fazer:
+                    </p>
+                    {[
+                      'Ouvir apenas áudios que você recebe e convertê-los em texto',
+                      'Entregar a transcrição e o resumo no seu próprio WhatsApp',
+                      'Funcionar 24h por dia — você nem precisa abrir o app',
+                    ].map((t, i) => (
+                      <div key={i} className="flex items-start gap-2 text-[11px] text-brand-text-secondary leading-relaxed">
+                        <span className="text-green-400 mt-0.5 flex-shrink-0">▸</span>
+                        {t}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── O que o ZapScript NÃO FAZ ── */}
+                  <div className="bg-red-400/5 border border-red-400/20 rounded-xl p-4 space-y-2.5">
+                    <p className="text-xs font-bold text-red-400 flex items-center gap-1.5">
+                      <span>🚫</span> O que o ZapScript <strong>NÃO</strong> faz:
+                    </p>
+                    {[
+                      'Não lê suas mensagens de texto — só processa áudios',
+                      'Nenhum humano vê suas conversas — é tudo automatizado',
+                      'Não envia mensagens nem notifica seus contatos',
+                      'Não acessa sua lista de contatos nem grupos',
+                    ].map((t, i) => (
+                      <div key={i} className="flex items-start gap-2 text-[11px] text-brand-text-secondary leading-relaxed">
+                        <span className="text-red-400 mt-0.5 flex-shrink-0">✕</span>
+                        {t}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── Selos de segurança ── */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { icon: '🔒', title: 'Criptografado', sub: 'AES-256' },
+                      { icon: '🇧🇷', title: 'Servidores', sub: 'No Brasil (LGPD)' },
+                      { icon: '🗑️', title: 'Áudio', sub: 'Descartado após uso' },
+                    ].map(s => (
+                      <div key={s.title} className="text-center bg-brand-elevated rounded-xl py-2.5 px-1">
+                        <div className="text-lg">{s.icon}</div>
+                        <div className="text-[10px] font-semibold text-brand-text mt-1">{s.title}</div>
+                        <div className="text-[9px] text-brand-muted">{s.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── Depoimento social proof ── */}
+                  <div className="text-center bg-brand-elevated rounded-xl px-3 py-2.5">
+                    <p className="text-[11px] text-brand-text-secondary italic leading-relaxed">
+                      &ldquo;Funciona igual WhatsApp Web — seu celular nem precisa estar ligado. E se quiser, desconecta em 1 clique.&rdquo;
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* ── Link sutil para política ── */}
               <p className="text-center text-[10px] text-brand-muted">

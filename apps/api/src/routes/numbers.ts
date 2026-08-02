@@ -36,7 +36,9 @@ export default async function numberRoutes(app: FastifyInstance) {
   // ── GET /numbers ──────────────────────────────────────────────────────────
   app.get('/', auth, async (req: any) => {
     return prisma.whatsappNumber.findMany({
-      where:   { userId: req.user.sub },
+      // isPublic = número de demo pública do ZapScript (não é dispositivo do usuário,
+      // mesmo que pertença ao admin por exigência de FK) — nunca listar no painel.
+      where:   { userId: req.user.sub, isPublic: false } as any,
       orderBy: { createdAt: 'desc' },
       select: {
         id:           true,
@@ -62,7 +64,8 @@ export default async function numberRoutes(app: FastifyInstance) {
 
     // Admin não tem limite de números
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    const count = await prisma.whatsappNumber.count({ where: { userId } });
+    // isPublic = número de demo pública (não é dispositivo do usuário) — não conta na cota do plano.
+    const count = await prisma.whatsappNumber.count({ where: { userId, isPublic: false } as any });
 
     if (!user?.isAdmin) {
       const sub = await prisma.subscription.findUnique({ where: { userId }, include: { plan: true } });

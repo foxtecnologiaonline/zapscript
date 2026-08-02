@@ -422,10 +422,9 @@ export default function CheckoutInline({
   const [error,         setError]         = useState('');
   const [pixData,       setPixData]       = useState<PixData | null>(null);
   const [hasApplePay,   setHasApplePay]   = useState(false);
-  // Quem nunca pagou nada (1ª conversão) começa no ciclo mensal — menor fricção,
-  // menor compromisso. Quem já é assinante migrando de plano já confia na marca
-  // e começa direto no anual, que é o ciclo de maior ticket.
-  const [billingCycle,  setBillingCycle]  = useState<'monthly' | 'yearly'>(isUpgrade ? 'yearly' : 'monthly');
+  // A compra anual (mais econômica) é sempre a opção padrão em destaque —
+  // o mensal (aluguel) fica disponível como alternativa, não como default.
+  const [billingCycle,  setBillingCycle]  = useState<'monthly' | 'yearly'>('yearly');
 
   const isYearly     = billingCycle === 'yearly';
   const paidPlanName = isPaidPlanName(planName) ? planName : undefined;
@@ -727,7 +726,7 @@ export default function CheckoutInline({
               onSubmit={handleCardSubmit}
               loading={loading}
               error={error}
-              submitLabel={`${isUpgrade ? 'Confirmar troca' : 'Assinar'} — ${displayPrice}/${isYearly ? 'ano' : 'mês'}`}
+              submitLabel={`${isUpgrade ? 'Confirmar troca' : 'Ativar'} — ${displayPrice}/${isYearly ? 'ano' : 'mês'}`}
             />
           )}
 
