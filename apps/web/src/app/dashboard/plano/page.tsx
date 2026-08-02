@@ -153,20 +153,15 @@ const PLANS = [
 const VISIBLE_PAID_PLAN_NAMES = ['profissional', 'empresas'] as const;
 
 type CmpVal = string | boolean;
-// Comparativo real Core × Profissional (o Pro legado saiu de linha — ver VISIBLE_PAID_PLAN_NAMES).
+// Comparativo resumido — Core × Profissional × Empresas (o Pro legado saiu
+// de linha, ver VISIBLE_PAID_PLAN_NAMES). Linhas agrupadas por bloco de
+// funcionalidade em vez de 1 linha por recurso, pra caber numa leitura rápida.
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Áudios/mês',                              vals: ['100', 'Ilimitado'] },
-  { feature: '🎙️ Conversão automática',                vals: [true, true] },
-  { feature: '✨ Resumo com IA',                         vals: [true, true] },
-  { feature: '🔒 Modo Privado',                          vals: [true, true] },
-  { feature: '📋 Histórico de conversões',               vals: [true, true] },
-  { feature: '📅 Filtros por data e contato',            vals: [true, true] },
-  { feature: '🔍 Busca por conversão',                   vals: [true, true] },
-  { feature: '🤖 Atendimento automático 24/7 por IA',    vals: [false, true] },
-  { feature: '📥 Fila de conversas + assumir manualmente', vals: [false, true] },
-  { feature: '📊 Métricas de atendimento e efetividade',  vals: [false, true] },
-  { feature: '📨 Avisos automáticos ao cliente',          vals: [false, true] },
-  { feature: '📚 Base de conhecimento própria',           vals: [false, true] },
+  { feature: 'Áudios/mês',                                                                          vals: ['100', 'Ilimitado', 'Ilimitado'] },
+  { feature: '🎙️ Recursos essenciais (conversão, resumo com IA, Modo Privado, histórico e busca)', vals: [true, true, true] },
+  { feature: '🤖 Atendimento automático por IA (24/7, fila, métricas, avisos, base de conhecimento)', vals: [false, true, true] },
+  { feature: '📊 CRM + Tarefas em equipe',                                                          vals: [false, false, true] },
+  { feature: '👥 Usuários incluídos',                                                                vals: ['1', '1', 'até 5'] },
 ];
 
 // Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento
@@ -1150,7 +1145,7 @@ function PlanoContent() {
                 color: '#030d06',
                 boxShadow: 'rgba(var(--color-primary)/.35) 0 6px 20px',
               }}>
-              {previewLoading ? 'Calculando...' : `Assinar Profissional por ${PLAN_PRICING.profissional.annual}/ano →`}
+              {previewLoading ? 'Calculando...' : `Ativar Profissional por ${PLAN_PRICING.profissional.annual}/ano →`}
             </button>
 
             <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.6)' }}>
@@ -1210,7 +1205,7 @@ function PlanoContent() {
                   disabled={previewLoading}
                   className="w-full py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
                   style={{ border: '1.5px solid rgb(var(--color-primary))', color: 'rgb(var(--color-primary))', background: 'transparent' }}>
-                  {currentPlan === 'free' ? `Assinar ${tier.label} →` : `Migrar para ${tier.label} →`}
+                  {currentPlan === 'free' ? `Ativar ${tier.label} →` : `Migrar para ${tier.label} →`}
                 </button>
               </div>
             );
@@ -1225,30 +1220,31 @@ function PlanoContent() {
             onClick={() => setShowTable(v => !v)}
             className="w-full mt-4 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2"
             style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))', background: 'transparent' }}>
-            {showTable ? 'Ocultar comparativo ↑' : 'Ver comparativo completo ↓'}
+            {showTable ? 'Ocultar comparativo ↑' : 'Ver comparativo resumido ↓'}
           </button>
 
           {showTable && (
-            <div className="mt-3 rounded-2xl overflow-hidden" style={{ border: '1px solid rgb(var(--color-border))' }}>
+            <div className="mt-3 rounded-2xl overflow-hidden overflow-x-auto" style={{ border: '1px solid rgb(var(--color-border))' }}>
               <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'rgb(var(--color-surface-elevated))' }}>
                     <th className="text-left px-4 py-2.5 font-semibold" style={{ color: 'rgb(var(--color-text-muted))' }}>Recurso</th>
-                    <th className="px-3 py-2.5 font-bold text-center w-20" style={{ color: 'rgb(var(--color-text-muted))' }}>Core</th>
-                    <th className="px-3 py-2.5 font-bold text-center w-20" style={{ color: 'rgb(var(--color-primary))' }}>Profissional</th>
+                    <th className="px-2 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-text-muted))' }}>Core</th>
+                    <th className="px-2 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-primary))' }}>Profissional</th>
+                    <th className="px-2 py-2.5 font-bold text-center w-16" style={{ color: 'rgb(var(--color-primary))' }}>Empresas</th>
                   </tr>
                 </thead>
                 <tbody>
                   {TABLE_ROWS.map((row, ri) => (
                     <tr key={ri} style={{ borderTop: '1px solid rgb(var(--color-border-light))' }}>
                       <td className="px-4 py-2.5 font-medium" style={{ color: 'rgb(var(--color-text-secondary))' }}>{row.feature}</td>
-                      {row.vals.slice(0, 2).map((v, vi) => (
-                        <td key={vi} className="px-3 py-2.5 text-center">
+                      {row.vals.map((v, vi) => (
+                        <td key={vi} className="px-2 py-2.5 text-center">
                           {typeof v === 'boolean' ? (
                             v ? <span style={{ color: 'rgb(var(--color-primary))' }}>✓</span>
                               : <span style={{ color: 'rgb(var(--color-text-muted))', opacity: .4 }}>✗</span>
                           ) : (
-                            <span className="font-mono font-bold" style={{ color: vi === 1 ? 'rgb(var(--color-primary))' : 'rgb(var(--color-text))' }}>{v}</span>
+                            <span className="font-mono font-bold" style={{ color: vi >= 1 ? 'rgb(var(--color-primary))' : 'rgb(var(--color-text))' }}>{v}</span>
                           )}
                         </td>
                       ))}
@@ -1556,7 +1552,7 @@ function PlanoContent() {
               >
                 <div className="mb-5">
                   <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
-                    {currentPlan !== 'free' ? `Migrar para ${plan.label}` : `Assinar plano ${plan.label}`}
+                    {currentPlan !== 'free' ? `Migrar para ${plan.label}` : `Ativar plano ${plan.label}`}
                   </h3>
                   <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
                     {junePromo && checkoutPlan === 'pro'

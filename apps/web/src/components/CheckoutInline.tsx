@@ -726,7 +726,7 @@ export default function CheckoutInline({
               onSubmit={handleCardSubmit}
               loading={loading}
               error={error}
-              submitLabel={`${isUpgrade ? 'Confirmar troca' : 'Assinar'} — ${displayPrice}/${isYearly ? 'ano' : 'mês'}`}
+              submitLabel={`${isUpgrade ? 'Confirmar troca' : 'Ativar'} — ${displayPrice}/${isYearly ? 'ano' : 'mês'}`}
             />
           )}
 
