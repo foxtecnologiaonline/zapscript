@@ -16,13 +16,23 @@ const NAV_BASE = [
   { href: '/dashboard/configuracoes', icon: '⚙️', label: 'Configurações' },
 ];
 
-/** Monta o menu inserindo "Afiliados" antes de "Configurações" apenas para afiliados aprovados. */
+/** Monta o menu inserindo "Afiliados" antes de "Configurações" apenas para afiliados aprovados,
+ *  e "Equipe" apenas para quem assina o Plano Empresas. */
 function buildNav(user: any) {
-  if (user?.affiliate?.status !== 'approved') return NAV_BASE;
   const nav = [...NAV_BASE];
-  const idx = nav.findIndex(i => i.href === '/dashboard/configuracoes');
-  const afiliadoItem = { href: '/dashboard/afiliado', icon: '🤝', label: 'Afiliados' };
-  nav.splice(idx < 0 ? nav.length : idx, 0, afiliadoItem);
+
+  if (user?.subscription?.plan?.name === 'empresas') {
+    const idx = nav.findIndex(i => i.href === '/dashboard/configuracoes');
+    const equipeItem = { href: '/dashboard/empresarial', icon: '🏢', label: 'Equipe' };
+    nav.splice(idx < 0 ? nav.length : idx, 0, equipeItem);
+  }
+
+  if (user?.affiliate?.status === 'approved') {
+    const idx = nav.findIndex(i => i.href === '/dashboard/configuracoes');
+    const afiliadoItem = { href: '/dashboard/afiliado', icon: '🤝', label: 'Afiliados' };
+    nav.splice(idx < 0 ? nav.length : idx, 0, afiliadoItem);
+  }
+
   return nav;
 }
 
