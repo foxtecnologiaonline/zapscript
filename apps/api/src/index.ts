@@ -20,6 +20,7 @@ import { startHeartbeat }         from './services/evolution-heartbeat';
 import { startHealthMonitor }     from './services/health-monitor';
 import { startLifecycleEmails }   from './services/lifecycle-emails';
 import { startLifecycleWhatsapp } from './services/lifecycle-whatsapp';
+import { startOnboardingNudge } from './services/onboarding-nudge';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -909,6 +910,24 @@ async function runAutoMigrations() {
         RAISE NOTICE '[Seed] Numero oficial ZapScript (34 98843-4133) criado como isPublic=true';
       END IF;
     END $$`,
+    // ── Onboarding conversacional via WhatsApp (migração 20260802_whatsapp_onboarding_lead) ──
+    `CREATE TABLE IF NOT EXISTS "WhatsappOnboardingLead" (
+      "id"        TEXT NOT NULL,
+      "phone"     TEXT NOT NULL,
+      "stage"     TEXT NOT NULL DEFAULT 'started',
+      "name"      TEXT,
+      "pushName"  TEXT,
+      "email"     TEXT,
+      "attempts"  INTEGER NOT NULL DEFAULT 0,
+      "userId"    TEXT,
+      "numberId"  TEXT,
+      "source"    TEXT NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "WhatsappOnboardingLead_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "WhatsappOnboardingLead_phone_key" ON "WhatsappOnboardingLead"("phone")`,
+    `CREATE INDEX IF NOT EXISTS "WhatsappOnboardingLead_stage_idx" ON "WhatsappOnboardingLead"("stage")`,
   ];
   for (const sql of migrations) {
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
@@ -1041,6 +1060,10 @@ async function start() {
     // ── Onboarding automático via WhatsApp — nudge de 1º áudio, comemoração
     //    da 1ª transcrição e dica de funcionalidade, a cada 6h ──
     startLifecycleWhatsapp(app.log);
+
+    // ── Onboarding conversacional via WhatsApp (cadastro/site/número oficial)
+    //    parado — lembrete único em 30-60min, depois escala, a cada 15min ──
+    startOnboardingNudge(app.log);
 
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 

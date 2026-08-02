@@ -13,7 +13,10 @@ export const registerSchema = z.object({
   email:        z.string().email('E-mail inválido'),
   password:     z.string().min(8, 'Senha deve ter pelo menos 8 caracteres').max(128), // M1: min 6→8 (OWASP)
   name:         z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100).optional(),
-  phone:        z.string().max(20).optional(),
+  phone:        z.string().max(20).refine(
+                  (v) => /^\d{10,11}$/.test(v.replace(/\D/g, '').replace(/^55/, '')),
+                  'Telefone inválido — informe DDD + número (10 ou 11 dígitos)',
+                ),
   inviteCode:    z.string().max(100).optional(),
   referralCode:  z.string().max(100).optional(),
   affiliateCode: z.string().max(100).optional(),

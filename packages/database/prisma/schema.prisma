@@ -159,6 +159,32 @@ model WhatsappNumber {
   @@index([zapiInstanceId]) // A2: busca de instância em webhook (hot path)
 }
 
+// Onboarding conversacional via WhatsApp — cobre dois pontos de entrada:
+// (1) usuário que já se cadastrou no site (source='site', nasce em 'code_sent',
+//     em paralelo com o pairing code exibido no painel) e (2) estranho que manda
+//     mensagem direto pro número oficial do ZapScript sem nunca ter passado pelo
+//     site (source='oficial', nasce em 'started', conduz cadastro completo por
+//     texto). Uma única tabela porque é a mesma conversa/estado independente de
+//     onde começou — evita duplicar lógica de stage em dois lugares.
+model WhatsappOnboardingLead {
+  id          String   @id @default(cuid())
+  phone       String   @unique // dígitos limpos, com 55
+  stage       String   @default("started")
+  // started → awaiting_consent → awaiting_email → confirm_number → code_sent → completed
+  // (qualquer estágio) → escalated — 2 respostas não reconhecidas em sequência
+  name        String?
+  pushName    String? // nome do WhatsApp (pushName), usado como sugestão de nome
+  email       String?
+  attempts    Int      @default(0)
+  userId      String? // preenchido quando a conta é criada
+  numberId    String? // WhatsappNumber provisionado
+  source      String // 'site' | 'oficial'
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([stage])
+}
+
 model Transcription {
   id              String          @id @default(cuid())
   userId          String

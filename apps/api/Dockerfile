@@ -47,7 +47,7 @@ COPY apps/api/package.json          ./apps/api/
 COPY apps/api/package-lock.json     ./apps/api/
 RUN cd apps/api && npm ci --omit=dev
 
-# Áudio de boas-vindas (enviado via WhatsApp em notifyWelcome/notifySignupWelcome)
+# Áudio de boas-vindas (enviado via WhatsApp em notifyWelcome)
 COPY apps/api/private ./apps/api/private
 
 # Artefatos do build stage
