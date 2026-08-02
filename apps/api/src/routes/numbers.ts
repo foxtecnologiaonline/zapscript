@@ -36,7 +36,9 @@ export default async function numberRoutes(app: FastifyInstance) {
   // ── GET /numbers ──────────────────────────────────────────────────────────
   app.get('/', auth, async (req: any) => {
     return prisma.whatsappNumber.findMany({
-      where:   { userId: req.user.sub },
+      // isPublic = número de demo pública do ZapScript (não é dispositivo do usuário,
+      // mesmo que pertença ao admin por exigência de FK) — nunca listar no painel.
+      where:   { userId: req.user.sub, isPublic: false } as any,
       orderBy: { createdAt: 'desc' },
       select: {
         id:           true,
