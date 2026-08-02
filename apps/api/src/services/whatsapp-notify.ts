@@ -20,6 +20,23 @@ export async function sendToOwnNumber(instanceName: string, phone: string, messa
   await sendText(instanceName, clean, message);
 }
 
+// ── 0. Boas-vindas ao cadastrar — pelo número de SUPORTE ──────────────────
+// Diferente do #1 abaixo: dispara no cadastro (auth.ts), antes de o usuário
+// ter conectado qualquer número próprio, então usa a instância de suporte
+// (SUPPORT_EVOLUTION_INSTANCE) para alcançar o telefone informado no cadastro.
+export async function notifySignupWelcome(phone: string | null | undefined): Promise<void> {
+  try {
+    const instance = process.env.SUPPORT_EVOLUTION_INSTANCE;
+    if (!instance || !phone) return;
+    const clean = phone.replace(/\D/g, '');
+    if (!clean || clean.length < 10) return;
+
+    const audioPath = join(process.cwd(), 'private/welcome.mp3');
+    const audioBase64 = readFileSync(audioPath).toString('base64');
+    await sendPtt(instance, clean, audioBase64);
+  } catch { /* não crítico */ }
+}
+
 // ── 1. Boas-vindas ao adicionar número ────────────────────────────────────
 export async function notifyWelcome(numberId: string): Promise<void> {
   try {

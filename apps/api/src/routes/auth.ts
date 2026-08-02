@@ -5,6 +5,7 @@ import { sendEmail } from '../lib/mailer';
 import { logger } from '../lib/logger';
 import { validateRequest, registerSchema, loginSchema } from '../lib/validation';
 import { encryptStr, decryptStr, documentHash as computeDocHash } from '../services/encryption';
+import { notifySignupWelcome } from '../services/whatsapp-notify';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -351,6 +352,9 @@ export default async function authRoutes(app: FastifyInstance) {
         // Não falhar o cadastro se o envio de e-mail falhar — o usuário já está logado
         logger.error(`[Auth] Erro ao enviar e-mail de verificação: ${err.message}`);
       }
+
+      // Áudio de boas-vindas pelo WhatsApp de suporte (best-effort, não bloqueia o cadastro)
+      notifySignupWelcome(phone).catch(() => {});
 
       // Auto-login (Opção A): emitir JWT na hora para o usuário ir direto ao dashboard
       const token = app.jwt.sign({ sub: data.user!.id, email }, { expiresIn: '30d' });
