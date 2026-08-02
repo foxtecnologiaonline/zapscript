@@ -44,14 +44,13 @@ npm install -g pnpm
 | Serviço      | Para quê                              | URL                                |
 |--------------|---------------------------------------|------------------------------------|
 | Supabase     | Banco PostgreSQL                      | https://supabase.com               |
-| Upstash      | Redis (filas BullMQ)                  | https://upstash.com                |
 | OpenAI       | Whisper API (transcrição)             | https://platform.openai.com        |
 | Groq         | Whisper turbo (primário, mais rápido) | https://console.groq.com           |
 | Anthropic    | Claude API (resumos)                  | https://console.anthropic.com      |
 | Asaas        | Pagamentos (PIX + cartão)             | https://asaas.com                  |
 | Evolution API| WhatsApp self-hosted                  | https://github.com/EvolutionAPI    |
 | Resend       | E-mail transacional                   | https://resend.com                 |
-| Vultr        | Hospedagem API + Worker (Docker, self-hosted) | https://vultr.com          |
+| Vultr        | Servidor único: API + Worker + Redis + Evolution (Docker) | https://vultr.com     |
 | Vercel       | Hospedagem Frontend                   | https://vercel.com                 |
 
 ---
@@ -115,15 +114,18 @@ Acessar:
 
 ### Vultr (API + Worker, Docker self-hosted)
 
-O deploy é em dois passos, sem plataforma de PaaS:
+O deploy é **sempre manual** — nada acontece sozinho quando o código chega em
+`master`:
 
-1. **Build & push das imagens** — automático a cada push em `master` que toque
-   `apps/api`, `apps/worker` ou `packages/database`, via o workflow
-   `.github/workflows/build-and-push.yml` (publica em `ghcr.io`).
-2. **Deploy no servidor** — manual, via `workflow_dispatch` do
-   `.github/workflows/ops.yml` com `action: deploy` (faz SSH no Vultr e roda
-   `docker compose pull && docker compose up -d`). Guia completo em
-   [`MIGRACAO_VULTR.md`](./MIGRACAO_VULTR.md).
+- Aba **Actions → "Ops — Vultr / Migração" → Run workflow → `action: deploy`**
+  (`.github/workflows/ops.yml`). O workflow faz SSH no servidor, clona o
+  `master` mais recente e builda as imagens da API e do Worker **direto no
+  próprio servidor** (não usa imagens do `ghcr.io`), troca `:latest` sem
+  downtime (API primeiro, espera healthcheck, depois Worker) e mantém a
+  imagem anterior como `:previous` para rollback.
+- Para reverter: mesma aba, `action: rollback`.
+- Guia de referência (histórico da migração Render→Vultr, ainda útil para
+  entender o servidor): [`MIGRACAO_VULTR.md`](./MIGRACAO_VULTR.md).
 
 ```bash
 # Rodar migrations em produção (a partir de qualquer máquina com acesso ao DB):
@@ -151,7 +153,7 @@ sem passo manual.
 | Frontend     | Next.js 14, Tailwind CSS           |
 | API          | Fastify, TypeScript                |
 | WebSocket    | Socket.io + Redis adapter          |
-| Worker/Filas | BullMQ + Redis (Upstash)           |
+| Worker/Filas | BullMQ + Redis (container local no Vultr) |
 | WhatsApp     | Evolution API (instâncias dedicadas)|
 | Transcrição  | Groq whisper-large-v3-turbo (primary) + OpenAI whisper-1 (fallback) |
 | Resumos      | Anthropic Claude Haiku (primary) + GPT-4o-mini (fallback) |
