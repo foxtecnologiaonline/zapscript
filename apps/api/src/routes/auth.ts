@@ -484,7 +484,7 @@ export default async function authRoutes(app: FastifyInstance) {
             },
           });
 
-          // MinuteBalance com cota Free (15 áudios/mês) e benefício de indicação
+          // MinuteBalance com cota Free (100 áudios/mês) e benefício de indicação
           const cycleResetAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
           await tx.minuteBalance.create({
             data: {
@@ -533,7 +533,7 @@ export default async function authRoutes(app: FastifyInstance) {
                 </a>
               </div>
               <p style="color:#4a7060;font-size:12px;text-align:center;margin:16px 0 0;line-height:1.6">
-                Você tem <strong>15 áudios grátis</strong> + <strong>7 dias de Pro</strong> para testar (sem cartão).
+                Você tem <strong>100 áudios grátis por mês</strong> para começar (sem cartão).
               </p>
             `, 'Se você não criou esta conta, pode ignorar este e-mail com segurança.'),
           ).catch(() => {});

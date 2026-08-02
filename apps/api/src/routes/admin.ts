@@ -22,7 +22,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!,
 );
 
-const PLAN_PRICES: Record<string, number> = { pro: 37, executive: 67, free: 0, 'pro-tester': 0 };
+const PLAN_PRICES: Record<string, number> = { pro: 37, executive: 67, free: 0, 'pro-tester': 0, profissional: 49, empresas: 99 };
 
 function safeCompare(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;

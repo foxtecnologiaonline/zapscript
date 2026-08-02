@@ -19,11 +19,11 @@ const PLANS: PlanCard[] = [
   {
     kind: 'free',
     name: 'core', label: 'Core', price: 'R$0', per: '/mês',
-    desc: 'Completo e grátis',
+    desc: 'Grátis e completo: converte, resume e protege',
     feats: [
       `Até ${CORE_AUDIO_QUOTA} áudios/mês`,
       '1 número WhatsApp',
-      '🎙️ Transcrição automática',
+      '🎙️ Converte áudio em texto',
       '✨ Resumo com IA',
       '🔒 Modo Privado (opcional)',
       '📋 Histórico, filtros e busca',

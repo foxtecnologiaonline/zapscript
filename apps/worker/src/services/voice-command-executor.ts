@@ -161,7 +161,7 @@ async function executeStatsQuery(userId: string): Promise<ExecutionResult> {
   const quota = audioQuotaFor(plan);
   const used  = bal?.audiosUsed ?? 0;
   const restam = Math.max(quota - used, 0);
-  const planLabel = plan === 'pro' ? 'Pro' : 'Grátis';
+  const planLabel = plan === 'pro' ? 'Pro' : 'Core';
 
   return {
     status: 'executed',

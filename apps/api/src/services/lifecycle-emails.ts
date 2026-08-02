@@ -294,7 +294,7 @@ async function runWinBack(log: any) {
 /* ── Free engajado mas longe do limite (D+7 a D+14) → mostrar o teto do Free ──
    Usuário que já provou valor (tem conversões) mas usa pouco, então o gatilho
    de "≥80% dos áudios" nunca dispara. Reforça que o hábito vai esbarrar nos
-   15 áudios do Free e convida ao Pro. Janela de cadastro evita disparo em massa na
+   teto do Free e convida ao Pro. Janela de cadastro evita disparo em massa na
    base antiga; tag única (one-shot) garante idempotência. ────────── */
 async function runUpgradeActiveFree(log: any) {
   const from = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
@@ -330,7 +330,7 @@ async function runUpgradeActiveFree(log: any) {
         u.email,
         `${firstName}, você já pegou o jeito do ZapScript`,
         wrapper(firstName, `Virou hábito, ${firstName} 👏`, `
-          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já está convertendo seus áudios pelo ZapScript — ótimo sinal de que virou parte da rotina. O plano Free dá conta do começo, mas são só <strong>15 áudios por mês</strong>: num dia mais corrido de áudios, eles acabam rápido.</p>
+          <p style="color:#a7f3d0;line-height:1.7;margin:0 0 20px">Você já está convertendo seus áudios pelo ZapScript — ótimo sinal de que virou parte da rotina. O plano Free dá conta do começo, mas são só <strong>${total || 100} áudios por mês</strong>: num dia mais corrido de áudios, eles acabam rápido.</p>
           <p style="color:#a7f3d0;line-height:1.7;margin:0 0 8px">No Pro são áudios ilimitados, 2 números e resumo com IA — ${proPriceLine()}. Assim seu robô nunca para no meio do mês.</p>
           ${btn(`${APP_URL}/dashboard/plano`, 'Conhecer o Pro →')}
         `),

@@ -1,11 +1,12 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
+import { PLAN_PRICING, PaidPlanName, isPaidPlanName, annualMonthlyEquivalent, annualFreeMonthsLabel } from '@/lib/planPricing';
 
 /* ─────────────────────────────────────────────────────────
    CheckoutInline — Checkout Transparente Asaas
-   Métodos: PIX · PIX Automático · Crédito · Débito ·
-            Google Pay · Apple Pay · PayPal (em breve)
+   Métodos ativos: PIX · Crédito · Débito · Google Pay · Apple Pay
+   (PIX Automático e PayPal desligados por enquanto — ver METHODS)
    ───────────────────────────────────────────────────────── */
 
 interface Props {
@@ -19,15 +20,6 @@ interface Props {
   onSuccess:  (planName: string) => void;
   onCancel:   () => void;
 }
-
-/* ── Preços anuais (20% off — 12× com desconto) ── */
-const CHECKOUT_YEARLY: Record<string, { annual: string; monthlyEq: string; annualNum: number }> = {
-  pro:          { annual: 'R$355',   monthlyEq: 'R$29/mês',  annualNum: 355 },
-  executive:    { annual: 'R$643',   monthlyEq: 'R$53/mês',  annualNum: 643 },
-  // ZapScript 2.0 — tiers (sistemática inicial de preços, 2026-07-29)
-  profissional: { annual: 'R$295', monthlyEq: 'R$49/mês', annualNum: 295 },
-  empresas:     { annual: 'R$595', monthlyEq: 'R$99/mês', annualNum: 595 },
-};
 
 type Method = 'pix' | 'pix_auto' | 'credit_card' | 'debit_card' | 'google_pay' | 'apple_pay' | 'paypal';
 
@@ -81,15 +73,23 @@ type MethodDef = {
   sub:          string;
   comingSoon?:  boolean;
 };
-const METHODS: MethodDef[] = [
+// Ligue/desligue métodos aqui — mantém o método definido, só tira da tela.
+const PIX_AUTO_ENABLED = false; // fora do checkout por enquanto
+const PAYPAL_ENABLED   = false; // ainda não integrado, sem motivo pra ocupar espaço
+
+const ALL_METHODS: MethodDef[] = [
   { id: 'pix',         label: 'PIX',         Icon: '⚡',        sub: 'QR code por ciclo mensal' },
-  { id: 'pix_auto',   label: 'PIX Auto',     Icon: '🔄',        sub: 'Débito automático via PIX' },
+  { id: 'pix_auto',    label: 'PIX Auto',    Icon: '🔄',        sub: 'Débito automático via PIX' },
   { id: 'credit_card', label: 'Crédito',     Icon: '💳',        sub: 'Cobrança mensal automática' },
   { id: 'debit_card',  label: 'Débito',      Icon: '🏦',        sub: 'Débito no cartão' },
   { id: 'google_pay',  label: 'Google Pay',  Icon: GooglePaySvg, sub: 'Pague com Google Pay' },
   { id: 'apple_pay',   label: 'Apple Pay',   Icon: ApplePaySvg,  sub: 'Pague com Apple Pay' },
   { id: 'paypal',      label: 'PayPal',      Icon: PayPalSvg,    sub: 'Em breve', comingSoon: true },
 ];
+const METHODS: MethodDef[] = ALL_METHODS.filter(m =>
+  (m.id !== 'pix_auto' || PIX_AUTO_ENABLED) &&
+  (m.id !== 'paypal'   || PAYPAL_ENABLED),
+);
 
 /* ── Formatação ── */
 function formatCardNumber(v: string) { return v.replace(/\D/g,'').slice(0,16).replace(/(.{4})/g,'$1 ').trim(); }
@@ -282,14 +282,16 @@ function PixDisplay({ data, onPaid, onExpire, loading }: { data: PixData; onPaid
 }
 
 /* ── Área de geração PIX (antes do QR) ── */
-function PixGenerateArea({ method, hasApplePay, loading, error, onGenerate, planPrice, isUpgrade }: {
-  method:      Method;
-  hasApplePay: boolean;
-  loading:     boolean;
-  error:       string;
-  onGenerate:  () => void;
-  planPrice:   string;
-  isUpgrade:   boolean;
+function PixGenerateArea({ method, hasApplePay, loading, error, onGenerate, planPrice, displayPrice, isYearly, isUpgrade }: {
+  method:       Method;
+  hasApplePay:  boolean;
+  loading:      boolean;
+  error:        string;
+  onGenerate:   () => void;
+  planPrice:    string;
+  displayPrice: string;
+  isYearly:     boolean;
+  isUpgrade:    boolean;
 }) {
   if (method === 'apple_pay' && !hasApplePay) {
     return (
@@ -313,7 +315,7 @@ function PixGenerateArea({ method, hasApplePay, loading, error, onGenerate, plan
   };
 
   const btnLabels: Partial<Record<Method, string>> = {
-    pix:        `⚡ Gerar QR Code PIX — ${planPrice}`,
+    pix:        `⚡ Gerar QR Code PIX — ${displayPrice}${isYearly ? '/ano' : ''}`,
     pix_auto:   `🔄 Ativar PIX Automático — ${planPrice}/mês`,
     google_pay: '⚡ Gerar QR Code PIX',
     apple_pay:  '⚡ Gerar QR Code PIX',
@@ -420,11 +422,20 @@ export default function CheckoutInline({
   const [error,         setError]         = useState('');
   const [pixData,       setPixData]       = useState<PixData | null>(null);
   const [hasApplePay,   setHasApplePay]   = useState(false);
-  const [billingCycle,  setBillingCycle]  = useState<'monthly' | 'yearly'>('yearly');
+  // Quem nunca pagou nada (1ª conversão) começa no ciclo mensal — menor fricção,
+  // menor compromisso. Quem já é assinante migrando de plano já confia na marca
+  // e começa direto no anual, que é o ciclo de maior ticket.
+  const [billingCycle,  setBillingCycle]  = useState<'monthly' | 'yearly'>(isUpgrade ? 'yearly' : 'monthly');
 
-  const isYearly    = billingCycle === 'yearly';
-  const yearlyInfo  = CHECKOUT_YEARLY[planName];
-  const displayPrice = isYearly ? yearlyInfo?.annual ?? planPrice : planPrice;
+  const isYearly     = billingCycle === 'yearly';
+  const paidPlanName = isPaidPlanName(planName) ? planName : undefined;
+  const planPricing  = paidPlanName ? PLAN_PRICING[paidPlanName] : undefined;
+  const displayPrice = isYearly ? planPricing?.annual ?? planPrice : planPrice;
+  // Derivados sempre do preço anual real — nunca reaproveita o preço do
+  // aluguel mensal por engano (Profissional/Empresas já mostraram "2 meses
+  // grátis" quando na real o desconto anual deles equivale a ~6 meses).
+  const annualMonthlyEq  = paidPlanName ? annualMonthlyEquivalent(paidPlanName) : null;
+  const annualFreeMonths = paidPlanName ? annualFreeMonthsLabel(paidPlanName)   : null;
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'ApplePaySession' in window) {
@@ -601,9 +612,9 @@ export default function CheckoutInline({
               {isYearly ? '/ano' : '/mês'}
             </span>
           </div>
-          {isYearly && yearlyInfo && (
+          {isYearly && annualMonthlyEq && (
             <div style={{ fontSize: 9, color: 'rgb(var(--color-primary))', fontWeight: 700 }}>
-              {yearlyInfo.monthlyEq} · 🤑 2 meses grátis
+              {annualMonthlyEq} · 🤑 {annualFreeMonths}
             </div>
           )}
         </div>
@@ -637,17 +648,17 @@ export default function CheckoutInline({
                 >
                   <div style={{ fontSize: 12, fontWeight: 700 }}>
                     {cycle === 'monthly' ? '📅 Aluguel (mensal)' : '📆 Compra (anual)'}
-                    {cycle === 'yearly' && (
+                    {cycle === 'yearly' && annualFreeMonths && (
                       <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, background: 'rgb(var(--color-primary))', color: '#fff', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle' }}>
-                        🤑 2 meses grátis
+                        🤑 {annualFreeMonths}
                       </span>
                     )}
                   </div>
                   <div style={{ fontSize: 10, color: active ? 'rgba(var(--color-primary)/.8)' : 'rgb(var(--color-text-muted))', marginTop: 2 }}>
                     {cycle === 'monthly'
                       ? planPrice + '/mês'
-                      : yearlyInfo
-                        ? `${yearlyInfo.monthlyEq} · ${yearlyInfo.annual}/ano`
+                      : planPricing
+                        ? `${annualMonthlyEq} · ${planPricing.annual}/ano`
                         : planPrice + '/mês'}
                   </div>
                 </button>
@@ -716,7 +727,7 @@ export default function CheckoutInline({
               onSubmit={handleCardSubmit}
               loading={loading}
               error={error}
-              submitLabel={`${isUpgrade ? 'Confirmar troca' : 'Assinar'} — ${planPrice}/${billingCycle === 'yearly' ? 'ano' : 'mês'}`}
+              submitLabel={`${isUpgrade ? 'Confirmar troca' : 'Assinar'} — ${displayPrice}/${isYearly ? 'ano' : 'mês'}`}
             />
           )}
 
@@ -729,6 +740,8 @@ export default function CheckoutInline({
               error={error}
               onGenerate={handlePixSubmit}
               planPrice={planPrice}
+              displayPrice={displayPrice}
+              isYearly={isYearly}
               isUpgrade={isUpgrade}
             />
           )}

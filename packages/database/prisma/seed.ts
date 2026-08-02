@@ -13,8 +13,9 @@ async function main() {
 
   const plans = [
     {
+      // Core = plano gratuito e completo: converte em texto, resume com IA e tem Modo Privado.
       name:            'free',
-      label:           'Grátis',
+      label:           'Core',
       minutesPerMonth: 20,
       audiosPerMonth:  FREE_AUDIO_QUOTA,
       maxNumbers:      1,
@@ -22,8 +23,9 @@ async function main() {
       features:        JSON.stringify([
         `${FREE_AUDIO_QUOTA} áudios/mês`,
         '1 número WhatsApp',
-        '🎙️ Transcrição automática',
+        '🎙️ Converte áudio em texto',
         '✨ Resumo com IA',
+        '🔒 Modo Privado (opcional)',
         '📋 Histórico de transcrições',
         '📅 Filtros por data e contato',
         '🔍 Busca por transcrição',
