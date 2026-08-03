@@ -167,6 +167,23 @@ const TOPICOS = [
       'Os 5 áudios são creditados automaticamente após o cadastro do indicado. ' +
       'Não há limite de indicações — cada novo cadastro via link gera o bônus.',
   },
+  // ── PROGRAMA DE AFILIADOS ────────────────────────────────────────────────
+  {
+    titulo: 'Programa de Afiliados (comissão em dinheiro)',
+    categoria: 'duvida_produto',
+    tags: ['afiliado', 'afiliados', 'comissao', 'ganhar dinheiro', 'pix', 'parceiro', 'aprovacao'],
+    conteudo:
+      'O Programa de Afiliados é diferente do programa de indicação simples: paga comissão em dinheiro, não áudios grátis. ' +
+      'Para participar, o cliente solicita pelo painel (Configurações > Programa de Afiliados), informando e-mail verificado ' +
+      'e CPF/CNPJ; a solicitação passa por aprovação. Depois de aprovado, recebe um link próprio (zapscript.me/i/SEUCODIGO) ' +
+      'e o painel fica em zapscript.me/dashboard/afiliado. ' +
+      'Comissão: 30% recorrente sobre cada pagamento do indicado, nos primeiros 12 meses de assinatura (mensal ou anual). ' +
+      'Bônus: a partir do 51º cliente novo conquistado no mês, a comissão desses clientes sobe para 40%, travada por 12 meses. ' +
+      'Depois dos 12 meses, comissão residual vitalícia de 5% enquanto o indicado continuar assinante. ' +
+      'Se o indicado cancelar em até 30 dias após assinar, a comissão pendente desse cliente é zerada. ' +
+      'O saldo fica disponível 30 dias após cada comissão gerada, sem valor mínimo para sacar via Pix. ' +
+      'Dúvidas sobre status de aprovação de afiliação ou contestação de valor de comissão: escalar para humano.',
+  },
   // ── SUPORTE ──────────────────────────────────────────────────────────────
   {
     titulo: 'Canais de suporte e tempo de resposta',
