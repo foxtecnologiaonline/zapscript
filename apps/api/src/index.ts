@@ -316,6 +316,7 @@ app.register(import('./routes/webhook-config'),  { prefix: '/webhook-config' });
 app.register(import('./routes/nps'),             { prefix: '/nps' });
 app.register(import('./routes/meta-embedded'),   { prefix: '/meta' });
 app.register(import('./routes/affiliates'),      { prefix: '/affiliates' });
+app.register(import('./routes/wallet'),          { prefix: '/wallet' });
 app.register(import('./routes/entitlements'),    { prefix: '/modules' });
 app.register(import('./routes/modules/campanhas'), { prefix: '/modules/campanhas' });
 app.register(import('./routes/modules/crm'),     { prefix: '/crm' });

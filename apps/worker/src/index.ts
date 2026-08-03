@@ -2611,6 +2611,87 @@ async function runAffiliateReportSchedule(): Promise<void> {
 runAffiliateReportSchedule();
 setInterval(runAffiliateReportSchedule, 60 * 60 * 1000);
 
+// ─────────────────────────────────────────────────────────────────
+//  CRON — Liberação D+30 da Carteira de Crédito (Regulamento v4)
+//  Todo crédito nasce como PendingCredit na confirmação do pagamento do
+//  indicado (ver apps/api/src/lib/credit.ts) e só vira saldo disponível
+//  30 dias depois, se não tiver sido cancelado por churn do indicado nesse
+//  intervalo (Art. 4º de REGULAMENTO_AFILIADOS.md). Roda a cada hora,
+//  idempotente — cada PendingCredit só é processado uma vez
+//  (status pending → released).
+// ─────────────────────────────────────────────────────────────────
+function round2Credit(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+async function releaseDueCreditWallets(): Promise<void> {
+  try {
+    const due = await (prisma as any).pendingCredit.findMany({
+      where: { status: 'pending', releaseAt: { lte: new Date() } },
+      take:  200,
+    });
+    if (due.length === 0) return;
+
+    let releasedCount = 0;
+    let releasedTotal = 0;
+
+    for (const credit of due) {
+      try {
+        await prisma.$transaction(async (tx: any) => {
+          const wallet = await tx.creditWallet.update({
+            where: { id: credit.walletId },
+            data:  { balance: { increment: credit.amount } },
+          });
+          await tx.creditTransaction.create({
+            data: {
+              walletId:      wallet.id,
+              type:          'earn_referral',
+              amount:        credit.amount,
+              balanceAfter:  wallet.balance,
+              referenceType: 'payment',
+              referenceId:   credit.paymentId,
+            },
+          });
+          await tx.pendingCredit.update({
+            where: { id: credit.id },
+            data:  { status: 'released' },
+          });
+
+          const user = await tx.user.findUnique({ where: { id: wallet.userId }, select: { email: true, name: true } });
+          if (user?.email) {
+            const amtFmt = credit.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const balFmt = wallet.balance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const firstName = user.name?.split(' ')[0] || 'tudo bem';
+            sendEmail(
+              user.email,
+              `💰 ${amtFmt} liberados na sua carteira ZapScript`,
+              `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+                <div style="font-size:22px;font-weight:bold;margin-bottom:12px">💰 Crédito liberado!</div>
+                <p style="color:#a7f3d0;line-height:1.7">Olá, ${firstName}! O crédito de uma indicação sua acabou de ficar disponível.</p>
+                <p style="color:#a7f3d0;line-height:1.7">Liberado agora: <strong style="color:#10b981;font-size:20px">${amtFmt}</strong></p>
+                <p style="color:#a7f3d0;line-height:1.7">Saldo atual: <strong>${balFmt}</strong></p>
+              </div>`,
+            ).catch(() => null);
+          }
+        });
+        releasedCount += 1;
+        releasedTotal = round2Credit(releasedTotal + credit.amount);
+      } catch (err: any) {
+        logger.error(`[Crédito] Falha ao liberar crédito pendente ${credit.id}: ${err?.message}`);
+      }
+    }
+
+    if (releasedCount > 0) {
+      logger.info(`[Crédito] Liberação D+30: ${releasedCount} crédito(s) liberado(s), R$${releasedTotal} no total`);
+    }
+  } catch (err: any) {
+    logger.error(`[Crédito] Falha no cron de liberação D+30: ${err?.message}`);
+  }
+}
+
+releaseDueCreditWallets();
+setInterval(releaseDueCreditWallets, 60 * 60 * 1000);
+
 // ── Graceful shutdown ────────────────────────────────────────────
 process.on('SIGTERM', async () => {
   logger.info('Worker encerrando...');

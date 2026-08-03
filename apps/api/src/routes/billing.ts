@@ -13,6 +13,7 @@ import { calculateProration } from '../lib/proration';
 import { validateRequest, billingCheckoutSchema, billingUpgradeSchema, moduleSubscribeSchema } from '../lib/validation';
 import { invalidatePlanCache } from '../lib/planGate';
 import { attributeAffiliateCommission, clawbackAffiliateCommissionOnCancel } from '../lib/affiliate';
+import { recordReferralCredit, clawbackPendingCreditsOnCancel } from '../lib/credit';
 import { invalidateModuleCache } from '../lib/moduleGate';
 
 /* ─────────────────────────────────────────────────────────
@@ -953,6 +954,8 @@ export default async function billingRoutes(app: FastifyInstance) {
 
     // Programa de afiliados: cancelamento nos primeiros 30 dias zera comissões pendentes
     clawbackAffiliateCommissionOnCancel(userId).catch(() => null);
+    // Carteira de crédito: cancela créditos ainda não liberados gerados por este usuário
+    clawbackPendingCreditsOnCancel(userId).catch(() => null);
 
     return { canceled: true, message: 'Assinatura cancelada. Você voltou para o plano gratuito.' };
   });
@@ -1679,8 +1682,10 @@ export default async function billingRoutes(app: FastifyInstance) {
         });
         app.log.info(`Pagamento confirmado: userId=${userId} plan=${planName} cycle=${isYearlyWebhook ? 'yearly' : 'monthly'}`);
 
-        // ── Programa de afiliados: atribuir comissão da venda (idempotente) ──
+        // ── Programa de afiliados (modelo antigo, em migração): atribuir comissão da venda ──
         await attributeAffiliateCommission(userId, payment.id, payment.value ?? 0, isYearlyWebhook);
+        // ── Carteira de crédito (Regulamento v4): registra crédito pendente, libera em D+30 ──
+        await recordReferralCredit(userId, payment.id, payment.value ?? 0);
       }
 
       return reply.send({ received: true });
@@ -1747,6 +1752,8 @@ export default async function billingRoutes(app: FastifyInstance) {
           invalidatePlanCache(userId).catch(() => null);
           // Programa de afiliados: cancelamento nos primeiros 30 dias zera comissões pendentes
           clawbackAffiliateCommissionOnCancel(userId).catch(() => null);
+          // Carteira de crédito: cancela créditos ainda não liberados gerados por este usuário
+          clawbackPendingCreditsOnCancel(userId).catch(() => null);
           app.log.info(`Assinatura removida no Asaas — downgrade para free: userId=${userId}`);
         }
       }
