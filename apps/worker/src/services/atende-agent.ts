@@ -13,6 +13,13 @@ import { logger } from '../lib/logger';
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+/** Telemetria de custo (não crítica): nunca deve travar ou atrasar a resposta ao cliente. */
+export function logAiUsage(userId: string, feature: string, model: string, inputTokens?: number, outputTokens?: number): void {
+  prisma.aiUsageLog.create({
+    data: { userId, feature, model, inputTokens: inputTokens ?? 0, outputTokens: outputTokens ?? 0 },
+  }).catch((err: any) => logger.warn(`[Atende] Falha ao registrar AiUsageLog: ${err.message}`));
+}
+
 const AGENT_MODELS = [
   process.env.ATENDE_AGENT_MODEL || 'claude-sonnet-4-6',
   'claude-sonnet-4-20250514',
@@ -59,6 +66,48 @@ function extractJson(text: string): any {
   return JSON.parse(match[0]);
 }
 
+const STOPWORDS = new Set([
+  'a','o','as','os','de','do','da','dos','das','um','uma','uns','umas','e','ou','que','pra','para',
+  'com','sem','em','no','na','nos','nas','por','se','me','meu','minha','tem','ter','vai','voce','você',
+  'eu','ele','ela','sao','são','como','mais','muito','ja','já','ai','aí','esse','essa','isso','qual',
+]);
+
+function tokenize(text: string): Set<string> {
+  return new Set(
+    text
+      .normalize('NFD').replace(/[̀-ͯ]/g, '') // remove acentos
+      .toLowerCase()
+      .match(/[a-z0-9]+/g)
+      ?.filter((w) => w.length > 2 && !STOPWORDS.has(w)) ?? [],
+  );
+}
+
+/**
+ * Seleciona as entradas de KB mais relevantes pra mensagem do cliente, em vez
+ * de sempre despejar a base inteira no prompt (caro e menos preciso conforme
+ * a base cresce). Scoring simples por overlap de palavras — suficiente pro
+ * volume atual (dezenas de FAQs por tenant); troca por embeddings se a base
+ * crescer a ponto de o overlap léxico não bastar mais.
+ */
+function selectRelevantKb<T extends { question: string; answer: string }>(kb: T[], message: string, topK = 12): T[] {
+  if (kb.length <= topK) return kb;
+
+  const msgTokens = tokenize(message);
+  if (msgTokens.size === 0) return kb.slice(0, topK);
+
+  const scored = kb.map((item) => {
+    const itemTokens = tokenize(`${item.question} ${item.answer}`);
+    let overlap = 0;
+    for (const t of msgTokens) if (itemTokens.has(t)) overlap++;
+    return { item, score: overlap };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  // Entre os empatados em score 0 (nenhuma palavra em comum), preserva a ordem
+  // original (mais antigas primeiro) em vez de embaralhar por causa do sort.
+  return scored.slice(0, topK).map((s) => s.item);
+}
+
 export interface AtendeConfigLike {
   businessContext: string | null;
   tone: string;
@@ -78,12 +127,13 @@ export async function runAtendeAgent(params: {
   contactName?: string | null;
   history?: string | null;
 }): Promise<AtendeAgentResult> {
-  const kb = await prisma.atendeKnowledgeBase.findMany({
+  const allKb = await prisma.atendeKnowledgeBase.findMany({
     where: { userId: params.userId, active: true },
     orderBy: { createdAt: 'asc' },
-    take: 50,
+    take: 200, // teto de segurança; a seleção por relevância abaixo filtra pro que importa
     select: { question: true, answer: true },
   }).catch(() => [] as { question: string; answer: string }[]);
+  const kb = selectRelevantKb(allKb, params.message);
 
   const kbBlock = kb.length
     ? kb.map((k, i) => `[${i + 1}] P: ${k.question}\nR: ${k.answer}`).join('\n\n')
@@ -114,6 +164,8 @@ export async function runAtendeAgent(params: {
         .map((b: any) => b.text)
         .join('');
       const parsed = extractJson(text);
+
+      logAiUsage(params.userId, 'atende_reply', model, res.usage?.input_tokens, res.usage?.output_tokens);
 
       const confidence = typeof parsed.confianca === 'number' ? parsed.confianca : 0;
       const reply = typeof parsed.resposta === 'string' ? parsed.resposta.trim() : '';

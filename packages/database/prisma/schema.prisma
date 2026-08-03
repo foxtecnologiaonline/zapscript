@@ -69,6 +69,8 @@ model User {
   avisos                  Aviso[]
   tasks                   Task[]              @relation("TaskOwner")
   assignedTasks           Task[]              @relation("TaskAssignee")
+  taskComments            TaskComment[]
+  aiUsageLogs             AiUsageLog[]
 }
 
 model Plan {
@@ -812,6 +814,7 @@ model CrmContact {
   stage          CrmStage        @relation(fields: [stageId], references: [id], onDelete: Restrict)
   number         WhatsappNumber? @relation(fields: [numberId], references: [id], onDelete: SetNull)
   activities     CrmActivity[]
+  tasks          Task[]
 
   @@unique([userId, phone])
   @@index([userId, stageId])
@@ -828,6 +831,7 @@ model CrmActivity {
   content     String
   dueAt       DateTime? // lembretes: quando vence
   completedAt DateTime? // lembretes: quando foi concluído
+  notifiedAt  DateTime? // lembretes: quando o aviso de vencido foi disparado via WhatsApp (evita reenvio)
   createdAt   DateTime   @default(now())
   contact     CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -890,6 +894,23 @@ model AtendeConversation {
 
   @@unique([numberId, contactPhone])
   @@index([userId, lastMessageAt(sort: Desc)])
+}
+
+// Consumo de IA (Claude) por tenant, no módulo Atende — resposta automática e
+// as 3 rotas de setup (voz/foto/histórico). Não é cota nem trava nada; é só
+// telemetria de custo variável (planos vendem "ilimitado", então isso é a
+// única visibilidade sobre margem por conta).
+model AiUsageLog {
+  id           String   @id @default(cuid())
+  userId       String
+  feature      String // 'atende_reply' | 'atende_setup_voice' | 'atende_setup_kb_import' | 'atende_setup_from_history'
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model AtendeMessage {
@@ -1062,19 +1083,36 @@ model Aviso {
 // aponta pro userId do membro responsável (qualquer papel do time).
 // ─────────────────────────────────────────────────────────────────────────────
 model Task {
-  id           String    @id @default(cuid())
+  id           String        @id @default(cuid())
   userId       String
   title        String
   description  String?
   assignedToId String?
-  status       String    @default("pending") // 'pending' | 'done'
+  contactId    String? // vínculo opcional com um lead/cliente do CRM (tier Empresas)
+  status       String        @default("pending") // 'pending' | 'done'
   dueAt        DateTime?
   completedAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  user         User      @relation("TaskOwner", fields: [userId], references: [id], onDelete: Cascade)
-  assignedTo   User?     @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User          @relation("TaskOwner", fields: [userId], references: [id], onDelete: Cascade)
+  assignedTo   User?         @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  contact      CrmContact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  comments     TaskComment[]
 
   @@index([userId, status])
   @@index([userId, dueAt])
+  @@index([contactId])
+}
+
+// Comentários de tarefa — colaboração leve dentro do time (tier Empresas).
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String // autor do comentário (dono ou membro do time)
+  content   String
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
 }

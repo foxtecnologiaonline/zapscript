@@ -53,12 +53,18 @@ export default async function crmRoutes(app: FastifyInstance) {
   // ═══════════════════════════════════════════════════════════════════════
   // Board — 1 request com estágios + contatos, para montar o Kanban
   // ═══════════════════════════════════════════════════════════════════════
+  // CRM #3: teto de segurança no board — funis com milhares de contatos não
+  // travam a tela inteira. Board é uma visão geral; pra ver o restante de um
+  // estágio específico com paginação de verdade, usar GET /contacts?stageId=.
+  const BOARD_CONTACTS_LIMIT = 500;
+
   app.get('/board', auth, async (req: any) => {
     const { ownerId } = req.teamScope;
     const stages = await getOrSeedStages(ownerId);
     const contacts = await prisma.crmContact.findMany({
       where:   { userId: ownerId },
       orderBy: { lastActivityAt: 'desc' },
+      take:    BOARD_CONTACTS_LIMIT,
     });
 
     const byStage = new Map<string, typeof contacts>();
@@ -138,12 +144,18 @@ export default async function crmRoutes(app: FastifyInstance) {
   // ═══════════════════════════════════════════════════════════════════════
   // Contatos
   // ═══════════════════════════════════════════════════════════════════════
+  // CRM #3: paginação por cursor (id da última linha da página anterior) —
+  // antes carregava todos os contatos do usuário numa única resposta.
   app.get('/contacts', auth, async (req: any) => {
     const { ownerId } = req.teamScope;
-    const { stageId } = req.query as { stageId?: string };
+    const { stageId, cursor } = req.query as { stageId?: string; cursor?: string };
+    const limit = Math.min(200, Math.max(1, parseInt((req.query as any)?.limit, 10) || 50));
+
     return prisma.crmContact.findMany({
       where:   { userId: ownerId, ...(stageId ? { stageId } : {}) },
-      orderBy: { lastActivityAt: 'desc' },
+      orderBy: [{ lastActivityAt: 'desc' }, { id: 'desc' }],
+      take:    limit,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
     });
   });
 
@@ -347,10 +359,16 @@ export default async function crmRoutes(app: FastifyInstance) {
       })
       .filter(Boolean);
 
+    // CRM #4: negócio fechado (won) sem `value` preenchido some silenciosamente
+    // do faturamentoFechado — sinaliza pra o dono corrigir o cadastro em vez de
+    // deixar o KPI de receita furado sem ninguém perceber.
+    const fechadosSemValor = wonContacts.filter((c: any) => !c.value).length;
+
     return {
       periodDays:         days,
       faturamentoFechado: wonContacts.reduce((sum: number, c: any) => sum + (c.value || 0), 0),
       negociosFechados:   wonContacts.length,
+      negociosFechadosSemValor: fechadosSemValor,
       negociosPerdidos,
       novosLeads,
       atendimentosSemana,
@@ -362,36 +380,40 @@ export default async function crmRoutes(app: FastifyInstance) {
   // Importar do WhatsApp — sugestões a partir do histórico de Transcription
   // (zero alteração no webhook de mensageria; só lê dados já existentes)
   // ═══════════════════════════════════════════════════════════════════════
+  // CRM #2: agrupamento (última ocorrência por telefone) feito no banco via
+  // DISTINCT ON/window function, em vez de puxar até 2000 linhas pra memória
+  // do Node e reduzir com um Map — mais rápido e escala melhor com o histórico.
   app.get('/import/suggestions', auth, async (req: any) => {
     const { ownerId } = req.teamScope;
 
-    const rows = await prisma.transcription.findMany({
-      where:   { userId: ownerId },
-      select:  { contactPhone: true, contactName: true, numberId: true, createdAt: true },
-      orderBy: { createdAt: 'desc' },
-      take:    2000,
-    });
+    const rows = await prisma.$queryRaw<
+      { phone: string; name: string | null; numberId: string | null; lastAt: Date; count: bigint }[]
+    >`
+      WITH normalized AS (
+        SELECT regexp_replace("contactPhone", '\D', '', 'g') AS phone,
+               "contactName" AS name,
+               "numberId",
+               "createdAt"
+        FROM "Transcription"
+        WHERE "userId" = ${ownerId}
+      ), ranked AS (
+        SELECT phone, name, "numberId", "createdAt" AS "lastAt",
+               COUNT(*) OVER (PARTITION BY phone) AS count,
+               ROW_NUMBER() OVER (PARTITION BY phone ORDER BY "createdAt" DESC) AS rn
+        FROM normalized
+        WHERE phone != ''
+      )
+      SELECT phone, name, "numberId", "lastAt", count
+      FROM ranked
+      WHERE rn = 1
+        AND phone NOT IN (SELECT phone FROM "CrmContact" WHERE "userId" = ${ownerId})
+      ORDER BY "lastAt" DESC
+      LIMIT 100
+    `;
 
-    const byPhone = new Map<string, { phone: string; name: string | null; numberId: string | null; lastAt: Date; count: number }>();
-    for (const r of rows) {
-      const phone = r.contactPhone.replace(/\D/g, '');
-      if (!phone) continue;
-      const existing = byPhone.get(phone);
-      if (existing) {
-        existing.count += 1; // linhas vêm desc — a 1ª ocorrência já é a mais recente
-      } else {
-        byPhone.set(phone, { phone, name: r.contactName, numberId: r.numberId, lastAt: r.createdAt, count: 1 });
-      }
-    }
-
-    const already = new Set(
-      (await prisma.crmContact.findMany({ where: { userId: ownerId }, select: { phone: true } })).map((c: any) => c.phone),
-    );
-
-    const suggestions = [...byPhone.values()]
-      .filter((s) => !already.has(s.phone))
-      .sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime())
-      .slice(0, 100);
+    const suggestions = rows.map((r) => ({
+      phone: r.phone, name: r.name, numberId: r.numberId, lastAt: r.lastAt, count: Number(r.count),
+    }));
 
     return { suggestions };
   });
