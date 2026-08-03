@@ -67,7 +67,7 @@
 - [ ] Mapear 15 micro-influencers (5k-50k seguidores) nos nichos: produtividade/tech, corretores, advogados, vendas
 - [ ] Buscar via hashtag (Instagram/TikTok: #produtividade #corretordeimoveis #advocacia #vendas) e YouTube ("produtividade para corretor" etc.)
 - [ ] Validar engajamento real antes de contato (taxa de engajamento, não só nº de seguidores)
-- [ ] Enviar DM/e-mail de parceria (formal ou informal, seção 7 do kit founder) oferecendo: acesso PRO vitalício + 50% comissão via link de afiliado
+- [ ] Enviar DM/e-mail de parceria (formal ou informal, seção 7 do kit founder) oferecendo: acesso PRO vitalício + comissão recorrente padrão do programa de afiliados via link individual
 - [ ] Preparar material de apoio (prints, dados, mensagens prontas) para enviar junto com a proposta
 - [ ] Gerar link de afiliado individual para cada influencer antes do envio
 - [ ] Fazer follow-up em 4-5 dias para quem não respondeu

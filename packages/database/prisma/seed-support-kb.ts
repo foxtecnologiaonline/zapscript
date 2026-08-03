@@ -157,14 +157,14 @@ const TOPICOS = [
   },
   // ── PROGRAMA DE INDICAÇÃO ────────────────────────────────────────────────
   {
-    titulo: 'Programa de indicação (ganhe minutos grátis)',
+    titulo: 'Programa de indicação (ganhe áudios grátis)',
     categoria: 'duvida_produto',
     tags: ['indicacao', 'referral', 'afiliado', 'link', 'amigo', 'ganhar', 'gratis', 'bonus'],
     conteudo:
-      'O ZapScript tem programa de indicação: você ganha 15 minutos extras para você e seu amigo indicado ' +
+      'O ZapScript tem programa de indicação: você ganha 5 áudios grátis para você e seu amigo indicado ' +
       'quando ele se cadastrar pelo seu link. ' +
       'Seu link pessoal está em Painel > Dashboard (seção "Indique o ZapScript"). ' +
-      'Os 15 minutos são creditados automaticamente após o cadastro do indicado. ' +
+      'Os 5 áudios são creditados automaticamente após o cadastro do indicado. ' +
       'Não há limite de indicações — cada novo cadastro via link gera o bônus.',
   },
   // ── SUPORTE ──────────────────────────────────────────────────────────────

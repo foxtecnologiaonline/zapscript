@@ -172,7 +172,7 @@ Dúvidas no pagamento: escalar para suporte humano.
 
 ## 11. Programa de indicação
 
-- Ao indicar um amigo: você **e** o amigo ganham 15 minutos extras ao usar o link pessoal
+- Ao indicar um amigo: você **e** o amigo ganham 5 áudios grátis ao usar o link pessoal
 - Link pessoal disponível em: Painel > Dashboard (seção "Indique o ZapScript")
 - Formato: `zapscript.me/cadastro?ref=SEUCODIGO`
 - Bônus creditado automaticamente após o cadastro do indicado
