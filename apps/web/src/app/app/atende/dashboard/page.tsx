@@ -7,7 +7,9 @@ interface AtendeDashboard {
   periodDays: number;
   conversasNoPeriodo: number;
   conversasHoje: number;
+  conversasResolvidasAuto: number;
   conversasEscaladas: number;
+  conversasSobTakeover: number;
   taxaResolucaoAutomatica: number;
   mensagensEnviadas: number;
   mensagensRecebidas: number;
@@ -39,7 +41,9 @@ export default function AtendeDashboardPage() {
     { label: 'Conversas hoje',            value: String(data.conversasHoje),               icon: '📅' },
     { label: 'Conversas no período',      value: String(data.conversasNoPeriodo),           icon: '💬' },
     { label: 'Resolução automática',      value: `${data.taxaResolucaoAutomatica}%`,        icon: '🤖' },
-    { label: 'Conversas escaladas',       value: String(data.conversasEscaladas),           icon: '🚨' },
+    { label: 'Resolvidas pelo bot',       value: String(data.conversasResolvidasAuto),      icon: '✅' },
+    { label: 'Aguardando você (escaladas)', value: String(data.conversasEscaladas),         icon: '🚨' },
+    { label: 'Sob atendimento manual',    value: String(data.conversasSobTakeover),         icon: '🙋' },
     { label: 'Mensagens enviadas',        value: String(data.mensagensEnviadas),            icon: '📤' },
     { label: 'Mensagens recebidas',       value: String(data.mensagensRecebidas),           icon: '📥' },
   ] : [];

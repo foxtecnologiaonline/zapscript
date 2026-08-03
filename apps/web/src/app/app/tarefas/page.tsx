@@ -12,6 +12,8 @@ interface Task {
   completedAt: string | null;
   assignedToId: string | null;
   assignedTo: { id: string; name: string | null; email: string } | null;
+  contactId: string | null;
+  contact: { id: string; name: string; phone: string } | null;
   createdAt: string;
 }
 
@@ -23,6 +25,19 @@ interface TeamMember {
   status: string;
 }
 
+interface CrmContactOption {
+  id: string;
+  name: string;
+  phone: string;
+}
+
+interface TaskComment {
+  id: string;
+  content: string;
+  createdAt: string;
+  user: { id: string; name: string | null; email: string };
+}
+
 function isOverdue(t: Task): boolean {
   return t.status === 'pending' && !!t.dueAt && new Date(t.dueAt) < new Date();
 }
@@ -30,6 +45,7 @@ function isOverdue(t: Task): boolean {
 export default function TarefasPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [contacts, setContacts] = useState<CrmContactOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notEntitled, setNotEntitled] = useState(false);
@@ -38,18 +54,27 @@ export default function TarefasPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [assignedToId, setAssignedToId] = useState('');
+  const [contactId, setContactId] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
+  const [openComments, setOpenComments] = useState<string | null>(null);
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [commentsLoading, setCommentsLoading] = useState(false);
+
   const load = useCallback(async () => {
     try {
-      const [taskList, teamRes] = await Promise.all([
+      const [taskList, teamRes, contactsRes] = await Promise.all([
         api.get<Task[]>('/tarefas'),
         api.get<{ team: { members: TeamMember[] } | null }>('/teams/mine').catch(() => ({ team: null })),
+        // CRM é opcional — quem só tem Tarefas (Empresas sempre tem os dois, mas por segurança) segue sem o seletor.
+        api.get<CrmContactOption[]>('/crm/contacts?limit=200').catch(() => [] as CrmContactOption[]),
       ]);
       setTasks(taskList);
       setMembers((teamRes.team?.members || []).filter(m => m.status === 'active'));
+      setContacts(Array.isArray(contactsRes) ? contactsRes : []);
       setError(null);
     } catch (e: any) {
       if (e?.moduleRequired) setNotEntitled(true);
@@ -69,9 +94,10 @@ export default function TarefasPage() {
       await api.post('/tarefas', {
         title, description: description || undefined,
         assignedToId: assignedToId || undefined,
+        contactId: contactId || undefined,
         dueAt: dueAt || undefined,
       });
-      setTitle(''); setDescription(''); setAssignedToId(''); setDueAt('');
+      setTitle(''); setDescription(''); setAssignedToId(''); setContactId(''); setDueAt('');
       setShowNew(false);
       load();
     } catch (err: any) {
@@ -79,6 +105,29 @@ export default function TarefasPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function toggleComments(taskId: string) {
+    if (openComments === taskId) { setOpenComments(null); return; }
+    setOpenComments(taskId);
+    setCommentsLoading(true);
+    try {
+      setComments(await api.get<TaskComment[]>(`/tarefas/${taskId}/comentarios`));
+    } catch {
+      setComments([]);
+    } finally {
+      setCommentsLoading(false);
+    }
+  }
+
+  async function handleAddComment(taskId: string) {
+    const content = commentText.trim();
+    if (!content) return;
+    try {
+      const created = await api.post<TaskComment>(`/tarefas/${taskId}/comentarios`, { content });
+      setComments(cur => [...cur, created]);
+      setCommentText('');
+    } catch { /* mantém o texto pro usuário tentar de novo */ }
   }
 
   async function toggleStatus(t: Task) {
@@ -184,6 +233,18 @@ export default function TarefasPage() {
                 />
               </div>
             </div>
+            {contacts.length > 0 && (
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Vincular a um contato do CRM (opcional)</label>
+                <select
+                  value={contactId} onChange={e => setContactId(e.target.value)}
+                  className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                >
+                  <option value="">Nenhum</option>
+                  {contacts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            )}
             {formError && (
               <div className="rounded-lg border border-red-900 bg-red-950/50 px-3 py-2 text-xs text-red-300">{formError}</div>
             )}
@@ -204,21 +265,51 @@ export default function TarefasPage() {
             <div className="text-sm text-neutral-600 text-center py-6 rounded-xl border border-neutral-800">Nenhuma tarefa pendente.</div>
           )}
           {pending.map(t => (
-            <div key={t.id} className={`rounded-lg border p-3 flex items-start gap-3 ${isOverdue(t) ? 'border-red-900 bg-red-950/20' : 'border-neutral-800 bg-neutral-900'}`}>
-              <input type="checkbox" checked={false} onChange={() => toggleStatus(t)} className="mt-1" />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium">{t.title}</div>
-                {t.description && <div className="text-xs text-neutral-500 mt-0.5">{t.description}</div>}
-                <div className="flex items-center gap-2 mt-1 text-[11px] text-neutral-500">
-                  {t.assignedTo && <span>👤 {t.assignedTo.name || t.assignedTo.email}</span>}
-                  {t.dueAt && (
-                    <span className={isOverdue(t) ? 'text-red-400 font-semibold' : ''}>
-                      {isOverdue(t) ? '⚠ Atrasada — ' : '🗓️ '}{new Date(t.dueAt).toLocaleDateString('pt-BR')}
-                    </span>
-                  )}
+            <div key={t.id} className={`rounded-lg border p-3 ${isOverdue(t) ? 'border-red-900 bg-red-950/20' : 'border-neutral-800 bg-neutral-900'}`}>
+              <div className="flex items-start gap-3">
+                <input type="checkbox" checked={false} onChange={() => toggleStatus(t)} className="mt-1" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">{t.title}</div>
+                  {t.description && <div className="text-xs text-neutral-500 mt-0.5">{t.description}</div>}
+                  <div className="flex items-center gap-2 mt-1 text-[11px] text-neutral-500 flex-wrap">
+                    {t.assignedTo && <span>👤 {t.assignedTo.name || t.assignedTo.email}</span>}
+                    {t.contact && <span>🔗 {t.contact.name}</span>}
+                    {t.dueAt && (
+                      <span className={isOverdue(t) ? 'text-red-400 font-semibold' : ''}>
+                        {isOverdue(t) ? '⚠ Atrasada — ' : '🗓️ '}{new Date(t.dueAt).toLocaleDateString('pt-BR')}
+                      </span>
+                    )}
+                    <button onClick={() => toggleComments(t.id)} className="hover:text-neutral-300">💬 comentários</button>
+                  </div>
                 </div>
+                <button onClick={() => handleDelete(t.id)} className="text-neutral-600 hover:text-red-400 text-xs shrink-0">✕</button>
               </div>
-              <button onClick={() => handleDelete(t.id)} className="text-neutral-600 hover:text-red-400 text-xs shrink-0">✕</button>
+              {openComments === t.id && (
+                <div className="mt-3 pl-7 space-y-2">
+                  {commentsLoading ? (
+                    <div className="text-xs text-neutral-600">Carregando...</div>
+                  ) : (
+                    <>
+                      {comments.length === 0 && <div className="text-xs text-neutral-600">Nenhum comentário ainda.</div>}
+                      {comments.map(c => (
+                        <div key={c.id} className="text-xs">
+                          <span className="font-medium text-neutral-300">{c.user.name || c.user.email}</span>{' '}
+                          <span className="text-neutral-500">{c.content}</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      value={commentText} onChange={e => setCommentText(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleAddComment(t.id)}
+                      maxLength={2000} placeholder="Escrever um comentário..."
+                      className="flex-1 rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs"
+                    />
+                    <button onClick={() => handleAddComment(t.id)} className="text-xs text-emerald-400 hover:text-emerald-300 shrink-0">Enviar</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

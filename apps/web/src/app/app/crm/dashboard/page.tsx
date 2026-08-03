@@ -102,6 +102,11 @@ export default function CrmDashboardPage() {
             {error}
           </div>
         )}
+        {!!data?.negociosFechadosSemValor && (
+          <div className="mt-3 rounded-lg border border-amber-900 bg-amber-950/40 px-3 py-2 text-sm text-amber-300">
+            ⚠️ {data.negociosFechadosSemValor} negócio(s) fechado(s) sem valor preenchido — o faturamento acima está subestimado.
+          </div>
+        )}
       </header>
 
       <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto">

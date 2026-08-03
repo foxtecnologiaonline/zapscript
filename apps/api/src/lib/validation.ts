@@ -257,6 +257,7 @@ export const createTaskSchema = z.object({
   title:        z.string().min(1, 'Título é obrigatório').max(150),
   description:  z.string().max(2000).optional(),
   assignedToId: z.string().cuid('Responsável inválido').optional(),
+  contactId:    z.string().cuid('Contato inválido').optional(), // vínculo opcional com o CRM
   dueAt:        z.coerce.date().optional(),
 });
 
@@ -264,8 +265,13 @@ export const updateTaskSchema = z.object({
   title:        z.string().min(1).max(150).optional(),
   description:  z.string().max(2000).nullable().optional(),
   assignedToId: z.string().cuid('Responsável inválido').nullable().optional(),
+  contactId:    z.string().cuid('Contato inválido').nullable().optional(),
   dueAt:        z.coerce.date().nullable().optional(),
   status:       z.enum(['pending', 'done']).optional(),
+});
+
+export const createTaskCommentSchema = z.object({
+  content: z.string().min(1, 'Comentário não pode ser vazio').max(2000),
 });
 
 // Avisos (tier Profissional) — disparo manual de mensagem pro cliente
