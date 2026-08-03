@@ -77,8 +77,8 @@ html, body {
 .bg-brand-bg    { background-color: rgb(var(--color-bg)); }
 .bg-brand-surface { background-color: rgb(var(--color-surface)); }
 
-.font-display { font-family: 'Space Grotesk', system-ui, sans-serif; }
-.font-sans    { font-family: 'DM Sans', system-ui, -apple-system, sans-serif; }
+.font-display { font-family: var(--font-space-grotesk), system-ui, sans-serif; }
+.font-sans    { font-family: var(--font-dm-sans), system-ui, -apple-system, sans-serif; }
 
 .bg-mesh {
   background:

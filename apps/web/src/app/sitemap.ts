@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { POSTS } from './blog/posts';
+import { allCategories } from './blog/categories';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = 'https://www.zapscript.me';
@@ -18,6 +19,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/campanhas`,    lastModified: d('2026-07-15'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/para/contabilidade`, lastModified: d('2026-06-23'), priority: 0.9, changeFrequency: 'monthly' },
     { url: `${base}/cobranca`,     lastModified: d('2026-07-16'), priority: 0.9,  changeFrequency: 'monthly' },
+    { url: `${base}/crm`,          lastModified: now,             priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/afiliados`,    lastModified: d('2026-06-16'), priority: 0.7,  changeFrequency: 'monthly' },
     { url: `${base}/indique`,      lastModified: now,             priority: 0.7,  changeFrequency: 'monthly' },
     { url: `${base}/vs/viratexto`, lastModified: d('2026-05-20'), priority: 0.8,  changeFrequency: 'monthly' },
@@ -25,6 +27,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/vs/otter`,     lastModified: d('2026-06-25'), priority: 0.8,  changeFrequency: 'monthly' },
     { url: `${base}/vs/notta`,     lastModified: d('2026-06-25'), priority: 0.8,  changeFrequency: 'monthly' },
     { url: `${base}/vs/transkriptor`, lastModified: d('2026-06-27'), priority: 0.8, changeFrequency: 'monthly' },
+    { url: `${base}/vs/zapia`,     lastModified: now,             priority: 0.8,  changeFrequency: 'monthly' },
     { url: `${base}/login`,        lastModified: d('2026-05-01'), priority: 0.7,  changeFrequency: 'monthly' },
     { url: `${base}/blog`,         lastModified: now,             priority: 0.9,  changeFrequency: 'weekly'  },
     { url: `${base}/privacidade`,  lastModified: d('2026-05-01'), priority: 0.3,  changeFrequency: 'yearly'  },
@@ -39,5 +42,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority:        0.8,
   }));
 
-  return [...staticRoutes, ...blogRoutes];
+  const categoryRoutes: MetadataRoute.Sitemap = allCategories().map(c => ({
+    url:             `${base}/blog/categoria/${c.slug}`,
+    lastModified:    now,
+    changeFrequency: 'weekly' as const,
+    priority:        0.6,
+  }));
+
+  return [...staticRoutes, ...blogRoutes, ...categoryRoutes];
 }

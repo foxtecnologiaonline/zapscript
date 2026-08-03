@@ -184,7 +184,7 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
   } : null;
 
   return (
-    <div className="min-h-screen bg-brand-bg text-brand-text" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div className="min-h-screen bg-brand-bg text-brand-text">
       {/* Schema.org FAQPage — rich snippets no Google */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
       {breadcrumbJsonLd && (

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { POSTS } from './posts';
+import { allCategories } from './categories';
 import NewsletterSignup from '@/components/NewsletterSignup';
 
 export const metadata: Metadata = {
@@ -58,6 +59,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Dicas':        'bg-yellow-500/15 text-yellow-300 border border-yellow-500/20',
   'Empresas':     'bg-purple-500/15 text-purple-300 border border-purple-500/20',
   'Comparativos': 'bg-orange-500/15 text-orange-300 border border-orange-500/20',
+  'Casos de uso': 'bg-pink-500/15 text-pink-300 border border-pink-500/20',
+  'Nichos':       'bg-teal-500/15 text-teal-300 border border-teal-500/20',
 };
 
 function formatDate(iso: string): string {
@@ -104,6 +107,19 @@ export default function BlogIndex() {
           <p className="text-brand-muted text-lg max-w-xl mx-auto">
             Guias práticos e comparativos honestos para quem quer parar de perder tempo com áudios.
           </p>
+        </div>
+
+        {/* ── Navegação por categoria ─────────────────────────────── */}
+        <div className="flex flex-wrap justify-center gap-2 mb-12">
+          {allCategories().map(c => (
+            <Link
+              key={c.slug}
+              href={`/blog/categoria/${c.slug}`}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-opacity hover:opacity-80 ${CATEGORY_COLORS[c.label] ?? 'bg-white/5 text-brand-muted border border-white/10'}`}
+            >
+              {c.label}
+            </Link>
+          ))}
         </div>
 
         {/* ── Post em destaque ───────────────────────────────────── */}

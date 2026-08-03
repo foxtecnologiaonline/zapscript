@@ -80,7 +80,7 @@ const INTERLINK_MAP: Record<string, string[]> = {
   'transcrever-audio-whatsapp-vendas': [
     'transcrever-audio-whatsapp-corretores',
     'transcricao-audio-whatsapp-empresas',
-    'transcrever-audio-whatsapp-vendedor-autonomo',
+    'transcricao-audio-whatsapp-vendedor-autonomo',
   ],
   'transcrever-audio-whatsapp-iphone': [
     'transcrever-audio-whatsapp-android',
@@ -106,6 +106,16 @@ const INTERLINK_MAP: Record<string, string[]> = {
     'transcrever-audio-whatsapp-vendas',
     'transcrever-audio-whatsapp-gratis-vs-pago',
     'casos-reais-transcricao-audio-whatsapp',
+  ],
+  'transcricao-audio-whatsapp-clinica-odontologica': [
+    'transcricao-de-audio-com-ia-e-segura',
+    'modo-privado-whatsapp-transcricao',
+    'transcricao-audio-whatsapp-atendimento-ao-cliente',
+  ],
+  'transcricao-audio-whatsapp-corretor-autonomo': [
+    'transcrever-audio-whatsapp-corretores',
+    'transcricao-audio-whatsapp-vendedor-autonomo',
+    'transcrever-audio-whatsapp-vendas',
   ],
   'quanto-custa-transcrever-audio-whatsapp': [
     'transcrever-audio-whatsapp-gratis-vs-pago',

@@ -191,7 +191,7 @@ export default function CampanhasLandingClient() {
                     color: 'rgb(var(--color-text-secondary))',
                     background: 'rgb(var(--color-surface))',
                   }}>
-                  Contratar o módulo Campanhas
+                  Ativar Campanhas na minha conta
                 </Link>
               </div>
             </div>
