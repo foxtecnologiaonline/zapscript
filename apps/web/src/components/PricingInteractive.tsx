@@ -210,59 +210,6 @@ export function PricingInteractive() {
           </div>
         </div>
       )}
-
-      {/* Módulos da Suíte */}
-      <div className="mt-10 rounded-2xl p-6" style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(16,185,129,.18)' }}>
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-4"
-          style={{ background: 'rgba(16,185,129,.08)', color: 'rgb(var(--color-primary))', border: '1px solid rgba(16,185,129,.2)' }}>
-          🧩 MÓDULOS
-        </div>
-        <h3 className="font-display font-bold text-xl leading-snug mb-2">
-          Suíte completa para o seu negócio
-        </h3>
-        <p className="text-sm font-light mb-5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-          Além da transcrição, o ZapScript tem módulos para cada etapa da sua operação no WhatsApp.
-        </p>
-        <div className="grid grid-cols-1 gap-2.5">
-          {[
-            { icon: '🤖', key: 'atende', name: 'ZapScript Atende', tagline: 'Incluso no plano Profissional', href: '/atende', status: 'bundled' },
-            { icon: '📊', key: 'crm', name: 'ZapScript CRM', tagline: 'Incluso no plano Empresas', href: '/crm', status: 'bundled' },
-            { icon: '✅', key: 'tarefas', name: 'ZapScript Tarefas', tagline: 'Incluso no plano Empresas', href: '/dashboard/plano', status: 'bundled' },
-            { icon: '📣', key: 'campanhas', name: 'ZapScript Campanhas', tagline: 'Disparo em massa compliant via API oficial', href: '/campanhas', status: 'beta' },
-            { icon: '💰', key: 'cobranca', name: 'ZapScript Cobrança', tagline: 'Lembrete e cobrança automática via WhatsApp', href: '/cobranca', status: 'planned' },
-            { icon: '🗣️', key: 'vendas', name: 'ZapScript Vendas', tagline: 'Grave a visita → vira nota no CRM', href: '/modulos/vendas', status: 'planned' },
-            { icon: '🎬', key: 'legenda', name: 'ZapScript Legendas', tagline: 'Legenda automática para Reels e Stories', href: '/legendas', status: 'planned' },
-          ].map((m) => (
-            <Link key={m.key} href={m.href}
-              className="flex items-center gap-3 rounded-xl px-4 py-3 transition-all hover:scale-[1.01]"
-              style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border))' }}>
-              <span className="text-xl flex-shrink-0">{m.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold" style={{ color: 'rgb(var(--color-text))' }}>{m.name}</span>
-                  {m.status === 'beta' && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                      style={{ background: 'rgba(245,158,11,.15)', color: 'rgb(245,158,11)' }}>BETA</span>
-                  )}
-                  {m.status === 'planned' && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                      style={{ background: 'rgba(148,163,184,.12)', color: 'rgb(148,163,184)' }}>EM BREVE</span>
-                  )}
-                  {m.status === 'bundled' && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                      style={{ background: 'rgba(16,185,129,.12)', color: 'rgb(var(--color-primary))' }}>INCLUSO NO PLANO</span>
-                  )}
-                </div>
-                <p className="text-xs mt-0.5" style={{ color: 'rgb(var(--color-text-muted))' }}>{m.tagline}</p>
-              </div>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                style={{ color: 'rgb(var(--color-text-muted))', flexShrink: 0 }}>
-                <path d="M5 12h14M12 5l7 7-7 7"/>
-              </svg>
-            </Link>
-          ))}
-        </div>
-      </div>
     </>
   );
 }

@@ -150,7 +150,7 @@ export default function AtendeLandingClient() {
 
         <div className="relative max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 bg-brand-primary/10 border border-brand-primary/20 rounded-full px-4 py-1.5 text-sm font-medium text-brand-primary mb-6">
-            🤖 Novo módulo · Atendimento automático
+            🤖 Incluso no plano Profissional
           </div>
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight mb-5">
