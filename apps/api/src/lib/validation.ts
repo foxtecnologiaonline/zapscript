@@ -82,6 +82,10 @@ const cardSchema = z.object({
   expiryMonth: z.string().length(2, 'Mês inválido (MM)'),
   expiryYear:  z.string().min(2, 'Ano inválido').max(4),
   ccv:         z.string().min(3, 'CVV inválido').max(4),
+  // CPF do titular do cartão — exigido só no pagamento com cartão (não há gate de
+  // CPF/CNPJ no perfil do usuário; ver MODULOS_ARQUITETURA.md e billing.ts).
+  document:    z.string({ required_error: 'Informe o CPF do titular do cartão (11 dígitos).' })
+                 .regex(/^\d{11}$/, 'Informe o CPF do titular do cartão (11 dígitos).'),
 });
 
 const billingAddressSchema = z.object({

@@ -173,18 +173,6 @@ const DEFAULT_MINUTE_PKGS: MinutePkg[] = [
   { id: 'pkg_100', minutes: 100, priceBrl: 19, label: '100 minutos', desc: 'Melhor valor' },
 ];
 
-function formatDocument(val: string): string {
-  const n = val.replace(/\D/g, '').slice(0, 14);
-  if (n.length <= 11) {
-    if (n.length <= 3)  return n;
-    if (n.length <= 6)  return `${n.slice(0,3)}.${n.slice(3)}`;
-    if (n.length <= 9)  return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6)}`;
-    return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
-  }
-  if (n.length <= 12) return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8)}`;
-  return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8,12)}-${n.slice(12)}`;
-}
-
 /* ── Modal de upgrade com proration ── */
 interface UpgradePreview {
   currentPlanLabel: string;
@@ -363,100 +351,6 @@ function UpgradeModal({
   );
 }
 
-/* ── Modal de CPF/CNPJ ── */
-function DocumentModal({
-  planLabel,
-  onConfirm,
-  onCancel,
-}: {
-  planLabel: string;
-  onConfirm: (document: string) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [doc, setDoc]       = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr]       = useState('');
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const clean = doc.replace(/\D/g, '');
-    if (clean.length !== 11 && clean.length !== 14) {
-      setErr('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.');
-      return;
-    }
-    setSaving(true);
-    setErr('');
-    try {
-      await onConfirm(doc);
-    } catch (e: any) {
-      setErr(e.message || 'Erro ao salvar. Tente novamente.');
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-2xl p-6"
-        style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-primary)/.2)' }}
-        onClick={e => e.stopPropagation()}>
-
-        <div className="text-center mb-5">
-          <div className="w-12 h-12 rounded-full bg-brand-primary/10 flex items-center justify-center mx-auto mb-3">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ color: 'rgb(var(--color-primary))' }}>
-              <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h6M7 16h4"/>
-            </svg>
-          </div>
-          <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
-            Dados de cobrança
-          </h3>
-          <p className="text-xs mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
-            Necessário para assinar o plano <strong style={{ color: 'rgb(var(--color-primary))' }}>{planLabel}</strong>
-          </p>
-        </div>
-
-        <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              CPF ou CNPJ
-            </label>
-            <input
-              className="field-input"
-              placeholder="000.000.000-00 ou 00.000.000/0001-00"
-              value={doc}
-              onChange={e => setDoc(formatDocument(e.target.value))}
-              maxLength={18}
-              required
-              autoFocus
-            />
-            <p className="text-[10px] mt-1.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              Usado apenas para emissão de cobranças. Não será compartilhado.
-            </p>
-          </div>
-
-          {err && (
-            <div className="text-xs px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', color: '#f87171' }}>
-              {err}
-            </div>
-          )}
-
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onCancel}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
-              style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
-              Cancelar
-            </button>
-            <button type="submit" disabled={saving}
-              className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50">
-              {saving ? 'Salvando...' : 'Continuar →'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 /* ── Modal de verificação de e-mail (gate da assinatura) ── */
 function VerifyEmailModal({
   email,
@@ -538,7 +432,6 @@ function PlanoContent() {
   const [user, setUser]               = useState<User | null>(null);
   const [loading, setLoading]         = useState(true);
   const [checkoutPlan, setCheckoutPlan]     = useState<string | null>(null);  // plano com checkout inline aberto
-  const [docModal, setDocModal]             = useState<string | null>(null);
   const [verifyModal, setVerifyModal]       = useState(false);
   const [showTable, setShowTable]           = useState(false);
   const [upgradePreview, setUpgradePreview] = useState<UpgradePreview | null>(null);
@@ -558,13 +451,11 @@ function PlanoContent() {
   const [moduleLoading, setModuleLoading]           = useState(false);
   const [moduleCheckoutOpen, setModuleCheckoutOpen] = useState(false);
   const [moduleVerifyModal, setModuleVerifyModal]   = useState(false);
-  const [moduleDocModal, setModuleDocModal]         = useState(false);
 
   /* — Combo (Core + módulos disponíveis), oferecido junto do ?add=chave — */
   const [comboPreview, setComboPreview]             = useState<ComboPreview | null>(null);
   const [comboCheckoutOpen, setComboCheckoutOpen]   = useState(false);
   const [comboVerifyModal, setComboVerifyModal]     = useState(false);
-  const [comboDocModal, setComboDocModal]           = useState(false);
 
   /* — Minute packages — */
   const [minutePkgs, setMinutePkgs]             = useState<MinutePkg[]>(DEFAULT_MINUTE_PKGS);
@@ -629,13 +520,10 @@ function PlanoContent() {
   }
 
   async function upgrade(planName: string) {
-    // Opção A: gate de assinatura — e-mail verificado vem antes do CPF/checkout.
+    // Opção A: gate de assinatura — só e-mail verificado. O CPF do titular do
+    // cartão (se for o método escolhido) é pedido no próprio checkout.
     if (!user?.emailVerified) {
       setVerifyModal(true);
-      return;
-    }
-    if (!user?.document) {
-      setDocModal(planName);
       return;
     }
     // Usuário já em plano pago → mostrar simulação de proration antes
@@ -668,15 +556,6 @@ function PlanoContent() {
     setCheckoutPlan(planName);
   }
 
-  async function handleDocumentConfirm(document: string) {
-    // Salvar CPF/CNPJ e prosseguir para checkout
-    await api.put('/auth/profile', { document });
-    setUser(u => u ? { ...u, document: document.replace(/\D/g, '') } : u);
-    const plan = docModal!;
-    setDocModal(null);
-    await doCheckout(plan);
-  }
-
   // Contratação de módulo avulso via ?add=<key> — busca catálogo + módulos já contratados
   // + prévia do Combo (mesma tela, para oferecer como alternativa)
   useEffect(() => {
@@ -693,17 +572,9 @@ function PlanoContent() {
     }).finally(() => setModuleLoading(false));
   }, [addModuleKey]);
 
-  // Mesmo gate de e-mail/CPF do fluxo de planos, antes de abrir o checkout do módulo
+  // Mesmo gate de e-mail do fluxo de planos, antes de abrir o checkout do módulo
   function startModulePurchase() {
     if (!user?.emailVerified) { setModuleVerifyModal(true); return; }
-    if (!user?.document)      { setModuleDocModal(true);    return; }
-    setModuleCheckoutOpen(true);
-  }
-
-  async function handleModuleDocumentConfirm(document: string) {
-    await api.put('/auth/profile', { document });
-    setUser(u => u ? { ...u, document: document.replace(/\D/g, '') } : u);
-    setModuleDocModal(false);
     setModuleCheckoutOpen(true);
   }
 
@@ -712,17 +583,9 @@ function PlanoContent() {
     window.location.href = `/dashboard/plano?moduleadded=${key}`;
   }
 
-  // Mesmo gate de e-mail/CPF, antes de abrir o checkout do Combo
+  // Mesmo gate de e-mail, antes de abrir o checkout do Combo
   function startComboPurchase() {
     if (!user?.emailVerified) { setComboVerifyModal(true); return; }
-    if (!user?.document)      { setComboDocModal(true);    return; }
-    setComboCheckoutOpen(true);
-  }
-
-  async function handleComboDocumentConfirm(document: string) {
-    await api.put('/auth/profile', { document });
-    setUser(u => u ? { ...u, document: document.replace(/\D/g, '') } : u);
-    setComboDocModal(false);
     setComboCheckoutOpen(true);
   }
 
@@ -770,7 +633,7 @@ function PlanoContent() {
           <div>
             <div className="font-bold text-sm">Assinatura cancelada</div>
             <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Você voltou para o plano Free. Pode reativar quando quiser.
+              Você voltou para o plano Core. Pode reativar quando quiser.
             </div>
           </div>
         </div>
@@ -1145,7 +1008,7 @@ function PlanoContent() {
                 color: '#030d06',
                 boxShadow: 'rgba(var(--color-primary)/.35) 0 6px 20px',
               }}>
-              {previewLoading ? 'Calculando...' : `Ativar Profissional por ${PLAN_PRICING.profissional.annual}/ano →`}
+              {previewLoading ? 'Calculando...' : 'Ativar Profissional →'}
             </button>
 
             <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.6)' }}>
@@ -1646,41 +1509,14 @@ function PlanoContent() {
         <VerifyEmailModal email={user.email} onCancel={() => setVerifyModal(false)} />
       )}
 
-      {/* Modal de CPF/CNPJ */}
-      {docModal && (
-        <DocumentModal
-          planLabel={PLANS.find(p => p.name === docModal)?.label || docModal}
-          onConfirm={handleDocumentConfirm}
-          onCancel={() => setDocModal(null)}
-        />
-      )}
-
       {/* Modal de verificação de e-mail (gate da contratação de módulo) */}
       {moduleVerifyModal && user && (
         <VerifyEmailModal email={user.email} onCancel={() => setModuleVerifyModal(false)} />
       )}
 
-      {/* Modal de CPF/CNPJ (gate da contratação de módulo) */}
-      {moduleDocModal && moduleInfo && (
-        <DocumentModal
-          planLabel={moduleInfo.name}
-          onConfirm={handleModuleDocumentConfirm}
-          onCancel={() => setModuleDocModal(false)}
-        />
-      )}
-
       {/* Modal de verificação de e-mail (gate da contratação do Combo) */}
       {comboVerifyModal && user && (
         <VerifyEmailModal email={user.email} onCancel={() => setComboVerifyModal(false)} />
-      )}
-
-      {/* Modal de CPF/CNPJ (gate da contratação do Combo) */}
-      {comboDocModal && comboPreview?.available && (
-        <DocumentModal
-          planLabel="Combo"
-          onConfirm={handleComboDocumentConfirm}
-          onCancel={() => setComboDocModal(false)}
-        />
       )}
 
       {/* Modal de upgrade com proration */}

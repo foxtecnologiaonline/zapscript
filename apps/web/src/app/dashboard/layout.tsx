@@ -8,7 +8,6 @@ import { api } from '@/lib/api';
 // Item "Afiliados" é condicional: só entra para quem tem a marcação de afiliado
 // aprovado (user.affiliate.status === 'approved'). Ver buildNav().
 const NAV_BASE = [
-  { href: '/app',                     icon: '🧩', label: 'Módulos' },
   { href: '/dashboard',               icon: '🏠', label: 'Dashboard' },
   { href: '/dashboard/transcricoes',  icon: '📝', label: 'Conversões' },
   { href: '/dashboard/numeros',       icon: '📱', label: 'Números' },

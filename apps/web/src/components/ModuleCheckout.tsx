@@ -6,13 +6,14 @@ import { api } from '@/lib/api';
    ModuleCheckout — Checkout Transparente Asaas para módulos
    da suíte (assinatura à la carte via POST /billing/modules/:key/subscribe).
    Métodos: PIX · Crédito · Débito.
-   Inclui os gates de e-mail verificado e CPF/CNPJ antes do pagamento.
+   Gate de e-mail verificado antes do pagamento — o CPF do titular do cartão
+   é pedido só no formulário de cartão (ver CardForm), sem exigir CPF/CNPJ
+   salvo no perfil do usuário de antemão.
    ───────────────────────────────────────────────────────── */
 
 export interface CheckoutUser {
   email: string;
   emailVerified: boolean;
-  document?: string | null;
 }
 
 interface Props {
@@ -22,14 +23,12 @@ interface Props {
   priceLabel:  string;   // ex: "R$39/mês"
   features?:   string[];
   user:        CheckoutUser;
-  /** Chamado após salvar CPF/CNPJ, para o chamador sincronizar o estado local do usuário. */
-  onDocumentSaved?: (document: string) => void;
   onSuccess:   () => void;
   onClose:     () => void;
 }
 
 type Method = 'pix' | 'credit_card' | 'debit_card';
-type Stage  = 'verify' | 'document' | 'checkout' | 'success';
+type Stage  = 'verify' | 'checkout' | 'success';
 
 interface PixData {
   qrCode:    string | null;
@@ -39,20 +38,16 @@ interface PixData {
 }
 
 /* ── Formatação ── */
-function formatDocument(val: string): string {
-  const n = val.replace(/\D/g, '').slice(0, 14);
-  if (n.length <= 11) {
-    if (n.length <= 3)  return n;
-    if (n.length <= 6)  return `${n.slice(0,3)}.${n.slice(3)}`;
-    if (n.length <= 9)  return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6)}`;
-    return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
-  }
-  if (n.length <= 12) return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8)}`;
-  return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8,12)}-${n.slice(12)}`;
-}
 function formatCardNumber(v: string) { return v.replace(/\D/g,'').slice(0,16).replace(/(.{4})/g,'$1 ').trim(); }
 function formatExpiry(v: string) { const n = v.replace(/\D/g,'').slice(0,4); return n.length > 2 ? `${n.slice(0,2)} / ${n.slice(2)}` : n; }
 function formatPostalCode(v: string) { const n = v.replace(/\D/g,'').slice(0,8); return n.length > 5 ? `${n.slice(0,5)}-${n.slice(5)}` : n; }
+function formatCpf(v: string) {
+  const n = v.replace(/\D/g,'').slice(0,11);
+  if (n.length <= 3)  return n;
+  if (n.length <= 6)  return `${n.slice(0,3)}.${n.slice(3)}`;
+  if (n.length <= 9)  return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6)}`;
+  return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
+}
 
 /* ── Normalizar mensagens de erro da API ── */
 function normalizeApiError(err: any): string {
@@ -155,90 +150,16 @@ function VerifyEmailModal({ email, onCancel }: { email: string; onCancel: () => 
   );
 }
 
-/* ── Modal: CPF/CNPJ obrigatório ── */
-function DocumentModal({ contextLabel, onConfirm, onCancel }: {
-  contextLabel: string;
-  onConfirm: (document: string) => Promise<void>;
-  onCancel:  () => void;
-}) {
-  const [doc, setDoc]       = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr]       = useState('');
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const clean = doc.replace(/\D/g, '');
-    if (clean.length !== 11 && clean.length !== 14) {
-      setErr('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.');
-      return;
-    }
-    setSaving(true); setErr('');
-    try {
-      await onConfirm(doc);
-    } catch (e: any) {
-      setErr(e.message || 'Erro ao salvar. Tente novamente.');
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Overlay onClick={onCancel}>
-      <div className="text-center mb-5">
-        <div className="w-12 h-12 rounded-full bg-brand-primary/10 flex items-center justify-center mx-auto mb-3">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ color: 'rgb(var(--color-primary))' }}>
-            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h6M7 16h4"/>
-          </svg>
-        </div>
-        <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>Dados de cobrança</h3>
-        <p className="text-xs mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
-          Necessário para contratar o módulo <strong style={{ color: 'rgb(var(--color-primary))' }}>{contextLabel}</strong>
-        </p>
-      </div>
-      <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>CPF ou CNPJ</label>
-          <input
-            className="field-input"
-            placeholder="000.000.000-00 ou 00.000.000/0001-00"
-            value={doc}
-            onChange={e => setDoc(formatDocument(e.target.value))}
-            maxLength={18}
-            required
-            autoFocus
-          />
-          <p className="text-[10px] mt-1.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
-            Usado apenas para emissão de cobranças. Não será compartilhado.
-          </p>
-        </div>
-        {err && (
-          <div className="text-xs px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', color: '#f87171' }}>
-            {err}
-          </div>
-        )}
-        <div className="flex gap-2 pt-1">
-          <button type="button" onClick={onCancel}
-            className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
-            style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
-            Cancelar
-          </button>
-          <button type="submit" disabled={saving} className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50">
-            {saving ? 'Salvando...' : 'Continuar →'}
-          </button>
-        </div>
-      </form>
-    </Overlay>
-  );
-}
-
 /* ── Formulário de cartão ── */
 function CardForm({ onSubmit, loading, error, submitLabel }: {
-  onSubmit: (card: { holderName: string; number: string; expiryMonth: string; expiryYear: string; ccv: string; postalCode: string; addressNumber: string }) => void;
+  onSubmit: (card: { holderName: string; number: string; expiryMonth: string; expiryYear: string; ccv: string; postalCode: string; addressNumber: string; document: string }) => void;
   loading: boolean;
   error: string;
   submitLabel: string;
 }) {
   const [number,        setNumber]        = useState('');
   const [holderName,    setHolderName]    = useState('');
+  const [document,      setDocument]      = useState('');
   const [expiry,        setExpiry]        = useState('');
   const [ccv,           setCcv]           = useState('');
   const [postalCode,    setPostalCode]    = useState('');
@@ -247,7 +168,7 @@ function CardForm({ onSubmit, loading, error, submitLabel }: {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const [expMonth, expYear] = expiry.replace(/\s/g, '').split('/');
-    onSubmit({ holderName, number, expiryMonth: expMonth?.trim() ?? '', expiryYear: expYear?.trim() ?? '', ccv, postalCode, addressNumber });
+    onSubmit({ holderName, number, expiryMonth: expMonth?.trim() ?? '', expiryYear: expYear?.trim() ?? '', ccv, postalCode, addressNumber, document });
   }
 
   return (
@@ -261,6 +182,11 @@ function CardForm({ onSubmit, loading, error, submitLabel }: {
         <label style={labelStyle}>NOME NO CARTÃO</label>
         <input style={fieldStyle} placeholder="Como está no cartão" value={holderName}
           onChange={e => setHolderName(e.target.value.toUpperCase())} maxLength={64} required autoComplete="cc-name" />
+      </div>
+      <div>
+        <label style={labelStyle}>CPF DO TITULAR</label>
+        <input style={fieldStyle} placeholder="000.000.000-00" value={document}
+          onChange={e => setDocument(formatCpf(e.target.value))} maxLength={14} required inputMode="numeric" autoComplete="off" />
       </div>
       <div style={{ display: 'flex', gap: 10 }}>
         <div style={{ flex: 1 }}>
@@ -425,7 +351,7 @@ function CheckoutBody({ moduleKey, moduleLabel, priceLabel, onSuccess }: {
 
   async function handleCardSubmit(card: {
     holderName: string; number: string; expiryMonth: string; expiryYear: string;
-    ccv: string; postalCode: string; addressNumber: string;
+    ccv: string; postalCode: string; addressNumber: string; document: string;
   }) {
     setLoading(true); setError('');
     try {
@@ -437,6 +363,7 @@ function CheckoutBody({ moduleKey, moduleLabel, priceLabel, onSuccess }: {
           expiryMonth: card.expiryMonth,
           expiryYear:  card.expiryYear,
           ccv:         card.ccv,
+          document:    card.document.replace(/\D/g, ''),
         },
         billingAddress: {
           postalCode:    card.postalCode?.replace(/\D/g, '') || undefined,
@@ -562,7 +489,7 @@ function CheckoutBody({ moduleKey, moduleLabel, priceLabel, onSuccess }: {
               onSubmit={handleCardSubmit}
               loading={loading}
               error={error}
-              submitLabel={`Assinar — ${priceLabel}`}
+              submitLabel="Ativar"
             />
           )}
 
@@ -581,7 +508,7 @@ function CheckoutBody({ moduleKey, moduleLabel, priceLabel, onSuccess }: {
                 color: '#fff', border: 'none', borderRadius: 10, padding: '13px',
                 fontSize: 14, fontWeight: 700, cursor: loading ? 'default' : 'pointer',
               }}>
-                {loading ? 'Gerando...' : `⚡ Gerar QR Code PIX — ${priceLabel}`}
+                {loading ? 'Gerando...' : '⚡ Gerar QR Code PIX'}
               </button>
             </div>
           )}
@@ -606,30 +533,12 @@ function CheckoutBody({ moduleKey, moduleLabel, priceLabel, onSuccess }: {
    ══════════════════════════════════════════════════════ */
 export default function ModuleCheckout({
   moduleKey, moduleLabel, moduleIcon, priceLabel, features = [],
-  user, onDocumentSaved, onSuccess, onClose,
+  user, onSuccess, onClose,
 }: Props) {
-  const [stage, setStage] = useState<Stage>(
-    !user.emailVerified ? 'verify' : !user.document ? 'document' : 'checkout',
-  );
-
-  async function handleDocumentConfirm(document: string) {
-    await api.put('/auth/profile', { document });
-    onDocumentSaved?.(document);
-    setStage('checkout');
-  }
+  const [stage] = useState<Stage>(!user.emailVerified ? 'verify' : 'checkout');
 
   if (stage === 'verify') {
     return <VerifyEmailModal email={user.email} onCancel={onClose} />;
-  }
-
-  if (stage === 'document') {
-    return (
-      <DocumentModal
-        contextLabel={moduleLabel}
-        onConfirm={handleDocumentConfirm}
-        onCancel={onClose}
-      />
-    );
   }
 
   return (

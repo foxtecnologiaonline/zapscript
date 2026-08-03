@@ -342,7 +342,7 @@ describe('POST /billing/modules/:key/subscribe', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: {
         paymentMethod: 'credit_card',
-        card: { holderName: 'Test User', number: '4111111111111111', expiryMonth: '12', expiryYear: '30', ccv: '123' },
+        card: { holderName: 'Test User', number: '4111111111111111', expiryMonth: '12', expiryYear: '30', ccv: '123', document: '12345678900' },
       },
     });
     expect(res.statusCode).toBe(200);
@@ -543,20 +543,20 @@ describe('POST /billing/combo/subscribe', () => {
     expect(res.json().code).toBe('EMAIL_NOT_VERIFIED');
   });
 
-  it('retorna 400 quando falta CPF/CNPJ', async () => {
-    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce({ ...baseUser, document: null });
-    (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce(null);
-    (prisma.product.findMany as jest.Mock).mockResolvedValueOnce([productAtende]);
-    (prisma.entitlement.findMany as jest.Mock).mockResolvedValueOnce([]);
-
+  it('retorna 400 quando falta o CPF do titular no pagamento com cartão', async () => {
+    // Não há mais gate de CPF/CNPJ salvo no perfil — o CPF do titular é exigido
+    // só no próprio formulário de cartão (cardSchema.document), via validação Zod.
     const token = makeToken(app);
     const res = await app.inject({
       method: 'POST', url: '/billing/combo/subscribe',
       headers: { authorization: `Bearer ${token}` },
-      payload: {},
+      payload: {
+        paymentMethod: 'credit_card',
+        card: { holderName: 'Test User', number: '4111111111111111', expiryMonth: '12', expiryYear: '30', ccv: '123' },
+      },
     });
     expect(res.statusCode).toBe(400);
-    expect(res.json().code).toBe('DOCUMENT_REQUIRED');
+    expect(res.json().error).toMatch(/CPF do titular/i);
   });
 
   it('ativa o Combo na hora quando pago no cartão (sem desconto duplicado)', async () => {
@@ -588,7 +588,7 @@ describe('POST /billing/combo/subscribe', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: {
         paymentMethod: 'credit_card',
-        card: { holderName: 'Test User', number: '4111111111111111', expiryMonth: '12', expiryYear: '30', ccv: '123' },
+        card: { holderName: 'Test User', number: '4111111111111111', expiryMonth: '12', expiryYear: '30', ccv: '123', document: '12345678900' },
       },
     });
     expect(res.statusCode).toBe(200);
@@ -621,7 +621,7 @@ describe('POST /billing/combo/subscribe', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: {
         paymentMethod: 'credit_card',
-        card: { holderName: 'Test User', number: '4111111111111111', expiryMonth: '12', expiryYear: '30', ccv: '123' },
+        card: { holderName: 'Test User', number: '4111111111111111', expiryMonth: '12', expiryYear: '30', ccv: '123', document: '12345678900' },
       },
     });
     expect(res.statusCode).toBe(402);

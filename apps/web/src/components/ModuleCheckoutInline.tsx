@@ -37,6 +37,13 @@ function formatBrl(v: number) { return `R$ ${v.toFixed(2).replace('.', ',')}`; }
 function formatCardNumber(v: string) { return v.replace(/\D/g,'').slice(0,16).replace(/(.{4})/g,'$1 ').trim(); }
 function formatExpiry(v: string) { const n = v.replace(/\D/g,'').slice(0,4); return n.length > 2 ? `${n.slice(0,2)} / ${n.slice(2)}` : n; }
 function formatPostalCode(v: string) { const n = v.replace(/\D/g,'').slice(0,8); return n.length > 5 ? `${n.slice(0,5)}-${n.slice(5)}` : n; }
+function formatCpf(v: string) {
+  const n = v.replace(/\D/g,'').slice(0,11);
+  if (n.length <= 3)  return n;
+  if (n.length <= 6)  return `${n.slice(0,3)}.${n.slice(3)}`;
+  if (n.length <= 9)  return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6)}`;
+  return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
+}
 
 const fieldStyle: React.CSSProperties = {
   width: '100%', background: 'rgb(var(--color-bg))',
@@ -71,13 +78,14 @@ function normalizeApiError(err: any): string {
 
 /* ── Formulário de cartão de crédito ── */
 function CardForm({ onSubmit, loading, error, submitLabel }: {
-  onSubmit: (card: { holderName: string; number: string; expiryMonth: string; expiryYear: string; ccv: string; postalCode: string; addressNumber: string }) => void;
+  onSubmit: (card: { holderName: string; number: string; expiryMonth: string; expiryYear: string; ccv: string; postalCode: string; addressNumber: string; document: string }) => void;
   loading:     boolean;
   error:       string;
   submitLabel: string;
 }) {
   const [number,        setNumber]        = useState('');
   const [holderName,    setHolderName]    = useState('');
+  const [document,      setDocument]      = useState('');
   const [expiry,        setExpiry]        = useState('');
   const [ccv,           setCcv]           = useState('');
   const [postalCode,    setPostalCode]    = useState('');
@@ -86,7 +94,7 @@ function CardForm({ onSubmit, loading, error, submitLabel }: {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const [expMonth, expYear] = expiry.replace(/\s/g, '').split('/');
-    onSubmit({ holderName, number, expiryMonth: expMonth?.trim() ?? '', expiryYear: expYear?.trim() ?? '', ccv, postalCode, addressNumber });
+    onSubmit({ holderName, number, expiryMonth: expMonth?.trim() ?? '', expiryYear: expYear?.trim() ?? '', ccv, postalCode, addressNumber, document });
   }
 
   return (
@@ -100,6 +108,11 @@ function CardForm({ onSubmit, loading, error, submitLabel }: {
         <label style={labelStyle}>NOME NO CARTÃO</label>
         <input style={fieldStyle} placeholder="Como está no cartão" value={holderName}
           onChange={e => setHolderName(e.target.value.toUpperCase())} maxLength={64} required autoComplete="cc-name" />
+      </div>
+      <div>
+        <label style={labelStyle}>CPF DO TITULAR</label>
+        <input style={fieldStyle} placeholder="000.000.000-00" value={document}
+          onChange={e => setDocument(formatCpf(e.target.value))} maxLength={14} required inputMode="numeric" autoComplete="off" />
       </div>
       <div style={{ display: 'flex', gap: 10 }}>
         <div style={{ flex: 1 }}>
@@ -243,11 +256,10 @@ function PixDisplay({ data, onPaid, onExpire, loading }: { data: PixData; onPaid
 }
 
 /* ── Área de geração PIX (antes do QR) ── */
-function PixGenerateArea({ loading, error, onGenerate, priceLabel }: {
+function PixGenerateArea({ loading, error, onGenerate }: {
   loading:    boolean;
   error:      string;
   onGenerate: () => void;
-  priceLabel: string;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -264,7 +276,7 @@ function PixGenerateArea({ loading, error, onGenerate, priceLabel }: {
         color: '#fff', border: 'none', borderRadius: 10, padding: '13px',
         fontSize: 14, fontWeight: 700, cursor: loading ? 'default' : 'pointer',
       }}>
-        {loading ? 'Gerando...' : `⚡ Gerar QR Code PIX — ${priceLabel}`}
+        {loading ? 'Gerando...' : '⚡ Gerar QR Code PIX'}
       </button>
     </div>
   );
@@ -291,7 +303,7 @@ export default function ModuleCheckoutInline({ moduleKey, moduleName, priceMonth
 
   async function handleCardSubmit(card: {
     holderName: string; number: string; expiryMonth: string; expiryYear: string;
-    ccv: string; postalCode: string; addressNumber: string;
+    ccv: string; postalCode: string; addressNumber: string; document: string;
   }) {
     setLoading(true); setError('');
     try {
@@ -301,6 +313,7 @@ export default function ModuleCheckoutInline({ moduleKey, moduleName, priceMonth
         expiryMonth: card.expiryMonth,
         expiryYear:  card.expiryYear,
         ccv:         card.ccv,
+        document:    card.document.replace(/\D/g, ''),
       };
       const billingAddress = {
         postalCode:    card.postalCode?.replace(/\D/g, '') || undefined,
@@ -443,12 +456,12 @@ export default function ModuleCheckoutInline({ moduleKey, moduleName, priceMonth
               onSubmit={handleCardSubmit}
               loading={loading}
               error={error}
-              submitLabel={`Contratar — ${priceLabel}/mês`}
+              submitLabel="Ativar"
             />
           )}
 
           {method === 'pix' && !pixData && (
-            <PixGenerateArea loading={loading} error={error} onGenerate={handlePixSubmit} priceLabel={priceLabel} />
+            <PixGenerateArea loading={loading} error={error} onGenerate={handlePixSubmit} />
           )}
 
           {method === 'pix' && pixData && (

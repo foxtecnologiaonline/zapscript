@@ -173,8 +173,7 @@ function AppLauncherInner() {
           moduleLabel={checkoutSpec.name}
           moduleIcon={MODULE_ICON[checkoutSpec.key] || '🧩'}
           priceLabel={`${formatBrl(checkoutSpec.priceMonthly)}/mês`}
-          user={{ email: me.email, emailVerified: me.emailVerified, document: me.document }}
-          onDocumentSaved={(doc) => setMe((m) => (m ? { ...m, document: doc } : m))}
+          user={{ email: me.email, emailVerified: me.emailVerified }}
           onSuccess={() => { setCheckoutKey(null); refreshMe(); }}
           onClose={() => setCheckoutKey(null)}
         />

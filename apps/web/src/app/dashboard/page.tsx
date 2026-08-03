@@ -134,17 +134,17 @@ export default function DashboardPage() {
         hasTranscription={(stats?.transcriptionsTotal ?? 0) > 0}
       />
 
-      {/* ── KPI HERO: tempo economizado (valor entregue, acumulando) ── */}
-      {stats && stats.savedSecondsMonth > 0 && (
+      {/* ── KPI HERO: áudios lidos este mês ── */}
+      {stats && stats.transcriptionsMonth > 0 && (
         <div className="rounded-2xl px-5 py-5 mb-5 flex items-center gap-5"
           style={{ background: 'linear-gradient(110deg, rgba(16,185,129,.16), rgba(16,185,129,.04))', border: '1px solid rgba(16,185,129,.28)' }}>
-          <span className="text-3xl sm:text-4xl flex-shrink-0">⏱️</span>
+          <span className="text-3xl sm:text-4xl flex-shrink-0">🎧</span>
           <div className="min-w-0">
-            <div className="text-xs font-semibold text-brand-primary uppercase tracking-wide mb-0.5">Tempo economizado este mês</div>
-            <div className="text-3xl sm:text-4xl font-black text-brand-text leading-none">{stats.savedLabelMonth}</div>
+            <div className="text-xs font-semibold text-brand-primary uppercase tracking-wide mb-0.5">Áudios lidos este mês</div>
+            <div className="text-3xl sm:text-4xl font-black text-brand-text leading-none">{stats.transcriptionsMonth}</div>
             <div className="text-xs text-brand-muted mt-1.5">
-              Você leu <strong className="text-brand-text">{stats.transcriptionsMonth}</strong> áudio{stats.transcriptionsMonth !== 1 ? 's' : ''} em vez de ouvir tudo.
-              {stats.planName === 'free' && <> Imagine sem limite — <Link href="/dashboard/plano" className="text-brand-primary font-semibold hover:underline">menos de R$1,63/dia</Link>.</>}
+              Isso economizou <strong className="text-brand-text">{stats.savedLabelMonth}</strong> em vez de ouvir tudo.
+              {stats.planName === 'free' && <> Imagine sem limite — <Link href="/dashboard/plano" className="text-brand-primary font-semibold hover:underline">ative o Profissional</Link>.</>}
             </div>
           </div>
         </div>
