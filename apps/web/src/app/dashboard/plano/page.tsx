@@ -762,28 +762,36 @@ function PlanoContent() {
             )}
           </div>
 
-          {/* Data de renovação + dias restantes */}
-          {stats.renewAt && stats.planName !== 'free' && (() => {
-            const _today = new Date(); _today.setHours(0,0,0,0);
-            const _renew = new Date(stats.renewAt); _renew.setHours(0,0,0,0);
-            const daysLeft = Math.round((_renew.getTime() - _today.getTime()) / (1000 * 60 * 60 * 24));
-            const urgent   = daysLeft <= 7;
+          {/* Data de renovação + dias restantes — para todos os planos, inclusive Core
+              (é quando a cota de áudios reseta, não só a cobrança de planos pagos) */}
+          {stats.renewAt && (() => {
+            const _today     = new Date(); _today.setHours(0,0,0,0);
+            const _renew     = new Date(stats.renewAt); _renew.setHours(0,0,0,0);
+            const _cycleStart = new Date(_renew.getTime() - 30*24*60*60*1000);
+            const daysLeft   = Math.round((_renew.getTime() - _today.getTime()) / (1000 * 60 * 60 * 24));
+            const urgent     = daysLeft <= 7;
             return (
-              <div className="flex items-center gap-1.5 text-xs mb-4"
-                style={{ color: 'rgb(var(--color-text-muted))' }}>
-                <span>🔄</span>
-                <span>
-                  Renova em{' '}
-                  <strong style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                    {new Date(stats.renewAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                  </strong>
-                  {' · '}
-                  <span style={{ color: urgent ? '#f87171' : 'rgb(var(--color-text-muted))' }}>
-                    {daysLeft > 0
-                      ? `${daysLeft} dia${daysLeft !== 1 ? 's' : ''} restante${daysLeft !== 1 ? 's' : ''}`
-                      : 'Vence hoje'}
+              <div className="text-xs mb-4" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                <div className="flex items-center gap-1.5">
+                  <span>🔄</span>
+                  <span>
+                    Renova em{' '}
+                    <strong style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                      {new Date(stats.renewAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    </strong>
+                    {' · '}
+                    <span style={{ color: urgent ? '#f87171' : 'rgb(var(--color-text-muted))' }}>
+                      {daysLeft > 0
+                        ? `${daysLeft} dia${daysLeft !== 1 ? 's' : ''} restante${daysLeft !== 1 ? 's' : ''}`
+                        : 'Vence hoje'}
+                    </span>
                   </span>
-                </span>
+                </div>
+                {!stats.audiosUnlimited && (
+                  <div className="mt-1 opacity-70">
+                    Ciclo de áudios iniciado em {_cycleStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                  </div>
+                )}
               </div>
             );
           })()}
