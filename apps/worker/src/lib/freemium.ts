@@ -7,7 +7,7 @@
  */
 
 // ── Parâmetros de cota (parametrizáveis por env, sem hardcode no fluxo) ──────
-export const FREE_AUDIO_QUOTA = parseInt(process.env.FREE_AUDIO_QUOTA || '100', 10);
+export const FREE_AUDIO_QUOTA = parseInt(process.env.FREE_AUDIO_QUOTA || '200', 10);
 export const PRO_AUDIO_CAP    = parseInt(process.env.PRO_AUDIO_CAP    || '500', 10);
 
 // ── Teto de duração por áudio: 10 min. Acima → rejeita (não conta cota) ──────

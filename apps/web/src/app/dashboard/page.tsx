@@ -228,25 +228,33 @@ export default function DashboardPage() {
                 </span>
               </div>
             )}
-            {/* Renovação — só planos pagos */}
-            {stats.renewAt && stats.planName !== 'free' && (() => {
-              const today    = new Date(); today.setHours(0,0,0,0);
-              const renew    = new Date(stats.renewAt); renew.setHours(0,0,0,0);
-              const daysLeft = Math.round((renew.getTime() - today.getTime()) / (1000*60*60*24));
-              const urgent   = daysLeft <= 7;
+            {/* Renovação — para todos os planos, inclusive Core (é quando a cota de áudios reseta) */}
+            {stats.renewAt && (() => {
+              const today      = new Date(); today.setHours(0,0,0,0);
+              const renew      = new Date(stats.renewAt); renew.setHours(0,0,0,0);
+              const cycleStart = new Date(renew.getTime() - 30*24*60*60*1000);
+              const daysLeft   = Math.round((renew.getTime() - today.getTime()) / (1000*60*60*24));
+              const urgent     = daysLeft <= 7;
               return (
-                <div className={`flex items-center gap-1.5 text-[10px] mb-3 px-2 py-1.5 rounded-lg ${urgent ? 'bg-red-400/8 text-red-400' : 'bg-brand-elevated text-brand-muted'}`}>
-                  <span>🔄</span>
-                  <span>
-                    Renova em{' '}
-                    <strong className={urgent ? 'text-red-400' : 'text-brand-text-secondary'}>
-                      {renew.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                    </strong>
-                    {' · '}
-                    <span className={urgent ? 'font-semibold' : ''}>
-                      {daysLeft > 0 ? `${daysLeft} dia${daysLeft !== 1 ? 's' : ''}` : 'Vence hoje'}
+                <div className={`text-[10px] mb-3 px-2.5 py-2 rounded-lg ${urgent ? 'bg-red-400/8 text-red-400' : 'bg-brand-elevated text-brand-muted'}`}>
+                  <div className="flex items-center gap-1.5">
+                    <span>🔄</span>
+                    <span>
+                      Renova em{' '}
+                      <strong className={urgent ? 'text-red-400' : 'text-brand-text-secondary'}>
+                        {renew.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                      </strong>
+                      {' · '}
+                      <span className={urgent ? 'font-semibold' : ''}>
+                        {daysLeft > 0 ? `${daysLeft} dia${daysLeft !== 1 ? 's' : ''} restante${daysLeft !== 1 ? 's' : ''}` : 'Vence hoje'}
+                      </span>
                     </span>
-                  </span>
+                  </div>
+                  {!stats.audiosUnlimited && (
+                    <div className="mt-1 opacity-70">
+                      Ciclo iniciado em {cycleStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                    </div>
+                  )}
                 </div>
               );
             })()}

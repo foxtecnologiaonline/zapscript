@@ -102,9 +102,9 @@ const PLANS = [
     features: [
       'Tudo do Core, sem limite de áudios',
       'Atendimento automático 24/7 por IA',
-      'Fila de conversas + métricas',
+      'Fila de conversas + métricas + escalação',
       'Avisos ao cliente (cobrança, agendamento...)',
-      'Base de conhecimento própria',
+      'Base de conhecimento própria + resumo periódico',
     ],
   },
   {
@@ -117,6 +117,7 @@ const PLANS = [
       'CRM — funil de vendas no WhatsApp',
       'Tarefas — designação e controle na equipe',
       'Até 5 usuários com papéis',
+      'Até 5 números WhatsApp',
     ],
   },
 ];
