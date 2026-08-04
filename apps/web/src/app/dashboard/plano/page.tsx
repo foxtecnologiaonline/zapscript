@@ -121,8 +121,10 @@ const PLANS = [
       '🤖 Atendimento automático 24/7 por IA',
       '📥 Fila de conversas + assumir manualmente',
       '📊 Métricas de atendimento e efetividade',
+      '🔔 Escalação automática + aviso interno quando o bot precisa de ajuda humana',
       '📨 Avisos ao cliente (cobrança, agendamento, mercadoria pronta...)',
       '📚 Base de conhecimento própria',
+      '🗓️ Resumo diário ou semanal do atendimento por WhatsApp',
       '1 número WhatsApp',
     ],
     excl:  [],
@@ -141,6 +143,7 @@ const PLANS = [
       '📊 CRM — funil de vendas no WhatsApp',
       '✅ Tarefas — designação e controle na equipe',
       '👥 Até 5 usuários com papéis (admin/manager/agent)',
+      '📱 Até 5 números WhatsApp conectados',
     ],
     excl:  [],
     pop:   false,
@@ -159,9 +162,10 @@ type CmpVal = string | boolean;
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: 'Áudios/mês',                                                                          vals: ['100', 'Ilimitado', 'Ilimitado'] },
   { feature: '🎙️ Recursos essenciais (conversão, resumo com IA, Modo Privado, histórico e busca)', vals: [true, true, true] },
-  { feature: '🤖 Atendimento automático por IA (24/7, fila, métricas, avisos, base de conhecimento)', vals: [false, true, true] },
+  { feature: '🤖 Atendimento automático por IA (24/7, fila, métricas, escalação, resumo periódico)', vals: [false, true, true] },
   { feature: '📊 CRM + Tarefas em equipe',                                                          vals: [false, false, true] },
   { feature: '👥 Usuários incluídos',                                                                vals: ['1', '1', 'até 5'] },
+  { feature: '📱 Números WhatsApp',                                                                  vals: ['1', '1', 'até 5'] },
 ];
 
 // Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento

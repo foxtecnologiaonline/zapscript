@@ -117,7 +117,7 @@ function CommissionInfo() {
         <p className="text-[11px] text-brand-text-secondary mt-1">bônus com 50+ clientes/mês. Após 12 meses: 5% vitalício.</p>
       </div>
       <div className="sm:col-span-2 rounded-xl px-3 py-2 text-[11px] text-brand-muted" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-        💳 Pagamentos via Pix nos dias <strong className="text-brand-text">10 e 25</strong> de cada mês, contemplando as conversões do período.
+        💳 Saldo liberado <strong className="text-brand-text">30 dias</strong> após cada comissão gerada — saque via Pix a qualquer momento, sem valor mínimo.
       </div>
     </div>
   );

@@ -47,6 +47,7 @@ model User {
   supportAtendimentos     SupportAtendimento[]
   affiliate               Affiliate?
   affiliateReferral       AffiliateReferral?    @relation("ReferredUser")
+  creditWallet            CreditWallet?
   proContactSeeds         ProContactSeed[]
   entitlements            Entitlement[]
   cobrancaClientes        CobrancaCliente[]
@@ -69,6 +70,8 @@ model User {
   avisos                  Aviso[]
   tasks                   Task[]              @relation("TaskOwner")
   assignedTasks           Task[]              @relation("TaskAssignee")
+  taskComments            TaskComment[]
+  aiUsageLogs             AiUsageLog[]
 }
 
 model Plan {
@@ -519,6 +522,61 @@ model AffiliateCampaign {
   @@index([active, startsAt, endsAt])
 }
 
+// ── Carteira de Crédito — Regulamento v4 (REGULAMENTO_AFILIADOS.md) ────────
+// Substitui, em andamento, o modelo antigo de comissão (Affiliate/
+// AffiliateCommission, ainda ativo em paralelo até a migração ser concluída):
+// toda conta já tem carteira, sem aplicação nem aprovação. Reaproveita
+// User.refCode/referredBy (mesmo mecanismo do programa de indicação simples)
+// como link único de atribuição — Art. 1º-2º.
+// Taxa única de 20% sobre cada pagamento do indicado (Art. 3º), sem tier, sem
+// bônus, sem residual. Crédito nasce como PendingCredit e só vira saldo
+// (CreditTransaction) 30 dias após a confirmação do pagamento do indicado —
+// se o pagamento for cancelado/reembolsado antes disso, o PendingCredit é
+// cancelado e o crédito simplesmente nunca é gerado (Art. 4º).
+model CreditWallet {
+  id             String              @id @default(cuid())
+  userId         String              @unique
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance        Float               @default(0) // reais, já disponível para uso (Art. 5º)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  transactions   CreditTransaction[]
+  pendingCredits PendingCredit[]
+}
+
+// Livro-razão imutável: cada lançamento (ganho ou uso) vira uma linha, nunca é editada.
+model CreditTransaction {
+  id            String       @id @default(cuid())
+  walletId      String
+  wallet        CreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type          String       // earn_referral | redeem_invoice | redeem_addon | redeem_cashout | expire | adjustment
+  amount        Float        // reais — positivo = crédito, negativo = uso/débito
+  balanceAfter  Float
+  referenceType String? // payment | subscription | product | payout
+  referenceId   String?
+  note          String?
+  createdAt     DateTime     @default(now())
+
+  @@index([walletId, createdAt])
+}
+
+// Crédito "em trânsito": gerado na confirmação do pagamento do indicado, só
+// libera (vira CreditTransaction) 30 dias depois, se o pagamento continuar
+// confirmado até lá (Art. 4º). Idempotente por paymentId.
+model PendingCredit {
+  id             String       @id @default(cuid())
+  walletId       String
+  wallet         CreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  referredUserId String // quem pagou (o indicado)
+  paymentId      String       @unique // Asaas payment id
+  amount         Float // 20% do valor pago (Art. 3º)
+  releaseAt      DateTime // confirmação do pagamento do indicado + 30 dias
+  status         String       @default("pending") // pending | released | canceled
+  createdAt      DateTime     @default(now())
+
+  @@index([status, releaseAt])
+}
+
 // Leads capturados pela demo pública da landing page ("transcreva 1 áudio grátis").
 model DemoLead {
   id          String   @id @default(cuid())
@@ -812,6 +870,7 @@ model CrmContact {
   stage          CrmStage        @relation(fields: [stageId], references: [id], onDelete: Restrict)
   number         WhatsappNumber? @relation(fields: [numberId], references: [id], onDelete: SetNull)
   activities     CrmActivity[]
+  tasks          Task[]
 
   @@unique([userId, phone])
   @@index([userId, stageId])
@@ -828,6 +887,7 @@ model CrmActivity {
   content     String
   dueAt       DateTime? // lembretes: quando vence
   completedAt DateTime? // lembretes: quando foi concluído
+  notifiedAt  DateTime? // lembretes: quando o aviso de vencido foi disparado via WhatsApp (evita reenvio)
   createdAt   DateTime   @default(now())
   contact     CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -890,6 +950,23 @@ model AtendeConversation {
 
   @@unique([numberId, contactPhone])
   @@index([userId, lastMessageAt(sort: Desc)])
+}
+
+// Consumo de IA (Claude) por tenant, no módulo Atende — resposta automática e
+// as 3 rotas de setup (voz/foto/histórico). Não é cota nem trava nada; é só
+// telemetria de custo variável (planos vendem "ilimitado", então isso é a
+// única visibilidade sobre margem por conta).
+model AiUsageLog {
+  id           String   @id @default(cuid())
+  userId       String
+  feature      String // 'atende_reply' | 'atende_setup_voice' | 'atende_setup_kb_import' | 'atende_setup_from_history'
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model AtendeMessage {
@@ -1062,19 +1139,36 @@ model Aviso {
 // aponta pro userId do membro responsável (qualquer papel do time).
 // ─────────────────────────────────────────────────────────────────────────────
 model Task {
-  id           String    @id @default(cuid())
+  id           String        @id @default(cuid())
   userId       String
   title        String
   description  String?
   assignedToId String?
-  status       String    @default("pending") // 'pending' | 'done'
+  contactId    String? // vínculo opcional com um lead/cliente do CRM (tier Empresas)
+  status       String        @default("pending") // 'pending' | 'done'
   dueAt        DateTime?
   completedAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  user         User      @relation("TaskOwner", fields: [userId], references: [id], onDelete: Cascade)
-  assignedTo   User?     @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User          @relation("TaskOwner", fields: [userId], references: [id], onDelete: Cascade)
+  assignedTo   User?         @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  contact      CrmContact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  comments     TaskComment[]
 
   @@index([userId, status])
   @@index([userId, dueAt])
+  @@index([contactId])
+}
+
+// Comentários de tarefa — colaboração leve dentro do time (tier Empresas).
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String // autor do comentário (dono ou membro do time)
+  content   String
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
 }

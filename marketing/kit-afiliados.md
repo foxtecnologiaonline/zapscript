@@ -1,7 +1,7 @@
 # Kit MKT Afiliados — ZapScript
 
 > Para usar: substitua `[SEU_LINK]` pelo seu link pessoal de afiliado (disponível no painel em zapscript.me/dashboard/afiliado).
-> Versão: junho/2026 · Comissão: 50% da 1ª mensalidade mensal · 20% da 1ª mensalidade anual
+> Versão: agosto/2026 · Comissão: 30% recorrente por 12 meses em cada pagamento do indicado · bônus de 40% a partir do 51º cliente novo no mês · 5% residual vitalício após 12 meses
 
 ---
 
@@ -11,8 +11,8 @@
 https://zapscript.me/cadastro?aff=SEU_CODIGO
 ```
 
-> Toda pessoa que criar conta pelo seu link e assinar o plano Pro gera comissão para você.
-> Pagamento via Pix nos dias 10 e 25 de cada mês.
+> Toda pessoa que criar conta pelo seu link e assinar um plano pago gera comissão recorrente para você.
+> Saldo liberado 30 dias após cada comissão gerada — saque via Pix a qualquer momento, sem valor mínimo.
 
 **Âncora de preço (use se alguém achar caro):**
 > 24h trabalhando por você, por apenas R$1,23 ao dia — o robô do ZapScript fica de prontidão o tempo todo, transcrevendo assim que o áudio chega (R$37 ÷ 30 dias).

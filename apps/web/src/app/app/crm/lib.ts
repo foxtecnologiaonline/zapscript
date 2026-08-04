@@ -80,6 +80,7 @@ export interface CrmDashboard {
   periodDays: number;
   faturamentoFechado: number;
   negociosFechados: number;
+  negociosFechadosSemValor: number;
   negociosPerdidos: number;
   novosLeads: number;
   atendimentosSemana: number;

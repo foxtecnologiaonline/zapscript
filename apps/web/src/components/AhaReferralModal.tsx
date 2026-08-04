@@ -86,8 +86,8 @@ export default function AhaReferralModal({ transcriptionsTotal, refCode }: Props
         </p>
         <p className="text-brand-text text-sm font-semibold mb-6 leading-relaxed">
           Indique um amigo e{' '}
-          <span className="text-brand-primary">ganhe 1 mês grátis de Pro</span> para
-          cada indicação que se cadastrar.
+          <span className="text-brand-primary">ganhem 5 áudios grátis</span> os dois
+          quando ele se cadastrar.
         </p>
 
         {/* Referral link */}

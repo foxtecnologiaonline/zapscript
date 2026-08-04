@@ -93,6 +93,16 @@ jobs:
   remote-ssh:
     if: inputs.action == 'deploy' || inputs.action == 'rollback' || inputs.action == 'custom_ssh'
     runs-on: ubuntu-latest
+    # Trava de concorrência: build/deploy usa um diretório fixo no servidor
+    # (/root/zapscript-build-new) — dois runs em paralelo colidem nele (um
+    # apaga/move o diretório enquanto o outro ainda está "cd"ado lá dentro,
+    # gerando erro de "getwd: no such file or directory" no meio do deploy).
+    # cancel-in-progress: false — o run mais novo espera na fila em vez de
+    # cancelar um deploy em andamento (cancelar no meio poderia deixar api/
+    # worker em versões diferentes).
+    concurrency:
+      group: ops-vultr-remote-ssh
+      cancel-in-progress: false
     steps:
       - name: Configurar chave SSH
         env:

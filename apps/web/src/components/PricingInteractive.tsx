@@ -39,9 +39,9 @@ const PLANS: PlanCard[] = [
     feats: [
       'Tudo do Core, sem limite de áudios',
       '🤖 Atendimento automático 24/7 por IA',
-      '📥 Fila de conversas + métricas',
+      '📥 Fila de conversas + métricas + escalação',
       '📨 Avisos ao cliente (cobrança, agendamento...)',
-      '📚 Base de conhecimento própria',
+      '📚 Base de conhecimento própria + resumo periódico',
     ],
     excl: [],
     popular: true, accent: '#3b82f6',
@@ -56,6 +56,7 @@ const PLANS: PlanCard[] = [
       '📊 CRM — funil de vendas no WhatsApp',
       '✅ Tarefas — designação e controle na equipe',
       '👥 Até 5 usuários com papéis',
+      '📱 Até 5 números WhatsApp',
     ],
     excl: [],
     popular: false, accent: null,
@@ -70,6 +71,7 @@ const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
   { feature: '📊 CRM (funil de vendas)',           vals: [false, false, true] },
   { feature: '✅ Tarefas (equipe)',                vals: [false, false, true] },
   { feature: '👥 Usuários incluídos',              vals: ['1', '1', 'Até 5'] },
+  { feature: '📱 Números WhatsApp',                vals: ['1', '1', 'Até 5'] },
 ];
 
 export function PricingInteractive() {
