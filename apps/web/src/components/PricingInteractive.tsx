@@ -39,9 +39,9 @@ const PLANS: PlanCard[] = [
     feats: [
       'Tudo do Core, sem limite de áudios',
       '🤖 Atendimento automático 24/7 por IA',
-      '📥 Fila de conversas + métricas',
+      '📥 Fila de conversas + métricas + escalação',
       '📨 Avisos ao cliente (cobrança, agendamento...)',
-      '📚 Base de conhecimento própria',
+      '📚 Base de conhecimento própria + resumo periódico',
     ],
     excl: [],
     popular: true, accent: '#3b82f6',
