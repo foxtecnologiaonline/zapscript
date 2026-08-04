@@ -13,6 +13,7 @@ import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../lib/prisma';
 import { sendEmail, emailWrapper } from '../lib/mailer';
 import { logger } from '../lib/logger';
+import { FREE_AUDIO_QUOTA } from '../lib/freemium';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -189,7 +190,7 @@ export async function createPasswordlessAccount(
               </a>
             </div>
             <p style="color:#4a7060;font-size:12px;text-align:center;margin:16px 0 0;line-height:1.6">
-              Você tem <strong>100 áudios grátis por mês</strong> para começar (sem cartão).
+              Você tem <strong>${FREE_AUDIO_QUOTA} áudios grátis por mês</strong> para começar (sem cartão).
             </p>
           `, 'Se você não criou esta conta, pode ignorar este e-mail com segurança.'),
         ).catch(() => {});

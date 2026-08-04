@@ -35,7 +35,7 @@ const variant: Variant = {
     { q: 'É seguro para dados de pacientes?', a: 'Sim. Todas as conversões são criptografadas com AES-256-GCM (padrão bancário), armazenadas em servidores no Brasil (São Paulo), com conformidade total à LGPD. O áudio original não é guardado — apenas o texto, sob sua conta.' },
     { q: 'Funciona para a recepção e para o dentista?', a: 'Sim. O número pode ser o da recepção/clínica; toda a equipe pode acompanhar o texto convertido no painel, sem precisar redistribuir áudios.' },
     { q: 'Preciso instalar algo ou encaminhar áudios?', a: 'Não. Você conecta o número via QR code uma vez e a conversão ocorre automaticamente em segundo plano para cada áudio recebido.' },
-    { q: 'Tem custo para testar?', a: 'Não. O plano Core é gratuito e inclui até 100 áudios de conversão por mês, sem cartão. Para mais volume, o plano Profissional (R$49/mês) oferece áudios ilimitados e atendimento automático por IA.' },
+    { q: 'Tem custo para testar?', a: 'Não. O plano Core é gratuito e inclui até 200 áudios de conversão por mês, sem cartão. Para mais volume, o plano Profissional (R$49/mês) oferece áudios ilimitados e atendimento automático por IA.' },
   ],
 };
 

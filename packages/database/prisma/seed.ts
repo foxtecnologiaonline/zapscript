@@ -7,8 +7,8 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Atualizando planos ZapScript v3.0...');
 
-  // FREE_AUDIO_QUOTA parametrizável por env (default 100 — revisão de tiers ZapScript 2.0). PRO = teto oculto 500.
-  const FREE_AUDIO_QUOTA = parseInt(process.env.FREE_AUDIO_QUOTA || '100', 10);
+  // FREE_AUDIO_QUOTA parametrizável por env (default 200 — revisão de tiers ZapScript 2.0). PRO = teto oculto 500.
+  const FREE_AUDIO_QUOTA = parseInt(process.env.FREE_AUDIO_QUOTA || '200', 10);
   const PRO_AUDIO_CAP    = parseInt(process.env.PRO_AUDIO_CAP    || '500', 10);
   // minutesPerMonth é [LEGADO] (métrica interna de custo, não é mais quota
   // vendida) — sentinela alto pra nunca disparar alerta de "saldo baixo" nos

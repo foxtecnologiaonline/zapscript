@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import CheckoutInline from '@/components/CheckoutInline';
 import ModuleCheckoutInline from '@/components/ModuleCheckoutInline';
 import ComboCheckoutInline from '@/components/ComboCheckoutInline';
-import { isJunePromoActive } from '@/lib/promo';
+import { isJunePromoActive, CORE_AUDIO_QUOTA } from '@/lib/promo';
 import { ModuleCatalogItem, MODULE_ICON, moduleRoute, isContractable, formatBrl } from '@/lib/modules';
 import { PLAN_PRICING, PaidPlanName, annualMonthlyEquivalent, annualFreeMonthsLabel } from '@/lib/planPricing';
 
@@ -47,7 +47,7 @@ const PLANS = [
     per:   '/mês',
     desc:  'Completo e grátis',
     feats: [
-      'Até 100 áudios/mês',
+      `Até ${CORE_AUDIO_QUOTA} áudios/mês`,
       '1 número WhatsApp',
       '🎙️ Conversão automática',
       '✨ Resumo com IA',
@@ -160,7 +160,7 @@ type CmpVal = string | boolean;
 // de linha, ver VISIBLE_PAID_PLAN_NAMES). Linhas agrupadas por bloco de
 // funcionalidade em vez de 1 linha por recurso, pra caber numa leitura rápida.
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Áudios/mês',                                                                          vals: ['100', 'Ilimitado', 'Ilimitado'] },
+  { feature: 'Áudios/mês',                                                                          vals: [`${CORE_AUDIO_QUOTA}`, 'Ilimitado', 'Ilimitado'] },
   { feature: '🎙️ Recursos essenciais (conversão, resumo com IA, Modo Privado, histórico e busca)', vals: [true, true, true] },
   { feature: '🤖 Atendimento automático por IA (24/7, fila, métricas, escalação, resumo periódico)', vals: [false, true, true] },
   { feature: '📊 CRM + Tarefas em equipe',                                                          vals: [false, false, true] },
@@ -1549,7 +1549,7 @@ function PlanoContent() {
             <div className="text-2xl mb-2">😔</div>
             <h3 className="font-display font-bold text-lg mb-1">Cancelar assinatura?</h3>
             <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Você volta para o plano <strong>Core</strong> (até 100 áudios/mês). Continua com acesso até o fim do período já pago e pode reativar quando quiser — sem fidelidade.
+              Você volta para o plano <strong>Core</strong> (até {CORE_AUDIO_QUOTA} áudios/mês). Continua com acesso até o fim do período já pago e pode reativar quando quiser — sem fidelidade.
             </p>
             {cancelError && (
               <p className="text-xs mb-3 px-3 py-2 rounded-lg" style={{ background: 'rgba(248,113,113,.1)', color: '#f87171' }}>
