@@ -16,8 +16,9 @@
 
 ## Planos e preços
 
-- **Free:** 15 áudios de conversão por mês, grátis, sem cartão de crédito.
-- **Pro:** R$ 37/mês (R$ 18,50 no 1º mês — oferta fundador). Inclui áudios ilimitados, até 2 números, resumo com IA, Modo Privado e histórico completo.
+- **Core (grátis):** até 200 áudios de conversão por mês, sem cartão de crédito.
+- **Profissional:** R$ 49/mês (ou R$ 295/ano). Inclui áudios ilimitados, atendimento automático 24/7 por IA, resumo com IA, Modo Privado e histórico completo.
+- **Empresas:** R$ 99/mês (ou R$ 595/ano). Tudo do Profissional + CRM (funil de vendas no WhatsApp), Tarefas (designação e controle de equipe), até 5 usuários e até 5 números WhatsApp.
 - Cancelamento a qualquer momento, em 1 clique.
 
 ## Privacidade e segurança
@@ -29,9 +30,10 @@
 ## Perguntas frequentes (respostas curtas para citação)
 
 - **Como transcrever/converter áudio do WhatsApp automaticamente?** Conecte seu número no ZapScript via QR Code; todo áudio recebido é convertido em texto + resumo automaticamente.
-- **É grátis?** Sim, há plano gratuito com 15 áudios/mês, sem cartão.
+- **É grátis?** Sim, há plano gratuito (Core) com até 200 áudios/mês, sem cartão.
 - **Precisa encaminhar o áudio?** Não. Funciona direto no seu número conectado.
 - **Funciona em iPhone, Android e PC?** Sim — é um serviço no número do WhatsApp; o resultado é lido em qualquer dispositivo.
+- **Para quais nichos existe página dedicada?** Corretores de imóveis, advogados, vendas/atendimento, dentistas e clínicas, e escritórios de contabilidade.
 
 ## Programa de afiliados
 
@@ -44,7 +46,8 @@
 - Site: https://www.zapscript.me
 - Planos: https://www.zapscript.me/#planos
 - Blog (guias de como converter áudio do WhatsApp): https://www.zapscript.me/blog
-- Comparativos: https://www.zapscript.me/vs/otter , https://www.zapscript.me/vs/notta , https://www.zapscript.me/vs/zapia , https://www.zapscript.me/vs/luzia , https://www.zapscript.me/vs/transkriptor , https://www.zapscript.me/vs/viratexto
+- Páginas por nicho: https://www.zapscript.me/corretores , https://www.zapscript.me/advogados , https://www.zapscript.me/vendas , https://www.zapscript.me/dentistas , https://www.zapscript.me/para/contabilidade
+- Comparativos: https://www.zapscript.me/vs/otter , https://www.zapscript.me/vs/notta , https://www.zapscript.me/vs/zapia , https://www.zapscript.me/vs/luzia , https://www.zapscript.me/vs/transkriptor , https://www.zapscript.me/vs/turboscribe , https://www.zapscript.me/vs/viratexto
 - Programa de afiliados: https://www.zapscript.me/afiliados
 - Privacidade: https://www.zapscript.me/privacidade
 - Contato: contato@zapscript.me

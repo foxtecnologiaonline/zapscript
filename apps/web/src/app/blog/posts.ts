@@ -1702,6 +1702,50 @@ export const POSTS: BlogPost[] = [
     `,
   },
 
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 17 — Gap genuíno: contabilidade tem LP (/para/contabilidade) mas
+     nenhum post de blog dando suporte orgânico a ela.
+     Keyword: "áudio whatsapp contabilidade / escritório contábil"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcricao-audio-whatsapp-contabilidade',
+    title:       'Áudio de cliente no WhatsApp: como o contador não perde nenhum lançamento',
+    description: 'Escritórios de contabilidade recebem dezenas de áudios por dia com dúvidas fiscais, prazos e pedidos. Veja como converter e resumir tudo automaticamente, sem perder prazo.',
+    keywords:    ['áudio whatsapp contabilidade','converter áudio cliente escritório contábil','contador whatsapp áudio texto','transcrever áudio whatsapp contador','prazo fiscal áudio whatsapp'],
+    publishedAt: '2026-08-04',
+    readingTime: 6,
+    category:    'Nichos',
+    coverEmoji:  '🧮',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
+    content: `
+<p>"Manda um áudio que depois eu te falo o que precisa" — em boa parte dos escritórios de contabilidade brasileiros, é assim que chega a maior parte das demandas: dúvida fiscal do cliente, orientação do sócio, pedido do departamento pessoal. São dezenas de áudios por dia, de gente diferente, e cada um vira uma fila a mais para ouvir entre um lançamento e outro.</p>
+
+<h2>Onde o áudio vira risco para o escritório</h2>
+<ul>
+  <li><strong>Prazo escondido no meio do áudio:</strong> um áudio de 4 minutos com "preciso da guia até quinta" some no meio da conversa — e quando alguém lembra, o prazo já passou.</li>
+  <li><strong>Nada fica registrado por escrito:</strong> o que o cliente pediu ficou só no áudio. Sem texto, é a palavra de um contra a do outro se houver dúvida depois.</li>
+  <li><strong>Volume alto, equipe pequena:</strong> em época de fechamento ou obrigação acessória, o número de áudios dispara e a equipe não dá conta de ouvir tudo em tempo real.</li>
+</ul>
+
+<h2>Como funciona a conversão automática</h2>
+<p>O <strong>ZapScript</strong> conecta ao número do escritório (via QR Code, sem instalar nada) e converte automaticamente cada áudio recebido em texto, com um resumo gerado por IA destacando o que o cliente pediu, prazos citados e documentos mencionados.</p>
+<ol>
+  <li>Crie uma conta grátis em <strong>zapscript.me</strong>.</li>
+  <li>Conecte o número usado para atendimento do escritório.</li>
+  <li>Cada áudio recebido já chega convertido e resumido no painel — sem precisar ouvir para anotar o prazo.</li>
+</ol>
+
+<h2>Registro escrito, não só transcrição</h2>
+<p>Diferente de simplesmente "ouvir e anotar", cada conversão fica salva como texto pesquisável, com data e hora, e pode ser exportada em PDF — criando um histórico do que foi solicitado por cada cliente, útil em caso de dúvida sobre o que foi combinado.</p>
+
+<h2>Sigilo e LGPD</h2>
+<p>Dados fiscais e financeiros de clientes exigem cuidado redobrado. As conversões são criptografadas com AES-256-GCM (padrão bancário), processadas em servidores no Brasil (São Paulo), com conformidade total à LGPD — e o áudio original não é guardado, apenas o texto.</p>
+
+<h2>Conclusão</h2>
+<p>Para um escritório contábil, cada prazo perdido tem custo real com o cliente e com o Fisco. Transformar áudio em texto pesquisável reduz esse risco sem exigir que ninguém pare o que está fazendo para ouvir 4 minutos de mensagem de voz. Teste grátis com até 200 áudios/mês em <strong>zapscript.me</strong>.</p>
+    `,
+  },
+
 ];
 
 export function getPost(slug: string): BlogPost | undefined {
