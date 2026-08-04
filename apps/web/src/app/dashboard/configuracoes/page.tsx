@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import AffiliateRequest from '@/components/AffiliateRequest';
 
 export default function ConfiguracoesPage() {
   const [user, setUser] = useState<any>(null);
@@ -85,32 +84,24 @@ export default function ConfiguracoesPage() {
         </div>
       </div>
 
-      {/* Indicar amigos */}
+      {/* Carteira de crédito (Regulamento v4) — automática, sem solicitação;
+          o card de indicação e o fluxo de aplicação de afiliado antigo
+          (AffiliateRequest) foram substituídos pelo item "Carteira" no menu,
+          disponível pra qualquer usuário desde o cadastro. */}
       {user?.refCode && (
-        <div className="card rounded-2xl p-6 mb-5">
-          <h2 className="font-bold text-sm mb-1 text-brand-text">Indicar Amigos</h2>
-          <p className="text-xs text-brand-muted mb-3">
-            Compartilhe seu link. Quando alguém se cadastrar, são <strong className="text-brand-primary">5 áudios grátis para você e sua indicação</strong>.
-          </p>
-          <div className="flex gap-2">
-            <input
-              className="field-input flex-1 font-mono text-xs"
-              readOnly
-              value={`https://www.zapscript.me/cadastro?ref=${user.refCode}`}
-            />
-            <button
-              className="btn-primary text-xs px-4 py-2 flex-shrink-0"
-              onClick={() => {
-                navigator.clipboard.writeText(`https://www.zapscript.me/cadastro?ref=${user.refCode}`);
-              }}>
-              Copiar
-            </button>
+        <a
+          href="/dashboard/afiliado"
+          className="card rounded-2xl p-6 mb-5 flex items-center justify-between gap-3 hover:bg-white/[0.02] transition-colors"
+        >
+          <div>
+            <h2 className="font-bold text-sm mb-1 text-brand-text">💰 Sua carteira de crédito</h2>
+            <p className="text-xs text-brand-muted">
+              Indique o ZapScript e ganhe crédito automático sobre cada assinatura paga por quem você indicar.
+            </p>
           </div>
-        </div>
+          <span className="text-brand-primary text-sm font-semibold whitespace-nowrap">Ver carteira →</span>
+        </a>
       )}
-
-      {/* Programa de Afiliados — solicitação do código (ponto de entrada do fluxo) */}
-      <AffiliateRequest user={user} />
 
       {/* Zona de perigo */}
       <div className="card rounded-2xl p-6" style={{ borderColor: 'rgba(248,113,113,.15)' }}>

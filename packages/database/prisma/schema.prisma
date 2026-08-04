@@ -538,10 +538,32 @@ model CreditWallet {
   userId         String              @unique
   user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   balance        Float               @default(0) // reais, já disponível para uso (Art. 5º)
+  pixKey         String? // chave Pix p/ saque em dinheiro (Art. 5º-c)
+  pixKeyType     String? // cpf | cnpj | email | phone | random
+  payoutName     String? // nome/razão social do recebedor
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   transactions   CreditTransaction[]
   pendingCredits PendingCredit[]
+  payouts        WalletPayout[]
+}
+
+// Solicitação de saque em dinheiro (Art. 5º-c). O débito do saldo acontece na
+// hora da solicitação (ver lib/credit.ts); o pagamento em si continua manual
+// via Pix pelo admin, mesmo padrão operacional já usado no programa antigo.
+model WalletPayout {
+  id            String       @id @default(cuid())
+  walletId      String
+  wallet        CreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount        Float
+  pixKey        String
+  pixKeyType    String
+  status        String       @default("requested") // requested | paid
+  requestedAt   DateTime     @default(now())
+  paidAt        DateTime?
+  paidReference String? // comprovante/observação do Pix manual
+
+  @@index([status, requestedAt])
 }
 
 // Livro-razão imutável: cada lançamento (ganho ou uso) vira uma linha, nunca é editada.
