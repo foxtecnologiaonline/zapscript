@@ -33,11 +33,18 @@
 - **Precisa encaminhar o áudio?** Não. Funciona direto no seu número conectado.
 - **Funciona em iPhone, Android e PC?** Sim — é um serviço no número do WhatsApp; o resultado é lido em qualquer dispositivo.
 
+## Programa de afiliados
+
+- Usuários podem solicitar afiliação e, após aprovação, indicar o ZapScript e ganhar comissão recorrente (30% dos primeiros 12 meses de cada indicado, 5% residual depois) sobre as assinaturas pagas por quem eles indicaram.
+- Pagamento via Pix, sem valor mínimo de saque.
+- Detalhes: https://www.zapscript.me/afiliados
+
 ## Links
 
 - Site: https://www.zapscript.me
 - Planos: https://www.zapscript.me/#planos
 - Blog (guias de como converter áudio do WhatsApp): https://www.zapscript.me/blog
-- Comparativos: https://www.zapscript.me/vs/otter , https://www.zapscript.me/vs/notta
+- Comparativos: https://www.zapscript.me/vs/otter , https://www.zapscript.me/vs/notta , https://www.zapscript.me/vs/zapia , https://www.zapscript.me/vs/luzia , https://www.zapscript.me/vs/transkriptor , https://www.zapscript.me/vs/viratexto
+- Programa de afiliados: https://www.zapscript.me/afiliados
 - Privacidade: https://www.zapscript.me/privacidade
 - Contato: contato@zapscript.me
