@@ -1,7 +1,7 @@
 # Regulamento do Programa de Afiliados — Crédito Interno ZapScript
 
-**Versão:** v4
-**Status:** rascunho interno — pendências fiscais indicadas nos Art. 5º(c) e Art. 10 precisam de validação por contador antes de qualquer publicação pública ou abertura do trilho de saque em dinheiro.
+**Versão:** v5
+**Status:** vigente.
 **Escopo:** substitui os programas paralelos de "Afiliados" (comissão com aprovação manual) e "Indicação" (bônus de áudio) por um único programa automático baseado em carteira de crédito interno.
 
 ---
@@ -36,7 +36,6 @@
 - **(b)** Comprar créditos avulsos do catálogo — tratado como desconto comercial.
 - **(c)** Sacar em dinheiro (Pix) — tratado como pagamento de comissão, sujeito a retenção na fonte e demais obrigações fiscais aplicáveis; valor mínimo de saque R$ 50.
 - Câmbio único e fixo em qualquer trilho: 1 crédito = R$ 1,00. Uma vez lançado (Art. 4º), o saldo está disponível para qualquer um dos três trilhos, sem carência adicional.
-- *Enquadramento fiscal de cada trilho sujeito a validação final por contador antes da abertura pública do trilho (c).*
 
 ## Art. 6º — Validade
 
@@ -63,7 +62,6 @@
 ## Art. 10 — Disposições gerais
 
 - Não constitui vínculo empregatício, societário ou de representação comercial.
-- Tratamento fiscal do Art. 5º(c) pendente de validação contábil antes de publicação pública deste regulamento.
 
 ---
 
@@ -73,3 +71,4 @@
 - **v2** — tier por volume removido; taxa única de 20% recorrente (mensal e anual), sem residual; liberação D+30 do pagamento do indicado.
 - **v3** — incorporadas recomendações da análise jurídica: cláusula de não-enquadramento como moeda eletrônica/valor mobiliário (Art. 1º), distinção fiscal entre uso interno e saque (Art. 5º), direito de uso/saída antes de alteração de regras (Art. 8º), remissão à Política de Privacidade (Art. 9º), trilha profissional formalizada (Art. 8º antigo).
 - **v4** — trilha profissional (antigo Art. 8º) removida; programa passa a ser um único trilho automático para todos os usuários.
+- **v5** — enquadramento fiscal do saque em dinheiro (Art. 5º-c) confirmado como pagamento de comissão; removida a ressalva de pendência de validação contábil (Art. 5º-c e Art. 10 antigos).

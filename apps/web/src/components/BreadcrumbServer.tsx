@@ -17,7 +17,7 @@ const PATH_MAP: Record<string, string> = {
   '/advogados':                'Advogados',
   '/dentistas':                'Dentistas e Clínicas',
   '/afiliados':                'Programa de Afiliados',
-  '/indique':                  'Indique e Ganhe',
+  '/regulamento-afiliados':    'Regulamento do Programa de Afiliados',
   '/sobre':                    'Sobre',
   '/privacidade':              'Política de Privacidade',
   '/termos':                   'Termos de Uso',

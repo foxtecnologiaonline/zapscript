@@ -17,6 +17,10 @@ const nextConfig = {
       { source: '/blog/converter-audio-whatsapp-corretores',  destination: '/blog/transcrever-audio-whatsapp-corretores', permanent: true },
       { source: '/blog/transcrever-audio-cliente-vendas',     destination: '/blog/transcrever-audio-whatsapp-vendas',     permanent: true },
       { source: '/blog/converter-audio-whatsapp-vendas',      destination: '/blog/transcrever-audio-whatsapp-vendas',     permanent: true },
+      // ── Unificação dos programas de indicação e afiliados (Regulamento v4) ──
+      // /indique era uma landing separada (bônus de áudio grátis); agora é o
+      // mesmo programa único descrito em /afiliados.
+      { source: '/indique', destination: '/afiliados', permanent: true },
     ];
   },
 

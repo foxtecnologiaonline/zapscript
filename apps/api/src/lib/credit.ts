@@ -7,6 +7,8 @@ import { sendEmail } from './mailer';
    - Toda conta já tem carteira automaticamente — sem aplicação, sem aprovação
      (Art. 2º). Reaproveita User.refCode/referredBy como link único de
      atribuição (mesmo mecanismo do programa de indicação simples).
+     referredBy guarda o ID do indicador (não o refCode) — resolvido e
+     gravado assim por auth.ts/account-provisioning.ts no cadastro.
    - Taxa única de 20% sobre cada pagamento do indicado, sem tier, sem bônus,
      sem residual (Art. 3º).
    - Crédito nasce como PendingCredit na confirmação do pagamento e só vira
@@ -65,8 +67,10 @@ export async function recordReferralCredit(
     });
     if (!paidUser?.referredBy) return;
 
+    // User.referredBy guarda o ID do indicador (não o refCode) — é assim que
+    // auth.ts e account-provisioning.ts resolvem e gravam no cadastro.
     const indicador = await prisma.user.findUnique({
-      where:  { refCode: paidUser.referredBy },
+      where:  { id: paidUser.referredBy },
       select: { id: true },
     });
     // Art. 7º — vedação de autoindicação: indicador não pode ser o próprio indicado.
@@ -166,6 +170,123 @@ export async function releaseDuePendingCredits(): Promise<{ released: number; to
   }
 
   return { released: succeeded.length, totalAmount };
+}
+
+export class InsufficientBalanceError extends Error {
+  constructor() { super('Saldo insuficiente.'); this.name = 'InsufficientBalanceError'; }
+}
+
+/**
+ * Débito genérico da carteira (Art. 5º — os 3 trilhos de uso): valida saldo,
+ * decrementa e registra o lançamento no livro-razão dentro de uma transação
+ * atômica. `amount` é sempre positivo aqui; o lançamento em si é gravado
+ * negativo (débito).
+ */
+async function debitWallet(
+  userId: string,
+  amount: number,
+  type: 'redeem_invoice' | 'redeem_addon' | 'redeem_cashout',
+  opts: { referenceType?: string; referenceId?: string; note?: string } = {},
+): Promise<{ walletId: string; balanceAfter: number }> {
+  if (!amount || amount <= 0) throw new Error('Valor inválido.');
+  const amt = round2(amount);
+
+  return prisma.$transaction(async (tx) => {
+    const wallet = await tx.creditWallet.upsert({ where: { userId }, update: {}, create: { userId } });
+    if (wallet.balance < amt) throw new InsufficientBalanceError();
+
+    const updated = await tx.creditWallet.update({
+      where: { id: wallet.id },
+      data:  { balance: { decrement: amt } },
+    });
+    await tx.creditTransaction.create({
+      data: {
+        walletId:      wallet.id,
+        type,
+        amount:        -amt,
+        balanceAfter:  updated.balance,
+        referenceType: opts.referenceType,
+        referenceId:   opts.referenceId,
+        note:          opts.note,
+      },
+    });
+    return { walletId: wallet.id, balanceAfter: updated.balance };
+  });
+}
+
+/**
+ * Trilho (a) — Art. 5º-a: abater fatura. O débito é imediato e automático;
+ * a aplicação do desconto na próxima cobrança do Asaas é feita manualmente
+ * pela equipe financeira (mesmo padrão operacional do saque em dinheiro) —
+ * evita mexer na assinatura recorrente do Asaas sem teste prévio em produção.
+ * Notifica o suporte por e-mail para dar seguimento.
+ */
+export async function redeemForInvoice(userId: string, amount: number): Promise<{ balanceAfter: number }> {
+  const { balanceAfter } = await debitWallet(userId, amount, 'redeem_invoice', {
+    note: 'Abatimento solicitado — aplicar desconto na próxima fatura (processo manual).',
+  });
+  logger.info(`[Crédito] Abatimento de fatura solicitado: user=${userId} R$${amount}`);
+  notifyOpsRedemption(userId, amount, 'abater a próxima fatura').catch(() => null);
+  return { balanceAfter };
+}
+
+/**
+ * Trilho (b) — Art. 5º-b: comprar créditos avulsos. 100% automático — sem
+ * interação com o Asaas, converte o saldo em minutos extras pelo mesmo
+ * câmbio do pacote avulso mais vantajoso (ver MINUTE_PACKAGES em
+ * routes/billing.ts: R$19/100min = R$0,19/min). A concessão em si (chamada a
+ * creditExtraMinutes) é feita pela rota, que já importa routes/billing.ts —
+ * mantém este arquivo livre de dependência circular.
+ */
+export const ADDON_MINUTE_PRICE_BRL = 0.19; // mesmo câmbio do pacote pkg_100 (melhor valor)
+
+export async function redeemForAddon(userId: string, amount: number): Promise<{ balanceAfter: number; minutes: number }> {
+  const { balanceAfter } = await debitWallet(userId, amount, 'redeem_addon', {
+    referenceType: 'product',
+    note: 'Convertido em minutos avulsos.',
+  });
+  const minutes = Math.floor((amount / ADDON_MINUTE_PRICE_BRL) * 100) / 100;
+  logger.info(`[Crédito] Resgate em avulso: user=${userId} R$${amount} → ${minutes}min`);
+  return { balanceAfter, minutes };
+}
+
+/**
+ * Trilho (c) — Art. 5º-c: sacar em dinheiro. Débito imediato + registro de
+ * uma solicitação de saque (WalletPayout); o pagamento via Pix em si é
+ * manual pelo admin, mesmo padrão já usado no programa antigo de afiliados.
+ */
+export async function redeemForCashout(
+  userId: string,
+  amount: number,
+  pixKey: string,
+  pixKeyType: string,
+): Promise<{ balanceAfter: number; payoutId: string }> {
+  if (amount < CREDIT.MIN_CASHOUT) {
+    throw new Error(`Valor mínimo de saque: R$${CREDIT.MIN_CASHOUT}.`);
+  }
+  const wallet = await getOrCreateWallet(userId);
+  const { balanceAfter } = await debitWallet(userId, amount, 'redeem_cashout', {
+    note: 'Solicitação de saque via Pix.',
+  });
+  const payout = await prisma.walletPayout.create({
+    data: { walletId: wallet.id, amount, pixKey, pixKeyType },
+  });
+  logger.info(`[Crédito] Saque solicitado: user=${userId} R$${amount} payout=${payout.id}`);
+  notifyOpsRedemption(userId, amount, 'sacar em dinheiro (Pix)').catch(() => null);
+  return { balanceAfter, payoutId: payout.id };
+}
+
+/** Avisa o suporte/financeiro por e-mail quando um resgate precisa de ação manual. */
+async function notifyOpsRedemption(userId: string, amount: number, acao: string): Promise<void> {
+  const opsEmail = process.env.SUPPORT_EMAIL || process.env.SMTP_FROM?.replace(/.*<(.+)>/, '$1');
+  if (!opsEmail) return;
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+  const amtFmt = amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  sendEmail(
+    opsEmail,
+    `Resgate de carteira: ${user?.name || user?.email || userId} — ${amtFmt}`,
+    `<p>Usuário ${user?.name || ''} (${user?.email}) solicitou ${acao}: <strong>${amtFmt}</strong>.</p>`,
+  ).catch(() => null);
 }
 
 /** Notifica por e-mail quem teve crédito liberado (best-effort, não bloqueia a liberação). */

@@ -1297,6 +1297,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
 
         {tab === 'afiliados' && (
           <div className="space-y-5">
+            <WalletPayoutsPanel apiBase={API} token={token} notify={notify} />
             <AffiliatesPanel apiBase={API} token={token} notify={notify} />
           </div>
         )}
@@ -1381,6 +1382,99 @@ const COMM_STATUS_CLS: Record<string, string> = {
   paid:     'text-green-400 bg-green-400/10 border-green-400/20',
   canceled: 'text-gray-400 bg-gray-400/10 border-gray-400/20',
 };
+
+/* ══════════════════════════════════════════════════════════
+   FILA DE SAQUES DA CARTEIRA DE CRÉDITO (Regulamento v4)
+   Art. 5º-c: saque em dinheiro — débito é automático na hora do pedido,
+   pagamento via Pix continua manual (mesmo padrão do programa antigo).
+══════════════════════════════════════════════════════════ */
+function WalletPayoutsPanel({ apiBase, token, notify }: {
+  apiBase: string; token: string; notify: (t: string, type?: 'ok' | 'err' | 'warn') => void;
+}) {
+  const [status, setStatus]   = useState<'requested' | 'paid'>('requested');
+  const [payouts, setPayouts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const hdr = { 'x-admin-token': token } as Record<string, string>;
+
+  const load = useCallback(async (s: string) => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/wallet/payouts?status=${s}`, { headers: hdr });
+      const d = await r.json();
+      setPayouts(d.payouts || []);
+    } catch { notify('Erro ao carregar saques da carteira', 'err'); }
+    finally { setLoading(false); }
+  }, [apiBase, token]);
+
+  useEffect(() => { load(status); }, [status, load]);
+
+  async function markPaid(id: string) {
+    const reference = window.prompt('Referência do Pix (opcional):') || undefined;
+    try {
+      const r = await fetch(`${apiBase}/sys/g5r8t2/wallet/payouts/${id}/mark-paid`, {
+        method: 'POST', headers: { ...hdr, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reference }),
+      });
+      if (!r.ok) throw new Error();
+      notify('Saque marcado como pago ✓', 'ok');
+      load(status);
+    } catch { notify('Erro ao marcar como pago', 'err'); }
+  }
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.1)] rounded-2xl p-4 sm:p-5">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+        <span className="text-sm font-bold text-[#d1fae5]">💰 Saques da Carteira (Art. 5º-c)</span>
+        <div className="flex gap-1.5">
+          {(['requested', 'paid'] as const).map(s => (
+            <button key={s} onClick={() => setStatus(s)}
+              className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                status === s ? 'bg-[rgba(16,185,129,.15)] text-[#10b981]' : 'text-[rgba(16,185,129,.4)] hover:text-[#6ee7b7]'
+              }`}>
+              {s === 'requested' ? 'Solicitados' : 'Pagos'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading ? (
+        <div className="text-xs text-[rgba(16,185,129,.4)]">Carregando...</div>
+      ) : payouts.length === 0 ? (
+        <div className="text-xs text-[rgba(16,185,129,.4)]">Nenhum saque {status === 'requested' ? 'pendente' : 'pago'}.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wider text-[rgba(16,185,129,.4)]">
+                <th className="px-3 py-2">Usuário</th>
+                <th className="px-3 py-2">Valor</th>
+                <th className="px-3 py-2">Chave Pix</th>
+                <th className="px-3 py-2">Solicitado em</th>
+                {status === 'requested' && <th className="px-3 py-2">Ação</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {payouts.map(p => (
+                <tr key={p.id} className="border-t border-[rgba(255,255,255,0.05)]">
+                  <td className="px-3 py-2 text-[#d1fae5]">{p.wallet?.user?.name || p.wallet?.user?.email}</td>
+                  <td className="px-3 py-2 font-semibold text-[#10b981]">{Number(p.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                  <td className="px-3 py-2 text-[rgba(16,185,129,.6)] font-mono">{p.pixKey} <span className="text-[rgba(16,185,129,.4)]">({p.pixKeyType})</span></td>
+                  <td className="px-3 py-2 text-[rgba(16,185,129,.6)]">{new Date(p.requestedAt).toLocaleDateString('pt-BR')}</td>
+                  {status === 'requested' && (
+                    <td className="px-3 py-2">
+                      <button onClick={() => markPaid(p.id)} className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-[rgba(16,185,129,.15)] text-[#10b981] hover:bg-[rgba(16,185,129,.25)] transition-colors">
+                        Marcar como pago
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function AffiliatesPanel({ apiBase, token, notify }: {
   apiBase: string; token: string; notify: (t: string, type?: 'ok' | 'err' | 'warn') => void;

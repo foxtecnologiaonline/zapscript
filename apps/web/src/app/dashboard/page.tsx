@@ -287,14 +287,14 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Indicação com link pessoal */}
+        {/* Indicação com link pessoal — carteira de crédito (Regulamento v4) */}
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-lg">🎁</span>
+            <span className="text-lg">💰</span>
             <div className="font-bold text-sm text-brand-text">Indique o ZapScript</div>
           </div>
           <p className="text-xs text-brand-text-secondary mb-3 leading-relaxed">
-            Indique um amigo e <strong className="text-brand-primary">ganhe 5 áudios grátis para você e sua indicação</strong> quando ele se cadastrar.
+            Indique um amigo e <strong className="text-brand-primary">ganhe 20% de crédito</strong> sobre cada assinatura paga por ele — automático, sem solicitar nada.
           </p>
           {stats?.refCode && (
             <div className="flex gap-2 mb-3">
@@ -315,7 +315,7 @@ export default function DashboardPage() {
           <button
             onClick={() => {
               const link = `https://www.zapscript.me/cadastro?ref=${stats?.refCode ?? ''}`;
-              const msg  = `Eu uso o ZapScript para converter áudios do WhatsApp automaticamente com IA — e você ganha 5 áudios grátis ao se cadastrar pelo meu link: ${link}`;
+              const msg  = `Eu uso o ZapScript para converter áudios do WhatsApp automaticamente com IA — cadastre-se pelo meu link e comece grátis: ${link}`;
               if (navigator.share) {
                 navigator.share({ text: msg, url: link }).catch(() => {});
               } else {
@@ -325,6 +325,9 @@ export default function DashboardPage() {
             className="btn-ghost w-full text-center text-xs py-2">
             📤 Compartilhar link
           </button>
+          <a href="/dashboard/afiliado" className="block text-center text-[11px] text-brand-primary font-semibold mt-2 hover:underline">
+            Ver minha carteira →
+          </a>
         </div>
 
       </div>

@@ -13,6 +13,7 @@ import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../lib/prisma';
 import { sendEmail, emailWrapper } from '../lib/mailer';
 import { logger } from '../lib/logger';
+import { resolveReferralHandle } from '../lib/referralSlug';
 import { FREE_AUDIO_QUOTA } from '../lib/freemium';
 
 const supabase = createClient(
@@ -89,8 +90,9 @@ export async function createPasswordlessAccount(
     });
   }
 
+  // Aceita tanto o refCode técnico quanto o slug curto do link /i/[code].
   const referrer = input.referralCode
-    ? await prisma.user.findUnique({ where: { refCode: input.referralCode }, select: { id: true } })
+    ? await resolveReferralHandle(input.referralCode).then(r => r ? { id: r.userId } : null)
     : null;
 
   const { randomUUID } = await import('node:crypto');
