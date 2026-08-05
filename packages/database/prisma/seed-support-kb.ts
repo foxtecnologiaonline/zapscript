@@ -155,34 +155,24 @@ const TOPICOS = [
       'isso remove permanentemente os dados do servidor. ' +
       'Para solicitações que não consiga fazer pelo painel, escale para suporte humano.',
   },
-  // ── PROGRAMA DE INDICAÇÃO ────────────────────────────────────────────────
+  // ── PROGRAMA DE AFILIADOS (Carteira de Crédito, Regulamento v4) ──────────
   {
-    titulo: 'Programa de indicação (ganhe áudios grátis)',
+    titulo: 'Programa de Afiliados (carteira de crédito automática)',
     categoria: 'duvida_produto',
-    tags: ['indicacao', 'referral', 'afiliado', 'link', 'amigo', 'ganhar', 'gratis', 'bonus'],
+    tags: ['afiliado', 'afiliados', 'indicacao', 'referral', 'comissao', 'carteira', 'credito', 'ganhar dinheiro', 'pix', 'link'],
     conteudo:
-      'O ZapScript tem programa de indicação: você ganha 5 áudios grátis para você e seu amigo indicado ' +
-      'quando ele se cadastrar pelo seu link. ' +
-      'Seu link pessoal está em Painel > Dashboard (seção "Indique o ZapScript"). ' +
-      'Os 5 áudios são creditados automaticamente após o cadastro do indicado. ' +
-      'Não há limite de indicações — cada novo cadastro via link gera o bônus.',
-  },
-  // ── PROGRAMA DE AFILIADOS ────────────────────────────────────────────────
-  {
-    titulo: 'Programa de Afiliados (comissão em dinheiro)',
-    categoria: 'duvida_produto',
-    tags: ['afiliado', 'afiliados', 'comissao', 'ganhar dinheiro', 'pix', 'parceiro', 'aprovacao'],
-    conteudo:
-      'O Programa de Afiliados é diferente do programa de indicação simples: paga comissão em dinheiro, não áudios grátis. ' +
-      'Para participar, o cliente solicita pelo painel (Configurações > Programa de Afiliados), informando e-mail verificado ' +
-      'e CPF/CNPJ; a solicitação passa por aprovação. Depois de aprovado, recebe um link próprio (zapscript.me/i/SEUCODIGO) ' +
-      'e o painel fica em zapscript.me/dashboard/afiliado. ' +
-      'Comissão: 30% recorrente sobre cada pagamento do indicado, nos primeiros 12 meses de assinatura (mensal ou anual). ' +
-      'Bônus: a partir do 51º cliente novo conquistado no mês, a comissão desses clientes sobe para 40%, travada por 12 meses. ' +
-      'Depois dos 12 meses, comissão residual vitalícia de 5% enquanto o indicado continuar assinante. ' +
-      'Se o indicado cancelar em até 30 dias após assinar, a comissão pendente desse cliente é zerada. ' +
-      'O saldo fica disponível 30 dias após cada comissão gerada, sem valor mínimo para sacar via Pix. ' +
-      'Dúvidas sobre status de aprovação de afiliação ou contestação de valor de comissão: escalar para humano.',
+      'O ZapScript tem um único programa de indicação/afiliados agora: a Carteira de Crédito, automática para ' +
+      'qualquer usuário desde o cadastro — não precisa solicitar nem esperar aprovação. Toda conta já tem link ' +
+      'de indicação e carteira. ' +
+      'Comissão: 20% sobre cada pagamento (mensal ou anual) de quem você indicou, enquanto essa pessoa continuar ' +
+      'assinante, sem prazo de corte. ' +
+      'O crédito é lançado na carteira 30 dias após a confirmação do pagamento do indicado (se ele cancelar antes ' +
+      'disso, o crédito simplesmente não é gerado). ' +
+      'O saldo (1 crédito = R$1) pode ser usado de 3 formas: abater a própria fatura, comprar créditos avulsos ' +
+      '(minutos extras), ou sacar em dinheiro via Pix (mínimo R$50 para saque). ' +
+      'O link de indicação e a carteira ficam em Painel > Carteira (zapscript.me/dashboard/afiliado). ' +
+      'Regulamento completo em zapscript.me/regulamento-afiliados. ' +
+      'Dúvidas sobre valor de crédito específico ou contestação: escalar para humano.',
   },
   // ── SUPORTE ──────────────────────────────────────────────────────────────
   {

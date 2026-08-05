@@ -170,13 +170,14 @@ Dúvidas no pagamento: escalar para suporte humano.
 
 ---
 
-## 11. Programa de indicação
+## 11. Programa de Afiliados (carteira de crédito automática)
 
-- Ao indicar um amigo: você **e** o amigo ganham 5 áudios grátis ao usar o link pessoal
-- Link pessoal disponível em: Painel > Dashboard (seção "Indique o ZapScript")
-- Formato: `zapscript.me/cadastro?ref=SEUCODIGO`
-- Bônus creditado automaticamente após o cadastro do indicado
-- Sem limite de indicações — cada novo cadastro via link gera o bônus
+- Automático desde o cadastro — sem solicitação, sem aprovação. Toda conta já tem link e carteira.
+- Comissão: 20% sobre cada pagamento (mensal ou anual) de quem você indicou, enquanto continuar assinante, sem prazo de corte
+- Crédito lançado na carteira 30 dias após a confirmação do pagamento do indicado (cancelamento antes disso = crédito não gerado)
+- Saldo (1 crédito = R$1) usável em 3 formas: abater a própria fatura, comprar créditos avulsos, sacar via Pix (mínimo R$50)
+- Link e carteira em Painel > Carteira: `zapscript.me/dashboard/afiliado`
+- Regulamento completo: `zapscript.me/regulamento-afiliados`
 
 ---
 
