@@ -526,6 +526,12 @@ export default function HomePage() {
               </Link>
             ))}
           </div>
+          <div className="flex justify-center mt-4">
+            <a href="https://turbo0.com/item/zapscript" target="_blank" rel="noopener noreferrer">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="https://img.turbo0.com/badge-listed-dark.svg" alt="Listed on Turbo0" style={{ height: 54, width: 'auto' }} />
+            </a>
+          </div>
         </footer>
       </div>
     </div>
