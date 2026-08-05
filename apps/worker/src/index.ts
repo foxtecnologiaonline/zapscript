@@ -1868,8 +1868,16 @@ async function resetExpiredMinutes() {
 
     const overdueList = await prisma.subscription.findMany({
       where: {
-        status:           'past_due',
-        currentPeriodEnd: { lte: graceCutoff },
+        status: 'past_due',
+        OR: [
+          { currentPeriodEnd: { lte: graceCutoff } },
+          // currentPeriodEnd nulo (ex.: assinatura já estava no free quando o
+          // pagamento pendente venceu) — sem período de referência, usa
+          // updatedAt como marco da tolerância de 24h. Sem isso a assinatura
+          // fica presa em past_due para sempre (Seção 2 pula quem é past_due
+          // esperando esta seção agir, e esta seção nunca a pegava).
+          { currentPeriodEnd: null, updatedAt: { lte: graceCutoff } },
+        ],
       },
       include: { plan: true, user: { select: { id: true, email: true, name: true } } },
     });
