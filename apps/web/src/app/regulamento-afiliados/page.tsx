@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'Regulamento do Programa de Afiliados — ZapScript',
-  description: 'Regulamento completo do Programa de Afiliados (carteira de crédito) do ZapScript. Versão 4, vigente.',
+  description: 'Regulamento completo do Programa de Afiliados (carteira de crédito) do ZapScript. Versão 5, vigente.',
 };
 
 const css = `
@@ -44,7 +44,7 @@ export default function RegulamentoAfiliadosPage() {
       <header>
         <div className="logo">⚡ ZapScript</div>
         <h1>Regulamento do Programa de Afiliados</h1>
-        <p className="meta">Versão 4 &nbsp;·&nbsp; Carteira de Crédito Interno &nbsp;·&nbsp; Aplica-se a todos os usuários</p>
+        <p className="meta">Versão 5 &nbsp;·&nbsp; Carteira de Crédito Interno &nbsp;·&nbsp; Aplica-se a todos os usuários</p>
       </header>
 
       <main>
@@ -89,9 +89,6 @@ export default function RegulamentoAfiliadosPage() {
           <li><strong>(c)</strong> Sacar em dinheiro (Pix) — tratado como pagamento de comissão, sujeito a retenção na fonte e demais obrigações fiscais aplicáveis; valor mínimo de saque R$ 50.</li>
           <li>Câmbio único e fixo em qualquer trilho: 1 crédito = R$ 1,00. Uma vez lançado (Art. 4º), o saldo está disponível para qualquer um dos três trilhos, sem carência adicional.</li>
         </ul>
-        <div className="warn-box">
-          <p>Enquadramento fiscal de cada trilho sujeito a validação final por contador antes da abertura pública do trilho (c).</p>
-        </div>
 
         <h2><span className="sn">Art. 6º /</span> Validade</h2>
         <ul>

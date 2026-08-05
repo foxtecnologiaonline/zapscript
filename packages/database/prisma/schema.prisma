@@ -17,6 +17,7 @@ model User {
   documentHash            String?               @unique // HMAC-SHA256 blind index (busca de duplicata)
   emailVerified           Boolean               @default(false)
   refCode                 String                @unique @default(cuid())
+  referralSlug            String?               @unique // link curto e legível (1º nome + iniciais) — gerado sob demanda, ver lib/referralSlug.ts
   referredBy              String?
   isAdmin                 Boolean               @default(false)
   isTester                Boolean               @default(false)

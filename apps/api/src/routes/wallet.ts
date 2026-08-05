@@ -5,6 +5,7 @@ import {
   redeemForInvoice, redeemForAddon, redeemForCashout, InsufficientBalanceError,
 } from '../lib/credit';
 import { creditExtraMinutes } from './billing';
+import { getOrCreateReferralSlug, resolveReferralHandle } from '../lib/referralSlug';
 
 /* ─────────────────────────────────────────────────────────
    Carteira de Crédito — Regulamento v4 (REGULAMENTO_AFILIADOS.md)
@@ -26,10 +27,18 @@ export default async function walletRoutes(app: FastifyInstance) {
     addonMinutePrice:  ADDON_MINUTE_PRICE_BRL,
   }));
 
+  // ── GET /wallet/resolve/:handle — resolve slug/refCode pro link curto /i/[code], público ──
+  app.get<{ Params: { handle: string } }>('/resolve/:handle', async (req, reply) => {
+    const found = await resolveReferralHandle(req.params.handle);
+    if (!found) return reply.code(404).send({ error: 'Link não encontrado.' });
+    return { refCode: found.refCode };
+  });
+
   // ── GET /wallet/me — saldo, créditos em trânsito e extrato do usuário ────
   app.get('/me', auth, async (req: any) => {
     const userId = req.user.sub;
     const wallet = await getOrCreateWallet(userId);
+    const slug = await getOrCreateReferralSlug(userId);
 
     const [pending, transactions, payouts] = await Promise.all([
       prisma.pendingCredit.aggregate({
@@ -58,6 +67,7 @@ export default async function walletRoutes(app: FastifyInstance) {
       pixKeyType:    wallet.pixKeyType,
       payoutName:    wallet.payoutName,
       refCode:       (await prisma.user.findUnique({ where: { id: userId }, select: { refCode: true } }))?.refCode,
+      slug,
       transactions,
       payouts,
     };

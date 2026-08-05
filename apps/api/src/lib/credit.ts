@@ -7,6 +7,8 @@ import { sendEmail } from './mailer';
    - Toda conta já tem carteira automaticamente — sem aplicação, sem aprovação
      (Art. 2º). Reaproveita User.refCode/referredBy como link único de
      atribuição (mesmo mecanismo do programa de indicação simples).
+     referredBy guarda o ID do indicador (não o refCode) — resolvido e
+     gravado assim por auth.ts/account-provisioning.ts no cadastro.
    - Taxa única de 20% sobre cada pagamento do indicado, sem tier, sem bônus,
      sem residual (Art. 3º).
    - Crédito nasce como PendingCredit na confirmação do pagamento e só vira
@@ -65,8 +67,10 @@ export async function recordReferralCredit(
     });
     if (!paidUser?.referredBy) return;
 
+    // User.referredBy guarda o ID do indicador (não o refCode) — é assim que
+    // auth.ts e account-provisioning.ts resolvem e gravam no cadastro.
     const indicador = await prisma.user.findUnique({
-      where:  { refCode: paidUser.referredBy },
+      where:  { id: paidUser.referredBy },
       select: { id: true },
     });
     // Art. 7º — vedação de autoindicação: indicador não pode ser o próprio indicado.

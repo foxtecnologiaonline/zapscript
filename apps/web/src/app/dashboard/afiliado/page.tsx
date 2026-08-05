@@ -25,6 +25,7 @@ interface WalletData {
   pixKeyType: string | null;
   payoutName: string | null;
   refCode: string;
+  slug: string;
   transactions: Transaction[];
   payouts: Payout[];
 }
@@ -97,7 +98,7 @@ export default function CarteiraPage() {
     );
   }
 
-  const link = `${origin}/cadastro?ref=${wallet.refCode}`;
+  const link = `${origin}/i/${wallet.slug}`;
   const ratePct = rates ? Math.round(rates.rate * 100) : 20;
 
   return (
@@ -123,15 +124,32 @@ export default function CarteiraPage() {
   );
 }
 
-/* ── Link de indicação ── */
+/* ── Link de indicação — link curto (nome + iniciais) + QR code ──
+   Combina os dois jeitos de compartilhar: texto curto pra copiar/colar
+   (WhatsApp, bio, e-mail) e QR pra falar/mostrar sem escrever nada além
+   de "ZapScript.me" (story, cartão, apresentação). */
 function ReferralLink({ link, ratePct }: { link: string; ratePct: number }) {
   const [copied, setCopied] = useState(false);
+  const [qr, setQr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!link) return;
+    let cancelled = false;
+    import('qrcode').then(QRCode => {
+      QRCode.toDataURL(link, { margin: 1, width: 240, color: { dark: '#0a1512', light: '#ffffff' } })
+        .then(url => { if (!cancelled) setQr(url); })
+        .catch(() => {});
+    });
+    return () => { cancelled = true; };
+  }, [link]);
+
   function copy() {
     navigator.clipboard?.writeText(link).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
   }
+
   return (
     <div className="rounded-2xl p-5" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgba(var(--color-primary)/.12)' }}>
       <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
@@ -140,15 +158,30 @@ function ReferralLink({ link, ratePct }: { link: string; ratePct: number }) {
           {ratePct}% recorrente
         </span>
       </div>
-      <div className="flex gap-2 flex-wrap">
-        <input readOnly value={link} className="field-input flex-1 min-w-[200px] font-mono text-xs" onFocus={e => e.target.select()} />
-        <button onClick={copy} className="btn-primary px-4 py-2 text-sm whitespace-nowrap">
-          {copied ? '✓ Copiado' : 'Copiar'}
-        </button>
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex gap-2 flex-wrap">
+            <input readOnly value={link} className="field-input flex-1 min-w-[200px] font-mono text-xs" onFocus={e => e.target.select()} />
+            <button onClick={copy} className="btn-primary px-4 py-2 text-sm whitespace-nowrap">
+              {copied ? '✓ Copiado' : 'Copiar'}
+            </button>
+          </div>
+          <p className="text-[11px] text-brand-muted mt-2">
+            Toda pessoa que se cadastrar por esse link e assinar um plano pago gera crédito automático pra você.
+          </p>
+          <p className="text-[11px] text-brand-muted mt-1">
+            Falando ou mostrando em vez de mandar link: use o QR ao lado — basta dizer "ZapScript.me", quem escanear já cai com seu código aplicado.
+          </p>
+        </div>
+        {qr && (
+          <div className="flex flex-col items-center gap-1.5 flex-shrink-0 mx-auto sm:mx-0">
+            <img src={qr} alt="QR code do seu link de indicação" width={120} height={120} className="rounded-lg" style={{ background: '#fff' }} />
+            <a href={qr} download="zapscript-qr-indicacao.png" className="text-[10px] text-brand-primary hover:underline">
+              Baixar QR
+            </a>
+          </div>
+        )}
       </div>
-      <p className="text-[11px] text-brand-muted mt-2">
-        Toda pessoa que se cadastrar por esse link e assinar um plano pago gera crédito automático pra você.
-      </p>
     </div>
   );
 }

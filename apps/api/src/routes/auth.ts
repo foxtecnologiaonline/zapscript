@@ -8,6 +8,7 @@ import { encryptStr, decryptStr, documentHash as computeDocHash } from '../servi
 import { createPasswordlessAccount } from '../services/account-provisioning';
 import { provisionInstance, requestPairingCode } from '../services/number-provisioning';
 import { startFromSiteSignup } from '../services/onboarding-whatsapp';
+import { resolveReferralHandle } from '../lib/referralSlug';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -102,10 +103,12 @@ export default async function authRoutes(app: FastifyInstance) {
         }
       }
 
-      // Verificar referral code (se fornecido)
+      // Verificar referral code (se fornecido) — aceita tanto o refCode técnico
+      // quanto o slug curto e legível do link /i/[code] (ver lib/referralSlug.ts).
       let referrer: any = null;
       if (referralCode) {
-        referrer = await prisma.user.findUnique({ where: { refCode: referralCode }, select: { id: true } });
+        const found = await resolveReferralHandle(referralCode);
+        referrer = found ? { id: found.userId } : null;
         // Referral inválido: não bloquear o cadastro, apenas ignorar
         if (!referrer) logger.warn(`[Auth] referralCode inválido: ${referralCode}`);
       }
