@@ -526,10 +526,14 @@ export default function HomePage() {
               </Link>
             ))}
           </div>
-          <div className="flex justify-center mt-4">
+          <div className="flex justify-center items-center gap-4 mt-4 flex-wrap">
             <a href="https://turbo0.com/item/zapscript" target="_blank" rel="noopener noreferrer">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="https://img.turbo0.com/badge-listed-dark.svg" alt="Listed on Turbo0" style={{ height: 54, width: 'auto' }} />
+            </a>
+            <a href="https://startupbase.io/products/zapscript?utm_source=startupbase&utm_medium=badge&utm_campaign=featured-badge-neutral" target="_blank" rel="noopener noreferrer">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="https://statics.startupbase.io/site/badges/featured-on-sb-neutral.svg" alt="Featured on StartupBase" height={55} style={{ height: 55, width: 'auto' }} />
             </a>
           </div>
         </footer>
