@@ -987,6 +987,19 @@ async function runDocumentEncryptionMigration() {
 }
 
 async function start() {
+  // ── Watchdog de boot ──────────────────────────────────────────────────────
+  // Investigamos um travamento silencioso no boot (sem erro, sem log, 0% CPU)
+  // por horas sem achar a causa raiz — o processo simplesmente nunca terminava
+  // de subir e ficava preso em "unhealthy" para sempre, exigindo reboot manual
+  // do servidor toda vez. Em vez de deixar isso acontecer de novo sem aviso:
+  // se o boot não terminar em 90s, mata o próprio processo — o `restart:
+  // unless-stopped` do Docker já tenta de novo sozinho, sem intervenção manual.
+  const BOOT_TIMEOUT_MS = 90_000;
+  const bootWatchdog = setTimeout(() => {
+    app.log.error(`[Startup] FATAL: boot não completou em ${BOOT_TIMEOUT_MS / 1000}s — encerrando para o restart policy tentar de novo. Ver logs acima para a última etapa concluída.`);
+    process.exit(1);
+  }, BOOT_TIMEOUT_MS);
+
   try {
     // ── C1: Validações de startup — fail-fast em produção ───────────────────
     if (process.env.NODE_ENV === 'production') {
@@ -1018,9 +1031,14 @@ async function start() {
       }
     }
 
+    app.log.info('[Startup] Iniciando runAutoMigrations...');
     await runAutoMigrations();
+    app.log.info('[Startup] runAutoMigrations concluído — iniciando runDocumentEncryptionMigration...');
     await runDocumentEncryptionMigration();
+    app.log.info('[Startup] runDocumentEncryptionMigration concluído — iniciando app.listen...');
     await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' });
+    app.log.info('[Startup] app.listen concluído — boot completo');
+    clearTimeout(bootWatchdog);
 
     // ── Sync automático Evolution API — re-aplica webhooks e auto-reconecta ──
     // Roda em background. Sem o isolamento destrutivo do Z-API — cada instância
