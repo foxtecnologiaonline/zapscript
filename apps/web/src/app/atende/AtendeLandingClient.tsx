@@ -119,7 +119,7 @@ export default function AtendeLandingClient() {
   };
 
   return (
-    <div className="min-h-screen bg-brand-bg text-brand-text" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div className="min-h-screen bg-brand-bg text-brand-text">
       {/* Schema.org — rich snippets no Google */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
@@ -150,7 +150,7 @@ export default function AtendeLandingClient() {
 
         <div className="relative max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 bg-brand-primary/10 border border-brand-primary/20 rounded-full px-4 py-1.5 text-sm font-medium text-brand-primary mb-6">
-            🤖 Novo módulo · Atendimento automático
+            🤖 Incluso no plano Profissional
           </div>
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight mb-5">

@@ -17,6 +17,7 @@ model User {
   documentHash            String?               @unique // HMAC-SHA256 blind index (busca de duplicata)
   emailVerified           Boolean               @default(false)
   refCode                 String                @unique @default(cuid())
+  referralSlug            String?               @unique // link curto e legível (1º nome + iniciais) — gerado sob demanda, ver lib/referralSlug.ts
   referredBy              String?
   isAdmin                 Boolean               @default(false)
   isTester                Boolean               @default(false)
@@ -47,6 +48,7 @@ model User {
   supportAtendimentos     SupportAtendimento[]
   affiliate               Affiliate?
   affiliateReferral       AffiliateReferral?    @relation("ReferredUser")
+  creditWallet            CreditWallet?
   proContactSeeds         ProContactSeed[]
   entitlements            Entitlement[]
   cobrancaClientes        CobrancaCliente[]
@@ -69,6 +71,8 @@ model User {
   avisos                  Aviso[]
   tasks                   Task[]              @relation("TaskOwner")
   assignedTasks           Task[]              @relation("TaskAssignee")
+  taskComments            TaskComment[]
+  aiUsageLogs             AiUsageLog[]
 }
 
 model Plan {
@@ -157,6 +161,32 @@ model WhatsappNumber {
 
   @@index([userId]) // A2: listagem de números por usuário
   @@index([zapiInstanceId]) // A2: busca de instância em webhook (hot path)
+}
+
+// Onboarding conversacional via WhatsApp — cobre dois pontos de entrada:
+// (1) usuário que já se cadastrou no site (source='site', nasce em 'code_sent',
+//     em paralelo com o pairing code exibido no painel) e (2) estranho que manda
+//     mensagem direto pro número oficial do ZapScript sem nunca ter passado pelo
+//     site (source='oficial', nasce em 'started', conduz cadastro completo por
+//     texto). Uma única tabela porque é a mesma conversa/estado independente de
+//     onde começou — evita duplicar lógica de stage em dois lugares.
+model WhatsappOnboardingLead {
+  id          String   @id @default(cuid())
+  phone       String   @unique // dígitos limpos, com 55
+  stage       String   @default("started")
+  // started → awaiting_consent → awaiting_email → confirm_number → code_sent → completed
+  // (qualquer estágio) → escalated — 2 respostas não reconhecidas em sequência
+  name        String?
+  pushName    String? // nome do WhatsApp (pushName), usado como sugestão de nome
+  email       String?
+  attempts    Int      @default(0)
+  userId      String? // preenchido quando a conta é criada
+  numberId    String? // WhatsappNumber provisionado
+  source      String // 'site' | 'oficial'
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([stage])
 }
 
 model Transcription {
@@ -493,6 +523,83 @@ model AffiliateCampaign {
   @@index([active, startsAt, endsAt])
 }
 
+// ── Carteira de Crédito — Regulamento v4 (REGULAMENTO_AFILIADOS.md) ────────
+// Substitui, em andamento, o modelo antigo de comissão (Affiliate/
+// AffiliateCommission, ainda ativo em paralelo até a migração ser concluída):
+// toda conta já tem carteira, sem aplicação nem aprovação. Reaproveita
+// User.refCode/referredBy (mesmo mecanismo do programa de indicação simples)
+// como link único de atribuição — Art. 1º-2º.
+// Taxa única de 20% sobre cada pagamento do indicado (Art. 3º), sem tier, sem
+// bônus, sem residual. Crédito nasce como PendingCredit e só vira saldo
+// (CreditTransaction) 30 dias após a confirmação do pagamento do indicado —
+// se o pagamento for cancelado/reembolsado antes disso, o PendingCredit é
+// cancelado e o crédito simplesmente nunca é gerado (Art. 4º).
+model CreditWallet {
+  id             String              @id @default(cuid())
+  userId         String              @unique
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance        Float               @default(0) // reais, já disponível para uso (Art. 5º)
+  pixKey         String? // chave Pix p/ saque em dinheiro (Art. 5º-c)
+  pixKeyType     String? // cpf | cnpj | email | phone | random
+  payoutName     String? // nome/razão social do recebedor
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  transactions   CreditTransaction[]
+  pendingCredits PendingCredit[]
+  payouts        WalletPayout[]
+}
+
+// Solicitação de saque em dinheiro (Art. 5º-c). O débito do saldo acontece na
+// hora da solicitação (ver lib/credit.ts); o pagamento em si continua manual
+// via Pix pelo admin, mesmo padrão operacional já usado no programa antigo.
+model WalletPayout {
+  id            String       @id @default(cuid())
+  walletId      String
+  wallet        CreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount        Float
+  pixKey        String
+  pixKeyType    String
+  status        String       @default("requested") // requested | paid
+  requestedAt   DateTime     @default(now())
+  paidAt        DateTime?
+  paidReference String? // comprovante/observação do Pix manual
+
+  @@index([status, requestedAt])
+}
+
+// Livro-razão imutável: cada lançamento (ganho ou uso) vira uma linha, nunca é editada.
+model CreditTransaction {
+  id            String       @id @default(cuid())
+  walletId      String
+  wallet        CreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type          String       // earn_referral | redeem_invoice | redeem_addon | redeem_cashout | expire | adjustment
+  amount        Float        // reais — positivo = crédito, negativo = uso/débito
+  balanceAfter  Float
+  referenceType String? // payment | subscription | product | payout
+  referenceId   String?
+  note          String?
+  createdAt     DateTime     @default(now())
+
+  @@index([walletId, createdAt])
+}
+
+// Crédito "em trânsito": gerado na confirmação do pagamento do indicado, só
+// libera (vira CreditTransaction) 30 dias depois, se o pagamento continuar
+// confirmado até lá (Art. 4º). Idempotente por paymentId.
+model PendingCredit {
+  id             String       @id @default(cuid())
+  walletId       String
+  wallet         CreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  referredUserId String // quem pagou (o indicado)
+  paymentId      String       @unique // Asaas payment id
+  amount         Float // 20% do valor pago (Art. 3º)
+  releaseAt      DateTime // confirmação do pagamento do indicado + 30 dias
+  status         String       @default("pending") // pending | released | canceled
+  createdAt      DateTime     @default(now())
+
+  @@index([status, releaseAt])
+}
+
 // Leads capturados pela demo pública da landing page ("transcreva 1 áudio grátis").
 model DemoLead {
   id          String   @id @default(cuid())
@@ -786,6 +893,7 @@ model CrmContact {
   stage          CrmStage        @relation(fields: [stageId], references: [id], onDelete: Restrict)
   number         WhatsappNumber? @relation(fields: [numberId], references: [id], onDelete: SetNull)
   activities     CrmActivity[]
+  tasks          Task[]
 
   @@unique([userId, phone])
   @@index([userId, stageId])
@@ -802,6 +910,7 @@ model CrmActivity {
   content     String
   dueAt       DateTime? // lembretes: quando vence
   completedAt DateTime? // lembretes: quando foi concluído
+  notifiedAt  DateTime? // lembretes: quando o aviso de vencido foi disparado via WhatsApp (evita reenvio)
   createdAt   DateTime   @default(now())
   contact     CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -864,6 +973,23 @@ model AtendeConversation {
 
   @@unique([numberId, contactPhone])
   @@index([userId, lastMessageAt(sort: Desc)])
+}
+
+// Consumo de IA (Claude) por tenant, no módulo Atende — resposta automática e
+// as 3 rotas de setup (voz/foto/histórico). Não é cota nem trava nada; é só
+// telemetria de custo variável (planos vendem "ilimitado", então isso é a
+// única visibilidade sobre margem por conta).
+model AiUsageLog {
+  id           String   @id @default(cuid())
+  userId       String
+  feature      String // 'atende_reply' | 'atende_setup_voice' | 'atende_setup_kb_import' | 'atende_setup_from_history'
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model AtendeMessage {
@@ -1036,19 +1162,36 @@ model Aviso {
 // aponta pro userId do membro responsável (qualquer papel do time).
 // ─────────────────────────────────────────────────────────────────────────────
 model Task {
-  id           String    @id @default(cuid())
+  id           String        @id @default(cuid())
   userId       String
   title        String
   description  String?
   assignedToId String?
-  status       String    @default("pending") // 'pending' | 'done'
+  contactId    String? // vínculo opcional com um lead/cliente do CRM (tier Empresas)
+  status       String        @default("pending") // 'pending' | 'done'
   dueAt        DateTime?
   completedAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  user         User      @relation("TaskOwner", fields: [userId], references: [id], onDelete: Cascade)
-  assignedTo   User?     @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User          @relation("TaskOwner", fields: [userId], references: [id], onDelete: Cascade)
+  assignedTo   User?         @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  contact      CrmContact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  comments     TaskComment[]
 
   @@index([userId, status])
   @@index([userId, dueAt])
+  @@index([contactId])
+}
+
+// Comentários de tarefa — colaboração leve dentro do time (tier Empresas).
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String // autor do comentário (dono ou membro do time)
+  content   String
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
 }

@@ -33,21 +33,6 @@ function getWelcomeAudioBase64(): string {
   return base64;
 }
 
-// ── 0. Boas-vindas ao cadastrar — pelo número de SUPORTE ──────────────────
-// Diferente do #1 abaixo: dispara no cadastro (auth.ts), antes de o usuário
-// ter conectado qualquer número próprio, então usa a instância de suporte
-// (SUPPORT_EVOLUTION_INSTANCE) para alcançar o telefone informado no cadastro.
-export async function notifySignupWelcome(phone: string | null | undefined): Promise<void> {
-  try {
-    const instance = process.env.SUPPORT_EVOLUTION_INSTANCE;
-    if (!instance || !phone) return;
-    const clean = phone.replace(/\D/g, '');
-    if (!clean || clean.length < 10) return;
-
-    await sendPtt(instance, clean, getWelcomeAudioBase64());
-  } catch { /* não crítico */ }
-}
-
 // ── 1. Boas-vindas ao adicionar/conectar número (qualquer transição para
 //    "conectado" vinda de um estado não-conectado — número novo, readicionado
 //    ou reconectado após queda) ────────────────────────────────────────────

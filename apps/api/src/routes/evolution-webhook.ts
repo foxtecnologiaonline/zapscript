@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { transcriptionQueue, atendeQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected, notifyCobrancaPossiblePayment } from '../services/whatsapp-notify';
+import { handleOfficialNumberText, closeLeadOnConnected } from '../services/onboarding-whatsapp';
 import { storeQr } from '../lib/qrStore';
 import { sendText } from '../services/evolution';
 import { getUserModules } from '../lib/moduleGate';
@@ -207,6 +208,10 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
             }
           }
           // prevStatus === 'connected' → sem notificação (evento de keepalive/restart)
+
+          // Fecha o onboarding conversacional via WhatsApp (site ou número oficial),
+          // se este número tiver um lead em andamento — idempotente, no-op se não houver.
+          closeLeadOnConnected(number.id).catch(() => null);
         } else {
           log.warn(`[Evolution] connection.update open: nenhum número encontrado para instância ${instName}`);
         }
@@ -324,6 +329,20 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
 
           if (!fromMe) {
             const number = messageText ? await findNumber(false) : null;
+
+            // Número oficial (isPublic) + texto de alguém que não é o dono: cadastro
+            // e onboarding conversacional via WhatsApp (site simultâneo ou início
+            // direto por aqui). Tem prioridade sobre o fluxo padrão do Atende —
+            // o número oficial não é um número de Atende de cliente algum.
+            if (number?.isPublic && messageText) {
+              const handled = await handleOfficialNumberText(instName, senderPhone, senderName, messageText, messageId)
+                .catch((err: any) => {
+                  log.error({ err: err?.message }, '[Evolution] Erro no onboarding via número oficial');
+                  return false;
+                });
+              if (handled) return;
+            }
+
             const cfg = number
               ? await prisma.atendeConfig.findUnique({ where: { numberId: number.id } })
               : null;

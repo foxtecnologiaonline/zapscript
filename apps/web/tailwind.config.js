@@ -5,8 +5,9 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        display: ['Space Grotesk', 'system-ui', 'sans-serif'],
-        sans:    ['DM Sans', 'system-ui', '-apple-system', 'sans-serif'],
+        // next/font self-hosted — variáveis injetadas em apps/web/src/app/layout.tsx
+        display: ['var(--font-space-grotesk)', 'system-ui', 'sans-serif'],
+        sans:    ['var(--font-dm-sans)', 'system-ui', '-apple-system', 'sans-serif'],
       },
       maxWidth: {
         mobile: '430px',

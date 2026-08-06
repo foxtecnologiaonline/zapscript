@@ -1,11 +1,14 @@
 import { FastifyInstance } from 'fastify';
 import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../lib/prisma';
-import { sendEmail } from '../lib/mailer';
+import { sendEmail, emailWrapper } from '../lib/mailer';
 import { logger } from '../lib/logger';
 import { validateRequest, registerSchema, loginSchema } from '../lib/validation';
 import { encryptStr, decryptStr, documentHash as computeDocHash } from '../services/encryption';
-import { notifySignupWelcome } from '../services/whatsapp-notify';
+import { createPasswordlessAccount } from '../services/account-provisioning';
+import { provisionInstance, requestPairingCode } from '../services/number-provisioning';
+import { startFromSiteSignup } from '../services/onboarding-whatsapp';
+import { resolveReferralHandle } from '../lib/referralSlug';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -13,75 +16,6 @@ const supabase = createClient(
 );
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
-
-// ── Template base dos e-mails ─────────────────────────────────────────────────
-function emailWrapper(
-  iconEmoji: string,
-  title: string,
-  body: string,
-  securityNote = 'Se você não reconhece esta ação, ignore este e-mail.'
-): string {
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark">
-</head>
-<body style="margin:0;padding:0;background:#050a07;font-family:'Segoe UI',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased">
-  <div style="padding:40px 16px">
-    <div style="max-width:540px;margin:0 auto">
-
-      <!-- Logo -->
-      <div style="text-align:center;margin-bottom:28px">
-        <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto">
-          <tr>
-            <td style="background:#10b981;border-radius:10px;width:38px;height:38px;text-align:center;vertical-align:middle">
-              <span style="font-size:18px;line-height:38px">💬</span>
-            </td>
-            <td style="padding-left:10px;vertical-align:middle">
-              <span style="font-size:21px;font-weight:700;color:#10b981;letter-spacing:-0.5px">ZapScript</span>
-            </td>
-          </tr>
-        </table>
-      </div>
-
-      <!-- Card -->
-      <div style="background:#0d1c19;border:1px solid rgba(16,185,129,.18);border-radius:20px;padding:40px 36px">
-
-        <!-- Ícone -->
-        <div style="text-align:center;margin-bottom:18px">
-          <div style="display:inline-block;width:64px;height:64px;background:rgba(16,185,129,.12);border-radius:50%;font-size:28px;line-height:64px;text-align:center">${iconEmoji}</div>
-        </div>
-
-        <!-- Título -->
-        <h1 style="text-align:center;color:#10b981;font-size:22px;font-weight:700;margin:0 0 4px;letter-spacing:-0.3px">${title}</h1>
-        <p style="text-align:center;color:#4ade80;font-size:13px;font-weight:400;margin:0 0 28px;opacity:.7">zapscript.me</p>
-
-        <!-- Divisória -->
-        <div style="height:1px;background:rgba(16,185,129,.12);margin-bottom:28px"></div>
-
-        ${body}
-
-        <!-- Divisória -->
-        <div style="height:1px;background:rgba(16,185,129,.08);margin-top:32px;margin-bottom:20px"></div>
-
-        <p style="color:#4a7060;font-size:12px;line-height:1.6;margin:0;text-align:center">
-          ${securityNote}
-        </p>
-      </div>
-
-      <!-- Rodapé -->
-      <div style="text-align:center;margin-top:24px">
-        <p style="color:#2d5040;font-size:12px;margin:0 0 4px">ZapScript — Conversão Inteligente de Áudios do WhatsApp</p>
-        <a href="${APP_URL}" style="color:rgba(16,185,129,.55);font-size:12px;text-decoration:none">zapscript.me</a>
-      </div>
-
-    </div>
-  </div>
-</body>
-</html>`;
-}
 
 /** Escapa caracteres HTML para evitar injeção em templates de e-mail (C1) */
 function escHtml(s: string | null | undefined): string {
@@ -134,7 +68,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
   // ── POST /auth/register ───────────────────────────────────────────────────
   app.post<{ Body: {
-    email: string; password: string; name?: string; phone?: string; inviteCode?: string;
+    email: string; password: string; name?: string; phone: string; inviteCode?: string;
     referralCode?: string; affiliateCode?: string;
     cbTos?: boolean; cbContrato?: boolean; cbLgpd?: boolean; cbMarketing?: boolean; docVersion?: string;
     utmSource?: string; utmCampaign?: string; utmMedium?: string;
@@ -169,10 +103,12 @@ export default async function authRoutes(app: FastifyInstance) {
         }
       }
 
-      // Verificar referral code (se fornecido)
+      // Verificar referral code (se fornecido) — aceita tanto o refCode técnico
+      // quanto o slug curto e legível do link /i/[code] (ver lib/referralSlug.ts).
       let referrer: any = null;
       if (referralCode) {
-        referrer = await prisma.user.findUnique({ where: { refCode: referralCode }, select: { id: true } });
+        const found = await resolveReferralHandle(referralCode);
+        referrer = found ? { id: found.userId } : null;
         // Referral inválido: não bloquear o cadastro, apenas ignorar
         if (!referrer) logger.warn(`[Auth] referralCode inválido: ${referralCode}`);
       }
@@ -207,6 +143,9 @@ export default async function authRoutes(app: FastifyInstance) {
       if (!plan) return reply.code(500).send({ error: 'Planos não configurados. Rode o seed.' });
 
       const now = new Date();
+      const phoneDigits = phone!.replace(/\D/g, '');
+      const cleanPhone  = phoneDigits.startsWith('55') ? phoneDigits : `55${phoneDigits}`;
+      let numberId: string | undefined;
 
       // Criar User + Subscription + MinuteBalance em transação atômica
       // Se falhar: rollback do usuário Supabase para evitar conta órfã (autenticada mas sem dados)
@@ -280,6 +219,14 @@ export default async function authRoutes(app: FastifyInstance) {
               data: { affiliateId: affiliate.id, referredUserId: u.id, status: 'pending' },
             });
           }
+          // Número do próprio usuário, já com o telefone do cadastro — deixa a
+          // conexão (pairing code) pronta para aparecer no painel + WhatsApp
+          // assim que a transação terminar (ver provisionamento logo abaixo).
+          const firstName = (name ?? 'Meu').split(' ')[0];
+          const number = await tx.whatsappNumber.create({
+            data: { userId: u.id, displayName: `${firstName} 1`, phoneNumber: cleanPhone, privateMode: false },
+          });
+          numberId = number.id;
         });
       } catch (txErr: any) {
         // Classificar a falha. Erros transitórios/infra (banco indisponível, migração
@@ -337,10 +284,8 @@ export default async function authRoutes(app: FastifyInstance) {
             <p style="color:#a7f3d0;line-height:1.7;margin:0 0 16px">Falta 1 passo para ligar seu <strong style="color:#6ee7b7">robô particular, que converte e resume cada áudio do WhatsApp 24 horas por dia</strong> — mesmo enquanto você dorme. Conectar leva menos de 2 minutos.</p>
             <p style="color:#6ee7b7;line-height:1.6;margin:0 0 20px;font-size:13px">🔒 Criptografia AES-256 · servidores no Brasil (LGPD) · cancele quando quiser.</p>
             <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:12px;padding:20px;margin-bottom:24px">
-              <p style="margin:0 0 12px;font-weight:600;color:#fff">Como ativar em 3 passos:</p>
-              <p style="margin:0 0 8px;color:#a7f3d0;font-size:14px">1️⃣ Acesse seu painel e vá em <strong>Números</strong></p>
-              <p style="margin:0 0 8px;color:#a7f3d0;font-size:14px">2️⃣ Clique em <strong>Conectar novo número</strong></p>
-              <p style="margin:0;color:#a7f3d0;font-size:14px">3️⃣ Escaneie o QR Code com seu WhatsApp — pronto! 🎉</p>
+              <p style="margin:0 0 12px;font-weight:600;color:#fff">Já deixamos tudo pronto:</p>
+              <p style="margin:0;color:#a7f3d0;font-size:14px">Você já recebeu (ou vai receber em instantes) um código de conexão no seu WhatsApp — é só digitar em <strong>Aparelhos conectados → Conectar um aparelho</strong> e pronto! 🎉</p>
             </div>
             <div style="text-align:center;margin-bottom:24px">
               <a href="${APP_URL}/dashboard/numeros" style="display:inline-block;background:#10b981;color:#04130c;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:800;font-size:16px">Conectar meu WhatsApp →</a>
@@ -353,8 +298,27 @@ export default async function authRoutes(app: FastifyInstance) {
         logger.error(`[Auth] Erro ao enviar e-mail de verificação: ${err.message}`);
       }
 
-      // Áudio de boas-vindas pelo WhatsApp de suporte (best-effort, não bloqueia o cadastro)
-      notifySignupWelcome(phone).catch(() => {});
+      // ── Onboarding facilitado: provisiona a instância + pairing code ANTES
+      // de responder (o painel já abre com o código pronto), e dispara o
+      // mesmo código por WhatsApp em paralelo — não é fallback, é o mesmo
+      // convite chegando por dois canais ao mesmo tempo.
+      let pairingCode: string | null = null;
+      if (numberId) {
+        const provision = await provisionInstance(numberId, logger).catch((err: any) => {
+          logger.warn(`[Auth] provisionInstance falhou no cadastro (número ${numberId}): ${err.message}`);
+          return { ok: false as const, message: err.message };
+        });
+        if (provision.ok) {
+          const pairing = await requestPairingCode(numberId, cleanPhone, logger).catch((err: any) => {
+            logger.warn(`[Auth] requestPairingCode falhou no cadastro (número ${numberId}): ${err.message}`);
+            return { ok: false as const, error: err.message };
+          });
+          if (pairing.ok) pairingCode = pairing.code ?? null;
+        }
+        startFromSiteSignup(data.user!.id, numberId, cleanPhone, pairingCode).catch((err: any) =>
+          logger.warn(`[Auth] startFromSiteSignup falhou (número ${numberId}): ${err.message}`)
+        );
+      }
 
       // Auto-login (Opção A): emitir JWT na hora para o usuário ir direto ao dashboard
       const token = app.jwt.sign({ sub: data.user!.id, email }, { expiresIn: '30d' });
@@ -363,6 +327,8 @@ export default async function authRoutes(app: FastifyInstance) {
         user: { id: data.user!.id, email },
         emailVerified: false,
         isTester: !!testerInvite,
+        numberId,
+        pairingCode,
         message: testerInvite
           ? 'Conta Tester criada com Plano PRO por 1 ano!'
           : 'Conta criada! Você já pode usar o ZapScript.',
@@ -383,166 +349,15 @@ export default async function authRoutes(app: FastifyInstance) {
       const { email, name, inviteCode, referralCode } = req.body;
       if (!email) return reply.code(400).send({ error: 'E-mail obrigatório.' });
 
-      const normalizedEmail = email.toLowerCase().trim();
+      const result = await createPasswordlessAccount({ email, name, inviteCode, referralCode });
 
-      // Se já existe, reenvia magic link (sem vazar a existência da conta)
-      const existing = await prisma.user.findUnique({
-        where:  { email: normalizedEmail },
-        select: { id: true },
-      });
-      if (existing) {
-        try {
-          const { data: linkData } = await supabase.auth.admin.generateLink({
-            type:    'magiclink',
-            email:   normalizedEmail,
-            options: { redirectTo: `${APP_URL}/dashboard` },
-          });
-          if (linkData?.properties?.action_link) {
-            await sendEmail(
-              normalizedEmail,
-              'Seu link de acesso ao ZapScript',
-              emailWrapper('⚡', 'Acesse o ZapScript', `
-                <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 6px">
-                  Você já tem uma conta no ZapScript. Clique abaixo para acessar:
-                </p>
-                <div style="text-align:center;margin:24px 0">
-                  <a href="${linkData.properties.action_link}"
-                     style="display:inline-block;background:#10b981;color:#fff;padding:16px 48px;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px">
-                    Entrar no ZapScript →
-                  </a>
-                </div>
-              `, 'Se você não solicitou este link, pode ignorar com segurança.'),
-            ).catch(() => {});
-          }
-        } catch (err: any) {
-          logger.warn(`[Auth] magic-register existente falhou: ${err.message}`);
-        }
+      if (!result.ok) return reply.code(500).send({ error: result.error });
+      if (result.alreadyExisted) {
         // Sempre responde igual — não vaza se a conta existe
         return { ok: true, message: 'Se este e-mail já estiver cadastrado, você receberá um link de acesso.' };
       }
 
-      // ── Nova conta via magic link ──────────────────────────────────────────
-      let testerInvite: any = null;
-      if (inviteCode) {
-        testerInvite = await prisma.testerInvite.findFirst({
-          where: { code: inviteCode, usedAt: null },
-        });
-      }
-
-      const referrer = referralCode
-        ? await prisma.user.findUnique({ where: { refCode: referralCode }, select: { id: true } })
-        : null;
-
-      // Criar conta no Supabase com senha aleatória (usuário nunca digita)
-      // Node 20: crypto.randomUUID() é nativo.
-      const { randomUUID } = await import('node:crypto');
-      const randomPassword = randomUUID() + randomUUID();
-      const { data, error } = await supabase.auth.admin.createUser({
-        email:        normalizedEmail,
-        password:     randomPassword,
-        email_confirm: true,       // magic link serve como confirmação
-        user_metadata: { name: name || email.split('@')[0] },
-      });
-      if (error || !data?.user) {
-        logger.error(`[Auth] magic-register Supabase falhou: ${error?.message}`);
-        return reply.code(500).send({ error: 'Erro ao criar conta. Tente novamente.' });
-      }
-
-      const now = new Date();
-      const userId = data.user.id;
-
-      try {
-        await prisma.$transaction(async (tx: any) => {
-          await tx.user.create({
-            data: {
-              id:             userId,
-              email:          normalizedEmail,
-              name:           name || email.split('@')[0],
-              refCode:        userId.slice(0, 8),
-              emailVerified:  true,     // magic link já confirma
-              termsAcceptedAt:         now,
-              contractAcceptedAt:      now,
-              privacyPolicyAcceptedAt: now,
-              consentDocVersion:       'tos_v2.0,contrato_v2.0,pp_v2.0',
-              ...(referrer ? { referredBy: referrer.id } : {}),
-            },
-          });
-
-          const plan = testerInvite
-            ? await tx.plan.findFirst({ where: { name: 'pro-tester' } })
-            : await tx.plan.findFirst({ where: { name: 'free' } });
-
-          if (!plan) throw new Error('Plano não encontrado');
-
-          // Sem trial: cadastro expresso entra direto no Free (ou Pro, se tester).
-          await tx.subscription.create({
-            data: {
-              userId:           userId,
-              planId:           plan.id,
-              status:           'active',
-              currentPeriodEnd: undefined,
-            },
-          });
-
-          // MinuteBalance com cota Free (100 áudios/mês) e benefício de indicação
-          const cycleResetAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-          await tx.minuteBalance.create({
-            data: {
-              userId:           userId,
-              audiosUsed:       referrer ? -5 : 0, // 5 extras para indicado
-              availableMinutes: plan.minutesPerMonth,
-              resetAt:          cycleResetAt,
-            } as any,
-          });
-
-          if (testerInvite) {
-            await tx.testerInvite.update({
-              where: { id: testerInvite.id },
-              data:  { usedAt: now, usedBy: userId },
-            });
-          }
-        });
-      } catch (txErr: any) {
-        await supabase.auth.admin.deleteUser(userId).catch(() => {});
-        return reply.code(500).send({ error: 'Erro ao criar conta. Tente novamente.' });
-      }
-
-      // ── Enviar magic link de acesso ─────────────────────────────────────
-      try {
-        const { data: linkData } = await supabase.auth.admin.generateLink({
-          type:    'magiclink',
-          email:   normalizedEmail,
-          options: { redirectTo: `${APP_URL}/dashboard` },
-        });
-        if (linkData?.properties?.action_link) {
-          const firstName = (name || email).split(/[@\s]/)[0];
-          await sendEmail(
-            normalizedEmail,
-            `Bem-vindo ao ZapScript, ${firstName}!`,
-            emailWrapper('🎉', 'Sua conta está pronta!', `
-              <p style="color:#b8d4c8;font-size:15px;line-height:1.7;margin:0 0 12px">
-                Olá, <strong>${firstName}</strong>! Sua conta gratuita foi criada.
-              </p>
-              <p style="color:#7aa898;font-size:14px;line-height:1.6;margin:0 0 28px">
-                Clique no botão abaixo para acessar seu painel:
-              </p>
-              <div style="text-align:center;margin:24px 0">
-                <a href="${linkData.properties.action_link}"
-                   style="display:inline-block;background:#10b981;color:#fff;padding:16px 48px;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px">
-                  Acessar meu painel →
-                </a>
-              </div>
-              <p style="color:#4a7060;font-size:12px;text-align:center;margin:16px 0 0;line-height:1.6">
-                Você tem <strong>100 áudios grátis por mês</strong> para começar (sem cartão).
-              </p>
-            `, 'Se você não criou esta conta, pode ignorar este e-mail com segurança.'),
-          ).catch(() => {});
-        }
-      } catch (err: any) {
-        logger.warn(`[Auth] magic-register e-mail falhou: ${err.message}`);
-      }
-
-      logger.info(`[Auth] magic-register: ${normalizedEmail} → conta criada + magic link enviado`);
+      logger.info(`[Auth] magic-register: ${email.toLowerCase().trim()} → conta criada + magic link enviado`);
       return { ok: true, message: 'Conta criada! Verifique seu e-mail para acessar.' };
     }
   );

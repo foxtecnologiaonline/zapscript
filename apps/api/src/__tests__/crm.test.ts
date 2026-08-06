@@ -20,6 +20,7 @@ jest.mock('../lib/prisma', () => ({
     teamMember:     { findUnique: jest.fn() },
     team:           { findUnique: jest.fn() },
     $transaction:   jest.fn(async (ops: any[]) => Promise.all(ops)),
+    $queryRaw:      jest.fn(),
   },
 }));
 
@@ -560,15 +561,16 @@ describe('GET /crm/reminders', () => {
 });
 
 // ── Importar do WhatsApp ───────────────────────────────────────────
+// CRM #2: agregação (última ocorrência por telefone + contagem + exclusão de
+// quem já é contato) roda no banco via $queryRaw — o teste verifica que a
+// rota repassa e mapeia corretamente o resultado (count bigint -> number),
+// não a lógica de agregação em si (isso é responsabilidade do Postgres).
 describe('GET /crm/import/suggestions', () => {
   it('agrega por telefone, ignora contatos já importados e ordena por recência', async () => {
     mockModuleOwned();
-    (prisma.transcription.findMany as jest.Mock).mockResolvedValueOnce([
-      { contactPhone: '11900000001', contactName: 'Ana',  numberId: 'num1', createdAt: new Date('2026-07-10') },
-      { contactPhone: '11900000001', contactName: 'Ana',  numberId: 'num1', createdAt: new Date('2026-07-05') },
-      { contactPhone: '11900000002', contactName: 'Beto', numberId: 'num1', createdAt: new Date('2026-07-09') },
+    (prisma.$queryRaw as jest.Mock).mockResolvedValueOnce([
+      { phone: '11900000001', name: 'Ana', numberId: 'num1', lastAt: new Date('2026-07-10'), count: 2n },
     ]);
-    (prisma.crmContact.findMany as jest.Mock).mockResolvedValueOnce([{ phone: '11900000002' }]);
 
     const res = await app.inject({ method: 'GET', url: '/crm/import/suggestions', headers: authHeader });
     expect(res.statusCode).toBe(200);

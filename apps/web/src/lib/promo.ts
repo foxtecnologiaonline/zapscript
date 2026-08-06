@@ -23,7 +23,7 @@ export function getProPrice(now: Date = new Date()): string {
    PLAN_PRICES/PLAN_PRICES_YEARLY em apps/api/src/routes/billing.ts.
    Sem oferta de 1º mês — preço flat, "aluguel" (mensal) ou "compra" (anual).
    ───────────────────────────────────────────────────────────────────────── */
-export const CORE_AUDIO_QUOTA = 100; // espelha FREE_AUDIO_QUOTA (seed.ts)
+export const CORE_AUDIO_QUOTA = 200; // espelha FREE_AUDIO_QUOTA (seed.ts)
 
 export const PROFISSIONAL_PRICE_MONTHLY = 'R$49';
 export const PROFISSIONAL_PRICE_YEARLY = 'R$295';

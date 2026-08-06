@@ -13,7 +13,10 @@ export const registerSchema = z.object({
   email:        z.string().email('E-mail inválido'),
   password:     z.string().min(8, 'Senha deve ter pelo menos 8 caracteres').max(128), // M1: min 6→8 (OWASP)
   name:         z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100).optional(),
-  phone:        z.string().max(20).optional(),
+  phone:        z.string().max(20).refine(
+                  (v) => /^\d{10,11}$/.test(v.replace(/\D/g, '').replace(/^55/, '')),
+                  'Telefone inválido — informe DDD + número (10 ou 11 dígitos)',
+                ),
   inviteCode:    z.string().max(100).optional(),
   referralCode:  z.string().max(100).optional(),
   affiliateCode: z.string().max(100).optional(),
@@ -79,6 +82,10 @@ const cardSchema = z.object({
   expiryMonth: z.string().length(2, 'Mês inválido (MM)'),
   expiryYear:  z.string().min(2, 'Ano inválido').max(4),
   ccv:         z.string().min(3, 'CVV inválido').max(4),
+  // CPF do titular do cartão — exigido só no pagamento com cartão (não há gate de
+  // CPF/CNPJ no perfil do usuário; ver MODULOS_ARQUITETURA.md e billing.ts).
+  document:    z.string({ required_error: 'Informe o CPF do titular do cartão (11 dígitos).' })
+                 .regex(/^\d{11}$/, 'Informe o CPF do titular do cartão (11 dígitos).'),
 });
 
 const billingAddressSchema = z.object({
@@ -250,6 +257,7 @@ export const createTaskSchema = z.object({
   title:        z.string().min(1, 'Título é obrigatório').max(150),
   description:  z.string().max(2000).optional(),
   assignedToId: z.string().cuid('Responsável inválido').optional(),
+  contactId:    z.string().cuid('Contato inválido').optional(), // vínculo opcional com o CRM
   dueAt:        z.coerce.date().optional(),
 });
 
@@ -257,8 +265,13 @@ export const updateTaskSchema = z.object({
   title:        z.string().min(1).max(150).optional(),
   description:  z.string().max(2000).nullable().optional(),
   assignedToId: z.string().cuid('Responsável inválido').nullable().optional(),
+  contactId:    z.string().cuid('Contato inválido').nullable().optional(),
   dueAt:        z.coerce.date().nullable().optional(),
   status:       z.enum(['pending', 'done']).optional(),
+});
+
+export const createTaskCommentSchema = z.object({
+  content: z.string().min(1, 'Comentário não pode ser vazio').max(2000),
 });
 
 // Avisos (tier Profissional) — disparo manual de mensagem pro cliente

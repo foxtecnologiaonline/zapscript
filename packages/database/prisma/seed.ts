@@ -7,9 +7,13 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Atualizando planos ZapScript v3.0...');
 
-  // FREE_AUDIO_QUOTA parametrizável por env (default 100 — revisão de tiers ZapScript 2.0). PRO = teto oculto 500.
-  const FREE_AUDIO_QUOTA = parseInt(process.env.FREE_AUDIO_QUOTA || '100', 10);
+  // FREE_AUDIO_QUOTA parametrizável por env (default 200 — revisão de tiers ZapScript 2.0). PRO = teto oculto 500.
+  const FREE_AUDIO_QUOTA = parseInt(process.env.FREE_AUDIO_QUOTA || '200', 10);
   const PRO_AUDIO_CAP    = parseInt(process.env.PRO_AUDIO_CAP    || '500', 10);
+  // minutesPerMonth é [LEGADO] (métrica interna de custo, não é mais quota
+  // vendida) — sentinela alto pra nunca disparar alerta de "saldo baixo" nos
+  // tiers pagos Profissional/Empresas, que já vendem "ilimitado" via audiosPerMonth.
+  const UNLIMITED_MINUTES = 999_999;
 
   const plans = [
     {
@@ -81,7 +85,7 @@ async function main() {
     {
       name:            'profissional',
       label:           'Profissional',
-      minutesPerMonth: 400,
+      minutesPerMonth: UNLIMITED_MINUTES,
       audiosPerMonth:  PRO_AUDIO_CAP,
       maxNumbers:      1,
       priceBrl:        49,
@@ -90,23 +94,26 @@ async function main() {
         '🤖 Atendimento automático 24/7 por IA',
         '📥 Fila de conversas + assumir manualmente',
         '📊 Métricas de atendimento e efetividade',
+        '🔔 Escalação automática + aviso interno quando o bot precisa de ajuda humana',
         '📨 Avisos ao cliente (cobrança, agendamento, mercadoria pronta...)',
         '📚 Base de conhecimento própria',
+        '🗓️ Resumo diário ou semanal do atendimento por WhatsApp',
         '1 número WhatsApp',
       ]),
     },
     {
       name:            'empresas',
       label:           'Empresas',
-      minutesPerMonth: 500,
+      minutesPerMonth: UNLIMITED_MINUTES,
       audiosPerMonth:  PRO_AUDIO_CAP,
-      maxNumbers:      2,
+      maxNumbers:      5,
       priceBrl:        99,
       features:        JSON.stringify([
         'Tudo do Profissional',
         '📊 CRM — funil de vendas no WhatsApp',
         '✅ Tarefas — designação e controle na equipe',
         '👥 Até 5 usuários com papéis (admin/manager/agent)',
+        '📱 Até 5 números WhatsApp conectados',
       ]),
     },
   ];

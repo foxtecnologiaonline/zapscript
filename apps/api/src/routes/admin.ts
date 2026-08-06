@@ -2617,6 +2617,60 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── Carteira de Crédito (Regulamento v4) — fila de saques manuais ────────
+  // GET /wallet/payouts?status=requested — fila de solicitações de saque
+  app.get<{ Querystring: { status?: string } }>(
+    '/wallet/payouts',
+    { preHandler: [adminAuth] },
+    async (req) => {
+      const status = req.query.status;
+      const payouts = await prisma.walletPayout.findMany({
+        where:   status ? { status } : undefined,
+        orderBy: { requestedAt: 'desc' },
+        take:    300,
+        include: { wallet: { include: { user: { select: { email: true, name: true } } } } },
+      });
+      return { payouts };
+    },
+  );
+
+  // POST /wallet/payouts/:id/mark-paid  { reference? }
+  app.post<{ Params: { id: string }; Body: { reference?: string } }>(
+    '/wallet/payouts/:id/mark-paid',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const p = await prisma.walletPayout.findUnique({
+        where:   { id: req.params.id },
+        include: { wallet: { include: { user: { select: { email: true, name: true } } } } },
+      });
+      if (!p) return reply.code(404).send({ error: 'Solicitação de saque não encontrada.' });
+      if (p.status === 'paid') return { ok: true, alreadyPaid: true };
+
+      await prisma.walletPayout.update({
+        where: { id: p.id },
+        data:  { status: 'paid', paidAt: new Date(), paidReference: req.body?.reference?.slice(0, 200) || null },
+      });
+
+      const userEmail = p.wallet.user.email;
+      if (userEmail) {
+        const firstName = p.wallet.user.name?.split(' ')[0] || 'tudo bem';
+        const amtFmt = p.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        sendEmail(
+          userEmail,
+          `🎉 Pix enviado! ${amtFmt} chegando na sua conta`,
+          `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+            <div style="font-size:22px;font-weight:bold;margin-bottom:12px">🎉 Pagamento realizado!</div>
+            <p style="color:#a7f3d0;line-height:1.7">Olá, ${escHtmlAdmin(firstName)}! O saque da sua carteira ZapScript foi pago.</p>
+            <p style="color:#a7f3d0;line-height:1.7">Valor: <strong style="color:#10b981;font-size:20px">${amtFmt}</strong></p>
+          </div>`,
+        ).catch(err => app.log.error({ err }, 'Erro ao enviar e-mail de pagamento de saque da carteira'));
+      }
+
+      app.log.info(`[Admin] Saque de carteira marcado como pago: ${p.id} R$${p.amount}`);
+      return { ok: true };
+    },
+  );
+
   // GET /affiliates/performance — resumo geral + ranking de desempenho por afiliado
   app.get(
     '/affiliates/performance',

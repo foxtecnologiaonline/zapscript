@@ -21,7 +21,7 @@ function CadastroForm() {
   }, []);
   const [isTesterInvite, setIsTesterInvite] = useState(false);
 
-  const [form, setForm]   = useState({ name: '', email: '', password: '' });
+  const [form, setForm]   = useState({ name: '', email: '', phone: '', password: '' });
   // Handoff da demo: e-mail já digitado na isca chega em ?email= e vem pré-preenchido
   const prefillEmail = searchParams.get('email') || '';
   useEffect(() => {
@@ -72,6 +72,19 @@ function CadastroForm() {
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
 
+  // Máscara de telefone BR — guarda só os dígitos no state, formata na exibição.
+  function formatPhoneDisplay(digitsRaw: string): string {
+    const d = digitsRaw.replace(/\D/g, '').slice(0, 11);
+    if (d.length <= 2) return d ? `(${d}` : '';
+    const ddd  = d.slice(0, 2);
+    const rest = d.slice(2);
+    if (rest.length <= 4) return `(${ddd}) ${rest}`;
+    const splitAt = d.length <= 10 ? 4 : 5; // 10 dígitos = fixo (4+4), 11 = celular (5+4)
+    return `(${ddd}) ${rest.slice(0, splitAt)}-${rest.slice(splitAt)}`;
+  }
+  const setPhone = (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 11) }));
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -84,13 +97,15 @@ function CadastroForm() {
     }
 
     if (form.password.length < 8) { setError('Senha deve ter ao menos 8 caracteres.'); return; }
+    if (!/^\d{10,11}$/.test(form.phone)) { setError('Informe um telefone válido, com DDD.'); return; }
 
     setLoading(true);
     try {
       const utm = readUtm();
-      const res = await api.post<{ token: string }>('/auth/register', {
+      const res = await api.post<{ token: string; numberId?: string; pairingCode?: string }>('/auth/register', {
         name:       form.name,
         email:      form.email,
+        phone:      form.phone,
         password:   form.password,
         cbTos:      cbAll,
         cbContrato: cbAll,
@@ -110,7 +125,12 @@ function CadastroForm() {
       if (res?.token) {
         api.setToken(res.token);
         clearAffiliateCode();
-        router.push('/dashboard');
+        // Onboarding facilitado: número já provisionado no cadastro — abre o
+        // painel direto na tela de conexão (pairing code já pronto ou a caminho).
+        // O mesmo código também chegou por WhatsApp — daí o "?code=" ir na URL.
+        router.push(res.numberId
+          ? `/dashboard/numeros?connect=${res.numberId}${res.pairingCode ? `&code=${encodeURIComponent(res.pairingCode)}` : ''}`
+          : '/dashboard');
         return;
       }
       // Fallback (caso a API não retorne token): mantém a tela de confirmação.
@@ -217,6 +237,19 @@ function CadastroForm() {
             <div>
               <label className="block text-xs font-semibold text-brand-text-secondary mb-1">E-mail</label>
               <input className="field-input" type="email" placeholder="seu@email.com" value={form.email} onChange={set('email')} required/>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-brand-text-secondary mb-1">WhatsApp</label>
+              <input
+                className="field-input"
+                type="tel"
+                inputMode="numeric"
+                placeholder="(11) 91234-5678"
+                value={formatPhoneDisplay(form.phone)}
+                onChange={setPhone}
+                required
+              />
+              <p className="text-[11px] text-brand-muted mt-1">É o número que vamos conectar — já deixamos o código de conexão pronto assim que você criar a conta.</p>
             </div>
             <div>
               <label className="block text-xs font-semibold text-brand-text-secondary mb-1">Senha</label>

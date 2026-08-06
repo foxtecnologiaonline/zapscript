@@ -186,7 +186,7 @@ export const POSTS: BlogPost[] = [
 <h2>Perguntas frequentes</h2>
 
 <h3>Posso converter áudio do WhatsApp gratuitamente?</h3>
-<p>Sim. O ZapScript oferece plano gratuito (Core) com até 100 áudios de conversão por mês. A conversão nativa do WhatsApp também é gratuita, mas só funciona em iPhones recentes.</p>
+<p>Sim. O ZapScript oferece plano gratuito (Core) com até 200 áudios de conversão por mês. A conversão nativa do WhatsApp também é gratuita, mas só funciona em iPhones recentes.</p>
 
 <h3>A conversão automática é precisa?</h3>
 <p>Com o motor Whisper (usado pelo ZapScript), a precisão gira em torno de 95%+ para português claro. Áudios com muito ruído de fundo ou sotaque muito carregado podem ter taxa menor.</p>
@@ -679,7 +679,7 @@ export const POSTS: BlogPost[] = [
       <td><strong>Plano gratuito</strong></td>
       <td>✅ Ilimitado</td>
       <td>✅ Limitado</td>
-      <td>✅ Até 100 áudios/mês</td>
+      <td>✅ Até 200 áudios/mês</td>
     </tr>
     <tr>
       <td><strong>Privacidade de dados</strong></td>
@@ -723,7 +723,7 @@ export const POSTS: BlogPost[] = [
 <h2>Limitações honestas do ZapScript</h2>
 <p>Transparência é importante. O ZapScript tem desvantagens reais:</p>
 <ul>
-  <li><strong>Plano gratuito limitado:</strong> até 100 áudios/mês. Quem recebe muitos áudios vai precisar do plano pago.</li>
+  <li><strong>Plano gratuito limitado:</strong> até 200 áudios/mês. Quem recebe muitos áudios vai precisar do plano pago.</li>
   <li><strong>Requer conexão do número:</strong> Você precisa manter o celular conectado para a sincronização funcionar.</li>
   <li><strong>Não é gratuito para uso intenso:</strong> ViraTexto é ilimitado gratuitamente para uso casual.</li>
 </ul>
@@ -1188,7 +1188,7 @@ export const POSTS: BlogPost[] = [
 </ul>
 
 <h2>Conclusão</h2>
-<p>Converter áudios do WhatsApp é uma das mudanças mais simples e de maior impacto para advogados. Sem alterar a forma como os clientes se comunicam, você recupera horas de trabalho técnico por semana. Crie sua conta gratuita em <strong>zapscript.me</strong> — até 100 áudios/mês sem cartão, Plano Profissional por R$49/mês.</p>
+<p>Converter áudios do WhatsApp é uma das mudanças mais simples e de maior impacto para advogados. Sem alterar a forma como os clientes se comunicam, você recupera horas de trabalho técnico por semana. Crie sua conta gratuita em <strong>zapscript.me</strong> — até 200 áudios/mês sem cartão, Plano Profissional por R$49/mês.</p>
     `,
   },
 
@@ -1293,7 +1293,7 @@ export const POSTS: BlogPost[] = [
 </ol>
 
 <h2>Conclusão</h2>
-<p>Times de vendas que documentam sistematicamente fecham mais e com ciclos mais curtos. Conversão automática de áudio é a peça que faltava para quem opera pelo WhatsApp. Comece gratuitamente em <strong>zapscript.me</strong> — até 100 áudios/mês no Core, Plano Profissional por R$49/mês.</p>
+<p>Times de vendas que documentam sistematicamente fecham mais e com ciclos mais curtos. Conversão automática de áudio é a peça que faltava para quem opera pelo WhatsApp. Comece gratuitamente em <strong>zapscript.me</strong> — até 200 áudios/mês no Core, Plano Profissional por R$49/mês.</p>
     `,
   },
 
@@ -1340,7 +1340,7 @@ export const POSTS: BlogPost[] = [
 </ol>
 
 <h2>Conclusão</h2>
-<p>Para um áudio ocasional, a conversão nativa do iPhone resolve. Para quem recebe áudios o dia inteiro e precisa de resumo e histórico pesquisável, a conversão automática do ZapScript é o caminho. Teste grátis com até 100 áudios/mês em <strong>zapscript.me</strong>.</p>
+<p>Para um áudio ocasional, a conversão nativa do iPhone resolve. Para quem recebe áudios o dia inteiro e precisa de resumo e histórico pesquisável, a conversão automática do ZapScript é o caminho. Teste grátis com até 200 áudios/mês em <strong>zapscript.me</strong>.</p>
     `,
   },
 
@@ -1386,7 +1386,7 @@ export const POSTS: BlogPost[] = [
 </ol>
 
 <h2>Conclusão</h2>
-<p>Como o suporte nativo no Android ainda é desigual, a conversão automática é a opção mais confiável — e a única que entrega resumo e histórico pesquisável. Comece grátis com até 100 áudios/mês em <strong>zapscript.me</strong>.</p>
+<p>Como o suporte nativo no Android ainda é desigual, a conversão automática é a opção mais confiável — e a única que entrega resumo e histórico pesquisável. Comece grátis com até 200 áudios/mês em <strong>zapscript.me</strong>.</p>
     `,
   },
 
@@ -1409,7 +1409,7 @@ export const POSTS: BlogPost[] = [
 <h2>Opção 1 — Conta gratuita no navegador</h2>
 <p>A forma mais simples: crie uma conta grátis no ZapScript e acesse o painel de qualquer navegador. Você conecta seu número uma vez e os áudios viram texto + resumo automaticamente — sem instalar nada:</p>
 <ol>
-  <li>Crie uma conta grátis em <strong>zapscript.me</strong> (até 100 áudios/mês, sem cartão).</li>
+  <li>Crie uma conta grátis em <strong>zapscript.me</strong> (até 200 áudios/mês, sem cartão).</li>
   <li>Conecte seu WhatsApp via QR Code, igual ao WhatsApp Web.</li>
   <li>Todo áudio recebido vira texto completo + resumo, disponível no painel.</li>
 </ol>
@@ -1431,7 +1431,7 @@ export const POSTS: BlogPost[] = [
 </ul>
 
 <h2>Conclusão</h2>
-<p>Para um áudio avulso, uma ferramenta online resolve. Para quem vive no computador e recebe áudios o tempo todo, a conversão automática do ZapScript é o que mais economiza tempo. Teste grátis com até 100 áudios/mês em <strong>zapscript.me</strong>.</p>
+<p>Para um áudio avulso, uma ferramenta online resolve. Para quem vive no computador e recebe áudios o tempo todo, a conversão automática do ZapScript é o que mais economiza tempo. Teste grátis com até 200 áudios/mês em <strong>zapscript.me</strong>.</p>
     `,
   },
 
@@ -1470,7 +1470,7 @@ export const POSTS: BlogPost[] = [
 <p>Dado o caráter sensível do conteúdo, a segurança importa mais aqui do que em qualquer outro uso. As conversões são criptografadas com AES-256-GCM (padrão bancário), armazenadas em servidores no Brasil (São Paulo), com conformidade total à LGPD — e o áudio original não é guardado, apenas o texto, sob a conta do profissional.</p>
 
 <h2>Conclusão</h2>
-<p>Converter o relato em texto não substitui a escuta clínica durante a sessão — mas evita o retrabalho de reouvir áudios fora do horário de atendimento só para não perder um detalhe. Teste grátis com até 100 áudios/mês em <strong>zapscript.me</strong>.</p>
+<p>Converter o relato em texto não substitui a escuta clínica durante a sessão — mas evita o retrabalho de reouvir áudios fora do horário de atendimento só para não perder um detalhe. Teste grátis com até 200 áudios/mês em <strong>zapscript.me</strong>.</p>
     `,
   },
 
@@ -1506,7 +1506,7 @@ export const POSTS: BlogPost[] = [
 </ol>
 
 <h2>Resultado prático</h2>
-<p>Menos retrabalho pedindo para o cliente repetir, registro escrito de cada pedido para evitar mal-entendido, e tempo de atendimento mais rápido — especialmente em dias de alto volume (promoções, datas comemorativas). Teste grátis com até 100 áudios/mês em <strong>zapscript.me</strong>.</p>
+<p>Menos retrabalho pedindo para o cliente repetir, registro escrito de cada pedido para evitar mal-entendido, e tempo de atendimento mais rápido — especialmente em dias de alto volume (promoções, datas comemorativas). Teste grátis com até 200 áudios/mês em <strong>zapscript.me</strong>.</p>
     `,
   },
 
@@ -1528,7 +1528,7 @@ export const POSTS: BlogPost[] = [
 <p>Antes de assinar qualquer ferramenta, a pergunta é direta: <strong>quanto custa transcrever áudio do WhatsApp</strong>? A resposta depende de quanto áudio você recebe por mês — e do modelo de cobrança da ferramenta. Existem hoje 3 formatos no mercado, com diferenças grandes de custo dependendo do seu volume.</p>
 
 <h2>Modelo 1 — Plano gratuito com limite de áudios</h2>
-<p>Ferramentas como o <strong>ZapScript</strong> oferecem um plano Core com um limite mensal (até 100 áudios/mês, sem cartão de crédito). Funciona bem para quem recebe poucos áudios e quer testar antes de decidir. Acima do limite, é preciso migrar para um plano pago.</p>
+<p>Ferramentas como o <strong>ZapScript</strong> oferecem um plano Core com um limite mensal (até 200 áudios/mês, sem cartão de crédito). Funciona bem para quem recebe poucos áudios e quer testar antes de decidir. Acima do limite, é preciso migrar para um plano pago.</p>
 
 <h2>Modelo 2 — Cobrança por minuto/crédito (pré-pago)</h2>
 <p>Comum em ferramentas internacionais (cobrança em dólar, por minuto ou por crédito consumido). Funciona bem para uso esporádico, mas fica caro rapidamente para quem recebe áudio todos os dias — o custo sobe de forma linear com o volume, sem teto.</p>
@@ -1545,7 +1545,7 @@ export const POSTS: BlogPost[] = [
 
 <h2>Perguntas frequentes</h2>
 <h3>Existe transcrição de áudio do WhatsApp 100% gratuita?</h3>
-<p>Sim, dentro de um limite mensal — o ZapScript oferece até 100 áudios por mês grátis, sem cartão de crédito, no plano Core.</p>
+<p>Sim, dentro de um limite mensal — o ZapScript oferece até 200 áudios por mês grátis, sem cartão de crédito, no plano Core.</p>
 <h3>O preço muda se eu pagar em dólar?</h3>
 <p>Sim — ferramentas com cobrança em dólar variam com o câmbio. Ferramentas brasileiras como o ZapScript cobram em real, com preço fixo.</p>
 <h3>Compensa pagar por minuto se eu uso pouco?</h3>
@@ -1601,7 +1601,104 @@ export const POSTS: BlogPost[] = [
 </ol>
 
 <h2>Conclusão</h2>
-<p>Para times de atendimento, transcrever áudio automaticamente não é conveniência — é parte do registro do atendimento. Teste grátis com até 100 áudios/mês em <strong>zapscript.me</strong>, sem cartão de crédito.</p>
+<p>Para times de atendimento, transcrever áudio automaticamente não é conveniência — é parte do registro do atendimento. Teste grátis com até 200 áudios/mês em <strong>zapscript.me</strong>, sem cartão de crédito.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 15 — Gap genuíno: clínicas (odontologia/saúde), retomada de cadência
+     Keyword: "transcrição áudio whatsapp clínica"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcricao-audio-whatsapp-clinica-odontologica',
+    title:       'Áudio do paciente no WhatsApp: como a clínica não perde nenhum recado',
+    description: 'Clínicas odontológicas e de saúde recebem áudios de pacientes sobre sintomas, remarcações e dúvidas. Veja como transformar cada um em texto pesquisável no prontuário.',
+    keywords:    ['transcrição áudio whatsapp clínica','áudio whatsapp consultório odontológico','recepção clínica whatsapp texto','whatsapp paciente áudio texto','transcrição whatsapp saúde'],
+    publishedAt: '2026-08-03',
+    readingTime: 6,
+    category:    'Nichos',
+    coverEmoji:  '🦷',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
+    content: `
+<p>A recepção de uma clínica odontológica ou consultório de saúde vive entre dois telefones: o físico e o WhatsApp. E no WhatsApp, boa parte dos pacientes prefere mandar áudio — para relatar uma dor, pedir para remarcar, ou tirar uma dúvida sobre o pós-procedimento. O problema é que áudio não entra em prontuário, não é pesquisável, e depende de alguém lembrar de ouvir e anotar antes que a informação se perca no fim do expediente.</p>
+
+<h2>Por que áudio é um risco operacional na recepção</h2>
+<ul>
+  <li><strong>Recado não registrado:</strong> se quem ouviu o áudio não anotar, a informação simplesmente some — inclusive relatos de sintoma que deveriam alertar o profissional.</li>
+  <li><strong>Sem histórico pesquisável:</strong> tentar encontrar "o que aquele paciente disse na semana passada" em uma lista de áudios é praticamente inviável.</li>
+  <li><strong>Handoff entre turnos:</strong> quando a recepcionista da manhã não passa o recado para a da tarde, o paciente liga de novo e repete tudo.</li>
+  <li><strong>Volume em horário de pico:</strong> em clínicas com múltiplos profissionais, dezenas de áudios chegam ao mesmo tempo — impossível ouvir tudo na hora.</li>
+</ul>
+
+<h2>Como a conversão automática resolve isso na prática</h2>
+<p>Conectando o número da recepção ao <strong>ZapScript</strong>, cada áudio recebido de paciente vira texto e resumo automaticamente, no mesmo WhatsApp:</p>
+<ol>
+  <li>O paciente manda o áudio normalmente — nada muda do lado dele.</li>
+  <li>Em segundos, o texto completo e um resumo com o essencial aparecem logo abaixo do áudio.</li>
+  <li>A recepção cola o resumo direto no prontuário ou agenda, sem precisar ouvir nada.</li>
+  <li>O histórico fica salvo e pesquisável por data, contato ou palavra-chave — útil para reconstruir o que um paciente relatou em consultas anteriores.</li>
+</ol>
+
+<h2>Privacidade de dados de saúde</h2>
+<p>Relatos de paciente por áudio costumam incluir informação sensível de saúde. O ZapScript processa o áudio e descarta o arquivo original — nunca fica armazenado — guardando apenas o texto convertido, criptografado com AES-256-GCM, em servidores no Brasil, em conformidade com a LGPD.</p>
+
+<h2>Casos de uso comuns em clínica</h2>
+<ul>
+  <li><strong>Remarcação e cancelamento:</strong> registro em texto de qual horário o paciente pediu para mudar, sem depender de memória.</li>
+  <li><strong>Relato de sintoma pós-procedimento:</strong> texto pronto para repassar ao profissional entre um atendimento e outro.</li>
+  <li><strong>Dúvidas recorrentes:</strong> histórico pesquisável ajuda a identificar perguntas que se repetem — e criar uma resposta padrão.</li>
+  <li><strong>Múltiplos profissionais:</strong> cada recepcionista vê o texto, não precisa saber de quem é o áudio para entender o contexto.</li>
+</ul>
+
+<h2>Conclusão</h2>
+<p>Para uma clínica, cada áudio de paciente é informação clínica ou operacional — não deveria depender de alguém lembrar de ouvir. Crie uma conta gratuita em <strong>zapscript.me</strong>, conecte o número da recepção e comece a converter automaticamente, com até 200 áudios/mês sem cartão de crédito.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 16 — Gap genuíno: corretor autônomo (sem equipe/imobiliária por trás)
+     Keyword: "transcrever áudio whatsapp corretor autônomo"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'transcricao-audio-whatsapp-corretor-autonomo',
+    title:       'Corretor autônomo: como converter áudio do WhatsApp sem depender de equipe',
+    description: 'Sem secretária nem plantão de equipe, o corretor autônomo perde negócio quando não responde rápido. Veja como converter áudio em texto automaticamente, sozinho.',
+    keywords:    ['transcrever áudio whatsapp corretor autônomo','corretor de imóveis autônomo whatsapp','áudio texto corretor sem equipe','whatsapp corretor solo transcrição'],
+    publishedAt: '2026-08-06',
+    readingTime: 5,
+    category:    'Nichos',
+    coverEmoji:  '🔑',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
+    content: `
+<p>Corretor autônomo não tem plantão de equipe, nem secretária para triar mensagens. É uma pessoa só, no carro entre visitas, no cartório, ou almoçando — e o WhatsApp não para de chegar. Diferente de quem trabalha numa imobiliária com suporte, o corretor solo sente na pele cada minuto perdido ouvindo um áudio de 2 minutos que poderia ter sido lido em 10 segundos.</p>
+
+<h2>O problema específico de trabalhar sozinho</h2>
+<ul>
+  <li><strong>Sem ninguém para triar:</strong> todo áudio chega direto para você, sem uma secretária filtrando o que é urgente.</li>
+  <li><strong>Visitas e cartório tiram você do celular:</strong> enquanto está com um cliente, outros três podem estar mandando áudio — e você só vai ouvir horas depois.</li>
+  <li><strong>Cada resposta atrasada é risco de perder o negócio</strong> para outro corretor que respondeu primeiro.</li>
+  <li><strong>Memória não substitui registro:</strong> sem equipe para anotar, detalhes de negociação (valor, condição, data) dependem só da sua lembrança.</li>
+</ul>
+
+<h2>Como funciona a conversão automática para quem trabalha sozinho</h2>
+<p>O <strong>ZapScript</strong> conecta direto no seu número de WhatsApp pessoal ou comercial — sem precisar de equipe, central de atendimento ou sistema novo para aprender:</p>
+<ol>
+  <li>Conecte seu número via QR Code — leva cerca de 2 minutos.</li>
+  <li>Todo áudio recebido é convertido em texto e resumido automaticamente, sozinho, sem você precisar fazer nada.</li>
+  <li>Você lê o resumo assim que sair da visita ou do cartório — mesmo que tenham chegado 10 áudios enquanto estava ocupado.</li>
+  <li>O histórico fica pesquisável: encontre em segundos o que um cliente disse sobre valor ou condição de pagamento há duas semanas.</li>
+</ol>
+
+<h2>O que muda no dia a dia</h2>
+<ul>
+  <li><strong>Responde mais rápido</strong> mesmo estando fisicamente ocupado com outro cliente.</li>
+  <li><strong>Não perde detalhe de negociação</strong> — o texto fica registrado, não depende de memória.</li>
+  <li><strong>Sem custo de contratar suporte</strong> só para triar mensagens.</li>
+  <li><strong>Funciona no seu número de sempre</strong> — o cliente não percebe diferença nenhuma do lado dele.</li>
+</ul>
+
+<h2>Conclusão</h2>
+<p>Para o corretor autônomo, tempo de resposta é a diferença entre fechar e perder um negócio — e isso não deveria depender de ter equipe. Crie uma conta gratuita em <strong>zapscript.me</strong>: até 200 áudios/mês sem cartão, e o Plano Profissional (R$49/mês) se quiser atendimento automático por IA também.</p>
     `,
   },
 

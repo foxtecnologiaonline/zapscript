@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { prisma } from '../lib/prisma';
 
 /**
  * Entrada por voz/foto para o setup do Atende (dashboard) — usado pelas features de
@@ -6,9 +7,23 @@ import Anthropic from '@anthropic-ai/sdk';
  * partir de histórico. Roda síncrono direto na API (sem fila): os clipes são curtos
  * (gravados no navegador), diferente dos áudios de clientes finais no WhatsApp, que
  * continuam no pipeline do worker (apps/worker/src/index.ts, transcribeAudio).
+ *
+ * Cada chamada externa tem timeout explícito (antes não tinha, no caso do Whisper) —
+ * evita que a request síncrona fique pendurada indefinidamente se Groq/OpenAI/Claude
+ * degradarem; em vez de um job assíncrono completo (fila+polling), o corte de tempo
+ * garante um erro claro e rápido pro usuário tentar de novo.
  */
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const AI_INPUT_TIMEOUT_MS = 30_000;
+
+/** Telemetria de custo (não crítica): nunca deve derrubar a resposta ao usuário. */
+function logAiUsage(userId: string | undefined, feature: string, model: string, usage: { input_tokens?: number; output_tokens?: number } | undefined): void {
+  if (!userId) return;
+  prisma.aiUsageLog.create({
+    data: { userId, feature, model, inputTokens: usage?.input_tokens ?? 0, outputTokens: usage?.output_tokens ?? 0 },
+  }).catch(() => null);
+}
 
 const CLAUDE_MODELS = [
   process.env.ATENDE_AGENT_MODEL || 'claude-sonnet-4-6',
@@ -59,6 +74,7 @@ export async function transcribeVoiceSetup(buffer: Buffer, mimeType: string): Pr
         method: 'POST',
         headers: { Authorization: `Bearer ${a.key}` },
         body: form,
+        signal: AbortSignal.timeout(AI_INPUT_TIMEOUT_MS),
       });
       if (!res.ok) {
         throw new Error(`${a.label} HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -75,7 +91,7 @@ export async function transcribeVoiceSetup(buffer: Buffer, mimeType: string): Pr
 }
 
 /** Extrai o conteúdo relevante de uma foto (cardápio, tabela de preços, anotação) via Claude vision. */
-export async function extractTextFromImage(buffer: Buffer, mimeType: string): Promise<string> {
+export async function extractTextFromImage(buffer: Buffer, mimeType: string, usageCtx?: { userId: string; feature: string }): Promise<string> {
   if (buffer.length > MAX_IMAGE_BYTES) {
     throw new AiInputError('Imagem muito grande (máx 8MB).');
   }
@@ -100,9 +116,10 @@ export async function extractTextFromImage(buffer: Buffer, mimeType: string): Pr
             },
           ],
         }],
-      });
+      }, { timeout: AI_INPUT_TIMEOUT_MS });
       const text = res.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('').trim();
       if (!text) throw new Error('Claude retornou texto vazio');
+      if (usageCtx) logAiUsage(usageCtx.userId, usageCtx.feature, model, res.usage);
       return text;
     } catch (err: any) {
       lastErr = err;
@@ -122,7 +139,7 @@ function extractJson(text: string): any {
  * chamador, via Claude, com a mesma cadeia de fallback de modelo usada no restante
  * do módulo Atende (atende-agent.ts). O systemPrompt define o formato de saída.
  */
-export async function structureWithClaude<T = any>(rawText: string, systemPrompt: string): Promise<T> {
+export async function structureWithClaude<T = any>(rawText: string, systemPrompt: string, usageCtx?: { userId: string; feature: string }): Promise<T> {
   let lastErr: any;
   for (const model of CLAUDE_MODELS) {
     try {
@@ -131,9 +148,11 @@ export async function structureWithClaude<T = any>(rawText: string, systemPrompt
         max_tokens: 4096,
         system: systemPrompt,
         messages: [{ role: 'user', content: rawText }],
-      });
+      }, { timeout: AI_INPUT_TIMEOUT_MS });
       const text = res.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
-      return extractJson(text) as T;
+      const parsed = extractJson(text) as T;
+      if (usageCtx) logAiUsage(usageCtx.userId, usageCtx.feature, model, res.usage);
+      return parsed;
     } catch (err: any) {
       lastErr = err;
     }

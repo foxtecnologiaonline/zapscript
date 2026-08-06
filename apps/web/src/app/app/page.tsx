@@ -1,8 +1,11 @@
 'use client';
 /**
  * Launcher da suíte ZapScript — home de login único.
- * Mostra os módulos CONTRATADOS (abrir) e os demais como upsell.
- * Ver MODULOS_ARQUITETURA.md §4.3.
+ * Mostra os módulos CONTRATADOS, para abrir. A seção de descoberta/upsell de
+ * módulos avulsos foi removida (decisão de negócio: parar de promover a
+ * "loja de módulos" — ver CLAUDE.md). O fluxo de checkout via ?upsell=<key>
+ * (gate 402 de um módulo específico ainda contratável, ex. campanhas)
+ * continua funcionando. Ver MODULOS_ARQUITETURA.md §4.3.
  */
 import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
@@ -11,7 +14,7 @@ import { api } from '@/lib/api';
 import ModuleCheckout from '@/components/ModuleCheckout';
 import {
   ModuleCatalogItem, MODULE_ICON, moduleRoute,
-  STATUS_LABEL, isContractable, formatBrl,
+  isContractable, formatBrl,
 } from '@/lib/modules';
 
 interface Me {
@@ -74,7 +77,6 @@ function AppLauncherInner() {
   }
 
   const ownedItems = catalog.filter((m) => owned.has(m.key));
-  const otherItems = catalog.filter((m) => !owned.has(m.key));
   const checkoutSpec = checkoutKey ? catalog.find((m) => m.key === checkoutKey) : null;
 
   return (
@@ -83,7 +85,7 @@ function AppLauncherInner() {
         <header className="mb-8">
           <h1 className="text-2xl font-bold">Seus módulos</h1>
           <p className="text-neutral-400 mt-1">
-            {me?.name ? `Olá, ${me.name}. ` : ''}Escolha um módulo para abrir ou contrate novos.
+            {me?.name ? `Olá, ${me.name}. ` : ''}Escolha um módulo para abrir.
           </p>
         </header>
 
@@ -119,52 +121,6 @@ function AppLauncherInner() {
           )}
         </section>
 
-        {/* Descobrir mais (upsell) */}
-        {otherItems.length > 0 && (
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400 mb-3">
-              Descobrir mais
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {otherItems.map((m) => {
-                const contractable = isContractable(m.status);
-                return (
-                  <div
-                    key={m.key}
-                    className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-5 flex flex-col"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="text-3xl mb-3 opacity-80">{MODULE_ICON[m.key] || '🧩'}</div>
-                      <span className="text-[11px] rounded-full border border-neutral-700 px-2 py-0.5 text-neutral-400">
-                        {STATUS_LABEL[m.status]}
-                      </span>
-                    </div>
-                    <div className="font-semibold">{m.name}</div>
-                    {m.priceMonthly > 0 && (
-                      <div className="mt-1 text-sm text-neutral-400">
-                        {formatBrl(m.priceMonthly)}/mês
-                      </div>
-                    )}
-                    <div className="mt-4">
-                      {contractable ? (
-                        <button
-                          onClick={() => setCheckoutKey(m.key)}
-                          className="inline-block rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
-                        >
-                          Contratar
-                        </button>
-                      ) : (
-                        <span className="inline-block rounded-lg border border-neutral-700 px-3 py-1.5 text-sm text-neutral-500">
-                          Em breve
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
       </div>
 
       {checkoutSpec && me && (
@@ -173,8 +129,7 @@ function AppLauncherInner() {
           moduleLabel={checkoutSpec.name}
           moduleIcon={MODULE_ICON[checkoutSpec.key] || '🧩'}
           priceLabel={`${formatBrl(checkoutSpec.priceMonthly)}/mês`}
-          user={{ email: me.email, emailVerified: me.emailVerified, document: me.document }}
-          onDocumentSaved={(doc) => setMe((m) => (m ? { ...m, document: doc } : m))}
+          user={{ email: me.email, emailVerified: me.emailVerified }}
           onSuccess={() => { setCheckoutKey(null); refreshMe(); }}
           onClose={() => setCheckoutKey(null)}
         />

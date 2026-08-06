@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import CheckoutInline from '@/components/CheckoutInline';
 import ModuleCheckoutInline from '@/components/ModuleCheckoutInline';
 import ComboCheckoutInline from '@/components/ComboCheckoutInline';
-import { isJunePromoActive } from '@/lib/promo';
+import { isJunePromoActive, CORE_AUDIO_QUOTA } from '@/lib/promo';
 import { ModuleCatalogItem, MODULE_ICON, moduleRoute, isContractable, formatBrl } from '@/lib/modules';
 import { PLAN_PRICING, PaidPlanName, annualMonthlyEquivalent, annualFreeMonthsLabel } from '@/lib/planPricing';
 
@@ -47,7 +47,7 @@ const PLANS = [
     per:   '/mês',
     desc:  'Completo e grátis',
     feats: [
-      'Até 100 áudios/mês',
+      `Até ${CORE_AUDIO_QUOTA} áudios/mês`,
       '1 número WhatsApp',
       '🎙️ Conversão automática',
       '✨ Resumo com IA',
@@ -121,8 +121,10 @@ const PLANS = [
       '🤖 Atendimento automático 24/7 por IA',
       '📥 Fila de conversas + assumir manualmente',
       '📊 Métricas de atendimento e efetividade',
+      '🔔 Escalação automática + aviso interno quando o bot precisa de ajuda humana',
       '📨 Avisos ao cliente (cobrança, agendamento, mercadoria pronta...)',
       '📚 Base de conhecimento própria',
+      '🗓️ Resumo diário ou semanal do atendimento por WhatsApp',
       '1 número WhatsApp',
     ],
     excl:  [],
@@ -141,6 +143,7 @@ const PLANS = [
       '📊 CRM — funil de vendas no WhatsApp',
       '✅ Tarefas — designação e controle na equipe',
       '👥 Até 5 usuários com papéis (admin/manager/agent)',
+      '📱 Até 5 números WhatsApp conectados',
     ],
     excl:  [],
     pop:   false,
@@ -157,11 +160,12 @@ type CmpVal = string | boolean;
 // de linha, ver VISIBLE_PAID_PLAN_NAMES). Linhas agrupadas por bloco de
 // funcionalidade em vez de 1 linha por recurso, pra caber numa leitura rápida.
 const TABLE_ROWS: { feature: string; vals: CmpVal[] }[] = [
-  { feature: 'Áudios/mês',                                                                          vals: ['100', 'Ilimitado', 'Ilimitado'] },
+  { feature: 'Áudios/mês',                                                                          vals: [`${CORE_AUDIO_QUOTA}`, 'Ilimitado', 'Ilimitado'] },
   { feature: '🎙️ Recursos essenciais (conversão, resumo com IA, Modo Privado, histórico e busca)', vals: [true, true, true] },
-  { feature: '🤖 Atendimento automático por IA (24/7, fila, métricas, avisos, base de conhecimento)', vals: [false, true, true] },
+  { feature: '🤖 Atendimento automático por IA (24/7, fila, métricas, escalação, resumo periódico)', vals: [false, true, true] },
   { feature: '📊 CRM + Tarefas em equipe',                                                          vals: [false, false, true] },
   { feature: '👥 Usuários incluídos',                                                                vals: ['1', '1', 'até 5'] },
+  { feature: '📱 Números WhatsApp',                                                                  vals: ['1', '1', 'até 5'] },
 ];
 
 // Billing type sempre UNDEFINED — Asaas oferece as opções ao usuário na página de pagamento
@@ -172,18 +176,6 @@ const DEFAULT_MINUTE_PKGS: MinutePkg[] = [
   { id: 'pkg_50',  minutes: 50,  priceBrl: 11, label: '50 minutos',  desc: 'Mais econômico' },
   { id: 'pkg_100', minutes: 100, priceBrl: 19, label: '100 minutos', desc: 'Melhor valor' },
 ];
-
-function formatDocument(val: string): string {
-  const n = val.replace(/\D/g, '').slice(0, 14);
-  if (n.length <= 11) {
-    if (n.length <= 3)  return n;
-    if (n.length <= 6)  return `${n.slice(0,3)}.${n.slice(3)}`;
-    if (n.length <= 9)  return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6)}`;
-    return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
-  }
-  if (n.length <= 12) return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8)}`;
-  return `${n.slice(0,2)}.${n.slice(2,5)}.${n.slice(5,8)}/${n.slice(8,12)}-${n.slice(12)}`;
-}
 
 /* ── Modal de upgrade com proration ── */
 interface UpgradePreview {
@@ -363,100 +355,6 @@ function UpgradeModal({
   );
 }
 
-/* ── Modal de CPF/CNPJ ── */
-function DocumentModal({
-  planLabel,
-  onConfirm,
-  onCancel,
-}: {
-  planLabel: string;
-  onConfirm: (document: string) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [doc, setDoc]       = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr]       = useState('');
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const clean = doc.replace(/\D/g, '');
-    if (clean.length !== 11 && clean.length !== 14) {
-      setErr('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.');
-      return;
-    }
-    setSaving(true);
-    setErr('');
-    try {
-      await onConfirm(doc);
-    } catch (e: any) {
-      setErr(e.message || 'Erro ao salvar. Tente novamente.');
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-2xl p-6"
-        style={{ background: 'rgb(var(--color-surface-elevated))', border: '1px solid rgba(var(--color-primary)/.2)' }}
-        onClick={e => e.stopPropagation()}>
-
-        <div className="text-center mb-5">
-          <div className="w-12 h-12 rounded-full bg-brand-primary/10 flex items-center justify-center mx-auto mb-3">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ color: 'rgb(var(--color-primary))' }}>
-              <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h6M7 16h4"/>
-            </svg>
-          </div>
-          <h3 className="font-bold text-base" style={{ color: 'rgb(var(--color-text))' }}>
-            Dados de cobrança
-          </h3>
-          <p className="text-xs mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>
-            Necessário para assinar o plano <strong style={{ color: 'rgb(var(--color-primary))' }}>{planLabel}</strong>
-          </p>
-        </div>
-
-        <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              CPF ou CNPJ
-            </label>
-            <input
-              className="field-input"
-              placeholder="000.000.000-00 ou 00.000.000/0001-00"
-              value={doc}
-              onChange={e => setDoc(formatDocument(e.target.value))}
-              maxLength={18}
-              required
-              autoFocus
-            />
-            <p className="text-[10px] mt-1.5" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              Usado apenas para emissão de cobranças. Não será compartilhado.
-            </p>
-          </div>
-
-          {err && (
-            <div className="text-xs px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', color: '#f87171' }}>
-              {err}
-            </div>
-          )}
-
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onCancel}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
-              style={{ border: '1.5px solid rgb(var(--color-border))', color: 'rgb(var(--color-text-muted))' }}>
-              Cancelar
-            </button>
-            <button type="submit" disabled={saving}
-              className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50">
-              {saving ? 'Salvando...' : 'Continuar →'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 /* ── Modal de verificação de e-mail (gate da assinatura) ── */
 function VerifyEmailModal({
   email,
@@ -538,7 +436,6 @@ function PlanoContent() {
   const [user, setUser]               = useState<User | null>(null);
   const [loading, setLoading]         = useState(true);
   const [checkoutPlan, setCheckoutPlan]     = useState<string | null>(null);  // plano com checkout inline aberto
-  const [docModal, setDocModal]             = useState<string | null>(null);
   const [verifyModal, setVerifyModal]       = useState(false);
   const [showTable, setShowTable]           = useState(false);
   const [upgradePreview, setUpgradePreview] = useState<UpgradePreview | null>(null);
@@ -558,13 +455,11 @@ function PlanoContent() {
   const [moduleLoading, setModuleLoading]           = useState(false);
   const [moduleCheckoutOpen, setModuleCheckoutOpen] = useState(false);
   const [moduleVerifyModal, setModuleVerifyModal]   = useState(false);
-  const [moduleDocModal, setModuleDocModal]         = useState(false);
 
   /* — Combo (Core + módulos disponíveis), oferecido junto do ?add=chave — */
   const [comboPreview, setComboPreview]             = useState<ComboPreview | null>(null);
   const [comboCheckoutOpen, setComboCheckoutOpen]   = useState(false);
   const [comboVerifyModal, setComboVerifyModal]     = useState(false);
-  const [comboDocModal, setComboDocModal]           = useState(false);
 
   /* — Minute packages — */
   const [minutePkgs, setMinutePkgs]             = useState<MinutePkg[]>(DEFAULT_MINUTE_PKGS);
@@ -629,13 +524,10 @@ function PlanoContent() {
   }
 
   async function upgrade(planName: string) {
-    // Opção A: gate de assinatura — e-mail verificado vem antes do CPF/checkout.
+    // Opção A: gate de assinatura — só e-mail verificado. O CPF do titular do
+    // cartão (se for o método escolhido) é pedido no próprio checkout.
     if (!user?.emailVerified) {
       setVerifyModal(true);
-      return;
-    }
-    if (!user?.document) {
-      setDocModal(planName);
       return;
     }
     // Usuário já em plano pago → mostrar simulação de proration antes
@@ -668,15 +560,6 @@ function PlanoContent() {
     setCheckoutPlan(planName);
   }
 
-  async function handleDocumentConfirm(document: string) {
-    // Salvar CPF/CNPJ e prosseguir para checkout
-    await api.put('/auth/profile', { document });
-    setUser(u => u ? { ...u, document: document.replace(/\D/g, '') } : u);
-    const plan = docModal!;
-    setDocModal(null);
-    await doCheckout(plan);
-  }
-
   // Contratação de módulo avulso via ?add=<key> — busca catálogo + módulos já contratados
   // + prévia do Combo (mesma tela, para oferecer como alternativa)
   useEffect(() => {
@@ -693,17 +576,9 @@ function PlanoContent() {
     }).finally(() => setModuleLoading(false));
   }, [addModuleKey]);
 
-  // Mesmo gate de e-mail/CPF do fluxo de planos, antes de abrir o checkout do módulo
+  // Mesmo gate de e-mail do fluxo de planos, antes de abrir o checkout do módulo
   function startModulePurchase() {
     if (!user?.emailVerified) { setModuleVerifyModal(true); return; }
-    if (!user?.document)      { setModuleDocModal(true);    return; }
-    setModuleCheckoutOpen(true);
-  }
-
-  async function handleModuleDocumentConfirm(document: string) {
-    await api.put('/auth/profile', { document });
-    setUser(u => u ? { ...u, document: document.replace(/\D/g, '') } : u);
-    setModuleDocModal(false);
     setModuleCheckoutOpen(true);
   }
 
@@ -712,17 +587,9 @@ function PlanoContent() {
     window.location.href = `/dashboard/plano?moduleadded=${key}`;
   }
 
-  // Mesmo gate de e-mail/CPF, antes de abrir o checkout do Combo
+  // Mesmo gate de e-mail, antes de abrir o checkout do Combo
   function startComboPurchase() {
     if (!user?.emailVerified) { setComboVerifyModal(true); return; }
-    if (!user?.document)      { setComboDocModal(true);    return; }
-    setComboCheckoutOpen(true);
-  }
-
-  async function handleComboDocumentConfirm(document: string) {
-    await api.put('/auth/profile', { document });
-    setUser(u => u ? { ...u, document: document.replace(/\D/g, '') } : u);
-    setComboDocModal(false);
     setComboCheckoutOpen(true);
   }
 
@@ -770,7 +637,7 @@ function PlanoContent() {
           <div>
             <div className="font-bold text-sm">Assinatura cancelada</div>
             <div className="text-xs font-light" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Você voltou para o plano Free. Pode reativar quando quiser.
+              Você voltou para o plano Core. Pode reativar quando quiser.
             </div>
           </div>
         </div>
@@ -899,28 +766,36 @@ function PlanoContent() {
             )}
           </div>
 
-          {/* Data de renovação + dias restantes */}
-          {stats.renewAt && stats.planName !== 'free' && (() => {
-            const _today = new Date(); _today.setHours(0,0,0,0);
-            const _renew = new Date(stats.renewAt); _renew.setHours(0,0,0,0);
-            const daysLeft = Math.round((_renew.getTime() - _today.getTime()) / (1000 * 60 * 60 * 24));
-            const urgent   = daysLeft <= 7;
+          {/* Data de renovação + dias restantes — para todos os planos, inclusive Core
+              (é quando a cota de áudios reseta, não só a cobrança de planos pagos) */}
+          {stats.renewAt && (() => {
+            const _today     = new Date(); _today.setHours(0,0,0,0);
+            const _renew     = new Date(stats.renewAt); _renew.setHours(0,0,0,0);
+            const _cycleStart = new Date(_renew.getTime() - 30*24*60*60*1000);
+            const daysLeft   = Math.round((_renew.getTime() - _today.getTime()) / (1000 * 60 * 60 * 24));
+            const urgent     = daysLeft <= 7;
             return (
-              <div className="flex items-center gap-1.5 text-xs mb-4"
-                style={{ color: 'rgb(var(--color-text-muted))' }}>
-                <span>🔄</span>
-                <span>
-                  Renova em{' '}
-                  <strong style={{ color: 'rgb(var(--color-text-secondary))' }}>
-                    {new Date(stats.renewAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                  </strong>
-                  {' · '}
-                  <span style={{ color: urgent ? '#f87171' : 'rgb(var(--color-text-muted))' }}>
-                    {daysLeft > 0
-                      ? `${daysLeft} dia${daysLeft !== 1 ? 's' : ''} restante${daysLeft !== 1 ? 's' : ''}`
-                      : 'Vence hoje'}
+              <div className="text-xs mb-4" style={{ color: 'rgb(var(--color-text-muted))' }}>
+                <div className="flex items-center gap-1.5">
+                  <span>🔄</span>
+                  <span>
+                    Renova em{' '}
+                    <strong style={{ color: 'rgb(var(--color-text-secondary))' }}>
+                      {new Date(stats.renewAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    </strong>
+                    {' · '}
+                    <span style={{ color: urgent ? '#f87171' : 'rgb(var(--color-text-muted))' }}>
+                      {daysLeft > 0
+                        ? `${daysLeft} dia${daysLeft !== 1 ? 's' : ''} restante${daysLeft !== 1 ? 's' : ''}`
+                        : 'Vence hoje'}
+                    </span>
                   </span>
-                </span>
+                </div>
+                {!stats.audiosUnlimited && (
+                  <div className="mt-1 opacity-70">
+                    Ciclo de áudios iniciado em {_cycleStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -1145,7 +1020,7 @@ function PlanoContent() {
                 color: '#030d06',
                 boxShadow: 'rgba(var(--color-primary)/.35) 0 6px 20px',
               }}>
-              {previewLoading ? 'Calculando...' : `Ativar Profissional por ${PLAN_PRICING.profissional.annual}/ano →`}
+              {previewLoading ? 'Calculando...' : 'Ativar Profissional →'}
             </button>
 
             <p className="text-center text-[10px] mt-2" style={{ color: 'rgba(var(--color-text-muted)/.6)' }}>
@@ -1646,41 +1521,14 @@ function PlanoContent() {
         <VerifyEmailModal email={user.email} onCancel={() => setVerifyModal(false)} />
       )}
 
-      {/* Modal de CPF/CNPJ */}
-      {docModal && (
-        <DocumentModal
-          planLabel={PLANS.find(p => p.name === docModal)?.label || docModal}
-          onConfirm={handleDocumentConfirm}
-          onCancel={() => setDocModal(null)}
-        />
-      )}
-
       {/* Modal de verificação de e-mail (gate da contratação de módulo) */}
       {moduleVerifyModal && user && (
         <VerifyEmailModal email={user.email} onCancel={() => setModuleVerifyModal(false)} />
       )}
 
-      {/* Modal de CPF/CNPJ (gate da contratação de módulo) */}
-      {moduleDocModal && moduleInfo && (
-        <DocumentModal
-          planLabel={moduleInfo.name}
-          onConfirm={handleModuleDocumentConfirm}
-          onCancel={() => setModuleDocModal(false)}
-        />
-      )}
-
       {/* Modal de verificação de e-mail (gate da contratação do Combo) */}
       {comboVerifyModal && user && (
         <VerifyEmailModal email={user.email} onCancel={() => setComboVerifyModal(false)} />
-      )}
-
-      {/* Modal de CPF/CNPJ (gate da contratação do Combo) */}
-      {comboDocModal && comboPreview?.available && (
-        <DocumentModal
-          planLabel="Combo"
-          onConfirm={handleComboDocumentConfirm}
-          onCancel={() => setComboDocModal(false)}
-        />
       )}
 
       {/* Modal de upgrade com proration */}
@@ -1701,7 +1549,7 @@ function PlanoContent() {
             <div className="text-2xl mb-2">😔</div>
             <h3 className="font-display font-bold text-lg mb-1">Cancelar assinatura?</h3>
             <p className="text-sm font-light mb-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>
-              Você volta para o plano <strong>Core</strong> (até 100 áudios/mês). Continua com acesso até o fim do período já pago e pode reativar quando quiser — sem fidelidade.
+              Você volta para o plano <strong>Core</strong> (até {CORE_AUDIO_QUOTA} áudios/mês). Continua com acesso até o fim do período já pago e pode reativar quando quiser — sem fidelidade.
             </p>
             {cancelError && (
               <p className="text-xs mb-3 px-3 py-2 rounded-lg" style={{ background: 'rgba(248,113,113,.1)', color: '#f87171' }}>

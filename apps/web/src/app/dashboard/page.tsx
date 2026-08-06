@@ -134,17 +134,17 @@ export default function DashboardPage() {
         hasTranscription={(stats?.transcriptionsTotal ?? 0) > 0}
       />
 
-      {/* ── KPI HERO: tempo economizado (valor entregue, acumulando) ── */}
-      {stats && stats.savedSecondsMonth > 0 && (
+      {/* ── KPI HERO: áudios lidos este mês ── */}
+      {stats && stats.transcriptionsMonth > 0 && (
         <div className="rounded-2xl px-5 py-5 mb-5 flex items-center gap-5"
           style={{ background: 'linear-gradient(110deg, rgba(16,185,129,.16), rgba(16,185,129,.04))', border: '1px solid rgba(16,185,129,.28)' }}>
-          <span className="text-3xl sm:text-4xl flex-shrink-0">⏱️</span>
+          <span className="text-3xl sm:text-4xl flex-shrink-0">🎧</span>
           <div className="min-w-0">
-            <div className="text-xs font-semibold text-brand-primary uppercase tracking-wide mb-0.5">Tempo economizado este mês</div>
-            <div className="text-3xl sm:text-4xl font-black text-brand-text leading-none">{stats.savedLabelMonth}</div>
+            <div className="text-xs font-semibold text-brand-primary uppercase tracking-wide mb-0.5">Áudios lidos este mês</div>
+            <div className="text-3xl sm:text-4xl font-black text-brand-text leading-none">{stats.transcriptionsMonth}</div>
             <div className="text-xs text-brand-muted mt-1.5">
-              Você leu <strong className="text-brand-text">{stats.transcriptionsMonth}</strong> áudio{stats.transcriptionsMonth !== 1 ? 's' : ''} em vez de ouvir tudo.
-              {stats.planName === 'free' && <> Imagine sem limite — <Link href="/dashboard/plano" className="text-brand-primary font-semibold hover:underline">menos de R$1,63/dia</Link>.</>}
+              Isso economizou <strong className="text-brand-text">{stats.savedLabelMonth}</strong> em vez de ouvir tudo.
+              {stats.planName === 'free' && <> Imagine sem limite — <Link href="/dashboard/plano" className="text-brand-primary font-semibold hover:underline">ative o Profissional</Link>.</>}
             </div>
           </div>
         </div>
@@ -228,25 +228,33 @@ export default function DashboardPage() {
                 </span>
               </div>
             )}
-            {/* Renovação — só planos pagos */}
-            {stats.renewAt && stats.planName !== 'free' && (() => {
-              const today    = new Date(); today.setHours(0,0,0,0);
-              const renew    = new Date(stats.renewAt); renew.setHours(0,0,0,0);
-              const daysLeft = Math.round((renew.getTime() - today.getTime()) / (1000*60*60*24));
-              const urgent   = daysLeft <= 7;
+            {/* Renovação — para todos os planos, inclusive Core (é quando a cota de áudios reseta) */}
+            {stats.renewAt && (() => {
+              const today      = new Date(); today.setHours(0,0,0,0);
+              const renew      = new Date(stats.renewAt); renew.setHours(0,0,0,0);
+              const cycleStart = new Date(renew.getTime() - 30*24*60*60*1000);
+              const daysLeft   = Math.round((renew.getTime() - today.getTime()) / (1000*60*60*24));
+              const urgent     = daysLeft <= 7;
               return (
-                <div className={`flex items-center gap-1.5 text-[10px] mb-3 px-2 py-1.5 rounded-lg ${urgent ? 'bg-red-400/8 text-red-400' : 'bg-brand-elevated text-brand-muted'}`}>
-                  <span>🔄</span>
-                  <span>
-                    Renova em{' '}
-                    <strong className={urgent ? 'text-red-400' : 'text-brand-text-secondary'}>
-                      {renew.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                    </strong>
-                    {' · '}
-                    <span className={urgent ? 'font-semibold' : ''}>
-                      {daysLeft > 0 ? `${daysLeft} dia${daysLeft !== 1 ? 's' : ''}` : 'Vence hoje'}
+                <div className={`text-[10px] mb-3 px-2.5 py-2 rounded-lg ${urgent ? 'bg-red-400/8 text-red-400' : 'bg-brand-elevated text-brand-muted'}`}>
+                  <div className="flex items-center gap-1.5">
+                    <span>🔄</span>
+                    <span>
+                      Renova em{' '}
+                      <strong className={urgent ? 'text-red-400' : 'text-brand-text-secondary'}>
+                        {renew.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                      </strong>
+                      {' · '}
+                      <span className={urgent ? 'font-semibold' : ''}>
+                        {daysLeft > 0 ? `${daysLeft} dia${daysLeft !== 1 ? 's' : ''} restante${daysLeft !== 1 ? 's' : ''}` : 'Vence hoje'}
+                      </span>
                     </span>
-                  </span>
+                  </div>
+                  {!stats.audiosUnlimited && (
+                    <div className="mt-1 opacity-70">
+                      Ciclo iniciado em {cycleStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -279,14 +287,14 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Indicação com link pessoal */}
+        {/* Indicação com link pessoal — carteira de crédito (Regulamento v4) */}
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-lg">🎁</span>
+            <span className="text-lg">💰</span>
             <div className="font-bold text-sm text-brand-text">Indique o ZapScript</div>
           </div>
           <p className="text-xs text-brand-text-secondary mb-3 leading-relaxed">
-            Indique um amigo e <strong className="text-brand-primary">ganhe 5 áudios grátis para você e sua indicação</strong> quando ele se cadastrar.
+            Indique um amigo e <strong className="text-brand-primary">ganhe 20% de crédito</strong> sobre cada assinatura paga por ele — automático, sem solicitar nada.
           </p>
           {stats?.refCode && (
             <div className="flex gap-2 mb-3">
@@ -307,7 +315,7 @@ export default function DashboardPage() {
           <button
             onClick={() => {
               const link = `https://www.zapscript.me/cadastro?ref=${stats?.refCode ?? ''}`;
-              const msg  = `Eu uso o ZapScript para converter áudios do WhatsApp automaticamente com IA — e você ganha 5 áudios grátis ao se cadastrar pelo meu link: ${link}`;
+              const msg  = `Eu uso o ZapScript para converter áudios do WhatsApp automaticamente com IA — cadastre-se pelo meu link e comece grátis: ${link}`;
               if (navigator.share) {
                 navigator.share({ text: msg, url: link }).catch(() => {});
               } else {
@@ -317,6 +325,9 @@ export default function DashboardPage() {
             className="btn-ghost w-full text-center text-xs py-2">
             📤 Compartilhar link
           </button>
+          <a href="/dashboard/afiliado" className="block text-center text-[11px] text-brand-primary font-semibold mt-2 hover:underline">
+            Ver minha carteira →
+          </a>
         </div>
 
       </div>

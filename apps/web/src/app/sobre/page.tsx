@@ -166,7 +166,7 @@ export default function SobrePage() {
         <div className="text-center bg-white/5 border border-white/10 rounded-2xl p-8">
           <div className="text-4xl mb-3">🚀</div>
           <h2 className="text-xl font-bold text-white mb-2">Experimente grátis</h2>
-          <p className="text-brand-muted text-sm mb-5">Até 100 áudios por mês, sem cartão, sem compromisso.</p>
+          <p className="text-brand-muted text-sm mb-5">Até 200 áudios por mês, sem cartão, sem compromisso.</p>
           <a
             href="/cadastro"
             className="inline-block bg-brand-primary text-black font-bold px-8 py-3 rounded-xl hover:opacity-90 transition-opacity"

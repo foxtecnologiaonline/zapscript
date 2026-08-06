@@ -6,54 +6,55 @@ import { captureAffiliateFromUrl } from '@/lib/affiliate';
 import { api } from '@/lib/api';
 
 /* ─────────────────────────────────────────────────────────
-   Landing pública do Programa de Afiliados.
-   O cadastro em si exige conta (self-service em /dashboard/afiliado).
-   Modelo: comissão recorrente (padrão 30%, primeiros 12 meses) · bônus
-   (padrão 40%, a partir do 51º cliente novo/mês) · residual vitalício
-   (padrão 5%) · saldo liberado D+30 (padrão), sem valor mínimo.
-   As taxas são configuráveis pelo admin (AffiliateConfig) — esta página
-   busca os valores reais em GET /affiliates/rates (público) e cai nos
-   defaults abaixo caso a chamada falhe, para nunca deixar a LP em branco.
+   Landing pública do Programa de Afiliados — Carteira de Crédito
+   (Regulamento v4, ver REGULAMENTO_AFILIADOS.md).
+   Automático para qualquer usuário desde o cadastro: sem aplicação, sem
+   aprovação. Taxa única de 20% sobre cada pagamento do indicado, sem
+   tier/bônus/residual (Art. 3º); crédito liberado 30 dias após a confirmação
+   do pagamento do indicado (Art. 4º); saldo usável em 3 trilhos (Art. 5º):
+   abater fatura, comprar créditos avulsos, sacar em Pix.
+   Taxa e regras vêm de GET /wallet/rates (público) — cai no default abaixo
+   só se a chamada falhar, pra nunca deixar a LP em branco.
+
+   captureAffiliateFromUrl() continua rodando aqui por compatibilidade com
+   links antigos (?aff=) já distribuídos por afiliados aprovados no
+   programa anterior, que segue ativo em paralelo até ser descontinuado.
    ───────────────────────────────────────────────────────── */
 
-type AffRates = {
-  baseRate: number; bonusRate: number; residualRate: number;
-  recurringMonths: number; bonusThreshold: number; payoutHoldDays: number;
+type WalletRates = {
+  rate: number; releaseDays: number; minCashout: number; expiryMonths: number; addonMinutePrice: number;
 };
-const DEFAULT_RATES: AffRates = {
-  baseRate: 0.30, bonusRate: 0.40, residualRate: 0.05,
-  recurringMonths: 12, bonusThreshold: 50, payoutHoldDays: 30,
+const DEFAULT_RATES: WalletRates = {
+  rate: 0.20, releaseDays: 30, minCashout: 50, expiryMonths: 12, addonMinutePrice: 0.19,
 };
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-function buildFaq(r: AffRates): { q: string; a: string }[] {
-  const basePct = Math.round(r.baseRate * 100);
-  const bonusPct = Math.round(r.bonusRate * 100);
-  const residualPct = Math.round(r.residualRate * 100);
+function buildFaq(r: WalletRates): { q: string; a: string }[] {
+  const pct = Math.round(r.rate * 100);
   return [
     {
+      q: 'Preciso me aplicar ou esperar aprovação?',
+      a: 'Não. Toda conta já nasce com carteira e link de indicação próprio — é só compartilhar. Não existe fila de aprovação.',
+    },
+    {
       q: 'O que acontece se o meu indicado cancelar?',
-      a: 'Se ele cancelar até 30 dias após assinar, a comissão pendente desse cliente é zerada. Depois desse prazo, você mantém tudo o que já foi gerado — só para de acumular comissão futura dele.',
+      a: 'Se ele cancelar até 30 dias após o pagamento, o crédito correspondente simplesmente não chega a ser gerado. Depois desse prazo, o crédito já lançado é seu — não é revertido.',
     },
     {
-      q: `Como acompanho meu progresso rumo ao bônus de ${bonusPct}%?`,
-      a: `No seu painel de afiliado, uma barra mostra quantos clientes novos você já fechou no mês e quantos faltam para os ${r.bonusThreshold}. A partir do ${r.bonusThreshold + 1}º, a comissão sobe automaticamente para esses clientes.`,
+      q: `Quando o crédito fica disponível?`,
+      a: `${r.releaseDays} dias após a confirmação do pagamento do seu indicado. Depois disso, o saldo já está liberado para qualquer um dos 3 usos, sem carência adicional.`,
     },
     {
-      q: 'Quando o saldo fica disponível para saque?',
-      a: `Cada comissão é liberada ${r.payoutHoldDays} dias depois de gerada. Não há valor mínimo — você pode solicitar o saque de qualquer saldo já disponível, quando quiser.`,
+      q: `A comissão de ${pct}% é só na primeira venda?`,
+      a: `Não. Você recebe ${pct}% em todo pagamento aprovado do seu indicado (mensal ou anual), enquanto ele continuar assinante — sem prazo de corte.`,
     },
     {
-      q: `A comissão de ${basePct}% é só na primeira venda?`,
-      a: `Não. Você recebe ${basePct}% em todo pagamento aprovado do indicado (mensal ou anual) durante os ${r.recurringMonths} primeiros meses de assinatura dele — é recorrente, não é um pagamento único.`,
+      q: 'O que posso fazer com o saldo?',
+      a: 'Três formas, sempre no câmbio de 1 crédito = R$ 1: abater a sua própria fatura, comprar créditos avulsos (minutos extras), ou sacar em dinheiro via Pix.',
     },
     {
-      q: `Como funciona depois dos ${r.recurringMonths} meses?`,
-      a: `A comissão continua, numa taxa residual vitalícia de ${residualPct}%, enquanto o indicado seguir assinante do ZapScript.`,
-    },
-    {
-      q: `Quais clientes contam para o bônus de ${r.bonusThreshold} no mês?`,
-      a: 'Apenas indicados com pagamento aprovado no mês contam para a meta. Cadastros que ainda não converteram em assinatura paga não entram na contagem.',
+      q: 'Tem valor mínimo?',
+      a: `Só para sacar em dinheiro: R$ ${r.minCashout}. Abater fatura e comprar avulso não têm mínimo.`,
     },
   ];
 }
@@ -64,33 +65,33 @@ const KIT: { key: string; label: string; canal: string; text: string }[] = [
     key: 'zap-formal',
     canal: 'WhatsApp',
     label: 'WhatsApp — formal',
-    text: `Olá [nome], tudo bem?\n\nGostaria de indicar uma ferramenta que tenho utilizado e que pode ser bastante útil para o seu dia a dia: o ZapScript.me.\n\nEle conecta ao seu WhatsApp e converte em texto cada áudio recebido automaticamente — texto completo e resumo com IA em segundos. Sem instalar nada, sem salvar áudio.\n\nHá um plano gratuito com 100 áudios por mês, sem necessidade de cartão:\n👉 [SEU_LINK]\n\nFico à disposição se tiver alguma dúvida.`,
+    text: `Olá [nome], tudo bem?\n\nGostaria de indicar uma ferramenta que tenho utilizado e que pode ser bastante útil para o seu dia a dia: o ZapScript.me.\n\nEle conecta ao seu WhatsApp e converte em texto cada áudio recebido automaticamente — texto completo e resumo com IA em segundos. Sem instalar nada, sem salvar áudio.\n\nHá um plano gratuito, sem necessidade de cartão:\n👉 [SEU_LINK]\n\nFico à disposição se tiver alguma dúvida.`,
   },
   {
     key: 'zap-informal',
     canal: 'WhatsApp',
     label: 'WhatsApp — informal',
-    text: `Oi [nome]! Tudo bem?\n\nQueria te indicar uma ferramenta que mudou meu dia a dia: o ZapScript.me.\n\nÉ tipo um robô particular que converte em texto (e resume) todo áudio que você recebe no WhatsApp — 24 horas por dia, automaticamente, em segundos.\n\nTem 100 áudios grátis por mês, sem cartão:\n👉 [SEU_LINK]\n\nSe você recebe muito áudio, vai curtir bastante 😄`,
+    text: `Oi [nome]! Tudo bem?\n\nQueria te indicar uma ferramenta que mudou meu dia a dia: o ZapScript.me.\n\nÉ tipo um robô particular que converte em texto (e resume) todo áudio que você recebe no WhatsApp — 24 horas por dia, automaticamente, em segundos.\n\nTem plano grátis, sem cartão:\n👉 [SEU_LINK]\n\nSe você recebe muito áudio, vai curtir bastante 😄`,
   },
   // ── Grupos ─────────────────────────────────────────────────────────────────
   {
     key: 'grupo-formal',
     canal: 'Grupo',
     label: 'Grupo de WhatsApp — formal',
-    text: `Bom dia, pessoal!\n\nGostaria de compartilhar uma ferramenta que tenho utilizado e que pode ser útil para quem recebe muito áudio no WhatsApp:\n\n*ZapScript.me* — converte automaticamente cada áudio em texto + resumo com IA, em segundos. Sem instalar nada no celular, sem salvar áudio nos servidores.\n\n✅ Funciona sozinho, sem precisar fazer nada\n✅ Texto completo + resumo com os pontos principais\n✅ Servidores no Brasil, conformidade com a LGPD\n✅ Plano gratuito com 100 áudios/mês, sem cartão\n\n👉 [SEU_LINK]`,
+    text: `Bom dia, pessoal!\n\nGostaria de compartilhar uma ferramenta que tenho utilizado e que pode ser útil para quem recebe muito áudio no WhatsApp:\n\n*ZapScript.me* — converte automaticamente cada áudio em texto + resumo com IA, em segundos. Sem instalar nada no celular, sem salvar áudio nos servidores.\n\n✅ Funciona sozinho, sem precisar fazer nada\n✅ Texto completo + resumo com os pontos principais\n✅ Servidores no Brasil, conformidade com a LGPD\n✅ Plano gratuito, sem cartão\n\n👉 [SEU_LINK]`,
   },
   {
     key: 'grupo-informal',
     canal: 'Grupo',
     label: 'Grupo de WhatsApp — informal',
-    text: `Pessoal! 👋 Dica boa aqui:\n\n*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.\n\nAquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.\n\n🆓 100 áudios/mês grátis, sem cartão:\n👉 [SEU_LINK]\n\n🔥 Profissional com atendimento automático por IA a partir de R$49/mês\n\nValeu! 😄`,
+    text: `Pessoal! 👋 Dica boa aqui:\n\n*ZapScript.me* — transforma áudio do WhatsApp em texto + resumo com IA, automático.\n\nAquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.\n\n🆓 Grátis pra testar, sem cartão:\n👉 [SEU_LINK]\n\nValeu! 😄`,
   },
   // ── LinkedIn ───────────────────────────────────────────────────────────────
   {
     key: 'linkedin-formal',
     canal: 'LinkedIn',
     label: 'LinkedIn — formal',
-    text: `Compartilhando uma ferramenta que tenho utilizado com resultado concreto na minha rotina:\n\nO *ZapScript.me* converte automaticamente cada áudio do WhatsApp em texto completo + resumo com os pontos principais, em segundos. Sem instalar nada no celular, sem precisar fazer nenhuma ação.\n\nPara quem lida diariamente com muitos áudios — corretores, advogados, gestores, vendedores — o ganho de tempo é significativo.\n\nPlano gratuito disponível com 100 áudios/mês, sem cartão:\n👉 [SEU_LINK]\n\n#produtividade #ferramentas #IA #WhatsApp`,
+    text: `Compartilhando uma ferramenta que tenho utilizado com resultado concreto na minha rotina:\n\nO *ZapScript.me* converte automaticamente cada áudio do WhatsApp em texto completo + resumo com os pontos principais, em segundos. Sem instalar nada no celular, sem precisar fazer nenhuma ação.\n\nPara quem lida diariamente com muitos áudios — corretores, advogados, gestores, vendedores — o ganho de tempo é significativo.\n\nPlano gratuito disponível, sem cartão:\n👉 [SEU_LINK]\n\n#produtividade #ferramentas #IA #WhatsApp`,
   },
   {
     key: 'linkedin-informal',
@@ -103,7 +104,7 @@ const KIT: { key: string; label: string; canal: string; text: string }[] = [
     key: 'instagram-formal',
     canal: 'Instagram',
     label: 'Instagram — formal',
-    text: `Ferramenta de IA que converte automaticamente áudios do WhatsApp em texto:\n\n✅ Texto completo + resumo em segundos\n✅ Funciona sozinho, sem nenhuma ação necessária\n✅ 99% de precisão em português BR\n✅ Servidores no Brasil, conformidade com a LGPD\n✅ Plano gratuito com 100 áudios/mês, sem cartão\n\n🔗 [SEU_LINK] (link na bio)\n\n#produtividade #IA #WhatsApp #tecnologia #ferramentas`,
+    text: `Ferramenta de IA que converte automaticamente áudios do WhatsApp em texto:\n\n✅ Texto completo + resumo em segundos\n✅ Funciona sozinho, sem nenhuma ação necessária\n✅ 99% de precisão em português BR\n✅ Servidores no Brasil, conformidade com a LGPD\n✅ Plano gratuito, sem cartão\n\n🔗 [SEU_LINK] (link na bio)\n\n#produtividade #IA #WhatsApp #tecnologia #ferramentas`,
   },
   {
     key: 'instagram-informal',
@@ -116,13 +117,13 @@ const KIT: { key: string; label: string; canal: string; text: string }[] = [
     key: 'email-formal',
     canal: 'E-mail',
     label: 'E-mail — formal',
-    text: `Assunto: Indicação — ZapScript.me, conversão automática de áudios do WhatsApp em texto\n\nPrezado(a) [nome],\n\nEntro em contato para indicar uma ferramenta que tenho utilizado com bons resultados: o ZapScript.me.\n\nA plataforma conecta ao seu número do WhatsApp e converte automaticamente cada áudio recebido em texto completo + resumo com IA, em segundos. Funciona de forma autônoma, sem qualquer ação necessária da sua parte. O áudio é processado e descartado imediatamente — nada é armazenado.\n\nHá um plano gratuito com 100 áudios por mês, sem necessidade de cartão de crédito:\n👉 [SEU_LINK]\n\nFico à disposição para quaisquer dúvidas.\n\nAtenciosamente,\n[seu nome]`,
+    text: `Assunto: Indicação — ZapScript.me, conversão automática de áudios do WhatsApp em texto\n\nPrezado(a) [nome],\n\nEntro em contato para indicar uma ferramenta que tenho utilizado com bons resultados: o ZapScript.me.\n\nA plataforma conecta ao seu número do WhatsApp e converte automaticamente cada áudio recebido em texto completo + resumo com IA, em segundos. Funciona de forma autônoma, sem qualquer ação necessária da sua parte. O áudio é processado e descartado imediatamente — nada é armazenado.\n\nHá um plano gratuito, sem necessidade de cartão de crédito:\n👉 [SEU_LINK]\n\nFico à disposição para quaisquer dúvidas.\n\nAtenciosamente,\n[seu nome]`,
   },
   {
     key: 'email-informal',
     canal: 'E-mail',
     label: 'E-mail — informal',
-    text: `Assunto: Ferramenta que me fez parar de ouvir áudio de WhatsApp\n\nOi [nome],\n\nQueria te indicar algo que tem funcionado muito bem pra mim.\n\nO ZapScript.me converte automaticamente cada áudio que chega no WhatsApp em texto + resumo com IA, em segundos. Funciona sozinho — nem preciso abrir o app para ver o resultado.\n\nTem plano grátis para testar (100 áudios/mês, sem cartão):\n👉 [SEU_LINK]\n\nMe conta se curtir!\n\n[seu nome]`,
+    text: `Assunto: Ferramenta que me fez parar de ouvir áudio de WhatsApp\n\nOi [nome],\n\nQueria te indicar algo que tem funcionado muito bem pra mim.\n\nO ZapScript.me converte automaticamente cada áudio que chega no WhatsApp em texto + resumo com IA, em segundos. Funciona sozinho — nem preciso abrir o app para ver o resultado.\n\nTem plano grátis para testar, sem cartão:\n👉 [SEU_LINK]\n\nMe conta se curtir!\n\n[seu nome]`,
   },
 ];
 
@@ -131,15 +132,15 @@ const CANAIS = ['Todos', 'WhatsApp', 'Grupo', 'LinkedIn', 'Instagram', 'E-mail']
 export default function AfiliadosLanding() {
   const [copied, setCopied] = useState<string | null>(null);
   const [filtro, setFiltro] = useState('Todos');
-  const [rates, setRates] = useState<AffRates>(DEFAULT_RATES);
-  const [planValue, setPlanValue] = useState(39.9);
+  const [rates, setRates] = useState<WalletRates>(DEFAULT_RATES);
+  const [planValue, setPlanValue] = useState(37);
   const [referralsPerMonth, setReferralsPerMonth] = useState(5);
 
-  // Captura o ?aff= e remove o código da barra de endereços
+  // Captura o ?aff= (programa antigo, ainda ativo em paralelo) e remove da barra de endereços
   useEffect(() => { captureAffiliateFromUrl(); }, []);
 
-  // Taxas reais do programa (admin pode alterar sem redeploy) — cai no default se falhar
-  useEffect(() => { api.get<AffRates>('/affiliates/rates').then(setRates).catch(() => {}); }, []);
+  // Taxa real da carteira (admin pode alterar sem redeploy) — cai no default se falhar
+  useEffect(() => { api.get<WalletRates>('/wallet/rates').then(setRates).catch(() => {}); }, []);
 
   function copyKit(key: string, text: string) {
     navigator.clipboard.writeText(text).then(() => {
@@ -150,14 +151,9 @@ export default function AfiliadosLanding() {
 
   const kitFiltrado = filtro === 'Todos' ? KIT : KIT.filter(m => m.canal === filtro);
   const faq = buildFaq(rates);
+  const pct = Math.round(rates.rate * 100);
 
-  const basePct = Math.round(rates.baseRate * 100);
-  const bonusPct = Math.round(rates.bonusRate * 100);
-  const residualPct = Math.round(rates.residualRate * 100);
-
-  const perReferralMonthly = planValue * rates.baseRate;
-  const perReferral12m = perReferralMonthly * rates.recurringMonths;
-  const perReferralResidualMonthly = planValue * rates.residualRate;
+  const perReferralMonthly = planValue * rates.rate;
   const steadyStateMonthly = referralsPerMonth * perReferralMonthly;
 
   return (
@@ -165,7 +161,7 @@ export default function AfiliadosLanding() {
       {/* Header */}
       <header className="flex items-center justify-between px-5 sm:px-8 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <Link href="/"><Image src="/logo.png" alt="ZapScript" width={132} height={28} className="object-contain" /></Link>
-        <Link href="/dashboard/afiliado" className="btn-primary px-4 py-2 text-sm">Área do afiliado</Link>
+        <Link href="/dashboard/afiliado" className="btn-primary px-4 py-2 text-sm">Minha carteira</Link>
       </header>
 
       {/* Hero */}
@@ -174,41 +170,41 @@ export default function AfiliadosLanding() {
           Programa de Afiliados
         </span>
         <h1 className="text-3xl sm:text-5xl font-black text-brand-text leading-tight">
-          Indique o ZapScript e <span className="text-brand-primary">ganhe comissão todo mês</span>
+          Indique o ZapScript e <span className="text-brand-primary">ganhe crédito todo mês</span>
         </h1>
         <p className="text-base sm:text-lg text-brand-text-secondary mt-4 max-w-xl mx-auto">
-          Não é comissão única: você recebe {basePct}% em cada pagamento do seu indicado durante os {rates.recurringMonths} primeiros meses — e até {bonusPct}% com o bônus de performance.
+          Toda conta já tem link de indicação — sem aplicação, sem aprovação. Você recebe {pct}% em cada pagamento
+          de quem indicar, todo mês, sem prazo de corte.
         </p>
         <p className="text-sm text-brand-primary font-medium mt-3 max-w-xl mx-auto">
           Você indica um robô que converte áudio em texto 24 horas por dia — um produto que se explica sozinho.
         </p>
         <div className="flex justify-center mt-5">
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background: 'rgba(16,185,129,.12)', color: '#10b981' }}>
-            💸 Pagamento em até 30 dias
+            💰 Crédito liberado {rates.releaseDays} dias após o pagamento do indicado
           </span>
         </div>
         <div className="flex gap-3 justify-center mt-7 flex-wrap">
-          <Link href="/dashboard/afiliado" className="btn-primary px-6 py-3 text-sm font-bold">QUERO SER AFILIADO →</Link>
-          <Link href="/cadastro" className="px-6 py-3 text-sm rounded-xl border border-white/15 text-brand-text hover:border-white/30 transition-colors">
-            Ainda não tenho conta
+          <Link href="/cadastro" className="btn-primary px-6 py-3 text-sm font-bold">CRIAR CONTA GRÁTIS →</Link>
+          <Link href="/dashboard/afiliado" className="px-6 py-3 text-sm rounded-xl border border-white/15 text-brand-text hover:border-white/30 transition-colors">
+            Já tenho conta — ver carteira
           </Link>
         </div>
       </section>
 
-      {/* Comissão — modelo recorrente */}
+      {/* Comissão — modelo automático */}
       <section className="px-5 sm:px-8 pb-12 max-w-4xl mx-auto">
         <h2 className="text-xl font-bold text-brand-text text-center mb-2">Quanto você ganha</h2>
         <p className="text-sm text-brand-muted text-center mb-6 max-w-lg mx-auto">
-          Comissão recorrente — não é um pagamento único na primeira venda.
+          Taxa única, recorrente, sem degrau — não precisa bater meta pra ganhar mais.
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          <CommCard emoji="💰" title={`${basePct}%`} sub={`${rates.recurringMonths} primeiros meses`} detail="Em cada pagamento do indicado — mensal ou anual." />
-          <CommCard emoji="🚀" title={`${bonusPct}%`} sub="bônus de performance" detail={`A partir do ${rates.bonusThreshold + 1}º cliente novo no mês. Trava por ${rates.recurringMonths} meses.`} />
-          <CommCard emoji="♾️" title={`${residualPct}%`} sub="residual vitalício" detail={`Após os ${rates.recurringMonths} meses, enquanto o indicado seguir assinante.`} />
-          <CommCard emoji="💸" title={`D+${rates.payoutHoldDays}`} sub="saque sem mínimo" detail={`Saldo liberado ${rates.payoutHoldDays} dias após cada comissão gerada.`} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <CommCard emoji="💰" title={`${pct}%`} sub="sobre cada pagamento" detail="Enquanto o indicado continuar assinante — mensal ou anual, sem prazo de corte." />
+          <CommCard emoji="⏱️" title={`D+${rates.releaseDays}`} sub="liberação do crédito" detail="Contado a partir da confirmação do pagamento do seu indicado." />
+          <CommCard emoji="🔀" title="3 usos" sub="pro seu saldo" detail="Abater fatura, comprar avulso ou sacar em Pix — 1 crédito = R$ 1 em qualquer um." />
         </div>
 
-        {/* Simulador ao vivo — usa as taxas reais (GET /affiliates/rates) */}
+        {/* Simulador ao vivo — usa a taxa real (GET /wallet/rates) */}
         <div className="mt-6 rounded-2xl p-5 sm:p-6" style={{ background: 'rgba(16,185,129,.06)', border: '1px solid rgba(16,185,129,.12)' }}>
           <p className="text-sm font-bold text-brand-text text-center mb-4">Simule quanto você pode ganhar</p>
           <div className="grid sm:grid-cols-2 gap-4 max-w-md mx-auto">
@@ -221,7 +217,7 @@ export default function AfiliadosLanding() {
               />
             </label>
             <label className="text-xs text-brand-muted">
-              Indicados novos por mês
+              Indicados ativos por mês
               <input
                 type="number" min={0} step={1} value={referralsPerMonth}
                 onChange={e => setReferralsPerMonth(Math.max(0, Math.round(Number(e.target.value) || 0)))}
@@ -231,17 +227,13 @@ export default function AfiliadosLanding() {
           </div>
           <div className="text-sm text-brand-text-secondary text-center leading-relaxed mt-5 space-y-1.5">
             <p>
-              Por indicado: <strong className="text-brand-primary">{brl(perReferralMonthly)}/mês</strong>, por até {rates.recurringMonths} meses
-              ({brl(perReferral12m)} no total) — depois, <strong className="text-brand-primary">{brl(perReferralResidualMonthly)}/mês</strong> vitalício.
+              Por indicado: <strong className="text-brand-primary">{brl(perReferralMonthly)}/mês</strong>, enquanto ele continuar assinante.
             </p>
             {referralsPerMonth > 0 && (
               <p>
-                Mantendo o ritmo de <strong>{referralsPerMonth}</strong> indicado{referralsPerMonth === 1 ? '' : 's'}/mês, seu saldo mensal recorrente pode chegar a{' '}
+                Com <strong>{referralsPerMonth}</strong> indicado{referralsPerMonth === 1 ? '' : 's'} ativo{referralsPerMonth === 1 ? '' : 's'}/mês, seu crédito mensal pode chegar a{' '}
                 <strong className="text-brand-primary text-base">{brl(steadyStateMonthly)}</strong>.
               </p>
-            )}
-            {referralsPerMonth > rates.bonusThreshold && (
-              <p className="text-xs">🚀 Nesse ritmo, os clientes que passarem do {rates.bonusThreshold}º no mês já entram no bônus de {bonusPct}%.</p>
             )}
           </div>
         </div>
@@ -255,7 +247,7 @@ export default function AfiliadosLanding() {
             {
               n: '1',
               t: 'Crie sua conta',
-              d: 'Cadastre-se no ZapScript e solicite sua afiliação pelo painel. Aprovação em até 48h.',
+              d: 'Toda conta já nasce com carteira e link de indicação — sem aplicação, sem espera.',
             },
             {
               n: '2',
@@ -264,8 +256,8 @@ export default function AfiliadosLanding() {
             },
             {
               n: '3',
-              t: 'Receba via Pix',
-              d: 'A comissão cai no seu extrato a cada pagamento do indicado. Saldo liberado 30 dias depois, sem valor mínimo para sacar.',
+              t: 'Use seu crédito',
+              d: 'A cada pagamento do indicado, o crédito entra na sua carteira. Abata fatura, compre avulso ou saque em Pix.',
             },
           ].map(s => (
             <div key={s.n} className="rounded-2xl p-5 text-center" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -276,22 +268,21 @@ export default function AfiliadosLanding() {
           ))}
         </div>
 
-        {/* Regras e condições resumidas */}
+        {/* Regras e condições resumidas — REGULAMENTO_AFILIADOS.md */}
         <div className="mt-8 rounded-2xl p-5 space-y-2 text-xs text-brand-muted" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
           <p className="font-semibold text-brand-text-secondary text-sm mb-3">Regras e condições</p>
-          <p>• Comissão de {basePct}% em cada pagamento aprovado do indicado durante os {rates.recurringMonths} primeiros meses de assinatura (mensal ou anual)</p>
-          <p>• Após {rates.recurringMonths} meses, comissão residual de {residualPct}% enquanto o indicado continuar assinante</p>
-          <p>• Bônus: a partir do {rates.bonusThreshold + 1}º cliente novo conquistado no mês, a comissão desses clientes sobe para {bonusPct}% — travada por {rates.recurringMonths} meses</p>
-          <p>• Apenas pagamentos aprovados contam para o cálculo e para a meta de {rates.bonusThreshold} clientes/mês</p>
-          <p>• Cancelamento do indicado até 30 dias após a assinatura zera as comissões pendentes desse cliente; depois disso, o que já foi gerado é mantido</p>
-          <p>• Saldo liberado {rates.payoutHoldDays} dias após cada comissão gerada — saque via Pix a qualquer momento, sem valor mínimo</p>
-          <p>• Pagamento exclusivamente via Pix para conta de titularidade do CPF/CNPJ cadastrado</p>
-          <p>• A aprovação da afiliação exige e-mail verificado e CPF/CNPJ cadastrado</p>
-          <p>• A ZapScript pode recusar ou cancelar afiliações que violem os termos de uso</p>
+          <p>• Toda conta ativa e com e-mail verificado já tem carteira e link de indicação — sem aplicação, sem aprovação</p>
+          <p>• Comissão de {pct}% sobre cada pagamento aprovado do indicado (mensal ou anual), enquanto ele continuar assinante</p>
+          <p>• Crédito lançado na carteira {rates.releaseDays} dias após a confirmação do pagamento do indicado</p>
+          <p>• Cancelamento do indicado dentro desses {rates.releaseDays} dias: o crédito correspondente não chega a ser gerado; depois disso, nada é revertido</p>
+          <p>• Saldo disponível em 3 usos, câmbio fixo 1 crédito = R$ 1: abater fatura, comprar créditos avulsos, ou sacar via Pix (mínimo R$ {rates.minCashout})</p>
+          <p>• Crédito não utilizado expira {rates.expiryMonths} meses após a geração, com aviso prévio</p>
+          <p>• Proibida autoindicação e contas fictícias — infração cancela os créditos irregulares</p>
+          <p>• Regulamento completo: <Link href="/regulamento-afiliados" className="text-brand-primary hover:underline">ver todos os artigos</Link></p>
         </div>
 
         <div className="text-center mt-10">
-          <Link href="/dashboard/afiliado" className="btn-primary px-7 py-3 text-sm">Começar agora →</Link>
+          <Link href="/cadastro" className="btn-primary px-7 py-3 text-sm">Começar agora →</Link>
         </div>
       </section>
 
@@ -315,7 +306,7 @@ export default function AfiliadosLanding() {
             Kit de divulgação
           </span>
           <h2 className="text-2xl font-bold text-brand-text">Mensagens prontas para copiar</h2>
-          <p className="text-sm text-brand-muted mt-2">Substitua <code className="text-brand-primary bg-brand-primary/10 px-1 rounded">[SEU_LINK]</code> pelo seu link de afiliado (disponível no painel após aprovação).</p>
+          <p className="text-sm text-brand-muted mt-2">Substitua <code className="text-brand-primary bg-brand-primary/10 px-1 rounded">[SEU_LINK]</code> pelo seu link de indicação (disponível no seu painel assim que você cria a conta).</p>
         </div>
 
         {/* Filtros */}
@@ -361,7 +352,7 @@ export default function AfiliadosLanding() {
         </div>
 
         <div className="text-center mt-10">
-          <Link href="/dashboard/afiliado" className="btn-primary px-7 py-3 text-sm">Acessar meu painel →</Link>
+          <Link href="/dashboard/afiliado" className="btn-primary px-7 py-3 text-sm">Acessar minha carteira →</Link>
         </div>
       </section>
 

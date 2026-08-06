@@ -57,13 +57,19 @@ function BigStep({ n, children, done }: { n: number; children: React.ReactNode; 
 }
 
 // ── Modal de conexão (código por número + QR Code como fallback) ──────────────
-function ConnectModal({ number, onClose, onConnected, externalQr }: {
+function ConnectModal({ number, onClose, onConnected, externalQr, initialPairingCode }: {
   number: WNumber;
   onClose: () => void;
   onConnected: () => void;
   externalQr?: string | null;
+  // Onboarding facilitado: código já gerado no cadastro (mesmo enviado por
+  // WhatsApp) — pula intro/init/ready e mostra o código na hora, sem pedir
+  // um segundo código à Evolution (evitaria dois códigos diferentes).
+  initialPairingCode?: string | null;
 }) {
-  const [phase, setPhase]             = useState<'intro' | 'init' | 'ready' | 'code' | 'waiting' | 'connected' | 'error'>('intro');
+  const [phase, setPhase]             = useState<'intro' | 'init' | 'ready' | 'code' | 'waiting' | 'connected' | 'error'>(
+    initialPairingCode ? 'code' : 'intro'
+  );
   const [connectMode, setConnectMode] = useState<'phone' | 'qr'>('phone');
   const [error, setError]             = useState('');
   const [phoneInput, setPhoneInput]   = useState(
@@ -72,7 +78,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
       : ''
   );
   const [phoneError, setPhoneError]   = useState('');
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string | null>(initialPairingCode ?? null);
   const [requesting, setRequesting]   = useState(false);
   const [qrImage, setQrImage]         = useState<string | null>(null);
   const [qrLoading, setQrLoading]     = useState(false);
@@ -85,7 +91,7 @@ function ConnectModal({ number, onClose, onConnected, externalQr }: {
 
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const qrPollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const autoReqRef = useRef(false);  // garante auto-solicitação do código só 1×
+  const autoReqRef = useRef(!!initialPairingCode);  // garante auto-solicitação do código só 1×
 
   // Iniciar conexão — só após o usuário confirmar na tela de introdução
   const startConnection = useCallback(async () => {
@@ -682,6 +688,8 @@ export default function NumerosPage() {
   const [confirmDelete, setConfirmDelete]   = useState<string | null>(null);
   const [deleting, setDeleting]             = useState(false);
   const [connectNumber, setConnectNumber]   = useState<WNumber | null>(null);
+  const [autoPairingCode, setAutoPairingCode] = useState<string | null>(null);
+  const autoConnectRef = useRef(false);
   const [liveQr, setLiveQr]                = useState<string | null>(null);
   const [savingPrivate, setSavingPrivate]   = useState<string | null>(null);
   const [hidePrivadoTip, setHidePrivadoTip] = useState(true);
@@ -713,6 +721,23 @@ export default function NumerosPage() {
     setHidePrivadoTip(true);
     try { localStorage.setItem('zs_privado_tip_v1', '1'); } catch {}
   }
+
+  // Onboarding facilitado: cadastro no site já deixou o número provisionado e
+  // o pairing code pronto (?connect=<numberId>&code=<pairingCode>) — abre o
+  // modal de conexão direto nessa tela, sem exigir os cliques de sempre.
+  useEffect(() => {
+    if (autoConnectRef.current || loading || numbers.length === 0) return;
+    autoConnectRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const connectId = params.get('connect');
+    if (!connectId) return;
+    const match = numbers.find(n => n.id === connectId);
+    if (match) {
+      setConnectNumber(match);
+      setAutoPairingCode(params.get('code'));
+    }
+    window.history.replaceState(null, '', '/dashboard/numeros');
+  }, [numbers, loading]);
 
   const { connected: socketOk } = useSocket(userId, {
     audio_received: () => { loadNumbers(); },
@@ -1004,9 +1029,10 @@ export default function NumerosPage() {
       {connectNumber && (
         <ConnectModal
           number={connectNumber}
-          onClose={() => { setConnectNumber(null); setLiveQr(null); }}
+          onClose={() => { setConnectNumber(null); setLiveQr(null); setAutoPairingCode(null); }}
           onConnected={() => { loadNumbers(); setLiveQr(null); }}
           externalQr={liveQr}
+          initialPairingCode={autoPairingCode}
         />
       )}
     </div>

@@ -13,6 +13,7 @@ import { calculateProration } from '../lib/proration';
 import { validateRequest, billingCheckoutSchema, billingUpgradeSchema, moduleSubscribeSchema } from '../lib/validation';
 import { invalidatePlanCache } from '../lib/planGate';
 import { attributeAffiliateCommission, clawbackAffiliateCommissionOnCancel } from '../lib/affiliate';
+import { recordReferralCredit, clawbackPendingCreditsOnCancel } from '../lib/credit';
 import { invalidateModuleCache } from '../lib/moduleGate';
 
 /* ─────────────────────────────────────────────────────────
@@ -173,17 +174,19 @@ async function resolveComboModules(userId: string): Promise<Array<{ key: string;
   return products.filter((p: { key: string }) => !ownedKeys.has(p.key));
 }
 
-/* ── Buscar ou criar cliente no Asaas ── */
+/* ── Buscar ou criar cliente no Asaas ──
+   overrideDocument: CPF do titular do cartão, informado no próprio checkout — não há
+   mais exigência de CPF/CNPJ salvo no perfil do usuário antes de comprar. */
 async function getOrCreateCustomer(user: {
   id: string; name: string | null; email: string; document?: string | null; phone?: string | null;
-}): Promise<string> {
+}, overrideDocument?: string): Promise<string> {
   const searchRes = await asaas(`/customers?email=${encodeURIComponent(user.email)}&limit=1`);
   const searchData = await searchRes.json() as any;
   const existing = searchData?.data?.[0];
   if (existing?.id) return existing.id as string;
 
   // C2: decriptar CPF/CNPJ (AES-256-GCM) antes de enviar ao Asaas
-  const doc = decryptStr(user.document)?.replace(/\D/g, '') || undefined;
+  const doc = overrideDocument?.replace(/\D/g, '') || decryptStr(user.document)?.replace(/\D/g, '') || undefined;
   const createRes = await asaas('/customers', {
     method: 'POST',
     body: JSON.stringify({
@@ -422,12 +425,14 @@ function isCardMethod(method: string | undefined): boolean {
   return method === 'credit_card' || method === 'debit_card';
 }
 
-/* ── Montar body de creditCardHolderInfo ── */
-function buildHolderInfo(user: any, billingAddress?: any) {
+/* ── Montar body de creditCardHolderInfo ──
+   cpfCnpj vem do CPF do titular informado no próprio formulário de cartão
+   (card.document) — não depende mais do CPF/CNPJ salvo no perfil do usuário. */
+function buildHolderInfo(user: any, card: { document?: string } | undefined, billingAddress?: any) {
   return {
     name:          user.name || 'Usuário',
     email:         user.email,
-    cpfCnpj:       decryptStr(user.document)?.replace(/\D/g, '') || undefined,
+    cpfCnpj:       card?.document?.replace(/\D/g, '') || decryptStr(user.document)?.replace(/\D/g, '') || undefined,
     postalCode:    billingAddress?.postalCode?.replace(/\D/g, '') || undefined,
     addressNumber: billingAddress?.addressNumber || undefined,
     mobilePhone:   user.phone?.replace(/\D/g, '') || undefined,
@@ -463,24 +468,20 @@ export default async function billingRoutes(app: FastifyInstance) {
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) return reply.code(401).send({ error: 'Usuário não encontrado' });
 
-      // ── Gate da assinatura (Opção A): e-mail verificado + CPF/CNPJ ──
+      // ── Gate da assinatura (Opção A): e-mail verificado. O CPF/CNPJ não é mais
+      // exigido no perfil — no pagamento com cartão, o CPF do titular vem no
+      // próprio formulário (card.document, ver validation.ts). ──
       if (!user.emailVerified) {
         return reply.code(403).send({
           code:  'EMAIL_NOT_VERIFIED',
           error: 'Confirme seu e-mail antes de assinar um plano.',
         });
       }
-      if (!user.document) {
-        return reply.code(400).send({
-          code:  'DOCUMENT_REQUIRED',
-          error: 'Informe seu CPF/CNPJ para assinar um plano.',
-        });
-      }
 
       // ── Criar/buscar cliente no Asaas ──
       let asaasCustomerId: string;
       try {
-        asaasCustomerId = await getOrCreateCustomer(user);
+        asaasCustomerId = await getOrCreateCustomer(user, card?.document);
       } catch (err: any) {
         app.log.error({ err }, 'Asaas customer error');
         return reply.code(503).send({ error: 'Serviço de pagamento indisponível. Tente novamente.' });
@@ -521,7 +522,7 @@ export default async function billingRoutes(app: FastifyInstance) {
               description:          `ZapScript ${PLAN_LABELS[planName]} — 1º mês promocional`,
               externalReference:    encodeRef(userId, planName),
               creditCard:           cardObj,
-              creditCardHolderInfo: buildHolderInfo(user, billingAddress),
+              creditCardHolderInfo: buildHolderInfo(user, card, billingAddress),
               remoteIp,
             }),
           }).then(r => r.json()) as any;
@@ -547,7 +548,7 @@ export default async function billingRoutes(app: FastifyInstance) {
               externalReference: encodeRef(userId, planName),
               ...(ccToken
                 ? { creditCardToken: ccToken }
-                : { creditCard: cardObj, creditCardHolderInfo: buildHolderInfo(user, billingAddress), remoteIp }),
+                : { creditCard: cardObj, creditCardHolderInfo: buildHolderInfo(user, card, billingAddress), remoteIp }),
             }),
           }).then(r => r.json()) as any;
 
@@ -637,7 +638,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           expiryYear:  card.expiryYear.length === 2 ? `20${card.expiryYear}` : card.expiryYear,
           ccv:         card.ccv,
         };
-        subBody.creditCardHolderInfo = buildHolderInfo(user, billingAddress);
+        subBody.creditCardHolderInfo = buildHolderInfo(user, card, billingAddress);
         subBody.remoteIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
                          || req.ip
                          || '0.0.0.0';
@@ -775,7 +776,7 @@ export default async function billingRoutes(app: FastifyInstance) {
       // Buscar/criar customer
       let asaasCustomerId: string;
       try {
-        asaasCustomerId = sub.asaasCustomerId || await getOrCreateCustomer(user);
+        asaasCustomerId = sub.asaasCustomerId || await getOrCreateCustomer(user, card?.document);
       } catch (err: any) {
         app.log.error({ err }, 'Asaas customer error (upgrade)');
         return reply.code(503).send({ error: 'Serviço de pagamento indisponível.' });
@@ -835,7 +836,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           expiryYear:  card.expiryYear.length === 2 ? `20${card.expiryYear}` : card.expiryYear,
           ccv:         card.ccv,
         };
-        chargeBody.creditCardHolderInfo = buildHolderInfo(user, billingAddress);
+        chargeBody.creditCardHolderInfo = buildHolderInfo(user, card, billingAddress);
         chargeBody.remoteIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
                              || req.ip || '0.0.0.0';
       }
@@ -953,6 +954,8 @@ export default async function billingRoutes(app: FastifyInstance) {
 
     // Programa de afiliados: cancelamento nos primeiros 30 dias zera comissões pendentes
     clawbackAffiliateCommissionOnCancel(userId).catch(() => null);
+    // Carteira de crédito: cancela créditos ainda não liberados gerados por este usuário
+    clawbackPendingCreditsOnCancel(userId).catch(() => null);
 
     return { canceled: true, message: 'Assinatura cancelada. Você voltou para o plano gratuito.' };
   });
@@ -1007,13 +1010,10 @@ export default async function billingRoutes(app: FastifyInstance) {
       if (!user.emailVerified) {
         return reply.code(403).send({ code: 'EMAIL_NOT_VERIFIED', error: 'Confirme seu e-mail antes de contratar um módulo.' });
       }
-      if (!user.document) {
-        return reply.code(400).send({ code: 'DOCUMENT_REQUIRED', error: 'Informe seu CPF/CNPJ para contratar um módulo.' });
-      }
 
       let asaasCustomerId: string;
       try {
-        asaasCustomerId = await getOrCreateCustomer(user);
+        asaasCustomerId = await getOrCreateCustomer(user, card?.document);
       } catch (err: any) {
         app.log.error({ err }, 'Asaas customer error (module subscribe)');
         return reply.code(503).send({ error: 'Serviço de pagamento indisponível. Tente novamente.' });
@@ -1059,7 +1059,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           expiryYear:  card.expiryYear.length === 2 ? `20${card.expiryYear}` : card.expiryYear,
           ccv:         card.ccv,
         };
-        chargeBody.creditCardHolderInfo = buildHolderInfo(user, billingAddress);
+        chargeBody.creditCardHolderInfo = buildHolderInfo(user, card, billingAddress);
         chargeBody.remoteIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
       }
 
@@ -1256,13 +1256,10 @@ export default async function billingRoutes(app: FastifyInstance) {
       if (!user.emailVerified) {
         return reply.code(403).send({ code: 'EMAIL_NOT_VERIFIED', error: 'Confirme seu e-mail antes de contratar o Combo.' });
       }
-      if (!user.document) {
-        return reply.code(400).send({ code: 'DOCUMENT_REQUIRED', error: 'Informe seu CPF/CNPJ para contratar o Combo.' });
-      }
 
       let asaasCustomerId: string;
       try {
-        asaasCustomerId = await getOrCreateCustomer(user);
+        asaasCustomerId = await getOrCreateCustomer(user, card?.document);
       } catch (err: any) {
         app.log.error({ err }, 'Asaas customer error (combo subscribe)');
         return reply.code(503).send({ error: 'Serviço de pagamento indisponível. Tente novamente.' });
@@ -1306,7 +1303,7 @@ export default async function billingRoutes(app: FastifyInstance) {
           expiryYear:  card.expiryYear.length === 2 ? `20${card.expiryYear}` : card.expiryYear,
           ccv:         card.ccv,
         };
-        chargeBody.creditCardHolderInfo = buildHolderInfo(user, billingAddress);
+        chargeBody.creditCardHolderInfo = buildHolderInfo(user, card, billingAddress);
         chargeBody.remoteIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
       }
 
@@ -1685,8 +1682,10 @@ export default async function billingRoutes(app: FastifyInstance) {
         });
         app.log.info(`Pagamento confirmado: userId=${userId} plan=${planName} cycle=${isYearlyWebhook ? 'yearly' : 'monthly'}`);
 
-        // ── Programa de afiliados: atribuir comissão da venda (idempotente) ──
+        // ── Programa de afiliados (modelo antigo, em migração): atribuir comissão da venda ──
         await attributeAffiliateCommission(userId, payment.id, payment.value ?? 0, isYearlyWebhook);
+        // ── Carteira de crédito (Regulamento v4): registra crédito pendente, libera em D+30 ──
+        await recordReferralCredit(userId, payment.id, payment.value ?? 0);
       }
 
       return reply.send({ received: true });
@@ -1753,6 +1752,8 @@ export default async function billingRoutes(app: FastifyInstance) {
           invalidatePlanCache(userId).catch(() => null);
           // Programa de afiliados: cancelamento nos primeiros 30 dias zera comissões pendentes
           clawbackAffiliateCommissionOnCancel(userId).catch(() => null);
+          // Carteira de crédito: cancela créditos ainda não liberados gerados por este usuário
+          clawbackPendingCreditsOnCancel(userId).catch(() => null);
           app.log.info(`Assinatura removida no Asaas — downgrade para free: userId=${userId}`);
         }
       }

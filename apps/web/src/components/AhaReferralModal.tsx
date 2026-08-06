@@ -34,7 +34,7 @@ export default function AhaReferralModal({ transcriptionsTotal, refCode }: Props
 
   const shareWhatsApp = useCallback(() => {
     const link = `https://www.zapscript.me/cadastro?ref=${refCode ?? ''}`;
-    const msg = `Eu uso o ZapScript para converter áudios do WhatsApp automaticamente com IA — e você ganha 5 áudios grátis ao se cadastrar pelo meu link: ${link}`;
+    const msg = `Eu uso o ZapScript para converter áudios do WhatsApp automaticamente com IA — cadastre-se pelo meu link e comece grátis: ${link}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   }, [refCode]);
 
@@ -73,7 +73,7 @@ export default function AhaReferralModal({ transcriptionsTotal, refCode }: Props
 
         {/* Badge */}
         <div className="inline-flex items-center gap-2 bg-brand-primary/10 border border-brand-primary/20 rounded-full px-4 py-1.5 text-sm font-medium text-brand-primary mb-5">
-          🎁 Programa de Indicação
+          💰 Carteira ZapScript
         </div>
 
         {/* Headline */}
@@ -86,8 +86,8 @@ export default function AhaReferralModal({ transcriptionsTotal, refCode }: Props
         </p>
         <p className="text-brand-text text-sm font-semibold mb-6 leading-relaxed">
           Indique um amigo e{' '}
-          <span className="text-brand-primary">ganhe 1 mês grátis de Pro</span> para
-          cada indicação que se cadastrar.
+          <span className="text-brand-primary">ganhe 20% de crédito</span> sobre
+          cada assinatura paga por ele — automático, direto na sua carteira.
         </p>
 
         {/* Referral link */}
@@ -128,7 +128,7 @@ export default function AhaReferralModal({ transcriptionsTotal, refCode }: Props
 
         {/* Footer note */}
         <p className="text-[10px] text-brand-muted/60 mt-4">
-          Seu link de indicação também está disponível no painel, em "Indique o ZapScript".
+          Seu link de indicação e sua carteira também estão disponíveis no painel, em "Carteira".
         </p>
       </div>
 

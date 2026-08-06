@@ -41,6 +41,41 @@ Sua tarefa é aprender com esses pares reais e gerar duas coisas:
 Responda SOMENTE com um objeto JSON válido, sem markdown, no formato:
 { "businessContextSuggestion": "texto ou null", "kbSuggestions": [{ "question": "...", "answer": "..." }] }`;
 
+const KB_STOPWORDS = new Set(['a','o','as','os','de','do','da','dos','das','um','uma','e','ou','que','pra','para','com','sem','em','no','na','por','se']);
+function kbTokenize(text: string): Set<string> {
+  return new Set(
+    text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().match(/[a-z0-9]+/g)
+      ?.filter((w) => w.length > 2 && !KB_STOPWORDS.has(w)) ?? [],
+  );
+}
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter++;
+  return inter / (a.size + b.size - inter);
+}
+
+/**
+ * Marca itens sugeridos de importação de KB que parecem duplicar uma pergunta
+ * já cadastrada (similaridade de palavras >= 0.6), em vez de descartar — quem
+ * decide se é de fato duplicata é o dono, confirmando ou ignorando no front.
+ */
+async function markPossibleDuplicates(userId: string, items: { question: string; answer: string }[]) {
+  if (items.length === 0) return [];
+  const existing = await prisma.atendeKnowledgeBase.findMany({ where: { userId }, select: { question: true } });
+  const existingTokens = existing.map((e: any) => ({ question: e.question, tokens: kbTokenize(e.question) }));
+
+  return items.map((it) => {
+    const itTokens = kbTokenize(it.question);
+    let best: { question: string; score: number } | null = null;
+    for (const e of existingTokens) {
+      const score = jaccard(itTokens, e.tokens);
+      if (score >= 0.6 && (!best || score > best.score)) best = { question: e.question, score };
+    }
+    return { ...it, possibleDuplicateOf: best?.question ?? null };
+  });
+}
+
 /** Extrai o texto bruto de um único arquivo (áudio ou imagem) enviado via multipart. */
 async function readSingleUpload(req: any): Promise<{ buffer: Buffer; mimetype: string } | null> {
   for await (const part of req.parts()) {
@@ -146,9 +181,10 @@ export default async function atendeRoutes(app: FastifyInstance) {
       const upload = await readSingleUpload(req);
       if (!upload) return reply.code(400).send({ error: 'Envie um arquivo de áudio.' });
 
+      const { ownerId } = req.teamScope;
       const transcript = await transcribeVoiceSetup(upload.buffer, upload.mimetype);
       const { businessContext } = await structureWithClaude<{ businessContext: string }>(
-        transcript, BUSINESS_CONTEXT_PROMPT,
+        transcript, BUSINESS_CONTEXT_PROMPT, { userId: ownerId, feature: 'atende_setup_voice' },
       );
       return { transcript, businessContext };
     } catch (err: any) {
@@ -167,23 +203,23 @@ export default async function atendeRoutes(app: FastifyInstance) {
     config: { rateLimit: { max: 10, timeWindow: '10 minutes' } },
   }, async (req: any, reply) => {
     try {
+      const { ownerId } = req.teamScope;
       const upload = await readSingleUpload(req);
       if (!upload) return reply.code(400).send({ error: 'Envie um áudio ou uma foto.' });
 
       const isImage = upload.mimetype.startsWith('image/');
       const rawText = isImage
-        ? await extractTextFromImage(upload.buffer, upload.mimetype)
+        ? await extractTextFromImage(upload.buffer, upload.mimetype, { userId: ownerId, feature: 'atende_setup_kb_import' })
         : await transcribeVoiceSetup(upload.buffer, upload.mimetype);
 
-      const parsed = await structureWithClaude<any>(rawText, KB_IMPORT_PROMPT);
+      const parsed = await structureWithClaude<any>(rawText, KB_IMPORT_PROMPT, { userId: ownerId, feature: 'atende_setup_kb_import' });
       const items = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.items) ? parsed.items : [];
 
-      return {
-        rawText,
-        items: items
-          .filter((it: any) => it?.question && it?.answer)
-          .map((it: any) => ({ question: String(it.question), answer: String(it.answer) })),
-      };
+      const clean = items
+        .filter((it: any) => it?.question && it?.answer)
+        .map((it: any) => ({ question: String(it.question), answer: String(it.answer) }));
+
+      return { rawText, items: await markPossibleDuplicates(ownerId, clean) };
     } catch (err: any) {
       if (err instanceof AiInputError) return reply.code(422).send({ error: err.message });
       req.log.error({ err: err.message }, '[Atende] Falha na importação de KB');
@@ -251,16 +287,18 @@ export default async function atendeRoutes(app: FastifyInstance) {
       const result = await structureWithClaude<{
         businessContextSuggestion: string | null;
         kbSuggestions: { question: string; answer: string }[];
-      }>(transcript, FROM_HISTORY_PROMPT);
+      }>(transcript, FROM_HISTORY_PROMPT, { userId: ownerId, feature: 'atende_setup_from_history' });
+
+      const kbClean = Array.isArray(result.kbSuggestions)
+        ? result.kbSuggestions
+            .filter((it: any) => it?.question && it?.answer)
+            .map((it: any) => ({ question: String(it.question), answer: String(it.answer) }))
+        : [];
 
       return {
         pairs: pairs.length,
         businessContextSuggestion: result.businessContextSuggestion || null,
-        kbSuggestions: Array.isArray(result.kbSuggestions)
-          ? result.kbSuggestions
-              .filter((it: any) => it?.question && it?.answer)
-              .map((it: any) => ({ question: String(it.question), answer: String(it.answer) }))
-          : [],
+        kbSuggestions: await markPossibleDuplicates(ownerId, kbClean),
       };
     } catch (err: any) {
       if (err instanceof AiInputError) return reply.code(422).send({ error: err.message });
@@ -482,24 +520,32 @@ export default async function atendeRoutes(app: FastifyInstance) {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
 
-    const [conversasNoPeriodo, conversasHoje, semTakeover, escaladas, mensagensEnviadas, mensagensRecebidas] = await Promise.all([
+    // 3 buckets mutuamente exclusivos (antes só existia "sem takeover" vs "com
+    // takeover", que misturava conversa de fato resolvida com conversa ainda
+    // aberta aguardando o cliente): resolvida automaticamente (bot atendeu e
+    // não escalou), escalada (bot pediu ajuda e ninguém assumiu ainda) e sob
+    // takeover (dono/equipe assumiu manualmente).
+    const [conversasNoPeriodo, conversasHoje, resolvidasAuto, escaladasPendentes, sobTakeover, mensagensEnviadas, mensagensRecebidas] = await Promise.all([
       prisma.atendeConversation.count({ where: { userId: ownerId, createdAt: { gte: since } } }),
       prisma.atendeConversation.count({ where: { userId: ownerId, createdAt: { gte: todayStart } } }),
-      prisma.atendeConversation.count({ where: { userId: ownerId, createdAt: { gte: since }, humanTakeover: false } }),
-      prisma.atendeConversation.count({ where: { userId: ownerId, createdAt: { gte: since }, status: 'escalated' } }),
+      prisma.atendeConversation.count({ where: { userId: ownerId, createdAt: { gte: since }, humanTakeover: false, status: { not: 'escalated' } } }),
+      prisma.atendeConversation.count({ where: { userId: ownerId, createdAt: { gte: since }, humanTakeover: false, status: 'escalated' } }),
+      prisma.atendeConversation.count({ where: { userId: ownerId, createdAt: { gte: since }, humanTakeover: true } }),
       prisma.atendeMessage.count({ where: { direction: 'out', createdAt: { gte: since }, conversation: { userId: ownerId } } }),
       prisma.atendeMessage.count({ where: { direction: 'in', createdAt: { gte: since }, conversation: { userId: ownerId } } }),
     ]);
 
     const taxaResolucaoAutomatica = conversasNoPeriodo > 0
-      ? Math.round((semTakeover / conversasNoPeriodo) * 100)
+      ? Math.round((resolvidasAuto / conversasNoPeriodo) * 100)
       : 0;
 
     return {
       periodDays: days,
       conversasNoPeriodo,
       conversasHoje,
-      conversasEscaladas: escaladas,
+      conversasResolvidasAuto: resolvidasAuto,
+      conversasEscaladas: escaladasPendentes,
+      conversasSobTakeover: sobTakeover,
       taxaResolucaoAutomatica,
       mensagensEnviadas,
       mensagensRecebidas,

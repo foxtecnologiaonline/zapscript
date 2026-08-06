@@ -98,7 +98,11 @@ describe('Módulo Tarefas', () => {
   it('cria tarefa atribuída a um membro ativo do MESMO time', async () => {
     mockSoloOwner();
     mockHasTarefas();
-    (prisma.teamMember.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'active', team: { ownerId: 'owner1' } });
+    (prisma.teamMember.findUnique as jest.Mock).mockResolvedValueOnce({
+      status: 'active',
+      team: { ownerId: 'owner1' },
+      user: { id: 'cmembro00000000000000001', name: 'Membro', phone: '5511999999999' },
+    });
     (prisma.task.create as jest.Mock).mockResolvedValueOnce({ id: 't2', title: 'Follow-up', assignedToId: 'cmembro00000000000000001' });
 
     const token = makeToken(app);

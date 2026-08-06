@@ -389,8 +389,7 @@ export default function CobrancaPage() {
             moduleIcon="💰"
             priceLabel="R$39/mês"
             features={['Lembrete automático', 'Reenvio manual', 'Sem contrato']}
-            user={{ email: me.email, emailVerified: me.emailVerified, document: me.document }}
-            onDocumentSaved={doc => setMe(m => m ? { ...m, document: doc } : m)}
+            user={{ email: me.email, emailVerified: me.emailVerified }}
             onSuccess={() => { setShowCheckout(false); loadMe(); }}
             onClose={() => setShowCheckout(false)}
           />

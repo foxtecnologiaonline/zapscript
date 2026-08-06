@@ -6,28 +6,11 @@ import {
   evolutionBaseUrl,
   evolutionHeaders,
   instanceName as evoInstanceName,
-  createInstance,
-  deleteInstance,
   getConnectionState,
-  setWebhook,
+  deleteInstance,
 } from '../services/evolution';
+import { provisionInstance, requestPairingCode } from '../services/number-provisioning';
 import { getQr } from '../lib/qrStore';
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function getApiBase(): string {
-  const url = process.env.API_URL || process.env.RENDER_EXTERNAL_URL || process.env.APP_URL;
-  if (url) return url.replace(/\/$/, '');
-  console.error('[numbers] ⛔ API_URL não configurado! Configure API_URL no .env da Vultr.');
-  return '';
-}
-
-function buildWebhookUrl(): string {
-  const base   = getApiBase();
-  const url    = `${base}/webhook/evolution`;
-  const secret = process.env.EVOLUTION_WEBHOOK_SECRET;
-  return secret ? `${url}?secret=${encodeURIComponent(secret)}` : url;
-}
 
 // ── Rotas ──────────────────────────────────────────────────────────────────────
 export default async function numberRoutes(app: FastifyInstance) {
@@ -133,69 +116,15 @@ export default async function numberRoutes(app: FastifyInstance) {
     const { id } = req.params;
     const userId = req.user.sub;
 
-    if (!process.env.EVOLUTION_API_URL || !process.env.EVOLUTION_API_KEY) {
-      return reply.code(503).send({
-        error: 'Evolution API não configurada. Adicione EVOLUTION_API_URL e EVOLUTION_API_KEY no servidor.',
-      });
-    }
-
     const number = await prisma.whatsappNumber.findFirst({ where: { id, userId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    const webhookUrl = buildWebhookUrl();
-    const instName   = evoInstanceName(id);  // 'zs-{numberId}'
-
-    try {
-      // Verificar se instância já existe no Evolution
-      const existingState = await getConnectionState(instName);
-
-      if (existingState === 'open') {
-        // Já conectada — re-aplicar webhook (garante byEvents=false) e retornar
-        app.log.info(`[Evolution] Instância ${instName} já está conectada (open)`);
-        await setWebhook(instName, webhookUrl);
-        await (prisma as any).whatsappNumber.update({
-          where: { id },
-          data: { zapiInstanceId: instName, zapiToken: null, status: 'connected', connectedAt: new Date() },
-        });
-        return { ok: true, message: 'WhatsApp já conectado.' };
-
-      } else if (existingState === 'connecting') {
-        // Instância já está gerando QR — reutilizar, apenas re-aplicar webhook
-        // (não deletar: o QR já está disponível no Evolution)
-        app.log.info(`[Evolution] Instância ${instName} em "connecting" — reutilizando, re-aplicando webhook`);
-        await setWebhook(instName, webhookUrl);
-
-      } else if (existingState === 'close') {
-        // Definitivamente desconectada — recriar para estado limpo
-        app.log.info(`[Evolution] Instância ${instName} em "close" — recriando`);
-        await deleteInstance(instName);
-        await new Promise(r => setTimeout(r, 1000));
-        await createInstance(id, webhookUrl);
-        app.log.info(`[Evolution] ✅ Instância recriada: ${instName}`);
-
-      } else {
-        // Instância não existe — criar nova
-        app.log.info(`[Evolution] Criando nova instância: ${instName}`);
-        await createInstance(id, webhookUrl);
-        app.log.info(`[Evolution] ✅ Instância criada: ${instName}`);
-      }
-
-      // Vincular nome da instância ao número (campo zapiInstanceId reutilizado)
-      await (prisma as any).whatsappNumber.update({
-        where: { id },
-        data: {
-          zapiInstanceId: instName,
-          zapiToken:      null,        // Evolution usa chave global, não token por instância
-          status:         'connecting',
-        },
-      });
-
-      return { ok: true, message: 'Pronto para escanear o QR Code.' };
-
-    } catch (err: any) {
-      app.log.error({ err: err.message }, '[Evolution] Erro ao criar/conectar instância');
-      return reply.code(502).send({ error: `Erro ao configurar instância: ${err.message}` });
+    const result = await provisionInstance(id, app.log);
+    if (!result.ok) {
+      const isConfigError = result.message.startsWith('Evolution API não configurada');
+      return reply.code(isConfigError ? 503 : 502).send({ error: result.message });
     }
+    return { ok: true, message: result.message };
   });
 
   // ── GET /numbers/:id/qr ───────────────────────────────────────────────────
@@ -266,50 +195,15 @@ export default async function numberRoutes(app: FastifyInstance) {
       const number = await (prisma as any).whatsappNumber.findFirst({ where: { id, userId } });
       if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-      const instName = number.zapiInstanceId ?? evoInstanceName(id);
       if (!number.zapiInstanceId) {
         return reply.code(400).send({ error: 'Instância não iniciada. Chame /connect primeiro.' });
       }
 
-      const cleanPhone = phone.replace(/\D/g, '');
-      const fullPhone  = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-
-      try {
-        const base = evolutionBaseUrl();
-
-        // Pairing code: mesmo endpoint do QR, mas com ?number= na query string
-        // GET /instance/connect/{name}?number=5511999999999 → { pairingCode: "ABCD1234" }
-        const res = await fetch(
-          `${base}/instance/connect/${instName}?number=${fullPhone}`,
-          { headers: evolutionHeaders(), signal: AbortSignal.timeout(15_000) }
-        );
-
-        const rawText = await res.text();
-        app.log.info(`[Evolution] pairing-code status=${res.status}: ${rawText.substring(0, 300)}`);
-
-        let data: any = {};
-        try { data = JSON.parse(rawText); } catch { /* não é JSON */ }
-
-        if (res.ok) {
-          const code = data?.pairingCode ?? data?.code;
-          // pairingCode é o código de 8 chars para digitar no WhatsApp
-          // code sem pairingCode = QR em modo texto, não é o que queremos
-          if (code && data?.pairingCode) {
-            app.log.info(`[Evolution] Pairing code gerado: ${code}`);
-            return { code };
-          }
-          // Retornou QR em vez de pairing code — número pode não ser suportado
-          app.log.warn(`[Evolution] Resposta sem pairingCode. Data: ${rawText.substring(0, 200)}`);
-          return reply.code(502).send({ error: 'Código por número indisponível para este número.', fallbackToQr: true });
-        }
-
-        app.log.warn(`[Evolution] pairing-code erro ${res.status}: ${rawText.substring(0, 200)}`);
-        return reply.code(502).send({ error: 'Erro ao gerar código. Tente o QR Code.', fallbackToQr: true });
-
-      } catch (err: any) {
-        app.log.error({ err: err.message }, '[Evolution] Erro ao solicitar pairing code');
-        return reply.code(502).send({ error: `Erro ao solicitar código: ${err.message}`, fallbackToQr: true });
+      const result = await requestPairingCode(id, phone, app.log);
+      if (!result.ok) {
+        return reply.code(502).send({ error: result.error, fallbackToQr: result.fallbackToQr });
       }
+      return { code: result.code };
     }
   );
 
