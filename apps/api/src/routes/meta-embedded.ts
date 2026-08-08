@@ -7,15 +7,17 @@ import { encryptStr } from '../services/encryption';
 /**
  * Meta Embedded Signup (WhatsApp Cloud API)
  * ------------------------------------------
- * Fluxo OFICIAL da Meta para o App Review: o usuário conecta um WhatsApp
- * Business Account (WABA) pelo popup oficial; o frontend devolve um `code` +
- * o sessionInfo (waba_id, phone_number_id). Aqui trocamos o code por um token,
- * assinamos o app no WABA e guardamos o vínculo criptografado.
+ * Fluxo OFICIAL da Meta: o usuário conecta um WhatsApp Business Account (WABA)
+ * pelo popup oficial; o frontend devolve um `code` + o sessionInfo (waba_id,
+ * phone_number_id). Aqui trocamos o code por um token, assinamos o app no WABA
+ * e guardamos o vínculo criptografado (`provider: 'meta'` em WhatsappNumber).
  *
- * IMPORTANTE: usado apenas para a revisão da Meta. Usuários reais seguem no
- * Evolution API. O pipeline de conversão NÃO é alterado por este módulo.
+ * Coexiste com o Evolution API — nada aqui migra clientes automaticamente.
+ * O vínculo salvo por este módulo só passa a valer para o pipeline real de
+ * transcrição (worker) quando `WHATSAPP_OFFICIAL_MULTITENANT_ENABLED=true`;
+ * ver `docs/whatsapp-official-golive.md` para o checklist completo de go-live.
  *
- * Segredos (definidos pelo operador no Render — nunca em código):
+ * Segredos (no `.env` do servidor Vultr — nunca em código; ver CLAUDE.md):
  *   META_APP_ID, META_APP_SECRET (fallback FACEBOOK_APP_SECRET),
  *   META_GRAPH_VERSION (opcional, default v23.0), INTERNAL_API_SECRET.
  */

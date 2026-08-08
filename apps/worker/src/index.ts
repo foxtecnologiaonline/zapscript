@@ -9,7 +9,7 @@ import { redis, voiceCommandQueue } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { convertToMp3, splitMp3ByDuration, estimateMp3DurationSec } from './services/audio';
 import { transcribeAudio, WhisperSegment } from './services/whisper';
-import { downloadAudioFromMeta, sendMessageToMeta } from './services/whatsapp-official';
+import { downloadAudioFromMeta, sendMessageToMeta, MetaCredentials } from './services/whatsapp-official';
 import { downloadAudioFromTwilio, sendMessageViaTwilio } from './services/twilio';
 import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread } from './services/evolution';
 import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encryption';
@@ -991,23 +991,41 @@ async function processManualJob(job: Job) {
 //  PIPELINE C — WhatsApp Cloud API (Meta official)
 // ─────────────────────────────────────────────────────────────────
 async function processOfficialWhatsAppJob(job: Job) {
-  const { userId, senderPhone, senderName, mediaId, messageId } = job.data;
+  const { userId, senderPhone, senderName, mediaId, messageId, numberId } = job.data;
   const durationMin = 1; // Estimativa padrão
 
   log(job, `📥 WhatsApp Cloud API: ${senderName} (${senderPhone})`);
 
   let mp3Buffer: Buffer | null = null;
+  // Credenciais do número (Embedded Signup multi-tenant) — hoisted para o catch
+  // também conseguir notificar o usuário pelo número certo em caso de erro.
+  let metaCreds: MetaCredentials | undefined;
 
   try {
-    // PASSO 1: Verificar saldo + buscar numberId real do usuário
-    const [balance, firstNumber] = await Promise.all([
+    // PASSO 1: Verificar saldo + buscar o número que efetivamente recebeu a mensagem.
+    // numberId vem do webhook (roteado por metaPhoneNumberId) quando disponível;
+    // sem ele, cai no primeiro número do usuário (compat com jobs antigos/single-tenant).
+    const [balance, resolvedNumber] = await Promise.all([
       prisma.minuteBalance.findUnique({ where: { userId } }),
-      prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+      numberId
+        ? prisma.whatsappNumber.findFirst({ where: { id: numberId, userId } })
+        : prisma.whatsappNumber.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }),
     ]);
-    if (!firstNumber) {
+    if (!resolvedNumber) {
       log(job, '⚠️  Usuário sem número cadastrado');
       return { skipped: true, reason: 'no_number' };
     }
+    const firstNumber = resolvedNumber;
+
+    // Multi-tenant Embedded Signup: usa o token/phoneNumberId próprios do número
+    // conectado, em vez do par único configurado via env (WHATSAPP_API_TOKEN/
+    // WHATSAPP_PHONE_NUMBER_ID). Atrás de flag — desligada, comportamento é
+    // idêntico ao de hoje (número único global).
+    const multiTenantEnabled = process.env.WHATSAPP_OFFICIAL_MULTITENANT_ENABLED === 'true';
+    metaCreds =
+      multiTenantEnabled && firstNumber.metaAccessTokenEnc && firstNumber.metaPhoneNumberId
+        ? { apiToken: decryptStr(firstNumber.metaAccessTokenEnc), phoneNumberId: firstNumber.metaPhoneNumberId }
+        : undefined;
 
     // Cota por ÁUDIOS (métrica primária). FREE no limite → bloqueia + upsell
     // (aviso só ao próprio usuário). PRO → teto oculto, skip silencioso.
@@ -1021,7 +1039,7 @@ async function processOfficialWhatsAppJob(job: Job) {
 
     // PASSO 2: Baixar áudio da Meta API
     log(job, '⬇️  Baixando áudio da Meta API...');
-    const audioBuffer = await downloadAudioFromMeta(mediaId);
+    const audioBuffer = await downloadAudioFromMeta(mediaId, metaCreds);
     log(job, `✅ Baixado: ${(audioBuffer.length / 1024).toFixed(0)} KB`);
 
     // PASSO 3: Converter para MP3
@@ -1032,7 +1050,7 @@ async function processOfficialWhatsAppJob(job: Job) {
     // PASSO 3.5: Teto de 10 min — rejeita antes de processar (não conta cota).
     if (isAudioTooLong(estimateMp3DurationSec(mp3Buffer))) {
       log(job, '⚠️  Áudio acima de 10 min — rejeitado sem contar cota');
-      await sendMessageToMeta(senderPhone, REJECT_TOO_LONG_MSG).catch(() => null);
+      await sendMessageToMeta(senderPhone, REJECT_TOO_LONG_MSG, metaCreds).catch(() => null);
       return { skipped: true, reason: 'audio_too_long' };
     }
 
@@ -1053,7 +1071,7 @@ async function processOfficialWhatsAppJob(job: Job) {
     // PASSO 6: Enviar resposta no WhatsApp
     log(job, '📤 Enviando resposta via Meta API...');
     const messages = buildMessage(bullets, originalText, { contactName: senderName, durationSec, footerText: footer.variantText });
-    for (const m of messages) await sendMessageToMeta(senderPhone, m);
+    for (const m of messages) await sendMessageToMeta(senderPhone, m, metaCreds);
     log(job, '✅ Mensagem enviada');
 
     // PASSO 7: Salvar conversão e debitar minutos — duração real do Whisper
@@ -1077,7 +1095,7 @@ async function processOfficialWhatsAppJob(job: Job) {
     log(job, `❌ Erro: ${(err as Error).message}`);
     // Tentar notificar usuário do erro
     try {
-      await sendMessageToMeta(senderPhone, '❌ Erro ao processar seu áudio. Tente novamente.');
+      await sendMessageToMeta(senderPhone, '❌ Erro ao processar seu áudio. Tente novamente.', metaCreds);
     } catch (notifyErr: any) {
       logger.warn(`[Worker] M7: Falha ao notificar usuário Meta sobre erro: ${notifyErr.message}`);
     }

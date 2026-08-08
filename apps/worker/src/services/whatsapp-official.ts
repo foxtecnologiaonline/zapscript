@@ -4,10 +4,19 @@ import { logger } from '../lib/logger';
 const META_API_URL = 'https://graph.facebook.com/v18.0';
 
 /**
+ * Credenciais de um número específico (Embedded Signup multi-tenant).
+ * Quando omitidas, cai no número único configurado via env (comportamento legado).
+ */
+export interface MetaCredentials {
+  apiToken: string;
+  phoneNumberId: string;
+}
+
+/**
  * Baixar áudio da Meta API e retornar como Buffer
  */
-export async function downloadAudioFromMeta(mediaId: string): Promise<Buffer> {
-  const apiToken = process.env.WHATSAPP_API_TOKEN;
+export async function downloadAudioFromMeta(mediaId: string, creds?: MetaCredentials): Promise<Buffer> {
+  const apiToken = creds?.apiToken || process.env.WHATSAPP_API_TOKEN;
 
   if (!apiToken) {
     throw new Error('WHATSAPP_API_TOKEN não configurado');
@@ -50,9 +59,9 @@ export async function downloadAudioFromMeta(mediaId: string): Promise<Buffer> {
 /**
  * Enviar mensagem de texto via Meta API
  */
-export async function sendMessageToMeta(phoneNumber: string, text: string): Promise<string> {
-  const apiToken = process.env.WHATSAPP_API_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+export async function sendMessageToMeta(phoneNumber: string, text: string, creds?: MetaCredentials): Promise<string> {
+  const apiToken = creds?.apiToken || process.env.WHATSAPP_API_TOKEN;
+  const phoneNumberId = creds?.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
 
   if (!apiToken || !phoneNumberId) {
     throw new Error('WHATSAPP_API_TOKEN ou WHATSAPP_PHONE_NUMBER_ID não configurado');
