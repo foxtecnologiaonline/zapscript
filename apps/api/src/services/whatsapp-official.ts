@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { logger } from '../lib/logger';
 
-const META_API_URL = 'https://graph.facebook.com/v18.0';
+const META_API_URL = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v23.0'}`;
 
 export interface WhatsAppMessage {
   messaging_product: 'whatsapp';
