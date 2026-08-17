@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Bootstrap da API + Worker + Redis num VPS Oracle OCI (Ubuntu 22.04, ARM
-# A1.Flex — Always Free). Builda as imagens NA PRÓPRIA VM (a A1.Flex tem RAM
-# de sobra pra isso) em vez de puxar do ghcr.io, porque as imagens publicadas
-# lá hoje são só amd64 (ver .github/workflows/build-and-push.yml) — não rodam
-# no ARM da OCI sem build multi-arch, que este script não pressupõe.
+# Bootstrap da API + Worker num VPS Oracle OCI (Ubuntu 22.04, ARM A1.Flex —
+# Always Free). Redis é o Upstash free tier (fora da VM — ver README). Builda
+# as imagens NA PRÓPRIA VM (a A1.Flex tem RAM de sobra pra isso) em vez de
+# puxar do ghcr.io, porque as imagens publicadas lá hoje são só amd64 (ver
+# .github/workflows/build-and-push.yml) — não rodam no ARM da OCI sem build
+# multi-arch, que este script não pressupõe.
 #
 # Rode UMA vez, a partir da RAIZ do repo clonado (não de dentro desta pasta):
 #   git clone https://github.com/foxtecnologiaonline/zapscript.git
 #   cd zapscript
-#   cp .env.example .env && nano .env   # preencher os segredos
+#   cp .env.example .env && nano .env   # preencher os segredos (incl. REDIS_URL do Upstash)
 #   chmod +x deploy/oci-backend/setup.sh && ./deploy/oci-backend/setup.sh
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -17,8 +18,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."   # volta pra raiz do repo
 
 # --env-file explícito: por padrão o Compose procura o .env na pasta do
-# arquivo -f (deploy/oci-backend/), não na raiz do repo — sem isso,
-# ${REDIS_PASSWORD}/${DOMAIN} ficam em branco dentro do docker-compose.yml.
+# arquivo -f (deploy/oci-backend/), não na raiz do repo — sem isso, ${DOMAIN}
+# fica em branco dentro do docker-compose.yml.
 COMPOSE="docker compose -f deploy/oci-backend/docker-compose.yml --env-file .env"
 
 if [[ ! -f .env ]]; then
@@ -26,8 +27,14 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-if ! grep -q '^DOMAIN=' .env || ! grep -q '^REDIS_PASSWORD=' .env; then
-  echo "❌ Faltam DOMAIN e/ou REDIS_PASSWORD no .env (necessários pro Caddy/Redis deste deploy)." >&2
+if ! grep -q '^DOMAIN=' .env; then
+  echo "❌ Falta DOMAIN no .env (necessário pro Caddy emitir o certificado)." >&2
+  exit 1
+fi
+
+if ! grep -Eq '^REDIS_URL=rediss?://' .env; then
+  echo "❌ REDIS_URL ausente ou não parece uma URL do Upstash (rediss://...). Crie um" >&2
+  echo "   banco grátis em upstash.com e cole a connection string no .env antes de continuar." >&2
   exit 1
 fi
 
@@ -58,8 +65,7 @@ fi
 echo "▶ 3/4 — Buildando as imagens (API + Worker) na própria VM — pode levar alguns minutos…"
 sudo $COMPOSE build
 
-echo "▶ 4/4 — Subindo a stack (Redis → API → Worker → Caddy)…"
-sudo $COMPOSE up -d redis
+echo "▶ 4/4 — Subindo a stack (API → Worker → Caddy; Redis é o Upstash, fora da VM)…"
 sudo $COMPOSE up -d api
 sudo $COMPOSE up -d worker
 sudo $COMPOSE up -d caddy

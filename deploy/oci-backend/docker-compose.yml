@@ -1,12 +1,15 @@
-# ── ZapScript — API + Worker + Redis no Oracle Cloud Always Free ─────────────
-# Caminho oficial (WhatsApp Cloud API) — SEM Evolution API, então não precisa
-# de sessão WhatsApp sempre-on nem de Postgres local (o banco é o Supabase).
+# ── ZapScript — API + Worker no Oracle Cloud Always Free ─────────────────────
+# Caminho oficial (WhatsApp Cloud API) — SEM Evolution API (não precisa de
+# sessão WhatsApp sempre-on nem Postgres local; o banco é o Supabase) e SEM
+# Redis local (usa Upstash free tier — ver README, seção "Redis"). Isso deixa
+# a VM só com 2 processos Node leves; sobra RAM de sobra no Always Free.
 #
 # Uso (rodar da RAIZ do repo clonado, não desta pasta):
-#   docker compose -f deploy/oci-backend/docker-compose.yml build
-#   docker compose -f deploy/oci-backend/docker-compose.yml up -d
+#   docker compose -f deploy/oci-backend/docker-compose.yml --env-file .env build
+#   docker compose -f deploy/oci-backend/docker-compose.yml --env-file .env up -d
 #
-# Pré-requisito: .env preenchido na RAIZ do repo (cp .env.example .env).
+# Pré-requisito: .env preenchido na RAIZ do repo (cp .env.example .env),
+# incluindo REDIS_URL apontando pro Upstash (não é mais self-hosted aqui).
 
 services:
 
@@ -52,26 +55,6 @@ services:
         max-size: "50m"
         max-file: "3"
 
-  redis:
-    image: redis:7-alpine
-    container_name: zapscript-redis
-    restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD}
-    volumes:
-      - redis_data:/data
-    networks:
-      - zapscript
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   # SSL automático (Let's Encrypt) + proxy reverso. Substitui o Nginx nativo
   # que rodava no host na Vultr — aqui tudo, inclusive o proxy, é container.
   caddy:
@@ -93,8 +76,6 @@ services:
       - zapscript
 
 volumes:
-  redis_data:
-    driver: local
   caddy_data:
     driver: local
   caddy_config:

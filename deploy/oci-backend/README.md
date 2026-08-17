@@ -1,11 +1,33 @@
-# API + Worker + Redis no Oracle Cloud Always Free
+# API + Worker no Oracle Cloud Always Free (+ Redis no Upstash)
 
-Objetivo: colocar o backend (API + Worker + Redis) no ar de novo, **de graça e pra valer**
-— não como ponte temporária. Sem Evolution API (não precisa dela no caminho oficial da Meta),
-então a VM não precisa manter sessão de WhatsApp sempre-on nem rodar Postgres local — o
-banco continua sendo o Supabase.
+Objetivo: colocar o backend no ar de novo, **de graça e pra valer** — não como ponte
+temporária. Dividido em 2 serviços pra não depender só da RAM de uma VM:
 
-> Você já tem conta na OCI, então pula direto pra criação da VM (Parte 1).
+- **Redis → Upstash free tier** (managed, fora da VM; o código já foi feito pra rodar nele —
+  ver comentários em `apps/*/src/*/queue.ts`)
+- **API + Worker → 1 VM na OCI** (Always Free, ARM). Sem Evolution API (não precisa dela no
+  caminho oficial da Meta) e sem Redis local, então a VM só roda 2 processos Node leves —
+  sobra bastante RAM da cota Always Free.
+
+O banco continua sendo o Supabase, sem mudança nenhuma aí.
+
+> Você já tem conta na OCI, então pula direto pra Parte 1. A conta do Upstash (Parte 0) é
+> separada — se não tiver, é cadastro rápido (GitHub/Google login) e o plano grátis não pede
+> cartão.
+
+---
+
+## Parte 0 — Redis grátis no Upstash
+
+1. [upstash.com](https://upstash.com) → **Create database** → plano **Free**.
+   Região: escolha a mais perto da VM da OCI (Parte 1) pra menor latência.
+2. Depois de criado, na aba **Connect**, escolha **".env"** ou **"ioredis"** — copia a linha
+   que começa com `rediss://default:...@....upstash.io:6379`.
+3. Guarde esse valor — vai virar `REDIS_URL` no `.env` da Parte 2.
+
+> O tier grátis do Upstash (256MB / ~10k comandos por dia) é diferente do Upstash **pago** que
+> o ZapScript usou antes e descomissionou por custo (ver `CLAUDE.md`) — aqui é escolha
+> deliberada por ser gratuito, não uma volta atrás por engano.
 
 ---
 
@@ -61,8 +83,7 @@ nano .env
 #   Preencher pelo menos: DATABASE_URL, DIRECT_URL, SUPABASE_URL, SUPABASE_ANON_KEY,
 #   SUPABASE_SERVICE_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, JWT_SECRET, ENCRYPTION_KEY,
 #   INTERNAL_TOKEN, ADMIN_TOKEN, ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN, RESEND_API_KEY,
-#   REDIS_PASSWORD + REDIS_URL (mesma senha nas duas linhas — ver comentário no .env.example),
-#   DOMAIN=api.zapscript.me
+#   REDIS_URL (a connection string do Upstash da Parte 0), DOMAIN=api.zapscript.me
 #   Se for reativar o caminho oficial da Meta agora: META_APP_ID, META_APP_SECRET,
 #   INTERNAL_API_SECRET, e WHATSAPP_OFFICIAL_MULTITENANT_ENABLED=true
 
@@ -76,7 +97,7 @@ chmod +x deploy/oci-backend/setup.sh
 ```bash
 # Acompanhar o SSL (Let's Encrypt via Caddy) — rodar da raiz do repo.
 # --env-file .env é necessário aqui também (ver comentário no setup.sh):
-# sem ele o Compose não acha DOMAIN/REDIS_PASSWORD e os containers sobem errados.
+# sem ele o Compose não acha DOMAIN e os containers sobem errados.
 sudo docker compose -f deploy/oci-backend/docker-compose.yml --env-file .env logs -f caddy
 # Espere aparecer "certificate obtained"
 
@@ -85,23 +106,23 @@ curl https://api.zapscript.me/health
 # Deve responder {"status":"ok",...}
 ```
 
-Depois disso, o resto da stack já enxerga o Supabase (banco) e a fila (Redis local). Não
-precisa mexer na Vercel — `NEXT_PUBLIC_API_URL` já aponta pra `api.zapscript.me`, só o IP por
-trás do DNS mudou.
+Depois disso, o resto da stack já enxerga o Supabase (banco) e o Upstash (fila). Não precisa
+mexer na Vercel — `NEXT_PUBLIC_API_URL` já aponta pra `api.zapscript.me`, só o IP por trás do
+DNS mudou.
 
 ## Rollback / troca de VM
 
-Se essa VM tiver problema, é só repetir a Parte 1 numa VM nova e trocar o DNS de novo — nenhum
-dado de produção mora na VM (banco é Supabase, segredos ficam só no `.env` que você preenche
-de novo). O único estado local é o volume do Redis (fila de jobs em trânsito), que pode ser
-perdido sem problema — jobs presos na fila voltam a ser processados quando o worker sobe nas
-próximas mensagens.
+Se essa VM tiver problema, é só repetir a Parte 1 numa VM nova, colar o **mesmo** `REDIS_URL`
+do Upstash no `.env` novo, e trocar o DNS de novo — nenhum dado de produção mora na VM (banco
+é Supabase, fila é Upstash, segredos ficam só no `.env` que você preenche de novo). Zero
+estado local pra perder — a VM em si é totalmente descartável.
 
 ## Diferença pro deploy antigo (Vultr)
 
-| | Vultr (`infra/docker-compose.prod.yml`) | OCI (aqui) |
+| | Vultr (`infra/docker-compose.prod.yml`) | OCI + Upstash (aqui) |
 |---|---|---|
 | Evolution API | Sim (Baileys, sempre-on) | **Não** — caminho 100% oficial (Meta Cloud API) |
+| Redis | Container local na Vultr | Upstash free tier (fora da VM) |
 | Proxy/SSL | Nginx nativo no host | Caddy em container (SSL automático) |
 | Build das imagens | Direto no servidor via `ops.yml` (SSH) | Direto na VM via `setup.sh` (manual, primeira vez) |
 | Custo | ~$45/mês | **$0 — Always Free, permanente** |
