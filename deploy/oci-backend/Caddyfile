@@ -1,0 +1,6 @@
+# SSL automático (Let's Encrypt). O domínio vem da variável DOMAIN do .env
+# (repo root). Pré-requisitos: registro DNS A de {DOMAIN} apontando para o IP
+# da VM da OCI, e portas 80/443 abertas (Security List da VCN + setup.sh).
+{$DOMAIN} {
+	reverse_proxy api:3001
+}

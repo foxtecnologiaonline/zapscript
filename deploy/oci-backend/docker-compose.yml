@@ -1,0 +1,105 @@
+# ── ZapScript — API + Worker + Redis no Oracle Cloud Always Free ─────────────
+# Caminho oficial (WhatsApp Cloud API) — SEM Evolution API, então não precisa
+# de sessão WhatsApp sempre-on nem de Postgres local (o banco é o Supabase).
+#
+# Uso (rodar da RAIZ do repo clonado, não desta pasta):
+#   docker compose -f deploy/oci-backend/docker-compose.yml build
+#   docker compose -f deploy/oci-backend/docker-compose.yml up -d
+#
+# Pré-requisito: .env preenchido na RAIZ do repo (cp .env.example .env).
+
+services:
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    container_name: zapscript-api
+    restart: unless-stopped
+    env_file: ../../.env
+    networks:
+      - zapscript
+    healthcheck:
+      test: ["CMD", "node", "-e",
+        "require('http').get('http://localhost:3001/health',(r)=>{process.exit(r.statusCode===200?0:1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: apps/worker/Dockerfile
+    container_name: zapscript-worker
+    restart: unless-stopped
+    env_file: ../../.env
+    environment:
+      API_URL: http://api:3001   # comunicação interna Docker
+    networks:
+      - zapscript
+    depends_on:
+      api:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: zapscript-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - zapscript
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # SSL automático (Let's Encrypt) + proxy reverso. Substitui o Nginx nativo
+  # que rodava no host na Vultr — aqui tudo, inclusive o proxy, é container.
+  caddy:
+    image: caddy:2-alpine
+    container_name: zapscript-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - zapscript
+
+volumes:
+  redis_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+networks:
+  zapscript:
+    driver: bridge
