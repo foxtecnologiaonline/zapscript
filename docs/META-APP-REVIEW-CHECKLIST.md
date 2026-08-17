@@ -93,33 +93,90 @@ contracted by ZapScript and do not use it for their own purposes.
 
 ## 🛂 FASE 4 — Permissões (Advanced Access)
 
-- [ ] **REMOVER** `manage_app_solution` do pedido (causa de reprovação anterior)
-- [ ] Solicitar `whatsapp_business_messaging`
-- [ ] Solicitar `whatsapp_business_management`
-- [ ] Solicitar `business_management`
+- [ ] **REMOVER** `manage_app_solution` do pedido (causa de reprovação anterior — não pedir de novo)
+- [ ] Solicitar só estas 3: `whatsapp_business_messaging`, `whatsapp_business_management`, `business_management`
 
-**Justificativas (colar em inglês):**
+### Texto pronto para colar — "Tell us how you're using this permission or feature"
 
-| Permissão | Justificativa |
-|---|---|
-| `whatsapp_business_messaging` | *Our app lets a business owner connect their own WhatsApp Business Account via Embedded Signup so our service can send and receive messages (audio transcription summaries) on their behalf.* |
-| `whatsapp_business_management` | *Used to subscribe our app to the connected WABA (`/{waba-id}/subscribed_apps`) and read the connected phone number details after Embedded Signup.* |
-| `business_management` | *Required by Embedded Signup to let the user select/authorize their Business and WABA during the official Meta connection flow.* |
+**`[whatsapp_business_messaging]`**
+```
+ZapScript is a productivity SaaS. A business owner connects their own WhatsApp Business phone
+number to our platform via the official Meta Embedded Signup flow. Once connected, when one of
+their contacts sends a voice message to that WhatsApp Business number, our backend uses
+whatsapp_business_messaging to download the audio and to reply in the same conversation with an
+automatically generated text transcription and summary. This permission is only used to send and
+receive messages on behalf of the business account that explicitly connected through Embedded
+Signup — we do not send unsolicited messages.
+```
+
+**`[whatsapp_business_management]`**
+```
+Right after a business owner completes Embedded Signup, we use whatsapp_business_management to
+subscribe our app to their WhatsApp Business Account (POST /{waba-id}/subscribed_apps) so we can
+receive their webhook events, and to read their connected phone number details (verified name,
+phone_number_id) so we can route incoming messages to the correct customer account inside our
+platform. We also use it to let the business owner see their connection status and manage message
+templates used in automated transcription replies from our own dashboard.
+```
+
+**`[business_management]`**
+```
+ZapScript uses business_management to let a business owner select and authorize their Business
+Portfolio and WhatsApp Business Account during the official Meta Embedded Signup flow. This is
+required by the Embedded Signup flow itself so the user can choose which Business and WABA to
+connect to our platform for automatic audio transcription of messages received on their WhatsApp
+Business number.
+```
+
+> As 3 respostas seguem também a pergunta padrão "With permission X, your app can..." — não
+> precisa editar essa parte, é texto fixo da Meta explicando o escopo da permissão; só o campo
+> "Tell us how you're using this permission" acima é texto livre nosso.
+
+### Data handling (aparece uma vez, não por permissão)
+
+**`processor-0`** (Do you have data processors...) — trocar de "No" para:
+```
+Yes. We use the following data processors to provide our service: (1) OpenAI (Whisper API) —
+receives the voice message audio to generate a text transcription; (2) Anthropic (Claude API) —
+receives the transcribed text to generate a summary; (3) Supabase (hosted on AWS) — database and
+temporary audio file storage. These processors only process data to perform the function
+contracted by ZapScript and do not use it for their own purposes.
+```
+
+**`responsible-1`** (legal entity) — manter como está:
+```
+FOX tecnologIA ltda, CNPJ: 66.586.436/0001-12. Legal representative: Roberto Frattari Tulio Silva, CPF: 01250511666.
+```
+
+**`responsible-2`** (país): `Brazil`
+
+**`requests-3`** (pedidos de autoridades públicas nos últimos 12 meses): `No`
+
+**`requests-4`** (políticas sobre pedidos de autoridades): manter as 4 opções marcadas como na submissão anterior — essas não tiveram problema.
 
 ---
 
 ## 🎥 FASE 5 — Screencast (faz ou quebra a aprovação)
 
-Gravar **uma tela contínua, sem cortes**, com narração/legendas em **inglês**:
+Gravar **uma tela contínua, sem cortes**, narração ou legendas em **inglês**. Pode ser **1 vídeo
+só**, anexado nos 3 campos de vídeo (`whatsapp_business_messaging`, `whatsapp_business_management`,
+`business_management`) — não precisa gravar 3 vezes.
 
-- [ ] Login na **conta de teste** que será fornecida à Meta
-- [ ] Navegar até `/dashboard/numeros` e mostrar a seção **"Conectar via API oficial (Meta)"**
-- [ ] Clicar **"Conectar com a Meta"** → o **popup oficial da Meta** abre
-- [ ] Selecionar Business + WABA + número no popup e **concluir** (FINISH)
-- [ ] Voltar ao app mostrando estado **"Conectado — <número>"**
-- [ ] (Recomendado) Mostrar no **WhatsApp Manager** que o app está **assinado no WABA**
-- [ ] Mostrar o **"Desconectar"** funcionando
-- [ ] URL `www.zapscript.me` visível na barra; resolução legível; 2–4 min
+Roteiro cronometrado (~3 min):
+
+- [ ] **0:00–0:15** — Login na conta de teste (`zapscript.me/entrar`)
+- [ ] **0:15–0:40** — Dashboard → Números; mostrar a seção "Conectar via API oficial (Meta)"
+- [ ] **0:40–1:10** — Clicar "Conectar com a Meta" → **popup oficial da Meta** abre; selecionar
+      Business + WABA + número; concluir (FINISH) — *evidencia `business_management` +
+      `whatsapp_business_management`*
+- [ ] **1:10–1:25** — Voltar ao app: estado **"Conectado — <número>"**
+- [ ] **1:25–1:45** *(recomendado)* — WhatsApp Manager mostrando o app **assinado no WABA** —
+      *evidencia `whatsapp_business_management`*
+- [ ] **1:45–2:15** — De um celular/WhatsApp Web, enviar um áudio de voz pro número conectado
+- [ ] **2:15–2:45** — Mostrar a resposta chegando na mesma conversa com transcrição + resumo —
+      *evidencia `whatsapp_business_messaging`*
+- [ ] **2:45–3:00** — Clicar "Desconectar", confirmar estado desconectado
+- [ ] URL `zapscript.me` visível na barra o tempo todo; resolução legível
 
 ---
 
@@ -129,15 +186,32 @@ Gravar **uma tela contínua, sem cortes**, com narração/legendas em **inglês*
 - [ ] Preencher o campo de instruções (modelo em inglês):
 
 ```
-Test account: <email> / <senha>   (já com plano ativo)
-Steps:
-1. Log in at https://www.zapscript.me/entrar
-2. Go to Dashboard → Números (https://www.zapscript.me/dashboard/numeros)
-3. Scroll to "Conectar via API oficial (Meta)" and click "Conectar com a Meta"
-4. Complete the official Meta Embedded Signup popup (select Business → WABA → phone)
-5. The page shows "Conectado". Our backend subscribes our app to the WABA.
-Note: This is the official WhatsApp Cloud API connection flow via Embedded Signup.
+Test account: <email> / <SENHA_FORTE>   (active plan, no payment needed)
+
+Steps to test business_management and whatsapp_business_management (Embedded Signup):
+1. Log in at https://zapscript.me/entrar with the test account above.
+2. Go to Dashboard → Números (https://zapscript.me/dashboard/numeros).
+3. Scroll to "Conectar via API oficial (Meta)" and click "Conectar com a Meta".
+4. Complete the official Meta Embedded Signup popup: select a Business, a WhatsApp Business
+   Account and a phone number, then finish.
+5. The page updates to "Conectado — <phone number>". At this point our backend has exchanged
+   the authorization code for an access token, subscribed our app to the connected WABA
+   (POST /{waba-id}/subscribed_apps), and stored the connection.
+6. Click "Desconectar" to confirm the disconnect flow also works.
+
+Steps to test whatsapp_business_messaging:
+7. From the WhatsApp number you just connected (or the Meta test number), send a short voice
+   message to that WhatsApp Business number.
+8. Within a few seconds, our platform replies in the same WhatsApp conversation with the text
+   transcription and an AI-generated summary of the audio.
+
+Note: This is the official WhatsApp Cloud API flow via Embedded Signup — no phone QR-code
+pairing or unofficial libraries are used for accounts connected this way.
 ```
+
+> ⚠️ Pré-requisito pra esse roteiro funcionar de verdade (não só no texto): o backend precisa
+> estar no ar, `WHATSAPP_OFFICIAL_MULTITENANT_ENABLED=true`, e `NEXT_PUBLIC_META_APP_ID`/
+> `NEXT_PUBLIC_META_CONFIG_ID` setadas na Vercel (senão o botão nem aparece). Ver Fase 7.
 
 ---
 
