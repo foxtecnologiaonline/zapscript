@@ -1,0 +1,173 @@
+# render.yaml — ZapScript Blueprint (API + Worker), caminho oficial (Meta Cloud API)
+# Documentação: https://render.com/docs/blueprint-spec
+#
+# CONTEXTO: o servidor Vultr (que hospedava API+Worker+Redis+Evolution API) foi
+# cancelado. Este blueprint sobe só API + Worker aqui no Render — SEM Evolution
+# API (não precisa dela no caminho oficial da Meta Cloud API) e SEM Redis local
+# (é o Upstash free tier, já criado — cole a REDIS_URL de lá abaixo).
+#
+# CUSTO: API no plano Free ($0 — dorme após 15min sem tráfego, ver nota abaixo)
+# + Worker no plano Starter ($7/mês — precisa ficar sempre ativo pra consumir a
+# fila; Render não tem plano Free para "type: worker"). Total: ~$7/mês, 84%
+# mais barato que os $45/mês da Vultr.
+#
+# NOTA sobre o "dormir" da API grátis: configure um ping externo gratuito (ex:
+# UptimeRobot, cron-job.org) batendo em https://api.zapscript.me/health a cada
+# ~10 minutos — sem isso, a primeira mensagem depois de um período ocioso
+# demora ~30-50s pra responder (a Meta pode dar timeout no webhook).
+#
+# COMO USAR:
+#   1. https://dashboard.render.com → "New" → "Blueprint"
+#   2. Conectar este repositório GitHub, branch a usar
+#   3. Render cria os 2 serviços abaixo automaticamente
+#   4. Preencher as variáveis marcadas "sync: false" no Environment de cada serviço
+#   5. Configurar domínio customizado api.zapscript.me no serviço zapscript-api
+#      (Settings → Custom Domain) e trocar o DNS de A-record (Vultr) para
+#      CNAME apontando pro *.onrender.com que o Render mostrar
+#   6. Cada push na branch configurada faz deploy automático
+
+services:
+
+  # ── API (Fastify + Socket.IO + rotas Meta Embedded Signup) ─────────────────
+  - type: web
+    name: zapscript-api
+    runtime: node
+    # Sem rootDir → Render usa a raiz do repo; o build acessa packages/database
+    buildCommand: cd apps/api && npm ci && npm run build
+    startCommand: >
+      cd apps/api &&
+      npx prisma migrate deploy
+        --schema=../../packages/database/prisma/schema.prisma &&
+      node dist/index.js
+    region: ohio
+    plan: free
+    branch: master
+    nodeVersion: 20
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render define PORT automaticamente — a API lê process.env.PORT || 3001
+
+      # ── Banco de dados (Supabase) ────────────────────────────────────────
+      - key: DATABASE_URL
+        sync: false          # connection pooler (porta 6543)
+      - key: DIRECT_URL
+        sync: false          # conexão direta, só pra migrations (porta 5432)
+
+      # ── Redis (Upstash free tier) ────────────────────────────────────────
+      - key: REDIS_URL
+        sync: false          # rediss://default:SENHA@HOST.upstash.io:6379
+
+      # ── Autenticação / Segurança ─────────────────────────────────────────
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false          # exatamente 64 hex chars (32 bytes) — mesma do Worker
+      - key: INTERNAL_TOKEN
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: INTERNAL_API_SECRET
+        sync: false          # deauthorize-internal (meta-embedded.ts) + /analytics
+
+      # ── URLs da aplicação ─────────────────────────────────────────────────
+      - key: APP_URL
+        value: https://zapscript.me/
+      - key: API_URL
+        value: https://api.zapscript.me
+
+      # ── Supabase Storage ──────────────────────────────────────────────────
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+
+      # ── WhatsApp Cloud API oficial (Embedded Signup) ─────────────────────
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_GRAPH_VERSION
+        value: v23.0
+      - key: WHATSAPP_WEBHOOK_TOKEN
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false          # HMAC do webhook — mesmo valor do META_APP_SECRET
+      - key: WHATSAPP_OFFICIAL_MULTITENANT_ENABLED
+        value: "true"
+
+      # ── Pagamentos Asaas ──────────────────────────────────────────────────
+      - key: ASAAS_API_KEY
+        sync: false
+      - key: ASAAS_WEBHOOK_TOKEN
+        sync: false
+
+      # ── E-mail (Resend) ───────────────────────────────────────────────────
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SUPPORT_EMAIL
+        sync: false
+
+  # ── Worker (BullMQ + Whisper + Claude) — plano Starter, sempre ativo ───────
+  - type: worker
+    name: zapscript-worker
+    runtime: node
+    buildCommand: cd apps/worker && npm ci && npm run build
+    startCommand: cd apps/worker && node dist/index.js
+    region: ohio
+    plan: starter
+    branch: master
+    nodeVersion: 20
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+
+      - key: REDIS_URL
+        sync: false          # mesma Upstash da API
+
+      - key: ENCRYPTION_KEY
+        sync: false          # mesma chave da API — descriptografa metaAccessTokenEnc etc.
+      - key: INTERNAL_TOKEN
+        sync: false
+
+      # ── IA / Transcrição ──────────────────────────────────────────────────
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+      # ── WhatsApp Cloud API oficial ────────────────────────────────────────
+      - key: META_GRAPH_VERSION
+        value: v23.0
+      - key: WHATSAPP_OFFICIAL_MULTITENANT_ENABLED
+        value: "true"
+
+      # ── Supabase Storage ──────────────────────────────────────────────────
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+
+      # ── E-mail (Resend) ───────────────────────────────────────────────────
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+
+      # ── Configurações ─────────────────────────────────────────────────────
+      - key: WORKER_CONCURRENCY
+        value: "4"
+      - key: WORKER_LOCK_MINUTES
+        value: "10"
+      - key: API_URL
+        value: https://api.zapscript.me
