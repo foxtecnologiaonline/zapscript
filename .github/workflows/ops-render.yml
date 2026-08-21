@@ -1,0 +1,257 @@
+# ops-render.yml — Ações operacionais no Render via API (deploy, rollback,
+# status), no mesmo espírito do ops.yml que já existe pro Vultr: um botão
+# manual em Actions, sem dar deploy automático de produção a todo push no
+# master (autoDeploy: false no render.yaml de propósito).
+#
+# PRÉ-REQUISITO ÚNICO fora deste arquivo (não dá pra automatizar via API
+# key sozinha — a conexão inicial com o GitHub é um fluxo OAuth só do
+# dashboard): os serviços já precisam existir no Render. Isso significa ter
+# feito, uma vez, em dashboard.render.com → New → Blueprint → conectar
+# foxtecnologiaonline/zapscript → branch master → Apply. Isso lê o
+# render.yaml da raiz e cria zapscript-api, zapscript-worker,
+# zapscript-evolution e zapscript-redis. Depois disso (e de preencher os
+# secrets do grupo `zapscript-secrets` — ver MIGRACAO_RENDER.md), o dia a
+# dia é 100% por aqui.
+#
+# COMO FUNCIONA:
+#   - Resolve o serviceId de cada serviço pelo nome (GET /v1/services) —
+#     não hardcoda ID nenhum, já que eles só existem depois do Blueprint
+#     ser aplicado manualmente no dashboard.
+#   - deploy: dispara um novo deploy (POST /v1/services/{id}/deploys) na
+#     ordem evolution → api (espera "live") → worker (espera "live").
+#     Evolution primeiro porque api/worker dependem dela; nenhum dos três
+#     bloqueia o boot esperando os outros, mas essa ordem evita o worker
+#     started apontando pra api/evolution ainda subindo.
+#   - rollback: acha o deploy "live" anterior ao atual (GET
+#     /v1/services/{id}/deploys) e redispara um deploy pro mesmo commit —
+#     é o que o botão "Rollback" do dashboard do Render faz por baixo.
+#     Cobre só api + worker (evolution usa imagem pública `latest`, raro
+#     mudar; rollback dela é fixar a tag da imagem no render.yaml).
+#   - status: só lê e imprime o deploy mais recente de cada serviço, sem
+#     side-effect — útil pra conferir sem abrir o dashboard.
+#
+# AVISO DE CONFIANÇA (leia antes de confiar cegamente no deploy/rollback):
+# o endpoint de trigger deploy (POST .../deploys, Bearer auth) está
+# confirmado na documentação pública da Render. Os endpoints de listagem
+# (GET /v1/services, GET /v1/services/{id}/deploys) seguem o padrão REST
+# documentado, mas o "shape" exato da resposta (se cada item vem cru ou
+# envelopado como {"service": {...}} / {"deploy": {...}}) não pôde ser
+# confirmado no momento em que este arquivo foi escrito — o acesso a
+# api-docs.render.com estava bloqueado no ambiente que gerou isto. Por
+# isso todo jq aqui tenta os dois formatos (`.service // .`, `.deploy //
+# .`) e imprime o JSON cru no log quando não acha o campo esperado. RODE
+# `action=status` UMA VEZ pra validar antes de usar deploy/rollback de
+# verdade; se o parsing falhar, o log tem o JSON cru pra ajustar o jq.
+#
+# Configuração única (Settings → Secrets and variables → Actions):
+#   RENDER_API_KEY   dashboard.render.com → Account Settings → API Keys
+#                     → Create API Key
+
+name: Ops — Render
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'O que rodar'
+        required: true
+        type: choice
+        default: status
+        options:
+          - deploy
+          - rollback
+          - status
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops-render
+  cancel-in-progress: false
+
+env:
+  RENDER_API: https://api.render.com/v1
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolver service IDs por nome
+        id: ids
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -e
+          resp=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" \
+            "$RENDER_API/services?limit=100")
+
+          get_id() {
+            name="$1"
+            echo "$resp" | jq -r --arg n "$name" \
+              '[.[] | (.service // .)] | map(select(.name == $n)) | .[0].id // empty'
+          }
+
+          missing=0
+          for svc in zapscript-api zapscript-worker zapscript-evolution; do
+            id=$(get_id "$svc")
+            key=$(echo "$svc" | sed 's/zapscript-//')
+            if [ -z "$id" ]; then
+              echo "::error::Não achei o serviço '$svc' no Render (GET /v1/services). Confirma que o Blueprint já foi aplicado em dashboard.render.com → New → Blueprint, e que o nome bate com o render.yaml."
+              missing=1
+            else
+              echo "$key=$id" >> "$GITHUB_OUTPUT"
+              echo "✓ $svc = $id"
+            fi
+          done
+
+          if [ "$missing" = "1" ]; then
+            echo "--- resposta crua de GET /v1/services (pra debugar o jq acima) ---"
+            echo "$resp" | jq '.'
+            exit 1
+          fi
+
+      - name: status — último deploy de cada serviço
+        if: inputs.action == 'status'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          API_ID: ${{ steps.ids.outputs.api }}
+          WORKER_ID: ${{ steps.ids.outputs.worker }}
+          EVOLUTION_ID: ${{ steps.ids.outputs.evolution }}
+        run: |
+          show_last_deploy() {
+            label="$1"; id="$2"
+            echo "== $label ($id) =="
+            curl -sS -H "Authorization: Bearer $RENDER_API_KEY" \
+              "$RENDER_API/services/$id/deploys?limit=1" \
+              | jq '[.[] | (.deploy // .)] | .[0] | {id, status, commit, createdAt, finishedAt}'
+          }
+          show_last_deploy "zapscript-api"       "$API_ID"
+          show_last_deploy "zapscript-worker"    "$WORKER_ID"
+          show_last_deploy "zapscript-evolution" "$EVOLUTION_ID"
+
+      - name: deploy — evolution → api (espera live) → worker (espera live)
+        if: inputs.action == 'deploy'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          API_ID: ${{ steps.ids.outputs.api }}
+          WORKER_ID: ${{ steps.ids.outputs.worker }}
+          EVOLUTION_ID: ${{ steps.ids.outputs.evolution }}
+        run: |
+          set -e
+
+          trigger_deploy() {
+            id="$1"
+            curl -sS -X POST -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Content-Type: application/json" -d '{}' \
+              "$RENDER_API/services/$id/deploys" \
+              | jq -r '(.deploy // .) | .id'
+          }
+
+          wait_live() {
+            label="$1"; svc_id="$2"; deploy_id="$3"
+            echo "== aguardando '$label' ficar live (deploy $deploy_id) =="
+            for i in $(seq 1 90); do
+              body=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" \
+                "$RENDER_API/services/$svc_id/deploys/$deploy_id")
+              status=$(echo "$body" | jq -r '(.deploy // .) | .status // empty')
+              case "$status" in
+                live)
+                  echo "✓ $label live após ${i}x10s"
+                  return 0
+                  ;;
+                build_failed|update_failed|canceled|deactivated)
+                  echo "::error::$label — deploy terminou em '$status'"
+                  echo "$body" | jq '.'
+                  return 1
+                  ;;
+                "")
+                  echo "::warning::não consegui ler status do deploy de $label — resposta crua:"
+                  echo "$body" | jq '.'
+                  ;;
+                *)
+                  echo "  [$i/90] $label: $status"
+                  ;;
+              esac
+              sleep 10
+            done
+            echo "::error::TIMEOUT esperando '$label' ficar live"
+            return 1
+          }
+
+          evolution_deploy=$(trigger_deploy "$EVOLUTION_ID")
+          wait_live "zapscript-evolution" "$EVOLUTION_ID" "$evolution_deploy"
+
+          api_deploy=$(trigger_deploy "$API_ID")
+          wait_live "zapscript-api" "$API_ID" "$api_deploy"
+
+          worker_deploy=$(trigger_deploy "$WORKER_ID")
+          wait_live "zapscript-worker" "$WORKER_ID" "$worker_deploy"
+
+          echo "DEPLOY_OK"
+
+      - name: rollback — api + worker para o deploy live anterior
+        if: inputs.action == 'rollback'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          API_ID: ${{ steps.ids.outputs.api }}
+          WORKER_ID: ${{ steps.ids.outputs.worker }}
+        run: |
+          set -e
+
+          wait_live() {
+            label="$1"; svc_id="$2"; deploy_id="$3"
+            for i in $(seq 1 90); do
+              body=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" \
+                "$RENDER_API/services/$svc_id/deploys/$deploy_id")
+              status=$(echo "$body" | jq -r '(.deploy // .) | .status // empty')
+              if [ "$status" = "live" ]; then
+                echo "✓ $label live após ${i}x10s"
+                return 0
+              fi
+              if [ "$status" = "build_failed" ] || [ "$status" = "update_failed" ] || [ "$status" = "canceled" ]; then
+                echo "::error::$label — rollback terminou em '$status'"
+                echo "$body" | jq '.'
+                return 1
+              fi
+              echo "  [$i/90] $label: ${status:-desconhecido}"
+              sleep 10
+            done
+            echo "::error::TIMEOUT esperando '$label' ficar live"
+            return 1
+          }
+
+          rollback_service() {
+            label="$1"; svc_id="$2"
+            echo "== $label — procurando o deploy live anterior =="
+            deploys=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" \
+              "$RENDER_API/services/$svc_id/deploys?limit=10")
+            echo "$deploys" > "/tmp/${label}-deploys.json"
+
+            # Filtra só os deploys "live" (preserva a ordem mais-recente-primeiro)
+            # e pega o segundo: o primeiro é o live atual, o segundo é pra onde
+            # voltar. Não assume que o item [0] da lista crua é o atual — se o
+            # deploy mais recente falhou, ele fica antes do live atual na lista
+            # crua, mas cai fora aqui porque o filtro já ignora quem não é live.
+            prev_commit=$(echo "$deploys" \
+              | jq -r '[.[] | (.deploy // .)] | map(select(.status == "live")) | .[1].commit.id // .[1].commit // empty')
+
+            if [ -z "$prev_commit" ]; then
+              echo "::error::Não achei um deploy live anterior pra '$label' nos últimos 10. JSON cru:"
+              cat "/tmp/${label}-deploys.json" | jq '.'
+              return 1
+            fi
+
+            echo "$label — voltando pro commit $prev_commit"
+            new_deploy=$(curl -sS -X POST -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"commitId\": \"$prev_commit\"}" \
+              "$RENDER_API/services/$svc_id/deploys" \
+              | jq -r '(.deploy // .) | .id')
+
+            wait_live "$label" "$svc_id" "$new_deploy"
+          }
+
+          rollback_service "zapscript-api"    "$API_ID"
+          rollback_service "zapscript-worker" "$WORKER_ID"
+
+          echo "ROLLBACK_OK"

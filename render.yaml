@@ -1,0 +1,299 @@
+# render.yaml — Blueprint de infraestrutura do ZapScript no Render.
+#
+# Migração de volta Vultr → Render (ver MIGRACAO_RENDER.md para o runbook
+# completo). Decisão de negócio: aceita o custo maior (~$44/mês a mais que
+# o Vultr, ver MIGRACAO_VULTR.md) em troca de infra gerenciada.
+#
+# RISCO CONHECIDO E ACEITO: o Render não tem região no Brasil (mais perto:
+# Virginia/Ohio/Oregon nos EUA, ou Frankfurt). O serviço `evolution` abaixo
+# conecta números de WhatsApp via Baileys a partir de um IP de datacenter
+# fora do Brasil — isso pode reativar o aviso de fraude/golpe do WhatsApp
+# que a Vultr São Paulo evitava (ver deploy/evolution-oci/README.md, que
+# documenta esse diagnóstico). Decisão consciente de quem pediu a migração;
+# se o aviso voltar, a mitigação é mover só o `evolution` para um host
+# brasileiro (Vultr atual dimensionado só pra isso, ou finalizar o piloto
+# OCI em deploy/evolution-oci/) — os outros serviços continuam no Render.
+#
+# Região: virginia (us-east) em todos os serviços — menor latência para
+# usuários no Brasil entre as regiões disponíveis no Render.
+#
+# autoDeploy: false em todos de propósito — o deploy é disparado manualmente
+# via .github/workflows/ops-render.yml (mesmo padrão de controle que o
+# ops.yml já usa pro Vultr: build, espera healthcheck, só então promove).
+# Isso evita que um push direto no master derrube produção sem passar pelo
+# gate de healthcheck.
+#
+# Setup inicial (só uma vez, manual — API key sozinha não conecta o GitHub):
+#   1. dashboard.render.com → New → Blueprint → conectar
+#      foxtecnologiaonline/zapscript → branch master → Apply
+#   2. Preencher os secrets do grupo `zapscript-secrets` (ver MIGRACAO_RENDER.md
+#      para a lista com origem de cada valor no .env atual da Vultr)
+#   3. Depois disso, o dia a dia é 100% via ops-render.yml (Actions →
+#      "Ops — Render" → Run workflow)
+
+envVarGroups:
+  - name: zapscript-secrets
+    envVars:
+      # ── Núcleo / segredos internos ──────────────────────────────────────
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # Supabase → Settings → Database → Connection String (URI)
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: INTERNAL_TOKEN
+        sync: false
+      - key: INTERNAL_API_SECRET
+        sync: false
+      - key: MONITOR_TOKEN
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: ADMIN_TOTP_SECRET
+        sync: false
+      - key: ADMIN_INSTANCE_NAME
+        sync: false
+      - key: ADMIN_NOTIFY_PHONE
+        sync: false
+
+      # ── Supabase ──────────────────────────────────────────────────────
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+
+      # ── IA ────────────────────────────────────────────────────────────
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ATENDE_AGENT_MODEL
+        sync: false
+      - key: SUPPORT_AGENT_MODEL
+        sync: false
+      - key: VOICE_COMMAND_AGENT_MODEL
+        sync: false
+
+      # ── WhatsApp — Evolution API (self-hosted, ver serviço `evolution`) ─
+      - key: EVOLUTION_API_KEY
+        sync: false
+      - key: EVOLUTION_WEBHOOK_SECRET
+        sync: false
+      - key: SUPPORT_EVOLUTION_INSTANCE
+        sync: false
+      - key: SUPPORT_EVOLUTION_WEBHOOK_SECRET
+        sync: false
+      - key: SUPPORT_WELCOME_MSG
+        sync: false
+
+      # ── WhatsApp — API Oficial (Meta Cloud API) ─────────────────────────
+      - key: WHATSAPP_API_TOKEN
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_WEBHOOK_TOKEN
+        sync: false
+      - key: WHATSAPP_AUTO_REPLY
+        sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_GRAPH_VERSION
+        sync: false
+      - key: FACEBOOK_APP_SECRET
+        sync: false
+
+      # ── WhatsApp — Twilio ────────────────────────────────────────────────
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_DEFAULT_USER_ID
+        sync: false
+
+      # ── WhatsApp — Z-API ──────────────────────────────────────────────────
+      - key: ZAPI_TOKEN
+        sync: false
+      - key: ZAPI_CLIENT_TOKEN
+        sync: false
+      - key: ZAPI_INSTANCE_ID
+        sync: false
+      - key: ZAPI_DEFAULT_USER_ID
+        sync: false
+      - key: ZAPI_WEBHOOK_CLIENT_TOKEN
+        sync: false
+
+      # ── Pagamentos (Asaas) ────────────────────────────────────────────
+      - key: ASAAS_API_KEY
+        sync: false
+      - key: ASAAS_WEBHOOK_TOKEN
+        sync: false
+      - key: ASAAS_BASE_URL
+        sync: false
+
+      # ── App / CORS ────────────────────────────────────────────────────
+      - key: APP_NAME
+        sync: false
+      - key: APP_URL
+        value: https://zapscript.me
+      - key: EXTRA_ORIGINS
+        sync: false
+      - key: LOG_LEVEL
+        value: info
+      - key: SENTRY_DSN
+        sync: false
+
+      # ── E-mail ────────────────────────────────────────────────────────
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SUPPORT_EMAIL
+        sync: false
+
+      # ── Limites / cotas / comissão (não-secretos, mas variam por ambiente) ─
+      - key: AUDIO_CHUNK_SEC
+        sync: false
+      - key: FFMPEG_TIMEOUT_MS
+        value: "300000"
+      - key: FREE_AUDIO_QUOTA
+        sync: false
+      - key: MAX_AUDIO_MARGIN_SECONDS
+        sync: false
+      - key: MAX_AUDIO_SECONDS
+        sync: false
+      - key: PRO_AUDIO_CAP
+        sync: false
+      - key: COMMISSION_BASE
+        sync: false
+      - key: COMMISSION_BONUS
+        sync: false
+      - key: COMMISSION_RESIDUAL
+        sync: false
+      - key: CREDIT_RATE
+        sync: false
+
+      # ── Concorrência dos workers por módulo ──────────────────────────────
+      - key: WORKER_CONCURRENCY
+        value: "2"
+      - key: WORKER_LOCK_MINUTES
+        value: "5"
+      - key: ATENDE_WORKER_CONCURRENCY
+        sync: false
+      - key: CAMPANHAS_WORKER_CONCURRENCY
+        sync: false
+      - key: LEGENDA_WORKER_CONCURRENCY
+        sync: false
+      - key: VOICE_COMMAND_WORKER_CONCURRENCY
+        sync: false
+
+services:
+  # ── Fastify API ───────────────────────────────────────────────────────
+  - type: web
+    name: zapscript-api
+    runtime: docker
+    plan: starter
+    region: virginia
+    dockerfilePath: apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - fromGroup: zapscript-secrets
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: zapscript-redis
+          property: connectionString
+      # Evolution roda como serviço privado (pserv) — só a API/worker
+      # conseguem alcançar via rede interna do Render, igual ao loopback
+      # 127.0.0.1:8080 que a Vultr usa hoje. Confirmar no dashboard, após
+      # o Blueprint subir, que a porta interna do `evolution` é 8080.
+      - key: EVOLUTION_API_URL
+        value: http://zapscript-evolution:8080
+
+  # ── BullMQ Worker ─────────────────────────────────────────────────────
+  - type: worker
+    name: zapscript-worker
+    runtime: docker
+    plan: starter
+    region: virginia
+    dockerfilePath: apps/worker/Dockerfile
+    dockerContext: .
+    autoDeploy: false
+    envVars:
+      - fromGroup: zapscript-secrets
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: zapscript-redis
+          property: connectionString
+      - key: API_URL
+        fromService:
+          type: web
+          name: zapscript-api
+          property: hostport
+      - key: EVOLUTION_API_URL
+        value: http://zapscript-evolution:8080
+
+  # ── Evolution API (WhatsApp / Baileys) — serviço privado, disco persistente
+  # para as credenciais de sessão de cada instância conectada. Uma única
+  # instância sempre — sessão do WhatsApp não sobrevive a réplicas múltiplas.
+  - type: pserv
+    name: zapscript-evolution
+    runtime: docker
+    plan: starter
+    region: virginia
+    image:
+      url: docker.io/atendai/evolution-api:latest
+    autoDeploy: false
+    disk:
+      name: evolution-instances
+      mountPath: /evolution/instances
+      sizeGB: 1
+    envVars:
+      - key: SERVER_URL
+        value: https://api.zapscript.me
+      - key: AUTHENTICATION_TYPE
+        value: apikey
+      - key: AUTHENTICATION_API_KEY
+        fromGroup: zapscript-secrets
+      - key: AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES
+        value: "false"
+      - key: DATABASE_ENABLED
+        value: "false"
+      - key: REDIS_ENABLED
+        value: "false"
+      - key: WEBHOOK_GLOBAL_ENABLED
+        value: "false"
+      - key: DEL_INSTANCE
+        value: "false"
+      - key: QRCODE_LIMIT
+        value: "10"
+
+  # ── Redis (BullMQ) ────────────────────────────────────────────────────
+  # noeviction é obrigatório — BullMQ perde jobs silenciosamente com
+  # qualquer outra política de eviction sob pressão de memória.
+  - type: keyvalue
+    name: zapscript-redis
+    plan: starter
+    region: virginia
+    maxmemoryPolicy: noeviction
+    ipAllowList: []

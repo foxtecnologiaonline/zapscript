@@ -6,8 +6,11 @@
  * Portanto, o Worker chama a API interna para enviar mensagens.
  */
 
-const API_BASE = process.env.API_URL
-  ? process.env.API_URL.replace('/health', '')
+// API_URL pode chegar sem esquema quando resolvido via Render fromService
+// (property: hostport retorna "host:port", não uma URL completa).
+const rawApiUrl = process.env.API_URL?.replace('/health', '');
+const API_BASE = rawApiUrl
+  ? (/^https?:\/\//.test(rawApiUrl) ? rawApiUrl : `http://${rawApiUrl}`)
   : 'http://localhost:3001';
 
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN!;

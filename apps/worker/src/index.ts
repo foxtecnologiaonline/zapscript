@@ -1566,7 +1566,9 @@ async function processEvolutionJob(job: Job) {
     }
 
     // PASSO 8: Notificar dashboard via Socket.IO (fire-and-forget)
-    const apiUrl      = process.env.API_URL?.replace(/\/$/, '');
+    // API_URL pode chegar sem esquema via Render fromService (hostport = "host:port")
+    const rawApiUrl   = process.env.API_URL?.replace(/\/$/, '');
+    const apiUrl      = rawApiUrl && !/^https?:\/\//.test(rawApiUrl) ? `http://${rawApiUrl}` : rawApiUrl;
     const intToken    = process.env.INTERNAL_TOKEN;
     if (apiUrl && intToken) {
       fetch(`${apiUrl}/internal/emit`, {
