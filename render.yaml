@@ -261,8 +261,11 @@ services:
     runtime: image
     plan: starter
     region: virginia
+    # Sem prefixo docker.io/ — é a mesma referência já usada e funcionando
+    # em infra/docker-compose.prod.yml na Vultr; o prefixo explícito fez o
+    # Render não achar a imagem ("not found").
     image:
-      url: docker.io/atendai/evolution-api:latest
+      url: atendai/evolution-api:latest
     autoDeploy: false
     disk:
       name: evolution-instances
