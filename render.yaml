@@ -258,23 +258,30 @@ services:
   # instância sempre — sessão do WhatsApp não sobrevive a réplicas múltiplas.
   - type: pserv
     name: zapscript-evolution
-    runtime: docker
+    runtime: image
     plan: starter
     region: virginia
     image:
       url: docker.io/atendai/evolution-api:latest
     autoDeploy: false
     disk:
-      name: evolution-instances
-      mountPath: /evolution/instances
-      sizeGB: 1
+      - name: evolution-instances
+        mountPath: /evolution/instances
+        sizeGB: 1
     envVars:
       - key: SERVER_URL
         value: https://api.zapscript.me
       - key: AUTHENTICATION_TYPE
         value: apikey
+      # Render não deixa "puxar e renomear" uma chave específica de dentro de
+      # um envVarGroup (fromGroup só importa o grupo inteiro, com os nomes
+      # originais) — e a imagem do Evolution espera esse nome específico,
+      # diferente de EVOLUTION_API_KEY (usado por api/worker). Por isso é um
+      # campo à parte aqui: preencher com O MESMO VALOR de EVOLUTION_API_KEY
+      # no grupo zapscript-secrets. Mesma duplicação que o docker-compose.prod.yml
+      # já tinha na Vultr (${EVOLUTION_API_KEY} referenciado sob os dois nomes).
       - key: AUTHENTICATION_API_KEY
-        fromGroup: zapscript-secrets
+        sync: false
       - key: AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES
         value: "false"
       - key: DATABASE_ENABLED
