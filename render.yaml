@@ -265,9 +265,9 @@ services:
       url: docker.io/atendai/evolution-api:latest
     autoDeploy: false
     disk:
-      - name: evolution-instances
-        mountPath: /evolution/instances
-        sizeGB: 1
+      name: evolution-instances
+      mountPath: /evolution/instances
+      sizeGB: 1
     envVars:
       - key: SERVER_URL
         value: https://api.zapscript.me
