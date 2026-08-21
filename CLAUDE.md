@@ -6,28 +6,34 @@ também Vultr) em docs e configs que podem NÃO refletir a realidade no momento
 em que você está lendo — confira a data dos docs de migração antes de confiar
 numa tabela às cegas.
 
-## Migração Vultr → Render EM ANDAMENTO (desde 2026-08-21)
+## Migração Vultr → Render PAUSADA (desde 2026-08-21, pausada no mesmo dia)
 
-Decisão de negócio consciente: voltar pro Render, revertendo a migração pra
-Vultr de 2026-07-21 (`MIGRACAO_VULTR.md`) — aceitando o custo maior (~$44/mês
-a menos de economia) e um risco técnico conhecido (Render não tem região no
-Brasil; pode reativar o aviso de fraude/golpe do WhatsApp que rodar a
-Evolution API em São Paulo evitava). Runbook completo, com o porquê e o plano
-de mitigação: **`MIGRACAO_RENDER.md`**.
+A ideia era voltar pro Render (runbook em `MIGRACAO_RENDER.md`, `render.yaml`
+e `.github/workflows/ops-render.yml` já commitados) — mas **foi pausada antes
+do corte de tráfego acontecer**, por causa do custo: o Render nunca rodou de
+graça pra este projeto (era ~$77/mês antes de sair de lá em julho, ver
+`MIGRACAO_VULTR.md`), e mesmo o setup mínimo viável ficaria uns ~$28-36/mês só
+de api+worker+redis+evolution, sem contar que free tier quebraria o produto
+de verdade (serviço web grátis "dorme" e derruba webhook do WhatsApp/Asaas;
+sem disco persistente no free tier, todo cliente perderia a sessão do
+WhatsApp a cada restart).
 
-`render.yaml` (raiz do repo) e `.github/workflows/ops-render.yml` já estão
-prontos e commitados. **O corte de tráfego ainda NÃO aconteceu** — falta
-alguém com acesso ao dashboard do Render completar os passos manuais do
-`MIGRACAO_RENDER.md` (criar o Blueprint, preencher os secrets, trocar o CNAME
-de `api.zapscript.me`). Um agente sozinho não tem como fazer isso: a conexão
-inicial do Render com o GitHub é um fluxo OAuth só do dashboard, e não havia
-`RENDER_API_KEY` disponível no momento em que este arquivo/`render.yaml`
-foram escritos.
+Em vez disso, a direção agora é **reduzir o custo da própria Vultr** (que
+subiu pra ~$45/mês, custo real hoje — bate menos com o ~$33/mês documentado
+em `MIGRACAO_VULTR.md`) via **um servidor Vultr novo, menor**, substituindo o
+atual — não uma migração de provedor, só um resize por substituição. Ver
+seção abaixo / conversa em andamento pro runbook dessa parte.
 
-**Enquanto o corte não acontecer, a Vultr continua sendo a infra real de
-verdade** — é a tabela "Infra atual" logo abaixo. Depois que alguém completar
-o corte, atualize esta seção: mova a Vultr pra "histórico" (do jeito que a
-migração de julho fez com o Render antigo) e promova a tabela "Depois do
+`render.yaml`, `ops-render.yml` e `MIGRACAO_RENDER.md` **continuam no repo,
+não foram deletados** — só não é mais o plano ativo. Se a decisão for
+retomada no futuro, o trabalho já fica pronto (só precisa reconferir se o
+código não andou tanto que os `sync: false` do `render.yaml` ficaram
+desatualizados).
+
+**A Vultr continua sendo a infra real de verdade** — é a tabela "Infra
+atual" logo abaixo. Se algum dia o corte pro Render acontecer de verdade,
+atualize esta seção: mova a Vultr pra "histórico" (do jeito que a migração
+de julho fez com o Render antigo) e promova a tabela "Depois do
 corte" pra "Infra atual".
 
 ## Infra atual (Vultr — vale até o corte do parágrafo acima acontecer)
