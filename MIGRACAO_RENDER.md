@@ -25,7 +25,7 @@ depois, sem mexer no resto).
 ## Sumário
 
 1. [Pré-requisitos](#1-pré-requisitos)
-2. [Criar o Blueprint no Render](#2-criar-o-blueprint-no-render)
+2. [Criar os serviços no Render](#2-criar-os-serviços-no-render)
 3. [Preencher os secrets](#3-preencher-os-secrets)
 4. [Deploy inicial](#4-deploy-inicial)
 5. [Verificação (antes de cortar o tráfego)](#5-verificação)
@@ -48,7 +48,17 @@ depois, sem mexer no resto).
 
 ---
 
-## 2. Criar o Blueprint no Render
+## 2. Criar os serviços no Render
+
+**Só api + worker + redis vêm do Blueprint.** O `zapscript-evolution` é
+criado à mão — a combinação imagem-pronta + disco persistente + serviço
+privado deu vários erros de schema quando tentada no `render.yaml` (ver
+histórico de commits do arquivo), e trocar tentativa-e-erro num ambiente
+sem acesso à documentação completa do Render por um formulário guiado do
+dashboard resolveu mais rápido. Ver comentário completo no fim do
+`render.yaml` — resumo aqui:
+
+### 2.1 Blueprint (api + worker + redis)
 
 Isso **não dá pra fazer só com API key** — a primeira conexão com o GitHub é
 um fluxo OAuth que só existe no dashboard.
@@ -61,20 +71,51 @@ um fluxo OAuth que só existe no dashboard.
 4. Branch: `master` (ou a branch desta migração, `claude/zapscript-render-migration-n568q0`,
    se quiser validar antes de ir pro master — dá pra trocar a branch do
    Blueprint depois, em Settings).
-5. O Render lê o `render.yaml` da raiz e mostra um preview com os 4
-   serviços (`zapscript-api`, `zapscript-worker`, `zapscript-evolution`,
-   `zapscript-redis`) e o **custo estimado**. Confira o custo aqui — é o
-   número real, não a estimativa deste doc.
+5. O Render lê o `render.yaml` da raiz e mostra um preview com os 3
+   serviços (`zapscript-api`, `zapscript-worker`, `zapscript-redis`) e o
+   **custo estimado**. Confira o custo aqui — é o número real, não a
+   estimativa deste doc.
 6. **Apply** — os serviços são criados mas ficam travados até os secrets
    obrigatórios (os `sync: false` do render.yaml) serem preenchidos.
+
+### 2.2 Evolution API (manual, fora do Blueprint)
+
+**New → Private Service**:
+
+| Campo | Valor |
+|---|---|
+| Nome | `zapscript-evolution` (exato — `ops-render.yml` acha o serviço por esse nome) |
+| Deploy from | Existing Image |
+| Image URL | `atendai/evolution-api:latest` |
+| Region | Virginia |
+| Plan | Starter (precisa cobrir 1 GB de disco) |
+| Disk | name `evolution-instances`, mount path `/evolution/instances`, 1 GB |
+
+Environment desse serviço (preencher depois de criado, em Environment):
+
+```
+SERVER_URL=https://api.zapscript.me
+AUTHENTICATION_TYPE=apikey
+AUTHENTICATION_API_KEY=<mesmo valor de EVOLUTION_API_KEY, ver passo 3>
+AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false
+DATABASE_ENABLED=false
+REDIS_ENABLED=false
+WEBHOOK_GLOBAL_ENABLED=false
+DEL_INSTANCE=false
+QRCODE_LIMIT=10
+```
+
+Depois de criado, a própria página do serviço no Render mostra o
+**endereço interno** dele (formato `http://<host>:<porta>`) — vai precisar
+desse valor no passo 3, pro `EVOLUTION_API_URL` de `api` e `worker`.
 
 ---
 
 ## 3. Preencher os secrets
 
-Dashboard → cada serviço → **Environment** → o grupo `zapscript-secrets`
-aparece uma vez e é compartilhado entre `api` e `worker`. Copie os valores
-direto do `.env` da Vultr (passo 1):
+Dashboard → serviços `zapscript-api`/`zapscript-worker` → **Environment** →
+o grupo `zapscript-secrets` aparece uma vez e é compartilhado entre os
+dois. Copie os valores direto do `.env` da Vultr (passo 1):
 
 ```bash
 ssh root@216.238.114.73 "cat /opt/zapscript/.env"
@@ -88,12 +129,15 @@ META_*, TWILIO_*, ZAPI_*, SMTP_*, etc.) está comentada no próprio
 `render.yaml`** — o arquivo fica no git, os valores ficam só no dashboard
 (ou via API depois).
 
-Dois campos merecem atenção especial:
+Três campos merecem atenção especial:
 
+- **`EVOLUTION_API_URL`** (em `api` e `worker`, campo próprio em cada um,
+  não vem do grupo): cole o endereço interno que o Render mostrou na
+  página do `zapscript-evolution` no passo 2.2.
 - **`EVOLUTION_API_KEY`** (no grupo compartilhado) precisa ser o **mesmo
-  valor** em `api`/`worker` e no serviço `zapscript-evolution`
-  (`AUTHENTICATION_API_KEY` puxa do mesmo grupo automaticamente — não
-  precisa duplicar).
+  valor** que você colocou em `AUTHENTICATION_API_KEY` no
+  `zapscript-evolution` (passo 2.2) — como o evolution é manual agora, essa
+  cópia também é manual, não tem `fromGroup` fazendo isso sozinho.
 - **`WHATSAPP_WEBHOOK_TOKEN`** e o token da Meta: **gere valores novos em
   vez de reaproveitar os que estão em `RENDER_ENV_SETUP.md`** — esse
   arquivo tem um `WHATSAPP_API_TOKEN` em texto puro commitado no repo (achado
@@ -269,8 +313,8 @@ histórico do git com uma migração de infra.
 | | Vultr (jul/2026) | Render (esta migração) |
 |---|---|---|
 | API + Worker | 1 servidor, deploy via SSH (`ops.yml`) | 2 serviços gerenciados, deploy via API (`ops-render.yml`) |
-| Redis | Container local no mesmo servidor | Key Value gerenciado (`zapscript-redis`) |
-| Evolution API | Mesmo servidor, volume Docker local | Serviço privado (`pserv`) com disco persistente |
+| Redis | Container local no mesmo servidor | Key Value gerenciado (`zapscript-redis`), via Blueprint |
+| Evolution API | Mesmo servidor, volume Docker local | Serviço privado (`pserv`) com disco persistente — criado à mão no dashboard, fora do Blueprint (seção 2.2) |
 | Corte de tráfego | Trocou `NEXT_PUBLIC_API_URL` na Vercel | Domínio customizado — só um CNAME, nada muda em Vercel/Asaas/Meta |
-| Custo | ~$33/mês (tudo incluso) | ~$28-36/mês estimado, só api+worker+evolution+redis (confirmar na tela de Apply) |
+| Custo | ~$33/mês (tudo incluso) | ~$28-36/mês estimado, api+worker+evolution+redis (confirmar na tela de Apply + o formulário manual do evolution) |
 | Região BR (evita aviso de fraude no WhatsApp) | Sim (Vultr São Paulo) | **Não** — risco aceito, ver topo deste doc |

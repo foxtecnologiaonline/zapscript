@@ -4,8 +4,16 @@
 # completo). Decisão de negócio: aceita o custo maior (~$44/mês a mais que
 # o Vultr, ver MIGRACAO_VULTR.md) em troca de infra gerenciada.
 #
+# Este Blueprint cobre só api + worker + redis. O Evolution API (WhatsApp)
+# é criado À MÃO pelo dashboard, fora deste arquivo — ver o bloco de
+# comentário "Evolution API — FORA deste Blueprint" no fim do arquivo pro
+# passo a passo. Não é um objetivo de design, foi resposta a uma combinação
+# (imagem pronta + disco persistente + serviço privado) que gerou vários
+# erros de schema difíceis de acertar às cegas sem acesso à documentação
+# completa do Render neste ambiente.
+#
 # RISCO CONHECIDO E ACEITO: o Render não tem região no Brasil (mais perto:
-# Virginia/Ohio/Oregon nos EUA, ou Frankfurt). O serviço `evolution` abaixo
+# Virginia/Ohio/Oregon nos EUA, ou Frankfurt). O `zapscript-evolution`
 # conecta números de WhatsApp via Baileys a partir de um IP de datacenter
 # fora do Brasil — isso pode reativar o aviso de fraude/golpe do WhatsApp
 # que a Vultr São Paulo evitava (ver deploy/evolution-oci/README.md, que
@@ -25,10 +33,15 @@
 #
 # Setup inicial (só uma vez, manual — API key sozinha não conecta o GitHub):
 #   1. dashboard.render.com → New → Blueprint → conectar
-#      foxtecnologiaonline/zapscript → branch master → Apply
-#   2. Preencher os secrets do grupo `zapscript-secrets` (ver MIGRACAO_RENDER.md
-#      para a lista com origem de cada valor no .env atual da Vultr)
-#   3. Depois disso, o dia a dia é 100% via ops-render.yml (Actions →
+#      foxtecnologiaonline/zapscript → branch master → Apply (cria api,
+#      worker e redis)
+#   2. New → Private Service → criar o zapscript-evolution à mão (ver o
+#      bloco de comentário no fim deste arquivo)
+#   3. Preencher os secrets do grupo `zapscript-secrets`, incluindo
+#      EVOLUTION_API_URL com o endereço interno que o Render mostrou pro
+#      evolution no passo 2 (ver MIGRACAO_RENDER.md para a lista completa
+#      com origem de cada valor no .env atual da Vultr)
+#   4. Depois disso, o dia a dia é 100% via ops-render.yml (Actions →
 #      "Ops — Render" → Run workflow)
 
 envVarGroups:
@@ -222,12 +235,13 @@ services:
           type: keyvalue
           name: zapscript-redis
           property: connectionString
-      # Evolution roda como serviço privado (pserv) — só a API/worker
-      # conseguem alcançar via rede interna do Render, igual ao loopback
-      # 127.0.0.1:8080 que a Vultr usa hoje. Confirmar no dashboard, após
-      # o Blueprint subir, que a porta interna do `evolution` é 8080.
+      # zapscript-evolution NÃO faz parte deste Blueprint (criado à mão
+      # pelo dashboard — ver "Evolution API" no fim deste arquivo e
+      # MIGRACAO_RENDER.md), então não dá pra resolver via fromService.
+      # Preencher com o endereço interno que o Render mostra na página do
+      # serviço evolution depois de criado (formato http://<hostname>:<porta>).
       - key: EVOLUTION_API_URL
-        value: http://zapscript-evolution:8080
+        sync: false
 
   # ── BullMQ Worker ─────────────────────────────────────────────────────
   - type: worker
@@ -250,53 +264,9 @@ services:
           type: web
           name: zapscript-api
           property: hostport
+      # Ver nota equivalente no serviço `api` acima — evolution é manual.
       - key: EVOLUTION_API_URL
-        value: http://zapscript-evolution:8080
-
-  # ── Evolution API (WhatsApp / Baileys) — serviço privado, disco persistente
-  # para as credenciais de sessão de cada instância conectada. Uma única
-  # instância sempre — sessão do WhatsApp não sobrevive a réplicas múltiplas.
-  - type: pserv
-    name: zapscript-evolution
-    runtime: image
-    plan: starter
-    region: virginia
-    # Sem prefixo docker.io/ — é a mesma referência já usada e funcionando
-    # em infra/docker-compose.prod.yml na Vultr; o prefixo explícito fez o
-    # Render não achar a imagem ("not found").
-    image:
-      url: atendai/evolution-api:latest
-    autoDeploy: false
-    disk:
-      name: evolution-instances
-      mountPath: /evolution/instances
-      sizeGB: 1
-    envVars:
-      - key: SERVER_URL
-        value: https://api.zapscript.me
-      - key: AUTHENTICATION_TYPE
-        value: apikey
-      # Render não deixa "puxar e renomear" uma chave específica de dentro de
-      # um envVarGroup (fromGroup só importa o grupo inteiro, com os nomes
-      # originais) — e a imagem do Evolution espera esse nome específico,
-      # diferente de EVOLUTION_API_KEY (usado por api/worker). Por isso é um
-      # campo à parte aqui: preencher com O MESMO VALOR de EVOLUTION_API_KEY
-      # no grupo zapscript-secrets. Mesma duplicação que o docker-compose.prod.yml
-      # já tinha na Vultr (${EVOLUTION_API_KEY} referenciado sob os dois nomes).
-      - key: AUTHENTICATION_API_KEY
         sync: false
-      - key: AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES
-        value: "false"
-      - key: DATABASE_ENABLED
-        value: "false"
-      - key: REDIS_ENABLED
-        value: "false"
-      - key: WEBHOOK_GLOBAL_ENABLED
-        value: "false"
-      - key: DEL_INSTANCE
-        value: "false"
-      - key: QRCODE_LIMIT
-        value: "10"
 
   # ── Redis (BullMQ) ────────────────────────────────────────────────────
   # noeviction é obrigatório — BullMQ perde jobs silenciosamente com
@@ -307,3 +277,36 @@ services:
     region: virginia
     maxmemoryPolicy: noeviction
     ipAllowList: []
+
+# ── Evolution API — FORA deste Blueprint, criado à mão ──────────────────────
+#
+# A combinação imagem-pronta + disco persistente + serviço privado deu vários
+# erros de schema quando tentada aqui (ver histórico de commits deste
+# arquivo) — em vez de continuar adivinhando, esse serviço passou a ser
+# criado direto pelo dashboard. Passo a passo (ver também MIGRACAO_RENDER.md):
+#
+#   dashboard.render.com → New → Private Service
+#     Nome: zapscript-evolution   (tem que ser esse nome — ops-render.yml e
+#                                  os comentários de EVOLUTION_API_URL acima
+#                                  esperam esse nome exato)
+#     Deploy from: Existing Image
+#     Image URL: atendai/evolution-api:latest
+#     Region: Virginia
+#     Plan: Starter (ou o que cobrir 1 GB de disco)
+#     Disk: name=evolution-instances, mount path=/evolution/instances, 1 GB
+#     Environment:
+#       SERVER_URL=https://api.zapscript.me
+#       AUTHENTICATION_TYPE=apikey
+#       AUTHENTICATION_API_KEY=<mesmo valor de EVOLUTION_API_KEY do grupo
+#                               zapscript-secrets — precisa bater nos dois
+#                               lugares>
+#       AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false
+#       DATABASE_ENABLED=false
+#       REDIS_ENABLED=false
+#       WEBHOOK_GLOBAL_ENABLED=false
+#       DEL_INSTANCE=false
+#       QRCODE_LIMIT=10
+#
+# Depois de criado, o Render mostra o endereço interno na própria página do
+# serviço — copiar esse valor (formato http://<host>:<porta>) pros campos
+# EVOLUTION_API_URL (sync: false) dos serviços `api` e `worker` acima.
