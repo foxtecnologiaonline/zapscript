@@ -364,28 +364,40 @@ export async function nudgeStuckLead(lead: LeadRow): Promise<void> {
   const instanceNameStr = await getOfficialInstanceName();
   if (!instanceNameStr) return;
 
+  let sent = false;
+
   switch (lead.stage) {
     case 'started':
     case 'awaiting_consent':
       await sendOfficial(lead.phone, 'Oi, ainda estou por aqui! Só preciso do seu aceite dos Termos pra criar sua conta — responda *SIM* quando puder. 🙂', instanceNameStr);
+      sent = true;
       break;
     case 'awaiting_email':
       await sendOfficial(lead.phone, 'Só falta o seu e-mail pra eu criar sua conta grátis — pode mandar quando puder. 😉', instanceNameStr);
+      sent = true;
       break;
     case 'confirm_number':
       await sendOfficial(lead.phone, 'Ainda dá tempo de conectar seu WhatsApp! Responda *SIM* pra conectar este número, ou me manda outro (com DDD).', instanceNameStr);
+      sent = true;
       break;
     case 'code_sent': {
       if (!lead.numberId) break;
       const pairing = await requestPairingCode(lead.numberId, lead.phone, logger);
       if (pairing.ok) {
         await sendOfficial(lead.phone, `O código anterior deve ter expirado — aqui vai um novo:\n\n*${pairing.code}*\n\nNo WhatsApp: Aparelhos conectados → Conectar um aparelho.`, instanceNameStr);
+        sent = true;
       }
+      // pairing falhou (Evolution indisponível etc.): não manda nada e NÃO bumpa
+      // updatedAt abaixo — o lead deve seguir envelhecendo normalmente para que
+      // o próximo ciclo do onboarding-nudge o escale a um humano em vez de ficar
+      // preso num loop silencioso de tentativas que nunca alcança os >60min.
       break;
     }
     default:
       return;
   }
+
+  if (!sent) return;
 
   // Bump em updatedAt (via write de um campo existente) — evita renotificar no
   // próximo ciclo antes da janela de 30-60min passar de novo.
