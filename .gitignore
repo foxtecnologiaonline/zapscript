@@ -42,3 +42,9 @@ scripts/send-migration-notice.mjs
 scripts/send-password-reset.mjs
 
 .env*
+
+# Config local do Claude Code — acumula comandos aprovados com valores literais
+# (tokens, senhas de banco, chaves de API) coladas em comandos ao longo do uso.
+# NUNCA commitar; é pessoal/por-máquina, não faz sentido versionar mesmo sem o
+# risco de segredo. Removido do histórico em 2026-08-22 (estava público no repo).
+.claude/settings.local.json
