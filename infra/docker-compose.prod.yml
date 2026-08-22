@@ -114,7 +114,17 @@ services:
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD}@evolution-postgres:5432/evolution
-      REDIS_ENABLED: "false"
+      # REDIS_ENABLED (v1) não existe mais na v2 — fica sem efeito, e sem uma
+      # variável CACHE_REDIS_* explícita a v2 tenta um Redis padrão que não
+      # existe, em loop infinito de reconexão (bug conhecido da v2.3.6/2.3.7,
+      # foi exatamente o que aconteceu aqui — via log ERROR [Redis] redis
+      # disconnected, 2x/segundo, sem parar). Aponta pro redis que já existe
+      # no compose, banco 6 (índice separado da fila do BullMQ, que usa o 0).
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://default:${REDIS_PASSWORD}@redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_REDIS_SAVE_INSTANCES: "false"   # instâncias ficam no volume em disco, não no Redis (deprecado pra isso)
+      CACHE_LOCAL_ENABLED: "false"
       WEBHOOK_GLOBAL_ENABLED: "false"
       DEL_INSTANCE: "false"
       QRCODE_LIMIT: "10"
