@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
+import { logAiUsage } from '../lib/aiUsage';
 
 /**
  * Agente do ZapScript Atende — responde clientes finais de um tenant no WhatsApp.
@@ -12,13 +13,6 @@ import { logger } from '../lib/logger';
  */
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-/** Telemetria de custo (não crítica): nunca deve travar ou atrasar a resposta ao cliente. */
-export function logAiUsage(userId: string, feature: string, model: string, inputTokens?: number, outputTokens?: number): void {
-  prisma.aiUsageLog.create({
-    data: { userId, feature, model, inputTokens: inputTokens ?? 0, outputTokens: outputTokens ?? 0 },
-  }).catch((err: any) => logger.warn(`[Atende] Falha ao registrar AiUsageLog: ${err.message}`));
-}
 
 const AGENT_MODELS = [
   process.env.ATENDE_AGENT_MODEL || 'claude-sonnet-4-6',

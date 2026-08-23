@@ -109,6 +109,8 @@ model Subscription {
   updatedAt           DateTime  @updatedAt
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan                Plan      @relation(fields: [planId], references: [id])
+
+  @@index([planId])
 }
 
 model MinuteBalance {
@@ -212,6 +214,7 @@ model Transcription {
 
   @@index([userId]) // A2: listagem por usuário (hot path em toda API)
   @@index([userId, createdAt(sort: Desc)]) // A2: ordenação padrão date_desc
+  @@index([numberId])
 }
 
 model UsageLog {
@@ -241,6 +244,8 @@ model SupportTicket {
   attachmentMimeType String?
   createdAt          DateTime @default(now())
   user               User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
 }
 
 model SystemError {
@@ -388,6 +393,7 @@ model SupportAtendimento {
   @@index([canal, criadoEm])
   @@index([threadId])
   @@index([canalExternoId])
+  @@index([clienteUserId])
 }
 
 // Base de conhecimento (RAG). MVP: busca por palavra-chave. `embedding` (pgvector)
@@ -565,6 +571,7 @@ model WalletPayout {
   paidReference String? // comprovante/observação do Pix manual
 
   @@index([status, requestedAt])
+  @@index([walletId])
 }
 
 // Livro-razão imutável: cada lançamento (ganho ou uso) vira uma linha, nunca é editada.
@@ -598,6 +605,7 @@ model PendingCredit {
   createdAt      DateTime     @default(now())
 
   @@index([status, releaseAt])
+  @@index([walletId])
 }
 
 // Leads capturados pela demo pública da landing page ("transcreva 1 áudio grátis").
@@ -703,6 +711,7 @@ model Entitlement {
 
   @@unique([userId, productKey])
   @@index([userId, status])
+  @@index([productKey])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -898,6 +907,8 @@ model CrmContact {
   @@unique([userId, phone])
   @@index([userId, stageId])
   @@index([userId, lastActivityAt(sort: Desc)])
+  @@index([stageId])
+  @@index([numberId])
 }
 
 // Linha do tempo do contato: notas manuais, mudanças de estágio (log
@@ -982,7 +993,7 @@ model AtendeConversation {
 model AiUsageLog {
   id           String   @id @default(cuid())
   userId       String
-  feature      String // 'atende_reply' | 'atende_setup_voice' | 'atende_setup_kb_import' | 'atende_setup_from_history'
+  feature      String // 'atende_reply' | 'atende_setup_voice' | 'atende_setup_kb_import' | 'atende_setup_from_history' | 'core_transcription' | 'legenda_transcription' | 'core_summary'
   model        String
   inputTokens  Int      @default(0)
   outputTokens Int      @default(0)
@@ -1154,6 +1165,7 @@ model Aviso {
   number       WhatsappNumber @relation(fields: [numberId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt(sort: Desc)])
+  @@index([numberId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1181,6 +1193,7 @@ model Task {
   @@index([userId, status])
   @@index([userId, dueAt])
   @@index([contactId])
+  @@index([assignedToId])
 }
 
 // Comentários de tarefa — colaboração leve dentro do time (tier Empresas).
@@ -1194,4 +1207,5 @@ model TaskComment {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([taskId, createdAt])
+  @@index([userId])
 }
