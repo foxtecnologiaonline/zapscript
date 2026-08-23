@@ -54,8 +54,11 @@ export const MODULES: readonly ModuleSpec[] = [
     tagline: 'Transcrição e resumo de áudios do WhatsApp',
     jtbd: 'Não tenho tempo de ouvir áudio longo no WhatsApp.',
     status: 'ga',
-    priceMonthly: 37,
-    priceYearly: 355,
+    // Grátis (200 áudios/mês, 1 número) — é a porta de entrada, não um tier pago.
+    // Profissional/Empresas são os tiers pagos reais; preços deles vivem em
+    // apps/api/src/routes/billing.ts (PLAN_PRICES), não aqui.
+    priceMonthly: 0,
+    priceYearly: 0,
     dependsOn: [],
     reuses: ['mensageria', 'transcricao', 'ia'],
     phase: 0,
@@ -170,8 +173,9 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '✅',
     tagline: 'Designação e controle de tarefas na equipe',
     jtbd: 'Preciso distribuir tarefas pro time e saber o que está pendente/atrasado.',
-    // Empacotado só no tier Empresas — não é vendido avulso.
-    status: 'planned',
+    // Empacotado só no tier Empresas — não é vendido avulso (já construído e em
+    // produção, mesmo caso de atende/crm — por isso 'bundled', não 'planned').
+    status: 'bundled',
     priceMonthly: 0,
     priceYearly: 0,
     dependsOn: [],
