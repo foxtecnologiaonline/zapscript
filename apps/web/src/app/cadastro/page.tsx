@@ -47,6 +47,8 @@ function CadastroForm() {
     setError('');
     try {
       await api.post('/auth/magic-register', { email: emailVal });
+      const utm = readUtm();
+      track('signup', { utmSource: utm.source, utmCampaign: utm.campaign, utmMedium: utm.medium });
       setMagicSent(true);
       setUserEmail(emailVal);
     } catch (e: any) {

@@ -133,7 +133,7 @@ export default function AfiliadosLanding() {
   const [copied, setCopied] = useState<string | null>(null);
   const [filtro, setFiltro] = useState('Todos');
   const [rates, setRates] = useState<WalletRates>(DEFAULT_RATES);
-  const [planValue, setPlanValue] = useState(37);
+  const [planValue, setPlanValue] = useState(49);
   const [referralsPerMonth, setReferralsPerMonth] = useState(5);
 
   // Captura o ?aff= (programa antigo, ainda ativo em paralelo) e remove da barra de endereços

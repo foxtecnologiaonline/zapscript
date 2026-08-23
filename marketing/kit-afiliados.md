@@ -1,21 +1,18 @@
 # Kit MKT Afiliados — ZapScript
 
-> Para usar: substitua `[SEU_LINK]` pelo seu link pessoal de afiliado (disponível no painel em zapscript.me/dashboard/afiliado).
-> Versão: agosto/2026 · Comissão: 30% recorrente por 12 meses em cada pagamento do indicado · bônus de 40% a partir do 51º cliente novo no mês · 5% residual vitalício após 12 meses
+> Para usar: pegue seu link de indicação pessoal no painel (zapscript.me/dashboard/afiliado) e substitua `[SEU_LINK]` abaixo por ele.
+> Modelo vigente (Regulamento v5): **20% de comissão recorrente**, sem tier/bônus/degrau, sobre cada pagamento do indicado (mensal ou anual), enquanto ele continuar assinante — sem prazo de corte. Toda conta já nasce com carteira e link próprio: sem aplicação, sem aprovação.
 
 ---
 
 ## SEU LINK DE AFILIADO
 
-```
-https://zapscript.me/cadastro?aff=SEU_CODIGO
-```
+Seu link pessoal (formato `zapscript.me/i/seu-slug`) fica disponível assim que você cria conta — veja em zapscript.me/dashboard/afiliado. Não precisa pedir código nem esperar aprovação.
 
-> Toda pessoa que criar conta pelo seu link e assinar um plano pago gera comissão recorrente para você.
-> Saldo liberado 30 dias após cada comissão gerada — saque via Pix a qualquer momento, sem valor mínimo.
+> Crédito liberado 30 dias após a confirmação do pagamento do indicado. Saldo usável em 3 formas (câmbio fixo 1 crédito = R$ 1): abater sua fatura, comprar créditos avulsos, ou sacar via Pix (mínimo R$ 50).
 
 **Âncora de preço (use se alguém achar caro):**
-> 24h trabalhando por você, por apenas R$1,23 ao dia — o robô do ZapScript fica de prontidão o tempo todo, transcrevendo assim que o áudio chega (R$37 ÷ 30 dias).
+> O Core do ZapScript é grátis (200 áudios/mês). Quem quiser o Profissional (atendimento automático 24/7) paga R$49/mês — menos de R$1,70 por dia.
 
 ---
 
@@ -29,7 +26,7 @@ Gostaria de indicar uma ferramenta que tenho utilizado e que pode ser bastante �
 
 Ele conecta ao seu WhatsApp e converte em texto cada áudio recebido automaticamente — texto completo e resumo com IA em segundos. Sem instalar nada, sem salvar áudio.
 
-Há um plano gratuito com 15 áudios por mês, sem necessidade de cartão:
+Há um plano gratuito, sem necessidade de cartão:
 👉 [SEU_LINK]
 
 Fico à disposição se tiver alguma dúvida.
@@ -43,7 +40,7 @@ Queria te indicar uma ferramenta que mudou meu dia a dia: o ZapScript.me.
 
 É tipo um robô particular que converte em texto (e resume) todo áudio que você recebe no WhatsApp — 24 horas por dia, automaticamente, em segundos.
 
-Tem 15 áudios grátis por mês, sem cartão:
+Tem plano grátis, sem cartão:
 👉 [SEU_LINK]
 
 Se você recebe muito áudio, vai curtir bastante 😄
@@ -55,7 +52,7 @@ Se você recebe muito áudio, vai curtir bastante 😄
 
 Converte em texto + resumo automático, 24h por dia — você nunca mais para pra ouvir áudio longo.
 
-Testa grátis (15 áudios/mês, sem cartão):
+Testa grátis, sem cartão:
 👉 [SEU_LINK]
 ```
 
@@ -74,7 +71,7 @@ Gostaria de compartilhar uma ferramenta que tenho utilizado e que pode ser útil
 ✅ Funciona sozinho, sem precisar fazer nada
 ✅ Texto completo + resumo com os pontos principais
 ✅ Servidores no Brasil, conformidade com a LGPD
-✅ Plano gratuito com 15 áudios/mês, sem cartão
+✅ Plano gratuito, sem cartão
 
 👉 [SEU_LINK]
 ```
@@ -87,10 +84,8 @@ Pessoal! 👋 Dica boa aqui:
 
 Aquele áudio de 4 min que você fica deixando para depois? Você lê em 10 segundos. E o melhor: funciona sozinho, sem precisar fazer nada.
 
-🆓 15 áudios/mês grátis, sem cartão:
+🆓 Grátis pra testar, sem cartão:
 👉 [SEU_LINK]
-
-🔥 Pro com áudios ilimitados por R$18 no 1º mês (oferta junho)
 
 Valeu! 😄
 ```
@@ -107,7 +102,7 @@ O *ZapScript.me* converte automaticamente cada áudio do WhatsApp em texto compl
 
 Para quem lida diariamente com muitos áudios — corretores, advogados, gestores, vendedores — o ganho de tempo é significativo.
 
-Plano gratuito disponível com 15 áudios/mês, sem cartão:
+Plano gratuito disponível, sem cartão:
 👉 [SEU_LINK]
 
 #produtividade #ferramentas #IA #WhatsApp
@@ -139,7 +134,7 @@ Ferramenta de IA que converte automaticamente áudios do WhatsApp em texto:
 ✅ Funciona sozinho, sem nenhuma ação necessária
 ✅ 99% de precisão em português BR
 ✅ Servidores no Brasil, conformidade com a LGPD
-✅ Plano gratuito com 15 áudios/mês, sem cartão
+✅ Plano gratuito, sem cartão
 
 🔗 [SEU_LINK] (link na bio)
 
@@ -172,7 +167,7 @@ Entro em contato para indicar uma ferramenta que tenho utilizado com bons result
 
 A plataforma conecta ao seu número do WhatsApp e converte automaticamente cada áudio recebido em texto completo + resumo com IA, em segundos. Funciona de forma autônoma, sem qualquer ação necessária da sua parte. O áudio é processado e descartado imediatamente — nada é armazenado.
 
-Há um plano gratuito com 15 áudios por mês, sem necessidade de cartão de crédito:
+Há um plano gratuito, sem necessidade de cartão de crédito:
 👉 [SEU_LINK]
 
 Fico à disposição para quaisquer dúvidas.
@@ -191,7 +186,7 @@ Queria te indicar algo que tem funcionado muito bem pra mim.
 
 O ZapScript.me converte automaticamente cada áudio que chega no WhatsApp em texto + resumo com IA, em segundos. Funciona sozinho — nem preciso abrir o app para ver o resultado.
 
-Tem plano grátis para testar (15 áudios/mês, sem cartão):
+Tem plano grátis para testar, sem cartão:
 👉 [SEU_LINK]
 
 Me conta se curtir!
