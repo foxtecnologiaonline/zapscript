@@ -48,3 +48,7 @@ scripts/send-password-reset.mjs
 # NUNCA commitar; é pessoal/por-máquina, não faz sentido versionar mesmo sem o
 # risco de segredo. Removido do histórico em 2026-08-22 (estava público no repo).
 .claude/settings.local.json
+
+# Worktrees locais do Claude Code — nunca faz sentido versionar (gitlink órfão
+# sem .gitmodules correspondente já causou warning no checkout do CI uma vez).
+.claude/worktrees/
