@@ -10,7 +10,7 @@ import { redis } from '../services/queue';
 import { sendText } from '../services/evolution';
 import { sendEmail } from '../lib/mailer';
 import { asaas, asaasConfigured, asaasEnv } from '../lib/asaas';
-import { checkAdminTotp } from '../lib/totp';
+import { adminAuth } from '../lib/adminAuth';
 import { COMMISSION } from '../lib/affiliate';
 import {
   getEffectiveCommissionRates, getAutoApproveConfig, getReportScheduleConfig, setAffiliateConfig,
@@ -23,14 +23,6 @@ const supabase = createClient(
 );
 
 const PLAN_PRICES: Record<string, number> = { pro: 37, executive: 67, free: 0, 'pro-tester': 0, profissional: 49, empresas: 99 };
-
-function safeCompare(a: string | undefined, b: string | undefined): boolean {
-  if (!a || !b) return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
 
 function buildTesterMessage(name: string, link: string): string {
   return `Oi, ${name}! 👋
@@ -82,20 +74,6 @@ async function sendTesterWhatsApp(phone: string, message: string, log: any): Pro
   log.info({ phone, instance: number.zapiInstanceId }, '[Invites] ✅ WhatsApp enviado via Evolution API');
   return 'evolution';
 }
-
-const adminAuth = async (req: any, reply: any) => {
-  const token = req.headers['x-admin-token'] as string | undefined;
-  if (!safeCompare(token, process.env.ADMIN_TOKEN)) {
-    return reply.code(401).send({ error: 'Unauthorized' });
-  }
-  const totp = await checkAdminTotp(token!, req.headers['x-admin-totp'] as string | undefined);
-  if (totp !== 'ok') {
-    return reply.code(401).send({
-      error: totp === 'totp_required' ? 'Código 2FA necessário' : 'Código 2FA inválido',
-      totpRequired: true,
-    });
-  }
-};
 
 export default async function adminRoutes(app: FastifyInstance) {
 

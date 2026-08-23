@@ -171,14 +171,28 @@ io.on('connection', (socket: Socket) => {
     // Socket.IO emits 'audio_received', 'text_received', etc. when messages arrive
   });
 
-  // Sala de notificações do painel de suporte — só para admins autenticados
+  // Sala de notificações do painel de suporte — só para admins autenticados.
+  // Sistema de auth independente do ADMIN_TOKEN do painel /sys/g5r8t2 (ver
+  // lib/adminAuth.ts): aqui quem abre a porta é o JWT normal de usuário +
+  // User.isAdmin no banco. Os dois caminhos ficam auditados em AuditLog com
+  // a mesma action (admin.panel_access) pra dar visibilidade unificada de
+  // quem acessou o quê, mesmo sendo mecanismos de auth diferentes.
   socket.on('join:suporte', async () => {
     const uid = socket.data.userId;
     if (!uid) return;
     const u = await prisma.user.findUnique({ where: { id: uid }, select: { isAdmin: true } }).catch(() => null);
-    if (!u?.isAdmin) { app.log.warn(`[Socket.IO] join:suporte negado para ${uid}`); return; }
+    if (!u?.isAdmin) {
+      app.log.warn(`[Socket.IO] join:suporte negado para ${uid}`);
+      prisma.auditLog.create({
+        data: { action: 'admin.panel_access', adminId: uid, resourceType: 'admin_panel', metadata: { channel: 'socket', room: 'admin:suporte', result: 'unauthorized' } },
+      }).catch(() => null);
+      return;
+    }
     socket.join('admin:suporte');
     app.log.info(`[Socket.IO] admin ${uid} entrou em admin:suporte`);
+    prisma.auditLog.create({
+      data: { action: 'admin.panel_access', adminId: uid, resourceType: 'admin_panel', metadata: { channel: 'socket', room: 'admin:suporte', result: 'ok' } },
+    }).catch(() => null);
   });
 });
 
