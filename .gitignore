@@ -41,4 +41,9 @@ scripts/migrate-supabase-users.mjs
 scripts/send-migration-notice.mjs
 scripts/send-password-reset.mjs
 
+# Config local do Claude Code — allowlist de permissões por sessão. Comandos
+# antigos já guardaram token/senha/API key em claro aqui (ver histórico do
+# git); "local" no nome já indica que não deveria ser commitado.
+.claude/settings.local.json
+
 .env*
