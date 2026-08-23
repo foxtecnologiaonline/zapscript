@@ -19,10 +19,11 @@ const commRatePct = (c: { commissionAmount: number; saleAmount: number }) =>
 
 /* ── Estilos por plano / status ─────────────────────────── */
 const PLAN_CLS: Record<string, string> = {
-  free:         'text-gray-400 bg-gray-400/10 border-gray-400/20',
-  pro:          'text-teal-400 bg-teal-400/10 border-teal-400/20',
-  ultra:        'text-purple-400 bg-purple-400/10 border-purple-400/20',
-  executive:    'text-amber-400 bg-amber-400/10 border-amber-400/20',
+  free:         'text-gray-400 bg-gray-400/10 border-gray-400/20',       // Core
+  profissional: 'text-teal-400 bg-teal-400/10 border-teal-400/20',
+  empresas:     'text-purple-400 bg-purple-400/10 border-purple-400/20',
+  pro:          'text-teal-400 bg-teal-400/10 border-teal-400/20',       // legado
+  executive:    'text-amber-400 bg-amber-400/10 border-amber-400/20',    // legado
   'pro-tester': 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20',
 };
 const STATUS_CLS: Record<string, string> = {
@@ -988,7 +989,8 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                   ) : users.length === 0 ? (
                     <tr><td colSpan={10} className="p-8 text-center text-[rgba(16,185,129,.3)] text-sm">Nenhum usuário encontrado</td></tr>
                   ) : users.map((u: any) => {
-                    const plan      = u.subscription?.plan?.name || 'free';
+                    const plan      = u.subscription?.plan?.name  || 'free';
+                    const planLabel = u.subscription?.plan?.label || 'Core';
                     const status    = u.subscription?.status || '—';
                     const mins      = u.balance?.audiosUsed;
                     const nums      = (u.numbers || []) as any[];
@@ -1002,7 +1004,7 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
                         </td>
                         <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)] font-mono max-w-[100px] truncate">{u.id.slice(0,10)}…</td>
                         <td className="px-4 py-3 text-xs text-[rgba(16,185,129,.6)] max-w-[170px] truncate">{maskEmail(u.email)}</td>
-                        <td className="px-4 py-3"><Badge label={plan} cls={PLAN_CLS[plan]} /></td>
+                        <td className="px-4 py-3"><Badge label={planLabel} cls={PLAN_CLS[plan]} /></td>
                         <td className="px-4 py-3 text-xs font-mono text-right text-[#d1fae5]">
                           {typeof mins === 'number' ? mins : '—'}
                         </td>
@@ -2942,8 +2944,9 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
   if (!data) return null;
 
   const { user, stats, transcriptions, numbers, auditLogs } = data;
-  const plan   = user?.subscription?.plan?.name || 'free';
-  const status = user?.subscription?.status || '—';
+  const plan      = user?.subscription?.plan?.name  || 'free';
+  const planLabel = user?.subscription?.plan?.label || 'Core';
+  const status    = user?.subscription?.status || '—';
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-stretch justify-end"
@@ -2957,7 +2960,7 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
             <div className="text-xs text-[rgba(16,185,129,.5)] font-mono mt-0.5">{user.id}</div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge label={plan} cls={PLAN_CLS[plan]} />
+            <Badge label={planLabel} cls={PLAN_CLS[plan]} />
             <Badge label={STATUS_LABEL[status] || status} cls={STATUS_CLS[status]} />
             <button onClick={onClose} className="ml-3 text-[rgba(16,185,129,.4)] hover:text-[#d1fae5] text-xl transition-colors">✕</button>
           </div>
@@ -3889,6 +3892,7 @@ function CampanhasTab({ apiBase, token, notify }: {
   const h = { 'x-admin-token': token, 'content-type': 'application/json' };
 
   // Filtros
+  const [allUsers, setAllUsers]           = useState(false); // bypassa plano/tester/free — literalmente todo mundo
   const [plans, setPlans]                 = useState<string[]>([]);
   const [minDaysInactive, setMinDays]     = useState('');
   const [hasNeverUsed, setNeverUsed]      = useState(false);
@@ -3920,13 +3924,34 @@ function CampanhasTab({ apiBase, token, notify }: {
   const [confirmSend, setConfirmSend] = useState(false);
 
   function togglePlan(p: string) {
+    setAllUsers(false); // escolher um plano específico sai do modo "todos"
     setPlans(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+  }
+
+  function toggleAllUsers() {
+    setAllUsers(prev => {
+      const next = !prev;
+      if (next) setPlans([]);
+      return next;
+    });
   }
 
   function buildFilters() {
     // Modo manual: ignora todos os filtros e usa apenas os usuários escolhidos.
     if (mode === 'manual') {
       return { userIds: Object.keys(selected) };
+    }
+    // "Todos os usuários": nenhum plano, testers e Core inclusos — sem exclusão silenciosa.
+    if (allUsers) {
+      return {
+        minDaysInactive:  minDaysInactive ? Number(minDaysInactive) : undefined,
+        hasNeverUsed:     hasNeverUsed || undefined,
+        emailVerified:    emailVerifiedF || undefined,
+        includeTesters:   true,
+        includeFree:      true,
+        hasDocument:      hasDocument || undefined,
+        hasWhatsapp:      hasWhatsapp || undefined,
+      };
     }
     return {
       plans:            plans.length > 0 ? plans : undefined,
@@ -3974,7 +3999,7 @@ function CampanhasTab({ apiBase, token, notify }: {
       icon: '🎙️',
       name: 'Boas-vindas',
       desc: 'Free · 1ª conversão',
-      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(true); setMinDays(''); setHasDocument(false); setTesters(false); },
+      applyFilters: () => { setAllUsers(false); setPlans([]); setFree(true); setNeverUsed(true); setMinDays(''); setHasDocument(false); setTesters(false); },
       subject: '🎙️ Sua primeira conversão está a um passo — faça agora!',
       msg: `Olá! Tudo bem?
 
@@ -4000,7 +4025,7 @@ Equipe ZapScript`,
       icon: '📱',
       name: 'Conectar número',
       desc: 'Free · sem número WA',
-      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(true); setMinDays(''); setHasDocument(false); setTesters(false); },
+      applyFilters: () => { setAllUsers(false); setPlans([]); setFree(true); setNeverUsed(true); setMinDays(''); setHasDocument(false); setTesters(false); },
       subject: '📱 Conecte seu WhatsApp e comece a converter',
       msg: `Olá! Aqui é o time do ZapScript 👋
 
@@ -4026,7 +4051,7 @@ Equipe ZapScript`,
       icon: '⚡',
       name: 'Upgrade por limite',
       desc: 'Free ativos · limite',
-      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(false); setMinDays(''); setHasDocument(false); setTesters(false); },
+      applyFilters: () => { setAllUsers(false); setPlans([]); setFree(true); setNeverUsed(false); setMinDays(''); setHasDocument(false); setTesters(false); },
       subject: '⚡ Seus áudios estão acabando — não pare agora',
       msg: `Olá! Boas notícias e uma notícia chata 😅
 
@@ -4053,7 +4078,7 @@ Equipe ZapScript`,
       icon: '💎',
       name: 'Upgrade Empresas',
       desc: 'Profissional · upsell Empresas',
-      applyFilters: () => { setPlans(['profissional']); setFree(false); setNeverUsed(false); setMinDays(''); setHasDocument(false); setTesters(false); },
+      applyFilters: () => { setAllUsers(false); setPlans(['profissional']); setFree(false); setNeverUsed(false); setMinDays(''); setHasDocument(false); setTesters(false); },
       subject: '💎 Sua equipe também pode usar o ZapScript — conheça o Empresas',
       msg: `Olá! Você é um dos nossos usuários mais ativos no plano Profissional. Isso é incrível! 🎉
 
@@ -4074,7 +4099,7 @@ Equipe ZapScript`,
       icon: '🏢',
       name: 'Para Empresas',
       desc: 'CNPJs cadastrados',
-      applyFilters: () => { setPlans([]); setFree(true); setNeverUsed(false); setMinDays(''); setHasDocument(true); setTesters(false); },
+      applyFilters: () => { setAllUsers(false); setPlans([]); setFree(true); setNeverUsed(false); setMinDays(''); setHasDocument(true); setTesters(false); },
       subject: '🏢 Sua empresa merece um ZapScript à altura',
       msg: `Olá! Vimos que você usa o ZapScript com um CNPJ — isso nos diz que você tem uma operação profissional para cuidar.
 
@@ -4136,12 +4161,15 @@ Equipe ZapScript`,
     finally { setSending(false); }
   }
 
+  // Modelo atual: Core (free, via checkbox "Incluir plano Core" abaixo) →
+  // Profissional → Empresas. pro/executive/pro-tester são planos legados —
+  // mantidos só pra alcançar quem ainda estiver neles.
   const planOpts: [string, string][] = [
-    ['free',       '🆓 Free'],
-    ['pro',        '⚡ Pro'],
-    ['ultra',      '🚀 Ultra'],
-    ['executive',  '💎 Executive'],
-    ['pro-tester', '🧪 Pro Tester'],
+    ['profissional', '💼 Profissional'],
+    ['empresas',     '🏢 Empresas'],
+    ['pro',          '⚡ Pro (legado)'],
+    ['executive',    '💎 Executive (legado)'],
+    ['pro-tester',   '🧪 Pro Tester'],
   ];
 
   return (
@@ -4199,11 +4227,21 @@ Equipe ZapScript`,
 
           {/* Planos */}
           <div>
-            <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-2">Planos (vazio = todos pagantes)</div>
+            <div className="text-[10px] text-[rgba(16,185,129,.4)] uppercase tracking-wide mb-2">
+              Planos (vazio = todos pagantes; ou marque "Todos os usuários")
+            </div>
             <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={toggleAllUsers}
+                className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition-colors ${
+                  allUsers
+                    ? 'bg-amber-400/15 border-amber-400/40 text-amber-400'
+                    : 'bg-[#132621] border-[rgba(16,185,129,.1)] text-[rgba(16,185,129,.4)]'
+                }`}>
+                🌐 Todos os usuários
+              </button>
               {planOpts.map(([p, label]) => (
-                <button key={p} type="button" onClick={() => togglePlan(p)}
-                  className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition-colors ${
+                <button key={p} type="button" onClick={() => togglePlan(p)} disabled={allUsers}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition-colors disabled:opacity-30 ${
                     plans.includes(p)
                       ? 'bg-[rgba(16,185,129,.15)] border-[rgba(16,185,129,.3)] text-[#10b981]'
                       : 'bg-[#132621] border-[rgba(16,185,129,.1)] text-[rgba(16,185,129,.4)]'
@@ -4240,14 +4278,14 @@ Equipe ZapScript`,
                 className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] font-mono outline-none focus:border-[rgba(16,185,129,.35)]" />
             </div>
             {([
-              [hasNeverUsed,    setNeverUsed,      'Nunca usou o sistema'],
-              [emailVerifiedF,  setEmailVerified,  'E-mail verificado'],
-              [includeTesters,  setTesters,        'Incluir testers'],
-              [includeFree,     setFree,           'Incluir plano free'],
-              [hasDocument,     setHasDocument,    '🏢 Apenas empresas (CNPJ)'],
-            ] as [boolean, (v: boolean) => void, string][]).map(([val, setter, label]) => (
-              <label key={label} className="flex items-center gap-2.5 cursor-pointer bg-[#132621] rounded-lg px-3 py-2 border border-[rgba(16,185,129,.08)] hover:border-[rgba(16,185,129,.2)] transition-colors">
-                <input type="checkbox" checked={val} onChange={e => setter(e.target.checked)} className="accent-[#10b981] w-3.5 h-3.5" />
+              [hasNeverUsed,             setNeverUsed,      'Nunca usou o sistema',        false],
+              [emailVerifiedF,           setEmailVerified,  'E-mail verificado',           false],
+              [allUsers || includeTesters, setTesters,      'Incluir testers',             allUsers],
+              [allUsers || includeFree,    setFree,         'Incluir plano Core (grátis)', allUsers],
+              [hasDocument,              setHasDocument,    '🏢 Apenas empresas (CNPJ)',    false],
+            ] as [boolean, (v: boolean) => void, string, boolean][]).map(([val, setter, label, disabled]) => (
+              <label key={label} className={`flex items-center gap-2.5 rounded-lg px-3 py-2 border border-[rgba(16,185,129,.08)] transition-colors ${disabled ? 'opacity-50' : 'cursor-pointer hover:border-[rgba(16,185,129,.2)]'} bg-[#132621]`}>
+                <input type="checkbox" checked={val} disabled={disabled} onChange={e => setter(e.target.checked)} className="accent-[#10b981] w-3.5 h-3.5" />
                 <span className="text-xs text-[rgba(16,185,129,.7)]">{label}</span>
               </label>
             ))}

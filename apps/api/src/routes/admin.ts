@@ -392,7 +392,12 @@ export default async function adminRoutes(app: FastifyInstance) {
             where: { userId: id },
             data: {
               planId:              plan.id,
-              status:              planName === 'free' ? 'canceled' : 'active',
+              // Core (free) é o plano padrão ativo de todo mundo, não uma
+              // assinatura cancelada — trocar para ele aqui é o admin
+              // ajustando o plano do usuário, não um cancelamento de fato
+              // (cancelamento real de plano pago acontece via billing.ts,
+              // que segue marcando status: 'canceled' nesse caso).
+              status:              'active',
               asaasSubscriptionId: planName === 'free' ? null : undefined,
               currentPeriodEnd:    planName === 'free' ? null : nextPeriod,
             },
