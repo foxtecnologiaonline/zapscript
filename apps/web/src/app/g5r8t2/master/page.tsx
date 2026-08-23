@@ -58,15 +58,16 @@ function Btn({ children, onClick, disabled, variant = 'ghost', cls = '' }: {
 type MasterTab = 'users' | 'testers' | 'invites';
 
 /* ── Painel de detalhe do usuário Master ── */
-function MasterDetailPanel({ userId, token, onClose }: {
-  userId: string; token: string; onClose: () => void;
+function MasterDetailPanel({ userId, token, reveal, onClose }: {
+  userId: string; token: string; reveal: boolean; onClose: () => void;
 }) {
   const [data, setData]       = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const h = { 'x-admin-token': token, 'content-type': 'application/json' };
 
   useState(() => {
-    fetch(`${API}/sys/g5r8t2/master/users/${userId}/detail`, { headers: h })
+    const qs = reveal ? '?reveal=true' : '';
+    fetch(`${API}/sys/g5r8t2/master/users/${userId}/detail${qs}`, { headers: h })
       .then(r => r.json()).then(setData).finally(() => setLoading(false));
   });
 
@@ -208,6 +209,7 @@ export default function AdminMasterPage() {
   const [loading, setLoading] = useState(false);
   const [loginErr, setLoginErr] = useState('');
   const [tab, setTab]     = useState<MasterTab>('users');
+  const [reveal, setReveal] = useState(false); // telefone/transcrição vêm mascarados por padrão
 
   // Users
   const [users, setUsers]       = useState<any[]>([]);
@@ -246,24 +248,33 @@ export default function AdminMasterPage() {
     finally { setLoading(false); }
   }
 
-  async function loadUsers(search: string, offset: number) {
+  async function loadUsers(search: string, offset: number, revealOverride?: boolean) {
     setSubLoading(true);
     try {
       const p = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
       if (search) p.set('search', search);
+      if (revealOverride ?? reveal) p.set('reveal', 'true');
       const d = await (await fetch(`${API}/sys/g5r8t2/master/users?${p}`, { headers: h })).json();
       setUsers(d.users || []);
       setUserTotal(d.total || 0);
     } finally { setSubLoading(false); }
   }
 
-  async function loadTesters() {
+  async function loadTesters(revealOverride?: boolean) {
     setSubLoading(true);
     try {
-      const d = await (await fetch(`${API}/sys/g5r8t2/master/testers`, { headers: h })).json();
+      const qs = (revealOverride ?? reveal) ? '?reveal=true' : '';
+      const d = await (await fetch(`${API}/sys/g5r8t2/master/testers${qs}`, { headers: h })).json();
       setTesters(d.testers || []);
       setTesterTotal(d.total || 0);
     } finally { setSubLoading(false); }
+  }
+
+  function toggleReveal() {
+    const next = !reveal;
+    setReveal(next);
+    if (tab === 'users')   loadUsers(userSearch, userOffset, next);
+    if (tab === 'testers') loadTesters(next);
   }
 
   async function loadInvites() {
@@ -319,10 +330,21 @@ export default function AdminMasterPage() {
             <h1 className="text-xl font-bold text-[#d1fae5]">👑 Admin Master</h1>
             <p className="text-[rgba(16,185,129,.4)] text-xs mt-0.5">Dados completos — nomes, telefones, conversões, refCodes</p>
           </div>
-          <a href="/g5r8t2"
-            className="text-xs text-[rgba(16,185,129,.5)] hover:text-[#10b981] transition-colors border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-1.5">
-            ← Admin padrão
-          </a>
+          <div className="flex items-center gap-2">
+            <button onClick={toggleReveal}
+              title="Por padrão, telefone e transcrição completa vêm mascarados"
+              className={`text-xs font-semibold rounded-lg px-3 py-1.5 border transition-colors ${
+                reveal
+                  ? 'bg-amber-400/10 border-amber-400/30 text-amber-400 hover:bg-amber-400/20'
+                  : 'text-[rgba(16,185,129,.5)] hover:text-[#10b981] border-[rgba(16,185,129,.15)]'
+              }`}>
+              {reveal ? '🔓 Dados revelados' : '🔒 Revelar dados sensíveis'}
+            </button>
+            <a href="/g5r8t2"
+              className="text-xs text-[rgba(16,185,129,.5)] hover:text-[#10b981] transition-colors border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-1.5">
+              ← Admin padrão
+            </a>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -492,7 +514,7 @@ export default function AdminMasterPage() {
     </div>
 
     {detailId && (
-      <MasterDetailPanel userId={detailId} token={token} onClose={() => setDetailId(null)} />
+      <MasterDetailPanel userId={detailId} token={token} reveal={reveal} onClose={() => setDetailId(null)} />
     )}
 
     {toast && (

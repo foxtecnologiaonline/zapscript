@@ -1,29 +1,11 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import crypto from 'crypto';
-import { checkAdminTotp } from '../lib/totp';
+import { adminAuth } from '../lib/adminAuth';
+import { maskPhone, maskText } from '../lib/mask';
 
-function safeCompare(a: string | undefined, b: string | undefined): boolean {
-  if (!a || !b) return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+function wantsReveal(req: any): boolean {
+  return req.query?.reveal === 'true' || req.query?.reveal === '1';
 }
-
-const adminAuth = async (req: any, reply: any) => {
-  const token = req.headers['x-admin-token'] as string | undefined;
-  if (!safeCompare(token, process.env.ADMIN_TOKEN)) {
-    return reply.code(401).send({ error: 'Unauthorized' });
-  }
-  const totp = await checkAdminTotp(token!, req.headers['x-admin-totp'] as string | undefined);
-  if (totp !== 'ok') {
-    return reply.code(401).send({
-      error: totp === 'totp_required' ? 'Código 2FA necessário' : 'Código 2FA inválido',
-      totpRequired: true,
-    });
-  }
-};
 
 export default async function adminMasterRoutes(app: FastifyInstance) {
 
@@ -53,7 +35,14 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
         prisma.user.count({ where }),
       ]);
 
-      return { users, total, limit, offset };
+      // Telefone mascarado por padrão (dado sensível) — ?reveal=true mostra em claro.
+      const reveal = wantsReveal(req);
+      const usersOut = reveal ? users : users.map((u: any) => ({
+        ...u,
+        numbers: u.numbers.map((n: any) => ({ ...n, phoneNumber: maskPhone(n.phoneNumber) })),
+      }));
+
+      return { users: usersOut, total, limit, offset, masked: !reveal };
     }
   );
 
@@ -97,6 +86,17 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
       const audiosUsed       = (user as any).balance?.audiosUsed || 0;
       const usagePct         = planLimit > 0 ? Math.min(100, (audiosUsed / planLimit) * 100) : 0;
 
+      // Telefone e texto integral da transcrição mascarados por padrão — dado
+      // pessoal sensível (LGPD). ?reveal=true mostra em claro quando precisar
+      // de verdade pra dar suporte.
+      const reveal = wantsReveal(req);
+      const numbersOut = reveal ? numbers : numbers.map((n: any) => ({ ...n, phoneNumber: maskPhone(n.phoneNumber) }));
+      const transcriptionsOut = reveal ? transcriptions : transcriptions.map((t: any) => ({
+        ...t,
+        originalText: maskText(t.originalText),
+        contactPhone: maskPhone(t.contactPhone),
+      }));
+
       return {
         user,
         stats: {
@@ -106,9 +106,10 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
           planLimit,
           usagePct: Math.round(usagePct),
         },
-        transcriptions,
-        numbers,
+        transcriptions: transcriptionsOut,
+        numbers: numbersOut,
         usageLogs,
+        masked: !reveal,
       };
     }
   );
@@ -117,7 +118,7 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
   app.get(
     '/testers',
     { preHandler: [adminAuth] },
-    async () => {
+    async (req) => {
       const testers = await prisma.user.findMany({
         where:   { isTester: true },
         select: {
@@ -133,7 +134,14 @@ export default async function adminMasterRoutes(app: FastifyInstance) {
         },
         orderBy: { testerSince: 'desc' },
       });
-      return { testers, total: testers.length };
+
+      const reveal = wantsReveal(req);
+      const testersOut = reveal ? testers : testers.map((t: any) => ({
+        ...t,
+        numbers: t.numbers.map((n: any) => ({ ...n, phoneNumber: maskPhone(n.phoneNumber) })),
+      }));
+
+      return { testers: testersOut, total: testers.length, masked: !reveal };
     }
   );
 
