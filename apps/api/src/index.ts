@@ -1024,12 +1024,12 @@ async function start() {
     // ── C1: Validações de startup — fail-fast em produção ───────────────────
     if (process.env.NODE_ENV === 'production') {
       if (!process.env.ASAAS_WEBHOOK_TOKEN) {
-        app.log.error('[Startup] FATAL: ASAAS_WEBHOOK_TOKEN não configurado. Qualquer requisição pode ativar planos pagos. Configure no Render e redeploy.');
+        app.log.error('[Startup] FATAL: ASAAS_WEBHOOK_TOKEN não configurado. Qualquer requisição pode ativar planos pagos. Configure no .env do servidor Vultr e redeploy.');
         process.exit(1);
       }
       if (!process.env.EVOLUTION_WEBHOOK_SECRET) {
-        // A4: Não fatal (Evolution pode ser opcional), mas alertar claramente
-        app.log.warn('[Startup] ⚠️  EVOLUTION_WEBHOOK_SECRET não configurado — webhook Evolution sem autenticação! Qualquer IP pode injetar conversões.');
+        app.log.error('[Startup] FATAL: EVOLUTION_WEBHOOK_SECRET não configurado — webhook Evolution ficaria sem autenticação, qualquer IP poderia injetar conversões.');
+        process.exit(1);
       }
       if (!process.env.JWT_SECRET) {
         app.log.error('[Startup] FATAL: JWT_SECRET não configurado.');

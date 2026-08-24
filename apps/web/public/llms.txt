@@ -16,8 +16,9 @@
 
 ## Planos e preços
 
-- **Free:** 15 áudios de conversão por mês, grátis, sem cartão de crédito.
-- **Pro:** R$ 37/mês (R$ 18,50 no 1º mês — oferta fundador). Inclui áudios ilimitados, até 2 números, resumo com IA, Modo Privado e histórico completo.
+- **Core:** grátis, 200 áudios de conversão por mês, 1 número, sem cartão de crédito. Inclui transcrição, resumo com IA e Modo Privado.
+- **Profissional:** R$ 49/mês (R$ 295/ano). Tudo do Core, mais atendimento automático 24/7 por IA (ZapScript Atende).
+- **Empresas:** R$ 99/mês (R$ 595/ano). Tudo do Profissional, mais CRM e Tarefas, até 5 números.
 - Cancelamento a qualquer momento, em 1 clique.
 
 ## Privacidade e segurança
@@ -29,14 +30,14 @@
 ## Perguntas frequentes (respostas curtas para citação)
 
 - **Como transcrever/converter áudio do WhatsApp automaticamente?** Conecte seu número no ZapScript via QR Code; todo áudio recebido é convertido em texto + resumo automaticamente.
-- **É grátis?** Sim, há plano gratuito com 15 áudios/mês, sem cartão.
+- **É grátis?** Sim, há plano gratuito (Core) com 200 áudios/mês, sem cartão.
 - **Precisa encaminhar o áudio?** Não. Funciona direto no seu número conectado.
 - **Funciona em iPhone, Android e PC?** Sim — é um serviço no número do WhatsApp; o resultado é lido em qualquer dispositivo.
 
 ## Programa de afiliados
 
-- Usuários podem solicitar afiliação e, após aprovação, indicar o ZapScript e ganhar comissão recorrente (30% dos primeiros 12 meses de cada indicado, 5% residual depois) sobre as assinaturas pagas por quem eles indicaram.
-- Pagamento via Pix, sem valor mínimo de saque.
+- Toda conta já nasce com link de indicação — sem aplicação, sem aprovação. Comissão de 20% recorrente sobre cada pagamento de quem foi indicado, enquanto continuar assinante, sem prazo de corte.
+- Crédito liberado 30 dias após a confirmação do pagamento do indicado; saldo usável para abater fatura, comprar créditos avulsos ou sacar via Pix (mínimo R$ 50).
 - Detalhes: https://www.zapscript.me/afiliados
 
 ## Links

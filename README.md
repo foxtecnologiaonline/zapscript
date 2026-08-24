@@ -169,11 +169,16 @@ sem passo manual.
 
 ## 💰 Planos
 
-| Plano     | Preço       | Minutos | Números |
-|-----------|-------------|---------|---------|
-| Free      | R$0/mês     | 20      | 1       |
-| Pro       | R$37/mês    | 200     | 2       |
-| Executive | R$67/mês    | 300     | 3       |
+| Plano        | Preço                        | Áudios/mês | Números | Inclui                                  |
+|--------------|-------------------------------|------------|---------|------------------------------------------|
+| Core         | Grátis                        | 200        | 1       | Transcrição + resumo com IA              |
+| Profissional | R$49/mês (R$295/ano)          | 500        | 1       | + Atende (atendimento 24/7 por IA)       |
+| Empresas     | R$99/mês (R$595/ano)          | 500        | 5       | + CRM, Tarefas                           |
+
+Pro (R$37) e Executive (R$67) são planos legado — fora de linha para novos
+assinantes, mantidos só para quem já assinava antes da revisão de tiers.
+Fonte da verdade: `apps/api/src/routes/billing.ts` (`PLAN_PRICES`) e
+`packages/database/prisma/seed.ts`.
 
 ---
 

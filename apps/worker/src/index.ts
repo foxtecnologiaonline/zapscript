@@ -15,6 +15,7 @@ import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread }
 import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encryption';
 import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
+import { logAiUsage } from './lib/aiUsage';
 import { processCampanhaJob, markCampanhaJobExhausted } from './modules/campanhas';
 import {
   planEfetivo, audioQuotaFor, pickFooterVariant, formatSavedTime,
@@ -198,8 +199,11 @@ function summaryMode(text: string, durationSec: number): SummaryMode {
  *
  * Retorna string[] possivelmente com sentinels ::H:: (seção) e ::P:: (pendência).
  * Cadeia: [modelo do tier] → claude-3-5-haiku → claude-3-haiku → gpt-4o-mini → placeholder.
+ *
+ * `userId`, quando informado, loga o custo real (modelo + tokens) em AiUsageLog
+ * — feature 'core_summary' (telemetria de custo, ver lib/aiUsage.ts).
  */
-export async function generateBullets(originalText: string, durationSec = 0, language?: string): Promise<string[]> {
+export async function generateBullets(originalText: string, durationSec = 0, language?: string, userId?: string): Promise<string[]> {
   const mode        = summaryMode(originalText, durationSec);
   const needsTransl = language && !/^pt(-br)?$/i.test(language);
   const ptNote      = needsTransl ? ' Responda sempre em português brasileiro (PT-BR).' : '';
@@ -299,6 +303,7 @@ Exemplos:
       const bullets = parse(raw);
       if (bullets.length > 0) {
         logger.info(`[Resumo] ${model} ✅ (modo: ${mode}, ${bullets.length} linhas)`);
+        if (userId) logAiUsage(userId, 'core_summary', model, res.usage?.input_tokens, res.usage?.output_tokens);
         return bullets;
       }
     } catch (err: any) {
@@ -321,6 +326,7 @@ Exemplos:
     const bullets = parse(raw);
     if (bullets.length > 0) {
       logger.info(`[Resumo] gpt-4o-mini ✅ (modo: ${mode})`);
+      if (userId) logAiUsage(userId, 'core_summary', 'gpt-4o-mini', res.usage?.prompt_tokens, res.usage?.completion_tokens);
       return bullets;
     }
     logger.warn(`[Resumo] gpt-4o-mini respondeu vazio: "${raw.slice(0, 100)}"`);
@@ -930,7 +936,7 @@ async function processManualJob(job: Job) {
     // Áudios > 30 min são fatiados e convertidos em blocos automaticamente.
     log(job, '🎙️  Whisper — modo jurídico com marcação temporal...');
     const { text: rawText, durationSec, language: detectedLanguage, segments } =
-      await transcribeAudio(mp3Buffer, { juridical: true, vocab: [filename] });
+      await transcribeAudio(mp3Buffer, { juridical: true, vocab: [filename], userId });
     log(job, `✅ ${durationSec}s — lang:${detectedLanguage} — ${segments.length} segmentos`);
 
     // PASSO 5: Montar conversão com marcação temporal [MM:SS] por segmento
@@ -941,7 +947,7 @@ async function processManualJob(job: Job) {
 
     // PASSO 6: Resumo com Claude (gerado a partir do texto puro — sem os timestamps)
     log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(rawText, durationSec, detectedLanguage);
+    const bullets = await generateBullets(rawText, durationSec, detectedLanguage, userId);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
     // PASSO 7: Salvar conversão (originalText = texto com marcação temporal)
@@ -1039,12 +1045,12 @@ async function processOfficialWhatsAppJob(job: Job) {
     // PASSO 4: Converter com Whisper (chunking automático p/ áudios longos)
     log(job, '🎙️  Whisper API (auto-idioma)...');
     const { text: originalText, durationSec, language: detectedLang } =
-      await transcribeAudio(mp3Buffer, { vocab: [senderName] });
+      await transcribeAudio(mp3Buffer, { vocab: [senderName], userId });
     log(job, `✅ ${durationSec}s — lang:${detectedLang} — "${originalText.substring(0, 60)}..."`);
 
     // PASSO 5: Resumo com Claude (densidade por duração + tradução se necessário)
     log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(originalText, durationSec, detectedLang);
+    const bullets = await generateBullets(originalText, durationSec, detectedLang, userId);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
     // Rodapé viral: mostra sempre (pipeline sem Modo Privado).
@@ -1139,12 +1145,12 @@ async function processTwilioJob(job: Job) {
     // PASSO 4: Converter com Whisper (chunking automático p/ áudios longos)
     log(job, '🎙️  Whisper API (auto-idioma)...');
     const { text: originalText, durationSec, language: detectedLang } =
-      await transcribeAudio(mp3Buffer, { vocab: [senderName] });
+      await transcribeAudio(mp3Buffer, { vocab: [senderName], userId });
     log(job, `✅ ${durationSec}s — lang:${detectedLang} — "${originalText.substring(0, 60)}..."`);
 
     // PASSO 5: Resumo com Claude (densidade por duração + tradução se necessário)
     log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(originalText, durationSec, detectedLang);
+    const bullets = await generateBullets(originalText, durationSec, detectedLang, userId);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
     // Rodapé viral: mostra sempre (pipeline sem Modo Privado).
@@ -1436,7 +1442,7 @@ async function processEvolutionJob(job: Job) {
     // PASSO 4: Converter com Whisper (chunking automático p/ áudios longos)
     log(job, '🎙️  Whisper API (auto-idioma)...');
     const { text: originalText, durationSec: whisperDuration, language: detectedLanguage } =
-      await transcribeAudio(mp3Buffer, { vocab: [senderName] });
+      await transcribeAudio(mp3Buffer, { vocab: [senderName], userId });
     const durationSec = whisperDuration > 0 ? whisperDuration : Math.max(1, durationHint || 1);
     log(job, `✅ ${durationSec}s — lang:${detectedLanguage} — "${originalText.substring(0, 60)}..."`);
 
@@ -1464,7 +1470,7 @@ async function processEvolutionJob(job: Job) {
 
     // PASSO 5: Resumo com Claude (densidade por duração + tradução se não PT-BR)
     log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(originalText, durationSec, detectedLanguage);
+    const bullets = await generateBullets(originalText, durationSec, detectedLanguage, userId);
     log(job, `✅ ${bullets.length} bullet(s)`);
 
     // PASSO 6: Enviar resposta via Evolution API
@@ -1680,7 +1686,8 @@ async function processLegendaJob(job: Job) {
     // juridical:true é o único flag que faz transcribeAudio devolver `segments`
     // (reaproveitado aqui só pela marcação temporal, não pelo conteúdo do prompt).
     log(job, '🎙️ Whisper — segmentos com timestamp...');
-    const { durationSec, language, segments } = await transcribeAudio(mp3Buffer, { juridical: true });
+    const { durationSec, language, segments } =
+      await transcribeAudio(mp3Buffer, { juridical: true, userId, feature: 'legenda_transcription' });
     log(job, `✅ ${durationSec}s — lang:${language} — ${segments.length} segmento(s)`);
 
     if (!segments.length) {

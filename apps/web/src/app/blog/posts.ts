@@ -793,7 +793,7 @@ export const POSTS: BlogPost[] = [
 <p>As horas que você perde ouvindo áudio podiam ser trabalho, descanso ou família. Converter não é preguiça — é respeitar o seu tempo.</p>
 
 <h2>Conclusão</h2>
-<p>Chega de ouvir áudio longo. Teste o ZapScript de graça e leia seu primeiro áudio em segundos. No lançamento, o 1º mês do Pro sai por R$ 18.</p>
+<p>Chega de ouvir áudio longo. Teste o ZapScript de graça e leia seu primeiro áudio em segundos.</p>
     `,
   },
 
@@ -823,7 +823,7 @@ export const POSTS: BlogPost[] = [
 </ul>
 
 <h2>As opções pagas</h2>
-<p>Serviços pagos entregam mais precisão, sem limites práticos e, os melhores, com <strong>resumo automático</strong> e integração direta com o WhatsApp. O custo, no lançamento, é baixo: o ZapScript começa em <strong>R$ 18 no 1º mês</strong>.</p>
+<p>Serviços pagos entregam mais precisão, sem limites práticos e, os melhores, com <strong>resumo automático</strong> e integração direta com o WhatsApp. O ZapScript tem plano gratuito para começar (Core, 200 áudios/mês) e o Profissional sai por <strong>R$ 49/mês</strong> quando você quiser automatizar tudo.</p>
 
 <h2>Critérios que realmente importam</h2>
 <table>
@@ -849,7 +849,7 @@ export const POSTS: BlogPost[] = [
     <tr><td>Resumo com IA</td><td>❌</td><td>✅</td></tr>
     <tr><td>Dentro do WhatsApp</td><td>❌ / parcial</td><td>✅</td></tr>
     <tr><td>LGPD</td><td>Varia</td><td>✅</td></tr>
-    <tr><td>Custo</td><td>R$ 0</td><td>A partir de R$ 18/mês</td></tr>
+    <tr><td>Custo</td><td>R$ 0</td><td>R$ 0 no Core, a partir de R$ 49/mês no Profissional</td></tr>
   </tbody>
 </table>
 
@@ -864,7 +864,7 @@ export const POSTS: BlogPost[] = [
 <p>Sim. O ZapScript tem plano gratuito, sem cartão de crédito. Você experimenta a conversão e o resumo antes de decidir.</p>
 
 <h2>Conclusão</h2>
-<p>Grátis serve para uso esporádico; pago compensa para quem trabalha com áudio. Teste sem compromisso no ZapScript — se gostar, o 1º mês do Pro sai por R$ 18 no lançamento.</p>
+<p>Grátis serve para uso esporádico; pago compensa para quem trabalha com áudio. Teste sem compromisso no ZapScript — o Core é grátis, e o Profissional custa R$ 49/mês quando você quiser automatizar tudo.</p>
     `,
   },
 
@@ -925,7 +925,7 @@ export const POSTS: BlogPost[] = [
 <p>Não, desde que haja base legal, segurança e transparência — exatamente o que o ZapScript oferece. O tratamento é feito para executar o serviço que você contratou.</p>
 
 <h2>Conclusão</h2>
-<p>Conversão de áudio com IA pode ser perfeitamente segura — basta escolher um serviço que leve privacidade a sério. Converta em conformidade com a LGPD: crie sua conta no ZapScript e, no lançamento, garanta o 1º mês do Pro por R$ 18.</p>
+<p>Conversão de áudio com IA pode ser perfeitamente segura — basta escolher um serviço que leve privacidade a sério. Converta em conformidade com a LGPD: crie sua conta gratuita no ZapScript e comece agora.</p>
     `,
   },
 
@@ -998,7 +998,7 @@ export const POSTS: BlogPost[] = [
 <p>Com o motor Whisper, a precisão fica em torno de 95%+ para português claro.</p>
 
 <h2>Conclusão</h2>
-<p>Converter áudio em texto deixou de ser tarefa técnica. Para um arquivo isolado, um site grátis resolve. Para quem lida com áudio todo dia — WhatsApp, reuniões, atendimento — vale automatizar com IA. <strong>Crie sua conta no ZapScript e converta seu primeiro áudio agora</strong>; no lançamento, o 1º mês do Pro sai por R$ 18.</p>
+<p>Converter áudio em texto deixou de ser tarefa técnica. Para um arquivo isolado, um site grátis resolve. Para quem lida com áudio todo dia — WhatsApp, reuniões, atendimento — vale automatizar com IA. <strong>Crie sua conta no ZapScript e converta seu primeiro áudio agora</strong> — o plano Core é grátis, sem cartão.</p>
     `,
   },
 
@@ -1065,7 +1065,7 @@ export const POSTS: BlogPost[] = [
 <p>Não há limite fixo. Áudios muito longos levam um pouco mais para processar.</p>
 
 <h2>Conclusão</h2>
-<p>Converter áudio para texto online nunca foi tão simples: sem instalar nada, em segundos, com resumo automático. <strong>Experimente grátis no ZapScript</strong> e converta seu primeiro áudio agora mesmo — no lançamento, o 1º mês do Pro sai por R$ 18.</p>
+<p>Converter áudio para texto online nunca foi tão simples: sem instalar nada, em segundos, com resumo automático. <strong>Experimente grátis no ZapScript</strong> e converta seu primeiro áudio agora mesmo.</p>
     `,
   },
 
@@ -1132,7 +1132,7 @@ export const POSTS: BlogPost[] = [
 </ol>
 
 <h2>Conclusão</h2>
-<p>De advogada a mãe de família, a história se repete: parar de ouvir e começar a ler devolve horas e reduz o estresse. <strong>Faça o mesmo teste</strong> — crie sua conta no ZapScript e leia seu primeiro áudio hoje. No lançamento, o 1º mês do Pro sai por R$ 18.</p>
+<p>De advogada a mãe de família, a história se repete: parar de ouvir e começar a ler devolve horas e reduz o estresse. <strong>Faça o mesmo teste</strong> — crie sua conta gratuita no ZapScript e leia seu primeiro áudio hoje.</p>
     `,
   },
 
@@ -1670,7 +1670,7 @@ export const POSTS: BlogPost[] = [
     coverEmoji:  '🔑',
     author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
-<p>Corretor autônomo não tem plantão de equipe, nem secretária para triar mensagens. É uma pessoa só, no carro entre visitas, no cartório, ou almoçando — e o WhatsApp não para de chegar. Diferente de quem trabalha numa imobiliária com suporte, o corretor solo sente na pele cada minuto perdido ouvindo um áudio de 2 minutos que poderia ter sido lido em 10 segundos.</p>
+<p>Corretor autônomo não tem plantão de equipe, nem secretária para triar mensagens. É uma pessoa só, no carro entre visitas, no cartório, ou almoçando — e o WhatsApp não para de chegar. Diferente de quem trabalha numa imobiliária com suporte (veja o <a href="/blog/transcrever-audio-whatsapp-corretores">guia geral de conversão de áudio para corretores</a> se esse for o seu caso), o corretor solo sente na pele cada minuto perdido ouvindo um áudio de 2 minutos que poderia ter sido lido em 10 segundos.</p>
 
 <h2>O problema específico de trabalhar sozinho</h2>
 <ul>

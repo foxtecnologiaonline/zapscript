@@ -27,9 +27,10 @@ async function sendAlertEmail(subject: string, html: string) {
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
-const API_BASE = process.env.API_URL
-  ? process.env.API_URL.replace('/health', '')
-  : 'https://zapscript-api.railway.app';
+if (!process.env.API_URL) {
+  throw new Error('[Monitor] FATAL: API_URL não configurado — sem isso o monitor não sabe qual servidor checar (não há mais fallback para URL antiga do Railway).');
+}
+const API_BASE = process.env.API_URL.replace('/health', '');
 
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN!;
 

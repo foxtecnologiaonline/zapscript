@@ -15,6 +15,20 @@ Por isso, abaixo eu **não dupliquei** advogados/corretores/vendas. Criei conte�
 
 ---
 
+## ⚠️ Atualização 2026-08-22: concorrente novo encontrado, visibilidade orgânica em zero
+
+Auditoria de marketing (2026-08-22) rodou `site:zapscript.me` e buscas pela
+marca isolada — **zero páginas do domínio retornadas**, nem por marca nem por
+categoria. Não é problema técnico (sitemap/robots/structured data OK) — é
+falta de backlinks/diretórios, exatamente o achado já registrado na seção de
+outreach abaixo, mas ainda não executado.
+
+Nas buscas de validação apareceu um concorrente direto **não mapeado nesta
+lista**: **ZapVox** (zapvoxia.com.br) — blog ativo em SEO com posts tipo
+"resumir áudio 10 minutos whatsapp", "transcrever áudio whatsapp chrome".
+Adicionar aos 5 concorrentes rastreados. **Zapia** também ganhou cobertura de
+imprensa recente (TI Inside/TechTudo) — vale reavaliar prioridade.
+
 ## As 20 maiores buscas relevantes (Brasil, intenção comercial/informacional)
 
 | # | Keyword | Volume relativo | Status no site | Ação |

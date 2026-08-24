@@ -50,6 +50,12 @@ const nextConfig = {
         ],
       },
       {
+        source: '/app/(.*)',
+        headers: [
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },
+        ],
+      },
+      {
         source: '/admin/(.*)',
         headers: [
           { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },

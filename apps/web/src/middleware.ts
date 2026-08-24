@@ -58,6 +58,7 @@ export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (
     pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/app') ||
     pathname.startsWith('/admin') ||
     pathname.startsWith('/payment')
   ) {

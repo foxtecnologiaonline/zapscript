@@ -27,7 +27,7 @@ const FAQS = [
   },
   {
     q: 'É realmente grátis?',
-    a: 'Sim. Você pode transcrever um áudio gratuitamente aqui na página para ver a qualidade. Para transcrever vários áudios automaticamente — tudo que chega no seu WhatsApp vira texto sozinho — basta criar uma conta gratuita, que inclui 20 minutos de transcrição por mês sem cartão de crédito.',
+    a: 'Sim. Você pode transcrever um áudio gratuitamente aqui na página para ver a qualidade. Para transcrever vários áudios automaticamente — tudo que chega no seu WhatsApp vira texto sozinho — basta criar uma conta gratuita, que inclui 200 áudios de transcrição por mês sem cartão de crédito.',
   },
   {
     q: 'Quais formatos de áudio funcionam?',
@@ -140,12 +140,12 @@ export default function TranscreverAudioGratisPage() {
         <div className="mb-14 text-center">
           <h2 className="text-2xl font-bold text-white mb-3">Cansado de transcrever um por um?</h2>
           <p className="text-brand-muted mb-6 max-w-xl mx-auto leading-relaxed">
-            Crie uma conta gratuita, conecte o seu WhatsApp uma vez e <span className="text-brand-primary font-semibold">todo áudio que chegar vira texto automaticamente</span> — 24 horas por dia, sem enviar nada manualmente. O plano grátis inclui 20 minutos por mês, sem cartão.
+            Crie uma conta gratuita, conecte o seu WhatsApp uma vez e <span className="text-brand-primary font-semibold">todo áudio que chegar vira texto automaticamente</span> — 24 horas por dia, sem enviar nada manualmente. O plano grátis inclui 200 áudios por mês, sem cartão.
           </p>
           <Link href="/cadastro?utm_source=lp&utm_campaign=transcrever-gratis" className="inline-flex items-center gap-2 bg-brand-primary text-black font-bold text-lg px-10 py-4 rounded-2xl hover:opacity-90 transition-opacity">
             Transcrever automaticamente →
           </Link>
-          <p className="text-xs text-brand-muted mt-4">✓ Sem cartão &nbsp;·&nbsp; ✓ 20 min/mês grátis &nbsp;·&nbsp; ✓ Cancele quando quiser</p>
+          <p className="text-xs text-brand-muted mt-4">✓ Sem cartão &nbsp;·&nbsp; ✓ 200 áudios/mês grátis &nbsp;·&nbsp; ✓ Cancele quando quiser</p>
         </div>
 
         {/* FAQ */}

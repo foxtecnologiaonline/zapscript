@@ -1,23 +1,20 @@
 # build-and-push.yml — Publica as imagens Docker (API + Worker) no GitHub
-# Container Registry a cada push em master, sem precisar rodar
-# scripts/build-and-push.sh manualmente no seu computador.
+# Container Registry, SOB DEMANDA (workflow_dispatch).
 #
 # Usa o token automático do próprio GitHub Actions (GITHUB_TOKEN) — não precisa
 # de nenhum Personal Access Token guardado como secret.
 #
-# Depois que este workflow terminar, no Vultr basta:
-#   cd /opt/zapscript && docker compose pull && docker compose up -d
+# IMPORTANTE: o deploy real (ops.yml, action=deploy) NÃO usa essas imagens —
+# ele clona o master e builda direto no servidor Vultr, ignorando o ghcr.io
+# por completo (ver CLAUDE.md). Este workflow rodava em todo push em master
+# só para publicar imagens que nada consumia, gastando minutos de CI à toa —
+# por isso o gatilho automático foi removido. Mantido como workflow_dispatch
+# manual caso um dia o ops.yml passe a fazer `docker compose pull` em vez de
+# buildar no servidor (aí sim essas imagens passam a ser úteis).
 
 name: Build & Push Docker images
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'apps/api/**'
-      - 'apps/worker/**'
-      - 'packages/database/**'
-      - '.github/workflows/build-and-push.yml'
   workflow_dispatch: {}
 
 permissions:

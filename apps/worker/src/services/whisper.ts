@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { logger } from '../lib/logger';
+import { logAiUsage } from '../lib/aiUsage';
 import { splitMp3ByDuration, estimateMp3DurationSec } from './audio';
 
 // ── Clientes Whisper ─────────────────────────────────────────────────────────
@@ -78,6 +79,8 @@ export interface WhisperSegment {
 export interface TranscribeOpts {
   vocab?: (string | null | undefined)[];  // nomes de contato, termos do nicho
   juridical?: boolean;                     // usa priming formal + retorna segmentos
+  userId?: string;                         // se presente, loga custo em AiUsageLog (feature)
+  feature?: string;                        // default 'core_transcription' — ver chamadores
 }
 
 // Tamanho de cada bloco em áudios longos (segundos). 30 min @64k mono ≈ 14 MB,
@@ -157,6 +160,11 @@ async function transcribeBuffer(
       }
       const segments = opts.juridical ? parseSegments(r.raw.segments) : [];
       logger.info(`[Whisper] ${a.label} ✅ ${r.durationSec}s — lang:${r.language}${opts.juridical ? ` — ${segments.length} seg` : ''}`);
+      // Whisper cobra por duração, não por token — inputTokens carrega os
+      // segundos de áudio processados (ver comentário em lib/aiUsage.ts).
+      if (opts.userId) {
+        logAiUsage(opts.userId, opts.feature || 'core_transcription', a.model, r.durationSec, 0);
+      }
       return { text: r.text, durationSec: r.durationSec, language: r.language, segments };
     } catch (err: any) {
       lastErr = err;
