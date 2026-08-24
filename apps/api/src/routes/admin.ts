@@ -8,6 +8,7 @@ import { runHealthCheck, lastReport, history } from '../services/health-monitor'
 import { Queue } from 'bullmq';
 import { redis } from '../services/queue';
 import { sendText } from '../services/evolution';
+import { provisionInstance, requestPairingCode } from '../services/number-provisioning';
 import { sendEmail } from '../lib/mailer';
 import { asaas, asaasConfigured, asaasEnv } from '../lib/asaas';
 import { checkAdminTotp } from '../lib/totp';
@@ -229,6 +230,45 @@ export default async function adminRoutes(app: FastifyInstance) {
       }
     }
   );
+
+  // ── Número Oficial (isPublic) — demo pública / onboarding via WhatsApp ────
+  // Fica de propósito fora de GET /numbers (painel do usuário nunca lista o
+  // isPublic — ver numbers.ts), então esta é a única forma de provisionar ou
+  // reconectar sem chamar a API direto na mão.
+
+  // GET /whatsapp-oficial — status atual do número marcado isPublic
+  app.get('/whatsapp-oficial', { preHandler: [adminAuth] }, async (_req: any, reply) => {
+    const number = await prisma.whatsappNumber.findFirst({
+      where:  { isPublic: true } as any,
+      select: { id: true, phoneNumber: true, displayName: true, status: true, zapiInstanceId: true, connectedAt: true, updatedAt: true } as any,
+    });
+    if (!number) return reply.code(404).send({ error: 'Nenhum número marcado como isPublic no banco.' });
+    return number;
+  });
+
+  // POST /whatsapp-oficial/connect — provisiona a instância Evolution (se
+  // necessário) e pede um código de pareamento novo para o telefone salvo.
+  app.post<{ Body: { phone?: string } }>('/whatsapp-oficial/connect', { preHandler: [adminAuth] }, async (req: any, reply) => {
+    const number = await prisma.whatsappNumber.findFirst({ where: { isPublic: true } as any });
+    if (!number) return reply.code(404).send({ error: 'Nenhum número marcado como isPublic no banco.' });
+
+    const provision = await provisionInstance(number.id, app.log);
+    if (!provision.ok) {
+      const isConfigError = provision.message.startsWith('Evolution API não configurada');
+      return reply.code(isConfigError ? 503 : 502).send({ error: provision.message });
+    }
+
+    const phone = req.body?.phone?.trim() || number.phoneNumber;
+    if (!phone || phone === 'pending') {
+      return reply.send({ ok: true, provisioned: true, message: 'Instância pronta, mas falta telefone salvo para gerar o código — informe o phone no corpo da requisição.' });
+    }
+
+    const pairing = await requestPairingCode(number.id, phone, app.log);
+    if (!pairing.ok) {
+      return reply.code(502).send({ error: pairing.error, fallbackToQr: pairing.fallbackToQr, provisioned: true });
+    }
+    return reply.send({ ok: true, code: pairing.code });
+  });
 
   // GET /admin/stats — dashboard completo do admin
   app.get('/stats', { preHandler: [adminAuth] }, async () => {

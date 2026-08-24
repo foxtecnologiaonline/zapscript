@@ -1228,6 +1228,9 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
             {/* Diagnóstico WhatsApp */}
             <DiagnoseWhatsApp apiBase={API} token={token} />
 
+            {/* Número Oficial — conectar/reconectar demo pública */}
+            <OfficialNumberPanel apiBase={API} token={token} />
+
             {/* Configuração de Alertas */}
             <AlertConfigPanel apiBase={API} token={token} />
 
@@ -2423,6 +2426,92 @@ function DiagnoseWhatsApp({ apiBase, token }: { apiBase: string; token: string }
             <pre className="text-[10px] text-[rgba(16,185,129,.7)] bg-[#040b09] rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">
               {JSON.stringify(result, null, 2)}
             </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Número Oficial (isPublic) — demo pública / onboarding via WhatsApp ──────
+// Fica de fora da lista normal de Números (o painel do usuário nunca lista
+// isPublic — ver numbers.ts), então este é o único lugar pra provisionar ou
+// pedir um código de pareamento novo sem chamar a API na mão.
+function OfficialNumberPanel({ apiBase, token }: { apiBase: string; token: string }) {
+  const [open, setOpen]         = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [info, setInfo]         = useState<any>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [result, setResult]     = useState<{ code?: string; error?: string } | null>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/whatsapp-oficial`, { headers: { 'x-admin-token': token } });
+      setInfo(res.ok ? await res.json() : null);
+    } catch { setInfo(null); }
+    finally { setLoading(false); }
+  }
+
+  async function connect() {
+    setConnecting(true);
+    setResult(null);
+    try {
+      const res = await fetch(`${apiBase}/sys/g5r8t2/whatsapp-oficial/connect`, {
+        method: 'POST',
+        headers: { 'x-admin-token': token, 'content-type': 'application/json' },
+      });
+      const data = await res.json();
+      setResult(res.ok ? { code: data.code } : { error: data.error || 'Falha ao conectar.' });
+      load();
+    } catch (e: any) {
+      setResult({ error: e.message });
+    } finally { setConnecting(false); }
+  }
+
+  return (
+    <div className="mt-3 border border-[rgba(16,185,129,.1)] rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); if (!open && !info) load(); }}
+        className="w-full text-left px-4 py-2.5 text-xs text-[rgba(16,185,129,.5)] hover:text-[rgba(16,185,129,.8)] flex items-center gap-2 transition-colors">
+        📱 {open ? '▲' : '▼'} Número Oficial — demo pública / onboarding
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          {loading ? (
+            <div className="text-xs text-[rgba(16,185,129,.4)]">Carregando…</div>
+          ) : !info ? (
+            <div className="text-xs text-red-400">Nenhum número marcado como oficial (isPublic) encontrado no banco.</div>
+          ) : (
+            <div className="flex items-center justify-between bg-[#132621] rounded-lg px-3 py-2.5">
+              <div>
+                <div className="text-sm text-[#d1fae5] font-medium">{info.displayName || '—'}</div>
+                <div className="text-xs text-[rgba(16,185,129,.4)] font-mono">{info.phoneNumber || '—'}</div>
+              </div>
+              <Badge label={STATUS_LABEL[info.status] || info.status} cls={STATUS_CLS[info.status]} />
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Btn variant="primary" disabled={connecting || !info} onClick={connect}>
+              {connecting ? '⟳ Gerando código...' : '🔌 Conectar / gerar novo código'}
+            </Btn>
+            <Btn variant="ghost" onClick={load} disabled={loading}>
+              ↻ Atualizar status
+            </Btn>
+          </div>
+
+          {result?.code && (
+            <div className="bg-[rgba(16,185,129,.06)] border border-[rgba(16,185,129,.2)] rounded-lg p-3">
+              <div className="text-[10px] text-[rgba(16,185,129,.5)] mb-1">
+                Código de pareamento — no celular do número: WhatsApp → ⋮ → Aparelhos conectados → Conectar um aparelho:
+              </div>
+              <div className="text-xl font-bold tracking-widest text-[#10b981]">{result.code}</div>
+            </div>
+          )}
+          {result?.error && (
+            <div className="text-xs text-red-400">⚠️ {result.error}</div>
           )}
         </div>
       )}
