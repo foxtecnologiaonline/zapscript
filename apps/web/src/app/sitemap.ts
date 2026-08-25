@@ -29,6 +29,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/vs/notta`,     lastModified: d('2026-06-25'), priority: 0.8,  changeFrequency: 'monthly' },
     { url: `${base}/vs/transkriptor`, lastModified: d('2026-06-27'), priority: 0.8, changeFrequency: 'monthly' },
     { url: `${base}/vs/zapia`,     lastModified: now,             priority: 0.8,  changeFrequency: 'monthly' },
+    { url: `${base}/vs/zapvox`,    lastModified: now,             priority: 0.8,  changeFrequency: 'monthly' },
     { url: `${base}/login`,        lastModified: d('2026-05-01'), priority: 0.7,  changeFrequency: 'monthly' },
     { url: `${base}/blog`,         lastModified: now,             priority: 0.9,  changeFrequency: 'weekly'  },
     { url: `${base}/privacidade`,  lastModified: d('2026-05-01'), priority: 0.3,  changeFrequency: 'yearly'  },

@@ -1234,7 +1234,7 @@ export const POSTS: BlogPost[] = [
 <p>Se você usa o mesmo número para atendimento e comunicação pessoal, o <strong>Modo Privado</strong> do Plano Pro garante que apenas você recebe o texto e o resumo — nada aparece na conversa para o cliente ver. Ideal para manter a profissionalidade sem expor que você está usando uma ferramenta de IA.</p>
 
 <h2>Conclusão</h2>
-<p>Corretores que convertem automaticamente chegam primeiro, respondem melhor e fecham mais. A mudança é técnica — conectar o WhatsApp — mas o impacto é comercial. Comece gratuitamente em <strong>zapscript.me</strong>.</p>
+<p>Corretores que convertem automaticamente chegam primeiro, respondem melhor e fecham mais. Se você atua sozinho, sem estrutura de equipe por trás, o guia de <a href="/blog/transcricao-audio-whatsapp-corretor-autonomo">corretor autônomo</a> mostra o mesmo processo focado na sua rotina. A mudança é técnica — conectar o WhatsApp — mas o impacto é comercial. Comece gratuitamente em <strong>zapscript.me</strong>.</p>
     `,
   },
 
@@ -1293,7 +1293,7 @@ export const POSTS: BlogPost[] = [
 </ol>
 
 <h2>Conclusão</h2>
-<p>Times de vendas que documentam sistematicamente fecham mais e com ciclos mais curtos. Conversão automática de áudio é a peça que faltava para quem opera pelo WhatsApp. Comece gratuitamente em <strong>zapscript.me</strong> — até 200 áudios/mês no Core, Plano Profissional por R$49/mês.</p>
+<p>Times de vendas que documentam sistematicamente fecham mais e com ciclos mais curtos. Se você vende sozinho — revenda, e-commerce ou autônomo direto pelo número comercial — o guia de <a href="/blog/transcricao-audio-whatsapp-vendedor-autonomo">vendedor autônomo</a> foca nesse cenário. Conversão automática de áudio é a peça que faltava para quem opera pelo WhatsApp. Comece gratuitamente em <strong>zapscript.me</strong> — até 200 áudios/mês no Core, Plano Profissional por R$49/mês.</p>
     `,
   },
 
@@ -1488,7 +1488,7 @@ export const POSTS: BlogPost[] = [
     coverEmoji:  '🛍️',
     author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
     content: `
-<p>"Manda um áudio que é mais rápido" — é assim que boa parte dos pedidos chega para quem vende por WhatsApp: revendedoras, autônomos, lojas de e-commerce que atendem direto pelo número comercial. O problema é que áudio não é pesquisável, não fica registrado em lugar nenhum e, no meio de uma correria de atendimentos, é fácil esquecer um detalhe — cor, tamanho, endereço, forma de pagamento.</p>
+<p>"Manda um áudio que é mais rápido" — é assim que boa parte dos pedidos chega para quem vende por WhatsApp: revendedoras, autônomos, lojas de e-commerce que atendem direto pelo número comercial. Diferente de um time comercial estruturado com SDR e closer (veja o <a href="/blog/transcrever-audio-whatsapp-vendas">guia geral de áudio para vendas</a> nesse caso), aqui é você sozinho cuidando de cada pedido. O problema é que áudio não é pesquisável, não fica registrado em lugar nenhum e, no meio de uma correria de atendimentos, é fácil esquecer um detalhe — cor, tamanho, endereço, forma de pagamento.</p>
 
 <h2>Onde o pedido por áudio costuma travar a venda</h2>
 <ul>
@@ -1652,6 +1652,42 @@ export const POSTS: BlogPost[] = [
 
 <h2>Conclusão</h2>
 <p>Para uma clínica, cada áudio de paciente é informação clínica ou operacional — não deveria depender de alguém lembrar de ouvir. Crie uma conta gratuita em <strong>zapscript.me</strong>, conecte o número da recepção e comece a converter automaticamente, com até 200 áudios/mês sem cartão de crédito.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     POST 17 — Linkable asset: dados/estatísticas sobre áudio no WhatsApp
+     no Brasil, com fonte. Objetivo: ser citado por terceiros (imprensa,
+     outros blogs), não converter — reforça o outreach de backlinks
+     (ver marketing/OUTREACH-PRONTO-ENVIAR.md e DADOS-AUDIO-WHATSAPP-BRASIL.md).
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'numeros-audio-whatsapp-brasil',
+    title:       'Áudio no WhatsApp no Brasil: os números por trás do hábito nacional',
+    description: 'Por que o Brasil é o país que mais manda áudio no WhatsApp do mundo? Reunimos os dados e as fontes — Meta, Mobile Time/Opinion Box — num só lugar.',
+    keywords:    ['audio whatsapp brasil dados','brasil mais audio whatsapp do mundo','estatisticas audio whatsapp','quantos audios whatsapp brasil manda','zuckerberg brasil audio whatsapp'],
+    publishedAt: '2026-08-25',
+    readingTime: 4,
+    category:    'Dados',
+    coverEmoji:  '📊',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
+    content: `
+<p>Se parece que todo mundo ao seu redor prefere mandar um áudio a digitar uma mensagem, não é impressão. O Brasil não é só um país que usa bastante o WhatsApp — é, especificamente, o país que mais fala por áudio dentro dele. Reunimos os números que comprovam isso, com a fonte de cada um, para quem quiser citar ou simplesmente entender a escala do hábito.</p>
+
+<h2>Brasil envia 4x mais mensagens de voz no WhatsApp do que qualquer outro país do mundo</h2>
+<p>O dado foi divulgado pelo próprio Mark Zuckerberg, CEO da Meta, durante o Meta Conversations 2024, evento global da empresa sobre mensageria para negócios, realizado em 6 de junho de 2024 em São Paulo. Segundo ele, os brasileiros também enviam mais figurinhas e participam de mais enquetes do que usuários de qualquer outro país — mas é o áudio que mais chama atenção pela diferença: 4 vezes mais que a segunda colocação.</p>
+<p><em>Fonte: <a href="https://www.cnnbrasil.com.br/tecnologia/brasileiros-sao-os-que-mais-enviam-audios-e-figurinhas-no-whatsapp-diz-mark-zuckerberg/" target="_blank" rel="noopener noreferrer">CNN Brasil</a> e <a href="https://canaltech.com.br/apps/whatsapp-brasil-envia-4-vezes-mais-audio-do-que-outros-paises-diz-zuckerberg-292037/" target="_blank" rel="noopener noreferrer">Canaltech</a> — Meta Conversations, junho/2024.</em></p>
+
+<h2>Cerca de 80% dos brasileiros que usam WhatsApp mandam ou preferem mandar áudio — mais do que ligam por voz</h2>
+<p>Pesquisas recorrentes da série "Mensageria no Brasil" (parceria Mobile Time/Opinion Box, feita a cada seis meses desde 2015) mostram esse número de forma consistente entre edições: em uma delas, áudio aparece em 81,3% das interações, atrás só do texto (98,1%); em outra, 80% dos usuários dizem preferir mandar áudio a digitar, contra 72% que preferem ligar por voz. O padrão se repete: texto ainda é rei, mas áudio vem em segundo lugar — à frente da própria ligação.</p>
+<p><em>Fonte: <a href="https://blog.opinionbox.com/pesquisa-whatsapp-no-brasil/" target="_blank" rel="noopener noreferrer">Opinion Box</a> e <a href="https://www.mobiletime.com.br/pesquisas/mensageria-no-brasil-marco-de-2024/" target="_blank" rel="noopener noreferrer">Mobile Time</a> — pesquisa "Mensageria no Brasil", edições 2024-2025.</em></p>
+
+<h2>O WhatsApp já processou 7 bilhões de mensagens de voz por dia — no mundo todo</h2>
+<p>Esse número é global, não só do Brasil, e foi divulgado pela própria Meta em março de 2022, quando a empresa lançou novos recursos para mensagens de voz (pausar e retomar gravação, visualizar a forma de onda do áudio, reprodução acelerada). É um dado de referência, não o mais recente disponível — mas dá a escala: se o mundo inteiro já mandava 7 bilhões de áudios por dia em 2022, e o Brasil sozinho manda 4 vezes mais que qualquer outro país isoladamente, dá para ter uma ideia de quanto do fluxo de voz do WhatsApp passa por aqui.</p>
+<p><em>Fonte: <a href="https://macmagazine.com.br/post/2022/03/30/usuarios-enviam-7-bilhoes-de-audios-no-whatsapp-por-dia/" target="_blank" rel="noopener noreferrer">MacMagazine</a> e <a href="https://www.adweek.com/media/7b-voice-messages-are-being-sent-via-whatsapp-every-day/" target="_blank" rel="noopener noreferrer">Adweek</a> — anúncio Meta/WhatsApp, março/2022.</em></p>
+
+<h2>Por que isso importa na prática</h2>
+<p>Esse volume de áudio tem um efeito prático conhecido de quem trabalha recebendo mensagens de cliente o dia inteiro: tempo perdido ouvindo o que poderia ser lido em segundos, e informação que se perde porque ninguém tem tempo de reouvir um áudio de 4 minutos para confirmar um detalhe. É esse cenário — não um problema técnico de transcrição, mas um problema de volume e tempo — que fez crescer no Brasil uma categoria inteira de ferramentas de IA para lidar com áudio de WhatsApp automaticamente, entre elas o <a href="https://www.zapscript.me">ZapScript</a>, que transcreve, resume e prioriza os áudios recebidos sem que o usuário precise fazer nada manualmente.</p>
     `,
   },
 
