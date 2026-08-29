@@ -24,6 +24,7 @@ export const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   'Comparativos': 'ZapScript frente a outras ferramentas de transcrição e assistentes de IA.',
   'Casos de uso': 'Exemplos reais de quem já converte áudio automaticamente no WhatsApp.',
   'Nichos':       'Guias específicos por profissão — corretores, advogados, vendedores e mais.',
+  'Dados':        'Números e pesquisas sobre o uso do WhatsApp e de áudio no Brasil, com fontes.',
 };
 
 /** LPs de nicho relacionadas — exibidas na categoria "Nichos" para reforçar o silo temático. */
