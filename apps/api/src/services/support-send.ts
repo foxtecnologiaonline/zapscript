@@ -1,4 +1,5 @@
-import { sendText } from './evolution';
+import { prisma } from '../lib/prisma';
+import { sendText, instanceName as evoInstanceName } from './evolution';
 import { sendEmail } from '../lib/mailer';
 import { io } from '../index';
 
@@ -8,12 +9,31 @@ import { io } from '../index';
  * quanto pela fila de aprovação (suporte-admin).
  */
 
+/**
+ * Instância de WhatsApp usada pelo suporte: SUPPORT_EVOLUTION_INSTANCE (se
+ * setada) como override para separar do número oficial, senão o número
+ * oficial (isPublic) — mesma identidade que já conduz o onboarding, já que
+ * é ele quem recebe as dúvidas encaminhadas em onboarding-whatsapp.ts.
+ * Duplicada aqui (em vez de importar de onboarding-whatsapp.ts) só para
+ * evitar um import circular (esse arquivo é importado por support-intake.ts,
+ * que é importado por onboarding-whatsapp.ts).
+ */
+async function resolveSupportInstance(): Promise<string | null> {
+  if (process.env.SUPPORT_EVOLUTION_INSTANCE) return process.env.SUPPORT_EVOLUTION_INSTANCE;
+  const official = await prisma.whatsappNumber.findFirst({
+    where:  { isPublic: true },
+    select: { id: true, zapiInstanceId: true },
+  });
+  if (!official) return null;
+  return official.zapiInstanceId ?? evoInstanceName(official.id);
+}
+
 // Envia um texto pelo canal de origem do atendimento.
 export async function sendOnChannel(at: any, texto: string): Promise<void> {
   if (at.canal === 'whatsapp') {
     if (!at.clienteWhatsapp) throw new Error('Atendimento sem número de WhatsApp');
-    const instance = process.env.SUPPORT_EVOLUTION_INSTANCE;
-    if (!instance) throw new Error('SUPPORT_EVOLUTION_INSTANCE não configurado');
+    const instance = await resolveSupportInstance();
+    if (!instance) throw new Error('Nenhuma instância de WhatsApp disponível para suporte (configure SUPPORT_EVOLUTION_INSTANCE ou marque um número isPublic).');
     await sendText(instance, at.clienteWhatsapp, texto);
     return;
   }
@@ -51,8 +71,9 @@ export async function sendWelcome(at: any): Promise<void> {
  */
 export async function notifyAdminEscalation(at: any, motivo: string, log?: any): Promise<void> {
   const adminPhone = process.env.ADMIN_NOTIFY_PHONE;
-  const instance   = process.env.SUPPORT_EVOLUTION_INSTANCE;
-  if (!adminPhone || !instance) return; // sem destino/instância → painel continua sendo o canal
+  if (!adminPhone) return; // sem destino → painel continua sendo o canal
+  const instance = await resolveSupportInstance();
+  if (!instance) return;
 
   const canalLabel: Record<string, string> = { whatsapp: 'WhatsApp', email: 'E-mail', chat: 'Chat do site' };
   const cliente = at.clienteNome || at.clienteWhatsapp || at.clienteEmail || 'cliente';

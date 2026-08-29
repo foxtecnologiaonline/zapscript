@@ -16,8 +16,15 @@
  *   → code_sent → completed
  *   (qualquer estágio) → escalated — 2 respostas não reconhecidas em sequência
  *
- * Toda mensagem sai pela instância do NÚMERO OFICIAL (isPublic=true) — nunca
- * pela instância SUPPORT_EVOLUTION_INSTANCE (exclusiva do Agente de Suporte).
+ * Toda mensagem sai pela instância do NÚMERO OFICIAL (isPublic=true) — é a
+ * única identidade que o usuário vê do primeiro contato até virar cliente.
+ * Por isso o número oficial também é o canal de WhatsApp do Agente de
+ * Suporte: texto de quem NÃO está em onboarding ativo (onboarding já
+ * concluído/escalado, ou cliente cadastrado mandando mensagem por outro
+ * motivo) é encaminhado para intakeMessage() em vez de cair no vazio — ver
+ * handleOfficialNumberText(). support-send.ts usa essa mesma instância como
+ * padrão para responder por WhatsApp (SUPPORT_EVOLUTION_INSTANCE, se
+ * setada, ainda funciona como override para separar os dois números).
  */
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
@@ -173,18 +180,36 @@ export async function handleOfficialNumberText(
     await handleReply(lead, text, instanceNameStr, messageId);
     return true;
   }
-  if (lead) return false; // já completo ou escalado — não reprocessa, deixa cair no fluxo padrão
 
-  // Sem lead: já é cliente cadastrado conversando por outro motivo? Não é onboarding.
-  const digits = phoneClean.slice(-8);
-  const existingUser = await prisma.user.findFirst({
-    where:  { phone: { contains: digits } },
-    select: { id: true },
-  }).catch(() => null);
-  if (existingUser) return false;
+  // Onboarding já concluído/escalado antes, ou nunca existiu — mas pode ser
+  // cliente cadastrado mandando mensagem por outro motivo. Nesse caso não é
+  // onboarding, mas o número oficial também é o canal de suporte: vira caso
+  // na mesma esteira usada pelo Agente de Suporte nos outros canais.
+  let clienteNome = lead?.name || lead?.pushName || senderName || null;
+  if (!lead) {
+    const digits = phoneClean.slice(-8);
+    const existingUser = await prisma.user.findFirst({
+      where:  { phone: { contains: digits } },
+      select: { name: true },
+    }).catch(() => null);
+    if (!existingUser) {
+      // Estranho de verdade → inicia cadastro conversacional
+      await startFromOfficialNumber(senderPhone, senderName, instanceNameStr);
+      return true;
+    }
+    clienteNome = existingUser.name || senderName || null;
+  }
 
-  // Estranho de verdade → inicia cadastro conversacional
-  await startFromOfficialNumber(senderPhone, senderName, instanceNameStr);
+  await intakeMessage({
+    canal:           'whatsapp',
+    mensagem:        text,
+    clienteNome,
+    clienteWhatsapp: phoneClean,
+    canalExternoId:  messageId ?? null,
+    threadId:        `suporte-oficial:${phoneClean}`,
+  }, logger).catch((err: any) =>
+    logger.error(`[OnboardingWA] Falha ao encaminhar pro suporte (${phoneClean}): ${err.message}`)
+  );
   return true;
 }
 
