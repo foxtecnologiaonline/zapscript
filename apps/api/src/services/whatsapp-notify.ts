@@ -13,6 +13,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { prisma } from '../lib/prisma';
 import { sendText, sendPtt } from './evolution';
+import { getOfficialInstanceName } from './onboarding-whatsapp';
 
 export async function sendToOwnNumber(instanceName: string, phone: string, message: string): Promise<void> {
   const clean = phone.replace(/\D/g, '');
@@ -35,16 +36,18 @@ function getWelcomeAudioBase64(): string {
 
 // ── 1. Boas-vindas ao adicionar/conectar número (qualquer transição para
 //    "conectado" vinda de um estado não-conectado — número novo, readicionado
-//    ou reconectado após queda) ────────────────────────────────────────────
+//    ou reconectado após queda) — enviada PELO número oficial (mesma
+//    identidade que já conduziu o onboarding), não como nota de voz "pra si
+//    mesmo" no número que acabou de conectar. ────────────────────────────
 export async function notifyWelcome(numberId: string): Promise<void> {
   try {
-    const n = await (prisma as any).whatsappNumber.findUnique({
-      where:   { id: numberId },
-      include: { user: true },
-    });
-    if (!n?.zapiInstanceId || !n?.phoneNumber) return;
+    const n = await prisma.whatsappNumber.findUnique({ where: { id: numberId } });
+    if (!n?.phoneNumber || n.phoneNumber === 'pending') return;
 
-    await sendPtt(n.zapiInstanceId, n.phoneNumber, getWelcomeAudioBase64());
+    const officialInstance = await getOfficialInstanceName();
+    if (!officialInstance) return;
+
+    await sendPtt(officialInstance, n.phoneNumber, getWelcomeAudioBase64());
   } catch { /* não crítico */ }
 }
 

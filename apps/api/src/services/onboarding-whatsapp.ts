@@ -56,7 +56,7 @@ function extractPhone(text: string): string | null {
 }
 
 /** Instância do número oficial (isPublic=true) — usada para toda mensagem do onboarding. */
-async function getOfficialInstanceName(): Promise<string | null> {
+export async function getOfficialInstanceName(): Promise<string | null> {
   const official = await prisma.whatsappNumber.findFirst({
     where:  { isPublic: true },
     select: { id: true, zapiInstanceId: true },
