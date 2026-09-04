@@ -15,7 +15,7 @@
   --color-accent-light:     254 243 199;
   --color-text:             26 26 46;
   --color-text-secondary:   100 116 139;
-  --color-text-muted:       148 163 184;
+  --color-text-muted:       108 119 134; /* WCAG AA fix 2026-09-04: era 148 163 184 (2.56:1 contra branco, reprovava) — agora 4.54:1 */
   --color-border:           232 229 222;
   --color-border-light:     240 237 230;
   --shadow-sm:  0 1px 2px rgba(26,26,46,.04), 0 1px 3px rgba(26,26,46,.06);
@@ -40,7 +40,7 @@
   --color-accent-light:     120 53 15;
   --color-text:             240 240 244;
   --color-text-secondary:   160 174 192;
-  --color-text-muted:       107 114 128;
+  --color-text-muted:       120 129 144; /* WCAG AA fix 2026-09-04: era 107 114 128 (3.72:1 contra a superfície, reprovava) — agora 4.57:1 */
   --color-border:           42 42 58;
   --color-border-light:     31 31 46;
   --shadow-sm:  0 1px 2px rgba(0,0,0,.2), 0 1px 3px rgba(0,0,0,.15);
