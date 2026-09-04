@@ -142,6 +142,7 @@ export default function BlogPost({ params }: { params: { slug: string } }) {
           </Link>
           <nav className="flex items-center gap-4 text-sm">
             <Link href="/blog" className="text-brand-muted hover:text-white transition-colors">← Blog</Link>
+            <Link href="/comparativos" className="text-brand-muted hover:text-white transition-colors hidden sm:inline">Comparativos</Link>
             <Link
               href="/cadastro"
               className="bg-brand-primary text-black font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity text-sm"
@@ -288,7 +289,7 @@ export default function BlogPost({ params }: { params: { slug: string } }) {
 
       {/* ── Footer ──────────────────────────────────────────────────── */}
       <footer className="border-t border-white/5 mt-16 py-8 text-center text-brand-muted text-sm">
-        <p>© 2026 ZapScript — <Link href="/" className="hover:text-white transition-colors">zapscript.me</Link></p>
+        <p>© 2026 ZapScript — <Link href="/" className="hover:text-white transition-colors">zapscript.me</Link> · <Link href="/comparativos" className="hover:text-white transition-colors">Comparativos</Link> · <Link href="/afiliados" className="hover:text-white transition-colors">Afiliados</Link></p>
       </footer>
     </div>
   );
