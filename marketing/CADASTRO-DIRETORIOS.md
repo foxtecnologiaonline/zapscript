@@ -15,7 +15,16 @@
 > O ZapScript converte e resume automaticamente os áudios do WhatsApp em texto, usando IA — sem precisar ouvir nada.
 
 ## Descrição longa (~600 caracteres)
-> O Brasil é o país que mais envia áudios pelo WhatsApp no mundo. O ZapScript conecta ao seu número (via QR Code, sem app) e converte cada áudio recebido em texto e resumo automaticamente, em segundos, usando IA (Whisper). Funciona 24h, sem precisar encaminhar nada. Plano Free com 15 áudios/mês; Pro com áudios ilimitados, 2 números, modo privado e exportação (PDF/DOCX/CSV). Criptografia AES-256, servidores no Brasil, conformidade LGPD. Feito para quem recebe muito áudio de cliente: corretores, advogados, vendedores, contadores, dentistas.
+> O Brasil é o país que mais envia áudios pelo WhatsApp no mundo. O ZapScript conecta ao seu número (via QR Code, sem app) e converte cada áudio recebido em texto e resumo automaticamente, em segundos, usando IA (Whisper + Claude). Funciona 24h, sem precisar encaminhar nada. Plano Core grátis com 200 áudios/mês, sem cartão. Profissional (R$49/mês) soma atendimento automático 24/7 por IA. Empresas (R$99/mês) soma CRM, Tarefas e até 5 números. Criptografia AES-256, servidores no Brasil, conformidade LGPD. Feito para quem recebe muito áudio de cliente: corretores, advogados, vendedores, contadores, dentistas.
+
+<!-- Corrigido 2026-09-04: a versão anterior descrevia "Free 15 áudios/mês" e
+"Pro ilimitado com 2 números" — desatualizada frente ao plano real (Core
+grátis 200 áudios/mês; Profissional R$49; Empresas R$99), conferido em
+apps/web/src/app/layout.tsx, apps/web/src/lib/planPricing.ts e
+apps/web/public/llms.txt. Nenhum diretório deste checklist tinha sido
+submetido ainda (ver OUTREACH-LOG.md e ANALISE-SEO-IA-DIRETORIOS-2026-08-25),
+então a copy antiga não chegou a ser publicada externamente — mas ficaria
+errada assim que a submissão fosse feita. -->
 
 ## Alternativas a marcar / "concorrentes" (AlternativeTo, SaaSHub, G2)
 Otter.ai, Notta, ViraTexto, LuzIA (transcrição de áudio)

@@ -510,7 +510,68 @@ export default function HomePage() {
         </section>
 
         {/* ══ FOOTER ══ */}
-        <footer className="px-5 py-8 border-t text-center" style={{ borderColor: 'rgb(var(--color-border))' }}>
+        <footer className="px-5 pt-10 pb-8 border-t" style={{ borderColor: 'rgb(var(--color-border))' }}>
+          {/* Navegação — reforça descoberta interna (usuário) e crawl/link equity (buscadores) */}
+          <nav aria-label="Links do site" className="grid grid-cols-2 gap-x-4 gap-y-7 text-left mb-9">
+            {[
+              {
+                heading: 'Produto',
+                links: [
+                  ['Planos e preços', '/#planos'],
+                  ['Criar conta grátis', '/cadastro'],
+                  ['Entrar', '/login'],
+                  ['Status do sistema', '/status'],
+                ],
+              },
+              {
+                heading: 'Feito pro seu trabalho',
+                links: [
+                  ['Corretores', '/corretores'],
+                  ['Advogados', '/advogados'],
+                  ['Vendas', '/vendas'],
+                  ['Contadores', '/para/contabilidade'],
+                  ['Dentistas', '/dentistas'],
+                ],
+              },
+              {
+                heading: 'Recursos',
+                links: [
+                  ['Blog', '/blog'],
+                  ['ZapScript vs Otter.ai', '/vs/otter'],
+                  ['ZapScript vs Notta', '/vs/notta'],
+                  ['Programa de afiliados', '/afiliados'],
+                ],
+              },
+              {
+                heading: 'Empresa',
+                links: [
+                  ['Sobre', '/sobre'],
+                  ['Contato', 'mailto:contato@zapscript.me'],
+                  ['Termos', '/termos'],
+                  ['Privacidade', '/privacidade'],
+                ],
+              },
+            ].map(col => (
+              <div key={col.heading}>
+                <p className="text-xs font-bold uppercase tracking-wide mb-2.5" style={{ color: 'rgb(var(--color-text))' }}>
+                  {col.heading}
+                </p>
+                <ul className="space-y-2">
+                  {col.links.map(([label, href]) => (
+                    <li key={label}>
+                      <Link href={href}
+                        className="text-xs transition-colors hover:text-brand-text"
+                        style={{ color: 'rgb(var(--color-text-muted))' }}>
+                        {label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </nav>
+
+          <div className="text-center pt-7 border-t" style={{ borderColor: 'rgb(var(--color-border))' }}>
           <p className="text-xs font-medium" style={{ color: 'rgb(var(--color-text-muted))' }}>
             © 2026 ZapScript v2.0 · FOX TecnologIA · Todos os direitos reservados.
           </p>
@@ -535,6 +596,7 @@ export default function HomePage() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="https://statics.startupbase.io/site/badges/featured-on-sb-neutral.svg" alt="Featured on StartupBase" height={55} style={{ height: 55, width: 'auto' }} />
             </a>
+          </div>
           </div>
         </footer>
       </div>

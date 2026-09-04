@@ -13,6 +13,21 @@ O blog já tem **3 posts quase duplicados** para os mesmos nichos:
 
 Por isso, abaixo eu **não dupliquei** advogados/corretores/vendas. Criei conteúdo só para gaps genuínos.
 
+## ✅ Correção 2026-09-04: alerta de canibalização acima está desatualizado
+
+`marketing/ANALISE-SEO-IA-DIRETORIOS-2026-08-25.md` (item 3 do TL;DR) revisou
+`posts.ts` linha a linha e chegou a uma contagem diferente da que abre este
+documento: **1 post em advogados, 2 em corretores e 2 em vendas**, com
+keywords e ângulos diferentes (geral vs. autônomo/solo) — não 3 posts quase
+duplicados por nicho. Risco de canibalização real é **baixo**, e as duas
+lacunas que este doc listava como "ainda não criadas" (preço e SAC) **já
+existem** (`quanto-custa-transcrever-audio-whatsapp` e
+`transcricao-audio-whatsapp-atendimento-ao-cliente`). **Não consolidar nem
+fazer 301 redirect** — o interlinking leve entre os pares de nicho já foi
+feito em `apps/web/src/app/blog/interlinks.ts`. O gargalo real de
+visibilidade não é conteúdo (ver bloco abaixo e a auditoria de 08-25): é
+autoridade externa — diretórios e backlinks, ainda não executados.
+
 ---
 
 ## ⚠️ Atualização 2026-08-22: concorrente novo encontrado, visibilidade orgânica em zero
