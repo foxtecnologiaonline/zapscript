@@ -269,7 +269,7 @@ export default function ParaContabilidadePage() {
       </div>
 
       <footer className="border-t border-white/5 py-8 text-center text-xs text-brand-muted">
-        <p>© {new Date().getFullYear()} ZapScript · <Link href="/" className="hover:text-brand-primary">Voltar ao site</Link> · <Link href="/privacidade" className="hover:text-brand-primary">Privacidade</Link></p>
+        <p>© {new Date().getFullYear()} ZapScript · <Link href="/" className="hover:text-brand-primary">Voltar ao site</Link> · <Link href="/comparativos" className="hover:text-brand-primary">Comparativos</Link> · <Link href="/blog" className="hover:text-brand-primary">Blog</Link> · <Link href="/privacidade" className="hover:text-brand-primary">Privacidade</Link></p>
         <p className="mt-1 text-brand-muted/50">Conversão automática de áudios do WhatsApp para escritórios de contabilidade. Servidores no Brasil, conformidade com a LGPD.</p>
       </footer>
     </div>

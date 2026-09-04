@@ -230,7 +230,7 @@ export default function VsViratextoPage() {
       </div>
 
       <footer className="border-t border-white/5 py-8 text-center text-xs text-brand-muted">
-        <p>© {new Date().getFullYear()} ZapScript · <Link href="/" className="hover:text-brand-primary">Voltar ao site</Link> · <Link href="/privacidade" className="hover:text-brand-primary">Privacidade</Link></p>
+        <p>© {new Date().getFullYear()} ZapScript · <Link href="/" className="hover:text-brand-primary">Voltar ao site</Link> · <Link href="/comparativos" className="hover:text-brand-primary">Outros comparativos</Link> · <Link href="/blog" className="hover:text-brand-primary">Blog</Link> · <Link href="/privacidade" className="hover:text-brand-primary">Privacidade</Link></p>
         <p className="mt-1 text-brand-muted/50">Esta página é um comparativo informativo independente. As informações sobre o ViraTexto são baseadas em uso público do serviço.</p>
       </footer>
     </div>

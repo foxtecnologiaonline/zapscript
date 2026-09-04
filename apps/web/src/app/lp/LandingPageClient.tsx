@@ -127,6 +127,14 @@ const PLANS = [
    Só afeta badge/headline/sub do hero — o resto da página é mantido.
    Ex.: /vendas?dor=tempo   /dentistas?dor=esquecer
    ──────────────────────────────────────────────────────────────────────── */
+const OTHER_NICHES: { slug: string; label: string }[] = [
+  { slug: 'corretores',            label: 'Corretores' },
+  { slug: 'advogados',             label: 'Advogados' },
+  { slug: 'vendas',                label: 'Vendas' },
+  { slug: 'para/contabilidade',    label: 'Contadores' },
+  { slug: 'dentistas',             label: 'Dentistas' },
+];
+
 const PAIN_VARIANTS: Record<string, Pick<Variant, 'badge' | 'headline' | 'sub'>> = {
   tempo: {
     badge: '⏱️ Recupere seu tempo',
@@ -593,14 +601,42 @@ export default function LandingPageClient({ variant }: { variant: Variant }) {
         </div>
       </section>
 
+      {/* ════════════════════════════════════════════════════════════
+          OUTROS NICHOS — interlinking entre páginas de nicho
+          (só renderiza quando a página atual for de um nicho específico)
+      ════════════════════════════════════════════════════════════ */}
+      {variant.slug && (
+        <section className="pb-12 px-4">
+          <div className="max-w-3xl mx-auto text-center">
+            <p className="text-xs font-semibold uppercase tracking-widest text-brand-muted mb-3">
+              Feito também para
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {OTHER_NICHES.filter(n => n.slug !== variant.slug).map(n => (
+                <Link
+                  key={n.slug}
+                  href={`/${n.slug}`}
+                  className="inline-flex items-center px-3.5 py-2 rounded-full text-xs font-semibold border border-white/10 bg-white/5 text-brand-muted hover:text-white hover:border-brand-primary/30 transition-all"
+                >
+                  {n.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ── Footer mínimo ────────────────────────────────────────── */}
       <footer className="border-t border-white/5 py-6 px-4">
         <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-brand-muted">
           <span>© 2026 ZapScript · FOX TecnologIA</span>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap justify-center">
+            <Link href="/#planos" className="hover:text-white transition-colors">Planos</Link>
+            <Link href="/comparativos" className="hover:text-white transition-colors">Comparativos</Link>
+            <Link href="/blog" className="hover:text-white transition-colors">Blog</Link>
+            <Link href="/afiliados" className="hover:text-white transition-colors">Afiliados</Link>
             <Link href="/privacidade" className="hover:text-white transition-colors">Privacidade</Link>
             <Link href="/termos" className="hover:text-white transition-colors">Termos</Link>
-            <Link href="/blog" className="hover:text-white transition-colors">Blog</Link>
           </div>
         </div>
       </footer>

@@ -537,8 +537,7 @@ export default function HomePage() {
                 heading: 'Recursos',
                 links: [
                   ['Blog', '/blog'],
-                  ['ZapScript vs Otter.ai', '/vs/otter'],
-                  ['ZapScript vs Notta', '/vs/notta'],
+                  ['Comparativos', '/comparativos'],
                   ['Programa de afiliados', '/afiliados'],
                 ],
               },

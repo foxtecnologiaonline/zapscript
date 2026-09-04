@@ -32,6 +32,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/vs/zapvox`,    lastModified: now,             priority: 0.8,  changeFrequency: 'monthly' },
     { url: `${base}/login`,        lastModified: d('2026-05-01'), priority: 0.7,  changeFrequency: 'monthly' },
     { url: `${base}/blog`,         lastModified: now,             priority: 0.9,  changeFrequency: 'weekly'  },
+    { url: `${base}/comparativos`, lastModified: now,             priority: 0.8,  changeFrequency: 'monthly' },
     { url: `${base}/privacidade`,  lastModified: d('2026-05-01'), priority: 0.3,  changeFrequency: 'yearly'  },
     { url: `${base}/termos`,       lastModified: d('2026-05-01'), priority: 0.3,  changeFrequency: 'yearly'  },
     { url: `${base}/status`,       lastModified: now,             priority: 0.4,  changeFrequency: 'daily'   },
