@@ -18,6 +18,7 @@ import {
 } from '../lib/affiliateConfig';
 import { maskEmail } from '../lib/mask';
 import { PLAN_PRICES } from './billing';
+import { invalidateModuleCache } from '../lib/moduleGate';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -690,6 +691,10 @@ export default async function adminRoutes(app: FastifyInstance) {
             deletedAt: true,
             subscription: { include: { plan: true } },
             balance: true,
+            // Rollout controlado do Copiloto (fora dos planos por enquanto) —
+            // ver toggle logo abaixo. Só esse productKey por ora; generaliza
+            // pra outros módulos admin-only se algum dia precisar de mais.
+            entitlements: { where: { productKey: 'copiloto' }, select: { status: true, source: true } },
           },
         }),
         prisma.transcription.findMany({
@@ -737,6 +742,50 @@ export default async function adminRoutes(app: FastifyInstance) {
         usageLogs,
         auditLogs,
       };
+    }
+  );
+
+  // POST /admin/users/:id/modules/copiloto/toggle — concede/revoga acesso manual
+  // ao Copiloto. O módulo está fora dos planos por enquanto (não entra em
+  // TIER_MODULE_BUNDLES nem é vendido avulso — catalog.ts marca 'discovery',
+  // ver billing.ts) — esse endpoint é o ÚNICO jeito de habilitar alguém.
+  app.post<{ Params: { id: string }; Body: { active: boolean } }>(
+    '/users/:id/modules/copiloto/toggle',
+    {
+      preHandler: [adminAuth],
+      schema: { body: { type: 'object', required: ['active'], properties: { active: { type: 'boolean' } } } },
+    },
+    async (req, reply) => {
+      const { id } = req.params;
+      const { active } = req.body;
+
+      const user = await prisma.user.findUnique({ where: { id }, select: { id: true, email: true } });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      if (active) {
+        await prisma.entitlement.upsert({
+          where:  { userId_productKey: { userId: id, productKey: 'copiloto' } },
+          update: { status: 'active', source: 'comp', canceledAt: null },
+          create: { userId: id, productKey: 'copiloto', status: 'active', source: 'comp' },
+        });
+        await invalidateModuleCache(id);
+        return { ok: true, message: `Copiloto ativado para ${user.email}.` };
+      }
+
+      const existing = await prisma.entitlement.findUnique({
+        where: { userId_productKey: { userId: id, productKey: 'copiloto' } },
+      });
+      if (existing && existing.source !== 'comp') {
+        return reply.code(400).send({ error: 'Este acesso não foi concedido manualmente (comp) — não pode ser revogado por aqui.' });
+      }
+      if (existing) {
+        await prisma.entitlement.update({
+          where: { userId_productKey: { userId: id, productKey: 'copiloto' } },
+          data:  { status: 'canceled', canceledAt: new Date() },
+        });
+      }
+      await invalidateModuleCache(id);
+      return { ok: true, message: `Copiloto desativado para ${user.email}.` };
     }
   );
 

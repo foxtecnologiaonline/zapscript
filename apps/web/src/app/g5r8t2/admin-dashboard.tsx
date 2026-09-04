@@ -3033,6 +3033,8 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
   const { user, stats, transcriptions, numbers, auditLogs } = data;
   const plan   = user?.subscription?.plan?.name || 'free';
   const status = user?.subscription?.status || '—';
+  const copilotoEnt    = user?.entitlements?.[0]; // já filtrado por productKey='copiloto' no backend
+  const copilotoActive = copilotoEnt?.status === 'active';
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-stretch justify-end"
@@ -3086,6 +3088,24 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
                 {tlLoading ? '⟳' : '📅'} {showTl ? 'Ocultar timeline' : 'Ver timeline'}
               </Btn>
             </div>
+          </div>
+
+          {/* Copiloto — fora dos planos por enquanto, acesso só por concessão manual daqui */}
+          <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide mb-1">🧭 Copiloto</div>
+              <div className="text-xs text-[rgba(16,185,129,.4)]">
+                {copilotoActive ? 'Ativo — acesso manual (comp)' : 'Sem acesso. Fora dos planos por enquanto — só habilita por aqui.'}
+                {copilotoEnt && copilotoEnt.source !== 'comp' && !copilotoActive && ' (revogado por outra via — verifique antes de reativar)'}
+              </div>
+            </div>
+            <Btn
+              variant={copilotoActive ? 'danger' : 'primary'}
+              disabled={acting === 'modules/copiloto/toggle'}
+              onClick={() => act('modules/copiloto/toggle', 'POST', { active: !copilotoActive })}
+            >
+              {acting === 'modules/copiloto/toggle' ? '⟳' : copilotoActive ? '🚫 Desativar' : '✅ Ativar'}
+            </Btn>
           </div>
 
           {/* Enviar Mensagem */}

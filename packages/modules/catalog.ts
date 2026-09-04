@@ -86,9 +86,12 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '🧭',
     tagline: 'Resumo de mensagens e sugestão de resposta, direto no seu WhatsApp',
     jtbd: 'Tenho contato e grupo demais pra acompanhar sozinho; preciso saber o que importa e o que responder, sem reler tudo.',
-    // Incluso no Profissional e no Empresas (ver TIER_MODULE_BUNDLES em
-    // routes/billing.ts) — não é vendido avulso. Preço aqui é só referência.
-    status: 'bundled',
+    // FORA dos planos por enquanto (rollout controlado) — não está em
+    // TIER_MODULE_BUNDLES nem é vendido avulso ('discovery' bloqueia as duas
+    // coisas, ver billing.ts). Só entra por concessão manual do admin
+    // (Entitlement source='comp'), ver /sys/g5r8t2/users/:id/modules/copiloto/toggle.
+    // Preço aqui é só referência pra quando (e se) for pra tier/venda avulsa.
+    status: 'discovery',
     priceMonthly: 47,
     priceYearly: 451,
     dependsOn: [],
