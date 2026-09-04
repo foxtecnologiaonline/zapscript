@@ -15,8 +15,10 @@
 #   1. git clone --depth 1 do master para /root/zapscript-build-new
 #   2. docker build das imagens api/worker com tag :new (isolado — não toca
 #      no que está rodando enquanto builda)
-#   3. tag do :latest atual → :previous (rede de segurança pro rollback)
-#   4. tag do :new → :latest
+#   3. tag do :latest atual → :previous (rede de segurança pro rollback) —
+#      nos DOIS nomes: o local (zapscript-api) e o que o compose de fato usa
+#      (ghcr.io/foxtecnologiaonline/zapscript-api — ver nota abaixo)
+#   4. tag do :new → :latest, idem nos dois nomes
 #   5. sobe a api primeiro e espera o healthcheck ficar "healthy" via polling
 #      real (não um sleep fixo — o healthcheck da api pode levar 30-90s,
 #      e um sleep curto demais deixa o worker preso em "Created" porque ele
@@ -24,6 +26,18 @@
 #   6. só then sobe o worker
 #   7. limpa a tag :new e promove /root/zapscript-build-new a
 #      /root/zapscript-build (guardando o anterior como -old)
+#
+# ⚠️ Nota sobre o nome da imagem (bug corrigido em 2026-09-04): o
+# /root/docker-compose.zapscript.yml declara os serviços api/worker com
+# `image: ghcr.io/foxtecnologiaonline/zapscript-api(-worker):latest` — não
+# porque o compose puxa desse registry (`docker compose up -d` sem `--pull`
+# nunca busca lá), mas porque foi assim que o arquivo ficou configurado uma
+# vez e o Docker casa contêiner↔imagem pelo NOME exato, não pelo conteúdo.
+# Buildar e marcar só `zapscript-api:latest` (sem o prefixo `ghcr.io/`) faz o
+# `docker compose up -d` continuar de braços cruzados usando o que já estava
+# em cache sob o nome `ghcr.io/...` — o deploy "funcionava" (build ok,
+# healthcheck ok) sem publicar UMA linha de código nova. Por isso os dois
+# blocos abaixo (deploy e rollback) marcam a imagem sob os dois nomes.
 #
 # Rollback (action = rollback) simplesmente inverte o passo 3/4: promove de
 # volta a tag :previous → :latest e reinicia na mesma ordem (api, espera
@@ -139,10 +153,23 @@ jobs:
           echo "== build worker =="
           docker build -f apps/worker/Dockerfile -t zapscript-worker:new .
 
+          GHCR_API=ghcr.io/foxtecnologiaonline/zapscript-api
+          GHCR_WORKER=ghcr.io/foxtecnologiaonline/zapscript-worker
+
+          # Guarda a versao anterior pro rollback, nos dois nomes — o local
+          # (so pra debug/inspecao manual) e o que o compose de fato usa.
           docker tag zapscript-api:latest zapscript-api:previous 2>/dev/null || true
           docker tag zapscript-worker:latest zapscript-worker:previous 2>/dev/null || true
+          docker tag "$GHCR_API:latest" "$GHCR_API:previous" 2>/dev/null || true
+          docker tag "$GHCR_WORKER:latest" "$GHCR_WORKER:previous" 2>/dev/null || true
+
           docker tag zapscript-api:new zapscript-api:latest
           docker tag zapscript-worker:new zapscript-worker:latest
+          # Essencial: e' esse nome (ghcr.io/...) que docker-compose.zapscript.yml
+          # referencia — sem retaguear pra ele tambem, "docker compose up -d"
+          # nao enxerga a imagem nova (ver nota no topo do arquivo).
+          docker tag zapscript-api:new "$GHCR_API:latest"
+          docker tag zapscript-worker:new "$GHCR_WORKER:latest"
 
           echo "== subindo api =="
           docker compose -f "$COMPOSE_FILE" up -d api
@@ -171,14 +198,20 @@ jobs:
             CMD=$(cat <<'REMOTE'
           set -e
           COMPOSE_FILE=/root/docker-compose.zapscript.yml
+          GHCR_API=ghcr.io/foxtecnologiaonline/zapscript-api
+          GHCR_WORKER=ghcr.io/foxtecnologiaonline/zapscript-worker
 
-          if ! docker image inspect zapscript-api:previous >/dev/null 2>&1; then
+          # O compose casa pelo nome ghcr.io/... (ver nota no topo do arquivo)
+          # — e' essa tag :previous que precisa existir pro rollback valer.
+          if ! docker image inspect "$GHCR_API:previous" >/dev/null 2>&1; then
             echo "Sem imagem :previous salva — nao ha rollback disponivel (so existe apos um deploy via este workflow)."
             exit 1
           fi
 
-          docker tag zapscript-api:previous zapscript-api:latest
-          docker tag zapscript-worker:previous zapscript-worker:latest
+          docker tag zapscript-api:previous zapscript-api:latest 2>/dev/null || true
+          docker tag zapscript-worker:previous zapscript-worker:latest 2>/dev/null || true
+          docker tag "$GHCR_API:previous" "$GHCR_API:latest"
+          docker tag "$GHCR_WORKER:previous" "$GHCR_WORKER:latest"
 
           echo "== subindo api (versao anterior) =="
           docker compose -f "$COMPOSE_FILE" up -d api
