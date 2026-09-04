@@ -13,6 +13,45 @@
 
 ---
 
+## 0. Status de implementação (2026-09-04)
+
+O **MVP está construído** — Fases 0 e 1 do roadmap (§9). O acesso é liberado
+**usuário a usuário pelo admin**, não vendido: o `Product` entra como `planned`
+(que `billing.ts` recusa no `/modules/:key/subscribe`) e quem concede é
+`POST /admin/copiloto/access`, criando um `Entitlement` de cortesia. O gate real
+continua sendo o Entitlement, igual a todos os módulos — quando o pricing for
+decidido (§8), basta promover o `Product`; nenhuma linha do agente muda.
+
+**No ar (MVP):**
+
+| Entregue | Onde |
+|---|---|
+| Ingestão da conversa pela conexão atual | `evolution-webhook.ts` → fila `copiloto` |
+| Debounce de 3 min por contato (rajada = 1 briefing) | `jobId` com bucket de tempo, `copiloto-commands.ts` |
+| Triagem barata antes do briefing caro | `copiloto-agent.ts` (Haiku 4.5) |
+| Briefing + 3 opções em eixos distintos | `copiloto-agent.ts` (Sonnet 5) + `copiloto-playbook.ts` |
+| Guardrails determinísticos (preço/urgência/robô) | `copiloto-guardrails.ts` + testes |
+| Entrega no self-chat e resposta `1`/`2`/`3`/`1e`/`0` | `copiloto-commands.ts` |
+| Envio ao cliente só após confirmação do dono | `copiloto-commands.ts` (único ponto de envio) |
+| Teto diário, horário de silêncio, opt-out, sinal de vulnerabilidade | `copiloto.ts` |
+| Comandos `copiloto status/ligar/desligar/limite/silencio/negocio` | `copiloto-commands.ts` |
+| Captura de `sentText` (o diff que ensina o estilo) e outcome `replied` | `copiloto.ts`, `copiloto-commands.ts` |
+| Allowlist e métricas de adoção no admin | `admin.ts` + `admin-dashboard.tsx` |
+
+**Deliberadamente fora do MVP** (continuam como estão descritos abaixo):
+
+- **Resumo diário de grupos** (§2.4) — depende de abrir o descarte de `@g.us` no
+  webhook e da revisão jurídica do consentimento (§7). Fase 3.
+- **Perfil de estilo aprendido** (§5) — o MVP já *coleta* o sinal (`sentText` vs
+  `draft`), mas ainda não o transforma em perfil. Fase 2.
+- **Painel web do usuário** (§4.2) — o controle no MVP é por comando no
+  self-chat, que é onde o produto vive. Fase 5.
+- **Prompt caching** — o SDK fixado no repo (`@anthropic-ai/sdk` 0.24.x) só expõe
+  cache pelo namespace beta. Migrar o SDK é o próximo ganho óbvio de custo (~90%
+  no prefixo estável).
+
+---
+
 ## 1. O que é (e o que explicitamente NÃO é)
 
 | | Copiloto (novo) | Atende (já existe) |
@@ -559,8 +598,8 @@ Empresas: hoje esse degrau vende CRM e Tarefas (features), o Copiloto vende
 
 | Fase | Entrega | Critério de saída |
 |---|---|---|
-| **0 — Fundação** (1 sem) | Módulo no catálogo, schema + migration, gate, fila, config vazia em `/app/copiloto` | Módulo aparece, liga/desliga, nada quebra no Atende |
-| **1 — Briefing** (1–2 sem) | Triagem + briefing + 3 opções, entrega por self-chat, resposta 1/2/3/0 | 10 usuários internos, adoção > 30% |
+| **0 — Fundação** ✅ | Módulo no catálogo, schema + migration, gate, fila, config vazia em `/app/copiloto` | Módulo aparece, liga/desliga, nada quebra no Atende |
+| **1 — Briefing** ✅ | Triagem + briefing + 3 opções, entrega por self-chat, resposta 1/2/3/0 | 10 usuários internos, adoção > 30% |
 | **2 — Estilo** (1 sem) | `CopilotoStyleProfile`, espelho das mensagens do dono, tela editável | Taxa de edição cai entre semana 1 e 3 |
 | **3 — Grupos** (1–2 sem) | Opt-in por grupo, ingestão, resumo diário, retenção | **Bloqueado por revisão jurídica** do consentimento |
 | **4 — Resultado** (1 sem) | Outcome tracking, taxa por técnica, few-shot dos vencedores | Acerto por técnica visível no painel |

@@ -508,6 +508,144 @@ function PlanosPanel({ apiBase, token, notify }: { apiBase: string; token: strin
 /* ── TesterUpgradePanel — lista e upgrade executivo ─────────────── */
 const ADMIN_API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 
+/**
+ * Allowlist do ZapScript Copiloto (MVP).
+ *
+ * O Copiloto não é vendido: quem entra é escolhido aqui, um a um. Liberar cria o
+ * Entitlement de cortesia, liga a config nos números conectados e manda o
+ * onboarding no self-chat do usuário. Ver ESCOPO_COPILOTO.md.
+ */
+function CopilotoPanel({ token, notify }: { token: string; notify: (t: string, type?: 'ok'|'err'|'warn') => void }) {
+  const [list,    setList]    = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [target,  setTarget]  = useState('');
+  const [saving,  setSaving]  = useState(false);
+  const [loaded,  setLoaded]  = useState(false);
+
+  const h = { 'x-admin-token': token, 'content-type': 'application/json' };
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`${ADMIN_API}/sys/g5r8t2/copiloto/users`, { headers: h });
+      const d   = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro ao carregar');
+      setList(d.users || []);
+      setLoaded(true);
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function setAccess(payload: any, okMsg: string) {
+    setSaving(true);
+    try {
+      const res = await fetch(`${ADMIN_API}/sys/g5r8t2/copiloto/access`, {
+        method: 'POST', headers: h, body: JSON.stringify(payload),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro na operação');
+      notify(d.warning ? `⚠️ ${d.warning}` : okMsg, d.warning ? 'warn' : 'ok');
+      setTarget('');
+      load();
+    } catch (e: any) {
+      notify(`❌ ${e.message}`, 'err');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function grant(e: React.FormEvent) {
+    e.preventDefault();
+    const v = target.trim();
+    if (!v) return;
+    // Aceita e-mail ou o id direto — o admin costuma ter um dos dois na mão.
+    const payload = v.includes('@') ? { email: v, enabled: true } : { userId: v, enabled: true };
+    setAccess(payload, '✅ Copiloto liberado — onboarding enviado no WhatsApp do usuário.');
+  }
+
+  return (
+    <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.12)] rounded-xl p-6 space-y-5">
+      <div>
+        <div className="text-sm font-bold text-[#d1fae5]">🎯 Copiloto — acesso do MVP</div>
+        <p className="text-xs text-[rgba(16,185,129,.45)] mt-1 leading-relaxed">
+          O Copiloto lê as conversas, resume só pro dono e sugere 3 ações — nunca fala com o cliente sozinho.
+          Não está à venda: quem usa é quem você liberar aqui. Precisa de <strong className="text-[#10b981]">WhatsApp conectado</strong> pra funcionar.
+        </p>
+      </div>
+
+      <form onSubmit={grant} className="flex gap-2 flex-wrap">
+        <input
+          className="flex-1 min-w-[240px] bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-4 py-2.5 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)] placeholder-[rgba(16,185,129,.3)]"
+          placeholder="E-mail ou ID do usuário"
+          value={target} onChange={e => setTarget(e.target.value)}
+        />
+        <Btn variant="primary" cls="px-5" disabled={saving || !target.trim()}>
+          {saving ? '⟳ Liberando...' : '🎯 Liberar Copiloto'}
+        </Btn>
+      </form>
+
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-bold text-[rgba(16,185,129,.4)] uppercase tracking-wide">
+          {loaded ? `${list.length} usuário(s) no MVP` : 'Lista não carregada'}
+        </span>
+        <Btn onClick={load} disabled={loading}>{loading ? '⟳' : '🔄 Atualizar'}</Btn>
+      </div>
+
+      {loaded && list.length === 0 && (
+        <div className="text-sm text-[rgba(16,185,129,.3)] py-6 text-center">
+          Ninguém no MVP ainda. Libere o primeiro pelo campo acima.
+        </div>
+      )}
+
+      {list.map((u: any) => (
+        <div key={u.userId} className="border-t border-[rgba(16,185,129,.07)] pt-3 flex items-center justify-between gap-4 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-[#d1fae5]">{u.email || u.userId}</span>
+              {u.active
+                ? <Badge label="ativo" cls="text-teal-400 bg-teal-400/10 border-teal-400/20" />
+                : <Badge label="revogado" cls="text-red-400 bg-red-400/10 border-red-400/20" />}
+              {u.active && u.enabled === false && (
+                <Badge label="pausado pelo dono" cls="text-yellow-400 bg-yellow-400/10 border-yellow-400/20" />
+              )}
+              {u.connectedNumbers === 0 && (
+                <Badge label="sem WhatsApp" cls="text-red-400 bg-red-400/10 border-red-400/20" />
+              )}
+            </div>
+            <div className="flex items-center gap-3 mt-1 flex-wrap text-[10px] text-[rgba(16,185,129,.4)]">
+              <span>{u.briefings7d} briefing(s) em 7d</span>
+              <span>{u.acted7d} ação(ões) enviada(s)</span>
+              {/* Adoção é a métrica que diz se as sugestões prestam. Alvo: > 35%. */}
+              {u.adoptionPct !== null && (
+                <span className={u.adoptionPct >= 35 ? 'text-teal-400 font-semibold' : 'text-yellow-400/70'}>
+                  {u.adoptionPct}% de adoção
+                </span>
+              )}
+            </div>
+          </div>
+          {u.active ? (
+            <Btn variant="danger" disabled={saving}
+              onClick={() => {
+                if (!confirm(`Revogar o Copiloto de ${u.email || u.userId}?`)) return;
+                setAccess({ userId: u.userId, enabled: false }, '✅ Acesso revogado.');
+              }}>
+              Revogar
+            </Btn>
+          ) : (
+            <Btn variant="ghost" disabled={saving}
+              onClick={() => setAccess({ userId: u.userId, enabled: true, notify: false }, '✅ Acesso reativado.')}>
+              Reativar
+            </Btn>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: string, type?: 'ok'|'err'|'warn') => void }) {
   const [list,              setList]              = useState<any[]>([]);
   const [loaded,            setLoaded]            = useState(false);
@@ -1041,6 +1179,17 @@ export default function AdminDashboard({ ctx, fn }: { ctx: DashCtx; fn: DashFn }
         )}
 
         {/* ═══ SEÇÃO TESTERS (dentro de Usuários) ═══ */}
+        {tab === 'usuarios' && (
+          <div className="space-y-5 mt-8">
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+              <span className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wider">🎯 Copiloto (MVP)</span>
+              <div className="h-px flex-1 bg-[rgba(16,185,129,.12)]" />
+            </div>
+            <CopilotoPanel token={ctx.token} notify={fn.notify} />
+          </div>
+        )}
+
         {tab === 'usuarios' && (
           <div className="space-y-5 mt-8">
             <div className="flex items-center gap-3">

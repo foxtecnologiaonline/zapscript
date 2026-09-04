@@ -7,6 +7,9 @@ import { storeQr } from '../lib/qrStore';
 import { sendText } from '../services/evolution';
 import { getUserModules } from '../lib/moduleGate';
 import { isAtendeOwnerCommand, handleAtendeOwnerCommand } from '../services/atende-commands';
+import {
+  isCopilotoOwnerCommand, handleCopilotoOwnerCommand, handleCopilotoChoice, enqueueCopilotoMessage,
+} from '../services/copiloto-commands';
 import { io } from '../index';
 
 // Módulo Cobrança (#6): heurística leve p/ detectar cliente avisando que já
@@ -374,6 +377,29 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
               log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado`);
             }
 
+            // ── Módulo Copiloto: toda mensagem do cliente vira contexto ──────
+            // Independente do Atende — o Copiloto não responde ao cliente, ele
+            // resume pro DONO. Fire-and-forget: nunca atrasa o ACK do webhook, e
+            // a decisão cara (IA) só acontece no worker, depois do debounce.
+            // Número público fica de fora: ali quem escreve é estranho fazendo
+            // demo, não cliente de ninguém — briefar isso seria ruído e custo puro.
+            if (number && !number.isPublic && messageText) {
+              getUserModules(number.userId)
+                .then((mods) => {
+                  if (!mods.includes('copiloto')) return;
+                  return enqueueCopilotoMessage({
+                    userId:       number.userId,
+                    numberId:     number.id,
+                    contactPhone: senderPhone,
+                    contactName:  senderName,
+                    direction:    'in',
+                    content:      messageText,
+                    messageId,
+                  });
+                })
+                .catch((err: any) => log.error({ err: err?.message }, '[Copiloto] Falha ao enfileirar mensagem do cliente'));
+            }
+
             // ── Módulo Cobrança (#6): cliente pode estar avisando que já pagou ──
             // Independente do Atende (canal separado: aqui quem é avisado é o
             // DONO, não o cliente). Fire-and-forget — não atrasa o ACK do webhook.
@@ -410,6 +436,59 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
                 log.info(`[Evolution] 🛠️ Comando "atende" ignorado — módulo não contratado (número ${number!.id})`);
               }
               return;
+            }
+
+            // ── Copiloto: o dono respondendo no self-chat ────────────────────
+            // Duas formas, nesta ordem: comando com prefixo "copiloto", ou a
+            // resposta a um briefing ("1", "2", "3", "1e", "0", ou o texto
+            // editado). A escolha só é interpretada se existir briefing pendente
+            // recente — sem isso, uma anotação pessoal com "2" viraria envio ao
+            // cliente, que é o pior bug possível neste produto.
+            if (isSelfChat) {
+              const hasCopiloto = (await getUserModules(number!.userId)).includes('copiloto');
+              if (hasCopiloto) {
+                const ctx = {
+                  userId:       number!.userId,
+                  numberId:     number!.id,
+                  instanceName: instName,
+                  selfPhone:    senderPhone,
+                  text:         messageText,
+                };
+                if (isCopilotoOwnerCommand(messageText)) {
+                  await handleCopilotoOwnerCommand(ctx).catch((err: any) =>
+                    log.error({ err: err?.message }, '[Copiloto] Falha no comando do dono'));
+                  log.info(`[Evolution] 🎯 Comando do dono processado (Copiloto, número ${number!.id})`);
+                  return;
+                }
+                const handled = await handleCopilotoChoice(ctx).catch((err: any) => {
+                  log.error({ err: err?.message }, '[Copiloto] Falha ao processar escolha do dono');
+                  return false;
+                });
+                if (handled) {
+                  log.info(`[Evolution] 🎯 Escolha do dono processada (Copiloto, número ${number!.id})`);
+                  return;
+                }
+              }
+            }
+
+            // ── Copiloto: o dono respondendo o CLIENTE pela mão dele ─────────
+            // Não é self-chat: é conversa real. Vira contexto 'out' — é assim que
+            // o Copiloto aprende o jeito dele escrever. Fire-and-forget; o job
+            // descarta o eco do que o próprio Copiloto enviou.
+            if (number && !isSelfChat) {
+              getUserModules(number.userId)
+                .then((mods) => {
+                  if (!mods.includes('copiloto')) return;
+                  return enqueueCopilotoMessage({
+                    userId:       number.userId,
+                    numberId:     number.id,
+                    contactPhone: senderPhone,
+                    direction:    'out',
+                    content:      messageText,
+                    messageId,
+                  });
+                })
+                .catch((err: any) => log.error({ err: err?.message }, '[Copiloto] Falha ao enfileirar resposta do dono'));
             }
 
             // Resposta real do dono (fromMe), mandada pelo próprio WhatsApp enquanto a

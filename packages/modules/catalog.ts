@@ -183,6 +183,23 @@ export const MODULES: readonly ModuleSpec[] = [
     phase: 3,
   },
   {
+    key: 'copiloto',
+    name: 'ZapScript Copiloto',
+    icon: '🎯',
+    tagline: 'Lê suas conversas, resume pra você e sugere 3 ações',
+    jtbd: 'Tenho conversa demais no WhatsApp e perco venda por não responder a tempo — ou por responder mal.',
+    // MVP fechado: liberado usuário a usuário pelo admin (Entitlement source='comp').
+    // 'planned' mantém o módulo FORA da venda (billing.ts recusa subscribe de
+    // 'planned'/'discovery') sem tirá-lo do catálogo. Promover para 'beta'/'bundled'
+    // só depois da decisão de pricing — ver ESCOPO_COPILOTO.md §8.
+    status: 'planned',
+    priceMonthly: 47,
+    priceYearly: 451,
+    dependsOn: [],
+    reuses: ['mensageria', 'ia', 'conversas'],
+    phase: 2,
+  },
+  {
     key: 'multicanal',
     name: 'ZapScript Multicanal',
     icon: '📷',

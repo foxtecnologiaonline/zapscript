@@ -17,6 +17,7 @@ import {
   getEffectiveCommissionRates, getAutoApproveConfig, getReportScheduleConfig, setAffiliateConfig,
 } from '../lib/affiliateConfig';
 import { maskEmail } from '../lib/mask';
+import { invalidateModuleCache } from '../lib/moduleGate';
 import { PLAN_PRICES } from './billing';
 
 const supabase = createClient(
@@ -3118,6 +3119,181 @@ export default async function adminRoutes(app: FastifyInstance) {
         funnel(), retention(), economics(), levers(),
       ]);
       return { days, funnel: funnelData, retention: retentionData, economics: economicsData, levers: leversData };
+    }
+  );
+
+  // ════════════════════════════════════════════════════════════════════════
+  // ZAPSCRIPT COPILOTO — allowlist do MVP
+  //
+  // O Copiloto não é vendido (Product.status = 'planned', que billing.ts recusa
+  // no /modules/:key/subscribe). Quem libera é o admin, usuário a usuário, aqui.
+  // O gate real continua sendo o Entitlement — mesma fonte da verdade de todos
+  // os módulos —, então quando o pricing for decidido basta promover o Product;
+  // nada deste código muda. Ver ESCOPO_COPILOTO.md §8.
+  // ════════════════════════════════════════════════════════════════════════
+
+  const COPILOTO_KEY = 'copiloto';
+  const COPILOTO_MVP_DAYS = 90; // acesso de cortesia do MVP; renovável pelo admin
+
+  const COPILOTO_ONBOARDING = [
+    '🎯 *Copiloto ligado.*',
+    '',
+    'A partir de agora eu leio suas conversas do WhatsApp e, quando alguma merecer sua atenção, te mando aqui um resumo com *3 opções de resposta* — prontas pra enviar.',
+    '',
+    'Eu *nunca* falo com seu cliente sozinho. Só envio quando você responde 1, 2 ou 3.',
+    '',
+    'Pra começar direito, me conte o que seu negócio faz:',
+    '_copiloto negocio Faço bolos de festa sob encomenda em Uberlândia, entrego em 3 dias_',
+    '',
+    'Outros comandos: *copiloto status*, *copiloto desligar*, *copiloto limite 5*.',
+  ].join('\n');
+
+  // GET /admin/copiloto/users — quem está no MVP, com uso dos últimos 7 dias
+  app.get('/copiloto/users', { preHandler: [adminAuth] }, async () => {
+    const ents = await prisma.entitlement.findMany({
+      where: { productKey: COPILOTO_KEY },
+      orderBy: { updatedAt: 'desc' },
+      take: 200,
+    });
+
+    const userIds = ents.map((e) => e.userId);
+    if (userIds.length === 0) return { users: [] };
+
+    const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [users, configs, totals, acted] = await Promise.all([
+      prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: {
+          id: true, email: true, name: true,
+          numbers: { select: { id: true, phoneNumber: true, status: true } },
+        },
+      }),
+      prisma.copilotoConfig.findMany({ where: { userId: { in: userIds } } }),
+      prisma.copilotoBriefing.groupBy({
+        by: ['userId'],
+        where: { userId: { in: userIds }, createdAt: { gte: since7d } },
+        _count: { _all: true },
+      }),
+      prisma.copilotoBriefing.groupBy({
+        by: ['userId'],
+        where: { userId: { in: userIds }, createdAt: { gte: since7d }, status: 'acted' },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const userById   = new Map(users.map((u) => [u.id, u]));
+    const configById = new Map(configs.map((c) => [c.userId, c]));
+    const totalById  = new Map(totals.map((t: any) => [t.userId, t._count._all]));
+    const actedById  = new Map(acted.map((t: any) => [t.userId, t._count._all]));
+
+    return {
+      users: ents.map((e) => {
+        const u = userById.get(e.userId);
+        const briefings7d = totalById.get(e.userId) ?? 0;
+        const acted7d     = actedById.get(e.userId) ?? 0;
+        return {
+          userId:        e.userId,
+          email:         u ? maskEmail(u.email) : null,
+          name:          u?.name ?? null,
+          active:        e.status === 'active' || e.status === 'trialing',
+          status:        e.status,
+          source:        e.source,
+          grantedAt:     e.createdAt,
+          expiresAt:     e.currentPeriodEnd,
+          connectedNumbers: (u?.numbers ?? []).filter((n) => n.status === 'connected').length,
+          enabled:       configById.get(e.userId)?.enabled ?? null,
+          briefings7d,
+          acted7d,
+          // Taxa de adoção é a métrica que decide se o MVP presta (alvo > 35%).
+          adoptionPct:   briefings7d > 0 ? Math.round((acted7d / briefings7d) * 100) : null,
+        };
+      }),
+    };
+  });
+
+  // POST /admin/copiloto/access — liberar ou revogar o Copiloto para um usuário
+  app.post<{ Body: { userId?: string; email?: string; enabled?: boolean; notify?: boolean } }>(
+    '/copiloto/access',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { userId: rawUserId, email, enabled = true, notify = true } = req.body ?? {};
+
+      if (!rawUserId && !email) {
+        return reply.code(400).send({ error: 'Informe userId ou email.' });
+      }
+
+      const user = rawUserId
+        ? await prisma.user.findUnique({
+            where: { id: rawUserId },
+            select: { id: true, email: true, numbers: { select: { id: true, phoneNumber: true, status: true, zapiInstanceId: true } } },
+          })
+        : await prisma.user.findUnique({
+            where: { email: String(email).toLowerCase().trim() },
+            select: { id: true, email: true, numbers: { select: { id: true, phoneNumber: true, status: true, zapiInstanceId: true } } },
+          });
+
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      if (!enabled) {
+        await prisma.entitlement.updateMany({
+          where: { userId: user.id, productKey: COPILOTO_KEY },
+          data:  { status: 'canceled', canceledAt: new Date() },
+        });
+        // Desliga também a config: revogar acesso e deixar o número "ligado" no
+        // banco confundiria o diagnóstico da próxima vez que alguém olhar.
+        await prisma.copilotoConfig.updateMany({
+          where: { userId: user.id },
+          data:  { enabled: false },
+        });
+        await invalidateModuleCache(user.id);
+        return { ok: true, userId: user.id, enabled: false };
+      }
+
+      const nextPeriod = new Date(Date.now() + COPILOTO_MVP_DAYS * 24 * 60 * 60 * 1000);
+      await prisma.entitlement.upsert({
+        where:  { userId_productKey: { userId: user.id, productKey: COPILOTO_KEY } },
+        create: { userId: user.id, productKey: COPILOTO_KEY, status: 'active', source: 'comp', currentPeriodEnd: nextPeriod },
+        update: { status: 'active', source: 'comp', currentPeriodEnd: nextPeriod, canceledAt: null },
+      });
+      await invalidateModuleCache(user.id);
+
+      // Config por número conectado: sem isso o worker acha 'desligado' e o
+      // usuário liberado não receberia nada até mandar "copiloto ligar".
+      const connected = user.numbers.filter((n) => n.status === 'connected');
+      for (const n of connected) {
+        await prisma.copilotoConfig.upsert({
+          where:  { numberId: n.id },
+          create: { userId: user.id, numberId: n.id, enabled: true },
+          update: { enabled: true },
+        });
+      }
+
+      // Onboarding no self-chat: é onde o produto vive, então é onde ele se
+      // apresenta. Best-effort — a liberação não pode falhar por causa do envio.
+      let notified = false;
+      if (notify) {
+        const target = connected.find((n) => n.zapiInstanceId && n.phoneNumber && n.phoneNumber !== 'pending');
+        if (target) {
+          try {
+            await sendText(target.zapiInstanceId!, target.phoneNumber!, COPILOTO_ONBOARDING);
+            notified = true;
+          } catch (err: any) {
+            req.log.warn({ err: err?.message }, '[Copiloto] Falha ao enviar onboarding');
+          }
+        }
+      }
+
+      return {
+        ok: true,
+        userId: user.id,
+        enabled: true,
+        expiresAt: nextPeriod,
+        numbersConfigured: connected.length,
+        notified,
+        warning: connected.length === 0
+          ? 'Usuário liberado, mas não tem número de WhatsApp conectado — o Copiloto só age quando houver conexão ativa.'
+          : undefined,
+      };
     }
   );
 }
