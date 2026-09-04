@@ -7,6 +7,8 @@ import { storeQr } from '../lib/qrStore';
 import { sendText } from '../services/evolution';
 import { getUserModules } from '../lib/moduleGate';
 import { isAtendeOwnerCommand, handleAtendeOwnerCommand } from '../services/atende-commands';
+import { ingestCopilotoContactMessage, ingestCopilotoGroupMessage } from '../services/copiloto-intake';
+import { handleCopilotoReply } from '../services/copiloto-commands';
 import { io } from '../index';
 
 // Módulo Cobrança (#6): heurística leve p/ detectar cliente avisando que já
@@ -278,8 +280,30 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       const messageType = msg?.messageType;       // 'audioMessage', 'pttMessage', 'documentMessage', 'textMessage'
       const messageId   = key?.id ?? `evo_${Date.now()}`;
 
-      // Ignorar grupos
-      if (remoteJid.includes('@g.us')) return;
+      // Grupos: só entram no fluxo com opt-in do Copiloto (Função 2) — fora
+      // isso, ZapScript continua sem processar grupo nenhum (áudio, Atende,
+      // Cobrança etc. seguem "ignorar grupo" como sempre foi). Só texto conta
+      // pra Função 2 — resumo diário não transcreve áudio de grupo no MVP.
+      if (remoteJid.includes('@g.us')) {
+        if (!fromMe && (messageType === 'conversation' || messageType === 'extendedTextMessage')) {
+          const groupText = messageType === 'conversation'
+            ? msg?.message?.conversation
+            : msg?.message?.extendedTextMessage?.text;
+          if (groupText) {
+            const groupNumber = await findNumber(false);
+            if (groupNumber) {
+              ingestCopilotoGroupMessage({
+                numberId:   groupNumber.id,
+                groupJid:   remoteJid,
+                senderJid:  key?.participant ?? '',
+                senderName: msg?.pushName ?? null,
+                content:    groupText,
+              }).catch(() => null);
+            }
+          }
+        }
+        return;
+      }
 
       // NÃO retornamos cedo em fromMe: áudios que o usuário encaminha para o
       // PRÓPRIO número (self-chat) devem ser convertidos (Feature 1). O filtro
@@ -374,6 +398,33 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
               log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado`);
             }
 
+            // ── Módulo Copiloto — Função 1 (triagem de mensagem individual) ────
+            // Só atua onde o Atende não é dono da conversa agora (desligado, não
+            // contratado, ou humanTakeover ligado) — nunca duas respostas
+            // concorrentes pro mesmo contato. Ver escopo de produto, "Relação
+            // com o Atende". Fire-and-forget: nunca atrasa nem derruba o webhook.
+            if (number && messageText) {
+              getUserModules(number.userId).then(async (mods) => {
+                if (!mods.includes('copiloto')) return;
+                let atendeOwnsIt = false;
+                if (cfg?.enabled && mods.includes('atende')) {
+                  const conv = await prisma.atendeConversation.findUnique({
+                    where:  { numberId_contactPhone: { numberId: number!.id, contactPhone: senderPhone } },
+                    select: { humanTakeover: true },
+                  });
+                  atendeOwnsIt = !conv?.humanTakeover;
+                }
+                if (atendeOwnsIt) return;
+                await ingestCopilotoContactMessage({
+                  userId:       number!.userId,
+                  numberId:     number!.id,
+                  contactPhone: senderPhone,
+                  contactName:  senderName,
+                  messageText:  messageText!,
+                });
+              }).catch(() => null);
+            }
+
             // ── Módulo Cobrança (#6): cliente pode estar avisando que já pagou ──
             // Independente do Atende (canal separado: aqui quem é avisado é o
             // DONO, não o cliente). Fire-and-forget — não atrasa o ACK do webhook.
@@ -394,6 +445,23 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
             // dispara com o prefixo "atende" pra nunca sequestrar uma nota pessoal comum.
             const selfRef    = ownerDigits || String(number?.phoneNumber ?? '').replace(/\D/g, '');
             const isSelfChat = !!number && !!selfRef && selfRef !== 'pending' && samePhone(senderPhone, selfRef);
+
+            // Módulo Copiloto: reply (ou "1"/"2"/"3" solto) a um card pendente,
+            // sempre dentro do chat "Mensagens para você mesmo". Tentado antes
+            // dos comandos do Atende — nunca colide (prefixo "atende" vs. dígito
+            // solto), mas precisa vir primeiro pra não cair na captura de
+            // humanAuthored logo abaixo quando resolver algo.
+            if (isSelfChat) {
+              const stanzaId = msg?.message?.extendedTextMessage?.contextInfo?.stanzaId ?? null;
+              const handled = await handleCopilotoReply({
+                instanceName: instName,
+                selfPhone:    senderPhone,
+                numberId:     number!.id,
+                messageText,
+                stanzaId,
+              }).catch(() => false);
+              if (handled) return;
+            }
 
             if (isSelfChat && isAtendeOwnerCommand(messageText)) {
               const hasAtende = (await getUserModules(number!.userId)).includes('atende');

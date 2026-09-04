@@ -75,6 +75,22 @@ export const atendeQueue = new Queue('atende-replies', {
   },
 });
 
+// ── Fila do Copiloto (mensagens individuais + resumo diário de grupos) ───────
+// 'contact-message': um job por lote de mensagens de um contato, agendado com
+// delay (debounce) e reagendado (remove + add) a cada nova mensagem do mesmo
+// contato — por isso jobId estável por thread, não por mensagem.
+// 'group-message': ingestão de mensagem de grupo com opt-in (sem debounce — só
+// grava; o resumo diário roda em polling, ver apps/worker/src/copiloto.ts).
+export const copilotoQueue = new Queue('copiloto', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff:  { type: 'exponential', delay: 5_000 },
+    removeOnComplete: { count: 1_000, age: 48 * 60 * 60 },
+    removeOnFail:     { count: 2_000, age: 7 * 24 * 60 * 60 },
+  },
+});
+
 // ── Fila de geração de legendas (ZapScript Legendas) ──────────────────────────
 export const legendaQueue = new Queue('legendas', {
   connection: redis as any,

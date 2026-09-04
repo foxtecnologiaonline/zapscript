@@ -62,6 +62,9 @@ model User {
   atendeConfigs           AtendeConfig[]
   atendeKnowledgeBase     AtendeKnowledgeBase[]
   atendeConversations     AtendeConversation[]
+  copilotoGroups          CopilotoGroup[]
+  copilotoGroupDigests    CopilotoGroupDigest[]
+  copilotoContactThreads  CopilotoContactThread[]
   voiceCommands           VoiceCommand[]
   salesVisits             SalesVisit[]
   legendaJobs             LegendaJob[]
@@ -157,6 +160,8 @@ model WhatsappNumber {
   transcriptions      Transcription[]
   atendeConfig        AtendeConfig?
   atendeConversations AtendeConversation[]
+  copilotoGroups      CopilotoGroup[]
+  copilotoContactThreads CopilotoContactThread[]
   crmContacts         CrmContact[]
   campanhas           Campanha[]
   avisos              Aviso[]
@@ -1015,6 +1020,117 @@ model AtendeMessage {
   conversation   AtendeConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Módulo Copiloto (tiers Profissional + Empresas) — duas funções, um agente:
+// (1) triagem de mensagens individuais por contato, com 3 respostas prontas
+//     (script + rascunho de compromisso opcional); (2) resumo diário dos
+//     grupos acompanhados (opt-in, só informativo, sem sugestão de resposta).
+// Tudo é entregue no chat "Mensagens para você mesmo" do dono — nunca na
+// conversa com o contato ou no grupo. Ver escopo de produto para o desenho
+// completo (delivery, reply-to-choose, geração de Task a partir da escolha).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Opt-in por grupo — só grupos com active=true são lidos (groupsIgnore é
+// desligado na instância Evolution quando o usuário tem ao menos 1 ativo).
+model CopilotoGroup {
+  id        String   @id @default(cuid())
+  userId    String
+  numberId  String
+  groupJid  String // '<id>@g.us'
+  name      String
+  active    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number    WhatsappNumber         @relation(fields: [numberId], references: [id], onDelete: Cascade)
+  messages  CopilotoGroupMessage[]
+
+  @@unique([numberId, groupJid])
+  @@index([userId, active])
+}
+
+// Mensagens brutas de grupos com opt-in — retenção curta (job de purge),
+// só alimentam o resumo do dia; o que sobrevive além disso é o CopilotoGroupDigest.
+model CopilotoGroupMessage {
+  id         String   @id @default(cuid())
+  groupId    String
+  senderJid  String
+  senderName String?
+  content    String
+  createdAt  DateTime @default(now())
+  group      CopilotoGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, createdAt])
+}
+
+// Um resumo por número por dia (date = 'YYYY-MM-DD' no timezone do usuário —
+// chave de idempotência do job diário, mesmo padrão de lastDigestAt do Atende
+// mas aqui por data em vez de delta, já que agrega N grupos de uma vez).
+model CopilotoGroupDigest {
+  id             String   @id @default(cuid())
+  userId         String
+  numberId       String
+  date           String
+  groupsIncluded Int      @default(0)
+  summaryMd      String
+  createdAt      DateTime @default(now())
+  user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([numberId, date])
+  @@index([userId, createdAt])
+}
+
+// Uma linha por contato — controla o debounce (pendingSince) e quando foi a
+// última sugestão entregue. O "card" só sai quando a janela de silêncio fecha.
+model CopilotoContactThread {
+  id              String    @id @default(cuid())
+  userId          String
+  numberId        String
+  contactPhone    String
+  contactName     String?
+  pendingSince    DateTime? // hora da 1ª mensagem do lote ainda não resumido; null = sem pendência
+  lastSuggestedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number          WhatsappNumber           @relation(fields: [numberId], references: [id], onDelete: Cascade)
+  messages        CopilotoContactMessage[]
+  suggestions     CopilotoSuggestion[]
+
+  @@unique([numberId, contactPhone])
+  @@index([userId, updatedAt])
+}
+
+// Buffer das mensagens do contato ainda não resumidas nesse lote.
+model CopilotoContactMessage {
+  id        String   @id @default(cuid())
+  threadId  String
+  content   String
+  createdAt DateTime @default(now())
+  thread    CopilotoContactThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+// O card entregue: resumo + 3 opções (cada uma com script pronto e, quando
+// faz sentido, um rascunho de compromisso). chosenOption/taskId só se
+// preenchem quando o usuário responde com reply no card (ver copiloto.ts).
+model CopilotoSuggestion {
+  id           String    @id @default(cuid())
+  threadId     String
+  waMessageId  String? // id da mensagem enviada na Evolution — correlaciona o reply (stanzaId)
+  resumo       String
+  opcoes       Json // [{ arquetipo: 'R'|'C'|'P', texto, compromisso: { titulo, prazo } | null }, ...]
+  chosenOption Int? // índice 0-2 da opção escolhida
+  taskId       String? // Task criada, se a opção escolhida tinha compromisso
+  createdAt    DateTime  @default(now())
+  respondedAt  DateTime?
+  thread       CopilotoContactThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@index([waMessageId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

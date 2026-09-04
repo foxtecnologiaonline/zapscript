@@ -25,6 +25,7 @@ import './atende'; // registra o worker da fila 'atende-replies' (ZapScript Aten
 import './voice-command'; // registra o worker da fila 'voice-commands' (Comando de Voz Universal)
 import './crm'; // registra o cron de notificação de lembretes vencidos (ZapScript CRM)
 import './tarefas'; // registra o cron de tarefas atrasadas (ZapScript Tarefas)
+import './copiloto'; // registra o worker da fila 'copiloto' + o digest diário de grupo (ZapScript Copiloto)
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
 // ── Supabase Storage — download/delete de áudios temporários ─────────────────

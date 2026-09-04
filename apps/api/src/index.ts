@@ -322,6 +322,7 @@ app.register(import('./routes/modules/campanhas'), { prefix: '/modules/campanhas
 app.register(import('./routes/modules/crm'),     { prefix: '/crm' });
 app.register(import('./routes/modules/tarefas'), { prefix: '/tarefas' });
 app.register(import('./routes/atende'),          { prefix: '/atende' });
+app.register(import('./routes/copiloto'),        { prefix: '/copiloto' });
 app.register(import('./routes/voice-commands'),  { prefix: '/voice-commands' });
 app.register(import('./routes/modules/vendas'),  { prefix: '/modules/vendas' });
 app.register(import('./routes/cobranca'),        { prefix: '/cobranca' });

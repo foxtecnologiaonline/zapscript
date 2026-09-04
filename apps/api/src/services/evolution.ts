@@ -164,9 +164,61 @@ export async function setWebhook(name: string, webhookUrl: string): Promise<bool
 }
 
 /**
- * Envia mensagem de texto via Evolution API.
+ * Liga/desliga a leitura de mensagens de grupo numa instância já conectada,
+ * sem recriar nada — usado pelo módulo Copiloto (Função 2): toda instância
+ * nasce com groupsIgnore=true (ver createInstance acima); isso é ligado
+ * (groupsIgnore=false) só quando o usuário tem ao menos 1 grupo com opt-in
+ * ativo, e desligado de volta quando ele desativa o último grupo.
  */
-export async function sendText(instanceNameStr: string, phone: string, message: string): Promise<void> {
+export async function setGroupsIgnore(instanceNameStr: string, ignore: boolean): Promise<void> {
+  const base = evolutionBaseUrl();
+  const res = await fetch(`${base}/settings/set/${instanceNameStr}`, {
+    method:  'POST',
+    headers: evolutionHeaders(),
+    body: JSON.stringify({ groupsIgnore: ignore }),
+    signal:  AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Evolution settings/set falhou (${res.status}): ${text}`);
+  }
+}
+
+export interface EvolutionGroup {
+  jid:  string; // '<id>@g.us'
+  name: string;
+}
+
+/**
+ * Lista os grupos da instância — usado pelo Copiloto para o usuário escolher
+ * quais acompanhar (opt-in explícito, nunca todos por padrão).
+ */
+export async function fetchGroups(instanceNameStr: string): Promise<EvolutionGroup[]> {
+  const base = evolutionBaseUrl();
+  const res = await fetch(`${base}/group/fetchAllGroups/${instanceNameStr}?getParticipants=false`, {
+    method:  'GET',
+    headers: evolutionHeaders(),
+    signal:  AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Evolution fetchAllGroups falhou (${res.status}): ${text}`);
+  }
+  const data = await res.json().catch(() => []) as any[];
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((g) => ({ jid: g?.id ?? '', name: g?.subject ?? g?.id ?? '(sem nome)' }))
+    .filter((g) => g.jid.endsWith('@g.us'));
+}
+
+/**
+ * Envia mensagem de texto via Evolution API.
+ * Retorna o id da mensagem enviada (quando a Evolution devolve) — usado pelo
+ * Copiloto para correlacionar um reply/citação do usuário (stanzaId) de volta
+ * ao card específico que o gerou. Chamadores que não precisam disso seguem
+ * só dando `await sendText(...)` normalmente, sem usar o retorno.
+ */
+export async function sendText(instanceNameStr: string, phone: string, message: string): Promise<{ id: string | null }> {
   const base  = evolutionBaseUrl();
   const clean = phone.replace(/\D/g, '');
   const res = await fetch(`${base}/message/sendText/${instanceNameStr}`, {
@@ -179,6 +231,8 @@ export async function sendText(instanceNameStr: string, phone: string, message: 
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`Evolution sendText falhou (${res.status}): ${text}`);
   }
+  const data = await res.json().catch(() => null) as any;
+  return { id: data?.key?.id ?? null };
 }
 
 /**

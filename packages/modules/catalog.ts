@@ -81,6 +81,21 @@ export const MODULES: readonly ModuleSpec[] = [
     phase: 1,
   },
   {
+    key: 'copiloto',
+    name: 'ZapScript Copiloto',
+    icon: '🧭',
+    tagline: 'Resumo de mensagens e sugestão de resposta, direto no seu WhatsApp',
+    jtbd: 'Tenho contato e grupo demais pra acompanhar sozinho; preciso saber o que importa e o que responder, sem reler tudo.',
+    // Incluso no Profissional e no Empresas (ver TIER_MODULE_BUNDLES em
+    // routes/billing.ts) — não é vendido avulso. Preço aqui é só referência.
+    status: 'bundled',
+    priceMonthly: 47,
+    priceYearly: 451,
+    dependsOn: [],
+    reuses: ['mensageria', 'ia', 'tarefas'],
+    phase: 1,
+  },
+  {
     key: 'cobranca',
     name: 'ZapScript Cobrança',
     icon: '💰',
@@ -173,8 +188,10 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '✅',
     tagline: 'Designação e controle de tarefas na equipe',
     jtbd: 'Preciso distribuir tarefas pro time e saber o que está pendente/atrasado.',
-    // Empacotado só no tier Empresas — não é vendido avulso (já construído e em
-    // produção, mesmo caso de atende/crm — por isso 'bundled', não 'planned').
+    // Empacotado no Profissional e no Empresas (ver TIER_MODULE_BUNDLES em
+    // routes/billing.ts) — não é vendido avulso (já construído e em produção,
+    // mesmo caso de atende/crm/copiloto — por isso 'bundled', não 'planned').
+    // No Profissional (sem time) o board funciona igual, só sem colega pra atribuir.
     status: 'bundled',
     priceMonthly: 0,
     priceYearly: 0,

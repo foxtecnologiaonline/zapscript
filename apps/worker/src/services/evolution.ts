@@ -73,11 +73,11 @@ export async function sendMessageViaEvolution(
   instanceName: string,
   phone: string,
   message: string,
-): Promise<void> {
+): Promise<{ id: string | null }> {
   const base  = evolutionBase();
   const clean = phone.replace(/\D/g, '');
 
-  await axios.post(
+  const res = await axios.post(
     `${base}/message/sendText/${instanceName}`,
     // linkPreview:false → impede o WhatsApp de gerar o card/imagem do site (og:image).
     { number: clean, text: message, linkPreview: false },
@@ -85,6 +85,7 @@ export async function sendMessageViaEvolution(
   );
 
   logger.info(`[Evolution] Mensagem enviada para ${clean} (instância ${instanceName})`);
+  return { id: res.data?.key?.id ?? null };
 }
 
 /**

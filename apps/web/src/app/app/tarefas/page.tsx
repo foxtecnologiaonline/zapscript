@@ -164,7 +164,7 @@ export default function TarefasPage() {
           <div className="text-4xl mb-4">✅</div>
           <h1 className="text-xl font-bold mb-2">Tarefas</h1>
           <p className="text-neutral-400 mb-6">
-            Designe tarefas pro time, acompanhe status e prazo — exclusivo do plano Empresas.
+            Designe tarefas pro time, acompanhe status e prazo — incluso nos planos Profissional e Empresas.
           </p>
           <Link href="/dashboard/plano" className="inline-block rounded-lg bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500">
             Ver planos

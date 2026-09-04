@@ -57,13 +57,13 @@ const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Ex
 /* ── Tiers ZapScript 2.0 (revisão): "tiers absorvem os módulos" — cada tier
    paga empacota um conjunto fixo de módulos já existentes na suíte.
    Core (free) = transcrição + resumo, sem módulo algum.
-   Profissional = Core + Atende (1 usuário/1 conexão).
-   Empresas = Core + Atende + CRM + Tarefas (até 5 usuários).
+   Profissional = Core + Atende + Copiloto + Tarefas (1 usuário/1 conexão).
+   Empresas = Core + Atende + CRM + Tarefas + Copiloto (até 5 usuários).
    Sincronizado em activatePlan() via Entitlement(source='bundle'), nunca
    mexendo em módulos comprados avulso (source='paid'). Ver MODULOS_ARQUITETURA.md. ── */
 const TIER_MODULE_BUNDLES: Record<string, string[]> = {
-  profissional: ['atende'],
-  empresas:     ['atende', 'crm', 'tarefas'],
+  profissional: ['atende', 'copiloto', 'tarefas'],
+  empresas:     ['atende', 'crm', 'tarefas', 'copiloto'],
 };
 
 /* ── Combo (Core + módulos disponíveis): % fixo sobre a soma do valor agregado ── */
