@@ -204,13 +204,17 @@ function summaryMode(text: string, durationSec: number): SummaryMode {
  * — feature 'core_summary' (telemetria de custo, ver lib/aiUsage.ts).
  */
 export async function generateBullets(originalText: string, durationSec = 0, language?: string, userId?: string): Promise<string[]> {
-  const mode        = summaryMode(originalText, durationSec);
+  const mode = summaryMode(originalText, durationSec);
+
+  // Modo TLDR: áudio já é curto o bastante — sem resumo, só a conversão.
+  // Evita custo/latência de IA à toa (buildMessage cai no cabeçalho padrão sem bullets).
+  if (mode === 'tldr') return [];
+
   const needsTransl = language && !/^pt(-br)?$/i.test(language);
   const ptNote      = needsTransl ? ' Responda sempre em português brasileiro (PT-BR).' : '';
 
   // Tom por vertical (Fase 1.2): inferido do conteúdo, não de perfil.
-  // Só aplica a modos com bullets — o tldr é curto demais e inflaria a frase.
-  const domain     = mode === 'tldr' ? 'generico' : detectDomain(originalText);
+  const domain     = detectDomain(originalText);
   const domainNote = domain === 'generico' ? '' : `\n\n${DOMAIN_GUIDANCE[domain]}`;
 
   // Regras de pendências reutilizadas nos modos com bullets
@@ -220,32 +224,7 @@ Pendências (o mais valioso no WhatsApp): se houver perguntas dirigidas ao desti
   let systemMsg: string;
   let userMsg: string;
 
-  if (mode === 'tldr') {
-    systemMsg = `Resuma o áudio em UMA frase telegráfica em PT-BR.${ptNote}
-
-Regras:
-- Máximo 10 palavras
-- Comece com o ponto mais importante
-- Use dois-pontos para separar contexto de detalhe quando útil
-- Sem artigos desnecessários, sem "então", "né", "tipo"
-- Responda apenas com a frase. Sem "• ", sem prefixo, sem explicação.
-
-CRÍTICO — fidelidade ao conteúdo:
-- NUNCA adicione, invente ou suponha informação que não está no áudio.
-- NÃO dramatize, NÃO intensifique, NÃO interprete intenção ou urgência.
-- Se o áudio é muito curto (1-3 palavras), repita-o quase literal, sem inflar.
-- Use apenas o que foi dito. Nada de adjetivos ou contexto que não esteja na fala.
-
-Exemplos:
-"então a reunião das 10 foi remarcada pra 14h na sala 2" → Reunião remarcada: 14h sala 2
-"queria saber se você pode me ajudar com o relatório até sexta" → Relatório: ajuda necessária até sexta
-"só passando pra avisar que o pedido chegou" → Pedido chegou
-"Socorro!" → Socorro!
-"oi, tudo bem?" → Oi, tudo bem?`;
-
-    userMsg = `Em até 10 palavras:\n\n${originalText}`;
-
-  } else if (mode === 'long') {
+  if (mode === 'long') {
     // ── Modo Longo: seções (reunião) ─────────────────────────────────────────
     systemMsg = `Você resume reuniões/áudios longos de WhatsApp em PT-BR.${ptNote}
 
@@ -279,8 +258,7 @@ Exemplos:
     userMsg = `Extraia em até ${max} tópicos (máx 10 palavras cada):\n\n${originalText}`;
   }
 
-  const parse = (raw: string): string[] =>
-    mode === 'tldr' ? parseTldr(raw) : parseStructured(raw);
+  const parse = parseStructured;
 
   // Modelo escalonado: áudio longo usa Sonnet primeiro (melhor síntese);
   // demais usam direto a cadeia Haiku (rápido/barato).
@@ -337,18 +315,6 @@ Exemplos:
   // ── Fallback final ────────────────────────────────────────────────────────
   logger.error('[Resumo] Todos os modelos falharam — placeholder');
   return ['Resumo não disponível'];
-}
-
-/**
- * Parseia resposta TLDR — extrai a primeira frase não-vazia,
- * removendo qualquer prefixo de bullet que o modelo insistir em colocar.
- */
-function parseTldr(raw: string): string[] {
-  const line = raw
-    .split('\n')
-    .map(l => l.replace(/^[•\-–—*\d.)\s]+/, '').trim())
-    .find(l => l.length > 3);
-  return line ? [line] : [];
 }
 
 /**
@@ -712,52 +678,42 @@ function buildMessage(
 ): string[] {
   const { contactName, durationSec, isPrivate, senderPhone, isSelfNote, forwarded, originPhone, footerText } = opts;
 
-  const isTldr  = summaryMode(originalText, durationSec ?? 0) === 'tldr'
-    && bullets.length === 1
-    && !bullets[0].startsWith(SUMMARY_HEADER)
-    && !bullets[0].startsWith(SUMMARY_PENDING);
   const hasName = contactName && contactName !== 'manual' && contactName.trim().length > 0;
   const durStr  = durationSec && durationSec > 0
     ? `⏱ ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60 > 0 ? ` ${durationSec % 60}s` : ''}` : `${durationSec}s`}`
     : '';
 
+  // Modo TLDR não gera bullets (generateBullets retorna [] de propósito — só a
+  // conversão, sem resumo), então bullets só chega aqui com fatos reais ou fallback.
   const FALLBACK       = ['Conversão disponível', 'Resumo não disponível', 'Não foi possível'];
   const hasRealBullets = bullets.length > 0 && !bullets.some(b => FALLBACK.some(f => b.includes(f)));
-  const tldr           = hasRealBullets && isTldr ? bullets[0] : null;
 
   // ── Cabeçalho ──
-  // Modo TLDR: frase integrada na mesma linha do cabeçalho → menos blocos, mais direto
-  // Modo Bullets: cabeçalho simples + seção 📋 separada abaixo
   let header: string;
   if (isSelfNote) {
     // Áudio encaminhado/enviado pelo usuário ao próprio número (self-chat).
     // Origem só aparece quando o WhatsApp expõe `participant` (mensagem citada);
     // num encaminhamento puro o remetente original não vem — mostramos só o selo.
-    const label    = forwarded ? '🔁 *Áudio encaminhado*' : '🎙️ *Sua nota de voz*';
-    const origin   = originPhone ? ` de *${fmtPhone(originPhone)}*` : '';
-    const tldrLine = tldr ? `\n→ ${tldr}` : '';
-    header = `${label}${origin}${durStr ? ` • ${durStr}` : ''}${tldrLine}`;
+    const label  = forwarded ? '🔁 *Áudio encaminhado*' : '🎙️ *Sua nota de voz*';
+    const origin = originPhone ? ` de *${fmtPhone(originPhone)}*` : '';
+    header = `${label}${origin}${durStr ? ` • ${durStr}` : ''}`;
   } else if (isPrivate && senderPhone) {
     const namePart  = hasName ? `*${contactName}*` : `*${fmtPhone(senderPhone)}*`;
     const phoneLine = `📱 ${fmtPhone(senderPhone)}${durStr ? ` · ${durStr}` : ''}`;
-    const tldrLine  = tldr ? `\n↯ ${tldr}` : '';
-    header = `🔒 *Privado* | ${namePart} → você\n${phoneLine}${tldrLine}`;
-  } else if (tldr) {
-    const nameStr = hasName ? `*${contactName}*` : '*Áudio*';
-    header = `🎙️ ${nameStr}${durStr ? ` • ${durStr}` : ''}\n→ ${tldr}`;
+    header = `🔒 *Privado* | ${namePart} → você\n${phoneLine}`;
   } else {
     const nameStr = hasName ? `Áudio de *${contactName}*` : '*Áudio*';
     header = `🎙️ ${nameStr}${durStr ? ` • ${durStr}` : ''}`;
   }
 
-  // ── Seção de resumo (não-TLDR): bullets + seções + pendências ──
+  // ── Seção de resumo: bullets + seções + pendências ──
   // Sentinels: ::H::Título → "*Título*" (negrito WhatsApp); ::P::texto → "⚠️ texto".
   const renderSummaryLine = (b: string): string => {
     if (b.startsWith(SUMMARY_HEADER))  return `\n*${b.slice(SUMMARY_HEADER.length)}*`;
     if (b.startsWith(SUMMARY_PENDING)) return `⚠️ *${b.slice(SUMMARY_PENDING.length)}*`;
     return `• ${b}`;
   };
-  const pontoSection = hasRealBullets && !isTldr
+  const pontoSection = hasRealBullets
     ? `\n\n📋 *Resumo*\n${bullets.map(renderSummaryLine).join('\n')}`
     : '';
 
