@@ -1,32 +1,32 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { requireModuleShared } from '../lib/teamScope';
+import { requireModule } from '../lib/moduleGate';
 import { fetchGroups, setGroupsIgnore } from '../services/evolution';
 
 /**
- * Módulo Copiloto (tiers Profissional + Empresas) — rotas de gestão.
+ * Módulo Copiloto — Função 2 (resumo diário de grupos).
  *
- * A entrega em si (cards de contato, resumo diário de grupo, resolução da
- * escolha do usuário) não passa por API — vive inteira no webhook/worker
- * (ver evolution-webhook.ts, copiloto-intake.ts, copiloto-commands.ts e
- * apps/worker/src/copiloto.ts). Este arquivo cobre só o que precisa de tela:
- * listar/ligar grupos acompanhados. Histórico (V1) fica pro painel web.
+ * A Função 1 (briefing por conversa individual) não passa por API nenhuma —
+ * vive inteira no self-chat via comandos ("copiloto status/ligar/...", ver
+ * copiloto-commands.ts) e no worker (copiloto.ts). Grupo é diferente: exige
+ * opt-in explícito por grupo, e não dá pra escolher "qual grupo" por comando de
+ * texto sem expor uma lista — por isso só essa parte tem rota própria.
+ *
+ * Sem teamScope de propósito: o Copiloto é pessoal do dono, não compartilhado
+ * com o time (diferente de Atende/Tarefas). Ver ESCOPO_COPILOTO.md.
  */
 export default async function copilotoRoutes(app: FastifyInstance) {
   app.addHook('preHandler', (app as any).authenticate);
-  app.addHook('preHandler', requireModuleShared('copiloto'));
+  app.addHook('preHandler', requireModule('copiloto'));
 
-  async function ownedNumber(ownerId: string, numberId: string) {
-    return prisma.whatsappNumber.findFirst({ where: { id: numberId, userId: ownerId } });
+  async function ownedNumber(userId: string, numberId: string) {
+    return prisma.whatsappNumber.findFirst({ where: { id: numberId, userId } });
   }
 
   // ── GET /copiloto/numbers/:numberId/groups ──────────────────────────────
-  // Junta a lista viva de grupos da Evolution com o opt-in já salvo — grupo
-  // que a Evolution não retorna mais (saiu do grupo) mas segue com active=true
-  // no banco continua listado (o usuário desliga por aqui mesmo).
   app.get<{ Params: { numberId: string } }>('/numbers/:numberId/groups', async (req: any, reply) => {
-    const { ownerId } = req.teamScope;
-    const number = await ownedNumber(ownerId, req.params.numberId);
+    const userId = req.user.sub;
+    const number = await ownedNumber(userId, req.params.numberId);
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
     if (!number.zapiInstanceId || number.status !== 'connected') {
       return reply.code(409).send({ error: 'Número precisa estar conectado para listar grupos.' });
@@ -43,8 +43,6 @@ export default async function copilotoRoutes(app: FastifyInstance) {
       name:     savedByJid.get(g.jid)?.name || g.name,
       active:   savedByJid.get(g.jid)?.active ?? false,
     }));
-    // Grupos salvos que a Evolution não devolveu mais (saiu do grupo) — mantém
-    // visível pra dar pra desligar, marcado como indisponível.
     for (const s of saved) {
       if (!groups.some((g) => g.groupJid === s.groupJid)) {
         groups.push({ groupJid: s.groupJid, name: `${s.name} (indisponível)`, active: s.active });
@@ -55,15 +53,11 @@ export default async function copilotoRoutes(app: FastifyInstance) {
   });
 
   // ── POST /copiloto/numbers/:numberId/groups ─────────────────────────────
-  // Liga/desliga o acompanhamento de um grupo (opt-in explícito — Body:
-  // { groupJid, name, active }). Ajusta groupsIgnore da instância conforme
-  // sobra ou não algum grupo ativo — nunca deixa a instância lendo grupo
-  // nenhum quando o usuário não tem nenhum opt-in ligado.
   app.post<{ Params: { numberId: string }; Body: { groupJid: string; name: string; active: boolean } }>(
     '/numbers/:numberId/groups',
     async (req: any, reply) => {
-      const { ownerId } = req.teamScope;
-      const number = await ownedNumber(ownerId, req.params.numberId);
+      const userId = req.user.sub;
+      const number = await ownedNumber(userId, req.params.numberId);
       if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
       const { groupJid, name, active } = req.body || {};
@@ -74,7 +68,7 @@ export default async function copilotoRoutes(app: FastifyInstance) {
       await prisma.copilotoGroup.upsert({
         where:  { numberId_groupJid: { numberId: number.id, groupJid } },
         update: { name: name || groupJid, active: !!active },
-        create: { userId: ownerId, numberId: number.id, groupJid, name: name || groupJid, active: !!active },
+        create: { userId, numberId: number.id, groupJid, name: name || groupJid, active: !!active },
       });
 
       if (number.zapiInstanceId) {
@@ -88,11 +82,9 @@ export default async function copilotoRoutes(app: FastifyInstance) {
   );
 
   // ── GET /copiloto/numbers/:numberId/digests ─────────────────────────────
-  // Últimos resumos diários de grupo já enviados — histórico mínimo (o
-  // painel web completo, com busca, é V1; isso aqui já serve pra conferência).
   app.get<{ Params: { numberId: string } }>('/numbers/:numberId/digests', async (req: any, reply) => {
-    const { ownerId } = req.teamScope;
-    const number = await ownedNumber(ownerId, req.params.numberId);
+    const userId = req.user.sub;
+    const number = await ownedNumber(userId, req.params.numberId);
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
     const digests = await prisma.copilotoGroupDigest.findMany({

@@ -83,20 +83,19 @@ export const MODULES: readonly ModuleSpec[] = [
   {
     key: 'copiloto',
     name: 'ZapScript Copiloto',
-    icon: '🧭',
-    tagline: 'Resumo de mensagens e sugestão de resposta, direto no seu WhatsApp',
-    jtbd: 'Tenho contato e grupo demais pra acompanhar sozinho; preciso saber o que importa e o que responder, sem reler tudo.',
-    // FORA dos planos por enquanto (rollout controlado) — não está em
-    // TIER_MODULE_BUNDLES nem é vendido avulso ('discovery' bloqueia as duas
-    // coisas, ver billing.ts). Só entra por concessão manual do admin
-    // (Entitlement source='comp'), ver /sys/g5r8t2/users/:id/modules/copiloto/toggle.
-    // Preço aqui é só referência pra quando (e se) for pra tier/venda avulsa.
-    status: 'discovery',
+    icon: '🎯',
+    tagline: 'Lê suas conversas, resume pra você e sugere 3 ações',
+    jtbd: 'Tenho conversa demais no WhatsApp e perco venda por não responder a tempo — ou por responder mal.',
+    // MVP fechado: liberado usuário a usuário pelo admin (Entitlement source='comp'),
+    // não vendido. 'planned' mantém FORA da venda (billing.ts recusa subscribe de
+    // 'planned'/'discovery') sem tirar do catálogo. Promover pra 'beta'/'bundled'
+    // só depois da decisão de pricing — ver ESCOPO_COPILOTO.md §8.
+    status: 'planned',
     priceMonthly: 47,
     priceYearly: 451,
     dependsOn: [],
-    reuses: ['mensageria', 'ia', 'tarefas'],
-    phase: 1,
+    reuses: ['mensageria', 'ia', 'conversas'],
+    phase: 2,
   },
   {
     key: 'cobranca',
@@ -193,7 +192,7 @@ export const MODULES: readonly ModuleSpec[] = [
     jtbd: 'Preciso distribuir tarefas pro time e saber o que está pendente/atrasado.',
     // Empacotado no Profissional e no Empresas (ver TIER_MODULE_BUNDLES em
     // routes/billing.ts) — não é vendido avulso (já construído e em produção,
-    // mesmo caso de atende/crm/copiloto — por isso 'bundled', não 'planned').
+    // mesmo caso de atende/crm — por isso 'bundled', não 'planned').
     // No Profissional (sem time) o board funciona igual, só sem colega pra atribuir.
     status: 'bundled',
     priceMonthly: 0,

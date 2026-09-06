@@ -19,7 +19,7 @@ export interface ModuleCatalogItem {
 export const MODULE_ICON: Record<string, string> = {
   core: '🎙️',
   atende: '🤖',
-  copiloto: '🧭',
+  copiloto: '🎯',
   cobranca: '💰',
   campanhas: '📣',
   crm: '📊',

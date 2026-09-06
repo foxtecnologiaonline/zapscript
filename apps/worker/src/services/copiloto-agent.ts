@@ -1,143 +1,306 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../lib/logger';
 import { logAiUsage } from '../lib/aiUsage';
+import {
+  BRIEFING_SYSTEM_PROMPT,
+  TRIAGE_SYSTEM_PROMPT,
+  GROUP_DIGEST_SYSTEM_PROMPT,
+  aggressivenessGuide,
+  AXES,
+  TECHNIQUES,
+  type Axis,
+} from './copiloto-playbook';
 
 /**
- * Agente do ZapScript Copiloto — as duas funções do módulo (mensagens
- * individuais e resumo diário de grupo) num único arquivo, espelhando o
- * padrão de atende-agent.ts (mesmo cliente Anthropic, mesma lista de
- * modelos com fallback, mesmo jeito de extrair JSON da resposta).
+ * Agente do ZapScript Copiloto — lê a conversa e produz, para o DONO, um
+ * briefing e 3 opções de ação.
+ *
+ * Diferença para o atende-agent.ts: nada do que sai daqui vai para o cliente
+ * sem o dono mandar. Por isso não existe limiar de confiança que bloqueie envio;
+ * o freio é humano. O que existe aqui é o freio de CUSTO (triagem barata antes
+ * do briefing caro) e o de CONTEÚDO (copiloto-guardrails.ts, aplicado por quem
+ * chama — ver apps/worker/src/copiloto.ts).
  */
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const AGENT_MODELS = [
-  process.env.COPILOTO_AGENT_MODEL || 'claude-sonnet-4-6',
-  'claude-sonnet-4-20250514',
+// Triagem roda em toda rajada de mensagem: precisa ser barata. O briefing roda
+// só no que passou pela triagem: pode ser mais caro.
+// (Prompt caching daria ~90% de desconto no prefixo estável, mas o SDK fixado
+//  aqui — @anthropic-ai/sdk 0.24.x — só expõe cache pelo namespace beta. Migrar
+//  o SDK e ligar cache é o próximo ganho óbvio de custo.)
+const TRIAGE_MODELS = [
+  process.env.COPILOTO_TRIAGE_MODEL || 'claude-haiku-4-5',
+  'claude-sonnet-4-6',
+].filter((v, i, a) => a.indexOf(v) === i);
+
+const BRIEF_MODELS = [
+  process.env.COPILOTO_BRIEF_MODEL || 'claude-sonnet-5',
+  'claude-sonnet-4-6',
   'claude-haiku-4-5',
 ].filter((v, i, a) => a.indexOf(v) === i);
 
 function extractJson(text: string): any {
   const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Agente Copiloto: resposta sem JSON');
+  if (!match) throw new Error('Copiloto: resposta sem JSON');
   return JSON.parse(match[0]);
 }
 
-async function callClaude(system: string, userBlock: string, maxTokens: number): Promise<{ text: string; model: string; usage: { input: number; output: number } }> {
+function textOf(res: Anthropic.Message): string {
+  return res.content
+    .filter((b: any) => b.type === 'text')
+    .map((b: any) => b.text)
+    .join('');
+}
+
+/** Chama o modelo percorrendo a lista de fallback; erro só se todos falharem. */
+async function callWithFallback(params: {
+  models: string[];
+  system: string;
+  user: string;
+  maxTokens: number;
+  userId: string;
+  feature: string;
+}): Promise<any> {
   let lastErr: any;
-  for (const model of AGENT_MODELS) {
+  for (const model of params.models) {
     try {
       const res = await claude.messages.create({
         model,
-        max_tokens: maxTokens,
-        system,
-        messages: [{ role: 'user', content: userBlock }],
+        max_tokens: params.maxTokens,
+        system: params.system,
+        messages: [{ role: 'user', content: params.user }],
       });
-      const text = res.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
-      return { text, model, usage: { input: res.usage?.input_tokens ?? 0, output: res.usage?.output_tokens ?? 0 } };
+      logAiUsage(params.userId, params.feature, model, res.usage?.input_tokens, res.usage?.output_tokens);
+      return extractJson(textOf(res));
     } catch (err: any) {
       lastErr = err;
-      logger.warn(`[Copiloto] Modelo ${model} falhou: ${err.message}`);
+      logger.warn(`[Copiloto] Modelo ${model} falhou (${params.feature}): ${err.message}`);
     }
   }
-  throw new Error(`Agente Copiloto falhou em todos os modelos: ${lastErr?.message ?? 'erro desconhecido'}`);
+  throw new Error(`Copiloto: todos os modelos falharam (${params.feature}): ${lastErr?.message ?? 'erro desconhecido'}`);
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Função 1 — triagem de mensagem individual
-// ─────────────────────────────────────────────────────────────────────────
-
-const CONTACT_SYSTEM_PROMPT = `Você ajuda o dono de um pequeno negócio a responder mensagens de WhatsApp com agilidade e segurança — nunca envia nada sozinho, só prepara.
-
-Estilo de cada resposta pronta ("texto"):
-- Curta, estilo mensagem real de WhatsApp (1-3 frases), em português brasileiro.
-- Tom de afirmação, não de pedido — direto ao ponto de alavancagem da conversa, nunca subserviente.
-- A conversa nunca fica sem rumo: toda resposta deixa claro um próximo passo (confirmação, prazo ou pergunta objetiva).
-
-Você gera exatamente 3 opções, sempre nesta ordem e com este papel fixo:
-- "R" (Resolve Agora): fechamento direto, assertivo, sem desculpa — para quando o ponto já está maduro.
-- "C" (Constrói Relação): rapport antes do fechamento, endereça a objeção implícita da outra parte.
-- "P" (Protege / Adia): quando falta informação ou a decisão não é só do usuário — nunca deixa a conversa em silêncio, sempre marca o próximo contato.
-
-Além do texto, cada opção pode carregar um "compromisso" (quando a resposta implica um prazo ou compromisso concreto, ex.: "te mando até as 17h", "confirmado pra quinta 10h") com "titulo" (curto, ex.: "Confirmar orçamento — Marcos") e "prazo" (data/hora em ISO 8601 com timezone, inferida do texto e do horário atual informado). Quando a resposta não implica prazo nenhum (ex.: "combinado, obrigado"), "compromisso" é null.
-
-Responda SOMENTE com um objeto JSON válido, sem markdown, no formato:
-{
-  "resumo": "1-2 linhas resumindo o que o contato disse/quer",
-  "opcoes": [
-    { "arquetipo": "R", "texto": "...", "compromisso": { "titulo": "...", "prazo": "2026-09-04T17:00:00-03:00" } | null },
-    { "arquetipo": "C", "texto": "...", "compromisso": null },
-    { "arquetipo": "P", "texto": "...", "compromisso": null }
-  ]
-}`;
-
-export interface CopilotoOpcao {
-  arquetipo: 'R' | 'C' | 'P';
-  texto: string;
-  compromisso: { titulo: string; prazo: string } | null;
+export interface CopilotoMessageLike {
+  direction: string; // 'in' | 'out'
+  content: string;
 }
 
-export interface CopilotoContactResult {
-  resumo: string;
-  opcoes: CopilotoOpcao[];
+/** Conversa formatada para o prompt, do mais antigo ao mais novo. */
+function formatHistory(messages: CopilotoMessageLike[]): string {
+  return messages
+    .map((m) => `${m.direction === 'in' ? 'Cliente' : 'Você (dono)'}: ${m.content}`)
+    .join('\n');
 }
 
-export async function runCopilotoContactAgent(params: {
+// ── Triagem ──────────────────────────────────────────────────────────────────
+
+export interface TriageResult {
+  shouldBrief: boolean;
+  reason: string;
+  confidence: number;
+}
+
+/**
+ * Decide se a conversa merece interromper o dono. Enviesada para "não":
+ * o custo de um falso positivo (notificação à toa) é maior que o de um falso
+ * negativo (o dono vê a mensagem sozinho, como já faz hoje).
+ */
+export async function triageConversation(params: {
   userId: string;
-  contactName: string;
-  messages: string[]; // mensagens do lote, em ordem
-}): Promise<CopilotoContactResult> {
-  const now = new Date();
-  const nowLabel = now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
+  contactName?: string | null;
+  newMessages: CopilotoMessageLike[];
+  recentHistory?: CopilotoMessageLike[];
+}): Promise<TriageResult> {
+  const user = [
+    params.contactName ? `Contato: ${params.contactName}` : null,
+    params.recentHistory?.length
+      ? `Histórico anterior (para contexto):\n${formatHistory(params.recentHistory)}`
+      : null,
+    `Mensagens novas do cliente, ainda não avaliadas:\n${formatHistory(params.newMessages)}`,
+  ].filter(Boolean).join('\n\n');
 
-  const userBlock = [
-    `Agora é: ${nowLabel} (timezone America/Sao_Paulo, UTC-3).`,
-    `Contato: ${params.contactName}`,
-    `Mensagens recebidas agora (nesta ordem):\n${params.messages.map((m) => `- ${m}`).join('\n')}`,
-  ].join('\n\n');
+  try {
+    const parsed = await callWithFallback({
+      models: TRIAGE_MODELS,
+      system: TRIAGE_SYSTEM_PROMPT,
+      user,
+      maxTokens: 200,
+      userId: params.userId,
+      feature: 'copiloto_triage',
+    });
+    return {
+      shouldBrief: parsed?.decisao === 'briefing',
+      reason: typeof parsed?.motivo === 'string' ? parsed.motivo : '',
+      confidence: typeof parsed?.confianca === 'number' ? parsed.confianca : 0,
+    };
+  } catch (err: any) {
+    // Triagem indisponível não pode virar enxurrada de briefing caro nem
+    // silêncio permanente: falha fechada (não interrompe o dono) e loga.
+    logger.error(`[Copiloto] Triagem falhou: ${err.message}`);
+    return { shouldBrief: false, reason: 'triagem indisponível', confidence: 0 };
+  }
+}
 
-  const { text, model, usage } = await callClaude(CONTACT_SYSTEM_PROMPT, userBlock, 700);
-  logAiUsage(params.userId, 'copiloto_contato', model, usage.input, usage.output);
+// ── Briefing + 3 opções ──────────────────────────────────────────────────────
 
-  const parsed = extractJson(text);
-  const opcoes: CopilotoOpcao[] = Array.isArray(parsed.opcoes) ? parsed.opcoes.slice(0, 3) : [];
-  if (opcoes.length !== 3) throw new Error('Agente Copiloto: resposta sem as 3 opções esperadas');
+export interface CopilotoOption {
+  axis: Axis;
+  title: string;
+  draft: string;
+  rationale: string;
+  risk: string | null;
+  technique: string;
+  confidence: number;
+  commitment: { title: string; dueAt: string } | null;
+}
 
-  return { resumo: String(parsed.resumo ?? '').trim(), opcoes };
+export interface BriefingResult {
+  summary: string;
+  intent: string;
+  temperature: string;
+  blocker: string | null;
+  riskLevel: string;
+  sensitive: boolean;
+  note: string | null;
+  options: CopilotoOption[];
+}
+
+const TEMPERATURES = new Set(['quente', 'morno', 'frio']);
+const RISKS = new Set(['baixo', 'medio', 'alto']);
+const BLOCKERS = new Set(['preco', 'prazo', 'confianca', 'autoridade', 'urgencia']);
+
+function pickEnum(value: any, allowed: Set<string>, fallback: string): string {
+  return typeof value === 'string' && allowed.has(value) ? value : fallback;
+}
+
+/** Valida o "compromisso" que o modelo devolveu — título não-vazio + data ISO válida. */
+function parseCommitment(raw: any): { title: string; dueAt: string } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const title = typeof raw.titulo === 'string' ? raw.titulo.trim() : '';
+  const dueAt = typeof raw.prazo === 'string' ? raw.prazo.trim() : '';
+  if (!title || !dueAt || isNaN(new Date(dueAt).getTime())) return null;
+  return { title, dueAt };
+}
+
+/**
+ * Produz o briefing e as 3 opções. Não valida conteúdo (isso é dos guardrails)
+ * nem envia nada — só devolve o material para quem chamou decidir.
+ */
+export async function buildBriefing(params: {
+  userId: string;
+  contactName?: string | null;
+  businessContext?: string | null;
+  aggressiveness?: string | null;
+  knowledgeBase?: Array<{ question: string; answer: string }>;
+  history: CopilotoMessageLike[];
+}): Promise<BriefingResult> {
+  const kbBlock = params.knowledgeBase?.length
+    ? params.knowledgeBase.map((k, i) => `[${i + 1}] P: ${k.question}\nR: ${k.answer}`).join('\n\n')
+    : '(o dono não cadastrou perguntas frequentes)';
+
+  const nowLabel = new Date().toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short',
+  });
+
+  const user = [
+    `Agora é: ${nowLabel} (timezone America/Sao_Paulo, UTC-3) — use isso pra inferir o prazo de "compromisso".`,
+    `Sobre o negócio: ${params.businessContext?.trim() || '(não informado)'}`,
+    aggressivenessGuide(params.aggressiveness),
+    params.contactName ? `Nome do cliente: ${params.contactName}` : null,
+    `Fatos do negócio que você PODE usar (única fonte de preço, prazo e política):\n${kbBlock}`,
+    `Conversa (mais antiga primeiro):\n${formatHistory(params.history)}`,
+  ].filter(Boolean).join('\n\n');
+
+  const parsed = await callWithFallback({
+    models: BRIEF_MODELS,
+    system: BRIEFING_SYSTEM_PROMPT,
+    user,
+    maxTokens: 1500,
+    userId: params.userId,
+    feature: 'copiloto_brief',
+  });
+
+  const rawOptions: any[] = Array.isArray(parsed?.opcoes) ? parsed.opcoes : [];
+
+  // Normaliza para os 3 eixos na ordem canônica. Se o modelo repetir eixo ou
+  // devolver menos de 3, ficamos com o que veio — 2 opções boas valem mais que
+  // 3 com uma inventada só para fechar a conta.
+  const options: CopilotoOption[] = [];
+  for (const axis of AXES) {
+    const found = rawOptions.find((o) => o?.eixo === axis);
+    if (!found) continue;
+    const draft = typeof found.rascunho === 'string' ? found.rascunho.trim() : '';
+    if (!draft) continue;
+    options.push({
+      axis,
+      title: (typeof found.titulo === 'string' && found.titulo.trim()) || axis,
+      draft,
+      rationale: typeof found.porque === 'string' ? found.porque.trim() : '',
+      risk: typeof found.risco === 'string' && found.risco.trim() ? found.risco.trim() : null,
+      technique: TECHNIQUES.includes(found.tecnica) ? found.tecnica : 'proximo-passo',
+      confidence: typeof found.confianca === 'number' ? found.confianca : 0,
+      commitment: parseCommitment(found.compromisso),
+    });
+  }
+
+  return {
+    summary: typeof parsed?.resumo === 'string' ? parsed.resumo.trim() : '',
+    intent: typeof parsed?.intencao === 'string' ? parsed.intencao.trim() : '',
+    temperature: pickEnum(parsed?.temperatura, TEMPERATURES, 'morno'),
+    blocker: typeof parsed?.trava === 'string' && BLOCKERS.has(parsed.trava) ? parsed.trava : null,
+    riskLevel: pickEnum(parsed?.risco, RISKS, 'baixo'),
+    sensitive: parsed?.sensivel === true,
+    note: typeof parsed?.observacao === 'string' && parsed.observacao.trim() ? parsed.observacao.trim() : null,
+    options,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Função 2 — resumo diário de grupos
 // ─────────────────────────────────────────────────────────────────────────
 
-const GROUP_SYSTEM_PROMPT = `Você prepara um resumo diário objetivo dos grupos de WhatsApp que o dono de um negócio acompanha. Ele não vai reler o grupo — só o que você escrever.
+// Extrativo, sem persuasão nem guardrails de conteúdo (nunca sugere resposta) —
+// roda no mesmo modelo barato da triagem em vez do de briefing.
+const GROUP_DIGEST_MODELS = TRIAGE_MODELS;
 
-Regras:
-- Só entra o que é relevante: menções diretas ao dono, perguntas sem resposta, decisões pendentes, mudanças de combinado. Ignore conversa social, papo solto, corrente.
-- Se um grupo não teve nada relevante, o campo "resumo" dele vem null — silêncio é informação, não force conteúdo.
-- Cada resumo tem no máximo 2-4 linhas, direto, sem preâmbulo ("o grupo discutiu..."), português brasileiro.
-- Você NUNCA sugere resposta nem texto pronto aqui — só informa. Grupo tem gente demais e contexto de menos pra arriscar um script.
-
-Responda SOMENTE com um objeto JSON válido, sem markdown, no formato:
-{ "blocos": [ { "grupo": "nome do grupo", "resumo": "..." | null }, ... ] }`;
-
-export interface CopilotoGroupInput {
+export interface GroupDigestInput {
   name: string;
-  messages: string[]; // "Fulano: texto" já formatado
+  messages: string[]; // "Fulano: texto", já formatado
 }
 
-export async function runCopilotoGroupDigestAgent(params: {
+export interface GroupDigestBlock {
+  grupo: string;
+  decidido: string | null;
+  pendente: string | null;
+  ruido: number;
+}
+
+export async function buildGroupDigest(params: {
   userId: string;
-  groups: CopilotoGroupInput[];
-}): Promise<{ blocos: { grupo: string; resumo: string | null }[] }> {
-  const userBlock = params.groups
+  groups: GroupDigestInput[];
+}): Promise<{ blocos: GroupDigestBlock[] }> {
+  const user = params.groups
     .map((g) => `### Grupo: ${g.name}\n${g.messages.length ? g.messages.join('\n') : '(sem mensagens hoje)'}`)
     .join('\n\n');
 
-  const { text, model, usage } = await callClaude(GROUP_SYSTEM_PROMPT, userBlock, 1200);
-  logAiUsage(params.userId, 'copiloto_grupo', model, usage.input, usage.output);
+  const parsed = await callWithFallback({
+    models: GROUP_DIGEST_MODELS,
+    system: GROUP_DIGEST_SYSTEM_PROMPT,
+    user,
+    maxTokens: 1200,
+    userId: params.userId,
+    feature: 'copiloto_grupo_digest',
+  });
 
-  const parsed = extractJson(text);
-  const blocos = Array.isArray(parsed.blocos) ? parsed.blocos : [];
+  const blocos: GroupDigestBlock[] = Array.isArray(parsed?.blocos)
+    ? parsed.blocos.map((b: any) => ({
+        grupo:    typeof b?.grupo === 'string' ? b.grupo : '',
+        decidido: typeof b?.decidido === 'string' && b.decidido.trim() ? b.decidido.trim() : null,
+        pendente: typeof b?.pendente === 'string' && b.pendente.trim() ? b.pendente.trim() : null,
+        ruido:    typeof b?.ruido === 'number' ? b.ruido : 0,
+      }))
+    : [];
+
   return { blocos };
 }

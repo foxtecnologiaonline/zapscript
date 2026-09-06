@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 
 /**
- * Tela mínima do Copiloto — só o que a Função 2 exige pra funcionar: escolher
- * quais grupos entram no resumo diário (opt-in explícito, nunca todos por
- * padrão). A Função 1 (mensagens individuais) não tem tela nenhuma no MVP —
- * chega e se resolve inteira no WhatsApp. Histórico/busca completos (painel
- * de verdade) ficam pra V1; isso aqui é só a peça que não dá pra fazer sem UI.
+ * Tela mínima do Copiloto — só o que a Função 2 (resumo diário de grupos)
+ * exige pra funcionar: escolher quais grupos entram no resumo (opt-in
+ * explícito, nunca todos por padrão). A Função 1 (briefing por conversa
+ * individual) não tem tela nenhuma — chega e se resolve inteira no self-chat,
+ * via comandos "copiloto ..." (ver ESCOPO_COPILOTO.md). Sem isso aqui, porém,
+ * o card "Copiloto" do launcher levaria a uma rota vazia.
  */
 
 interface WNumber {
@@ -71,7 +72,6 @@ export default function CopilotoPage() {
         active:   nextActive,
       });
     } catch (e: any) {
-      // reverte em caso de erro
       setGroups((gs) => gs.map((g) => (g.groupJid === group.groupJid ? { ...g, active: !nextActive } : g)));
       setError(e?.message || 'Não foi possível atualizar o grupo.');
     } finally {
@@ -91,17 +91,12 @@ export default function CopilotoPage() {
     return (
       <main className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center px-5 py-10">
         <div className="max-w-md w-full rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center">
-          <div className="text-4xl mb-4">🧭</div>
+          <div className="text-4xl mb-4">🎯</div>
           <h1 className="text-xl font-bold mb-2">Copiloto</h1>
           <p className="text-neutral-400 mb-6">
-            Resumo de mensagens e sugestão de resposta, direto no seu WhatsApp — incluso nos planos Profissional e Empresas.
+            Lê suas conversas, resume pra você e sugere 3 ações — liberado usuário a usuário, não vendido. Fale com o suporte se quiser entrar no MVP.
           </p>
-          <Link href="/dashboard/plano" className="inline-block rounded-lg bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500">
-            Ver planos
-          </Link>
-          <div className="mt-4">
-            <Link href="/app" className="text-sm text-neutral-500 hover:text-neutral-300">← Voltar aos módulos</Link>
-          </div>
+          <Link href="/app" className="text-sm text-neutral-500 hover:text-neutral-300">← Voltar aos módulos</Link>
         </div>
       </main>
     );
@@ -112,15 +107,16 @@ export default function CopilotoPage() {
       <header className="border-b border-neutral-800 bg-neutral-900/60 px-4 sm:px-6 py-4">
         <div className="flex flex-wrap items-center gap-3">
           <Link href="/app" className="text-neutral-500 hover:text-neutral-300 text-sm">← Módulos</Link>
-          <h1 className="text-lg font-bold flex items-center gap-2">🧭 Copiloto</h1>
+          <h1 className="text-lg font-bold flex items-center gap-2">🎯 Copiloto</h1>
         </div>
       </header>
 
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
         <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 mb-6 text-sm text-neutral-400">
-          Mensagens individuais e compromissos você já recebe direto no seu WhatsApp,
-          no chat <strong className="text-neutral-200">&ldquo;Mensagens para você mesmo&rdquo;</strong> — nada pra
-          configurar aqui. Grupos são diferentes: só entram no resumo diário os que
+          Briefings de conversa e comandos você já recebe/usa direto no seu WhatsApp,
+          no chat <strong className="text-neutral-200">&ldquo;Mensagens para você mesmo&rdquo;</strong> — mande
+          <code className="mx-1 px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300">copiloto status</code>
+          por lá pra ver o que está pendente. Grupos são diferentes: só entram no resumo diário os que
           você ligar abaixo.
         </div>
 

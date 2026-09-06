@@ -7,8 +7,10 @@ import { storeQr } from '../lib/qrStore';
 import { sendText } from '../services/evolution';
 import { getUserModules } from '../lib/moduleGate';
 import { isAtendeOwnerCommand, handleAtendeOwnerCommand } from '../services/atende-commands';
-import { ingestCopilotoContactMessage, ingestCopilotoGroupMessage } from '../services/copiloto-intake';
-import { handleCopilotoReply } from '../services/copiloto-commands';
+import {
+  isCopilotoOwnerCommand, handleCopilotoOwnerCommand, handleCopilotoChoice, enqueueCopilotoMessage,
+} from '../services/copiloto-commands';
+import { ingestCopilotoGroupMessage } from '../services/copiloto-groups';
 import { io } from '../index';
 
 // Módulo Cobrança (#6): heurística leve p/ detectar cliente avisando que já
@@ -280,10 +282,10 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       const messageType = msg?.messageType;       // 'audioMessage', 'pttMessage', 'documentMessage', 'textMessage'
       const messageId   = key?.id ?? `evo_${Date.now()}`;
 
-      // Grupos: só entram no fluxo com opt-in do Copiloto (Função 2) — fora
-      // isso, ZapScript continua sem processar grupo nenhum (áudio, Atende,
-      // Cobrança etc. seguem "ignorar grupo" como sempre foi). Só texto conta
-      // pra Função 2 — resumo diário não transcreve áudio de grupo no MVP.
+      // Grupos: só entram no fluxo com opt-in do Copiloto (Função 2 — resumo
+      // diário). Fora isso, ZapScript continua sem processar grupo nenhum
+      // (áudio, Atende, Cobrança etc. seguem "ignorar grupo" como sempre foi).
+      // Só texto conta — resumo diário não transcreve áudio de grupo no MVP.
       if (remoteJid.includes('@g.us')) {
         if (!fromMe && (messageType === 'conversation' || messageType === 'extendedTextMessage')) {
           const groupText = messageType === 'conversation'
@@ -398,31 +400,27 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
               log.info(`[Evolution] 💬 Texto de ${senderName}: ignorado`);
             }
 
-            // ── Módulo Copiloto — Função 1 (triagem de mensagem individual) ────
-            // Só atua onde o Atende não é dono da conversa agora (desligado, não
-            // contratado, ou humanTakeover ligado) — nunca duas respostas
-            // concorrentes pro mesmo contato. Ver escopo de produto, "Relação
-            // com o Atende". Fire-and-forget: nunca atrasa nem derruba o webhook.
-            if (number && messageText) {
-              getUserModules(number.userId).then(async (mods) => {
-                if (!mods.includes('copiloto')) return;
-                let atendeOwnsIt = false;
-                if (cfg?.enabled && mods.includes('atende')) {
-                  const conv = await prisma.atendeConversation.findUnique({
-                    where:  { numberId_contactPhone: { numberId: number!.id, contactPhone: senderPhone } },
-                    select: { humanTakeover: true },
+            // ── Módulo Copiloto: toda mensagem do cliente vira contexto ──────
+            // Independente do Atende — o Copiloto não responde ao cliente, ele
+            // resume pro DONO. Fire-and-forget: nunca atrasa o ACK do webhook, e
+            // a decisão cara (IA) só acontece no worker, depois do debounce.
+            // Número público fica de fora: ali quem escreve é estranho fazendo
+            // demo, não cliente de ninguém — briefar isso seria ruído e custo puro.
+            if (number && !number.isPublic && messageText) {
+              getUserModules(number.userId)
+                .then((mods) => {
+                  if (!mods.includes('copiloto')) return;
+                  return enqueueCopilotoMessage({
+                    userId:       number.userId,
+                    numberId:     number.id,
+                    contactPhone: senderPhone,
+                    contactName:  senderName,
+                    direction:    'in',
+                    content:      messageText,
+                    messageId,
                   });
-                  atendeOwnsIt = !conv?.humanTakeover;
-                }
-                if (atendeOwnsIt) return;
-                await ingestCopilotoContactMessage({
-                  userId:       number!.userId,
-                  numberId:     number!.id,
-                  contactPhone: senderPhone,
-                  contactName:  senderName,
-                  messageText:  messageText!,
-                });
-              }).catch(() => null);
+                })
+                .catch((err: any) => log.error({ err: err?.message }, '[Copiloto] Falha ao enfileirar mensagem do cliente'));
             }
 
             // ── Módulo Cobrança (#6): cliente pode estar avisando que já pagou ──
@@ -446,23 +444,6 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
             const selfRef    = ownerDigits || String(number?.phoneNumber ?? '').replace(/\D/g, '');
             const isSelfChat = !!number && !!selfRef && selfRef !== 'pending' && samePhone(senderPhone, selfRef);
 
-            // Módulo Copiloto: reply (ou "1"/"2"/"3" solto) a um card pendente,
-            // sempre dentro do chat "Mensagens para você mesmo". Tentado antes
-            // dos comandos do Atende — nunca colide (prefixo "atende" vs. dígito
-            // solto), mas precisa vir primeiro pra não cair na captura de
-            // humanAuthored logo abaixo quando resolver algo.
-            if (isSelfChat) {
-              const stanzaId = msg?.message?.extendedTextMessage?.contextInfo?.stanzaId ?? null;
-              const handled = await handleCopilotoReply({
-                instanceName: instName,
-                selfPhone:    senderPhone,
-                numberId:     number!.id,
-                messageText,
-                stanzaId,
-              }).catch(() => false);
-              if (handled) return;
-            }
-
             if (isSelfChat && isAtendeOwnerCommand(messageText)) {
               const hasAtende = (await getUserModules(number!.userId)).includes('atende');
               if (hasAtende) {
@@ -478,6 +459,59 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
                 log.info(`[Evolution] 🛠️ Comando "atende" ignorado — módulo não contratado (número ${number!.id})`);
               }
               return;
+            }
+
+            // ── Copiloto: o dono respondendo no self-chat ────────────────────
+            // Duas formas, nesta ordem: comando com prefixo "copiloto", ou a
+            // resposta a um briefing ("1", "2", "3", "1e", "0", ou o texto
+            // editado). A escolha só é interpretada se existir briefing pendente
+            // recente — sem isso, uma anotação pessoal com "2" viraria envio ao
+            // cliente, que é o pior bug possível neste produto.
+            if (isSelfChat) {
+              const hasCopiloto = (await getUserModules(number!.userId)).includes('copiloto');
+              if (hasCopiloto) {
+                const ctx = {
+                  userId:       number!.userId,
+                  numberId:     number!.id,
+                  instanceName: instName,
+                  selfPhone:    senderPhone,
+                  text:         messageText,
+                };
+                if (isCopilotoOwnerCommand(messageText)) {
+                  await handleCopilotoOwnerCommand(ctx).catch((err: any) =>
+                    log.error({ err: err?.message }, '[Copiloto] Falha no comando do dono'));
+                  log.info(`[Evolution] 🎯 Comando do dono processado (Copiloto, número ${number!.id})`);
+                  return;
+                }
+                const handled = await handleCopilotoChoice(ctx).catch((err: any) => {
+                  log.error({ err: err?.message }, '[Copiloto] Falha ao processar escolha do dono');
+                  return false;
+                });
+                if (handled) {
+                  log.info(`[Evolution] 🎯 Escolha do dono processada (Copiloto, número ${number!.id})`);
+                  return;
+                }
+              }
+            }
+
+            // ── Copiloto: o dono respondendo o CLIENTE pela mão dele ─────────
+            // Não é self-chat: é conversa real. Vira contexto 'out' — é assim que
+            // o Copiloto aprende o jeito dele escrever. Fire-and-forget; o job
+            // descarta o eco do que o próprio Copiloto enviou.
+            if (number && !isSelfChat) {
+              getUserModules(number.userId)
+                .then((mods) => {
+                  if (!mods.includes('copiloto')) return;
+                  return enqueueCopilotoMessage({
+                    userId:       number.userId,
+                    numberId:     number.id,
+                    contactPhone: senderPhone,
+                    direction:    'out',
+                    content:      messageText,
+                    messageId,
+                  });
+                })
+                .catch((err: any) => log.error({ err: err?.message }, '[Copiloto] Falha ao enfileirar resposta do dono'));
             }
 
             // Resposta real do dono (fromMe), mandada pelo próprio WhatsApp enquanto a
