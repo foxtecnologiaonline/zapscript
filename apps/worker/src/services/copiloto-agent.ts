@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { logger } from '../lib/logger';
 import { logAiUsage } from '../lib/aiUsage';
 import {
@@ -24,21 +25,49 @@ import {
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// OpenAI e Groq entram como REDE DE SEGURANÇA, não como escolha de qualidade:
+// só são chamados se toda a cadeia Anthropic falhar (rate limit, outage). Groq
+// é compatível com a API da OpenAI — mesmo cliente, troca só a baseURL (mesmo
+// padrão já usado em services/whisper.ts).
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const groq = process.env.GROQ_API_KEY
+  ? new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' })
+  : null;
+
+type ModelSpec = { provider: 'anthropic' | 'openai' | 'groq'; model: string };
+
+function dedupeSpecs(specs: (ModelSpec | null)[]): ModelSpec[] {
+  const seen = new Set<string>();
+  const out: ModelSpec[] = [];
+  for (const s of specs) {
+    if (!s) continue;
+    const key = `${s.provider}:${s.model}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
 // Triagem roda em toda rajada de mensagem: precisa ser barata. O briefing roda
 // só no que passou pela triagem: pode ser mais caro.
 // (Prompt caching daria ~90% de desconto no prefixo estável, mas o SDK fixado
 //  aqui — @anthropic-ai/sdk 0.24.x — só expõe cache pelo namespace beta. Migrar
 //  o SDK e ligar cache é o próximo ganho óbvio de custo.)
-const TRIAGE_MODELS = [
-  process.env.COPILOTO_TRIAGE_MODEL || 'claude-haiku-4-5',
-  'claude-sonnet-4-6',
-].filter((v, i, a) => a.indexOf(v) === i);
+const TRIAGE_MODELS: ModelSpec[] = dedupeSpecs([
+  { provider: 'anthropic', model: process.env.COPILOTO_TRIAGE_MODEL || 'claude-haiku-4-5' },
+  { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+  openai ? { provider: 'openai', model: process.env.COPILOTO_TRIAGE_MODEL_OPENAI || 'gpt-4o-mini' } : null,
+  groq ? { provider: 'groq', model: process.env.COPILOTO_TRIAGE_MODEL_GROQ || 'llama-3.3-70b-versatile' } : null,
+]);
 
-const BRIEF_MODELS = [
-  process.env.COPILOTO_BRIEF_MODEL || 'claude-sonnet-5',
-  'claude-sonnet-4-6',
-  'claude-haiku-4-5',
-].filter((v, i, a) => a.indexOf(v) === i);
+const BRIEF_MODELS: ModelSpec[] = dedupeSpecs([
+  { provider: 'anthropic', model: process.env.COPILOTO_BRIEF_MODEL || 'claude-sonnet-5' },
+  { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+  { provider: 'anthropic', model: 'claude-haiku-4-5' },
+  openai ? { provider: 'openai', model: process.env.COPILOTO_BRIEF_MODEL_OPENAI || 'gpt-4o' } : null,
+  groq ? { provider: 'groq', model: process.env.COPILOTO_BRIEF_MODEL_GROQ || 'llama-3.3-70b-versatile' } : null,
+]);
 
 function extractJson(text: string): any {
   const match = text.match(/\{[\s\S]*\}/);
@@ -53,9 +82,32 @@ function textOf(res: Anthropic.Message): string {
     .join('');
 }
 
-/** Chama o modelo percorrendo a lista de fallback; erro só se todos falharem. */
+/** Uma chamada de chat contra um cliente compatível com a API da OpenAI (OpenAI ou Groq). */
+async function callOpenAiCompatible(
+  client: OpenAI, model: string, system: string, user: string, maxTokens: number,
+): Promise<{ text: string; inputTokens?: number; outputTokens?: number }> {
+  const res = await client.chat.completions.create({
+    model,
+    max_tokens: maxTokens,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+  });
+  return {
+    text: res.choices[0]?.message?.content || '',
+    inputTokens: res.usage?.prompt_tokens,
+    outputTokens: res.usage?.completion_tokens,
+  };
+}
+
+/**
+ * Chama o modelo percorrendo a lista de fallback (Anthropic → OpenAI → Groq);
+ * erro só se todos falharem. O JSON pedido no prompt é o mesmo para os três
+ * provedores — extractJson() já lida com texto solto em volta do JSON.
+ */
 async function callWithFallback(params: {
-  models: string[];
+  models: ModelSpec[];
   system: string;
   user: string;
   maxTokens: number;
@@ -63,19 +115,34 @@ async function callWithFallback(params: {
   feature: string;
 }): Promise<any> {
   let lastErr: any;
-  for (const model of params.models) {
+  for (const spec of params.models) {
     try {
-      const res = await claude.messages.create({
-        model,
-        max_tokens: params.maxTokens,
-        system: params.system,
-        messages: [{ role: 'user', content: params.user }],
-      });
-      logAiUsage(params.userId, params.feature, model, res.usage?.input_tokens, res.usage?.output_tokens);
-      return extractJson(textOf(res));
+      let text: string;
+      let inputTokens: number | undefined;
+      let outputTokens: number | undefined;
+      if (spec.provider === 'anthropic') {
+        const res = await claude.messages.create({
+          model: spec.model,
+          max_tokens: params.maxTokens,
+          system: params.system,
+          messages: [{ role: 'user', content: params.user }],
+        });
+        text = textOf(res);
+        inputTokens = res.usage?.input_tokens;
+        outputTokens = res.usage?.output_tokens;
+      } else {
+        const client = spec.provider === 'openai' ? openai : groq;
+        if (!client) throw new Error(`${spec.provider} sem API key configurada`);
+        const r = await callOpenAiCompatible(client, spec.model, params.system, params.user, params.maxTokens);
+        text = r.text;
+        inputTokens = r.inputTokens;
+        outputTokens = r.outputTokens;
+      }
+      logAiUsage(params.userId, params.feature, spec.model, inputTokens, outputTokens);
+      return extractJson(text);
     } catch (err: any) {
       lastErr = err;
-      logger.warn(`[Copiloto] Modelo ${model} falhou (${params.feature}): ${err.message}`);
+      logger.warn(`[Copiloto] Modelo ${spec.provider}:${spec.model} falhou (${params.feature}): ${err.message}`);
     }
   }
   throw new Error(`Copiloto: todos os modelos falharam (${params.feature}): ${lastErr?.message ?? 'erro desconhecido'}`);
