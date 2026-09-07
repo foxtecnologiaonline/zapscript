@@ -1260,9 +1260,20 @@ async function start() {
   // por horas sem achar a causa raiz — o processo simplesmente nunca terminava
   // de subir e ficava preso em "unhealthy" para sempre, exigindo reboot manual
   // do servidor toda vez. Em vez de deixar isso acontecer de novo sem aviso:
-  // se o boot não terminar em 90s, mata o próprio processo — o `restart:
-  // unless-stopped` do Docker já tenta de novo sozinho, sem intervenção manual.
-  const BOOT_TIMEOUT_MS = 90_000;
+  // se o boot não terminar em BOOT_TIMEOUT_MS, mata o próprio processo — o
+  // `restart: unless-stopped` do Docker já tenta de novo sozinho, sem
+  // intervenção manual.
+  //
+  // Por que 240s e não 90s: runAutoMigrations() roda ~150 statements SQL em
+  // sequência (um await por statement, sem pipeline) e cada round-trip pro
+  // Supabase mediu ~900ms em produção (log [AutoMigration] (n/total) por
+  // statement, ver abaixo) — ou seja, só a migração já leva ~135s. Com 90s o
+  // processo se matava sempre no meio dela, nunca chegando a terminar o boot
+  // (não era travamento de verdade, era o watchdog cortando um trabalho
+  // sequencial que ficou mais longo que o limite). 240s dá margem confortável
+  // acima do pior caso medido (~135s de migração + runDocumentEncryptionMigration
+  // + app.listen) sem deixar de proteger contra um hang real e silencioso.
+  const BOOT_TIMEOUT_MS = 240_000;
   const bootWatchdog = setTimeout(() => {
     app.log.error(`[Startup] FATAL: boot não completou em ${BOOT_TIMEOUT_MS / 1000}s — encerrando para o restart policy tentar de novo. Ver logs acima para a última etapa concluída.`);
     process.exit(1);
