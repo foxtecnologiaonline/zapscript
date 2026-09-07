@@ -14,6 +14,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { redis } from './services/queue';
 import { pubClient, subClient } from './lib/redisAdapter';
 import { registerSecurityShield } from './lib/security-shield';
+import { logger } from './lib/logger';
 import { prisma } from './lib/prisma';
 import { syncAllEvolutionConfigs } from './services/evolution-sync';
 import { startHeartbeat }         from './services/evolution-heartbeat';
@@ -931,7 +932,13 @@ async function runAutoMigrations() {
     `CREATE UNIQUE INDEX IF NOT EXISTS "WhatsappOnboardingLead_phone_key" ON "WhatsappOnboardingLead"("phone")`,
     `CREATE INDEX IF NOT EXISTS "WhatsappOnboardingLead_stage_idx" ON "WhatsappOnboardingLead"("stage")`,
   ];
-  for (const sql of migrations) {
+  // Loga índice + prefixo do SQL antes de cada await: se travar (ex.: lock de
+  // uma conexão órfã do container anterior ainda não coletada pelo Postgres),
+  // dá pra ver exatamente qual statement no `docker logs`, em vez de só o
+  // timeout genérico do watchdog de boot 90s acima.
+  for (let i = 0; i < migrations.length; i++) {
+    const sql = migrations[i];
+    logger.info(`[AutoMigration] (${i + 1}/${migrations.length}) ${sql.trim().slice(0, 80).replace(/\s+/g, ' ')}...`);
     await prisma.$executeRawUnsafe(sql).catch((e: any) =>
       app.log.warn(`[AutoMigration] ${e.message}`)
     );
@@ -1052,12 +1059,20 @@ async function start() {
       }
     }
 
+    // app.log está em nível 'warn' em produção (silencia .info) — logger (lib/logger.ts)
+    // roda em nível 'info' sempre, por isso os checkpoints de boot usam os dois: sem
+    // esse segundo log, um travamento no meio dessas etapas fica invisível no
+    // `docker logs`, só aparece o timeout final do watchdog acima.
+    logger.info('[Startup] Iniciando runAutoMigrations...');
     app.log.info('[Startup] Iniciando runAutoMigrations...');
     await runAutoMigrations();
+    logger.info('[Startup] runAutoMigrations concluído — iniciando runDocumentEncryptionMigration...');
     app.log.info('[Startup] runAutoMigrations concluído — iniciando runDocumentEncryptionMigration...');
     await runDocumentEncryptionMigration();
+    logger.info('[Startup] runDocumentEncryptionMigration concluído — iniciando app.listen...');
     app.log.info('[Startup] runDocumentEncryptionMigration concluído — iniciando app.listen...');
     await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' });
+    logger.info('[Startup] app.listen concluído — boot completo');
     app.log.info('[Startup] app.listen concluído — boot completo');
     clearTimeout(bootWatchdog);
 
