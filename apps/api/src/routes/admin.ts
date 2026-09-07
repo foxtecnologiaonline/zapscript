@@ -3271,13 +3271,21 @@ export default async function adminRoutes(app: FastifyInstance) {
       // Onboarding no self-chat: é onde o produto vive, então é onde ele se
       // apresenta. Best-effort — a liberação não pode falhar por causa do envio.
       let notified = false;
+      let notifyIssue: string | undefined;
       if (notify) {
         const target = connected.find((n) => n.zapiInstanceId && n.phoneNumber && n.phoneNumber !== 'pending');
-        if (target) {
+        if (!target) {
+          // Silencioso até aqui não dava pra diagnosticar de fora — número
+          // "connected" mas sem zapiInstanceId/phoneNumber válido é raro mas
+          // acontece durante provisionamento. Loga e devolve pro admin ver.
+          notifyIssue = 'Usuário tem número conectado, mas nenhum com instância/telefone válidos para envio — onboarding NÃO foi enviado.';
+          req.log.warn({ userId: user.id, connectedCount: connected.length }, '[Copiloto] Nenhum número elegível para onboarding');
+        } else {
           try {
             await sendText(target.zapiInstanceId!, target.phoneNumber!, COPILOTO_ONBOARDING);
             notified = true;
           } catch (err: any) {
+            notifyIssue = `Onboarding NÃO foi enviado — falha no envio: ${err?.message || 'erro desconhecido'}`;
             req.log.warn({ err: err?.message }, '[Copiloto] Falha ao enviar onboarding');
           }
         }
@@ -3292,7 +3300,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         notified,
         warning: connected.length === 0
           ? 'Usuário liberado, mas não tem número de WhatsApp conectado — o Copiloto só age quando houver conexão ativa.'
-          : undefined,
+          : notifyIssue,
       };
     }
   );
