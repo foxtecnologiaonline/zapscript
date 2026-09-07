@@ -935,6 +935,17 @@ async function runAutoMigrations() {
     // schema no boot, mesmo padrão acima — nunca tinha sido replicado aqui, por
     // isso a tabela nunca existiu em produção mesmo com o módulo já deployado
     // (só via prisma migrate, que não roda no `action=deploy` do ops.yml).
+    // Sem essa linha em Product, POST /copiloto/access quebra com FK violation
+    // em Entitlement_productKey_fkey — mesmo padrão de seed usado por
+    // Cobrança/Legenda/Atende/CRM acima, nunca aplicado ao Copiloto.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'copiloto') THEN
+        UPDATE "Product" SET "status" = 'planned' WHERE "key" = 'copiloto';
+      ELSE
+        INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
+        VALUES ('copiloto-product-seed', 'copiloto', 'ZapScript Copiloto', 'planned', 47, 451, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      END IF;
+    END $$`,
     `CREATE TABLE IF NOT EXISTS "CopilotoConfig" (
       "id"              TEXT NOT NULL,
       "numberId"        TEXT NOT NULL,
