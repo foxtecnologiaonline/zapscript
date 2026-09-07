@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma';
+import { buildModelChain, callAiWithFallback, type ModelSpec } from './ai-fallback';
 
 /**
  * Agente de Suporte Inteligente — núcleo (MÓDULO 1 + 2 do briefing).
@@ -7,17 +7,19 @@ import { prisma } from '../lib/prisma';
  * Fluxo: classifica a mensagem, busca contexto na base de conhecimento (RAG por
  * palavra-chave no MVP) e gera um rascunho de resposta. NADA é enviado aqui — o
  * rascunho fica num SupportAtendimento aguardando aprovação humana.
+ *
+ * Rede de fallback multi-provedor (Anthropic → OpenAI → Groq → Gemini) vem de
+ * ./ai-fallback.
  */
 
-const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
 // Modelo configurável; default no Sonnet 4 mais recente. Cadeia de fallback cobre
-// indisponibilidade pontual de um id específico.
-const AGENT_MODELS = [
-  process.env.SUPPORT_AGENT_MODEL || 'claude-sonnet-4-6',
-  'claude-sonnet-4-20250514',
-  'claude-haiku-4-5',
-].filter((v, i, a) => a.indexOf(v) === i);
+// indisponibilidade pontual de um id específico, e depois provedores inteiros.
+const AGENT_MODELS: ModelSpec[] = buildModelChain({
+  anthropic: [process.env.SUPPORT_AGENT_MODEL || 'claude-sonnet-4-6', 'claude-sonnet-4-20250514', 'claude-haiku-4-5'],
+  openaiModel: process.env.SUPPORT_AGENT_MODEL_OPENAI || 'gpt-4o',
+  groqModel: process.env.SUPPORT_AGENT_MODEL_GROQ || 'llama-3.3-70b-versatile',
+  geminiModel: process.env.SUPPORT_AGENT_MODEL_GEMINI || 'gemini-2.5-flash',
+});
 
 export type Canal = 'whatsapp' | 'email' | 'chat';
 
@@ -132,13 +134,6 @@ function applyEscalationRules(c: ClassificacaoAtendimento, message: string): boo
   return false;
 }
 
-function extractJson(text: string): any {
-  // Modelo às vezes embrulha em ```json — extrai o primeiro objeto {...}
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Resposta do agente sem JSON');
-  return JSON.parse(match[0]);
-}
-
 export interface RunAgentInput {
   message: string;
   canal?: Canal;                     // ajusta o tamanho/estilo da resposta por canal
@@ -181,50 +176,36 @@ export async function runSupportAgent(input: RunAgentInput): Promise<AgentResult
     `Mensagem do cliente:\n"""${input.message}"""`,
   ].filter(Boolean).join('\n\n');
 
-  let lastErr: any;
-  for (const model of AGENT_MODELS) {
-    try {
-      const res = await claude.messages.create({
-        model,
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userBlock }],
-      });
-      const text = res.content
-        .filter((b: any) => b.type === 'text')
-        .map((b: any) => b.text)
-        .join('');
-      const parsed = extractJson(text);
+  const parsed = await callAiWithFallback({
+    models: AGENT_MODELS,
+    system: SYSTEM_PROMPT,
+    user: userBlock,
+    maxTokens: 1024,
+    label: '[Suporte]',
+  });
 
-      const classificacao: ClassificacaoAtendimento = {
-        categoria: parsed.categoria ?? 'outro',
-        prioridade: parsed.prioridade ?? 'media',
-        sentimento: parsed.sentimento ?? 'neutro',
-        requer_escalacao: !!parsed.requer_escalacao,
-        confianca_resposta: typeof parsed.confianca_resposta === 'number' ? parsed.confianca_resposta : 0,
-        topicos_identificados: Array.isArray(parsed.topicos_identificados) ? parsed.topicos_identificados : [],
-        sugestao_faq: parsed.sugestao_faq || null,
-      };
-      classificacao.requer_escalacao = applyEscalationRules(classificacao, input.message);
+  const classificacao: ClassificacaoAtendimento = {
+    categoria: parsed.categoria ?? 'outro',
+    prioridade: parsed.prioridade ?? 'media',
+    sentimento: parsed.sentimento ?? 'neutro',
+    requer_escalacao: !!parsed.requer_escalacao,
+    confianca_resposta: typeof parsed.confianca_resposta === 'number' ? parsed.confianca_resposta : 0,
+    topicos_identificados: Array.isArray(parsed.topicos_identificados) ? parsed.topicos_identificados : [],
+    sugestao_faq: parsed.sugestao_faq || null,
+  };
+  classificacao.requer_escalacao = applyEscalationRules(classificacao, input.message);
 
-      // marca contexto como usado (incrementa uso) — aprendizado leve
-      if (kb.length) {
-        prisma.knowledgeBase.updateMany({
-          where: { id: { in: kb.map((k: any) => k.id) } },
-          data: { vezesUtilizado: { increment: 1 } },
-        }).catch(() => null);
-      }
-
-      return {
-        classificacao,
-        rascunho: parsed.rascunho || 'Oi! Recebemos sua mensagem. Um atendente vai te responder em breve.',
-        contextoUsado,
-      };
-    } catch (err: any) {
-      lastErr = err;
-      // tenta o próximo modelo da cadeia
-    }
+  // marca contexto como usado (incrementa uso) — aprendizado leve
+  if (kb.length) {
+    prisma.knowledgeBase.updateMany({
+      where: { id: { in: kb.map((k: any) => k.id) } },
+      data: { vezesUtilizado: { increment: 1 } },
+    }).catch(() => null);
   }
 
-  throw new Error(`Agente de suporte falhou em todos os modelos: ${lastErr?.message ?? 'erro desconhecido'}`);
+  return {
+    classificacao,
+    rascunho: parsed.rascunho || 'Oi! Recebemos sua mensagem. Um atendente vai te responder em breve.',
+    contextoUsado,
+  };
 }

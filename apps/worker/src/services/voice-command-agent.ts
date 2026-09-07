@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../lib/logger';
+import { buildModelChain, callAiWithFallback, type ModelSpec } from './ai-fallback';
 
 /**
  * Comando de Voz Universal — classifica se um áudio que o usuário mandou pro
@@ -9,15 +9,17 @@ import { logger } from '../lib/logger';
  * 1 mensagem extra indevida (chato, mas reversível). Deixar passar um comando
  * real como "none" só significa que o usuário repete depois. Por isso o
  * default é sempre "none" e o limiar de confiança é conservador.
+ *
+ * Rede de fallback multi-provedor (Anthropic → OpenAI → Groq → Gemini) vem de
+ * ./ai-fallback — compartilhada com atende-agent.ts e copiloto-agent.ts.
  */
 
-const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-const AGENT_MODELS = [
-  process.env.VOICE_COMMAND_AGENT_MODEL || 'claude-sonnet-4-6',
-  'claude-sonnet-4-20250514',
-  'claude-haiku-4-5',
-].filter((v, i, a) => a.indexOf(v) === i);
+const AGENT_MODELS: ModelSpec[] = buildModelChain({
+  anthropic: [process.env.VOICE_COMMAND_AGENT_MODEL || 'claude-sonnet-4-6', 'claude-sonnet-4-20250514', 'claude-haiku-4-5'],
+  openaiModel: process.env.VOICE_COMMAND_AGENT_MODEL_OPENAI || 'gpt-4o-mini',
+  groqModel: process.env.VOICE_COMMAND_AGENT_MODEL_GROQ || 'llama-3.3-70b-versatile',
+  geminiModel: process.env.VOICE_COMMAND_AGENT_MODEL_GEMINI || 'gemini-2.5-flash',
+});
 
 // Mais conservador que o Atende (60) — aqui o custo de falso positivo é agir
 // sem o usuário ter pedido, então exige mais certeza antes de disparar ação.
@@ -67,44 +69,29 @@ Responda SOMENTE com um objeto JSON válido, sem markdown, no formato:
   "dados": { ... campos do tipo escolhido, conforme acima ... }
 }`;
 
-function extractJson(text: string): any {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Voice command agent: resposta sem JSON');
-  return JSON.parse(match[0]);
-}
-
 export async function classifyVoiceCommand(rawText: string): Promise<VoiceIntentResult> {
   const fallback: VoiceIntentResult = { intent: 'none', confidence: 0, data: {} };
   if (!rawText || rawText.trim().length < 3) return fallback;
 
-  let lastErr: any;
-  for (const model of AGENT_MODELS) {
-    try {
-      const res = await claude.messages.create({
-        model,
-        max_tokens: 400,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `Nota de voz transcrita:\n"""${rawText}"""` }],
-      });
-      const text = res.content
-        .filter((b: any) => b.type === 'text')
-        .map((b: any) => b.text)
-        .join('');
-      const parsed = extractJson(text);
+  try {
+    const parsed = await callAiWithFallback({
+      models: AGENT_MODELS,
+      system: SYSTEM_PROMPT,
+      user: `Nota de voz transcrita:\n"""${rawText}"""`,
+      maxTokens: 400,
+      feature: 'voice_command',
+      label: '[VoiceCommand]',
+    });
 
-      const confidence = typeof parsed.confianca === 'number' ? parsed.confianca : 0;
-      const intent: VoiceIntent = ['crm_create_lead', 'crm_query', 'atende_add_kb', 'stats_query', 'none']
-        .includes(parsed.intent) ? parsed.intent : 'none';
+    const confidence = typeof parsed.confianca === 'number' ? parsed.confianca : 0;
+    const intent: VoiceIntent = ['crm_create_lead', 'crm_query', 'atende_add_kb', 'stats_query', 'none']
+      .includes(parsed.intent) ? parsed.intent : 'none';
 
-      if (confidence < CONFIDENCE_THRESHOLD) return fallback;
+    if (confidence < CONFIDENCE_THRESHOLD) return fallback;
 
-      return { intent, confidence, data: parsed.dados ?? {} };
-    } catch (err: any) {
-      lastErr = err;
-      logger.warn(`[VoiceCommand] Modelo ${model} falhou: ${err.message}`);
-    }
+    return { intent, confidence, data: parsed.dados ?? {} };
+  } catch (err: any) {
+    logger.warn(`[VoiceCommand] Classificação falhou em todos os modelos: ${err.message} — default 'none'`);
+    return fallback;
   }
-
-  logger.warn(`[VoiceCommand] Classificação falhou em todos os modelos: ${lastErr?.message ?? 'erro desconhecido'} — default 'none'`);
-  return fallback;
 }
