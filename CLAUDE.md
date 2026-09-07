@@ -6,7 +6,7 @@ que NÃO refletem mais a realidade. A infra atual é só esta:
 
 | Camada            | Onde                                                         | Deploy |
 |-------------------|----------------------------------------------------------------|--------|
-| API + Worker + Redis + Evolution API | **Vultr** — um único servidor (`216.238.114.73`, DNS `api.zapscript.me`), containers via Docker Compose (`/root/docker-compose.zapscript.yml` no servidor) | **Manual.** GitHub Actions → aba *Actions* → workflow **"Ops — Vultr / Migração"** (`.github/workflows/ops.yml`) → Run workflow → `action = deploy`. Faz SSH, clona o `master` e builda as imagens **direto no servidor** (não usa `ghcr.io`, não faz `docker compose pull`), sobe API primeiro (espera healthcheck), depois Worker, e guarda a imagem anterior como `:previous`. `action = rollback` reverte na hora. |
+| API + Worker + Redis + Evolution API | **Vultr** — um único servidor (`216.238.120.65`, DNS `api.zapscript.me`), containers via Docker Compose (`/root/docker-compose.zapscript.yml` no servidor) | **Manual.** GitHub Actions → aba *Actions* → workflow **"Ops — Vultr / Migração"** (`.github/workflows/ops.yml`) → Run workflow → `action = deploy`. Faz SSH, clona o `master` e builda as imagens **direto no servidor** (não usa `ghcr.io`, não faz `docker compose pull`), sobe API primeiro (espera healthcheck), depois Worker, e guarda a imagem anterior como `:previous`. `action = rollback` reverte na hora. |
 | Frontend (Next.js)| **Vercel** (projeto `zapscript`, conectado ao GitHub) | **Automático.** Todo push em `master` dispara deploy sozinho — não precisa rodar nada. |
 | Banco de dados    | **Supabase** (Postgres + Prisma) | Migrations via `prisma migrate deploy`, rodam no start da API. |
 
@@ -39,3 +39,8 @@ push em `master` colocou nada novo no ar na API/Worker.
   as `NEXT_PUBLIC_*` que o build da Vercel precisa).
 - Webhooks do Asaas e da Evolution API apontam para `https://api.zapscript.me`
   (Vultr), não para nenhuma URL `.onrender.com` ou `.railway.app`.
+- O sandbox do Claude Code on the web **não consegue SSH no servidor Vultr**
+  (porta 22 bloqueada na política de rede do ambiente — só sai HTTP/HTTPS).
+  Diagnóstico/comando direto no servidor precisa ser rodado pelo usuário, que
+  cola o resultado de volta. Não adianta gerar chave nem pedir autorização —
+  é limitação de rede do ambiente, não de credencial.
