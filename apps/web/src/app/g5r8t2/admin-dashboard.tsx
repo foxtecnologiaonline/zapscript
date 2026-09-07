@@ -539,7 +539,7 @@ function CopilotoPanel({ token, notify }: { token: string; notify: (t: string, t
     }
   }
 
-  async function setAccess(payload: any, okMsg: string) {
+  async function setAccess(payload: any, okMsg: string | ((d: any) => string)) {
     setSaving(true);
     try {
       const res = await fetch(`${ADMIN_API}/sys/g5r8t2/copiloto/access`, {
@@ -547,7 +547,8 @@ function CopilotoPanel({ token, notify }: { token: string; notify: (t: string, t
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Erro na operação');
-      notify(d.warning ? `⚠️ ${d.warning}` : okMsg, d.warning ? 'warn' : 'ok');
+      const msg = typeof okMsg === 'function' ? okMsg(d) : okMsg;
+      notify(d.warning ? `⚠️ ${d.warning}` : msg, d.warning ? 'warn' : 'ok');
       setTarget('');
       load();
     } catch (e: any) {
@@ -563,7 +564,11 @@ function CopilotoPanel({ token, notify }: { token: string; notify: (t: string, t
     if (!v) return;
     // Aceita e-mail ou o id direto — o admin costuma ter um dos dois na mão.
     const payload = v.includes('@') ? { email: v, enabled: true } : { userId: v, enabled: true };
-    setAccess(payload, '✅ Copiloto liberado — onboarding enviado no WhatsApp do usuário.');
+    // notified vem da API — não assume sucesso do envio só porque a liberação
+    // (Entitlement) deu certo; o self-chat pode falhar sem virar `warning`.
+    setAccess(payload, (d) => d.notified
+      ? '✅ Copiloto liberado — onboarding enviado no WhatsApp do usuário.'
+      : '⚠️ Copiloto liberado, mas o onboarding NÃO foi enviado (sem número conectado elegível ou falha no envio — confira os logs).');
   }
 
   return (
