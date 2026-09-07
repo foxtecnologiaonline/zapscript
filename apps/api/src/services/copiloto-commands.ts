@@ -16,6 +16,7 @@
 import { prisma } from '../lib/prisma';
 import { sendText } from './evolution';
 import { copilotoQueue } from './queue';
+import { backfillUnreadConversations } from './copiloto-backfill';
 
 const COMMAND_PREFIX = /^\s*copiloto\b/i;
 
@@ -138,6 +139,11 @@ export async function handleCopilotoOwnerCommand(params: {
     await ensureConfig(userId, numberId);
     await prisma.copilotoConfig.update({ where: { numberId }, data: { enabled: true } });
     await reply('✅ Copiloto ligado. Vou te avisar quando uma conversa merecer sua atenção.');
+    // Backfill: conversas já com mensagem não lida agora também entram na
+    // fila de briefing, não só o que chegar dali pra frente. Fire-and-forget.
+    backfillUnreadConversations({
+      userId, numberId, instanceId: instanceName, ownPhoneDigits: selfPhone.replace(/\D/g, ''),
+    }).catch(() => null);
     return true;
   }
 

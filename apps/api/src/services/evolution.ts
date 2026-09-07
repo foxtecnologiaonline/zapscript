@@ -211,6 +211,100 @@ export async function fetchGroups(instanceNameStr: string): Promise<EvolutionGro
     .filter((g) => g.jid.endsWith('@g.us'));
 }
 
+export interface EvolutionUnreadChat {
+  jid: string;                  // remoteJid completo ('5511999999999@s.whatsapp.net')
+  phone: string;                 // só dígitos, sem sufixo
+  name: string | null;
+  unreadCount: number;
+  lastMessageAt: number | null; // epoch ms, quando a Evolution devolve updatedAt
+}
+
+/**
+ * Lista chats individuais (exclui grupos) com mensagens não lidas — usado só
+ * pelo backfill do Copiloto (ver copiloto-backfill.ts). `unreadMessages` é o
+ * nome do campo na Evolution API a partir da v2.3.1; como o self-host pode
+ * rodar um fork/versão levemente diferente, aceita `unreadCount` também e
+ * trata ausência como 0 (chat sem não-lida é descartado, nunca quebra).
+ */
+export async function fetchUnreadChats(instanceNameStr: string): Promise<EvolutionUnreadChat[]> {
+  const base = evolutionBaseUrl();
+  const res = await fetch(`${base}/chat/findChats/${instanceNameStr}`, {
+    method:  'POST',
+    headers: evolutionHeaders(),
+    body:    JSON.stringify({}),
+    signal:  AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Evolution findChats falhou (${res.status}): ${text}`);
+  }
+  const raw = await res.json().catch(() => []);
+  const data: any[] = Array.isArray(raw) ? raw : (raw?.chats ?? raw?.records ?? []);
+  return data
+    .map((c) => {
+      const jid = c?.remoteJid ?? c?.id ?? '';
+      return {
+        jid,
+        phone:         String(jid).replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, ''),
+        name:          c?.pushName ?? c?.name ?? null,
+        unreadCount:   c?.unreadMessages ?? c?.unreadCount ?? 0,
+        lastMessageAt: c?.updatedAt ? new Date(c.updatedAt).getTime() : null,
+      };
+    })
+    .filter((c) => c.unreadCount > 0 && c.phone && c.jid.endsWith('@s.whatsapp.net'));
+}
+
+export interface EvolutionChatMessage {
+  id: string;
+  fromMe: boolean;
+  text: string;
+  timestamp: number; // epoch seconds (Baileys messageTimestamp)
+}
+
+/**
+ * Últimas mensagens de um chat individual, mais antiga primeiro. Só extrai
+ * texto puro (conversation/extendedTextMessage) — mesmo filtro que o webhook
+ * de mensagens em tempo real já aplica pro Copiloto (evolution-webhook.ts);
+ * mídia/áudio não vira contexto do Copiloto aqui também.
+ */
+export async function fetchChatMessages(
+  instanceNameStr: string, remoteJid: string, limit = 20,
+): Promise<EvolutionChatMessage[]> {
+  const base = evolutionBaseUrl();
+  const res = await fetch(`${base}/chat/findMessages/${instanceNameStr}`, {
+    method:  'POST',
+    headers: evolutionHeaders(),
+    body:    JSON.stringify({ where: { key: { remoteJid } }, limit }),
+    signal:  AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Evolution findMessages falhou (${res.status}): ${text}`);
+  }
+  const raw = await res.json().catch(() => null);
+  // A Evolution pagina algumas respostas em { messages: { records: [...] } };
+  // outras devolvem o array direto. Aceita as duas formas.
+  const list: any[] = Array.isArray(raw) ? raw : (raw?.messages?.records ?? raw?.records ?? []);
+
+  const out: EvolutionChatMessage[] = [];
+  for (const m of list) {
+    const messageType = m?.messageType;
+    const text: string | undefined =
+      messageType === 'conversation'      ? m?.message?.conversation :
+      messageType === 'extendedTextMessage' ? m?.message?.extendedTextMessage?.text :
+      undefined;
+    if (!text) continue; // só texto — mesmo filtro do webhook em tempo real
+    out.push({
+      id:        m?.key?.id ?? `evo_backfill_${m?.messageTimestamp ?? Date.now()}`,
+      fromMe:    !!m?.key?.fromMe,
+      text,
+      timestamp: typeof m?.messageTimestamp === 'number' ? m.messageTimestamp : 0,
+    });
+  }
+  out.sort((a, b) => a.timestamp - b.timestamp); // mais antiga primeiro
+  return out.slice(-limit);
+}
+
 /**
  * Envia mensagem de texto via Evolution API.
  * Retorna o id da mensagem enviada (quando a Evolution devolve) — usado pelo

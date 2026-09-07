@@ -1,4 +1,4 @@
-import { Worker, Job } from 'bullmq';
+import { Worker, Job, Queue } from 'bullmq';
 import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
@@ -28,6 +28,11 @@ import { validateDraft, isOptOut, hasVulnerabilitySignal } from './services/copi
 
 /** Janela de agrupamento: mensagens do mesmo contato dentro dela viram um briefing. */
 export const DEBOUNCE_MS = parseInt(process.env.COPILOTO_DEBOUNCE_MS || '180000'); // 3 min
+
+// Produtor local pra reenfileirar 'brief' no sweep de pendências (ver
+// runCopilotoPendingSweep, no fim do arquivo) — mesma fila 'copiloto' que a
+// API produz normalmente, só que aqui é o próprio worker que se re-agenda.
+const copilotoQueue = new Queue('copiloto', { connection: redis as any });
 
 /** Teto de mensagens levadas ao prompt — conversa longa não pode virar prompt gigante. */
 const HISTORY_LIMIT = 12;
@@ -553,4 +558,50 @@ async function runCopilotoGroupDigests() {
 runCopilotoGroupDigests();
 setInterval(runCopilotoGroupDigests, GROUP_DIGEST_POLL_MS);
 
-export { copilotoWorker, runCopilotoGroupDigests };
+// ─────────────────────────────────────────────────────────────────────────
+// Sweep de pendências — conversas com mensagem ainda não briefada (nem por
+// falta de briefing, nem por triagem: as duas marcam lastBriefedAt). O único
+// jeito de uma conversa ficar "presa" nesse estado é processBrief() ter
+// pulado por 'teto_diario' — de propósito não marca lastBriefedAt nesse caso
+// (ver processBrief acima), justamente pra esse sweep achar e tentar de novo
+// quando o teto do dia seguinte abrir. Cobre tanto o backfill de mensagens
+// não lidas (apps/api/src/services/copiloto-backfill.ts) quanto rajada normal
+// de trabalho que excedeu o limite diário do dono.
+// ─────────────────────────────────────────────────────────────────────────
+
+const PENDING_SWEEP_POLL_MS = 60 * 60 * 1000; // a cada hora
+const PENDING_SWEEP_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000; // não ressuscita conversa parada há mais de 7 dias
+
+async function runCopilotoPendingSweep() {
+  try {
+    const candidates = await prisma.copilotoConversation.findMany({
+      where: { lastMessageAt: { gte: new Date(Date.now() - PENDING_SWEEP_LOOKBACK_MS) } },
+      select: { userId: true, numberId: true, contactPhone: true, lastMessageAt: true, lastBriefedAt: true },
+    });
+    const pending = candidates.filter((c) => !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt);
+    if (pending.length === 0) return;
+
+    const dayKey = new Date().toISOString().slice(0, 10); // 1 tentativa de reenfileirar por conversa por dia
+    let enqueued = 0;
+    for (const c of pending) {
+      const config = await prisma.copilotoConfig.findUnique({ where: { numberId: c.numberId }, select: { enabled: true } });
+      if (!config?.enabled) continue;
+      await copilotoQueue.add(
+        'brief',
+        { userId: c.userId, numberId: c.numberId, contactPhone: c.contactPhone },
+        { jobId: `copiloto-brief-sweep-${c.numberId}-${c.contactPhone}-${dayKey}` },
+      ).catch(() => null);
+      enqueued++;
+    }
+    if (enqueued > 0) {
+      logger.info(`[Copiloto] Sweep de pendências: ${enqueued}/${pending.length} conversa(s) reenfileirada(s)`);
+    }
+  } catch (err: any) {
+    logger.error(`[Copiloto] Erro no sweep de pendências: ${err.message}`);
+  }
+}
+
+runCopilotoPendingSweep();
+setInterval(runCopilotoPendingSweep, PENDING_SWEEP_POLL_MS);
+
+export { copilotoWorker, runCopilotoGroupDigests, runCopilotoPendingSweep };

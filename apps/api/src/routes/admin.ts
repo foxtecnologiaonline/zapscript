@@ -8,6 +8,7 @@ import { runHealthCheck, lastReport, history } from '../services/health-monitor'
 import { Queue } from 'bullmq';
 import { redis } from '../services/queue';
 import { sendText } from '../services/evolution';
+import { backfillUnreadConversations } from '../services/copiloto-backfill';
 import { provisionInstance, requestPairingCode } from '../services/number-provisioning';
 import { sendEmail } from '../lib/mailer';
 import { asaas, asaasConfigured, asaasEnv } from '../lib/asaas';
@@ -3266,6 +3267,18 @@ export default async function adminRoutes(app: FastifyInstance) {
           create: { userId: user.id, numberId: n.id, enabled: true },
           update: { enabled: true },
         });
+        // Backfill: conversas já com mensagem não lida no momento da liberação
+        // também merecem briefing, não só o que chegar dali pra frente. Fire-
+        // and-forget — não pode atrasar nem derrubar a resposta da liberação.
+        if (n.zapiInstanceId && n.phoneNumber && n.phoneNumber !== 'pending') {
+          backfillUnreadConversations({
+            userId: user.id,
+            numberId: n.id,
+            instanceId: n.zapiInstanceId,
+            ownPhoneDigits: n.phoneNumber.replace(/\D/g, ''),
+          }).catch((err: any) =>
+            req.log.warn({ err: err?.message }, '[Copiloto] Backfill falhou na liberação'));
+        }
       }
 
       // Onboarding no self-chat: é onde o produto vive, então é onde ele se
