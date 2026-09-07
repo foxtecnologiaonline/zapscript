@@ -931,6 +931,246 @@ async function runAutoMigrations() {
     )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "WhatsappOnboardingLead_phone_key" ON "WhatsappOnboardingLead"("phone")`,
     `CREATE INDEX IF NOT EXISTS "WhatsappOnboardingLead_stage_idx" ON "WhatsappOnboardingLead"("stage")`,
+    // ── Módulo Copiloto (migração 20260904_copiloto_combinado): auto-cura o
+    // schema no boot, mesmo padrão acima — nunca tinha sido replicado aqui, por
+    // isso a tabela nunca existiu em produção mesmo com o módulo já deployado
+    // (só via prisma migrate, que não roda no `action=deploy` do ops.yml).
+    `CREATE TABLE IF NOT EXISTS "CopilotoConfig" (
+      "id"              TEXT NOT NULL,
+      "numberId"        TEXT NOT NULL,
+      "userId"          TEXT NOT NULL,
+      "enabled"         BOOLEAN NOT NULL DEFAULT true,
+      "maxBriefsPerDay" INTEGER NOT NULL DEFAULT 8,
+      "quietStart"      TEXT NOT NULL DEFAULT '21:00',
+      "quietEnd"        TEXT NOT NULL DEFAULT '07:00',
+      "timezone"        TEXT NOT NULL DEFAULT 'America/Sao_Paulo',
+      "aggressiveness"  TEXT NOT NULL DEFAULT 'equilibrado',
+      "businessContext" TEXT,
+      "createdAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CopilotoConfig_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "CopilotoConfig_numberId_key" ON "CopilotoConfig"("numberId")`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoConfig_userId_idx" ON "CopilotoConfig"("userId")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoConfig_numberId_fkey') THEN
+        ALTER TABLE "CopilotoConfig"
+          ADD CONSTRAINT "CopilotoConfig_numberId_fkey"
+          FOREIGN KEY ("numberId") REFERENCES "WhatsappNumber"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoConfig_userId_fkey') THEN
+        ALTER TABLE "CopilotoConfig"
+          ADD CONSTRAINT "CopilotoConfig_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CopilotoConversation" (
+      "id"            TEXT NOT NULL,
+      "userId"        TEXT NOT NULL,
+      "numberId"      TEXT NOT NULL,
+      "contactPhone"  TEXT NOT NULL,
+      "contactName"   TEXT,
+      "lastMessageAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "lastBriefedAt" TIMESTAMP(3),
+      "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CopilotoConversation_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "CopilotoConversation_numberId_contactPhone_key" ON "CopilotoConversation"("numberId", "contactPhone")`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoConversation_userId_lastMessageAt_idx" ON "CopilotoConversation"("userId", "lastMessageAt" DESC)`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoConversation_userId_fkey') THEN
+        ALTER TABLE "CopilotoConversation"
+          ADD CONSTRAINT "CopilotoConversation_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoConversation_numberId_fkey') THEN
+        ALTER TABLE "CopilotoConversation"
+          ADD CONSTRAINT "CopilotoConversation_numberId_fkey"
+          FOREIGN KEY ("numberId") REFERENCES "WhatsappNumber"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CopilotoMessage" (
+      "id"             TEXT NOT NULL,
+      "conversationId" TEXT NOT NULL,
+      "direction"      TEXT NOT NULL,
+      "content"        TEXT NOT NULL,
+      "fromCopiloto"   BOOLEAN NOT NULL DEFAULT false,
+      "createdAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CopilotoMessage_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoMessage_conversationId_createdAt_idx" ON "CopilotoMessage"("conversationId", "createdAt")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoMessage_conversationId_fkey') THEN
+        ALTER TABLE "CopilotoMessage"
+          ADD CONSTRAINT "CopilotoMessage_conversationId_fkey"
+          FOREIGN KEY ("conversationId") REFERENCES "CopilotoConversation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CopilotoBriefing" (
+      "id"             TEXT NOT NULL,
+      "userId"         TEXT NOT NULL,
+      "numberId"       TEXT NOT NULL,
+      "conversationId" TEXT NOT NULL,
+      "summary"        TEXT NOT NULL,
+      "intent"         TEXT NOT NULL,
+      "temperature"    TEXT NOT NULL,
+      "blocker"        TEXT,
+      "riskLevel"      TEXT NOT NULL,
+      "status"         TEXT NOT NULL DEFAULT 'pending',
+      "awaitingRank"   INTEGER,
+      "awaitingSince"  TIMESTAMP(3),
+      "deliveredVia"   TEXT,
+      "actedAt"        TIMESTAMP(3),
+      "createdAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CopilotoBriefing_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoBriefing_userId_createdAt_idx" ON "CopilotoBriefing"("userId", "createdAt" DESC)`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoBriefing_numberId_status_createdAt_idx" ON "CopilotoBriefing"("numberId", "status", "createdAt" DESC)`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoBriefing_userId_fkey') THEN
+        ALTER TABLE "CopilotoBriefing"
+          ADD CONSTRAINT "CopilotoBriefing_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoBriefing_conversationId_fkey') THEN
+        ALTER TABLE "CopilotoBriefing"
+          ADD CONSTRAINT "CopilotoBriefing_conversationId_fkey"
+          FOREIGN KEY ("conversationId") REFERENCES "CopilotoConversation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    // CopilotoSuggestion: pode já existir na forma antiga (pré-combinação, com
+    // threadId/opcoes/resumo) se algum deploy anterior chegou a rodar prisma
+    // migrate manualmente — por isso limpa o formato velho antes de garantir o novo.
+    `DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'CopilotoSuggestion') THEN
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoSuggestion_threadId_fkey') THEN
+          ALTER TABLE "CopilotoSuggestion" DROP CONSTRAINT "CopilotoSuggestion_threadId_fkey";
+        END IF;
+        ALTER TABLE "CopilotoSuggestion"
+          DROP COLUMN IF EXISTS "chosenOption",
+          DROP COLUMN IF EXISTS "opcoes",
+          DROP COLUMN IF EXISTS "respondedAt",
+          DROP COLUMN IF EXISTS "resumo",
+          DROP COLUMN IF EXISTS "threadId",
+          DROP COLUMN IF EXISTS "waMessageId";
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CopilotoSuggestion" (
+      "id"              TEXT NOT NULL,
+      "briefingId"      TEXT NOT NULL,
+      "rank"            INTEGER NOT NULL,
+      "axis"            TEXT NOT NULL,
+      "title"           TEXT NOT NULL,
+      "draft"           TEXT NOT NULL,
+      "rationale"       TEXT NOT NULL,
+      "risk"            TEXT,
+      "technique"       TEXT NOT NULL,
+      "confidence"      DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "status"          TEXT NOT NULL DEFAULT 'offered',
+      "sentText"        TEXT,
+      "outcome"         TEXT,
+      "outcomeAt"       TIMESTAMP(3),
+      "commitmentTitle" TEXT,
+      "commitmentDueAt" TIMESTAMP(3),
+      "taskId"          TEXT,
+      "createdAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CopilotoSuggestion_pkey" PRIMARY KEY ("id")
+    )`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "rank" INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "axis" TEXT NOT NULL DEFAULT 'avancar'`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "title" TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "draft" TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "rationale" TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "risk" TEXT`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "technique" TEXT NOT NULL DEFAULT 'proximo-passo'`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "confidence" DOUBLE PRECISION NOT NULL DEFAULT 0`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'offered'`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "sentText" TEXT`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "outcome" TEXT`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "outcomeAt" TIMESTAMP(3)`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "commitmentTitle" TEXT`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "commitmentDueAt" TIMESTAMP(3)`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "taskId" TEXT`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoSuggestion_briefingId_idx" ON "CopilotoSuggestion"("briefingId")`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoSuggestion_technique_outcome_idx" ON "CopilotoSuggestion"("technique", "outcome")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoSuggestion_briefingId_fkey') THEN
+        ALTER TABLE "CopilotoSuggestion"
+          ADD CONSTRAINT "CopilotoSuggestion_briefingId_fkey"
+          FOREIGN KEY ("briefingId") REFERENCES "CopilotoBriefing"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DROP TABLE IF EXISTS "CopilotoContactMessage"`,
+    `DROP TABLE IF EXISTS "CopilotoContactThread"`,
+    `CREATE TABLE IF NOT EXISTS "CopilotoGroup" (
+      "id"        TEXT NOT NULL,
+      "userId"    TEXT NOT NULL,
+      "numberId"  TEXT NOT NULL,
+      "groupJid"  TEXT NOT NULL,
+      "name"      TEXT NOT NULL,
+      "active"    BOOLEAN NOT NULL DEFAULT false,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CopilotoGroup_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "CopilotoGroup_numberId_groupJid_key" ON "CopilotoGroup"("numberId", "groupJid")`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoGroup_userId_active_idx" ON "CopilotoGroup"("userId", "active")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoGroup_userId_fkey') THEN
+        ALTER TABLE "CopilotoGroup"
+          ADD CONSTRAINT "CopilotoGroup_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoGroup_numberId_fkey') THEN
+        ALTER TABLE "CopilotoGroup"
+          ADD CONSTRAINT "CopilotoGroup_numberId_fkey"
+          FOREIGN KEY ("numberId") REFERENCES "WhatsappNumber"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CopilotoGroupMessage" (
+      "id"         TEXT NOT NULL,
+      "groupId"    TEXT NOT NULL,
+      "senderJid"  TEXT NOT NULL,
+      "senderName" TEXT,
+      "content"    TEXT NOT NULL,
+      "createdAt"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CopilotoGroupMessage_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoGroupMessage_groupId_createdAt_idx" ON "CopilotoGroupMessage"("groupId", "createdAt")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoGroupMessage_groupId_fkey') THEN
+        ALTER TABLE "CopilotoGroupMessage"
+          ADD CONSTRAINT "CopilotoGroupMessage_groupId_fkey"
+          FOREIGN KEY ("groupId") REFERENCES "CopilotoGroup"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "CopilotoGroupDigest" (
+      "id"             TEXT NOT NULL,
+      "userId"         TEXT NOT NULL,
+      "numberId"       TEXT NOT NULL,
+      "date"           TEXT NOT NULL,
+      "groupsIncluded" INTEGER NOT NULL DEFAULT 0,
+      "summaryMd"      TEXT NOT NULL,
+      "createdAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CopilotoGroupDigest_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "CopilotoGroupDigest_numberId_date_key" ON "CopilotoGroupDigest"("numberId", "date")`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoGroupDigest_userId_createdAt_idx" ON "CopilotoGroupDigest"("userId", "createdAt")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CopilotoGroupDigest_userId_fkey') THEN
+        ALTER TABLE "CopilotoGroupDigest"
+          ADD CONSTRAINT "CopilotoGroupDigest_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
   ];
   // Loga índice + prefixo do SQL antes de cada await: se travar (ex.: lock de
   // uma conexão órfã do container anterior ainda não coletada pelo Postgres),
