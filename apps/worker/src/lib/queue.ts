@@ -51,3 +51,18 @@ export const voiceCommandQueue = new Queue('voice-commands', {
     removeOnFail:     { count: 1_000, age: 7 * 24 * 60 * 60 },
   },
 });
+
+// Produtor da fila 'campanhas' do lado do worker — usado pelo agendador
+// (campanhas-scheduler.ts) para enfileirar o disparo quando scheduledAt
+// chega, sem depender da API estar de pé no momento exato. Mesmas opções
+// de job da fila declarada em apps/api/src/services/queue.ts (mesmo nome
+// de fila, mesmo Redis — os dois processos produzem para ela).
+export const campanhasQueue = new Queue('campanhas', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff:  { type: 'exponential', delay: 10_000 },
+    removeOnComplete: { count: 2_000, age: 48 * 60 * 60 },
+    removeOnFail:     { count: 5_000, age: 7 * 24 * 60 * 60 },
+  },
+});

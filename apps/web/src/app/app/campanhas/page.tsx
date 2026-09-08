@@ -71,15 +71,15 @@ export default function CampanhasListPage() {
       <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-100 px-5">
         <div className="max-w-md text-center">
           <div className="text-4xl mb-4">📣</div>
-          <h1 className="text-xl font-bold mb-2">Contrate o ZapScript Campanhas</h1>
+          <h1 className="text-xl font-bold mb-2">Módulo Campanhas</h1>
           <p className="text-neutral-400 mb-6">
-            Disparo em massa compliant via API oficial da Meta — R$ 67/mês.
+            Disparo em massa compliant via API oficial da Meta — incluso nos planos Profissional e Empresas.
           </p>
           <Link
             href="/dashboard/plano?add=campanhas"
             className="inline-block rounded-lg bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500"
           >
-            Contratar módulo →
+            Ver planos →
           </Link>
           <div className="mt-4">
             <Link href="/app" className="text-sm text-neutral-500 hover:text-neutral-300">← Voltar aos módulos</Link>

@@ -118,7 +118,11 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '📣',
     tagline: 'Disparo em massa compliant via API oficial',
     jtbd: 'Perdi meu bot não autorizado (política Meta dez/2025) e preciso de alternativa legal agora.',
-    status: 'beta',
+    // Empacotado no Profissional e no Empresas (revisão de tiers 2026-09) —
+    // deixa de ser vendido avulso (ver TIER_MODULE_BUNDLES em routes/billing.ts).
+    // Quem já era assinante avulso (source='paid') mantém acesso; só a
+    // contratação nova é bloqueada. Preço aqui é só referência histórica.
+    status: 'bundled',
     priceMonthly: 67,
     priceYearly: 643,
     dependsOn: [],

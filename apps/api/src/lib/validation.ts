@@ -342,6 +342,10 @@ export const createCampanhaSchema = z.object({
   templateComponents: z.array(z.record(z.any())).optional(),
 });
 
+export const scheduleCampanhaSchema = z.object({
+  scheduledAt: z.coerce.date(),
+});
+
 // ── API pública (tier Empresas) ────────────────────────────
 export const createApiKeySchema = z.object({
   name:   z.string().min(2, 'Nome precisa ter pelo menos 2 caracteres').max(60),
