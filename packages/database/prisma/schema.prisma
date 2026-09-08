@@ -1051,6 +1051,7 @@ model CopilotoConfig {
   timezone        String         @default("America/Sao_Paulo")
   aggressiveness  String         @default("equilibrado") // 'consultivo' | 'equilibrado' | 'direto'
   businessContext String? // o que o negócio faz — usado no prompt do briefing
+  groupDigestHour Int            @default(20) // hora local (0-23) a partir da qual o resumo diário de grupos pode sair
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   number          WhatsappNumber @relation(fields: [numberId], references: [id], onDelete: Cascade)

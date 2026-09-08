@@ -957,10 +957,12 @@ async function runAutoMigrations() {
       "timezone"        TEXT NOT NULL DEFAULT 'America/Sao_Paulo',
       "aggressiveness"  TEXT NOT NULL DEFAULT 'equilibrado',
       "businessContext" TEXT,
+      "groupDigestHour" INTEGER NOT NULL DEFAULT 20,
       "createdAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "CopilotoConfig_pkey" PRIMARY KEY ("id")
     )`,
+    `ALTER TABLE "CopilotoConfig" ADD COLUMN IF NOT EXISTS "groupDigestHour" INTEGER NOT NULL DEFAULT 20`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "CopilotoConfig_numberId_key" ON "CopilotoConfig"("numberId")`,
     `CREATE INDEX IF NOT EXISTS "CopilotoConfig_userId_idx" ON "CopilotoConfig"("userId")`,
     `DO $$ BEGIN
