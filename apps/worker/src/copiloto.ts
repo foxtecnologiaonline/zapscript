@@ -90,12 +90,6 @@ export function isQuietNow(start: string, end: string, timezone: string): boolea
   return now >= start || now < end;             // cruza a meia-noite
 }
 
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 // ── ingest ───────────────────────────────────────────────────────────────────
 
 async function processIngest(job: Job<IngestJobData>) {
@@ -168,17 +162,24 @@ async function processBrief(job: Job<BriefJobData>) {
   if (!conversation) return { skipped: true, reason: 'sem_conversa' };
 
   const config = await prisma.copilotoConfig.findUnique({ where: { numberId } });
-  if (!config?.enabled) return { skipped: true, reason: 'desligado' };
+  if (!config?.enabled) {
+    logger.info(`[Copiloto] ⏭️ ${contactPhone}: pulado (Copiloto desligado pro número ${numberId})`);
+    return { skipped: true, reason: 'desligado' };
+  }
 
   // Reconfere a titularidade na hora de gastar: o admin pode ter revogado o
   // acesso entre a mensagem chegar e o briefing rodar.
-  if (!(await hasCopiloto(userId))) return { skipped: true, reason: 'sem_modulo' };
+  if (!(await hasCopiloto(userId))) {
+    logger.info(`[Copiloto] ⏭️ ${contactPhone}: pulado (usuário ${userId} sem módulo Copiloto)`);
+    return { skipped: true, reason: 'sem_modulo' };
+  }
 
   const number = await prisma.whatsappNumber.findUnique({
     where: { id: numberId },
     select: { zapiInstanceId: true, phoneNumber: true, status: true },
   });
   if (!number?.zapiInstanceId || !number.phoneNumber || number.status !== 'connected') {
+    logger.info(`[Copiloto] ⏭️ ${contactPhone}: pulado (número ${numberId} não conectado)`);
     return { skipped: true, reason: 'numero_desconectado' };
   }
 
@@ -194,7 +195,7 @@ async function processBrief(job: Job<BriefJobData>) {
     take: NEW_MESSAGES_LIMIT,
     select: { direction: true, content: true },
   });
-  if (newMessages.length === 0) return { skipped: true, reason: 'nada_novo' };
+  if (newMessages.length === 0) return { skipped: true, reason: 'nada_novo' }; // não loga — acontece toda hora em rajadas normais, seria ruído
 
   const markBriefed = () =>
     prisma.copilotoConversation.update({
@@ -223,15 +224,13 @@ async function processBrief(job: Job<BriefJobData>) {
   if (isQuietNow(config.quietStart, config.quietEnd, config.timezone)) {
     // Não marca como briefado: a próxima mensagem depois do silêncio reabre a
     // janela e o dono recebe o acumulado, em vez de perder a conversa.
+    logger.info(`[Copiloto] ⏭️ ${contactPhone}: pulado (horário de silêncio do número ${numberId})`);
     return { skipped: true, reason: 'horario_silencio' };
   }
 
-  const todayCount = await prisma.copilotoBriefing.count({
-    where: { numberId, createdAt: { gte: startOfToday() } },
-  });
-  if (todayCount >= config.maxBriefsPerDay) {
-    return { skipped: true, reason: 'teto_diario' };
-  }
+  // Teto diário removido por pedido explícito — maxBriefsPerDay (e o comando
+  // "copiloto limite") ficam só como contador informativo em buildStatus(),
+  // sem bloquear nada aqui.
 
   const historyDesc = await prisma.copilotoMessage.findMany({
     where: { conversationId: conversation.id },
@@ -560,13 +559,14 @@ setInterval(runCopilotoGroupDigests, GROUP_DIGEST_POLL_MS);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Sweep de pendências — conversas com mensagem ainda não briefada (nem por
-// falta de briefing, nem por triagem: as duas marcam lastBriefedAt). O único
-// jeito de uma conversa ficar "presa" nesse estado é processBrief() ter
-// pulado por 'teto_diario' — de propósito não marca lastBriefedAt nesse caso
-// (ver processBrief acima), justamente pra esse sweep achar e tentar de novo
-// quando o teto do dia seguinte abrir. Cobre tanto o backfill de mensagens
-// não lidas (apps/api/src/services/copiloto-backfill.ts) quanto rajada normal
-// de trabalho que excedeu o limite diário do dono.
+// briefing de verdade, nem por triagem: as duas marcam lastBriefedAt). Uma
+// conversa fica "presa" nesse estado quando processBrief() pula por um
+// motivo temporário sem marcar lastBriefedAt — número desconectado na hora,
+// horário de silêncio, módulo revogado e depois liberado de novo, etc. (ver
+// processBrief acima). Esse sweep é o que garante que essas conversas não
+// ficam esquecidas pra sempre: tenta de novo a cada hora até conseguir.
+// Cobre também o backfill de mensagens não lidas
+// (apps/api/src/services/copiloto-backfill.ts).
 // ─────────────────────────────────────────────────────────────────────────
 
 const PENDING_SWEEP_POLL_MS = 60 * 60 * 1000; // a cada hora
@@ -581,7 +581,7 @@ async function runCopilotoPendingSweep() {
     const pending = candidates.filter((c) => !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt);
     if (pending.length === 0) return;
 
-    const dayKey = new Date().toISOString().slice(0, 10); // 1 tentativa de reenfileirar por conversa por dia
+    const hourKey = new Date().toISOString().slice(0, 13); // 1 tentativa de reenfileirar por conversa por rodada do sweep
     let enqueued = 0;
     for (const c of pending) {
       const config = await prisma.copilotoConfig.findUnique({ where: { numberId: c.numberId }, select: { enabled: true } });
@@ -589,7 +589,7 @@ async function runCopilotoPendingSweep() {
       await copilotoQueue.add(
         'brief',
         { userId: c.userId, numberId: c.numberId, contactPhone: c.contactPhone },
-        { jobId: `copiloto-brief-sweep-${c.numberId}-${c.contactPhone}-${dayKey}` },
+        { jobId: `copiloto-brief-sweep-${c.numberId}-${c.contactPhone}-${hourKey}` },
       ).catch(() => null);
       enqueued++;
     }

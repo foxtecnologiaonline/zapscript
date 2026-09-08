@@ -31,6 +31,16 @@ export type ModelSpec = { provider: Provider; model: string };
 
 const OPENAI_COMPAT_CLIENTS: Record<Exclude<Provider, 'anthropic'>, OpenAI | null> = { openai, groq, gemini };
 
+// Kill-switch operacional: "AI_SKIP_PROVIDERS=anthropic" (ou
+// "anthropic,groq" etc.) tira um provedor da cadeia inteira sem precisar de
+// deploy — só editar /root/.env e `docker compose restart api worker`. Usado
+// pra desligar temporariamente um provedor com problema (ex.: conta sem
+// crédito) sem esperar tentar-e-falhar em toda chamada. Reverte removendo a
+// variável e reiniciando de novo.
+const SKIPPED_PROVIDERS = new Set(
+  (process.env.AI_SKIP_PROVIDERS || '').split(',').map((p) => p.trim().toLowerCase()).filter(Boolean),
+);
+
 /** Remove entradas duplicadas (mesmo provider+model) preservando a ordem — e entradas null (provider sem API key). */
 export function dedupeSpecs(specs: (ModelSpec | null)[]): ModelSpec[] {
   const seen = new Set<string>();
@@ -57,10 +67,10 @@ export function buildModelChain(params: {
   geminiModel?: string;
 }): ModelSpec[] {
   return dedupeSpecs([
-    ...params.anthropic.map((model) => ({ provider: 'anthropic' as const, model })),
-    openai && params.openaiModel ? { provider: 'openai' as const, model: params.openaiModel } : null,
-    groq && params.groqModel ? { provider: 'groq' as const, model: params.groqModel } : null,
-    gemini && params.geminiModel ? { provider: 'gemini' as const, model: params.geminiModel } : null,
+    ...(SKIPPED_PROVIDERS.has('anthropic') ? [] : params.anthropic.map((model) => ({ provider: 'anthropic' as const, model }))),
+    openai && params.openaiModel && !SKIPPED_PROVIDERS.has('openai') ? { provider: 'openai' as const, model: params.openaiModel } : null,
+    groq && params.groqModel && !SKIPPED_PROVIDERS.has('groq') ? { provider: 'groq' as const, model: params.groqModel } : null,
+    gemini && params.geminiModel && !SKIPPED_PROVIDERS.has('gemini') ? { provider: 'gemini' as const, model: params.geminiModel } : null,
   ]);
 }
 

@@ -23,6 +23,93 @@ export default async function copilotoRoutes(app: FastifyInstance) {
     return prisma.whatsappNumber.findFirst({ where: { id: numberId, userId } });
   }
 
+  // ── GET /copiloto/conversations ──────────────────────────────────────────
+  // Painel web (leitura). A ação de verdade (1/2/3, editar, ignorar) continua
+  // só no self-chat — ver ESCOPO_COPILOTO.md §1. Esta rota é só "mostrar".
+  app.get<{ Querystring: { numberId?: string; temperature?: string; status?: string; q?: string } }>(
+    '/conversations',
+    async (req: any) => {
+      const userId = req.user.sub;
+      const { numberId, temperature, status, q } = req.query || {};
+
+      const conversations = await prisma.copilotoConversation.findMany({
+        where: {
+          userId,
+          ...(numberId ? { numberId } : {}),
+          ...(q ? {
+            OR: [
+              { contactName:  { contains: q, mode: 'insensitive' } },
+              { contactPhone: { contains: q } },
+            ],
+          } : {}),
+        },
+        orderBy: { lastMessageAt: 'desc' },
+        take: 200,
+        include: {
+          number: { select: { id: true, displayName: true, phoneNumber: true } },
+          briefings: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            include: { suggestions: { orderBy: { rank: 'asc' } } },
+          },
+        },
+      });
+
+      let list = conversations.map((c) => {
+        const b = c.briefings[0] ?? null;
+        return {
+          id:            c.id,
+          numberId:      c.numberId,
+          number:        c.number,
+          contactName:   c.contactName,
+          contactPhone:  c.contactPhone,
+          lastMessageAt: c.lastMessageAt,
+          latestBriefing: b ? {
+            id:          b.id,
+            summary:     b.summary,
+            intent:      b.intent,
+            temperature: b.temperature,
+            riskLevel:   b.riskLevel,
+            blocker:     b.blocker,
+            status:      b.status,
+            createdAt:   b.createdAt,
+            suggestions: b.suggestions.map((s) => ({
+              rank: s.rank, axis: s.axis, title: s.title, draft: s.draft, technique: s.technique,
+              status: s.status, sentText: s.sentText, outcome: s.outcome,
+              commitmentTitle: s.commitmentTitle, commitmentDueAt: s.commitmentDueAt,
+            })),
+          } : null,
+        };
+      });
+
+      // Filtro em memória — o volume por dono (dezenas de conversas, não milhares)
+      // não justifica a complexidade de levar isso pro where do Prisma, já que
+      // depende do briefing MAIS RECENTE de cada conversa (subquery correlata).
+      if (temperature) list = list.filter((c) => c.latestBriefing?.temperature === temperature);
+      if (status)      list = list.filter((c) => c.latestBriefing?.status === status);
+
+      return { conversations: list };
+    },
+  );
+
+  // ── GET /copiloto/conversations/:id ──────────────────────────────────────
+  app.get<{ Params: { id: string } }>('/conversations/:id', async (req: any, reply) => {
+    const userId = req.user.sub;
+    const conversation = await prisma.copilotoConversation.findFirst({
+      where: { id: req.params.id, userId },
+      include: {
+        messages:  { orderBy: { createdAt: 'asc' }, take: 300 },
+        briefings: {
+          orderBy: { createdAt: 'desc' },
+          take: 30,
+          include: { suggestions: { orderBy: { rank: 'asc' } } },
+        },
+      },
+    });
+    if (!conversation) return reply.code(404).send({ error: 'Conversa não encontrada' });
+    return { conversation };
+  });
+
   // ── GET /copiloto/numbers/:numberId/groups ──────────────────────────────
   app.get<{ Params: { numberId: string } }>('/numbers/:numberId/groups', async (req: any, reply) => {
     const userId = req.user.sub;
