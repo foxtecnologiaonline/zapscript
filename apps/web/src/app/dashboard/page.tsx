@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [stats, setStats]     = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [hasCopiloto, setHasCopiloto] = useState(false);
 
   useEffect(() => {
     api.get<Stats>('/dashboard/stats')
@@ -49,6 +50,12 @@ export default function DashboardPage() {
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
+
+    // Copiloto não é vendido (liberado usuário a usuário pelo admin) — por isso
+    // não entra em Stats/plano, só checa se está entre os módulos ativos.
+    api.get<{ modules?: string[] }>('/auth/me')
+      .then((me) => setHasCopiloto(!!me.modules?.includes('copiloto')))
+      .catch(() => null);
   }, []);
 
   if (loading) return (
@@ -133,6 +140,20 @@ export default function DashboardPage() {
         hasNumber={(stats?.activeNumbers ?? 0) > 0}
         hasTranscription={(stats?.transcriptionsTotal ?? 0) > 0}
       />
+
+      {/* ── Copiloto (só pra quem foi liberado pelo admin — não é vendido) ── */}
+      {hasCopiloto && (
+        <Link href="/app/copiloto"
+          className="flex items-center gap-3 rounded-xl px-4 py-3 mb-6 hover:opacity-90 transition-opacity"
+          style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.12), rgba(16,185,129,.03))', border: '1px solid rgba(16,185,129,.25)' }}>
+          <span className="text-lg flex-shrink-0">🎯</span>
+          <p className="text-xs text-brand-text flex-1">
+            <span className="font-bold text-brand-primary">Copiloto:</span>{' '}
+            veja as conversas que ele já avaliou, as sugestões e os grupos com resumo diário ligado.
+          </p>
+          <span className="text-brand-primary text-xs font-bold flex-shrink-0">Abrir →</span>
+        </Link>
+      )}
 
       {/* ── KPI HERO: áudios lidos este mês ── */}
       {stats && stats.transcriptionsMonth > 0 && (

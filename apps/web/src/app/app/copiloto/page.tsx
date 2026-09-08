@@ -344,11 +344,17 @@ function ConversasTab({ numbers, numberId, onNotEntitled }: {
 
 // ── Grupos ───────────────────────────────────────────────────────────────────
 
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => h);
+
 function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitled: () => void }) {
   const [groups, setGroups] = useState<CopilotoGroupRow[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyJid, setBusyJid] = useState<string | null>(null);
+
+  const [digestHour, setDigestHour] = useState(20);
+  const [savingHour, setSavingHour] = useState(false);
+  const [hourSaved, setHourSaved] = useState(false);
 
   const loadGroups = useCallback((id: string) => {
     if (!id) return;
@@ -364,6 +370,28 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
   }, [onNotEntitled]);
 
   useEffect(() => { if (numberId) loadGroups(numberId); }, [numberId, loadGroups]);
+
+  useEffect(() => {
+    if (!numberId) return;
+    api.get<{ groupDigestHour: number }>(`/copiloto/numbers/${numberId}/config`)
+      .then((res) => setDigestHour(res.groupDigestHour))
+      .catch(() => null);
+  }, [numberId]);
+
+  async function saveDigestHour(hour: number) {
+    setDigestHour(hour);
+    setSavingHour(true);
+    setHourSaved(false);
+    try {
+      await api.put(`/copiloto/numbers/${numberId}/config`, { groupDigestHour: hour });
+      setHourSaved(true);
+      setTimeout(() => setHourSaved(false), 2500);
+    } catch (e: any) {
+      setError(e?.message || 'Não foi possível salvar o horário.');
+    } finally {
+      setSavingHour(false);
+    }
+  }
 
   async function toggle(group: CopilotoGroupRow) {
     setBusyJid(group.groupJid);
@@ -388,6 +416,27 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
       {error && (
         <div className="mb-4 rounded-lg border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-300">{error}</div>
       )}
+
+      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 mb-5 flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[220px]">
+          <div className="text-sm font-medium text-neutral-200">Horário do resumo</div>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            A partir de que horário (do dia) o resumo pode sair — chega no seu próprio WhatsApp
+            (&ldquo;Mensagens para você mesmo&rdquo;), no mesmo número conectado.
+          </p>
+        </div>
+        <select
+          value={digestHour}
+          disabled={savingHour}
+          onChange={(e) => saveDigestHour(parseInt(e.target.value, 10))}
+          className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm disabled:opacity-50"
+        >
+          {HOUR_OPTIONS.map((h) => (
+            <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+          ))}
+        </select>
+        {hourSaved && <span className="text-xs text-emerald-400">✓ Salvo</span>}
+      </div>
 
       <h2 className="text-sm font-bold text-neutral-300 mb-3">
         Grupos ({groups.filter((g) => g.active).length} ativo{groups.filter((g) => g.active).length !== 1 ? 's' : ''})

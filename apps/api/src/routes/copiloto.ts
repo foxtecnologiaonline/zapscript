@@ -181,4 +181,41 @@ export default async function copilotoRoutes(app: FastifyInstance) {
     });
     return { digests };
   });
+
+  // ── GET /copiloto/numbers/:numberId/config ──────────────────────────────
+  // Só o que tem tela própria (resumo de grupos). O resto (silêncio, limite,
+  // negócio, ligar/desligar) continua só via comando no self-chat — ver
+  // copiloto-commands.ts.
+  app.get<{ Params: { numberId: string } }>('/numbers/:numberId/config', async (req: any, reply) => {
+    const userId = req.user.sub;
+    const number = await ownedNumber(userId, req.params.numberId);
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    const config = await prisma.copilotoConfig.findUnique({ where: { numberId: number.id } });
+    return { groupDigestHour: config?.groupDigestHour ?? 20 };
+  });
+
+  // ── PUT /copiloto/numbers/:numberId/config ──────────────────────────────
+  app.put<{ Params: { numberId: string }; Body: { groupDigestHour?: number } }>(
+    '/numbers/:numberId/config',
+    async (req: any, reply) => {
+      const userId = req.user.sub;
+      const number = await ownedNumber(userId, req.params.numberId);
+      if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+      const { groupDigestHour } = req.body || {};
+      if (groupDigestHour === undefined) return reply.code(200).send({ ok: true });
+      if (!Number.isInteger(groupDigestHour) || groupDigestHour < 0 || groupDigestHour > 23) {
+        return reply.code(400).send({ error: 'groupDigestHour precisa ser um número inteiro entre 0 e 23.' });
+      }
+
+      await prisma.copilotoConfig.upsert({
+        where:  { numberId: number.id },
+        update: { groupDigestHour },
+        create: { userId, numberId: number.id, groupDigestHour },
+      });
+
+      return { ok: true, groupDigestHour };
+    },
+  );
 }

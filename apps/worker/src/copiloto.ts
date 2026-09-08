@@ -447,7 +447,10 @@ logger.info('Worker Copiloto (briefings do dono) iniciado');
 // resume uma vez. Entrega no mesmo self-chat da Função 1, formatado à parte.
 // ─────────────────────────────────────────────────────────────────────────
 
-const GROUP_DIGEST_HOUR    = parseInt(process.env.COPILOTO_GROUP_DIGEST_HOUR || '20', 10); // hora local a partir da qual pode sair
+// Hora padrão pra quem nunca configurou (CopilotoConfig.groupDigestHour é por
+// número, ajustável na tela /app/copiloto → aba Grupos). Env var só entra
+// como fallback de instalação nova/config ausente.
+const GROUP_DIGEST_HOUR_DEFAULT = parseInt(process.env.COPILOTO_GROUP_DIGEST_HOUR || '20', 10);
 const GROUP_DIGEST_POLL_MS = 30 * 60 * 1000; // checa a cada 30 min
 const GROUP_TZ             = 'America/Sao_Paulo';
 const MAX_MESSAGES_PER_GROUP = 400; // teto de custo/contexto por grupo/dia
@@ -461,7 +464,7 @@ function groupDigestLocalHour(): number {
 }
 
 async function runCopilotoGroupDigests() {
-  if (groupDigestLocalHour() < GROUP_DIGEST_HOUR) return; // ainda não é hora — tenta de novo no próximo poll
+  const nowHour = groupDigestLocalHour();
   const date = groupDigestDateLabel();
 
   try {
@@ -473,6 +476,10 @@ async function runCopilotoGroupDigests() {
     for (const { numberId } of numbersWithGroups) {
       const already = await prisma.copilotoGroupDigest.findUnique({ where: { numberId_date: { numberId, date } } });
       if (already) continue;
+
+      const config = await prisma.copilotoConfig.findUnique({ where: { numberId }, select: { groupDigestHour: true } });
+      const digestHour = config?.groupDigestHour ?? GROUP_DIGEST_HOUR_DEFAULT;
+      if (nowHour < digestHour) continue; // esse número ainda não chegou no horário configurado — tenta de novo no próximo poll
 
       const number = await prisma.whatsappNumber.findUnique({
         where:  { id: numberId },
