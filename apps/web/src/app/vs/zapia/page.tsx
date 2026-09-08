@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale: 'pt_BR',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ZapScript vs Zapia — Qual converte áudio do WhatsApp melhor?',
+    description: 'O Zapia é um assistente de IA multifuncional; o ZapScript é especializado em conversão de áudio, com Modo Privado e automação para uso profissional.',
+  },
 };
 
 const schema = {

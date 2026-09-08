@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale:      'pt_BR',
     type:        'website',
   },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'ZapScript para Dentistas e Clínicas — Relato do paciente em texto',
+    description: 'O áudio do paciente vira texto e resumo automaticamente. Criptografia AES-256, LGPD, sem app. Comece grátis.',
+  },
 };
 
 const variant: Variant = {

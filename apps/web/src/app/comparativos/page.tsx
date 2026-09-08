@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale:      'pt_BR',
     type:        'website',
   },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'Comparativos — ZapScript vs as principais alternativas',
+    description: 'Automação, preço, privacidade e resumo com IA: veja como o ZapScript se compara a cada alternativa para converter áudio do WhatsApp.',
+  },
 };
 
 const COMPARISONS = [

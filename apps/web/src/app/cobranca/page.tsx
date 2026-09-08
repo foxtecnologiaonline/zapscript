@@ -17,6 +17,12 @@ export const metadata: Metadata = {
     locale: 'pt_BR',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ZapScript Cobrança — O lembrete de pagamento que você não manda mais na mão',
+    description:
+      'Automatize o lembrete de cobrança pelo WhatsApp: no vencimento e no 1º dia de atraso. Reenvio manual em 1 clique. Incluso no plano Profissional, cancele quando quiser.',
+  },
 };
 
 const DORES = [

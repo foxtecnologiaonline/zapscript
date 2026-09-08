@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale:      'pt_BR',
     type:        'website',
   },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'ZapScript CRM — Funil de vendas dentro do WhatsApp',
+    description: 'Organize seus leads em um funil visual sem sair do WhatsApp. Notas, lembretes e importação automática a partir do que você já transcreveu.',
+  },
 };
 
 export default function CrmLandingPage() {

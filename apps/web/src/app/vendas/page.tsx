@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale:      'pt_BR',
     type:        'website',
   },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'ZapScript para Vendas — Cada áudio de lead vira intenção de compra',
+    description: 'Pare de perder vendas em áudios não ouvidos. Conversão + resumo automático da intenção do lead. Comece grátis.',
+  },
 };
 
 const variant: Variant = {

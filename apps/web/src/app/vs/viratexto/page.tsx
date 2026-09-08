@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale: 'pt_BR',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ZapScript vs ViraTexto — Qual é o melhor para converter WhatsApp?',
+    description: 'Compare funcionalidades, preço e privacidade. ZapScript oferece conversão automática, resumo com IA e Modo Privado — sem precisar encaminhar áudio para um bot.',
+  },
 };
 
 const schema = {

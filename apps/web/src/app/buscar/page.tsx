@@ -15,6 +15,11 @@ export const metadata: Metadata = {
     locale:      'pt_BR',
     type:        'website',
   },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'Buscar no Blog ZapScript — Conversão de Áudio WhatsApp',
+    description: 'Encontre guias práticos e comparativos sobre conversão de áudio do WhatsApp com IA.',
+  },
 };
 
 /** FlatMap de termos buscáveis para cada post (título + descrição + keywords). */

@@ -17,6 +17,11 @@ export const metadata: Metadata = {
     siteName:    'ZapScript',
     locale:      'pt_BR',
   },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'Blog ZapScript — Conversão de Áudio WhatsApp com IA',
+    description: 'Guias práticos e comparativos sobre conversão de áudio do WhatsApp com IA.',
+  },
 };
 
 /* ── JSON-LD Blog ─────────────────────────────────────────────────── */

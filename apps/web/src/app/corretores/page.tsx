@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale:      'pt_BR',
     type:        'website',
   },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'ZapScript para Corretores — Áudio do cliente vira ficha do imóvel',
+    description: 'Pare de ouvir áudios longos de clientes. Conversão automática + resumo da intenção de compra. Comece grátis.',
+  },
 };
 
 const variant: Variant = {

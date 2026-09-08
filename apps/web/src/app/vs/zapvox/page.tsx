@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale: 'pt_BR',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ZapScript vs ZapVox — Automação real ou extensão manual?',
+    description: 'O ZapVox é uma extensão que transcreve áudio do WhatsApp Web, um clique por vez. O ZapScript converte automaticamente todo áudio do seu número, sem navegador aberto.',
+  },
 };
 
 const schema = {
