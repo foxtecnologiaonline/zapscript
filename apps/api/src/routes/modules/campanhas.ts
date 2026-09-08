@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma';
 import { requireModule } from '../../lib/moduleGate';
-import { validateRequest, createCampanhaSchema } from '../../lib/validation';
+import { validateRequest, createCampanhaSchema, scheduleCampanhaSchema } from '../../lib/validation';
 import { decryptStr } from '../../services/encryption';
 import { listTemplates } from '../../services/whatsapp-campaigns';
 import { campanhasQueue } from '../../services/queue';
@@ -200,8 +200,8 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     const { id } = req.params;
     const campanha = await ownedCampanha(userId, id);
     if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
-    if (campanha.status !== 'draft') {
-      return reply.code(400).send({ error: 'Só é possível excluir campanhas em rascunho.' });
+    if (!['draft', 'scheduled'].includes(campanha.status)) {
+      return reply.code(400).send({ error: 'Só é possível excluir campanhas em rascunho ou agendadas.' });
     }
     await prisma.campanha.delete({ where: { id } });
     return reply.send({ ok: true });
@@ -278,13 +278,61 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     return reply.send({ imported: toCreate.length, skippedOptOut, skippedInvalid, skippedDuplicate });
   });
 
-  // ── POST /:id/start — inicia (ou retoma após pausa) o disparo ───────────
+  // ── POST /:id/schedule — agenda o início automático do disparo ──────────
+  app.post('/:id/schedule', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { id } = req.params;
+    const campanha = await ownedCampanha(userId, id);
+    if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+    if (!['draft', 'scheduled'].includes(campanha.status)) {
+      return reply.code(400).send({ error: `Campanha em status "${campanha.status}" não pode ser agendada.` });
+    }
+    if (campanha.audienceCount === 0) {
+      return reply.code(400).send({ error: 'Adicione contatos antes de agendar a campanha.' });
+    }
+
+    const v = validateRequest(scheduleCampanhaSchema)(req.body);
+    if (!v.valid) return reply.code(400).send({ error: v.error });
+    const { scheduledAt } = v.data;
+    if (scheduledAt.getTime() <= Date.now()) {
+      return reply.code(400).send({ error: 'A data agendada precisa estar no futuro.' });
+    }
+
+    const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
+    if (!whatsappNumber || whatsappNumber.status !== 'connected' || !whatsappNumber.metaAccessTokenEnc) {
+      return reply.code(400).send({ error: 'Número Meta desconectado. Reconecte em /dashboard/numeros.' });
+    }
+
+    const updated = await prisma.campanha.update({
+      where: { id },
+      data: { status: 'scheduled', scheduledAt },
+    });
+    return reply.send({ campanha: updated });
+  });
+
+  // ── POST /:id/unschedule — cancela o agendamento, volta a rascunho ──────
+  app.post('/:id/unschedule', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { id } = req.params;
+    const campanha = await ownedCampanha(userId, id);
+    if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+    if (campanha.status !== 'scheduled') {
+      return reply.code(400).send({ error: 'Só é possível cancelar o agendamento de campanhas agendadas.' });
+    }
+    const updated = await prisma.campanha.update({
+      where: { id },
+      data: { status: 'draft', scheduledAt: null },
+    });
+    return reply.send({ campanha: updated });
+  });
+
+  // ── POST /:id/start — inicia (ou retoma após pausa/agendamento) o disparo ─
   app.post('/:id/start', auth, async (req: any, reply) => {
     const userId = req.user.sub;
     const { id } = req.params;
     const campanha = await ownedCampanha(userId, id);
     if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
-    if (!['draft', 'paused'].includes(campanha.status)) {
+    if (!['draft', 'paused', 'scheduled'].includes(campanha.status)) {
       return reply.code(400).send({ error: `Campanha em status "${campanha.status}" não pode ser iniciada.` });
     }
     if (campanha.audienceCount === 0) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, ChangeEvent } from 'react';
+import { useEffect, useState, useCallback, useRef, ChangeEvent, FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -13,6 +13,7 @@ interface Campanha {
   templateLanguage: string;
   audienceCount: number;
   sentCount: number;
+  scheduledAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
@@ -63,6 +64,13 @@ const CONTATO_STATUS_COLOR: Record<string, string> = {
   optout: 'text-amber-400',
 };
 
+/** Valor mínimo aceito pelo <input type="datetime-local"> — pelo menos 5 min no futuro. */
+function minDatetimeLocal(): string {
+  const d = new Date(Date.now() + 5 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function CampanhaDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -83,6 +91,7 @@ export default function CampanhaDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [scheduleAt, setScheduleAt] = useState('');
 
   const loadCampanha = useCallback(async () => {
     try {
@@ -144,7 +153,7 @@ export default function CampanhaDetailPage() {
     }
   }
 
-  async function runAction(action: 'start' | 'pause' | 'cancel') {
+  async function runAction(action: 'start' | 'pause' | 'cancel' | 'unschedule') {
     setActionLoading(true);
     setActionError(null);
     try {
@@ -157,8 +166,24 @@ export default function CampanhaDetailPage() {
     }
   }
 
+  async function handleSchedule(e: FormEvent) {
+    e.preventDefault();
+    if (!scheduleAt) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await api.post(`/modules/campanhas/${id}/schedule`, { scheduledAt: new Date(scheduleAt).toISOString() });
+      setScheduleAt('');
+      await loadCampanha();
+    } catch (err: any) {
+      setActionError(err?.message || 'Não foi possível agendar a campanha.');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function handleDelete() {
-    if (!confirm('Excluir esta campanha em rascunho? Esta ação não pode ser desfeita.')) return;
+    if (!confirm('Excluir esta campanha? Esta ação não pode ser desfeita.')) return;
     setActionLoading(true);
     try {
       await api.delete(`/modules/campanhas/${id}`);
@@ -228,6 +253,12 @@ export default function CampanhaDetailPage() {
           </span>
         </div>
 
+        {campanha.status === 'scheduled' && campanha.scheduledAt && (
+          <p className="mt-2 text-sm text-emerald-400">
+            🗓️ Agendada para {new Date(campanha.scheduledAt).toLocaleString('pt-BR')}
+          </p>
+        )}
+
         <div className="mt-6 grid grid-cols-3 sm:grid-cols-6 gap-3">
           {statCards.map(([label, value, color]) => (
             <div key={label} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3 text-center">
@@ -263,6 +294,31 @@ export default function CampanhaDetailPage() {
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ▶ Iniciar disparo
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={actionLoading}
+                className="rounded-lg border border-red-800 px-4 py-2 text-sm text-red-300 hover:bg-red-950/40"
+              >
+                Excluir
+              </button>
+            </>
+          )}
+          {campanha.status === 'scheduled' && (
+            <>
+              <button
+                onClick={() => runAction('start')}
+                disabled={actionLoading}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                ▶ Iniciar agora
+              </button>
+              <button
+                onClick={() => runAction('unschedule')}
+                disabled={actionLoading}
+                className="rounded-lg bg-neutral-800 px-4 py-2 text-sm font-medium hover:bg-neutral-700 disabled:opacity-50"
+              >
+                Cancelar agendamento
               </button>
               <button
                 onClick={handleDelete}
@@ -316,6 +372,27 @@ export default function CampanhaDetailPage() {
             CSV: coluna 1 = telefone (obrigatório) · coluna 2 = nome (opcional) · colunas 3+ = variáveis do
             template, na ordem.
           </p>
+        )}
+
+        {campanha.status === 'draft' && campanha.audienceCount > 0 && (
+          <form onSubmit={handleSchedule} className="mt-4 flex flex-wrap items-center gap-2">
+            <label className="text-sm text-neutral-400">Ou agende para depois:</label>
+            <input
+              type="datetime-local"
+              required
+              value={scheduleAt}
+              min={minDatetimeLocal()}
+              onChange={(e) => setScheduleAt(e.target.value)}
+              className="rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-emerald-600"
+            />
+            <button
+              type="submit"
+              disabled={actionLoading || !scheduleAt}
+              className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              🗓️ Agendar disparo
+            </button>
+          </form>
         )}
 
         {uploadResult && (

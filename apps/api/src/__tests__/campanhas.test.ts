@@ -273,6 +273,19 @@ describe('GET/DELETE /modules/campanhas/:id', () => {
     expect(res.statusCode).toBe(200);
     expect(prisma.campanha.delete).toHaveBeenCalledWith({ where: { id: 'c1' } });
   });
+
+  it('DELETE remove campanha agendada', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled' });
+    (prisma.campanha.delete as jest.Mock).mockResolvedValueOnce({});
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'DELETE', url: '/modules/campanhas/c1',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+  });
 });
 
 describe('POST /modules/campanhas/:id/contatos (upload CSV)', () => {
@@ -433,6 +446,24 @@ describe('Ciclo start/pause/cancel', () => {
     });
   });
 
+  describe('POST /:id/start (a partir de agendada)', () => {
+    it('inicia imediatamente uma campanha agendada', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled', audienceCount: 1, whatsappNumberId: NUM_ID, startedAt: null });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
+      (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }]);
+      (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/start',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true, enqueued: 1 });
+    });
+  });
+
   describe('POST /:id/pause', () => {
     it('só permite pausar campanha em execução', async () => {
       grantModuleAccess();
@@ -486,6 +517,119 @@ describe('Ciclo start/pause/cancel', () => {
       });
       expect(res.statusCode).toBe(200);
       expect(prisma.campanha.update).toHaveBeenCalledWith({ where: { id: 'c1' }, data: { status: 'canceled', completedAt: expect.any(Date) } });
+    });
+  });
+});
+
+describe('Agendamento (schedule/unschedule)', () => {
+  let app: Awaited<ReturnType<typeof buildApp>>;
+
+  beforeAll(async () => { app = await buildApp(); });
+  afterAll(async () => { await app.close(); });
+  beforeEach(() => jest.clearAllMocks());
+
+  const futureIso = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+  describe('POST /:id/schedule', () => {
+    it('retorna 400 se o status não permite agendar', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'running' });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/schedule',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { scheduledAt: futureIso() },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('retorna 400 se a campanha não tem audiência', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 0 });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/schedule',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { scheduledAt: futureIso() },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('retorna 400 se a data agendada está no passado', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 5 });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/schedule',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { scheduledAt: new Date(Date.now() - 60_000).toISOString() },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('retorna 400 se o número Meta está desconectado', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'disconnected' });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/schedule',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { scheduledAt: futureIso() },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('agenda a campanha com sucesso', async () => {
+      grantModuleAccess();
+      const scheduledAt = futureIso();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
+      (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled' });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/schedule',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { scheduledAt },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(prisma.campanha.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { status: 'scheduled', scheduledAt: new Date(scheduledAt) },
+      });
+    });
+  });
+
+  describe('POST /:id/unschedule', () => {
+    it('retorna 400 se a campanha não está agendada', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft' });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/unschedule',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('cancela o agendamento e volta para rascunho', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled' });
+      (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft' });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/unschedule',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(prisma.campanha.update).toHaveBeenCalledWith({ where: { id: 'c1' }, data: { status: 'draft', scheduledAt: null } });
     });
   });
 });
