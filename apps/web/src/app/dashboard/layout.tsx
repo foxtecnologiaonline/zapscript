@@ -26,6 +26,16 @@ function buildNav(user: any) {
     nav.splice(idx < 0 ? nav.length : idx, 0, equipeItem);
   }
 
+  // "Campanhas" só aparece pra quem tem o módulo ativo (Entitlement) — cobre
+  // tanto quem ganhou pelo bundle do Profissional/Empresas quanto quem
+  // manteve acesso avulso legado (source='paid'). Página vive em /app/campanhas
+  // (suíte de módulos), não sob /dashboard — ver apps/web/src/lib/modules.ts.
+  if (user?.modules?.includes('campanhas')) {
+    const idx = nav.findIndex(i => i.href === '/dashboard/configuracoes');
+    const campanhasItem = { href: '/app/campanhas', icon: '📣', label: 'Campanhas' };
+    nav.splice(idx < 0 ? nav.length : idx, 0, campanhasItem);
+  }
+
   return nav;
 }
 
