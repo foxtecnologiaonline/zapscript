@@ -135,7 +135,7 @@ const WARM_AUDIENCE_DAYS = parseInt(process.env.CAMPANHAS_WARM_AUDIENCE_DAYS || 
  * Evolution (ver CAMPANHAS_ARQUITETURA.md §8): só quem já tem relação com o número,
  * reduzindo o padrão de "spam pra desconhecido" que o WhatsApp mais penaliza.
  */
-async function warmContactsForNumber(numberId: string): Promise<Map<string, string | null>> {
+export async function warmContactsForNumber(numberId: string): Promise<Map<string, string | null>> {
   const cutoff = new Date(Date.now() - WARM_AUDIENCE_DAYS * 24 * 60 * 60 * 1000);
   const [transcricoes, atende, copiloto] = await Promise.all([
     prisma.transcription.findMany({
@@ -259,7 +259,7 @@ interface TierDetail { numberId: string; tier: string | null; quality: string | 
  * /:id/start e o disparo automático (campanhas-scheduler.ts, cópia própria —
  * api/worker não compartilham código neste monorepo).
  */
-async function resolveSendNumbers(
+export async function resolveSendNumbers(
   campanha: { poolNumberIds: string[]; channel: string },
   userId: string,
   primary: { id: string; status: string; metaAccessTokenEnc: string | null; zapiInstanceId: string | null },
@@ -391,6 +391,60 @@ function requireConsentAcknowledgement(campanha: { channel: string; consentConfi
   return campanha.channel === 'evolution'
     ? 'Confirme que entende o risco de banimento do seu número pelo WhatsApp ao usar o canal Evolution (confirmConsent: true).'
     : 'Confirme que tem consentimento (opt-in) destes contatos para campanhas de marketing, conforme LGPD e política da Meta (confirmConsent: true).';
+}
+
+/**
+ * Enfileira o disparo dos contatos 'pending' de uma campanha — jobId
+ * determinístico campanhaId:contatoId (reenviar não duplica jobs em voo),
+ * pool/round-robin (assignedNumberId — §11/item 2), aquecimento progressivo do
+ * canal Evolution (§11/item 3) e janela de silêncio (§11/item 4). Recebe
+ * `sendNumbers`/`pendentes` já resolvidos (pelo chamador) em vez de buscar de
+ * novo — POST /:id/start já precisa dos dois antes de chegar aqui (checagem de
+ * tier/audiência vazia), e o Chatbot Campanhas (services/
+ * campanhas-chat-commands.ts) resolve os mesmos dois via resolveSendNumbers
+ * (exportado) antes de chamar — mesma lógica dos dois caminhos, sem duplicar
+ * nem sem re-buscar o que o chamador já tem em mãos.
+ */
+export async function enqueueCampanhaSend(
+  campanhaId: string,
+  channel: string,
+  sendNumbers: any[],
+  pendentes: { id: string }[],
+): Promise<number> {
+  if (pendentes.length === 0) return 0;
+
+  // Round-robin entre os números da rotação (assignedNumberId) — só grava quando
+  // há mais de 1 número; no caso comum (sem pool) o worker usa direto
+  // campanha.whatsappNumber, sem query nem write extra (ver modules/campanhas.ts).
+  if (sendNumbers.length > 1) {
+    const grupos = new Map<string, string[]>();
+    pendentes.forEach((p: any, i: number) => {
+      const numberId = sendNumbers[i % sendNumbers.length].id;
+      const arr = grupos.get(numberId);
+      if (arr) arr.push(p.id); else grupos.set(numberId, [p.id]);
+    });
+    await Promise.all(
+      Array.from(grupos.entries()).map(([numberId, ids]) =>
+        prisma.campanhaContato.updateMany({ where: { id: { in: ids } }, data: { assignedNumberId: numberId } }),
+      ),
+    );
+  }
+
+  const dailyLimit = channel === 'evolution'
+    ? Math.min(...sendNumbers.map((n: any) => effectiveEvolutionDailyLimit(n.connectedAt)))
+    : EVOLUTION_DAILY_LIMIT;
+
+  await campanhasQueue.addBulk(
+    pendentes.map((p: any, i: number) => ({
+      name: 'send',
+      data: { campanhaId, contatoId: p.id },
+      opts: {
+        jobId: `${campanhaId}:${p.id}`,
+        delay: applySendWindow(channel === 'evolution' ? evolutionSendDelayMs(i, dailyLimit) : 0),
+      },
+    })),
+  );
+  return pendentes.length;
 }
 
 export default async function campanhasRoutes(app: FastifyInstance) {
@@ -1235,44 +1289,13 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       })));
     }
 
-    // Round-robin entre os números da rotação (assignedNumberId) — só grava quando
-    // há mais de 1 número; no caso comum (sem pool) o worker usa direto
-    // campanha.whatsappNumber, sem query nem write extra (ver modules/campanhas.ts).
-    if (sendNumbers.length > 1) {
-      const grupos = new Map<string, string[]>();
-      pendentes.forEach((p: any, i: number) => {
-        const numberId = sendNumbers[i % sendNumbers.length].id;
-        const arr = grupos.get(numberId);
-        if (arr) arr.push(p.id); else grupos.set(numberId, [p.id]);
-      });
-      await Promise.all(
-        Array.from(grupos.entries()).map(([numberId, ids]) =>
-          prisma.campanhaContato.updateMany({ where: { id: { in: ids } }, data: { assignedNumberId: numberId } }),
-        ),
-      );
-    }
+    // Round-robin (assignedNumberId), aquecimento progressivo e janela de silêncio
+    // já ficam dentro de enqueueCampanhaSend (mesma função reaproveitada pelo
+    // Chatbot Campanhas) — não duplica aqui o que já foi resolvido acima
+    // (sendNumbers/pendentes) só pra decidir se a campanha tem o que enviar.
+    const enqueued = await enqueueCampanhaSend(id, campanha.channel, sendNumbers, pendentes);
 
-    // Ritmo de envio: canal evolution usa aquecimento progressivo (item 3 — número
-    // recém-conectado começa mais devagar; com pool, usa o número mais "novo" da
-    // rotação como referência, o caminho mais conservador) + espaçamento
-    // anti-padrão (evolutionSendDelayMs); ambos os canais respeitam a janela de
-    // silêncio (item 4 — não manda de madrugada). jobId determinístico
-    // (campanhaId:contatoId) — reenviar /start não duplica jobs em voo.
-    const dailyLimit = campanha.channel === 'evolution'
-      ? Math.min(...sendNumbers.map((n: any) => effectiveEvolutionDailyLimit(n.connectedAt)))
-      : EVOLUTION_DAILY_LIMIT;
-    await campanhasQueue.addBulk(
-      pendentes.map((p: any, i: number) => ({
-        name: 'send',
-        data: { campanhaId: id, contatoId: p.id },
-        opts: {
-          jobId: `${id}:${p.id}`,
-          delay: applySendWindow(campanha.channel === 'evolution' ? evolutionSendDelayMs(i, dailyLimit) : 0),
-        },
-      })),
-    );
-
-    return reply.send({ ok: true, enqueued: pendentes.length });
+    return reply.send({ ok: true, enqueued });
   });
 
   // ── POST /:id/pause — pausa campanha em execução ─────────────────────────

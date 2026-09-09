@@ -355,6 +355,33 @@ export async function sendPtt(instanceNameStr: string, phone: string, audioBase6
 }
 
 /**
+ * Envia uma imagem via Evolution API — base64 inline, sem depender de URL
+ * pública (mesmo padrão de sendPtt). Usado pelo Chatbot Campanhas pra mandar
+ * o QR code do Pix junto do código copia-e-cola.
+ */
+export async function sendImage(instanceNameStr: string, phone: string, imageBase64: string, caption = ''): Promise<void> {
+  const base  = evolutionBaseUrl();
+  const clean = phone.replace(/\D/g, '');
+  const res = await fetch(`${base}/message/sendMedia/${instanceNameStr}`, {
+    method:  'POST',
+    headers: evolutionHeaders(),
+    body: JSON.stringify({
+      number: clean,
+      mediatype: 'image',
+      mimetype: 'image/png',
+      caption,
+      media: imageBase64,
+      fileName: 'pix-qrcode.png',
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Evolution sendMedia falhou (${res.status}): ${text}`);
+  }
+}
+
+/**
  * Busca áudio de uma mensagem como Buffer (via getBase64FromMediaMessage).
  * messageData = objeto { key, message } extraído do webhook MESSAGES_UPSERT.
  */

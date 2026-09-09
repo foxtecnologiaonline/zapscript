@@ -56,6 +56,7 @@ model User {
   cobrancaConfig          CobrancaConfig?
   campanhas               Campanha[]
   campanhaOptOuts         CampanhaOptOut[]
+  campanhaBalance         CampanhaBalance?
   crmStages               CrmStage[]
   crmContacts             CrmContact[]
   crmActivities           CrmActivity[]
@@ -148,6 +149,7 @@ model WhatsappNumber {
   zapiToken           String? // Token da instância Z-API criada dinamicamente
   privateMode         Boolean              @default(false) // Modo Privado: ativado manualmente pelo usuário (opt-in). Quando true, resumo vai só ao próprio número.
   isPublic            Boolean              @default(false) // Número público do ZapScript: qualquer pessoa pode encaminhar áudio e receber demo grátis. Sem custo contra quota de usuário.
+  publicPurpose       String? // só quando isPublic=true e há mais de um número oficial: 'campanhas' distingue do padrão (suporte/onboarding geral, null)
   // ── Conexão via API oficial da Meta (WhatsApp Cloud API / Embedded Signup) ──
   // Usado apenas para o fluxo de App Review da Meta. Usuários reais seguem no Evolution.
   provider            String               @default("evolution") // 'evolution' | 'meta'
@@ -865,6 +867,8 @@ model Campanha {
   scheduledAt        DateTime?
   startedAt          DateTime?
   completedAt        DateTime?
+  createdViaChat     Boolean           @default(false) // criada pelo Chatbot Campanhas (número oficial ou comando no próprio número)
+  messagesCost       Int? // mensagens debitadas do CampanhaBalance ao disparar (null = criada pelo painel, não metrificada)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -910,6 +914,61 @@ model CampanhaOptOut {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, phone])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chatbot Campanhas — saldo de mensagens (pré-pago + assinatura mensal,
+// vendido via chat no número oficial dedicado) + estado da conversa. Ledger
+// separado de CreditWallet/CreditTransaction (lib/credit.ts) porque é outra
+// coisa: saldo de MENSAGENS de campanha, não crédito em R$ de indicação.
+// ─────────────────────────────────────────────────────────────────────────────
+model CampanhaBalance {
+  id                  String                        @id @default(cuid())
+  userId              String                        @unique
+  availableMessages   Int                            @default(0)
+  plan                String? // 'monthly' quando há assinatura ativa; null = só pré-pago
+  asaasSubscriptionId String? // assinatura mensal de mensagens — separada da Subscription core (1 usuário só tem 1 Subscription)
+  asaasCustomerId     String?
+  renewalDate         DateTime? // próxima renovação/reset (assinatura mensal)
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+  user                User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions        CampanhaBalanceTransaction[]
+}
+
+model CampanhaBalanceTransaction {
+  id            String          @id @default(cuid())
+  balanceId     String
+  balance       CampanhaBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+  type          String // 'purchase' | 'monthly_reset' | 'debit' | 'refund'
+  amount        Int // mensagens — positivo = crédito, negativo = débito
+  balanceAfter  Int
+  referenceType String? // 'asaas_payment' | 'campanha'
+  referenceId   String?
+  createdAt     DateTime        @default(now())
+
+  @@index([balanceId, createdAt])
+}
+
+// Estado da conversa do bot de Campanhas (dono do número gerenciando saldo/
+// criação, ou lead novo em funil de compra) — uma sessão por telefone, tanto
+// pra cliente existente quanto pra lead sem conta ainda (userId nulo até a
+// conta ser criada via onboarding, mesmo padrão de WhatsappOnboardingLead).
+model CampanhaChatSession {
+  id                 String   @id @default(cuid())
+  phone              String   @unique
+  userId             String?
+  stage              String   @default("idle")
+  draftMessageBody   String?
+  draftContactSource String? // 'historico' | 'csv' | 'print'
+  campanhaId         String? // rascunho/campanha em andamento
+  pendingPackageId   String? // pacote/plano sendo comprado (aguardando webhook)
+  pendingChargeId    String? // id da cobrança Asaas em aberto
+  attempts           Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
   @@index([userId])
 }
 

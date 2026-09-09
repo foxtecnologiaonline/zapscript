@@ -32,6 +32,7 @@ import { sendText, instanceName as evoInstanceName } from './evolution';
 import { provisionInstance, requestPairingCode } from './number-provisioning';
 import { createPasswordlessAccount } from './account-provisioning';
 import { intakeMessage } from './support-intake';
+import { offerPlanUpgrade } from './campanhas-chat-commands';
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
 const MAX_ATTEMPTS_BEFORE_ESCALATE = 2;
@@ -62,10 +63,17 @@ function extractPhone(text: string): string | null {
   return digits.length >= 8 && digits.length <= 13 ? digits : null;
 }
 
-/** Instância do número oficial (isPublic=true) — usada para toda mensagem do onboarding. */
-export async function getOfficialInstanceName(): Promise<string | null> {
+/**
+ * Instância do número oficial (isPublic=true) — usada para toda mensagem do onboarding.
+ * Sem `purpose`, pega o comportamento histórico (1º isPublic encontrado — hoje sempre
+ * o número de suporte/onboarding geral). Com `purpose: 'campanhas'`, resolve o número
+ * oficial dedicado do Chatbot Campanhas (WhatsappNumber.publicPurpose), quando existir
+ * — ver campanhas-chat-lead.ts. Nunca filtra por publicPurpose quando purpose não é
+ * passado, pra não quebrar os chamadores existentes (closeLeadOnConnected, nudgeStuckLead).
+ */
+export async function getOfficialInstanceName(purpose?: 'campanhas'): Promise<string | null> {
   const official = await prisma.whatsappNumber.findFirst({
-    where:  { isPublic: true },
+    where:  { isPublic: true, ...(purpose ? { publicPurpose: purpose } : {}) },
     select: { id: true, zapiInstanceId: true },
   });
   if (!official) return null;
@@ -138,18 +146,26 @@ export async function startFromSiteSignup(
 }
 
 // ── Entrada 2: estranho manda texto pro número oficial (sem conta ainda) ──
-export async function startFromOfficialNumber(phone: string, pushName: string | null, instanceNameStr: string): Promise<void> {
+// flavor='campanhas': entrada pelo número oficial dedicado do Chatbot Campanhas
+// (ver campanhas-chat-lead.ts) — mesma máquina de estados, só muda a mensagem de
+// boas-vindas e o `source` gravado no lead (usado depois por closeLeadOnConnected
+// pra decidir qual mensagem de conclusão mandar).
+export async function startFromOfficialNumber(phone: string, pushName: string | null, instanceNameStr: string, flavor?: 'campanhas'): Promise<void> {
   const phoneClean = cleanPhone(phone);
+  const source = flavor === 'campanhas' ? 'campanhas' : 'oficial';
 
   await prisma.whatsappOnboardingLead.upsert({
     where:  { phone: phoneClean },
-    create: { phone: phoneClean, stage: 'awaiting_consent', pushName, source: 'oficial' },
-    update: { stage: 'awaiting_consent', pushName, source: 'oficial', attempts: 0 },
+    create: { phone: phoneClean, stage: 'awaiting_consent', pushName, source },
+    update: { stage: 'awaiting_consent', pushName, source, attempts: 0 },
   });
 
   const nome = firstNameOf(pushName);
+  const pitch = flavor === 'campanhas'
+    ? 'Aqui é o ZapScript Campanhas — eu crio e disparo campanhas de WhatsApp em massa pra você, tudo pelo chat.'
+    : 'Aqui é o ZapScript — eu converto e resumo áudios do WhatsApp automaticamente.';
   const msg = [
-    `👋 ${nome ? `Oi, ${nome}!` : 'Oi!'} Aqui é o ZapScript — eu converto e resumo áudios do WhatsApp automaticamente.`,
+    `👋 ${nome ? `Oi, ${nome}!` : 'Oi!'} ${pitch}`,
     '',
     'Posso criar sua conta grátis e já deixar seu WhatsApp conectado, tudo por aqui mesmo. Antes, preciso do seu aceite:',
     `📄 Termos de Uso e Política de Privacidade: ${APP_URL}/termos`,
@@ -171,6 +187,7 @@ export async function handleOfficialNumberText(
   senderName: string | null,
   text: string,
   messageId?: string,
+  flavor?: 'campanhas',
 ): Promise<boolean> {
   const phoneClean = cleanPhone(senderPhone);
 
@@ -194,7 +211,7 @@ export async function handleOfficialNumberText(
     }).catch(() => null);
     if (!existingUser) {
       // Estranho de verdade → inicia cadastro conversacional
-      await startFromOfficialNumber(senderPhone, senderName, instanceNameStr);
+      await startFromOfficialNumber(senderPhone, senderName, instanceNameStr, flavor);
       return true;
     }
     clienteNome = existingUser.name || senderName || null;
@@ -370,8 +387,23 @@ export async function closeLeadOnConnected(numberId: string): Promise<void> {
   await prisma.whatsappOnboardingLead.update({ where: { phone: lead.phone }, data: { stage: 'completed' } });
 
   const nome = firstNameOf(lead.name || lead.pushName);
-  const msg = `✅ ${nome ? `${nome}, prontinho` : 'Prontinho'}! Seu WhatsApp já está conectado ao ZapScript. A partir de agora, cada áudio que chegar por aqui já sai convertido e resumido automaticamente. 🎉`;
-  await sendOfficial(lead.phone, msg).catch(() => null);
+  const isCampanhas = lead.source === 'campanhas';
+  const msg = isCampanhas
+    ? `✅ ${nome ? `${nome}, prontinho` : 'Prontinho'}! Seu WhatsApp já está conectado.`
+    : `✅ ${nome ? `${nome}, prontinho` : 'Prontinho'}! Seu WhatsApp já está conectado ao ZapScript. A partir de agora, cada áudio que chegar por aqui já sai convertido e resumido automaticamente. 🎉`;
+  const officialInstanceStr = isCampanhas ? await getOfficialInstanceName('campanhas') : null;
+  await sendOfficial(lead.phone, msg, officialInstanceStr).catch(() => null);
+
+  // Campanhas: a partir daqui a conversa continua no PRÓPRIO número que acabou de
+  // conectar (self-chat, mesmo canal do bot "campanha ..." — ver campanhas-chat-commands.ts),
+  // não mais no número oficial. Pergunta se quer contratar o plano que libera o módulo
+  // (bundled em Profissional/Empresas — ver migration 20260908_campanhas_bundled).
+  if (isCampanhas && lead.userId) {
+    const numero = await prisma.whatsappNumber.findUnique({ where: { id: numberId }, select: { zapiInstanceId: true } });
+    const ownInstanceStr = numero?.zapiInstanceId ?? evoInstanceName(numberId);
+    await offerPlanUpgrade(ownInstanceStr, lead.userId, lead.phone).catch((err: any) =>
+      logger.warn(`[OnboardingWA] Falha ao oferecer upgrade de plano (Campanhas) para ${lead.phone}: ${err.message}`));
+  }
 }
 
 type LeadRow = {
