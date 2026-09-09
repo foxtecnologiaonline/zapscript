@@ -5,12 +5,17 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
-// "Carteira" (Regulamento v4) é automática pra todo mundo — sem aprovação,
-// sem aplicação — por isso entra direto no menu base, sem condição nenhuma.
+// "Carteira" (Regulamento v4) e "Campanhas" (decisão de produto, 2026-09-09 —
+// deixou de ser perk pago, ver CAMPANHAS_ARQUITETURA.md §16) são automáticas
+// pra todo mundo — sem aprovação, sem módulo/Entitlement — por isso entram
+// direto no menu base, sem condição nenhuma. Único módulo com página nativa
+// em /dashboard (os demais seguem em /app/<key>, sem sidebar própria ainda)
+// — ver apps/web/src/lib/modules.ts (moduleRoute) e CAMPANHAS_ARQUITETURA.md §10.
 const NAV_BASE = [
   { href: '/dashboard',               icon: '🏠', label: 'Dashboard' },
   { href: '/dashboard/transcricoes',  icon: '📝', label: 'Conversões' },
   { href: '/dashboard/numeros',       icon: '📱', label: 'Números' },
+  { href: '/dashboard/campanhas',     icon: '📣', label: 'Campanhas' },
   { href: '/dashboard/plano',         icon: '💳', label: 'Plano' },
   { href: '/dashboard/afiliado',      icon: '💰', label: 'Carteira' },
   { href: '/dashboard/configuracoes', icon: '⚙️', label: 'Configurações' },
@@ -24,17 +29,6 @@ function buildNav(user: any) {
     const idx = nav.findIndex(i => i.href === '/dashboard/configuracoes');
     const equipeItem = { href: '/dashboard/empresarial', icon: '🏢', label: 'Equipe' };
     nav.splice(idx < 0 ? nav.length : idx, 0, equipeItem);
-  }
-
-  // "Campanhas" só aparece pra quem tem o módulo ativo (Entitlement) — cobre
-  // tanto quem ganhou pelo bundle do Profissional/Empresas quanto quem
-  // manteve acesso avulso legado (source='paid'). Único módulo com página
-  // nativa em /dashboard (os demais seguem em /app/<key>, sem sidebar própria
-  // ainda) — ver apps/web/src/lib/modules.ts (moduleRoute) e CAMPANHAS_ARQUITETURA.md §10.
-  if (user?.modules?.includes('campanhas')) {
-    const idx = nav.findIndex(i => i.href === '/dashboard/configuracoes');
-    const campanhasItem = { href: '/dashboard/campanhas', icon: '📣', label: 'Campanhas' };
-    nav.splice(idx < 0 ? nav.length : idx, 0, campanhasItem);
   }
 
   return nav;

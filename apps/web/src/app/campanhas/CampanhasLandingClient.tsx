@@ -79,7 +79,7 @@ const FAQS = [
   },
   {
     q: 'Quanto custa?',
-    a: 'R$67/mês pela plataforma ZapScript Campanhas. Tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) não estão incluídas nesse valor.',
+    a: 'Nada — o ZapScript Campanhas é gratuito para todos os usuários da plataforma, em qualquer plano. Só as tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) ficam de fora, e são pagas direto pra Meta, não pra gente.',
   },
 ];
 
@@ -166,12 +166,12 @@ export default function CampanhasLandingClient() {
                 </p>
                 <Link href="/cadastro?utm_source=lp&utm_campaign=campanhas" data-cta="campanhas_hero_cadastro"
                   className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2">
-                  Criar conta e conhecer
+                  Criar conta grátis
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M12 5l7 7-7 7" />
                   </svg>
                 </Link>
-                <span className="block text-center text-xs mt-2 text-brand-muted">R$67/mês · sem taxa de adesão</span>
+                <span className="block text-center text-xs mt-2 text-brand-muted">Grátis pra todo mundo · sem taxa de adesão</span>
               </div>
 
               <div className="flex items-center gap-3">
@@ -184,14 +184,14 @@ export default function CampanhasLandingClient() {
                 <p className="flex items-center gap-1.5 text-xs font-medium mb-2" style={{ color: 'rgb(var(--color-text-secondary))' }}>
                   <span>🔑</span> Já tem uma conta ZapScript?
                 </p>
-                <Link href="/dashboard/plano?add=campanhas" data-cta="campanhas_hero_contratar"
+                <Link href="/dashboard/campanhas" data-cta="campanhas_hero_abrir"
                   className="w-full py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-80 active:scale-[.98]"
                   style={{
                     border: '1.5px solid rgb(var(--color-border))',
                     color: 'rgb(var(--color-text-secondary))',
                     background: 'rgb(var(--color-surface))',
                   }}>
-                  Ativar Campanhas na minha conta
+                  Ir direto pra Campanhas
                 </Link>
               </div>
             </div>
@@ -303,13 +303,13 @@ export default function CampanhasLandingClient() {
         <section id="preco" className="px-5 pb-10">
           <div className="mb-6">
             <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>Investimento</span>
-            <h2 className="font-display text-2xl font-bold mt-2 leading-tight tracking-tight">Um plano, sem pegadinha</h2>
+            <h2 className="font-display text-2xl font-bold mt-2 leading-tight tracking-tight">Grátis, sem pegadinha</h2>
           </div>
           <div className="rounded-3xl p-6 text-center"
             style={{ background: 'rgb(var(--color-surface))', border: '2px solid rgb(var(--color-primary))', boxShadow: 'var(--shadow-glow)' }}>
             <p className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>ZapScript Campanhas</p>
             <p className="font-display font-bold mt-2" style={{ fontSize: 'clamp(32px, 9vw, 44px)' }}>
-              R$67<span className="text-base font-medium" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês</span>
+              Grátis
             </p>
             <ul className="text-sm text-left mt-5 space-y-2.5">
               {[
@@ -328,12 +328,12 @@ export default function CampanhasLandingClient() {
               ))}
             </ul>
             <p className="text-[11px] mt-5 leading-relaxed" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              Valor referente ao uso da plataforma ZapScript. Tarifas de mensagem cobradas diretamente pela Meta
-              (conforme categoria do template e política vigente) não estão incluídas.
+              Sem custo pela plataforma ZapScript, incluso pra todos os usuários. Tarifas de mensagem cobradas
+              diretamente pela Meta (conforme categoria do template e política vigente) não estão incluídas.
             </p>
             <Link href="/cadastro?utm_source=lp&utm_campaign=campanhas_preco" data-cta="campanhas_preco_cta"
               className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2 mt-6">
-              Quero contratar
+              Quero começar
             </Link>
           </div>
         </section>
@@ -405,9 +405,9 @@ export default function CampanhasLandingClient() {
             </p>
             <Link href="/cadastro?utm_source=lp&utm_campaign=campanhas_footer" data-cta="campanhas_footer_cadastro"
               className="btn-primary inline-flex items-center justify-center py-4 px-8 text-base gap-2">
-              Criar conta e conhecer
+              Criar conta grátis
             </Link>
-            <span className="block text-sm mt-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>R$67/mês</span>
+            <span className="block text-sm mt-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>Grátis pra todo mundo</span>
           </div>
         </section>
 

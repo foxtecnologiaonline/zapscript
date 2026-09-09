@@ -58,15 +58,19 @@ const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Ex
 /* ── Tiers ZapScript 2.0 (revisão): "tiers absorvem os módulos" — cada tier
    paga empacota um conjunto fixo de módulos já existentes na suíte.
    Core (free) = transcrição + resumo, sem módulo algum.
-   Profissional = Core + Atende + Tarefas + Campanhas (1 usuário/1 conexão).
-   Empresas = Core + Atende + CRM + Tarefas + Campanhas (até 5 usuários).
+   Profissional = Core + Atende + Tarefas (1 usuário/1 conexão).
+   Empresas = Core + Atende + CRM + Tarefas (até 5 usuários).
    Sincronizado em activatePlan() via Entitlement(source='bundle'), nunca
    mexendo em módulos comprados avulso (source='paid'). Ver MODULOS_ARQUITETURA.md.
    'copiloto' FORA dos planos por enquanto — liberado só manualmente por admin
-   (Entitlement source='comp'), nunca por aqui. Ver /sys/g5r8t2/users/:id/modules/copiloto/toggle. ── */
+   (Entitlement source='comp'), nunca por aqui. Ver /sys/g5r8t2/users/:id/modules/copiloto/toggle.
+   'campanhas' também FORA — deixou de ser perk pago (decisão de produto,
+   2026-09-09): agora é grátis pra todos os usuários, direto em
+   lib/moduleGate.ts (getUserModules() sempre inclui), sem passar por
+   Entitlement/bundle nenhum. Ver CAMPANHAS_ARQUITETURA.md §16. ── */
 const TIER_MODULE_BUNDLES: Record<string, string[]> = {
-  profissional: ['atende', 'tarefas', 'campanhas'],
-  empresas:     ['atende', 'crm', 'tarefas', 'campanhas'],
+  profissional: ['atende', 'tarefas'],
+  empresas:     ['atende', 'crm', 'tarefas'],
 };
 
 /* ── Combo (Core + módulos disponíveis): % fixo sobre a soma do valor agregado ── */
@@ -1176,6 +1180,9 @@ export default async function billingRoutes(app: FastifyInstance) {
       }
       if (product.status === 'bundled') {
         return reply.code(400).send({ error: 'Este módulo não é vendido avulso — ele já vem incluso no plano Profissional/Empresas. Veja /dashboard/plano.' });
+      }
+      if (product.status === 'free') {
+        return reply.code(400).send({ error: 'Este módulo é gratuito para todos os usuários do ZapScript — não precisa contratar.' });
       }
       if (existing?.status === 'active') {
         return reply.code(400).send({ error: 'Você já tem este módulo ativo.' });

@@ -93,7 +93,7 @@ function csvForm(csv: string) {
   return `--boundary\r\nContent-Disposition: form-data; name="file"; filename="contatos.csv"\r\nContent-Type: text/csv\r\n\r\n${csv}\r\n--boundary--\r\n`;
 }
 
-describe('Gate de módulo (requireModule)', () => {
+describe('Acesso — gratuito pra todos os usuários (§16)', () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
 
   beforeAll(async () => { app = await buildApp(); });
@@ -105,17 +105,17 @@ describe('Gate de módulo (requireModule)', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('retorna 402 quando o usuário não contratou o módulo', async () => {
+  it('não exige mais o módulo "campanhas" contratado — 200 mesmo sem nenhum Entitlement', async () => {
     (redis.get as jest.Mock).mockResolvedValueOnce(null);
     (prisma.entitlement.findMany as jest.Mock).mockResolvedValueOnce([]); // nenhum módulo ativo
+    (prisma.campanha.findMany as jest.Mock).mockResolvedValueOnce([]);
 
     const token = makeToken(app);
     const res = await app.inject({
       method: 'GET', url: '/modules/campanhas',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(res.statusCode).toBe(402);
-    expect(res.json().moduleRequired).toBe('campanhas');
+    expect(res.statusCode).toBe(200);
   });
 });
 

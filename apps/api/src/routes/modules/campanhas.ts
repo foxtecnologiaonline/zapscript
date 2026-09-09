@@ -1,6 +1,5 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma';
-import { requireModule } from '../../lib/moduleGate';
 import { validateRequest, createCampanhaSchema, scheduleCampanhaSchema, campanhaSequenceSchema } from '../../lib/validation';
 import { decryptStr } from '../../services/encryption';
 import { listTemplates, getPhoneNumberLimits, tierToNumericCap, sendTemplateMessage } from '../../services/whatsapp-campaigns';
@@ -11,7 +10,8 @@ import { logger } from '../../lib/logger';
 
 /**
  * ZapScript Campanhas — disparo em massa via WhatsApp API oficial (Meta Cloud API).
- * Toda rota exige o módulo 'campanhas' contratado (requireModule → 402 se não).
+ * Gratuito pra todos os usuários (decisão de produto, 2026-09-09) — só exige
+ * login (authenticate), sem gate de módulo/Entitlement. Ver CAMPANHAS_ARQUITETURA.md §16.
  * Credenciais Meta vêm do WhatsappNumber do próprio usuário (provider='meta'),
  * nunca de env global — ver services/whatsapp-campaigns.ts.
  */
@@ -448,7 +448,7 @@ export async function enqueueCampanhaSend(
 }
 
 export default async function campanhasRoutes(app: FastifyInstance) {
-  const auth = { preHandler: [(app as any).authenticate, requireModule('campanhas')] };
+  const auth = { preHandler: [(app as any).authenticate] };
 
   // ── GET / — lista campanhas do usuário ───────────────────────────────────
   app.get('/', auth, async (req: any) => {

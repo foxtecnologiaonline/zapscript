@@ -1090,3 +1090,103 @@ canais). `npx tsc --noEmit` limpo em `apps/api`, `apps/worker` e `apps/web`.
 Único dos 4 itens do §14.2 sem mudança de status: o usuário escolheu adiar (não construir limite
 nenhum por enquanto). Nada foi implementado aqui de propósito — não é gap esquecido, é decisão
 tomada.
+
+## 16. Campanhas vira gratuito pra todos os usuários
+
+Decisão de produto, 2026-09-09: o módulo Campanhas (a tela `/dashboard/campanhas` e a API
+`/modules/campanhas/*` — segmentação, sequência, A/B, tudo que este documento cobre) deixa de ser
+perk pago do Profissional/Empresas e passa a ser **gratuito pra qualquer usuário do ZapScript**,
+em qualquer plano, sem Entitlement nem contratação nenhuma. Puxado por uma pergunta simples do
+usuário ("como acessar o Campanhas?") — a resposta revelou que a própria conta do usuário não
+tinha o módulo (plano free/Core), o que levou à decisão de abrir pra todo mundo em vez de só
+liberar a própria conta.
+
+**Importante: isto é só sobre o módulo/tela de Campanhas em si.** O "Chatbot Campanhas" (criar/
+disparar campanha via comando de texto no WhatsApp, `services/campanhas-chat-commands.ts`) **não
+mudou** — continua com seu próprio saldo de mensagens pago (`CampanhaBalance`,
+`lib/campanha-credit.ts`, pacotes avulsos R$200-1500 ou assinatura R$299/mês, ver
+`routes/billing.ts`), independente do módulo/plano do usuário desde que foi criado. As duas coisas
+são economicamente distintas: o módulo (grátis agora) é acesso à ferramenta; o saldo de mensagens
+do chatbot (continua pago) é volume de envio via aquele canal específico.
+
+### 16.1 Achado que motivou a decisão: havia uma bengalagem comercial real por trás
+
+Antes de mexer em código, uma varredura mostrou que "Campanhas" não era só uma flag de UI — tinha
+infraestrutura comercial construída em cima (na revisão de tiers de 2026-09-08, um dia antes desta
+decisão): `TIER_MODULE_BUNDLES` em `billing.ts` empacotava `campanhas` no Profissional e no
+Empresas; o catálogo (`Product`) tinha preço próprio (R$67/643) com `status: 'bundled'` (bloqueia
+contratação avulsa); `Plan.features` de ambos os planos anunciava "📣 Campanhas — disparo em massa
+via WhatsApp oficial" como diferencial pago; e existia um número oficial dedicado do WhatsApp só
+pra captar leads de Campanhas (`flavor='campanhas'` em `onboarding-whatsapp.ts`), que ao conectar
+oferecia upgrade de plano automaticamente se o lead não tivesse o módulo
+(`offerPlanUpgrade()` em `campanhas-chat-commands.ts`). Zero usuários reais tinham essa Entitlement
+em produção (conferido direto no banco) — a revisão de tiers era recente o bastante pra não ter
+pego ninguém ainda, o que tornou a reversão sem risco de tirar acesso de assinante pagante.
+
+### 16.2 Implementação: um único ponto de verdade, não um patch por tela
+
+Em vez de caçar cada checagem `includes('campanhas')` uma por uma, a correção central foi em
+`getUserModules()` (`apps/api/src/lib/moduleGate.ts`): a função agora sempre inclui `'campanhas'`
+na lista de módulos retornada (via `withFreeModules()`, união aplicada só na resposta — nunca
+gravada no cache Redis nem teria qualquer efeito no que está no banco). Isso cobre de uma vez:
+
+- `requireModule('campanhas')` nas rotas — por isso foi **removido** de
+  `routes/modules/campanhas.ts` (ficava sempre passando, e um preHandler que nunca bloqueia é só
+  ruído — a rota agora só exige `authenticate`).
+- `GET /modules/me` (`routes/entitlements.ts`) — já usava `getUserModules()`, ganhou o efeito de
+  graça.
+- Os dois checks equivalentes no Chatbot Campanhas (`campanhas-chat-commands.ts` — o gate de
+  "campanha nova" e o `offerPlanUpgrade()`) — ambos os branches de "módulo não contratado" viram
+  inalcançáveis na prática, sem precisar reescrever a lógica deles (os testes desses arquivos
+  mockam `getUserModules` diretamente, então continuam validando os branches como código,
+  independente de serem alcançáveis em produção).
+
+**Uma armadilha real encontrada nesse meio-tempo**: `GET /auth/me` (`routes/auth.ts`, é dali que o
+front carrega `user.modules` pra sidebar) tinha sua **própria query duplicada** de entitlements —
+não passava por `getUserModules()` — então o patch central sozinho não teria corrigido a sidebar.
+Corrigido eliminando a duplicação (`/auth/me` agora chama `getUserModules()` também), o que de
+quebra também alinhou o comportamento de cache/tolerância a falha dos dois endpoints, que antes
+podiam divergir.
+
+### 16.3 Catálogo, preço e copy — sincronizados, não só o gate
+
+Pra não sobrar "Campanhas — R$67/mês, incluso no plano X" em telas que ninguém tocaria de novo:
+
+- **Migration** `20260909_campanhas_free_for_all`: `Product.status` de `campanhas` vira `'free'`
+  (novo status, preço zerado — reverte a migration `20260908_campanhas_bundled` do dia anterior);
+  `Plan.features` do Profissional e do Empresas perdem a linha "📣 Campanhas...". Idempotente,
+  mesmo estilo das migrations anteriores desta suíte.
+- `apps/api/src/index.ts`: o bloco de bootstrap idempotente que resetava o `Product` a cada boot
+  (mesmo padrão usado pra atende/crm/legenda) tinha ficado **desalinhado** com a migration de
+  bundled — ainda forçava `status: 'planned'` a cada start, o que teria revertido silenciosamente
+  o `'free'` da migration no boot seguinte se não fosse corrigido junto.
+- `billing.ts`: `TIER_MODULE_BUNDLES` sem `campanhas`; bloqueio explícito de contratação avulsa
+  quando `status === 'free'` (mensagem clara, defesa em profundidade — hoje inalcançável pela UI,
+  já que o catálogo não oferece mais contratar algo com esse status).
+- `packages/modules/catalog.ts` (catálogo de referência, não consumido em runtime — ver §16.4) e
+  `apps/web/src/lib/modules.ts` (`ModuleCatalogItem['status']`, `STATUS_LABEL`) ganharam o status
+  `'free'` também, pra documentação e telas de catálogo não ficarem incoerentes com o banco.
+- **Landing page pública** `/campanhas` (`app/campanhas/page.tsx` + `CampanhasLandingClient.tsx`):
+  tinha uma seção de preço inteira ("R$67/mês", "Quero contratar" linkando pro checkout de
+  módulo), FAQ com preço, e metadata/JSON-LD (SEO) com `price: '67'` — tudo trocado por "Grátis".
+  O CTA "já tem conta" parava de linkar pro fluxo de contratação (`/dashboard/plano?add=campanhas`,
+  que não faria mais sentido com o módulo não-contratável) e passa a ir direto pra
+  `/dashboard/campanhas`.
+- **`apps/web/src/app/dashboard/layout.tsx`**: `Campanhas` sai da lista condicional
+  (`user?.modules?.includes('campanhas')`) e entra direto no `NAV_BASE`, ao lado de
+  Transcrições/Números — mesmo tratamento das seções que sempre existiram no dashboard.
+
+### 16.4 O que ficou de fora, de propósito
+
+- **`packages/modules/catalog.ts`** se autodescreve como "fonte ÚNICA da verdade" dos módulos, mas
+  não é importado em lugar nenhum do runtime (confirmado por busca) — quem alimenta o `Product` de
+  verdade é o bloco de bootstrap em `index.ts`. Isso é uma divergência arquitetural **pré-existente**
+  (não introduzida aqui); só mantive o arquivo de referência coerente com a decisão, não tentei
+  consertar essa divergência maior agora.
+- **Testes do Chatbot Campanhas** (`campanhas-chat-commands.test.ts`,
+  `onboarding-whatsapp-campanhas.test.ts`) continuam mockando `getUserModules` pra exercitar os
+  branches de "módulo não contratado"/"pitch de upgrade" — não foram removidos, porque ainda
+  testam código real (só não mais alcançável através da função de verdade em produção).
+- **`Entitlement` rows existentes com `productKey='campanhas'`**: não havia nenhuma em produção no
+  momento da mudança (conferido antes de agir) — não há necessidade de migração de dados de
+  usuário, nem grandfathering.
