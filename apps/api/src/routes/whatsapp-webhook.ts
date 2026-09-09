@@ -21,6 +21,27 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
   const webhookToken = process.env.WHATSAPP_WEBHOOK_TOKEN || 'webhook-token-not-set';
   const appSecret    = process.env.WHATSAPP_APP_SECRET;
 
+  if (!appSecret) {
+    app.log.error(
+      '[WhatsApp Webhook] ⚠️ WHATSAPP_APP_SECRET não configurado — a assinatura ' +
+      'x-hub-signature-256 NÃO está sendo validada nesta instância. Qualquer requisição ' +
+      'POST bem-formada é aceita como se viesse da Meta (pode forjar status de entrega e ' +
+      'opt-out de campanhas). Configure a env var em produção — ver .env.example.'
+    );
+  }
+
+  /**
+   * Compara duas strings em tempo constante sem lançar exceção quando os tamanhos
+   * diferem (crypto.timingSafeEqual exige buffers do mesmo tamanho — um comparando
+   * com tamanho diferente do esperado derrubaria a requisição com 500 em vez de 401).
+   */
+  function safeEqual(a: string, b: string): boolean {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+  }
+
   /**
    * GET /webhook - Verificação inicial do webhook
    * Meta chama isso para confirmar que você é o dono do webhook
@@ -36,7 +57,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
 
       app.log.info(`[WhatsApp Webhook GET] mode=${mode}, token_match=${token === webhookToken}`);
 
-      if (mode === 'subscribe' && token === webhookToken) {
+      if (mode === 'subscribe' && safeEqual(token || '', webhookToken)) {
         app.log.info('[WhatsApp Webhook] ✅ Validação bem-sucedida');
         reply.type('text/plain').code(200);
         return reply.send(challenge);
@@ -64,7 +85,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
       }
       const rawBody = (req as any).rawBody?.toString() || JSON.stringify(req.body);
       const expected = crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
-      if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+      if (!safeEqual(expected, signature)) {
         app.log.warn('[WhatsApp Webhook] Assinatura inválida — possível payload forjado');
         return reply.code(401).send({ error: 'Invalid signature' });
       }

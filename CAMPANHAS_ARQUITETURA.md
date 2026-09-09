@@ -6,7 +6,7 @@
 > especificação técnica concreta dos itens de maior risco, no formato de
 > `MODULOS_ARQUITETURA.md`/`PLATAFORMA_BASE.md`.
 
-Data: 2026-09-09 (revisão 2) · Branch: `claude/laughing-ritchie-3n4vj1`
+Data: 2026-09-09 (revisão 3 — auditoria de segurança aplicada) · Branch: `claude/laughing-ritchie-3n4vj1`
 
 ## TL;DR
 
@@ -25,6 +25,11 @@ Data: 2026-09-09 (revisão 2) · Branch: `claude/laughing-ritchie-3n4vj1`
   não tem isso. Substituído por um design concreto de token bucket em Redis (§5.3).
 - **Não fazer agora:** migrar o módulo para o contrato `ZapModule`/kernel de
   `PLATAFORMA_BASE.md` — nenhum outro módulo o usa ainda; sem ganho imediato.
+- **Auditoria de código (revisão 3):** o único ponto de confiança externo do módulo —
+  `whatsapp-webhook.ts`, que alimenta status de entrega e opt-out de `CampanhaContato` — tinha
+  três problemas reais de robustez/segurança, já corrigidos nesta revisão (§7). Um quarto item
+  (`WHATSAPP_APP_SECRET` pode estar ausente em produção) **não pôde ser confirmado** — o
+  sandbox não tem acesso SSH ao Vultr — e precisa de verificação manual (§7.4).
 
 ---
 
@@ -240,3 +245,99 @@ independente da ordem de implementação:
 3. **Template in-app (Fase 4):** só investir em UI de composição/submissão se houver evidência
    de que "ir até o Business Manager" está de fato barrando conversão — validar com clientes
    reais antes de construir.
+
+---
+
+## 7. Auditoria de segurança do código existente (revisão 3)
+
+Revisão linha-a-linha do único ponto de confiança externo do módulo —
+`apps/api/src/routes/whatsapp-webhook.ts`, de onde vêm status de entrega e opt-out — mais os
+serviços de que Campanhas depende (`lib/moduleGate.ts`, `services/encryption.ts`, upload de
+CSV). Três problemas foram **corrigidos nesta revisão**; um quarto precisa de verificação
+manual do operador (não dá para checar a partir daqui — ver §7.4).
+
+### 7.1 [CORRIGIDO] Verificação de assinatura podia lançar exceção com input malicioso
+
+`crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))` exige que os dois
+buffers tenham o **mesmo tamanho** — caso contrário lança `RangeError`. Como `signature` vem
+direto do header `x-hub-signature-256` (controlado por quem faz a requisição), um POST com uma
+assinatura de tamanho diferente do esperado (64 hex chars) derrubava a checagem com uma
+exceção não tratada em vez de simplesmente responder 401 — o handler ainda retornava erro (o
+runtime do Fastify converte exceção em 500), mas de forma menos previsível e sem o log de
+"assinatura inválida". **Corrigido:** função `safeEqual()` confere o tamanho antes de comparar
+e retorna `false` (→ 401) em vez de lançar.
+
+### 7.2 [CORRIGIDO] Verificação do token do GET (setup do webhook) não era em tempo constante
+
+A validação inicial do webhook (`GET /webhook?hub.verify_token=...`, chamada pela Meta uma vez
+ao configurar) comparava o token com `===` simples — uma comparação de string comum vaza
+timing (quanto mais prefixo bate, mais tempo leva). Exposição baixa na prática (só relevante
+no momento de configuração, e normalmente atrás de HTTPS com jitter de rede maior que a
+diferença de timing), mas é o mesmo padrão de vulnerabilidade que já se tinha o cuidado de
+evitar na verificação do POST — inconsistente deixar uma peneira mais fraca no GET.
+**Corrigido:** mesma função `safeEqual()` usada nos dois pontos.
+
+### 7.3 [CORRIGIDO] Segredo ausente falhava em silêncio
+
+Se `WHATSAPP_APP_SECRET` não estiver definido, o código **pulava toda a verificação de
+assinatura sem nenhum aviso** — o webhook passava a aceitar qualquer POST bem-formado como se
+fosse da Meta. Como é esse mesmo webhook que grava opt-out (`CampanhaOptOut`) e atualiza status
+de entrega de `CampanhaContato` por `wamid`, um payload forjado poderia, por exemplo, marcar
+contatos de terceiros como opt-out ou como falhos, sem nenhuma autenticação de origem.
+**Corrigido:** agora loga um `error` alto e explícito no boot do módulo quando o segredo está
+ausente — não mudei o comportamento para bloquear a requisição (fail-closed), porque isso
+derrubaria a recepção de mensagens/áudio/status de **todos** os usuários da API oficial em
+produção caso o segredo realmente não esteja configurado lá, e não há como confirmar isso a
+partir deste sandbox (ver §7.4). Preferi tornar o problema **impossível de não notar nos logs**
+a arriscar uma indisponibilidade em produção sem confirmação.
+
+### 7.4 [AÇÃO MANUAL NECESSÁRIA] Confirmar `WHATSAPP_APP_SECRET` no servidor Vultr
+
+Este sandbox não tem acesso SSH ao servidor de produção (porta 22 bloqueada pela política de
+rede do ambiente — ver `CLAUDE.md`), então **não foi possível confirmar** se
+`WHATSAPP_APP_SECRET` está de fato definido no `.env` do Vultr. É a variável mais crítica do
+webhook e está documentada em `.env.example`, mas — ao contrário de `ENCRYPTION_KEY` (que
+derruba o boot se ausente/mal formatada, em `services/encryption.ts`) — nada força sua
+presença.
+
+**Peço que confirme:** rode `grep WHATSAPP_APP_SECRET /root/.env` (ou equivalente) no servidor.
+Se **não** estiver setado: (1) pegue o App Secret no painel da Meta for Developers do app usado
+pela integração oficial, (2) adicione ao `.env` do Vultr, (3) reinicie o container da API. A
+partir do próximo boot o log de erro de §7.3 some sozinho — sinal de que está resolvido. Se
+**já** estiver setado, não é preciso fazer nada além de confirmar (o código já está correto).
+
+### 7.5 [VERIFICADO — SEM PROBLEMA] Pontos que pareciam suspeitos e não são
+
+- **Corpo bruto do webhook para o HMAC:** `apps/api/src/index.ts` registra um
+  `addContentTypeParser('application/json', { parseAs: 'buffer' }, ...)` global que captura
+  `req.rawBody` antes do parse — a assinatura é calculada sobre os bytes originais, não sobre
+  um `JSON.stringify` reconstruído (que poderia divergir do original e gerar falsos negativos).
+  O fallback para `JSON.stringify(req.body)` no código existe só como defesa adicional; na
+  prática nunca é exercido.
+- **Criptografia dos tokens Meta** (`services/encryption.ts`): AES-256-GCM com IV aleatório de
+  96 bits por chamada, `authTag` verificado na decriptação, chave validada no boot (64 hex
+  chars / 32 bytes) — configuração correta, nada a mudar.
+- **Gate de módulo** (`lib/moduleGate.ts`): nega acesso (`402`) por padrão em qualquer falha —
+  tabela ausente, Redis fora do ar, erro de query — nunca abre acesso por engano
+  (fail-closed correto para uma checagem de autorização).
+- **IDOR nas rotas de Campanhas:** toda rota que opera sobre uma campanha específica passa por
+  `ownedCampanha(userId, id)` (filtro por dono) antes de agir; `/optouts` e `/templates`
+  também são escopados por `userId`. Não encontrei um caminho para um usuário ler/alterar
+  campanha de outro.
+- **Upload de CSV:** limite de 15MB global do `@fastify/multipart` (`index.ts`) mais um
+  segundo limite de 5MB dentro da própria rota de upload (defesa em profundidade); o parser só
+  acumula a parte `fieldname === 'file'`, então partes extras do multipart não consomem
+  memória além do necessário.
+
+### 7.6 Risco pré-existente, fora do escopo de Campanhas, mas que a afeta
+
+`whatsapp-webhook.ts` resolve o dono da mensagem por
+`prisma.whatsappNumber.findFirst({ where: { phoneNumber: cleanBusiness } })` — sem filtrar por
+`provider: 'meta'` e sem que `phoneNumber` tenha uma constraint `@unique` no schema. Se dois
+registros de `WhatsappNumber` (de usuários diferentes, ou um resíduo de teste) acabarem com o
+mesmo valor de `phoneNumber`, o webhook atribuiria a mensagem/opt-out ao registro errado — não
+é uma vulnerabilidade introduzida por Campanhas, mas o opt-out e o status de entrega de
+campanha dependem diretamente desse `userId` estar certo. Vale um `@@unique([phoneNumber,
+provider])` (ou globalmente, se o negócio garantir que nunca há dois clientes com o mesmo
+número) numa migration futura — fora do escopo desta revisão por afetar todo o app, não só
+Campanhas.
