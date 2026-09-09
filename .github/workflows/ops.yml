@@ -64,9 +64,14 @@
 #                  a chave/senha de root existente — esta deve ser revogável
 #                  isoladamente (remover a linha do authorized_keys encerra
 #                  o acesso deste workflow sem afetar o resto).
-#   DATABASE_URL   connection string do Supabase (mesma do .env de produção)
-#                  — usada tanto pelos migrate_core_* quanto pelo
+#   DATABASE_URL   connection string do Supabase — pooler (mesma do .env de
+#                  produção) — usada tanto pelos migrate_core_* quanto pelo
 #                  `prisma migrate deploy` que roda em todo action = deploy
+#   DIRECT_URL     connection string do Supabase — conexão DIRETA (sem
+#                  pooler/pgbouncer), mesma exigida por schema.prisma
+#                  (datasource.directUrl) — só usada pelo `prisma migrate
+#                  deploy` (DDL não é seguro via pooler em modo transaction).
+#                  Sem ela o passo falha ANTES de tentar migrar (P1012).
 #   ASAAS_API_KEY  necessária só para o action = migrate_core_apply
 
 name: Ops — Vultr / Migração
@@ -155,6 +160,14 @@ jobs:
         working-directory: packages/database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # schema.prisma declara datasource com url (pooler) + directUrl (conexão
+          # direta) — migrate deploy roda DDL por directUrl (pgbouncer em modo
+          # transaction não suporta bem DDL). Sem essa env, falha na validação do
+          # schema ANTES de tentar migrar (Error P1012: "Environment variable not
+          # found: DIRECT_URL") — é exatamente o mesmo valor que apps/api/apps/worker
+          # já usam em produção (.env do Vultr); precisa existir também como secret
+          # aqui (Settings → Secrets and variables → Actions → DIRECT_URL).
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: npx --yes prisma@5.22.0 migrate deploy
 
       - name: Configurar chave SSH
