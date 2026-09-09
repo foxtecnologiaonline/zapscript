@@ -57,6 +57,7 @@ model User {
   campanhas               Campanha[]
   campanhaOptOuts         CampanhaOptOut[]
   campanhaBalance         CampanhaBalance?
+  campanhaListas          CampanhaLista[]
   crmStages               CrmStage[]
   crmContacts             CrmContact[]
   crmActivities           CrmActivity[]
@@ -903,6 +904,38 @@ model CampanhaContato {
   @@index([campanhaId])
   @@index([campanhaId, status])
   @@index([wamid]) // correlação de status recebido no webhook (hot path)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Listas de números — grupos de contatos salvos e reutilizáveis pelo usuário,
+// independentes de qualquer Campanha. Criadas uma vez (CSV ou colados à mão),
+// depois aplicadas a quantas campanhas quiser via POST /:id/contatos/from-lista
+// (que copia os números pra CampanhaContato — editar a lista depois não afeta
+// campanhas que já a usaram). Ver layout do fluxo "Nova campanha" (wizard).
+// ─────────────────────────────────────────────────────────────────────────────
+model CampanhaLista {
+  id          String                 @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contatos    CampanhaListaContato[]
+
+  @@index([userId])
+}
+
+model CampanhaListaContato {
+  id        String        @id @default(cuid())
+  listaId   String
+  phone     String
+  name      String?
+  createdAt DateTime      @default(now())
+  lista     CampanhaLista @relation(fields: [listaId], references: [id], onDelete: Cascade)
+
+  @@unique([listaId, phone])
+  @@index([listaId])
 }
 
 model CampanhaOptOut {
