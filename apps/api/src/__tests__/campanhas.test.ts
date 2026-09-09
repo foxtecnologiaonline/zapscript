@@ -421,7 +421,9 @@ describe('Ciclo start/pause/cancel', () => {
 
     it('retorna 400 se o número Meta está desconectado', async () => {
       grantModuleAccess();
-      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID });
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: new Date(),
+      });
       (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'disconnected' });
 
       const token = makeToken(app);
@@ -430,11 +432,28 @@ describe('Ciclo start/pause/cancel', () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.statusCode).toBe(400);
+      expect(res.json().error).toMatch(/meta desconectado/i);
+    });
+
+    it('retorna 400 se tentar iniciar sem confirmar consentimento (1ª vez)', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: null,
+      });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/start',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toMatch(/consentimento/i);
+      expect(prisma.whatsappNumber.findUnique).not.toHaveBeenCalled();
     });
 
     it('enfileira os contatos pendentes com jobId determinístico', async () => {
       grantModuleAccess();
-      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 2, whatsappNumberId: NUM_ID, startedAt: null });
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 2, whatsappNumberId: NUM_ID, startedAt: null, consentConfirmedAt: new Date() });
       (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
       (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }, { id: 'ct2' }]);
       (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
@@ -457,7 +476,7 @@ describe('Ciclo start/pause/cancel', () => {
   describe('POST /:id/start (a partir de agendada)', () => {
     it('inicia imediatamente uma campanha agendada', async () => {
       grantModuleAccess();
-      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled', audienceCount: 1, whatsappNumberId: NUM_ID, startedAt: null });
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled', audienceCount: 1, whatsappNumberId: NUM_ID, startedAt: null, consentConfirmedAt: new Date() });
       (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
       (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }]);
       (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
@@ -580,7 +599,9 @@ describe('Agendamento (schedule/unschedule)', () => {
 
     it('retorna 400 se o número Meta está desconectado', async () => {
       grantModuleAccess();
-      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID });
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: new Date(),
+      });
       (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'disconnected' });
 
       const token = makeToken(app);
@@ -592,10 +613,28 @@ describe('Agendamento (schedule/unschedule)', () => {
       expect(res.statusCode).toBe(400);
     });
 
-    it('agenda a campanha com sucesso', async () => {
+    it('retorna 400 ao agendar sem confirmar consentimento (canal meta, 1ª vez)', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: null,
+      });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/schedule',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { scheduledAt: futureIso() },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(prisma.campanha.update).not.toHaveBeenCalled();
+    });
+
+    it('agenda a campanha com sucesso, confirmando consentimento pela 1ª vez', async () => {
       grantModuleAccess();
       const scheduledAt = futureIso();
-      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID });
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: null,
+      });
       (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
       (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled' });
 
@@ -603,7 +642,32 @@ describe('Agendamento (schedule/unschedule)', () => {
       const res = await app.inject({
         method: 'POST', url: '/modules/campanhas/c1/schedule',
         headers: { authorization: `Bearer ${token}` },
-        payload: { scheduledAt },
+        payload: { scheduledAt, confirmConsent: true },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(prisma.campanha.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: {
+          status: 'scheduled', scheduledAt: new Date(scheduledAt),
+          consentConfirmedAt: expect.any(Date), consentConfirmedIp: expect.anything(),
+        },
+      });
+    });
+
+    it('agenda sem pedir consentimento de novo quando já confirmado antes', async () => {
+      grantModuleAccess();
+      const scheduledAt = futureIso();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: new Date('2026-01-01'),
+      });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
+      (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled' });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/schedule',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { scheduledAt }, // sem confirmConsent — não deveria precisar
       });
       expect(res.statusCode).toBe(200);
       expect(prisma.campanha.update).toHaveBeenCalledWith({
@@ -737,7 +801,7 @@ describe('Canal Evolution (guardrails)', () => {
     });
   });
 
-  it('POST /:id/start — evolution sem acknowledgeRisk é rejeitado', async () => {
+  it('POST /:id/start — evolution sem confirmConsent é rejeitado', async () => {
     grantModuleAccess();
     (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
       id: 'c1', status: 'draft', channel: 'evolution', audienceCount: 2, whatsappNumberId: NUM_ID, consentConfirmedAt: null,
@@ -752,7 +816,7 @@ describe('Canal Evolution (guardrails)', () => {
     expect(campanhasQueue.addBulk).not.toHaveBeenCalled();
   });
 
-  it('POST /:id/start — evolution com acknowledgeRisk grava consentimento e espaça os jobs', async () => {
+  it('POST /:id/start — evolution com confirmConsent grava consentimento e espaça os jobs', async () => {
     grantModuleAccess();
     (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
       id: 'c1', status: 'draft', channel: 'evolution', audienceCount: 2, whatsappNumberId: NUM_ID,
@@ -766,7 +830,7 @@ describe('Canal Evolution (guardrails)', () => {
     const res = await app.inject({
       method: 'POST', url: '/modules/campanhas/c1/start',
       headers: { authorization: `Bearer ${token}` },
-      payload: { acknowledgeRisk: true },
+      payload: { confirmConsent: true },
     });
     expect(res.statusCode).toBe(200);
     expect(prisma.campanha.update).toHaveBeenCalledWith({

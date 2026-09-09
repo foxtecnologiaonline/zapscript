@@ -147,18 +147,21 @@ export function evolutionSendDelayMs(index: number, dailyLimit: number = EVOLUTI
 }
 
 /**
- * Confirmação de risco (canal evolution) — texto explícito de que o envio não é
- * pela API oficial e pode levar a Meta a banir o número do próprio usuário
- * (mesmo número que serve core/atende/copiloto). Guardrail deliberado, ver
- * CAMPANHAS_ARQUITETURA.md §8. Uma vez confirmado, fica salvo na campanha — não
- * pede de novo em pause/resume, só na primeira vez que ela é agendada ou iniciada.
+ * Confirmação de consentimento/risco antes do 1º agendamento ou início de uma
+ * campanha — em AMBOS os canais, com texto diferente por canal:
+ * - 'meta': consentimento de marketing (opt-in) sobre a lista importada — LGPD e
+ *   política de mensageria da Meta (ver CAMPANHAS_ARQUITETURA.md §3.4/§5.4).
+ * - 'evolution': risco de banimento do próprio número pelo WhatsApp (mesmo número
+ *   que serve core/atende/copiloto) — ver CAMPANHAS_ARQUITETURA.md §8.
+ * Uma vez confirmado, fica salvo na campanha (consentConfirmedAt/Ip) — não pede
+ * de novo em pause/resume, só na primeira vez que ela é agendada ou iniciada.
  */
-function requireRiskAcknowledgement(campanha: { channel: string; consentConfirmedAt: Date | null }, body: any): string | null {
-  if (campanha.channel !== 'evolution' || campanha.consentConfirmedAt) return null;
-  if (body?.acknowledgeRisk !== true) {
-    return 'Confirme que entende o risco de banimento do seu número pelo WhatsApp ao usar o canal Evolution (acknowledgeRisk: true).';
-  }
-  return null;
+function requireConsentAcknowledgement(campanha: { channel: string; consentConfirmedAt: Date | null }, body: any): string | null {
+  if (campanha.consentConfirmedAt) return null;
+  if (body?.confirmConsent === true) return null;
+  return campanha.channel === 'evolution'
+    ? 'Confirme que entende o risco de banimento do seu número pelo WhatsApp ao usar o canal Evolution (confirmConsent: true).'
+    : 'Confirme que tem consentimento (opt-in) destes contatos para campanhas de marketing, conforme LGPD e política da Meta (confirmConsent: true).';
 }
 
 export default async function campanhasRoutes(app: FastifyInstance) {
@@ -469,8 +472,8 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'A data agendada precisa estar no futuro.' });
     }
 
-    const riskError = requireRiskAcknowledgement(campanha, req.body);
-    if (riskError) return reply.code(400).send({ error: riskError });
+    const consentError = requireConsentAcknowledgement(campanha, req.body);
+    if (consentError) return reply.code(400).send({ error: consentError });
 
     const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
     if (!numberReadyToSend(whatsappNumber, campanha.channel)) {
@@ -485,7 +488,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       where: { id },
       data: {
         status: 'scheduled', scheduledAt,
-        ...(campanha.channel === 'evolution' && !campanha.consentConfirmedAt
+        ...(!campanha.consentConfirmedAt
           ? { consentConfirmedAt: new Date(), consentConfirmedIp: req.ip }
           : {}),
       },
@@ -522,8 +525,8 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Adicione contatos antes de iniciar a campanha.' });
     }
 
-    const riskError = requireRiskAcknowledgement(campanha, req.body);
-    if (riskError) return reply.code(400).send({ error: riskError });
+    const consentError = requireConsentAcknowledgement(campanha, req.body);
+    if (consentError) return reply.code(400).send({ error: consentError });
 
     const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
     if (!numberReadyToSend(whatsappNumber, campanha.channel)) {
@@ -546,7 +549,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       where: { id },
       data: {
         status: 'running', startedAt: campanha.startedAt ?? new Date(),
-        ...(campanha.channel === 'evolution' && !campanha.consentConfirmedAt
+        ...(!campanha.consentConfirmedAt
           ? { consentConfirmedAt: new Date(), consentConfirmedIp: req.ip }
           : {}),
       },

@@ -102,7 +102,7 @@ export default function CampanhaDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [scheduleAt, setScheduleAt] = useState('');
-  const [riskAcknowledged, setRiskAcknowledged] = useState(false);
+  const [consentAcknowledged, setConsentAcknowledged] = useState(false);
   const [importingConversas, setImportingConversas] = useState(false);
   const [importResult, setImportResult] = useState<FromConversasResult | null>(null);
 
@@ -170,8 +170,8 @@ export default function CampanhaDetailPage() {
     setActionLoading(true);
     setActionError(null);
     try {
-      const needsAck = action === 'start' && campanha?.channel === 'evolution' && !campanha?.consentConfirmedAt;
-      await api.post(`/modules/campanhas/${id}/${action}`, needsAck ? { acknowledgeRisk: riskAcknowledged } : {});
+      const needsAck = action === 'start' && !campanha?.consentConfirmedAt;
+      await api.post(`/modules/campanhas/${id}/${action}`, needsAck ? { confirmConsent: consentAcknowledged } : {});
       await loadCampanha();
     } catch (err: any) {
       setActionError(err?.message || 'Ação falhou.');
@@ -186,10 +186,10 @@ export default function CampanhaDetailPage() {
     setActionLoading(true);
     setActionError(null);
     try {
-      const needsAck = campanha?.channel === 'evolution' && !campanha?.consentConfirmedAt;
+      const needsAck = !campanha?.consentConfirmedAt;
       await api.post(`/modules/campanhas/${id}/schedule`, {
         scheduledAt: new Date(scheduleAt).toISOString(),
-        ...(needsAck ? { acknowledgeRisk: riskAcknowledged } : {}),
+        ...(needsAck ? { confirmConsent: consentAcknowledged } : {}),
       });
       setScheduleAt('');
       await loadCampanha();
@@ -344,7 +344,7 @@ export default function CampanhaDetailPage() {
                 onClick={() => runAction('start')}
                 disabled={
                   actionLoading || campanha.audienceCount === 0
-                  || (campanha.channel === 'evolution' && !campanha.consentConfirmedAt && !riskAcknowledged)
+                  || (!campanha.consentConfirmedAt && !consentAcknowledged)
                 }
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -442,13 +442,32 @@ export default function CampanhaDetailPage() {
               <label className="flex items-start gap-2 text-amber-100">
                 <input
                   type="checkbox"
-                  checked={riskAcknowledged}
-                  onChange={(e) => setRiskAcknowledged(e.target.checked)}
+                  checked={consentAcknowledged}
+                  onChange={(e) => setConsentAcknowledged(e.target.checked)}
                   className="mt-0.5"
                 />
                 <span>Entendo o risco de banimento e vou usar isso só com clientes que já falaram comigo.</span>
               </label>
             )}
+          </div>
+        )}
+
+        {campanha.status === 'draft' && campanha.channel !== 'evolution' && !campanha.consentConfirmedAt && (
+          <div className="mt-4 rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-200 space-y-3">
+            <p>
+              Antes de iniciar, confirme que você tem consentimento (opt-in) dos contatos desta
+              lista para receber mensagens de marketing — exigido pela LGPD e pela política da
+              Meta.
+            </p>
+            <label className="flex items-start gap-2 text-amber-100">
+              <input
+                type="checkbox"
+                checked={consentAcknowledged}
+                onChange={(e) => setConsentAcknowledged(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>Confirmo que tenho consentimento destes contatos para campanhas de marketing.</span>
+            </label>
           </div>
         )}
 
@@ -475,7 +494,7 @@ export default function CampanhaDetailPage() {
               type="submit"
               disabled={
                 actionLoading || !scheduleAt
-                || (campanha.channel === 'evolution' && !campanha.consentConfirmedAt && !riskAcknowledged)
+                || (!campanha.consentConfirmedAt && !consentAcknowledged)
               }
               className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
