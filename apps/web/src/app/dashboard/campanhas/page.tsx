@@ -109,6 +109,9 @@ export default function CampanhasListPage() {
           <Link href="/dashboard/campanhas/nova" className="btn-primary px-4 py-2 text-sm">
             + Nova campanha
           </Link>
+          <Link href="/dashboard/campanhas/listas" className="text-sm text-brand-text-secondary hover:text-brand-text">
+            📋 Minhas listas de números →
+          </Link>
           <Link href="/dashboard/campanhas/optouts" className="text-sm text-brand-text-secondary hover:text-brand-text">
             Ver opt-outs →
           </Link>

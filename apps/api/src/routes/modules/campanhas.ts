@@ -1,6 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma';
-import { validateRequest, createCampanhaSchema, scheduleCampanhaSchema, campanhaSequenceSchema } from '../../lib/validation';
+import {
+  validateRequest, createCampanhaSchema, scheduleCampanhaSchema, campanhaSequenceSchema,
+  createCampanhaListaSchema, updateCampanhaListaSchema, addCampanhaListaContatosSchema, applyCampanhaListaSchema,
+} from '../../lib/validation';
 import { decryptStr } from '../../services/encryption';
 import { listTemplates, getPhoneNumberLimits, tierToNumericCap, sendTemplateMessage } from '../../services/whatsapp-campaigns';
 import { sendText } from '../../services/evolution';
@@ -211,6 +214,10 @@ function parseCsv(text: string, delimiter: string): string[][] {
 
 async function ownedCampanha(userId: string, id: string) {
   return prisma.campanha.findFirst({ where: { id, userId } });
+}
+
+async function ownedLista(userId: string, id: string) {
+  return prisma.campanhaLista.findFirst({ where: { id, userId } });
 }
 
 /** Conexão válida pra disparar, nos dois canais (Meta exige token; Evolution exige instância). */
@@ -596,6 +603,169 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     return { numeros };
   });
 
+  // ── Listas de números — contatos salvos e reutilizáveis entre campanhas ──
+  // (fluxo "Nova campanha": passo 2, "escolher números", oferece uma lista já
+  // pronta em vez de sempre pedir upload de CSV do zero). Ver from-lista mais
+  // abaixo pra como uma lista é aplicada dentro de uma campanha.
+  app.get('/listas', auth, async (req: any) => {
+    const userId = req.user.sub;
+    const listas = await prisma.campanhaLista.findMany({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+      include: { _count: { select: { contatos: true } } },
+    });
+    return {
+      listas: listas.map((l: any) => ({
+        id: l.id, name: l.name, description: l.description,
+        contatosCount: l._count.contatos, createdAt: l.createdAt, updatedAt: l.updatedAt,
+      })),
+    };
+  });
+
+  app.post('/listas', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const v = validateRequest(createCampanhaListaSchema)(req.body);
+    if (!v.valid) return reply.code(400).send({ error: v.error });
+    const lista = await prisma.campanhaLista.create({
+      data: { userId, name: v.data.name, description: v.data.description || null },
+    });
+    return reply.code(201).send({ lista: { ...lista, contatosCount: 0 } });
+  });
+
+  app.get('/listas/:listaId', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { listaId } = req.params;
+    const lista = await ownedLista(userId, listaId);
+    if (!lista) return reply.code(404).send({ error: 'Lista não encontrada.' });
+    const [contatos, total] = await Promise.all([
+      prisma.campanhaListaContato.findMany({ where: { listaId }, orderBy: { createdAt: 'desc' }, take: 2000 }),
+      prisma.campanhaListaContato.count({ where: { listaId } }),
+    ]);
+    return { lista, contatos, total };
+  });
+
+  app.put('/listas/:listaId', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { listaId } = req.params;
+    const lista = await ownedLista(userId, listaId);
+    if (!lista) return reply.code(404).send({ error: 'Lista não encontrada.' });
+    const v = validateRequest(updateCampanhaListaSchema)(req.body);
+    if (!v.valid) return reply.code(400).send({ error: v.error });
+    const updated = await prisma.campanhaLista.update({
+      where: { id: listaId },
+      data: {
+        ...(v.data.name !== undefined ? { name: v.data.name } : {}),
+        ...(v.data.description !== undefined ? { description: v.data.description } : {}),
+      },
+    });
+    return { lista: updated };
+  });
+
+  app.delete('/listas/:listaId', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { listaId } = req.params;
+    const lista = await ownedLista(userId, listaId);
+    if (!lista) return reply.code(404).send({ error: 'Lista não encontrada.' });
+    await prisma.campanhaLista.delete({ where: { id: listaId } });
+    return reply.code(204).send();
+  });
+
+  // Upload de CSV (telefone,nome) — mesmo parser/validação do upload de contatos
+  // direto numa campanha, só que salvando na lista em vez de numa Campanha.
+  app.post('/listas/:listaId/contatos', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { listaId } = req.params;
+    const lista = await ownedLista(userId, listaId);
+    if (!lista) return reply.code(404).send({ error: 'Lista não encontrada.' });
+
+    let csvText: string | null = null;
+    for await (const part of req.parts()) {
+      if (part.type === 'file' && part.fieldname === 'file') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of part.file) chunks.push(chunk);
+        const buffer = Buffer.concat(chunks);
+        if (buffer.length > 5 * 1024 * 1024) {
+          return reply.code(400).send({ error: 'Arquivo muito grande (máx 5MB).' });
+        }
+        csvText = buffer.toString('utf-8');
+      }
+    }
+    if (!csvText) return reply.code(400).send({ error: 'Envie um arquivo CSV no campo "file".' });
+
+    const delimiter = detectDelimiter(csvText);
+    const rows = parseCsv(csvText, delimiter);
+    if (rows.length === 0) return reply.code(400).send({ error: 'CSV vazio.' });
+    const dataRows = PHONE_LIKE.test(rows[0][0] || '') ? rows : rows.slice(1);
+    if (dataRows.length === 0) return reply.code(400).send({ error: 'Nenhum contato encontrado no CSV.' });
+
+    const existing = await prisma.campanhaListaContato.findMany({ where: { listaId }, select: { phone: true } });
+    const existingSet = new Set(existing.map((e: any) => e.phone));
+
+    const seen = new Set<string>();
+    let skippedInvalid = 0;
+    let skippedDuplicate = 0;
+    const toCreate: { listaId: string; phone: string; name: string | null }[] = [];
+    for (const row of dataRows) {
+      const rawPhone = row[0] || '';
+      if (!PHONE_LIKE.test(rawPhone)) { skippedInvalid++; continue; }
+      const phone = normalizePhone(rawPhone);
+      if (phone.length < 12 || phone.length > 15) { skippedInvalid++; continue; }
+      if (existingSet.has(phone) || seen.has(phone)) { skippedDuplicate++; continue; }
+      seen.add(phone);
+      toCreate.push({ listaId, phone, name: row[1]?.trim() || null });
+    }
+
+    if (toCreate.length > 0) {
+      await prisma.campanhaListaContato.createMany({ data: toCreate });
+      await prisma.campanhaLista.update({ where: { id: listaId }, data: { updatedAt: new Date() } });
+    }
+
+    return reply.send({ imported: toCreate.length, skippedInvalid, skippedDuplicate });
+  });
+
+  // Colar números direto (textarea no front, já parseado em {phone,name}[]) —
+  // alternativa ao CSV pra listas pequenas/rápidas.
+  app.post('/listas/:listaId/contatos/manual', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { listaId } = req.params;
+    const lista = await ownedLista(userId, listaId);
+    if (!lista) return reply.code(404).send({ error: 'Lista não encontrada.' });
+    const v = validateRequest(addCampanhaListaContatosSchema)(req.body);
+    if (!v.valid) return reply.code(400).send({ error: v.error });
+
+    const existing = await prisma.campanhaListaContato.findMany({ where: { listaId }, select: { phone: true } });
+    const existingSet = new Set(existing.map((e: any) => e.phone));
+
+    const seen = new Set<string>();
+    let skippedInvalid = 0;
+    let skippedDuplicate = 0;
+    const toCreate: { listaId: string; phone: string; name: string | null }[] = [];
+    for (const c of v.data.contatos) {
+      if (!PHONE_LIKE.test(c.phone)) { skippedInvalid++; continue; }
+      const phone = normalizePhone(c.phone);
+      if (phone.length < 12 || phone.length > 15) { skippedInvalid++; continue; }
+      if (existingSet.has(phone) || seen.has(phone)) { skippedDuplicate++; continue; }
+      seen.add(phone);
+      toCreate.push({ listaId, phone, name: c.name?.trim() || null });
+    }
+
+    if (toCreate.length > 0) {
+      await prisma.campanhaListaContato.createMany({ data: toCreate });
+      await prisma.campanhaLista.update({ where: { id: listaId }, data: { updatedAt: new Date() } });
+    }
+
+    return reply.send({ imported: toCreate.length, skippedInvalid, skippedDuplicate });
+  });
+
+  app.delete('/listas/:listaId/contatos/:contatoId', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { listaId, contatoId } = req.params;
+    const lista = await ownedLista(userId, listaId);
+    if (!lista) return reply.code(404).send({ error: 'Lista não encontrada.' });
+    await prisma.campanhaListaContato.deleteMany({ where: { id: contatoId, listaId } });
+    return reply.code(204).send();
+  });
+
   // ── POST / — cria campanha (rascunho) ────────────────────────────────────
   app.post('/', auth, async (req: any, reply) => {
     const userId = req.user.sub;
@@ -875,6 +1045,76 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     return reply.send({
       imported: toCreate.length, skippedOptOut, skippedDuplicate, skippedCold,
       elegiveis: crmContacts.length,
+    });
+  });
+
+  // ── POST /:id/contatos/from-lista — aplica uma lista salva à campanha ────
+  // Copia os números da CampanhaLista pra CampanhaContato (mesmas checagens de
+  // opt-out/duplicata/tag-quente do Evolution que from-crm já faz) — editar a
+  // lista depois não afeta campanhas que já a usaram.
+  app.post('/:id/contatos/from-lista', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { id } = req.params;
+    const campanha = await ownedCampanha(userId, id);
+    if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+    if (campanha.status !== 'draft') {
+      return reply.code(400).send({ error: 'Só é possível adicionar contatos a campanhas em rascunho.' });
+    }
+    const v = validateRequest(applyCampanhaListaSchema)(req.body);
+    if (!v.valid) return reply.code(400).send({ error: v.error });
+
+    const lista = await ownedLista(userId, v.data.listaId);
+    if (!lista) return reply.code(404).send({ error: 'Lista não encontrada.' });
+
+    if (campanha.channel === 'meta' && campanha.templateVarCount) {
+      return reply.code(400).send({
+        error: `Este template exige ${campanha.templateVarCount} variável(is) — listas salvas não preenchem `
+          + `variáveis automaticamente. Use o upload de CSV pra esse template.`,
+      });
+    }
+
+    const listaContatos = await prisma.campanhaListaContato.findMany({
+      where: { listaId: lista.id },
+      select: { phone: true, name: true },
+    });
+    const candidates = new Map<string, string | null>();
+    for (const c of listaContatos) candidates.set(c.phone, c.name ?? null);
+
+    let skippedCold = 0;
+    if (campanha.channel === 'evolution') {
+      const warm = await warmContactsForNumber(campanha.whatsappNumberId);
+      for (const phone of Array.from(candidates.keys())) {
+        if (!warm.has(phone)) { candidates.delete(phone); skippedCold++; }
+      }
+    }
+
+    const [optOuts, existing] = await Promise.all([
+      prisma.campanhaOptOut.findMany({ where: { userId }, select: { phone: true } }),
+      prisma.campanhaContato.findMany({ where: { campanhaId: id }, select: { phone: true } }),
+    ]);
+    const optOutSet   = new Set(optOuts.map((o: any) => o.phone));
+    const existingSet = new Set(existing.map((e: any) => e.phone));
+
+    let skippedOptOut = 0;
+    let skippedDuplicate = 0;
+    const toCreate: { campanhaId: string; phone: string; name: string | null; variant?: string }[] = [];
+    for (const [phone, name] of candidates) {
+      if (optOutSet.has(phone)) { skippedOptOut++; continue; }
+      if (existingSet.has(phone)) { skippedDuplicate++; continue; }
+      toCreate.push({ campanhaId: id, phone, name, variant: campanha.abTestEnabled ? (toCreate.length % 2 === 0 ? 'A' : 'B') : undefined });
+    }
+
+    if (toCreate.length > 0) {
+      await prisma.campanhaContato.createMany({ data: toCreate });
+      await prisma.campanha.update({
+        where: { id },
+        data: { audienceCount: { increment: toCreate.length } },
+      });
+    }
+
+    return reply.send({
+      imported: toCreate.length, skippedOptOut, skippedDuplicate, skippedCold,
+      elegiveis: listaContatos.length,
     });
   });
 

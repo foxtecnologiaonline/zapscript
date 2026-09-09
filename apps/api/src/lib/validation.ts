@@ -379,6 +379,26 @@ export const campanhaSequenceSchema = z.object({
   steps: z.array(campanhaSequenceStepSchema).min(1, 'Informe ao menos 1 passo').max(5, 'Máximo de 5 passos'),
 });
 
+// ── Listas de números (contatos salvos e reutilizáveis entre campanhas) ────
+export const createCampanhaListaSchema = z.object({
+  name:        z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+  description: z.string().max(300).optional(),
+});
+export const updateCampanhaListaSchema = z.object({
+  name:        z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100).optional(),
+  description: z.string().max(300).nullable().optional(),
+});
+const listaContatoManualSchema = z.object({
+  phone: z.string().min(8, 'Telefone inválido').max(20),
+  name:  z.string().max(100).optional(),
+});
+export const addCampanhaListaContatosSchema = z.object({
+  contatos: z.array(listaContatoManualSchema).min(1, 'Informe ao menos 1 número').max(5000),
+});
+export const applyCampanhaListaSchema = z.object({
+  listaId: z.string().cuid('Lista inválida'),
+});
+
 // ── API pública (tier Empresas) ────────────────────────────
 export const createApiKeySchema = z.object({
   name:   z.string().min(2, 'Nome precisa ter pelo menos 2 caracteres').max(60),
