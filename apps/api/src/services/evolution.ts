@@ -133,6 +133,33 @@ export async function getConnectionState(name: string): Promise<'open' | 'close'
 }
 
 /**
+ * Força a instância a reabrir o socket usando as credenciais de sessão já
+ * salvas (auth state do Baileys) — NÃO gera QR novo e não é um "novo login".
+ * Cobre o caso comum de socket caído por instabilidade momentânea (rede,
+ * restart do container Evolution, etc.) sem depender de ação do usuário.
+ *
+ * Se o WhatsApp tiver de fato invalidado a sessão (logout pelo celular,
+ * banimento, "conflito" com outro dispositivo), isso NÃO resolve — é uma
+ * limitação do próprio WhatsApp (Baileys/multi-device), não nossa: só um
+ * novo QR Code/código de pareamento, escaneado pelo usuário, resolve nesse
+ * caso. O chamador deve reconferir o estado após o restart e, se continuar
+ * fechado, tratar como desconexão real (ver health-monitor.ts checkWhatsApp).
+ */
+export async function restartInstance(name: string): Promise<boolean> {
+  try {
+    const base = evolutionBaseUrl();
+    const res = await fetch(`${base}/instance/restart/${name}`, {
+      method:  'PUT',
+      headers: evolutionHeaders(),
+      signal:  AbortSignal.timeout(15_000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Re-aplica webhooks em uma instância existente.
  * Útil após restart do servidor para garantir que Evolution sabe para onde enviar eventos.
  */
