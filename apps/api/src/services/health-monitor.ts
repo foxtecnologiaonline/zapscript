@@ -1,7 +1,7 @@
 import { Queue } from 'bullmq';
 import { redis } from './queue';
 import { prisma } from '../lib/prisma';
-import { getConnectionState, sendText } from './evolution';
+import { getConnectionState, restartInstance, sendText } from './evolution';
 
 // ── Configuração ──────────────────────────────────────────────────────────────
 const INTERVAL_MS  = 60 * 60 * 1000;  // 1 hora
@@ -159,17 +159,52 @@ async function checkWhatsApp(): Promise<
       suggestions.push('Acessar Meu Número no dashboard e conectar o WhatsApp via QR Code ou código de pareamento');
     }
 
-    // Verificar mismatch DB vs Evolution real (apenas os "connected" no banco)
-    // Nota: mismatch é log-only — não vira alerta WhatsApp pois pode ser instabilidade momentânea
+    // Verificar mismatch DB vs Evolution real (apenas os "connected" no banco).
+    // 'connecting' e null (timeout/rede) são inconclusivos — não mexe, evita
+    // falso positivo por instabilidade momentânea (mesmo princípio do heartbeat).
+    // Só 'close' é tratado como problema real: primeiro tenta reconectar sozinho
+    // (restartInstance reabre o socket com a sessão já salva, sem QR novo); só
+    // vira alerta de verdade + correção de status no banco se o restart não
+    // resolver — nesse ponto é muito provável que a sessão do WhatsApp foi
+    // encerrada de fato (logout/banimento/conflito) e só um novo QR/pareamento,
+    // feito pelo usuário, resolve — isso é uma garantia do próprio WhatsApp
+    // (Baileys/multi-device), não uma limitação nossa que dê pra automatizar.
     const connectedNumbers = numbers.filter((n: any) => n.status === 'connected');
     for (const n of connectedNumbers) {
       try {
         const state = await getConnectionState(n.zapiInstanceId);
-        if (state !== 'open') {
+        if (state === 'open') continue;
+        if (state !== 'close') {
+          // 'connecting' ou null — inconclusivo, só registra, sem ação
           mismatches.push({ id: n.id, phoneNumber: n.phoneNumber, evolutionState: state });
-          // NÃO adiciona a alertMsgs — mismatch resolve via webhook connection.update automaticamente
-          // NÃO desconectar automaticamente — desconexão real vem via webhook (connection.update)
+          continue;
         }
+
+        // state === 'close' → tenta reconectar sozinho antes de alertar
+        const restarted = await restartInstance(n.zapiInstanceId).catch(() => false);
+        if (restarted) {
+          await new Promise(r => setTimeout(r, 5_000)); // dá tempo do Baileys reabrir o socket
+          const stateAfter = await getConnectionState(n.zapiInstanceId);
+          if (stateAfter === 'open') {
+            mismatches.push({ id: n.id, phoneNumber: n.phoneNumber, evolutionState: state, autoRecovered: true });
+            continue; // resolvido sozinho — sem alerta
+          }
+        }
+
+        // Restart não resolveu (ou falhou) — desconexão real. Corrige o status
+        // no banco (evita o dashboard mostrar "conectado" quando não está) e
+        // alerta de verdade, com ação clara pro usuário.
+        mismatches.push({ id: n.id, phoneNumber: n.phoneNumber, evolutionState: state, autoRecovered: false });
+        alertMsgs.push(
+          `🔴 WhatsApp desconectado de fato: número ${n.phoneNumber || n.id} (usuário ${n.userId}) estava 'connected' no banco mas a Evolution API reporta '${state}' — reconexão automática não resolveu`
+        );
+        suggestions.push(
+          `Número ${n.phoneNumber || n.id} (usuário ${n.userId}): provavelmente a sessão do WhatsApp foi encerrada (logout pelo celular, conflito com outro dispositivo, ou banimento) — só um novo QR Code/código de pareamento no painel resolve, precisa ser feito pelo usuário`
+        );
+        await prisma.whatsappNumber.update({
+          where: { id: n.id },
+          data:  { status: 'disconnected' },
+        }).catch(() => null);
       } catch (e: any) {
         mismatches.push({ id: n.id, phoneNumber: n.phoneNumber, error: e.message });
       }
@@ -209,7 +244,30 @@ async function checkWorker(queue: QueueCounts): Promise<
       suggestions.push(`Alta taxa de processamento (${recentProcessed} conversões/2h) — considerar aumentar concurrency para 3 se RAM < 70%`);
     }
 
-    return { ok: !workerStalled, recentProcessed, note, alertMsgs, suggestions };
+    // Blind spot descoberto em produção (2026-09-09, ~13h30 sem nenhuma conversão):
+    // quando os jobs de áudio nem chegam a ENTRAR na fila (0 waiting, 0 failed —
+    // ex: webhook não entrega, ou algo falha antes do transcriptionQueue.add), o
+    // alerta de "worker travado" acima nunca dispara — a fila "vazia" parece
+    // saudável. Checa direto pelo sintoma que interessa: silêncio prolongado de
+    // conversões apesar de haver número WhatsApp conectado, independente do
+    // estado da fila BullMQ.
+    const STALE_HOURS = parseInt(process.env.WORKER_STALE_HOURS || '3', 10);
+    const staleSince = new Date(Date.now() - STALE_HOURS * 60 * 60 * 1000);
+    const [connectedCount, processedInStaleWindow] = await Promise.all([
+      prisma.whatsappNumber.count({ where: { status: 'connected' } }),
+      prisma.transcription.count({ where: { createdAt: { gte: staleSince } } }),
+    ]);
+    const conversionSilent = !workerStalled && connectedCount > 0 && processedInStaleWindow === 0;
+    if (conversionSilent) {
+      alertMsgs.push(
+        `🔴 Nenhuma conversão nas últimas ${STALE_HOURS}h apesar de ${connectedCount} número(s) WhatsApp conectado(s) — fila BullMQ vazia (não é cota nem travamento de worker), então o áudio provavelmente não está chegando na fila`
+      );
+      suggestions.push(
+        'Mandar um áudio de teste pro próprio número conectado e observar os logs do worker no servidor em tempo real — se nada aparecer, o problema é upstream (webhook da Evolution não entregando o evento de áudio), não o worker'
+      );
+    }
+
+    return { ok: !workerStalled && !conversionSilent, recentProcessed, note, alertMsgs, suggestions };
   } catch (e: any) {
     return { ok: false, recentProcessed: 0, note: `Erro: ${e.message}`, alertMsgs: [], suggestions };
   }
