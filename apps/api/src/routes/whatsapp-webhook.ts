@@ -161,7 +161,50 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
       // ─────────────────────────────────
       // Processar mensagens recebidas
       // ─────────────────────────────────
-      for (const msg of messages) {
+      if (messages.length > 0) {
+        // Resolve o dono da conta Business UMA vez por webhook — metadata é o mesmo
+        // para todas as mensagens do lote, então reconsultar por mensagem era redundante.
+        //
+        // Preferência por metaPhoneNumberId (ID atribuído pela própria Meta — único por
+        // natureza, ver @unique em schema.prisma) em vez de phoneNumber (string exibível,
+        // que só passou a ter constraint única por provider='meta' na migration
+        // 20260909_whatsappnumber_meta_unique). Isso evita que o webhook atribua
+        // mensagem/status/opt-out de campanha ao tenant errado caso existam linhas
+        // legadas duplicadas — ver CAMPANHAS_ARQUITETURA.md §7.6. O fallback por
+        // phoneNumber fica só para linhas antigas sem metaPhoneNumberId preenchido,
+        // priorizando a conexão 'connected' mais recente como desempate.
+        const businessPhoneNumberId = value.metadata?.phone_number_id as string | undefined;
+        const cleanBusiness = businessPhone?.replace(/\D/g, '');
+
+        let whatsappNumber = businessPhoneNumberId
+          ? await prisma.whatsappNumber.findFirst({
+              where: { metaPhoneNumberId: businessPhoneNumberId, provider: 'meta' },
+              include: { user: true },
+            })
+          : null;
+
+        if (!whatsappNumber && cleanBusiness) {
+          whatsappNumber =
+            (await prisma.whatsappNumber.findFirst({
+              where: { phoneNumber: cleanBusiness, provider: 'meta', status: 'connected' },
+              orderBy: { connectedAt: 'desc' },
+              include: { user: true },
+            })) ||
+            (await prisma.whatsappNumber.findFirst({
+              where: { phoneNumber: cleanBusiness, provider: 'meta' },
+              orderBy: { updatedAt: 'desc' },
+              include: { user: true },
+            }));
+        }
+
+        if (!whatsappNumber) {
+          app.log.warn(`[WhatsApp] Conta Business ${businessPhone} (phone_number_id=${businessPhoneNumberId}) não registrada no sistema — mensagens do lote ignoradas`);
+          return;
+        }
+
+        const userId = whatsappNumber.userId;
+
+        for (const msg of messages) {
         const senderPhone = msg.from;
         const messageId   = msg.id;
 
@@ -169,25 +212,6 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
         const senderName = contact?.profile?.name || senderPhone;
 
         app.log.info(`[WhatsApp] Mensagem de ${senderName} (${senderPhone}) - tipo: ${msg.type}`);
-
-        // Encontrar conta do usuário pelo número Business que recebeu a mensagem
-        const cleanBusiness = businessPhone?.replace(/\D/g, '');
-        if (!cleanBusiness) {
-          app.log.warn('[WhatsApp] display_phone_number ausente no webhook — mensagem ignorada');
-          return;
-        }
-
-        const whatsappNumber = await prisma.whatsappNumber.findFirst({
-          where: { phoneNumber: cleanBusiness },
-          include: { user: true },
-        });
-
-        if (!whatsappNumber) {
-          app.log.warn(`[WhatsApp] Conta Business ${businessPhone} não registrada no sistema`);
-          return;
-        }
-
-        const userId = whatsappNumber.userId;
 
         // ─────────────────────────────────
         // Processar áudio
@@ -325,6 +349,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
           } catch (err: any) {
             app.log.error({ err: err.message }, '[WhatsApp] Erro ao marcar documento como lido');
           }
+        }
         }
       }
     } catch (error: any) {

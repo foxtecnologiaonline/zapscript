@@ -6,7 +6,8 @@
 > especificação técnica concreta dos itens de maior risco, no formato de
 > `MODULOS_ARQUITETURA.md`/`PLATAFORMA_BASE.md`.
 
-Data: 2026-09-09 (revisão 3 — auditoria de segurança aplicada) · Branch: `claude/laughing-ritchie-3n4vj1`
+Data: 2026-09-09 (revisão 4 — correção aplicada e verificada em produção) · Branch:
+`claude/laughing-ritchie-3n4vj1`
 
 ## TL;DR
 
@@ -14,6 +15,11 @@ Data: 2026-09-09 (revisão 3 — auditoria de segurança aplicada) · Branch: `c
   pré-aprovado — a única via legal pós-fechamento de bots não autorizados (política Meta
   dez/2025). Fluxo completo (CSV → agendamento/disparo → status de entrega → opt-out) já
   funciona e é bem construído (idempotência, dedupe, isolamento por tenant).
+- **Achado de produção (revisão 4):** consultei o banco real — `Campanha`, `CampanhaContato`,
+  `CampanhaOptOut` e `WhatsappNumber(provider='meta')` estão todos com **0 registros**. O
+  módulo está pronto e "bundled" no catálogo, mas nenhum cliente conectou um número Meta ainda.
+  Isso não muda nenhuma recomendação abaixo — só o contexto: é a janela ideal para aplicar
+  correções de schema sem custo de migração de dados.
 - **Risco nº 1 (P0):** o módulo não sabe quantos contatos o número do cliente pode alcançar
   em 24h nem o `quality_rating` dele — uma campanha grande pode simplesmente ser rejeitada em
   massa pela Meta, e o único mecanismo de proteção hoje é um teto artificial de 10 msg/s
@@ -329,15 +335,53 @@ partir do próximo boot o log de erro de §7.3 some sozinho — sinal de que est
   acumula a parte `fieldname === 'file'`, então partes extras do multipart não consomem
   memória além do necessário.
 
-### 7.6 Risco pré-existente, fora do escopo de Campanhas, mas que a afeta
+### 7.6 [CORRIGIDO] Ambiguidade de dono no lookup do webhook — verificado e resolvido
 
-`whatsapp-webhook.ts` resolve o dono da mensagem por
-`prisma.whatsappNumber.findFirst({ where: { phoneNumber: cleanBusiness } })` — sem filtrar por
-`provider: 'meta'` e sem que `phoneNumber` tenha uma constraint `@unique` no schema. Se dois
-registros de `WhatsappNumber` (de usuários diferentes, ou um resíduo de teste) acabarem com o
-mesmo valor de `phoneNumber`, o webhook atribuiria a mensagem/opt-out ao registro errado — não
-é uma vulnerabilidade introduzida por Campanhas, mas o opt-out e o status de entrega de
-campanha dependem diretamente desse `userId` estar certo. Vale um `@@unique([phoneNumber,
-provider])` (ou globalmente, se o negócio garantir que nunca há dois clientes com o mesmo
-número) numa migration futura — fora do escopo desta revisão por afetar todo o app, não só
-Campanhas.
+**Verificação em produção (read-only, antes de decidir a solução):** consultei o banco real
+(Supabase, projeto `ZapScript`) para saber se isso já era um problema real ou só teórico:
+
+```sql
+SELECT "phoneNumber", provider, count(*), array_agg(DISTINCT "userId")
+FROM "WhatsappNumber" WHERE "phoneNumber" <> 'pending'
+GROUP BY "phoneNumber", provider HAVING count(*) > 1;
+```
+
+Resultado: **1 duplicata**, `provider='evolution'`, e as 2 linhas são do **mesmo** `userId`
+(não é colisão entre tenants). Mais revelador: `provider='meta'` tem **zero linhas no total**
+hoje — ou seja, **nenhum cliente conectou um número Meta em produção ainda**, e por consequência
+`Campanha`, `CampanhaContato` e `CampanhaOptOut` também estão todos com **0 registros**. O
+módulo está com o código pronto e "bundled" no catálogo, mas **ainda não foi usado de verdade**
+— o que muda a urgência (não havia dado real em risco), mas não a correção do problema (o bug
+existiria assim que o primeiro cliente conectasse um número).
+
+**Melhor solução escolhida (e por quê não foi a primeira ideia):** minha sugestão inicial —
+`@@unique([phoneNumber, provider])` — foi descartada ao revisar com calma: `phoneNumber` tem
+`@default("pending")`, ou seja, **toda** linha ainda não conectada compartilha esse valor
+literal — uma constraint única "crua" quebraria qualquer usuário com mais de um número pendente
+de conexão. A solução correta usa a chave que já existe e é naturalmente única — o
+**`metaPhoneNumberId`**, o ID que a própria Meta atribui ao número (não uma string exibível
+formatável de várias formas) — em vez de tentar forçar unicidade sobre `phoneNumber`.
+
+**Aplicado nesta revisão:**
+1. `schema.prisma`: `metaPhoneNumberId` agora é `@unique` (seguro com múltiplos `NULL` — Postgres
+   não trata `NULL = NULL`, então as linhas `evolution`, sempre `NULL` nesse campo, não são
+   afetadas).
+2. Migration `20260909_whatsappnumber_meta_unique`: índice único parcial (`WHERE provider =
+   'meta' AND "phoneNumber" <> 'pending'`) sobre `phoneNumber` — não representável no DSL do
+   Prisma, por isso vive só na migration. Confirmado limpo contra os dados atuais (zero linhas
+   `meta`), entra sem necessidade de cleanup.
+3. `whatsapp-webhook.ts`: o lookup do dono da mensagem agora prioriza `metaPhoneNumberId` (do
+   campo `value.metadata.phone_number_id` que a Meta já manda no payload e que o código
+   simplesmente não usava) em vez de `phoneNumber`; fallback por `phoneNumber` só para linhas
+   legadas sem o ID preenchido, agora filtrado por `provider: 'meta'` e desempatado por
+   conexão mais recente. Como consequência, também corrige a mesma ambiguidade para
+   transcrição de áudio e demais tipos de mensagem — não só para opt-out de campanha, já que
+   é a mesma resolução de dono usada pelos três. De brinde, a consulta que antes rodava uma
+   vez **por mensagem** do lote passou a rodar uma vez por webhook (lote geralmente tem 1
+   mensagem, mas era uma query redundante em lotes maiores).
+
+**Validado:** `tsc --noEmit` limpo, suíte `campanhas.test.ts` (34/34) passando após a mudança.
+
+**Pendente de você:** a migration está no repo, mas só entra em produção no próximo deploy
+manual da API (`ops.yml`, `action=deploy`, per `CLAUDE.md`) — `prisma migrate deploy` aplica
+sozinho no boot. Não disparei o deploy; avise quando quiser que eu dispare.

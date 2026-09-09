@@ -152,7 +152,14 @@ model WhatsappNumber {
   // Usado apenas para o fluxo de App Review da Meta. Usuários reais seguem no Evolution.
   provider            String               @default("evolution") // 'evolution' | 'meta'
   metaWabaId          String? // WhatsApp Business Account ID
-  metaPhoneNumberId   String? // Phone Number ID (Cloud API)
+  // ID do número atribuído pela própria Meta (Cloud API) — chave estável e globalmente
+  // única, ao contrário de `phoneNumber` (string exibível, sem garantia de unicidade).
+  // @unique aqui é seguro com múltiplos NULL (Postgres não considera NULL = NULL).
+  // O webhook oficial (routes/whatsapp-webhook.ts) resolve o dono da mensagem por este
+  // campo em vez de `phoneNumber`, evitando colisão entre tenants — ver
+  // CAMPANHAS_ARQUITETURA.md §7.6. Constraint adicional (parcial, provider='meta') sobre
+  // `phoneNumber` vive fora do DSL do Prisma — ver migration 20260909_whatsappnumber_meta_unique.
+  metaPhoneNumberId   String?              @unique // Phone Number ID (Cloud API)
   metaBusinessId      String? // Business Manager ID
   metaAccessTokenEnc  String? // Token de acesso AES-256-GCM (encryptStr)
   metaTokenExpiresAt  DateTime? // Expiração do token (se aplicável)
