@@ -51,7 +51,7 @@ export async function registerCampanhaOptOut(userId: string, rawPhone: string, k
  * (ver CAMPANHAS_ARQUITETURA.md §8): só quem já tem relação com o número, reduzindo
  * o padrão de "spam pra desconhecido" que o WhatsApp mais penaliza.
  */
-async function warmContactsForNumber(numberId: string): Promise<Map<string, string | null>> {
+export async function warmContactsForNumber(numberId: string): Promise<Map<string, string | null>> {
   const [transcricoes, atende, copiloto] = await Promise.all([
     prisma.transcription.findMany({
       where: { numberId, source: 'whatsapp' },
@@ -159,6 +159,33 @@ function requireRiskAcknowledgement(campanha: { channel: string; consentConfirme
     return 'Confirme que entende o risco de banimento do seu número pelo WhatsApp ao usar o canal Evolution (acknowledgeRisk: true).';
   }
   return null;
+}
+
+/**
+ * Enfileira o disparo dos contatos 'pending' de uma campanha (jobId
+ * determinístico campanhaId:contatoId — reenviar não duplica jobs em voo).
+ * Extraído de POST /:id/start pra ser reaproveitado pelo Chatbot Campanhas
+ * (services/campanhas-chat-commands.ts), que cria e dispara campanhas sem
+ * passar pela rota HTTP.
+ */
+export async function enqueueCampanhaSend(campanhaId: string, channel: string): Promise<number> {
+  const pendentes = await prisma.campanhaContato.findMany({
+    where: { campanhaId, status: 'pending' },
+    select: { id: true },
+  });
+  if (pendentes.length === 0) return 0;
+
+  await campanhasQueue.addBulk(
+    pendentes.map((p: any, i: number) => ({
+      name: 'send',
+      data: { campanhaId, contatoId: p.id },
+      opts: {
+        jobId: `${campanhaId}:${p.id}`,
+        ...(channel === 'evolution' ? { delay: evolutionSendDelayMs(i) } : {}),
+      },
+    })),
+  );
+  return pendentes.length;
 }
 
 export default async function campanhasRoutes(app: FastifyInstance) {
@@ -534,11 +561,8 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       });
     }
 
-    const pendentes = await prisma.campanhaContato.findMany({
-      where: { campanhaId: id, status: 'pending' },
-      select: { id: true },
-    });
-    if (pendentes.length === 0) {
+    const pendingCount = await prisma.campanhaContato.count({ where: { campanhaId: id, status: 'pending' } });
+    if (pendingCount === 0) {
       return reply.code(400).send({ error: 'Nenhum contato pendente de envio nesta campanha.' });
     }
 
@@ -552,21 +576,11 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       },
     });
 
-    // jobId determinístico (campanhaId:contatoId) — reenviar /start não duplica jobs em voo.
     // Canal evolution: delay crescente + jitter (evolutionSendDelayMs) — ritmo lento
     // e "humano" em vez do disparo imediato em lote do canal Meta.
-    await campanhasQueue.addBulk(
-      pendentes.map((p: any, i: number) => ({
-        name: 'send',
-        data: { campanhaId: id, contatoId: p.id },
-        opts: {
-          jobId: `${id}:${p.id}`,
-          ...(campanha.channel === 'evolution' ? { delay: evolutionSendDelayMs(i) } : {}),
-        },
-      })),
-    );
+    const enqueued = await enqueueCampanhaSend(id, campanha.channel);
 
-    return reply.send({ ok: true, enqueued: pendentes.length });
+    return reply.send({ ok: true, enqueued });
   });
 
   // ── POST /:id/pause — pausa campanha em execução ─────────────────────────

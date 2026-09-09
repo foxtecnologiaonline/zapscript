@@ -12,6 +12,7 @@ import {
 } from '../services/copiloto-commands';
 import { ingestCopilotoGroupMessage } from '../services/copiloto-groups';
 import { OPT_OUT_KEYWORDS, registerCampanhaOptOut } from './modules/campanhas';
+import { isCampanhaChatCommand, handleCampanhaChatCommand, handleCampanhaChatReply } from '../services/campanhas-chat-commands';
 import { io } from '../index';
 
 // Módulo Cobrança (#6): heurística leve p/ detectar cliente avisando que já
@@ -478,6 +479,32 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
                 log.info(`[Evolution] 🛠️ Comando "atende" ignorado — módulo não contratado (número ${number!.id})`);
               }
               return;
+            }
+
+            // ── Chatbot Campanhas: comando do dono via self-chat ("campanha ...")
+            // e continuação de um fluxo em andamento (sem prefixo, só quando há
+            // CampanhaChatSession ativa) — checado ANTES do Copiloto pra não deixar
+            // a interpretação numérica dele (respostas "1"/"2" a um briefing)
+            // sequestrar uma resposta que na verdade é do fluxo de Campanhas.
+            if (isSelfChat) {
+              const campanhaCtx = {
+                userId: number!.userId, numberId: number!.id,
+                instanceName: instName, selfPhone: senderPhone, text: messageText,
+              };
+              if (isCampanhaChatCommand(messageText)) {
+                await handleCampanhaChatCommand(campanhaCtx).catch((err: any) =>
+                  log.error({ err: err?.message }, '[Campanhas] Falha no comando do dono'));
+                log.info(`[Evolution] 📣 Comando do dono processado (Campanhas, número ${number!.id})`);
+                return;
+              }
+              const campanhaHandled = await handleCampanhaChatReply(campanhaCtx).catch((err: any) => {
+                log.error({ err: err?.message }, '[Campanhas] Falha ao processar resposta do dono');
+                return false;
+              });
+              if (campanhaHandled) {
+                log.info(`[Evolution] 📣 Resposta do dono processada (Campanhas, número ${number!.id})`);
+                return;
+              }
             }
 
             // ── Copiloto: o dono respondendo no self-chat ────────────────────

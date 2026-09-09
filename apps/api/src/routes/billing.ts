@@ -462,6 +462,101 @@ function buildHolderInfo(user: any, card: { document?: string } | undefined, bil
   };
 }
 
+/* ── Chatbot Campanhas: compra de saldo de mensagens ──────────────────────
+   Extraído das rotas HTTP (abaixo) pra ser reaproveitado também pelo bot
+   (services/campanhas-chat-commands.ts) sem chamada HTTP interna — o bot
+   roda server-side, dentro do próprio processo da API. Pix apenas: nem o
+   painel web nem o chat mandam formulário de cartão por aqui. ── */
+async function resolveAsaasCustomerId(userId: string, user: { email: string; name: string | null }): Promise<string> {
+  const [coreSub, campBalance] = await Promise.all([
+    prisma.subscription.findUnique({ where: { userId } }),
+    prisma.campanhaBalance.findUnique({ where: { userId } }),
+  ]);
+  if (coreSub?.asaasCustomerId) return coreSub.asaasCustomerId;
+  if (campBalance?.asaasCustomerId) return campBalance.asaasCustomerId;
+
+  const custRes = await asaas('/customers', {
+    method: 'POST',
+    body:   JSON.stringify({ name: user.name || user.email, email: user.email, externalReference: userId }),
+  }).then(r => r.json()) as any;
+  return custRes.id;
+}
+
+type CampanhaBillingResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
+
+export async function buyCampanhaMessagesViaPix(userId: string, packageId: string | undefined): Promise<CampanhaBillingResult<{
+  status: string; paymentId: string; messages: number; qrCodeUrl: string | null; copyPaste: string | null; expiresAt: string;
+}>> {
+  const pkg = CAMPANHA_MSG_PACKAGES.find(p => p.id === packageId);
+  if (!pkg) return { ok: false, status: 400, error: 'Pacote inválido.' };
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+  if (!user) return { ok: false, status: 404, error: 'Usuário não encontrado.' };
+
+  const asaasCustomerId = await resolveAsaasCustomerId(userId, user);
+  const pix = await asaas('/payments', {
+    method: 'POST',
+    body: JSON.stringify({
+      customer: asaasCustomerId, billingType: 'PIX',
+      value: pkg.priceBrl, dueDate: todayStr(),
+      description: `ZapScript Campanhas — ${pkg.label}`,
+      externalReference: encodeCampanhaPackageRef(userId, pkg.messages),
+    }),
+  }).then(r => r.json()) as any;
+  if (pix.errors?.length) return { ok: false, status: 400, error: pix.errors[0]?.description || 'Erro ao criar cobrança PIX.' };
+
+  const pixKey = await asaas(`/payments/${pix.id}/pixQrCode`).then(r => r.json()) as any;
+  return {
+    ok: true,
+    data: {
+      status: 'pending', paymentId: pix.id, messages: pkg.messages,
+      qrCodeUrl: pixKey?.encodedImage ? `data:image/png;base64,${pixKey.encodedImage}` : null,
+      copyPaste: pixKey?.payload || null,
+      expiresAt: threeHoursFromNow(),
+    },
+  };
+}
+
+export async function subscribeCampanhaMonthlyViaPix(userId: string): Promise<CampanhaBillingResult<{
+  status: string; subscriptionId: string; paymentId: string | null; qrCodeUrl: string | null; copyPaste: string | null; expiresAt: string | null; amount: number;
+}>> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+  if (!user) return { ok: false, status: 404, error: 'Usuário não encontrado.' };
+
+  const existing = await prisma.campanhaBalance.findUnique({ where: { userId } });
+  if (existing?.plan === 'monthly' && existing.asaasSubscriptionId) {
+    return { ok: false, status: 400, error: 'Você já tem uma assinatura de mensagens ativa.' };
+  }
+
+  const asaasCustomerId = await resolveAsaasCustomerId(userId, user);
+  const subRes = await asaas('/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify({
+      customer: asaasCustomerId, billingType: 'PIX',
+      value: CAMPANHA_MONTHLY_PRICE_BRL, nextDueDate: todayStr(), cycle: 'MONTHLY',
+      description: `ZapScript Campanhas — Plano Mensal (${CAMPANHA_MONTHLY_MESSAGES} msgs/mês)`,
+      externalReference: encodeCampanhaMonthlyRef(userId),
+    }),
+  }).then(r => r.json()) as any;
+  if (!subRes?.id) return { ok: false, status: 400, error: subRes?.errors?.[0]?.description || 'Erro ao criar assinatura.' };
+
+  await prisma.campanhaBalance.upsert({
+    where:  { userId },
+    create: { userId, asaasCustomerId, asaasSubscriptionId: subRes.id },
+    update: { asaasCustomerId, asaasSubscriptionId: subRes.id },
+  });
+
+  const qr = await getPixQrForSubscription(subRes.id);
+  return {
+    ok: true,
+    data: {
+      status: 'pending_pix', subscriptionId: subRes.id, paymentId: qr.paymentId,
+      qrCodeUrl: qr.qrCodeUrl, copyPaste: qr.qrCode, expiresAt: qr.expiresAt,
+      amount: CAMPANHA_MONTHLY_PRICE_BRL,
+    },
+  };
+}
+
 /* ═══════════════════════════════════════════════════════ */
 export default async function billingRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -1913,22 +2008,9 @@ export default async function billingRoutes(app: FastifyInstance) {
 
   /* ── Chatbot Campanhas: saldo de mensagens ──────────────────────────────
      Pix apenas (sem cartão): o bot manda o "copia e cola" + QR direto no
-     chat — o próprio checkout do painel web também pode usar estas rotas. ── */
-
-  async function resolveAsaasCustomerId(userId: string, user: { email: string; name: string | null }): Promise<string> {
-    const [coreSub, campBalance] = await Promise.all([
-      prisma.subscription.findUnique({ where: { userId } }),
-      prisma.campanhaBalance.findUnique({ where: { userId } }),
-    ]);
-    if (coreSub?.asaasCustomerId) return coreSub.asaasCustomerId;
-    if (campBalance?.asaasCustomerId) return campBalance.asaasCustomerId;
-
-    const custRes = await asaas('/customers', {
-      method: 'POST',
-      body:   JSON.stringify({ name: user.name || user.email, email: user.email, externalReference: userId }),
-    }).then(r => r.json()) as any;
-    return custRes.id;
-  }
+     chat — reaproveitado tanto pelas rotas HTTP abaixo (painel web) quanto
+     pelo bot (services/campanhas-chat-commands.ts), ver funções exportadas
+     logo acima de billingRoutes(). ── */
 
   // ── GET /billing/campanha-packages — lista pacotes + assinatura mensal ──
   app.get('/campanha-packages', async (_req, reply) => {
@@ -1943,34 +2025,9 @@ export default async function billingRoutes(app: FastifyInstance) {
     '/buy-campanha-messages',
     { ...auth, config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } },
     async (req: any, reply) => {
-      const userId = req.user.sub;
-      const { packageId } = req.body as any;
-
-      const pkg = CAMPANHA_MSG_PACKAGES.find(p => p.id === packageId);
-      if (!pkg) return reply.code(400).send({ error: 'Pacote inválido.' });
-
-      const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
-      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
-
-      const asaasCustomerId = await resolveAsaasCustomerId(userId, user);
-      const pix = await asaas('/payments', {
-        method: 'POST',
-        body: JSON.stringify({
-          customer: asaasCustomerId, billingType: 'PIX',
-          value: pkg.priceBrl, dueDate: todayStr(),
-          description: `ZapScript Campanhas — ${pkg.label}`,
-          externalReference: encodeCampanhaPackageRef(userId, pkg.messages),
-        }),
-      }).then(r => r.json()) as any;
-      if (pix.errors?.length) return reply.code(400).send({ error: pix.errors[0]?.description || 'Erro ao criar cobrança PIX.' });
-
-      const pixKey = await asaas(`/payments/${pix.id}/pixQrCode`).then(r => r.json()) as any;
-      return {
-        status: 'pending', paymentId: pix.id, messages: pkg.messages,
-        qrCodeUrl: pixKey?.encodedImage ? `data:image/png;base64,${pixKey.encodedImage}` : null,
-        copyPaste: pixKey?.payload || null,
-        expiresAt: threeHoursFromNow(),
-      };
+      const result = await buyCampanhaMessagesViaPix(req.user.sub, (req.body as any)?.packageId);
+      if (!result.ok) return reply.code(result.status).send({ error: result.error });
+      return result.data;
     },
   );
 
@@ -1979,39 +2036,9 @@ export default async function billingRoutes(app: FastifyInstance) {
     '/campanha-subscribe',
     { ...auth, config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } },
     async (req: any, reply) => {
-      const userId = req.user.sub;
-      const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
-      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
-
-      const existing = await prisma.campanhaBalance.findUnique({ where: { userId } });
-      if (existing?.plan === 'monthly' && existing.asaasSubscriptionId) {
-        return reply.code(400).send({ error: 'Você já tem uma assinatura de mensagens ativa.' });
-      }
-
-      const asaasCustomerId = await resolveAsaasCustomerId(userId, user);
-      const subRes = await asaas('/subscriptions', {
-        method: 'POST',
-        body: JSON.stringify({
-          customer: asaasCustomerId, billingType: 'PIX',
-          value: CAMPANHA_MONTHLY_PRICE_BRL, nextDueDate: todayStr(), cycle: 'MONTHLY',
-          description: `ZapScript Campanhas — Plano Mensal (${CAMPANHA_MONTHLY_MESSAGES} msgs/mês)`,
-          externalReference: encodeCampanhaMonthlyRef(userId),
-        }),
-      }).then(r => r.json()) as any;
-      if (!subRes?.id) return reply.code(400).send({ error: subRes?.errors?.[0]?.description || 'Erro ao criar assinatura.' });
-
-      await prisma.campanhaBalance.upsert({
-        where:  { userId },
-        create: { userId, asaasCustomerId, asaasSubscriptionId: subRes.id },
-        update: { asaasCustomerId, asaasSubscriptionId: subRes.id },
-      });
-
-      const qr = await getPixQrForSubscription(subRes.id);
-      return {
-        status: 'pending_pix', subscriptionId: subRes.id, paymentId: qr.paymentId,
-        qrCodeUrl: qr.qrCodeUrl, copyPaste: qr.qrCode, expiresAt: qr.expiresAt,
-        amount: CAMPANHA_MONTHLY_PRICE_BRL,
-      };
+      const result = await subscribeCampanhaMonthlyViaPix(req.user.sub);
+      if (!result.ok) return reply.code(result.status).send({ error: result.error });
+      return result.data;
     },
   );
 }
