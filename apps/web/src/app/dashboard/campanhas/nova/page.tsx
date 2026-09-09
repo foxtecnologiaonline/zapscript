@@ -88,6 +88,12 @@ export default function NovaCampanhaPage() {
   const [evoNumeroId, setEvoNumeroId] = useState('');
   const [messageBody, setMessageBody] = useState('');
 
+  // ── A/B test (§15.3) — variante B opcional, só reporta métricas por variante ──
+  const [abTestEnabled, setAbTestEnabled] = useState(false);
+  const [variantBTemplateName, setVariantBTemplateName] = useState('');
+  const [variantBMessageBody, setVariantBMessageBody] = useState('');
+  const variantBSelected = templates.find((t) => t.name === variantBTemplateName);
+
   useEffect(() => {
     if (channel !== 'evolution') return;
     (async () => {
@@ -112,8 +118,17 @@ export default function NovaCampanhaPage() {
         ? {
           name, whatsappNumberId: meta?.id, channel, templateName: selected?.name,
           templateLanguage: selected?.language, templateVarCount: varCount,
+          ...(abTestEnabled ? {
+            abTestEnabled: true,
+            variantBTemplateName: variantBSelected?.name,
+            variantBTemplateLanguage: variantBSelected?.language,
+            variantBTemplateVarCount: variantBSelected ? countVars(bodyOf(variantBSelected)?.text) : undefined,
+          } : {}),
         }
-        : { name, whatsappNumberId: evoNumeroId, channel, messageBody };
+        : {
+          name, whatsappNumberId: evoNumeroId, channel, messageBody,
+          ...(abTestEnabled ? { abTestEnabled: true, variantBMessageBody } : {}),
+        };
       const res = await api.post<{ campanha: { id: string } }>('/modules/campanhas/', payload);
       router.push(`/dashboard/campanhas/${res.campanha.id}`);
     } catch (err: any) {
@@ -122,9 +137,10 @@ export default function NovaCampanhaPage() {
     }
   }
 
-  const canSubmit = channel === 'meta'
+  const variantBReady = !abTestEnabled || (channel === 'meta' ? !!variantBSelected : variantBMessageBody.trim().length > 0);
+  const canSubmit = (channel === 'meta'
     ? !!meta && !!selected && !!name
-    : !!evoNumeroId && messageBody.trim().length > 0 && !!name;
+    : !!evoNumeroId && messageBody.trim().length > 0 && !!name) && variantBReady;
 
   return (
     <div className="min-h-screen px-5 py-10">
@@ -223,6 +239,29 @@ export default function NovaCampanhaPage() {
                     </div>
                   )}
 
+                  <div className="inner-block">
+                    <label className="flex items-center gap-2 text-sm text-brand-text">
+                      <input type="checkbox" checked={abTestEnabled} onChange={(e) => setAbTestEnabled(e.target.checked)} />
+                      <span>Testar 2 versões (A/B) — divide a audiência 50/50, só reporta as métricas por variante</span>
+                    </label>
+                    {abTestEnabled && (
+                      <div className="mt-3">
+                        <label className="block text-sm font-medium text-brand-text-secondary mb-1">Template da variante B</label>
+                        <select
+                          required={abTestEnabled}
+                          value={variantBTemplateName}
+                          onChange={(e) => setVariantBTemplateName(e.target.value)}
+                          className="input"
+                        >
+                          <option value="">Selecione…</option>
+                          {templates.map((t) => (
+                            <option key={t.id} value={t.name}>{t.name} ({t.language})</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
                   {error && (
                     <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-600 text-sm">
                       {error}
@@ -303,6 +342,27 @@ export default function NovaCampanhaPage() {
                   Use <code className="text-brand-text-secondary">{'{{nome}}'}</code> pra personalizar com o nome de cada contato
                   (quando conhecido — senão usamos o telefone).
                 </p>
+              </div>
+
+              <div className="inner-block">
+                <label className="flex items-center gap-2 text-sm text-brand-text">
+                  <input type="checkbox" checked={abTestEnabled} onChange={(e) => setAbTestEnabled(e.target.checked)} />
+                  <span>Testar 2 versões (A/B) — divide a audiência 50/50, só reporta as métricas por variante</span>
+                </label>
+                {abTestEnabled && (
+                  <div className="mt-3">
+                    <label className="block text-sm font-medium text-brand-text-secondary mb-1">Mensagem da variante B</label>
+                    <textarea
+                      required={abTestEnabled}
+                      value={variantBMessageBody}
+                      onChange={(e) => setVariantBMessageBody(e.target.value)}
+                      rows={4}
+                      maxLength={4096}
+                      placeholder="Oi {{nome}}, tudo bem? ..."
+                      className="input"
+                    />
+                  </div>
+                )}
               </div>
 
               {error && (

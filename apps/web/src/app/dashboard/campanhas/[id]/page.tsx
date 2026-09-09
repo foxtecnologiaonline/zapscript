@@ -22,6 +22,8 @@ interface Campanha {
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
+  sequenceParentId: string | null;
+  abTestEnabled: boolean;
   whatsappNumber: {
     id: string; phoneNumber: string | null; displayName: string | null;
     metaMessagingLimitTier: string | null; metaQualityRating: string | null;
@@ -63,6 +65,50 @@ interface UploadResult {
   skippedInvalid: number;
   skippedDuplicate: number;
   skippedVarMismatch: number;
+}
+
+interface CrmImportResult {
+  imported: number;
+  skippedOptOut: number;
+  skippedDuplicate: number;
+  skippedCold: number;
+  elegiveis: number;
+}
+
+interface MetaTemplateComponent {
+  type: string;
+  format?: string;
+  text?: string;
+}
+
+interface MetaTemplate {
+  id: string;
+  name: string;
+  language: string;
+  components: MetaTemplateComponent[];
+}
+
+interface SequenceStep {
+  id: string;
+  name: string;
+  status: string;
+  sequenceIndex: number;
+  sequenceDelayDays: number;
+  scheduledAt: string | null;
+}
+
+interface SequenceParent {
+  id: string;
+  name: string;
+}
+
+function bodyOf(t: MetaTemplate) {
+  return t.components?.find((c) => c.type === 'BODY');
+}
+function countVars(text?: string): number {
+  if (!text) return 0;
+  const nums = [...text.matchAll(/\{\{(\d+)\}\}/g)].map((m) => parseInt(m[1], 10));
+  return nums.length ? Math.max(...nums) : 0;
 }
 
 const CAMP_STATUS_LABEL: Record<string, string> = {
@@ -137,17 +183,43 @@ export default function CampanhaDetailPage() {
   const [statsByNumber, setStatsByNumber] = useState<Record<string, Record<string, number>> | undefined>();
   const [poolNumbersInfo, setPoolNumbersInfo] = useState<PoolNumberInfo[] | undefined>();
 
+  // ── Segmentação por tag do CRM (§15.1) ───────────────────────────────────
+  const [crmTags, setCrmTags] = useState<string[]>([]);
+  const [selectedCrmTag, setSelectedCrmTag] = useState('');
+  const [importingCrm, setImportingCrm] = useState(false);
+  const [crmImportResult, setCrmImportResult] = useState<CrmImportResult | null>(null);
+
+  // ── Sequência/drip (§15.2) ───────────────────────────────────────────────
+  const [sequenceSteps, setSequenceSteps] = useState<SequenceStep[] | undefined>();
+  const [sequenceParent, setSequenceParent] = useState<SequenceParent | undefined>();
+  const [templates, setTemplates] = useState<MetaTemplate[]>([]);
+  const [showSequenceForm, setShowSequenceForm] = useState(false);
+  const [seqSteps, setSeqSteps] = useState<{ delayDays: string; templateName: string; messageBody: string }[]>([
+    { delayDays: '3', templateName: '', messageBody: '' },
+  ]);
+  const [seqSaving, setSeqSaving] = useState(false);
+  const [seqError, setSeqError] = useState<string | null>(null);
+
+  // ── A/B test (§15.3) ──────────────────────────────────────────────────────
+  const [statsByVariant, setStatsByVariant] = useState<Record<string, Record<string, number>> | undefined>();
+
   const loadCampanha = useCallback(async () => {
     try {
       const res = await api.get<{
         campanha: Campanha; stats: Record<string, number>;
         statsByNumber?: Record<string, Record<string, number>>;
         poolNumbers?: PoolNumberInfo[];
+        sequenceSteps?: SequenceStep[];
+        sequenceParent?: SequenceParent;
+        statsByVariant?: Record<string, Record<string, number>>;
       }>(`/modules/campanhas/${id}`);
       setCampanha(res.campanha);
       setStats(res.stats || {});
       setStatsByNumber(res.statsByNumber);
       setPoolNumbersInfo(res.poolNumbers);
+      setSequenceSteps(res.sequenceSteps);
+      setSequenceParent(res.sequenceParent);
+      setStatsByVariant(res.statsByVariant);
     } catch (e: any) {
       if (e?.error === 'Campanha não encontrada.') setNotFound(true);
       else if (e?.statusCode !== 401) setError(e?.message || 'Não foi possível carregar a campanha.');
@@ -199,6 +271,34 @@ export default function CampanhaDetailPage() {
   useEffect(() => {
     if (campanha) setPoolSelected(campanha.poolNumberIds || []);
   }, [campanha?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tags do CRM (§15.1) — só interessa enquanto ainda dá pra montar a audiência.
+  useEffect(() => {
+    if (!campanha || campanha.status !== 'draft') return;
+    (async () => {
+      try {
+        const res = await api.get<{ tags: string[] }>('/modules/campanhas/crm-tags');
+        setCrmTags(res.tags || []);
+      } catch {
+        /* segmentação por tag é opcional — falha aqui não deve travar a tela */
+      }
+    })();
+  }, [campanha?.id, campanha?.status]);
+
+  // Templates Meta (§15.2) — só pra montar os passos de uma sequência nova.
+  useEffect(() => {
+    if (!campanha || campanha.channel !== 'meta' || campanha.status !== 'draft' || !campanha.whatsappNumber) return;
+    (async () => {
+      try {
+        const res = await api.get<{ templates: MetaTemplate[] }>(
+          `/modules/campanhas/templates?whatsappNumberId=${encodeURIComponent(campanha.whatsappNumber!.id)}`,
+        );
+        setTemplates(res.templates || []);
+      } catch {
+        setTemplates([]);
+      }
+    })();
+  }, [campanha?.id, campanha?.channel, campanha?.status, campanha?.whatsappNumber?.id]);
 
   async function handleSavePool() {
     setPoolSaving(true);
@@ -310,6 +410,62 @@ export default function CampanhaDetailPage() {
     }
   }
 
+  async function handleImportCrm() {
+    if (!selectedCrmTag) return;
+    setImportingCrm(true);
+    setActionError(null);
+    setCrmImportResult(null);
+    try {
+      const res = await api.post<CrmImportResult>(`/modules/campanhas/${id}/contatos/from-crm`, { tag: selectedCrmTag });
+      setCrmImportResult(res);
+      await Promise.all([loadCampanha(), loadContatos()]);
+    } catch (err: any) {
+      setActionError(err?.message || 'Falha ao importar contatos por tag.');
+    } finally {
+      setImportingCrm(false);
+    }
+  }
+
+  function addSeqStep() {
+    setSeqSteps((prev) => (prev.length >= 5 ? prev : [...prev, { delayDays: '3', templateName: '', messageBody: '' }]));
+  }
+  function removeSeqStep(i: number) {
+    setSeqSteps((prev) => (prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i)));
+  }
+  function updateSeqStep(i: number, patch: Partial<{ delayDays: string; templateName: string; messageBody: string }>) {
+    setSeqSteps((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  }
+
+  async function handleCreateSequence(e: FormEvent) {
+    e.preventDefault();
+    if (!campanha) return;
+    setSeqSaving(true);
+    setSeqError(null);
+    try {
+      const steps = seqSteps.map((s) => {
+        const delayDays = parseInt(s.delayDays, 10);
+        if (campanha.channel === 'meta') {
+          const tpl = templates.find((t) => t.name === s.templateName);
+          return {
+            delayDays,
+            templateName: tpl?.name,
+            templateLanguage: tpl?.language,
+            templateVarCount: tpl ? countVars(bodyOf(tpl)?.text) : undefined,
+          };
+        }
+        return { delayDays, messageBody: s.messageBody };
+      });
+      await api.post(`/modules/campanhas/${id}/sequence`, { steps });
+      setShowSequenceForm(false);
+      setSeqSteps([{ delayDays: '3', templateName: '', messageBody: '' }]);
+      await loadCampanha();
+    } catch (err: any) {
+      setSeqError(err?.message || 'Não foi possível criar a sequência.');
+    } finally {
+      setSeqSaving(false);
+    }
+  }
+
   async function handleDelete() {
     if (!confirm('Excluir esta campanha? Esta ação não pode ser desfeita.')) return;
     setActionLoading(true);
@@ -353,6 +509,14 @@ export default function CampanhaDetailPage() {
       </div>
     );
   }
+
+  const canCreateSequence = campanha.status === 'draft' && campanha.audienceCount > 0
+    && !campanha.sequenceParentId && (!sequenceSteps || sequenceSteps.length === 0);
+  const seqStepsReady = seqSteps.every((s) => {
+    const d = parseInt(s.delayDays, 10);
+    if (!(d >= 1 && d <= 90)) return false;
+    return campanha.channel === 'meta' ? !!s.templateName : s.messageBody.trim().length > 0;
+  });
 
   const statCards: [string, number, string][] = [
     ['Contatos', campanha.audienceCount, ''],
@@ -649,6 +813,45 @@ export default function CampanhaDetailPage() {
           </div>
         )}
 
+        {campanha.status === 'draft' && crmTags.length > 0 && (
+          <div className="mt-6 card rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-brand-text">Segmentar por tag do CRM</h2>
+            <p className="mt-1 text-xs text-brand-muted">
+              Importa só os contatos do seu CRM com a tag escolhida
+              {campanha.channel === 'evolution' ? ' (ainda restrito a quem já falou com você).' : '.'}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <select
+                value={selectedCrmTag}
+                onChange={(e) => setSelectedCrmTag(e.target.value)}
+                className="input w-auto"
+              >
+                <option value="">Selecione uma tag…</option>
+                {crmTags.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+              <button
+                onClick={handleImportCrm}
+                disabled={!selectedCrmTag || importingCrm}
+                className="btn-ghost text-xs disabled:opacity-50"
+              >
+                {importingCrm ? 'Importando…' : '🏷️ Importar por tag'}
+              </button>
+            </div>
+            {crmImportResult && (
+              <div className="mt-3 text-sm text-brand-text-secondary">
+                {crmImportResult.imported} de {crmImportResult.elegiveis} contato{crmImportResult.elegiveis === 1 ? '' : 's'} da
+                tag importado{crmImportResult.imported === 1 ? '' : 's'}.
+                {crmImportResult.skippedOptOut > 0 && ` ${crmImportResult.skippedOptOut} já em opt-out.`}
+                {crmImportResult.skippedDuplicate > 0 && ` ${crmImportResult.skippedDuplicate} já estava(m) na campanha.`}
+                {crmImportResult.skippedCold > 0
+                  && ` ${crmImportResult.skippedCold} sem conversa recente (não elegíve${crmImportResult.skippedCold === 1 ? 'l' : 'is'} pro Evolution).`}
+              </div>
+            )}
+          </div>
+        )}
+
         {canEditPool && poolCandidates.length > 0 && (
           <div className="mt-6 card rounded-xl p-4">
             <h2 className="text-sm font-semibold text-brand-text">Pool de números</h2>
@@ -705,6 +908,166 @@ export default function CampanhaDetailPage() {
                       {total} processado{total === 1 ? '' : 's'}
                       {byStatus.failed ? ` · ${byStatus.failed} falhou/falharam` : ''}
                     </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {sequenceParent && (
+          <div className="mt-6 card rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-brand-text">Sequência/drip</h2>
+            <p className="mt-1 text-sm text-brand-text-secondary">
+              Este é um passo da sequência disparada por{' '}
+              <Link href={`/dashboard/campanhas/${sequenceParent.id}`} className="text-emerald-600 hover:text-emerald-500">
+                {sequenceParent.name}
+              </Link>.
+            </p>
+          </div>
+        )}
+
+        {sequenceSteps && sequenceSteps.length > 0 && (
+          <div className="mt-6 card rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-brand-text">Sequência/drip</h2>
+            <p className="mt-1 text-xs text-brand-muted">
+              Passos seguintes, disparados automaticamente após o início desta campanha.
+            </p>
+            <div className="mt-3 space-y-2">
+              {sequenceSteps.map((s) => (
+                <div key={s.id} className="flex items-center justify-between text-sm border-t border-brand-border pt-2 first:border-t-0 first:pt-0">
+                  <Link href={`/dashboard/campanhas/${s.id}`} className="text-brand-text-secondary hover:text-brand-text">
+                    Passo {s.sequenceIndex} — {s.name}
+                  </Link>
+                  <span className="text-xs text-brand-muted">
+                    {s.sequenceDelayDays}d depois · {CAMP_STATUS_LABEL[s.status] || s.status}
+                    {s.scheduledAt && ` · ${new Date(s.scheduledAt).toLocaleString('pt-BR')}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {canCreateSequence && (
+          <div className="mt-6 card rounded-xl p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-brand-text">Sequência/drip</h2>
+                <p className="mt-1 text-xs text-brand-muted">
+                  Crie até 5 passos seguintes (ex: lembrete, follow-up) — disparados automaticamente
+                  depois de X dias do início desta campanha, pra mesma audiência.
+                </p>
+              </div>
+              {!showSequenceForm && (
+                <button onClick={() => setShowSequenceForm(true)} className="btn-ghost text-xs whitespace-nowrap">
+                  + Criar sequência
+                </button>
+              )}
+            </div>
+
+            {showSequenceForm && (
+              <form onSubmit={handleCreateSequence} className="mt-4 space-y-4">
+                {seqSteps.map((s, i) => (
+                  <div key={i} className="inner-block space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-brand-text-secondary">Passo {i + 1}</span>
+                      {seqSteps.length > 1 && (
+                        <button type="button" onClick={() => removeSeqStep(i)} className="text-xs text-red-500 hover:underline">
+                          Remover
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-brand-muted whitespace-nowrap">Disparar</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={90}
+                        required
+                        value={s.delayDays}
+                        onChange={(e) => updateSeqStep(i, { delayDays: e.target.value })}
+                        className="input w-20"
+                      />
+                      <span className="text-xs text-brand-muted">dia(s) após o início</span>
+                    </div>
+                    {campanha.channel === 'meta' ? (
+                      <select
+                        required
+                        value={s.templateName}
+                        onChange={(e) => updateSeqStep(i, { templateName: e.target.value })}
+                        className="input"
+                      >
+                        <option value="">Selecione o template…</option>
+                        {templates.map((t) => (
+                          <option key={t.id} value={t.name}>{t.name} ({t.language})</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <textarea
+                        required
+                        value={s.messageBody}
+                        onChange={(e) => updateSeqStep(i, { messageBody: e.target.value })}
+                        rows={3}
+                        maxLength={4096}
+                        placeholder="Oi {{nome}}, tudo bem? ..."
+                        className="input"
+                      />
+                    )}
+                  </div>
+                ))}
+
+                {seqSteps.length < 5 && (
+                  <button type="button" onClick={addSeqStep} className="text-xs text-emerald-600 hover:text-emerald-500">
+                    + Adicionar passo
+                  </button>
+                )}
+
+                {seqError && (
+                  <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-600 text-sm">
+                    {seqError}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={seqSaving || !seqStepsReady}
+                    className="btn-primary px-4 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {seqSaving ? 'Criando…' : 'Salvar sequência'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSequenceForm(false)}
+                    className="text-xs text-brand-muted hover:text-brand-text"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
+
+        {campanha.abTestEnabled && statsByVariant && (
+          <div className="mt-6 card rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-brand-text">Teste A/B — por variante</h2>
+            <p className="mt-1 text-xs text-brand-muted">
+              Audiência dividida 50/50 entre as 2 versões. Sem promoção automática de vencedor — compare abaixo.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              {(['A', 'B'] as const).map((v) => {
+                const s = statsByVariant[v] || {};
+                const total = Object.values(s).reduce((a, b) => a + b, 0);
+                return (
+                  <div key={v}>
+                    <div className="text-xs font-medium text-brand-muted mb-1">Variante {v}</div>
+                    <div className="text-lg font-semibold text-brand-text">{total}</div>
+                    <div className="text-[11px] text-brand-muted">
+                      {s.delivered || 0} entregue{s.delivered === 1 ? '' : 's'} · {s.read || 0} lido{s.read === 1 ? '' : 's'} ·{' '}
+                      {s.failed || 0} falhou/falharam
+                    </div>
                   </div>
                 );
               })}

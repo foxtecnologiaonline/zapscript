@@ -343,13 +343,40 @@ export const createCampanhaSchema = z.object({
   templateComponents: z.array(z.record(z.any())).optional(),
   templateVarCount:   z.coerce.number().int().min(0).max(20).optional(),
   messageBody:        z.string().min(1, 'Escreva a mensagem').max(4096).optional(),
+  // A/B test (§15.3) — variante B opcional, só reporta métricas por variante,
+  // sem promoção automática de vencedor. Mesmas regras de conteúdo por canal
+  // que os campos principais (templateName no Meta, messageBody no Evolution).
+  abTestEnabled:              z.boolean().optional(),
+  variantBTemplateName:       z.string().min(1).max(512).optional(),
+  variantBTemplateLanguage:   z.string().min(2).max(10).optional(),
+  variantBTemplateComponents: z.array(z.record(z.any())).optional(),
+  variantBTemplateVarCount:   z.coerce.number().int().min(0).max(20).optional(),
+  variantBMessageBody:        z.string().min(1).max(4096).optional(),
 }).refine(
   (v) => (v.channel === 'meta' ? !!v.templateName : !!v.messageBody),
   { message: 'Campanhas via Meta exigem um template; via Evolution exigem o texto da mensagem.' },
+).refine(
+  (v) => !v.abTestEnabled || (v.channel === 'meta' ? !!v.variantBTemplateName : !!v.variantBMessageBody),
+  { message: 'Com A/B test ativado, informe o conteúdo da variante B (variantBTemplateName no Meta, variantBMessageBody no Evolution).' },
 );
 
 export const scheduleCampanhaSchema = z.object({
   scheduledAt: z.coerce.date(),
+});
+
+// Sequência/drip (§15.2) — cada passo tem seu próprio conteúdo; a validação de
+// "template exige messageBody vs templateName" depende do canal da campanha-mãe
+// (não vem no body), então fica a cargo da rota, não do refine do zod aqui.
+const campanhaSequenceStepSchema = z.object({
+  delayDays:          z.number().int().min(1, 'delayDays deve ser pelo menos 1').max(90, 'delayDays máximo é 90'),
+  templateName:       z.string().min(1).max(512).optional(),
+  templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
+  templateComponents: z.array(z.record(z.any())).optional(),
+  templateVarCount:   z.coerce.number().int().min(0).max(20).optional(),
+  messageBody:        z.string().min(1).max(4096).optional(),
+});
+export const campanhaSequenceSchema = z.object({
+  steps: z.array(campanhaSequenceStepSchema).min(1, 'Informe ao menos 1 passo').max(5, 'Máximo de 5 passos'),
 });
 
 // ── API pública (tier Empresas) ────────────────────────────

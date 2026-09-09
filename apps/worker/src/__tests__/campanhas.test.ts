@@ -356,3 +356,72 @@ describe('markCampanhaJobExhausted', () => {
     expect(prisma.campanhaContato.findUnique).not.toHaveBeenCalled();
   });
 });
+
+describe('A/B test — 2 variantes (§15.3)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('contato com variant B usa o template da variante B (canal meta)', async () => {
+    (prisma.campanha.findUnique as jest.Mock).mockResolvedValueOnce({
+      id: 'c1', status: 'running', abTestEnabled: true,
+      templateName: 'promoA', templateLanguage: 'pt_BR', templateComponents: [],
+      variantBTemplateName: 'promoB', variantBTemplateLanguage: 'en_US', variantBTemplateComponents: [{ type: 'header', parameters: [] }],
+      whatsappNumber: numeroConectado,
+    });
+    (prisma.campanhaContato.findUnique as jest.Mock).mockResolvedValueOnce({
+      id: 'ct1', status: 'pending', phone: '5511999999999', variables: null, variant: 'B',
+    });
+    (sendTemplateMessage as jest.Mock).mockResolvedValueOnce('wamid-b');
+    (prisma.campanha.update as jest.Mock)
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ processedCount: 1, audienceCount: 2, consecutiveFailures: 0, status: 'running' });
+
+    const res = await processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }));
+
+    expect(res).toEqual({});
+    expect(sendTemplateMessage).toHaveBeenCalledWith(
+      'decrypted-token', 'phone-id-1', '5511999999999', 'promoB', 'en_US',
+      [{ type: 'header', parameters: [] }],
+    );
+  });
+
+  it('contato com variant A (ou sem variant) usa o template normal mesmo com abTestEnabled', async () => {
+    (prisma.campanha.findUnique as jest.Mock).mockResolvedValueOnce({
+      id: 'c1', status: 'running', abTestEnabled: true,
+      templateName: 'promoA', templateLanguage: 'pt_BR', templateComponents: [],
+      variantBTemplateName: 'promoB', variantBTemplateLanguage: 'en_US', variantBTemplateComponents: [],
+      whatsappNumber: numeroConectado,
+    });
+    (prisma.campanhaContato.findUnique as jest.Mock).mockResolvedValueOnce({
+      id: 'ct1', status: 'pending', phone: '5511999999999', variables: null, variant: 'A',
+    });
+    (sendTemplateMessage as jest.Mock).mockResolvedValueOnce('wamid-a');
+    (prisma.campanha.update as jest.Mock)
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ processedCount: 1, audienceCount: 2, consecutiveFailures: 0, status: 'running' });
+
+    await processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }));
+
+    expect(sendTemplateMessage).toHaveBeenCalledWith(
+      'decrypted-token', 'phone-id-1', '5511999999999', 'promoA', 'pt_BR', [],
+    );
+  });
+
+  it('contato com variant B usa a mensagem da variante B (canal evolution)', async () => {
+    (prisma.campanha.findUnique as jest.Mock).mockResolvedValueOnce({
+      id: 'c1', status: 'running', channel: 'evolution', abTestEnabled: true,
+      messageBody: 'Versão A: oi {{nome}}', variantBMessageBody: 'Versão B: e aí {{nome}}',
+      whatsappNumber: numeroEvolutionConectado,
+    });
+    (prisma.campanhaContato.findUnique as jest.Mock).mockResolvedValueOnce({
+      id: 'ct1', status: 'pending', phone: '5511999999999', name: 'João', variant: 'B',
+    });
+    (sendMessageViaEvolution as jest.Mock).mockResolvedValueOnce({ id: 'evo-b' });
+    (prisma.campanha.update as jest.Mock)
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ processedCount: 1, audienceCount: 2, consecutiveFailures: 0, status: 'running' });
+
+    await processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }));
+
+    expect(sendMessageViaEvolution).toHaveBeenCalledWith('zs-abc123', '5511999999999', 'Versão B: e aí João');
+  });
+});

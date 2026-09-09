@@ -990,3 +990,103 @@ que a API não entrega (evita o cliente descobrir isso só quando o envio falhar
   (ex: Instagram/Facebook primeiro, aceitando esperar o App Review em paralelo)?
 - Quer que eu já dispare o cadastro do App Review da Meta pras permissões de Instagram/Facebook
   agora (não trava nada, só começa a contar o prazo), mesmo antes de codar essas fases?
+
+## 15. Segmentação, sequência/drip e A/B test (fecha o §14.2)
+
+Os 3 itens que o §14.2 tinha deixado pendentes por decisão de produto. Perguntado ao usuário com
+uma opção "(Recomendado)" pré-selecionada pra cada um; todas as 4 foram aceitas como estão:
+**segmentação por tag do CRM**, **sequência com passos fixos (sem checar resposta)**, **A/B só
+reportando por variante (sem promover vencedor automático)**, e **limite de uso por plano
+adiado** (sem mudança — ver §15.6). WhatsApp apenas (Meta + Evolution); nenhum dos 3 tem relação
+com o desenho multicanal do §13.
+
+### 15.0 Schema (migration `20260909_campanhas_sequencia_abtest`)
+
+Em `Campanha`: `sequenceParentId`/`sequenceIndex`/`sequenceDelayDays` (auto-relação
+`CampanhaSequence`, `onDelete: Cascade`) + `abTestEnabled` e os 5 campos `variantB*` (espelham
+`templateName`/`templateLanguage`/`templateComponents`/`templateVarCount`/`messageBody` pra
+variante B). Em `CampanhaContato`: `variant` (`'A' | 'B' | null`). Índice em
+`sequenceParentId`. Nenhum campo novo em `CampanhaOptOut` — reaproveitado como está.
+
+### 15.1 Segmentação por tag do CRM
+
+`GET /crm-tags` (dedup + sort das tags de `CrmContact` do usuário) e
+`POST /:id/contatos/from-crm` (`{ tag }`). Reaproveita `CrmContact.tags` — nenhum campo novo.
+Duas guardrails que fazem essa importação nunca furar regra que já existia:
+
+- **Evolution**: contatos da tag são intersectados com `warmContactsForNumber()` — a tag pode
+  *reduzir* a audiência, nunca driblar a exigência de "só quem já conversou" (§8).
+- **Meta**: bloqueado quando `campanha.templateVarCount` é truthy — o CRM não tem de onde tirar
+  `{{1}}`, `{{2}}`... posicionais; isso continua sendo papel exclusivo do CSV (§11/item 6).
+
+### 15.2 Sequência/drip — passos fixos
+
+Decisão de desenho: cada passo é uma **`Campanha` inteira**, ligada à mãe por
+`sequenceParentId`/`sequenceIndex`/`sequenceDelayDays`, em vez de uma estrutura aninhada dentro
+de uma campanha só. `POST /:id/sequence` (`{ steps: [{ delayDays, templateName|messageBody,
+... }] }`, 1 a 5 passos) cria essas campanhas-filhas em `draft` e copia a audiência atual da mãe
+(contatos não opt-out) pra cada uma.
+
+Isso é deliberadamente **zero lógica nova de disparo**: circuit breaker, pool, janela de envio,
+tier check, notificação de conclusão — tudo do worker/scheduler já existente passa a valer pra
+cada passo sem tocar em uma linha dessa infraestrutura. O único código novo é o agendamento em
+cascata: `POST /:id/start` (API) e `fireCampanha()` (`campanhas-scheduler.ts`, pro caso agendado)
+agora, ao iniciar a mãe, buscam os passos-filhos em `draft` e os agendam
+(`scheduledAt = startedAt da mãe + sequenceDelayDays de cada um`), copiando
+`consentConfirmedAt`/`consentConfirmedIp` da mãe — o usuário já deu consentimento pra essa mesma
+audiência ao iniciar o primeiro passo, não precisa reconfirmar por passo. `POST /:id/cancel`
+cascateia do mesmo jeito: cancelar a mãe cancela os passos que ainda não terminaram.
+
+Trade-off aceito: os passos herdam a audiência da mãe **no momento da criação da sequência**, não
+dinamicamente — se você importar mais contatos na mãe depois de criar a sequência, os passos não
+recebem esses novos contatos automaticamente. E os passos não suportam A/B (§15.3) — o
+`contatosBase` copiado pra cada filho não carrega `variant`. Nenhum dos dois era parte da decisão
+que o usuário confirmou ("passos fixos, sem checar resposta"); ficam registrados aqui como
+limitação conhecida, não como bug.
+
+### 15.3 A/B test — 2 variantes, sem vencedor automático
+
+Conteúdo da variante B mora direto em `Campanha` (`variantBTemplateName` etc. ou
+`variantBMessageBody`, conforme o canal — mesmo par de campos que a campanha já usa pra variante
+A). `CampanhaContato.variant` marca cada contato como `'A'` ou `'B'` no momento da criação —
+alternância determinística pela **posição entre os aceitos** (`toCreate.length % 2`), não pelo
+índice bruto do loop de import, nos 3 caminhos de importação (`from-conversas`, `from-crm`, CSV):
+isso garante split exato 50/50 mesmo com opt-out/duplicado/inválido intercalado nas linhas
+originais.
+
+No worker, `processCampanhaJob` resolve `isVariantB = campanha.abTestEnabled && contato.variant
+=== 'B'` e usa os campos `variantB*` em vez dos normais só nesse caso — mesmo path de envio,
+sem branch novo de fila/circuit-breaker/pool. `GET /:id` devolve `statsByVariant` (`{ A: {...},
+B: {...} }`, agrupado por `variant`+`status`) só quando `abTestEnabled`, pra não pagar o
+`groupBy` extra em campanhas comuns. Sem lógica de "vencedor" — por decisão explícita do usuário,
+é só leitura comparativa; promover automaticamente fica de fora até (se) for pedido.
+
+### 15.4 Web UI
+
+- **`nova/page.tsx`**: checkbox "Testar 2 versões (A/B)" nos dois formulários (Meta e Evolution),
+  revelando o seletor de template (Meta) ou textarea (Evolution) da variante B. Corrigido de
+  passagem um gap real encontrado ao mexer no formulário: o payload de criação calculava
+  `varCount` localmente mas nunca mandava `templateVarCount` pra API — a validação de variáveis
+  do item 6 (§11.6) não disparava de verdade pra campanhas criadas pela tela, só nos testes
+  (que setam o campo direto no mock). Corrigido junto.
+- **`[id]/page.tsx`**: card "Segmentar por tag do CRM" (só aparece se o usuário tem alguma tag
+  cadastrada) com select + botão, resultado da importação com a mesma contagem que o back-end
+  devolve (`imported`/`skippedOptOut`/`skippedDuplicate`/`skippedCold`/`elegiveis`). Card
+  "Sequência/drip" com 3 estados mutuamente exclusivos: link pra mãe (quando a campanha é um
+  passo), lista dos passos com status/data (quando a campanha é mãe com sequência já criada), ou
+  formulário "Criar sequência" (até 5 passos, campo de dias + template/mensagem por passo — só
+  aparece em rascunho com audiência e sem sequência ainda). Card "Teste A/B — por variante"
+  (comparação lado a lado, só quando `abTestEnabled`).
+
+### 15.5 Testes
+
+98 testes em `apps/api/src/__tests__/campanhas.test.ts` (+15 nesta revisão: 5 de segmentação, 6
+de sequência — incluindo o cálculo exato de `scheduledAt` por passo — e 4 de A/B) e 19 em
+`apps/worker/src/__tests__/campanhas.test.ts` (+3, cobrindo variante B/A/controle nos dois
+canais). `npx tsc --noEmit` limpo em `apps/api`, `apps/worker` e `apps/web`.
+
+### 15.6 Limite de uso por plano — continua adiado
+
+Único dos 4 itens do §14.2 sem mudança de status: o usuário escolheu adiar (não construir limite
+nenhum por enquanto). Nada foi implementado aqui de propósito — não é gap esquecido, é decisão
+tomada.
