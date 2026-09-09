@@ -560,3 +560,188 @@ semânticas (`dashboard-bg`, `brand-primary`...) e responde ao tema claro/escuro
 bloco escuro dentro do dashboard claro ao abrir Campanhas. Não ajustei porque é trabalho de
 design à parte (reescrever classes nas 4 páginas) e não fazia parte do pedido — mas é uma
 inconsistência visual real caso o modo claro seja usado na prática.
+
+---
+
+## 11. Dez melhorias de eficiência/eficácia (revisão única)
+
+Pedido: gerar e executar 10 sugestões de melhoria pro que já estava construído (§1-10). As 10
+foram implementadas juntas, numa migration única (§11.0) — ainda **zero campanhas em produção**
+neste momento (reconfirmado antes desta revisão), então não há dado real a migrar/quebrar.
+
+### 11.0 Schema (migration `20260909_campanhas_10_melhorias`)
+
+Puramente aditivo:
+
+| Campo | Modelo | Uso |
+|---|---|---|
+| `templateVarCount` | `Campanha` | nº de `{{n}}` do template selecionado — item 6 |
+| `poolNumberIds` (`String[]`, default `[]`) | `Campanha` | números extras (mesmo canal) — item 2 |
+| `consecutiveFailures` (default `0`) | `Campanha` | circuit breaker — item 1 |
+| `pausedReason` | `Campanha` | motivo da pausa **automática** (null = foi o usuário) |
+| `processedCount` (default `0`) | `Campanha` | sent+failed+optout — item 9 |
+| `assignedNumberId` | `CampanhaContato` | qual número do pool enviou este contato — item 2 |
+
+### 11.1 Item 1 — Circuit breaker (auto-pausa por falhas consecutivas)
+
+Um número que começa a falhar sistematicamente (token revogado, número banido pelo WhatsApp,
+Evolution caiu) antes não tinha proteção: a campanha continuava tentando enviar pro resto da
+lista inteira, uma falha atrás da outra, sem que ninguém percebesse até checar manualmente.
+
+`Campanha.consecutiveFailures` incrementa a cada falha (número desconectado, envio exaurido
+pelo BullMQ) e **zera a cada sucesso** — só falhas *seguidas* importam. Ao bater
+`CAMPANHAS_CIRCUIT_BREAKER_THRESHOLD` (env, default `5`), a campanha vira `paused` sozinha, com
+`pausedReason` explicando o motivo (mostrado na tela — ver §11.10), e dispara e-mail (item 10).
+Channel-agnostic de propósito: não tenta interpretar códigos de erro específicos da Meta (que
+mudam) — falha é falha, nos dois canais.
+
+Implementado em `bumpProcessedAndMaybeComplete()` (`apps/worker/src/modules/campanhas.ts`),
+função central chamada após **todo** contato processado (sucesso ou falha definitiva) — ver
+§11.9, é o mesmo ponto que cuida do item 9.
+
+### 11.2 Item 2 — Pool de números (round-robin)
+
+Uma campanha grande batendo só num número concentra todo o risco (tier, quality rating, e no
+Evolution o próprio risco de ban) numa única linha. Agora dá pra somar números extras do
+**mesmo canal** à campanha:
+
+- `GET /:id/pool-candidates` lista números do usuário do mesmo canal, exceto o primário.
+- `POST /:id/pool` valida (dono + mesmo `provider`) e salva `poolNumberIds` (máx. 10) —
+  só permitido fora de uma campanha em execução.
+- `POST /:id/start` (e o disparo automático agendado, `campanhas-scheduler.ts`) monta a
+  "rotação de envio" = número primário + números do pool que estiverem `connected` **agora**
+  (um número do pool que caiu simplesmente sai da rotação daquela vez, não trava a campanha) e
+  distribui os contatos pendentes em round-robin puro por índice
+  (`sendNumbers[i % sendNumbers.length]`), gravando `CampanhaContato.assignedNumberId` em lote
+  (1 `updateMany` por número, não 1 por contato). Canal meta: o teto de tier/quality (§9.3)
+  passa a somar o cap de **todos** os números da rotação, não só do primário.
+- O worker (`processCampanhaJob`) resolve o número de envio por `assignedNumberId` quando
+  setado e diferente do primário; no caso comum (sem pool) não faz query nem write extra.
+- Canal Evolution com pool: o ritmo de envio (item 3) usa o número **mais novo** da rotação
+  como referência — o mais conservador, não o mais permissivo.
+
+### 11.3 Item 3 — Aquecimento progressivo (Evolution)
+
+Um número Evolution recém-conectado disparando no limite diário cheio desde o dia 1 é
+exatamente o padrão que mais aciona detecção de spam num número sem histórico de uso "normal"
+ainda. `effectiveEvolutionDailyLimit(connectedAt)` faz uma rampa linear a partir de
+`WhatsappNumber.connectedAt`: começa em 15% do limite configurado (`CAMPANHAS_EVOLUTION_*`) e
+chega a 100% depois de `CAMPANHAS_EVOLUTION_WARMUP_DAYS` (default 10) dias conectado. Sem
+`connectedAt` (não deveria acontecer com `status='connected'`, mas defensivo) usa o limite
+cheio — fail-open. Entra em `evolutionSendDelayMs(index, dailyLimit)` no lugar do limite
+constante, tanto em `/:id/start` quanto no scheduler.
+
+### 11.4 Item 4 — Janela de envio (não manda de madrugada)
+
+`applySendWindow(delayMs, now)` empurra o horário-alvo de cada mensagem pra dentro de
+`CAMPANHAS_SEND_WINDOW_START_HOUR`–`END_HOUR` (default 8h–21h, horário de Brasília fixo UTC-3 —
+não há mais horário de verão no Brasil desde 2019). Aplica-se **por contato**, não ao lote
+inteiro — importante numa campanha Evolution de vários dias, onde índices diferentes caem em
+madrugadas diferentes. Aplica-se aos **dois canais**: mesmo o Meta (template pré-aprovado,
+"compliant") não deveria acordar o destinatário às 3h — é sobre a experiência de quem recebe,
+não só sobre risco de banimento do canal Evolution.
+
+### 11.5 Item 5 — Envio de teste
+
+`POST /:id/test-send` manda a mensagem real (mesmo `sendTemplateMessage`/`sendText` que o
+worker usa) pra um telefone informado no corpo, **sem** criar `CampanhaContato` nem tocar
+`audienceCount`/`sentCount`/`processedCount` — é só uma prévia. Canal Evolution: texto prefixado
+com `[TESTE]`, `{{nome}}` renderizado com o nome informado (ou "Teste"). Canal Meta: variáveis
+de amostra (`Teste1`, `Teste2`...) se não informadas no corpo, no número certo de posições
+(`templateVarCount`).
+
+### 11.6 Item 6 — Validação de variáveis do template
+
+Antes, um CSV com número errado de colunas de variável só falhava **na hora do envio real**
+(rejeição da Meta por parâmetro faltando/sobrando), silenciosamente por contato. Agora
+`Campanha.templateVarCount` (setado na criação, calculado no front a partir do template
+escolhido) é conferido linha a linha no upload de CSV — mismatch vira `skippedVarMismatch` no
+retorno, contato nem é criado. Campanhas antigas sem `templateVarCount` (null) mantêm o
+comportamento anterior — sem essa checagem.
+
+### 11.7 Item 7 — Performance por template
+
+`GET /performance` agrega, entre todas as campanhas Meta do usuário, contagens por
+`templateName` (campanhas, audiência, sent/delivered/read/failed/optout — mesma fonte de
+`CampanhaContato.status` que `GET /:id` já usa) e calcula `successRate`/`failureRate`/
+`optoutRate` sobre a audiência total. Ajuda a responder "qual template eu devia parar de usar"
+sem abrir campanha por campanha. Página nova `/dashboard/campanhas/performance`, linkada da
+lista.
+
+### 11.8 Item 8 — Corte de recência na audiência "quente" (Evolution)
+
+O guardrail do canal Evolution (§8) já exigia "conversou alguma vez" — mas um contato que falou
+uma vez há 2 anos não é mais "quente" de verdade; mandar campanha pra ele carrega o mesmo risco
+de "mensagem não solicitada" que mandar pra um desconhecido. `warmContactsForNumber()` agora só
+considera transcrição/Atende/Copiloto dentro de `CAMPANHAS_WARM_AUDIENCE_DAYS` (default 180
+dias) — generoso de propósito, corta só o extremo.
+
+### 11.9 Item 9 — `processedCount` no lugar de `COUNT(*)` a cada envio
+
+Antes, cada job processado disparava um `COUNT(*)` em `CampanhaContato` só pra saber se a
+campanha tinha terminado — desperdício crescente conforme a lista cresce (uma campanha de 50k
+contatos faz 50k `COUNT(*)` num período curto). Agora `Campanha.processedCount` é incrementado
+uma vez por contato processado (sucesso ou falha) e comparado com `audienceCount`, já em mãos —
+zero query extra. Centralizado em `bumpProcessedAndMaybeComplete()` (worker), que também cuida
+do circuit breaker (item 1) e da notificação de conclusão (item 10).
+
+**Bug real encontrado e corrigido nesta revisão:** opt-out via webhook (`registerCampanhaOptOut`,
+usado pelos dois webhooks de entrada) nunca passava pelo worker — um contato que sai por opt-out
+nunca teria sua "vez" de incrementar `processedCount`. Resultado: uma campanha com opt-outs
+suficientes pra esgotar os pendentes **nunca bateria `audienceCount`** e ficaria `running` pra
+sempre, mesmo sem nenhum contato pendente de verdade. Corrigido: `registerCampanhaOptOut` agora
+busca os `CampanhaContato` pendentes afetados, agrupa por campanha, incrementa `processedCount`
+por campanha (não mexe em `consecutiveFailures` — opt-out é ação do destinatário, não falha de
+envio) e completa a campanha se `status='running'` e `processedCount >= audienceCount` — mesmo
+guard atômico (`updateMany` filtrado por status) que o worker usa.
+
+### 11.10 Item 10 — Notificação por e-mail (conclusão / auto-pausa)
+
+`notifyCampanhaCompleted()` e `notifyCampanhaAutoPaused()` (worker, via `sendEmail` do Resend,
+mesmo estilo dark-card já usado em outros e-mails do produto) disparam fire-and-forget (nunca
+bloqueiam nem derrubam o processamento do job) quando a campanha completa ou é auto-pausada pelo
+circuit breaker. `registerCampanhaOptOut` (API) tem sua própria cópia compacta do e-mail de
+conclusão pro caminho raro de completar via opt-out em massa (ver §11.9) — duplicada de
+propósito, api e worker não compartilham código neste monorepo. `pausedReason` também aparece
+direto na tela da campanha (`/dashboard/campanhas/[id]`), não só no e-mail.
+
+### 11.11 Duplicação entre api/worker (mantida deliberadamente)
+
+`evolutionSendDelayMs`, `effectiveEvolutionDailyLimit` e `applySendWindow` existem **duas
+vezes** — em `apps/api/src/routes/modules/campanhas.ts` (usado por `/:id/start`) e em
+`apps/worker/src/campanhas-scheduler.ts` (usado pelo disparo automático agendado). Mesma
+filosofia já estabelecida no resto do módulo (§8): api e worker não compartilham código neste
+monorepo, e a alternativa (extrair um pacote compartilhado só pra ~40 linhas de função pura)
+seria mais infraestrutura do que o problema justifica.
+
+### 11.12 Testes e cobertura
+
+79 testes em `apps/api/src/__tests__/campanhas.test.ts` (era 53) e 16 em
+`apps/worker/src/__tests__/campanhas.test.ts` (era 14), todos passando, mais typecheck limpo
+nos três apps (`api`/`worker`/`web`). Cobertura nova inclui: circuit breaker (falha acumula e
+dispara pausa+e-mail), pool round-robin (distribui certo, ignora número caído sem travar),
+`applySendWindow`/`effectiveEvolutionDailyLimit` isolados e determinísticos (datas fixas, sem
+depender do horário real de execução do teste), `registerCampanhaOptOut` isolado (incrementa
+por campanha, não mexe em `consecutiveFailures`, só completa campanha `running`), validação de
+variáveis do CSV, `/performance`, `/test-send` e o corte de recência de `/from-conversas`.
+
+**Achado durante a implementação, não um defeito do produto:** um teste de integração inicial
+comparava o delay de dois jobs consecutivos (`jobs[1].delay > jobs[0].delay`) — quebrou de forma
+intermitente perto da virada de hora, porque `applySendWindow` arredonda pro início da janela
+(8h) e um job com delay bruto maior pode, depois desse arredondamento, cair numa hora-alvo
+*menor* que o anterior (ex.: job 0 alvo 00:59 → empurra 8h; job 1 alvo 01:02, já na hora
+seguinte → empurra só 7h). O total pode inverter a ordem sem que nada esteja errado — é a janela
+funcionando. Teste corrigido para verificar corretude via `applySendWindow` isolado com horários
+fixos, e a asserção de integração passou a checar só forma (`jobId` certo, delay não-negativo),
+não ordem relativa.
+
+### 11.13 O que ficou de fora desta revisão (conhecido, não escolhido)
+
+- **UI do pool**: só o essencial (checklist + salvar) — sem indicar, por número, quantos
+  contatos já foram atribuídos a ele numa campanha em andamento.
+- **`/:id/schedule` não recalcula tier/pool na hora do agendamento** — só `/:id/start` (manual)
+  e o disparo automático do scheduler fazem essa conta; agendar não valida nada disso
+  antecipadamente (mesma lacuna já registrada em §9.3 para o tier sozinho).
+- **Item 8 (recência)** usa `Transcription.createdAt` como proxy de "última interação" — não é
+  exatamente a data da última mensagem (é a data de criação do registro de transcrição), mas é
+  o campo disponível sem mudar o schema de outro módulo pra isso.

@@ -341,6 +341,7 @@ export const createCampanhaSchema = z.object({
   templateName:       z.string().min(1).max(512).optional(),
   templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
   templateComponents: z.array(z.record(z.any())).optional(),
+  templateVarCount:   z.coerce.number().int().min(0).max(20).optional(),
   messageBody:        z.string().min(1, 'Escreva a mensagem').max(4096).optional(),
 }).refine(
   (v) => (v.channel === 'meta' ? !!v.templateName : !!v.messageBody),

@@ -838,8 +838,13 @@ model Campanha {
   messageBody        String? // obrigatório quando channel='evolution' — texto livre, suporta {{nome}}
   consentConfirmedAt DateTime? // quando o usuário confirmou consentimento/risco no /start
   consentConfirmedIp String?
+  templateVarCount   Int? // nº de {{n}} no corpo do template (meta) — setado na criação, valida CSV no upload
+  poolNumberIds      String[]          @default([]) // números extras (mesmo canal) pra dividir uma campanha grande — round-robin no /start
+  consecutiveFailures Int              @default(0) // reseta a cada envio OK; N seguidas aciona a auto-pausa (circuit breaker)
+  pausedReason       String? // motivo da pausa AUTOMÁTICA (circuit breaker) — null quando foi o usuário que pausou
   audienceCount      Int               @default(0)
   sentCount          Int               @default(0) // contador incremental — único escritor é o worker (evita drift)
+  processedCount     Int               @default(0) // sent+failed+optout — evita um COUNT(*) a cada contato pra saber se a campanha terminou
   scheduledAt        DateTime?
   startedAt          DateTime?
   completedAt        DateTime?
@@ -861,6 +866,7 @@ model CampanhaContato {
   name         String?
   variables    Json? // valores das variáveis do template para este contato ({{1}}, {{2}}, ...)
   status       String    @default("pending") // pending|sent|delivered|read|failed|optout
+  assignedNumberId String? // qual número (primário ou do pool) vai enviar este contato — setado no /start
   wamid        String? // message id da Meta — correlaciona com o status recebido no webhook
   errorMessage String?
   sentAt       DateTime?

@@ -16,6 +16,8 @@ interface Campanha {
   consentConfirmedAt: string | null;
   audienceCount: number;
   sentCount: number;
+  poolNumberIds: string[];
+  pausedReason: string | null;
   scheduledAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -24,6 +26,13 @@ interface Campanha {
     id: string; phoneNumber: string | null; displayName: string | null;
     metaMessagingLimitTier: string | null; metaQualityRating: string | null;
   } | null;
+}
+
+interface PoolCandidate {
+  id: string;
+  phoneNumber: string | null;
+  displayName: string | null;
+  status: string;
 }
 
 interface FromConversasResult {
@@ -47,6 +56,7 @@ interface UploadResult {
   skippedOptOut: number;
   skippedInvalid: number;
   skippedDuplicate: number;
+  skippedVarMismatch: number;
 }
 
 const CAMP_STATUS_LABEL: Record<string, string> = {
@@ -110,6 +120,15 @@ export default function CampanhaDetailPage() {
   const [importResult, setImportResult] = useState<FromConversasResult | null>(null);
   const [tierExceeded, setTierExceeded] = useState<{ tier: string; cap: number; count: number } | null>(null);
 
+  const [testPhone, setTestPhone] = useState('');
+  const [testSending, setTestSending] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const [poolCandidates, setPoolCandidates] = useState<PoolCandidate[]>([]);
+  const [poolSelected, setPoolSelected] = useState<string[]>([]);
+  const [poolSaving, setPoolSaving] = useState(false);
+  const [poolMessage, setPoolMessage] = useState<string | null>(null);
+
   const loadCampanha = useCallback(async () => {
     try {
       const res = await api.get<{ campanha: Campanha; stats: Record<string, number> }>(`/modules/campanhas/${id}`);
@@ -149,6 +168,52 @@ export default function CampanhaDetailPage() {
     }, 5000);
     return () => clearInterval(t);
   }, [campanha?.status, loadCampanha, loadContatos]);
+
+  // Pool de números (item 2) — só faz sentido editar antes/entre disparos.
+  const canEditPool = campanha ? ['draft', 'scheduled', 'paused'].includes(campanha.status) : false;
+  useEffect(() => {
+    if (!id || !canEditPool) return;
+    (async () => {
+      try {
+        const res = await api.get<{ numeros: PoolCandidate[] }>(`/modules/campanhas/${id}/pool-candidates`);
+        setPoolCandidates(res.numeros || []);
+      } catch {
+        /* pool é um recurso opcional — falha aqui não deve travar a tela */
+      }
+    })();
+  }, [id, canEditPool]);
+  useEffect(() => {
+    if (campanha) setPoolSelected(campanha.poolNumberIds || []);
+  }, [campanha?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSavePool() {
+    setPoolSaving(true);
+    setPoolMessage(null);
+    try {
+      await api.post(`/modules/campanhas/${id}/pool`, { numberIds: poolSelected });
+      setPoolMessage('Pool salvo.');
+      await loadCampanha();
+    } catch (err: any) {
+      setPoolMessage(err?.message || 'Não foi possível salvar o pool.');
+    } finally {
+      setPoolSaving(false);
+    }
+  }
+
+  async function handleTestSend(e: FormEvent) {
+    e.preventDefault();
+    if (!testPhone.trim()) return;
+    setTestSending(true);
+    setTestResult(null);
+    try {
+      await api.post(`/modules/campanhas/${id}/test-send`, { phone: testPhone.trim() });
+      setTestResult({ ok: true, message: 'Mensagem de teste enviada.' });
+    } catch (err: any) {
+      setTestResult({ ok: false, message: err?.message || 'Falha ao enviar teste.' });
+    } finally {
+      setTestSending(false);
+    }
+  }
 
   async function handleUpload(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -318,6 +383,12 @@ export default function CampanhaDetailPage() {
           <p className="mt-2 text-sm text-emerald-400">
             🗓️ Agendada para {new Date(campanha.scheduledAt).toLocaleString('pt-BR')}
           </p>
+        )}
+
+        {campanha.status === 'paused' && campanha.pausedReason && (
+          <div className="mt-4 rounded-lg border border-amber-800 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+            ⛔ {campanha.pausedReason}
+          </div>
         )}
 
         <div className="mt-6 grid grid-cols-3 sm:grid-cols-6 gap-3">
@@ -556,8 +627,74 @@ export default function CampanhaDetailPage() {
             {uploadResult.skippedOptOut > 0 && ` ${uploadResult.skippedOptOut} já em opt-out.`}
             {uploadResult.skippedInvalid > 0 && ` ${uploadResult.skippedInvalid} inválido(s).`}
             {uploadResult.skippedDuplicate > 0 && ` ${uploadResult.skippedDuplicate} duplicado(s).`}
+            {uploadResult.skippedVarMismatch > 0 && ` ${uploadResult.skippedVarMismatch} com nº de variáveis diferente do template.`}
           </div>
         )}
+
+        {canEditPool && poolCandidates.length > 0 && (
+          <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+            <h2 className="text-sm font-semibold text-neutral-300">Pool de números</h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              Divida o disparo entre números extras do mesmo canal — reduz o volume por número e o
+              risco de bater no teto/qualidade de um único número.
+            </p>
+            <div className="mt-3 space-y-1.5">
+              {poolCandidates.map((n) => (
+                <label key={n.id} className="flex items-center gap-2 text-sm text-neutral-300">
+                  <input
+                    type="checkbox"
+                    checked={poolSelected.includes(n.id)}
+                    onChange={(e) => setPoolSelected((prev) => (
+                      e.target.checked ? [...prev, n.id] : prev.filter((x) => x !== n.id)
+                    ))}
+                  />
+                  <span>{n.displayName || n.phoneNumber || n.id}</span>
+                  {n.status !== 'connected' && (
+                    <span className="text-xs text-amber-400">(desconectado — só entra se reconectar antes do disparo)</span>
+                  )}
+                </label>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                onClick={handleSavePool}
+                disabled={poolSaving}
+                className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {poolSaving ? 'Salvando…' : 'Salvar pool'}
+              </button>
+              {poolMessage && <span className="text-xs text-neutral-400">{poolMessage}</span>}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+          <h2 className="text-sm font-semibold text-neutral-300">Enviar teste</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Manda esta mensagem pra um número (ex: o seu) sem contar nas métricas da campanha.
+          </p>
+          <form onSubmit={handleTestSend} className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Telefone com DDD"
+              value={testPhone}
+              onChange={(e) => setTestPhone(e.target.value)}
+              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm outline-none focus:border-emerald-600"
+            />
+            <button
+              type="submit"
+              disabled={testSending || !testPhone.trim()}
+              className="rounded-lg border border-neutral-700 px-3 py-2 text-xs font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-50"
+            >
+              {testSending ? 'Enviando…' : '🧪 Enviar teste'}
+            </button>
+            {testResult && (
+              <span className={`text-xs ${testResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                {testResult.message}
+              </span>
+            )}
+          </form>
+        </div>
 
         <div className="mt-8">
           <div className="flex items-center justify-between mb-3">

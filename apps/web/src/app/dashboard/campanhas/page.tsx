@@ -115,6 +115,9 @@ export default function CampanhasListPage() {
           <Link href="/dashboard/campanhas/optouts" className="text-sm text-neutral-400 hover:text-neutral-200">
             Ver opt-outs →
           </Link>
+          <Link href="/dashboard/campanhas/performance" className="text-sm text-neutral-400 hover:text-neutral-200">
+            Performance por template →
+          </Link>
         </div>
 
         {campanhas.length === 0 ? (
