@@ -582,7 +582,37 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     const stats: Record<string, number> = {};
     for (const g of grouped) stats[g.status] = g._count;
 
-    return { campanha, stats };
+    // Quebra por número do pool (§11.13 — item que ficava pendente): só busca
+    // quando a campanha tem pool configurado, pra não pagar 2 queries extras à
+    // toa no caso comum (sem pool). assignedNumberId nulo (contato criado antes
+    // do pool existir, ou pool desativado depois) cai no número primário.
+    let statsByNumber: Record<string, Record<string, number>> | undefined;
+    let poolNumbers: Array<{ id: string; phoneNumber: string | null; displayName: string | null }> | undefined;
+    if (campanha.poolNumberIds.length > 0) {
+      const [groupedByNumber, poolNumbersRows] = await Promise.all([
+        prisma.campanhaContato.groupBy({
+          by: ['assignedNumberId', 'status'],
+          where: { campanhaId: id },
+          _count: true,
+        }),
+        prisma.whatsappNumber.findMany({
+          where: { id: { in: campanha.poolNumberIds } },
+          select: { id: true, phoneNumber: true, displayName: true },
+        }),
+      ]);
+      statsByNumber = {};
+      for (const g of groupedByNumber) {
+        // assignedNumberId nulo colapsa no primário — pode coincidir com um grupo
+        // que já tem assignedNumberId === primário explicitamente, então soma em
+        // vez de sobrescrever (senão um dos dois "sent" apaga o outro).
+        const key = g.assignedNumberId || campanha.whatsappNumberId;
+        statsByNumber[key] = statsByNumber[key] || {};
+        statsByNumber[key][g.status] = (statsByNumber[key][g.status] || 0) + g._count;
+      }
+      poolNumbers = poolNumbersRows;
+    }
+
+    return { campanha, stats, statsByNumber, poolNumbers };
   });
 
   // ── GET /:id/contatos — lista contatos (paginado, filtro por status) ────

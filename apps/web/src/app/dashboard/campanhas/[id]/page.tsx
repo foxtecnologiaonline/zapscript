@@ -35,6 +35,12 @@ interface PoolCandidate {
   status: string;
 }
 
+interface PoolNumberInfo {
+  id: string;
+  phoneNumber: string | null;
+  displayName: string | null;
+}
+
 interface FromConversasResult {
   imported: number;
   skippedOptOut: number;
@@ -128,12 +134,20 @@ export default function CampanhaDetailPage() {
   const [poolSelected, setPoolSelected] = useState<string[]>([]);
   const [poolSaving, setPoolSaving] = useState(false);
   const [poolMessage, setPoolMessage] = useState<string | null>(null);
+  const [statsByNumber, setStatsByNumber] = useState<Record<string, Record<string, number>> | undefined>();
+  const [poolNumbersInfo, setPoolNumbersInfo] = useState<PoolNumberInfo[] | undefined>();
 
   const loadCampanha = useCallback(async () => {
     try {
-      const res = await api.get<{ campanha: Campanha; stats: Record<string, number> }>(`/modules/campanhas/${id}`);
+      const res = await api.get<{
+        campanha: Campanha; stats: Record<string, number>;
+        statsByNumber?: Record<string, Record<string, number>>;
+        poolNumbers?: PoolNumberInfo[];
+      }>(`/modules/campanhas/${id}`);
       setCampanha(res.campanha);
       setStats(res.stats || {});
+      setStatsByNumber(res.statsByNumber);
+      setPoolNumbersInfo(res.poolNumbers);
     } catch (e: any) {
       if (e?.error === 'Campanha não encontrada.') setNotFound(true);
       else if (e?.statusCode !== 401) setError(e?.message || 'Não foi possível carregar a campanha.');
@@ -668,6 +682,32 @@ export default function CampanhaDetailPage() {
                 {poolSaving ? 'Salvando…' : 'Salvar pool'}
               </button>
               {poolMessage && <span className="text-xs text-brand-muted">{poolMessage}</span>}
+            </div>
+          </div>
+        )}
+
+        {statsByNumber && Object.keys(statsByNumber).length > 0 && (
+          <div className="mt-6 card rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-brand-text">Envio por número (pool)</h2>
+            <p className="mt-1 text-xs text-brand-muted">
+              Quanto cada número da rotação já processou nesta campanha.
+            </p>
+            <div className="mt-3 space-y-2">
+              {Object.entries(statsByNumber).map(([numberId, byStatus]) => {
+                const info = numberId === campanha.whatsappNumber?.id
+                  ? campanha.whatsappNumber
+                  : poolNumbersInfo?.find((n) => n.id === numberId);
+                const total = Object.values(byStatus).reduce((a, b) => a + b, 0);
+                return (
+                  <div key={numberId} className="flex items-center justify-between text-sm border-t border-brand-border pt-2 first:border-t-0 first:pt-0">
+                    <span className="text-brand-text-secondary">{info?.displayName || info?.phoneNumber || numberId}</span>
+                    <span className="text-xs text-brand-muted">
+                      {total} processado{total === 1 ? '' : 's'}
+                      {byStatus.failed ? ` · ${byStatus.failed} falhou/falharam` : ''}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

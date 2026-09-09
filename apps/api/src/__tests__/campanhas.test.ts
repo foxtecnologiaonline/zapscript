@@ -266,6 +266,57 @@ describe('GET/DELETE /modules/campanhas/:id', () => {
   afterAll(async () => { await app.close(); });
   beforeEach(() => jest.clearAllMocks());
 
+  it('GET retorna stats simples e sem statsByNumber quando não há pool', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', poolNumberIds: [] });
+    (prisma.campanhaContato.groupBy as jest.Mock).mockResolvedValueOnce([
+      { status: 'sent', _count: 3 }, { status: 'failed', _count: 1 },
+    ]);
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'GET', url: '/modules/campanhas/c1',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.stats).toEqual({ sent: 3, failed: 1 });
+    expect(body.statsByNumber).toBeUndefined();
+    expect(body.poolNumbers).toBeUndefined();
+    expect(prisma.whatsappNumber.findMany).not.toHaveBeenCalled();
+  });
+
+  it('GET retorna statsByNumber e poolNumbers quando a campanha tem pool (§11.13)', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: 'c1', whatsappNumberId: NUM_ID, poolNumberIds: ['num2'],
+    });
+    (prisma.campanhaContato.groupBy as jest.Mock)
+      .mockResolvedValueOnce([{ status: 'sent', _count: 4 }]) // stats gerais
+      .mockResolvedValueOnce([                                 // por número
+        { assignedNumberId: NUM_ID, status: 'sent', _count: 2 },
+        { assignedNumberId: 'num2', status: 'sent', _count: 1 },
+        { assignedNumberId: 'num2', status: 'failed', _count: 1 },
+        { assignedNumberId: null, status: 'sent', _count: 1 }, // contato pré-pool → cai no primário
+      ]);
+    (prisma.whatsappNumber.findMany as jest.Mock).mockResolvedValueOnce([
+      { id: 'num2', phoneNumber: '5511888888888', displayName: 'Num 2' },
+    ]);
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'GET', url: '/modules/campanhas/c1',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.statsByNumber).toEqual({
+      [NUM_ID]: { sent: 3 }, // 2 diretos + 1 do contato com assignedNumberId nulo
+      num2: { sent: 1, failed: 1 },
+    });
+    expect(body.poolNumbers).toEqual([{ id: 'num2', phoneNumber: '5511888888888', displayName: 'Num 2' }]);
+  });
+
   it('GET retorna 404 se a campanha não existe ou não pertence ao usuário', async () => {
     grantModuleAccess();
     (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce(null);

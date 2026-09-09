@@ -737,11 +737,34 @@ não ordem relativa.
 
 ### 11.13 O que ficou de fora desta revisão (conhecido, não escolhido)
 
-- **UI do pool**: só o essencial (checklist + salvar) — sem indicar, por número, quantos
-  contatos já foram atribuídos a ele numa campanha em andamento.
+- ~~**UI do pool**: só o essencial (checklist + salvar) — sem indicar, por número, quantos
+  contatos já foram atribuídos a ele numa campanha em andamento.~~ Fechado — ver §14.1.
 
 Os outros dois itens desta lista (tier no agendamento, e o tema claro/escuro de todo o módulo)
 foram fechados na revisão seguinte — ver §12.
+
+---
+
+## 14. Itens da lista "o que falta" (WhatsApp) executados nesta revisão
+
+### 14.1 UI do pool — quebra de envio por número
+
+`GET /:id` agora devolve `statsByNumber` (contagem por status, agrupada por
+`CampanhaContato.assignedNumberId`) e `poolNumbers` (nome/telefone dos números do pool) quando
+a campanha tem `poolNumberIds` — só paga a query extra nesse caso, não no caminho comum sem
+pool. Contato com `assignedNumberId` nulo (criado antes do pool existir) cai no número
+primário; a soma por status usa acumulador (`+= count`), não atribuição direta, porque o mesmo
+número primário pode aparecer em duas linhas do `groupBy` (uma com `assignedNumberId` explícito,
+outra nula) — bug real pego pelo teste antes de chegar em produção. Tela: novo card "Envio por
+número (pool)" na página da campanha, mostrando total processado + falhas por número.
+
+### 14.2 Os demais itens da lista não foram executados — decisão pendente do usuário
+
+Segmentação de audiência, sequência/drip, A/B test de template e limite de uso por plano têm
+decisão de produto real embutida (quais filtros importam, se a sequência espera resposta ou é
+por tempo fixo, o que define "vencedor" do A/B, e — no caso do limite — números de verdade de
+plano/preço). Perguntado ao usuário antes de construir, pra não arriscar retrabalho grande
+numa direção errada.
 
 ---
 
