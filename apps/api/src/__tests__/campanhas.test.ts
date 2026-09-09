@@ -12,9 +12,12 @@ jest.mock('../lib/prisma', () => ({
     campanha:        { findMany: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
     campanhaContato: { findMany: jest.fn(), groupBy: jest.fn(), createMany: jest.fn(), count: jest.fn() },
     campanhaOptOut:  { findMany: jest.fn() },
-    whatsappNumber:  { findFirst: jest.fn(), findUnique: jest.fn() },
+    whatsappNumber:  { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
     entitlement:     { findMany: jest.fn() },
     product:         { findMany: jest.fn() },
+    transcription:        { findMany: jest.fn() },
+    atendeConversation:   { findMany: jest.fn() },
+    copilotoConversation: { findMany: jest.fn() },
   },
 }));
 
@@ -35,6 +38,7 @@ jest.mock('../services/whatsapp-campaigns', () => ({
 import { prisma } from '../lib/prisma';
 import { redis, campanhasQueue } from '../services/queue';
 import { listTemplates } from '../services/whatsapp-campaigns';
+import { evolutionSendDelayMs } from '../routes/modules/campanhas';
 
 async function buildApp() {
   const app = Fastify({ logger: false });
@@ -58,6 +62,10 @@ function grantModuleAccess() {
 }
 
 const NUM_ID = 'ckv8z4x9q0000qzrmn831p0e';
+
+function csvForm(csv: string) {
+  return `--boundary\r\nContent-Disposition: form-data; name="file"; filename="contatos.csv"\r\nContent-Type: text/csv\r\n\r\n${csv}\r\n--boundary--\r\n`;
+}
 
 describe('Gate de módulo (requireModule)', () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
@@ -631,5 +639,162 @@ describe('Agendamento (schedule/unschedule)', () => {
       expect(res.statusCode).toBe(200);
       expect(prisma.campanha.update).toHaveBeenCalledWith({ where: { id: 'c1' }, data: { status: 'draft', scheduledAt: null } });
     });
+  });
+});
+
+describe('Canal Evolution (guardrails)', () => {
+  let app: Awaited<ReturnType<typeof buildApp>>;
+
+  beforeAll(async () => { app = await buildApp(); });
+  afterAll(async () => { await app.close(); });
+  beforeEach(() => jest.clearAllMocks());
+
+  it('POST / — evolution exige messageBody, não templateName', async () => {
+    grantModuleAccess();
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/modules/campanhas',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'Promo', whatsappNumberId: NUM_ID, channel: 'evolution' }, // sem messageBody
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('POST / — cria campanha evolution contra número provider=evolution', async () => {
+    grantModuleAccess();
+    (prisma.whatsappNumber.findFirst as jest.Mock).mockResolvedValueOnce({ id: NUM_ID, provider: 'evolution' });
+    (prisma.campanha.create as jest.Mock).mockResolvedValueOnce({ id: 'c1', channel: 'evolution' });
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/modules/campanhas',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'Promo', whatsappNumberId: NUM_ID, channel: 'evolution', messageBody: 'Oi {{nome}}!' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(prisma.whatsappNumber.findFirst).toHaveBeenCalledWith({
+      where: { id: NUM_ID, userId: 'u1', provider: 'evolution' },
+    });
+    expect(prisma.campanha.create).toHaveBeenCalledWith({
+      data: {
+        userId: 'u1', whatsappNumberId: NUM_ID, name: 'Promo', channel: 'evolution',
+        templateName: null, templateLanguage: 'pt_BR', templateComponents: undefined,
+        messageBody: 'Oi {{nome}}!',
+      },
+    });
+  });
+
+  it('POST /:id/contatos (CSV) — rejeita para campanha evolution', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', channel: 'evolution' });
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/modules/campanhas/c1/contatos',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'multipart/form-data; boundary=boundary' },
+      payload: csvForm('5511999999999,João'),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('POST /:id/contatos/from-conversas — rejeita para campanha meta', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', channel: 'meta' });
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/modules/campanhas/c1/contatos/from-conversas',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('POST /:id/contatos/from-conversas — importa a união de conversas, pulando optout/duplicado', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', channel: 'evolution', whatsappNumberId: NUM_ID });
+    (prisma.transcription.findMany as jest.Mock).mockResolvedValueOnce([{ contactPhone: '11911111111', contactName: 'Ana' }]);
+    (prisma.atendeConversation.findMany as jest.Mock).mockResolvedValueOnce([
+      { contactPhone: '11911111111', contactName: null },  // mesmo contato da transcrição — dedup
+      { contactPhone: '11922222222', contactName: 'Bruno' }, // vai dar optout
+    ]);
+    (prisma.copilotoConversation.findMany as jest.Mock).mockResolvedValueOnce([
+      { contactPhone: '11933333333', contactName: 'Carla' }, // já existe na campanha — dedup
+    ]);
+    (prisma.campanhaOptOut.findMany as jest.Mock).mockResolvedValueOnce([{ phone: '5511922222222' }]);
+    (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ phone: '5511933333333' }]);
+    (prisma.campanhaContato.createMany as jest.Mock).mockResolvedValueOnce({ count: 1 });
+    (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/modules/campanhas/c1/contatos/from-conversas',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ imported: 1, skippedOptOut: 1, skippedDuplicate: 1, elegiveis: 3 });
+    expect(prisma.campanhaContato.createMany).toHaveBeenCalledWith({
+      data: [{ campanhaId: 'c1', phone: '5511911111111', name: 'Ana' }],
+    });
+  });
+
+  it('POST /:id/start — evolution sem acknowledgeRisk é rejeitado', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: 'c1', status: 'draft', channel: 'evolution', audienceCount: 2, whatsappNumberId: NUM_ID, consentConfirmedAt: null,
+    });
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/modules/campanhas/c1/start',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(campanhasQueue.addBulk).not.toHaveBeenCalled();
+  });
+
+  it('POST /:id/start — evolution com acknowledgeRisk grava consentimento e espaça os jobs', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: 'c1', status: 'draft', channel: 'evolution', audienceCount: 2, whatsappNumberId: NUM_ID,
+      consentConfirmedAt: null, startedAt: null,
+    });
+    (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', zapiInstanceId: 'zs-abc' });
+    (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }, { id: 'ct2' }]);
+    (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/modules/campanhas/c1/start',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { acknowledgeRisk: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(prisma.campanha.update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: {
+        status: 'running', startedAt: expect.any(Date),
+        consentConfirmedAt: expect.any(Date), consentConfirmedIp: expect.anything(),
+      },
+    });
+    const [jobs] = (campanhasQueue.addBulk as jest.Mock).mock.calls[0];
+    expect(jobs).toHaveLength(2);
+    expect(jobs[0].opts).toEqual({ jobId: 'c1:ct1', delay: 0 }); // 1º job sai na hora
+    expect(jobs[1].opts.delay).toBeGreaterThan(0); // 2º já vem espaçado
+  });
+});
+
+describe('evolutionSendDelayMs (pacing)', () => {
+  it('index 0 nunca tem delay', () => {
+    expect(evolutionSendDelayMs(0, 40)).toBe(0);
+  });
+
+  it('espaça em torno de 24h / limite diário, com jitter de ±30%', () => {
+    const dailyLimit = 40;
+    const base = (24 * 60 * 60 * 1000) / dailyLimit;
+    for (let i = 1; i <= 5; i++) {
+      const delay = evolutionSendDelayMs(i, dailyLimit);
+      expect(delay).toBeGreaterThanOrEqual(Math.round(i * base * 0.7) - 1);
+      expect(delay).toBeLessThanOrEqual(Math.round(i * base * 1.3) + 1);
+    }
   });
 });

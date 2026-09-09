@@ -807,8 +807,17 @@ model CobrancaConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ZapScript Campanhas — disparo em massa via WhatsApp API oficial (Meta Cloud API).
-// Exige template pré-aprovado pela Meta (mensagem fora da janela de 24h de sessão).
+// ZapScript Campanhas — disparo em massa via WhatsApp.
+// channel='meta': API oficial (Meta Cloud API), exige template pré-aprovado
+//   (mensagem fora da janela de 24h de sessão) — compliant, sem risco de banimento.
+// channel='evolution': via número Evolution do próprio usuário (não-oficial),
+//   mensagem livre (messageBody). Guardrails deliberados (ver
+//   CAMPANHAS_ARQUITETURA.md §8): público restrito a quem já conversou com o
+//   número (POST /:id/contatos/from-conversas, nunca CSV livre), ritmo de envio
+//   bem mais lento que o do Meta (delay+jitter calculado no /start, ver
+//   apps/worker/src/modules/campanhas.ts), e exige consentConfirmedAt (usuário
+//   confirmou entender o risco de banimento do PRÓPRIO número, que também serve
+//   core/atende/copiloto) antes de iniciar.
 // ─────────────────────────────────────────────────────────────────────────────
 model Campanha {
   id                 String            @id @default(cuid())
@@ -816,9 +825,13 @@ model Campanha {
   whatsappNumberId   String
   name               String
   status             String            @default("draft") // draft|scheduled|running|paused|completed|canceled|failed
-  templateName       String
+  channel            String            @default("meta") // 'meta' | 'evolution'
+  templateName       String? // obrigatório quando channel='meta'
   templateLanguage   String            @default("pt_BR")
   templateComponents Json? // estrutura de componentes do template (header/body/botões) usada no envio
+  messageBody        String? // obrigatório quando channel='evolution' — texto livre, suporta {{nome}}
+  consentConfirmedAt DateTime? // quando o usuário confirmou consentimento/risco no /start
+  consentConfirmedIp String?
   audienceCount      Int               @default(0)
   sentCount          Int               @default(0) // contador incremental — único escritor é o worker (evita drift)
   scheduledAt        DateTime?

@@ -2,7 +2,15 @@ import { Job } from 'bullmq';
 import { prisma } from '../lib/prisma';
 import { decryptStr } from '../services/encryption';
 import { sendTemplateMessage } from '../services/whatsapp-campaigns';
+import { sendMessageViaEvolution } from '../services/evolution';
 import { logger } from '../lib/logger';
+
+/** Substitui {{nome}} pelo nome do contato (ou o telefone, na falta de nome). Só isso —
+ *  canal evolution não tem CSV/variáveis posicionais, é sempre mensagem+audiência derivada
+ *  de conversas existentes (ver routes/modules/campanhas.ts, warmContactsForNumber). */
+function renderEvolutionMessage(body: string, contato: { phone: string; name: string | null }): string {
+  return body.replace(/\{\{\s*nome\s*\}\}/gi, contato.name || contato.phone);
+}
 
 /**
  * Processa um job de envio de campanha (fila 'campanhas', job.data: {campanhaId, contatoId}).
@@ -11,13 +19,18 @@ import { logger } from '../lib/logger';
  * campanha não estiver 'running' ou o contato não estiver 'pending' (já enviado, ou
  * optout via webhook), o job é ignorado sem alterar dados (ver routes/modules/campanhas.ts).
  *
- * Parâmetros do corpo do template vêm de CampanhaContato.variables (posicionais, colunas
- * 3+ do CSV) — Campanha.templateComponents guarda só componentes estáticos (header/botões)
- * iguais para todos os contatos.
+ * Dois canais (Campanha.channel):
+ * - 'meta': API oficial, template pré-aprovado. Parâmetros vêm de CampanhaContato.variables
+ *   (posicionais, colunas 3+ do CSV) — Campanha.templateComponents guarda só componentes
+ *   estáticos (header/botões) iguais para todos os contatos.
+ * - 'evolution': número Evolution do próprio usuário, mensagem livre (Campanha.messageBody,
+ *   com {{nome}}). Ritmo de envio já vem espaçado do enqueue (delay+jitter — ver
+ *   evolutionSendDelayMs em routes/modules/campanhas.ts), então aqui é só enviar; não há
+ *   contador de limite diário vivo porque o espaçamento já foi calculado pra respeitá-lo.
  *
- * Em erro de envio (Meta API), o erro é propagado para o BullMQ decidir o retry (attempts/
- * backoff configurados na fila); a marcação definitiva de 'failed' só ocorre quando as
- * tentativas se esgotam, tratada pelo listener 'failed' do worker (ver index.ts) para evitar
+ * Em erro de envio, o erro é propagado para o BullMQ decidir o retry (attempts/backoff
+ * configurados na fila); a marcação definitiva de 'failed' só ocorre quando as tentativas
+ * se esgotam, tratada pelo listener 'failed' do worker (ver index.ts) para evitar
  * ambiguidade sobre o número exato da tentativa dentro do próprio processor.
  */
 export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean; reason?: string }> {
@@ -39,32 +52,43 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
   }
 
   const numero = campanha.whatsappNumber;
-  if (!numero || numero.status !== 'connected' || !numero.metaAccessTokenEnc || !numero.metaPhoneNumberId) {
-    await markContatoFailed(contatoId, 'Número Meta desconectado ou sem credenciais.');
-    await maybeCompleteCampanha(campanhaId);
-    return { skipped: true, reason: 'número desconectado' };
+
+  let messageId: string | null;
+  if (campanha.channel === 'evolution') {
+    if (!numero || numero.status !== 'connected' || !numero.zapiInstanceId) {
+      await markContatoFailed(contatoId, 'Número Evolution desconectado.');
+      await maybeCompleteCampanha(campanhaId);
+      return { skipped: true, reason: 'número desconectado' };
+    }
+    const texto = renderEvolutionMessage(campanha.messageBody || '', contato);
+    const res = await sendMessageViaEvolution(numero.zapiInstanceId, contato.phone, texto);
+    messageId = res.id;
+  } else {
+    if (!numero || numero.status !== 'connected' || !numero.metaAccessTokenEnc || !numero.metaPhoneNumberId) {
+      await markContatoFailed(contatoId, 'Número Meta desconectado ou sem credenciais.');
+      await maybeCompleteCampanha(campanhaId);
+      return { skipped: true, reason: 'número desconectado' };
+    }
+    const token = decryptStr(numero.metaAccessTokenEnc);
+    const staticComponents = (campanha.templateComponents as Array<Record<string, any>> | null) || [];
+    const bodyVars = (contato.variables as string[] | null) || [];
+    const components = bodyVars.length
+      ? [...staticComponents, { type: 'body', parameters: bodyVars.map((v) => ({ type: 'text', text: String(v) })) }]
+      : staticComponents;
+    messageId = await sendTemplateMessage(
+      token, numero.metaPhoneNumberId, contato.phone,
+      campanha.templateName!, campanha.templateLanguage, components,
+    );
   }
-
-  const token = decryptStr(numero.metaAccessTokenEnc);
-  const staticComponents = (campanha.templateComponents as Array<Record<string, any>> | null) || [];
-  const bodyVars = (contato.variables as string[] | null) || [];
-  const components = bodyVars.length
-    ? [...staticComponents, { type: 'body', parameters: bodyVars.map((v) => ({ type: 'text', text: String(v) })) }]
-    : staticComponents;
-
-  const wamid = await sendTemplateMessage(
-    token, numero.metaPhoneNumberId, contato.phone,
-    campanha.templateName, campanha.templateLanguage, components,
-  );
 
   await prisma.$transaction([
     prisma.campanhaContato.update({
       where: { id: contatoId },
-      data: { status: 'sent', wamid, sentAt: new Date(), errorMessage: null },
+      data: { status: 'sent', wamid: messageId, sentAt: new Date(), errorMessage: null },
     }),
     prisma.campanha.update({ where: { id: campanhaId }, data: { sentCount: { increment: 1 } } }),
   ]);
-  logger.info(`[Campanhas] ✅ Enviado ${contato.phone} (campanha ${campanhaId}) — wamid ${wamid}`);
+  logger.info(`[Campanhas] ✅ Enviado ${contato.phone} (campanha ${campanhaId}, canal ${campanha.channel}) — id ${messageId}`);
   await maybeCompleteCampanha(campanhaId);
   return {};
 }
@@ -79,7 +103,7 @@ export async function markCampanhaJobExhausted(job: Job, err: Error): Promise<vo
   const contato = await prisma.campanhaContato.findUnique({ where: { id: contatoId }, select: { status: true } });
   if (!contato || contato.status !== 'pending') return;
 
-  await markContatoFailed(contatoId, err.message || 'Falha ao enviar via Meta API');
+  await markContatoFailed(contatoId, err.message || 'Falha ao enviar mensagem da campanha');
   await maybeCompleteCampanha(campanhaId);
 }
 

@@ -17,19 +17,34 @@ import { campanhasQueue } from './lib/queue';
  */
 
 const CHECK_INTERVAL_MS = 60 * 1000;
+const EVOLUTION_DAILY_LIMIT = parseInt(process.env.CAMPANHAS_EVOLUTION_DAILY_LIMIT || '40', 10);
+
+/**
+ * Espaçamento entre envios do canal Evolution — duplicada de propósito de
+ * evolutionSendDelayMs em apps/api/src/routes/modules/campanhas.ts (api e worker
+ * não compartilham código neste monorepo). Ver CAMPANHAS_ARQUITETURA.md §8.
+ */
+function evolutionSendDelayMs(index: number, dailyLimit: number = EVOLUTION_DAILY_LIMIT): number {
+  if (index <= 0) return 0;
+  const baseIntervalMs = (24 * 60 * 60 * 1000) / Math.max(dailyLimit, 1);
+  const jitter = (Math.random() * 0.6 - 0.3) * baseIntervalMs; // ±30%
+  return Math.max(0, Math.round(index * baseIntervalMs + jitter));
+}
 
 async function fireCampanha(campanhaId: string): Promise<void> {
   const campanha = await prisma.campanha.findUnique({ where: { id: campanhaId } });
   if (!campanha || campanha.status !== 'scheduled') return; // já processada em outro tick/réplica
 
   const numero = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
-  if (!numero || numero.status !== 'connected' || !numero.metaAccessTokenEnc) {
+  const numeroOk = !!numero && numero.status === 'connected'
+    && (campanha.channel === 'evolution' ? !!numero.zapiInstanceId : !!numero.metaAccessTokenEnc);
+  if (!numeroOk) {
     const claimed = await prisma.campanha.updateMany({
       where: { id: campanhaId, status: 'scheduled' },
       data: { status: 'failed', completedAt: new Date() },
     });
     if (claimed.count > 0) {
-      logger.warn(`[Campanhas][Scheduler] Campanha ${campanhaId} → failed: número Meta desconectado no horário agendado.`);
+      logger.warn(`[Campanhas][Scheduler] Campanha ${campanhaId} → failed: número ${campanha.channel} desconectado no horário agendado.`);
     }
     return;
   }
@@ -56,10 +71,13 @@ async function fireCampanha(campanhaId: string): Promise<void> {
   if (claimed.count === 0) return; // outra réplica já iniciou
 
   await campanhasQueue.addBulk(
-    pendentes.map((p: { id: string }) => ({
+    pendentes.map((p: { id: string }, i: number) => ({
       name: 'send',
       data: { campanhaId, contatoId: p.id },
-      opts: { jobId: `${campanhaId}:${p.id}` },
+      opts: {
+        jobId: `${campanhaId}:${p.id}`,
+        ...(campanha.channel === 'evolution' ? { delay: evolutionSendDelayMs(i) } : {}),
+      },
     })),
   );
   logger.info(`[Campanhas][Scheduler] ▶ Campanha ${campanhaId} iniciada automaticamente (${pendentes.length} contato(s)).`);

@@ -20,6 +20,63 @@ export function normalizePhone(raw: string): string {
   return digits.startsWith('55') ? digits : `55${digits}`;
 }
 
+/** Palavras-chave de opt-out (convenção SMS/WhatsApp) — igualdade exata após trim+uppercase. */
+export const OPT_OUT_KEYWORDS = new Set(['PARAR', 'SAIR', 'STOP', 'CANCELAR', 'UNSUBSCRIBE']);
+
+/**
+ * Registra opt-out de campanhas (upsert + marca CampanhaContato pendentes como
+ * 'optout'). Compartilhado pelos dois webhooks de entrada — Meta oficial
+ * (routes/whatsapp-webhook.ts) e Evolution (routes/evolution-webhook.ts) — pra não
+ * duplicar essa lógica; cada webhook manda a mensagem de confirmação com seu
+ * próprio cliente de envio (Meta ou sendText do Evolution) depois de chamar isto.
+ */
+export async function registerCampanhaOptOut(userId: string, rawPhone: string, keyword: string): Promise<string> {
+  const phone = normalizePhone(rawPhone);
+  await prisma.campanhaOptOut.upsert({
+    where:  { userId_phone: { userId, phone } },
+    create: { userId, phone, reason: keyword },
+    update: { reason: keyword },
+  });
+  await prisma.campanhaContato.updateMany({
+    where: { phone, status: 'pending', campanha: { userId } },
+    data:  { status: 'optout' },
+  });
+  return phone;
+}
+
+/**
+ * Audiência "quente" pra campanhas via Evolution (channel='evolution'): união dos
+ * telefones que já trocaram mensagem com este número, via transcrição (core),
+ * Atende ou Copiloto — nunca CSV livre. É o guardrail central do canal Evolution
+ * (ver CAMPANHAS_ARQUITETURA.md §8): só quem já tem relação com o número, reduzindo
+ * o padrão de "spam pra desconhecido" que o WhatsApp mais penaliza.
+ */
+async function warmContactsForNumber(numberId: string): Promise<Map<string, string | null>> {
+  const [transcricoes, atende, copiloto] = await Promise.all([
+    prisma.transcription.findMany({
+      where: { numberId, source: 'whatsapp' },
+      select: { contactPhone: true, contactName: true },
+    }),
+    prisma.atendeConversation.findMany({
+      where: { numberId },
+      select: { contactPhone: true, contactName: true },
+    }),
+    prisma.copilotoConversation.findMany({
+      where: { numberId },
+      select: { contactPhone: true, contactName: true },
+    }),
+  ]);
+
+  const byPhone = new Map<string, string | null>();
+  for (const row of [...transcricoes, ...atende, ...copiloto]) {
+    const phone = normalizePhone(row.contactPhone);
+    if (!byPhone.has(phone) || (!byPhone.get(phone) && row.contactName)) {
+      byPhone.set(phone, row.contactName ?? null);
+    }
+  }
+  return byPhone;
+}
+
 function detectDelimiter(sample: string): string {
   const firstLine = sample.split(/\r?\n/, 1)[0] || '';
   const commas = (firstLine.match(/,/g) || []).length;
@@ -62,6 +119,48 @@ async function ownedCampanha(userId: string, id: string) {
   return prisma.campanha.findFirst({ where: { id, userId } });
 }
 
+/** Conexão válida pra disparar, nos dois canais (Meta exige token; Evolution exige instância). */
+function numberReadyToSend(whatsappNumber: { status: string; metaAccessTokenEnc: string | null; zapiInstanceId: string | null } | null, channel: string): boolean {
+  if (!whatsappNumber || whatsappNumber.status !== 'connected') return false;
+  // 'meta' é o default histórico (linhas antigas da migration não têm channel setado
+  // explicitamente) — só trata como evolution quando for exatamente isso.
+  return channel === 'evolution' ? !!whatsappNumber.zapiInstanceId : !!whatsappNumber.metaAccessTokenEnc;
+}
+
+const EVOLUTION_DAILY_LIMIT = parseInt(process.env.CAMPANHAS_EVOLUTION_DAILY_LIMIT || '40', 10);
+
+/**
+ * Espaçamento entre envios do canal Evolution — ritmo bem mais lento e "humano"
+ * que o teto de segurança do Meta (10 msg/s), pra reduzir o risco de o WhatsApp
+ * detectar padrão de disparo automatizado no número do próprio usuário (ver
+ * CAMPANHAS_ARQUITETURA.md §8). Sem contador vivo em Redis: o intervalo médio já
+ * é calculado pra manter o total dentro do limite diário (index 0 sai quase na
+ * hora; os demais espaçados por ~24h / limite diário, com jitter de ±30%).
+ * Duplicada de propósito em apps/worker/src/campanhas-scheduler.ts — api e
+ * worker não compartilham código entre si neste monorepo.
+ */
+export function evolutionSendDelayMs(index: number, dailyLimit: number = EVOLUTION_DAILY_LIMIT): number {
+  if (index <= 0) return 0;
+  const baseIntervalMs = (24 * 60 * 60 * 1000) / Math.max(dailyLimit, 1);
+  const jitter = (Math.random() * 0.6 - 0.3) * baseIntervalMs; // ±30%
+  return Math.max(0, Math.round(index * baseIntervalMs + jitter));
+}
+
+/**
+ * Confirmação de risco (canal evolution) — texto explícito de que o envio não é
+ * pela API oficial e pode levar a Meta a banir o número do próprio usuário
+ * (mesmo número que serve core/atende/copiloto). Guardrail deliberado, ver
+ * CAMPANHAS_ARQUITETURA.md §8. Uma vez confirmado, fica salvo na campanha — não
+ * pede de novo em pause/resume, só na primeira vez que ela é agendada ou iniciada.
+ */
+function requireRiskAcknowledgement(campanha: { channel: string; consentConfirmedAt: Date | null }, body: any): string | null {
+  if (campanha.channel !== 'evolution' || campanha.consentConfirmedAt) return null;
+  if (body?.acknowledgeRisk !== true) {
+    return 'Confirme que entende o risco de banimento do seu número pelo WhatsApp ao usar o canal Evolution (acknowledgeRisk: true).';
+  }
+  return null;
+}
+
 export default async function campanhasRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate, requireModule('campanhas')] };
 
@@ -72,7 +171,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       where: { userId },
       orderBy: { createdAt: 'desc' },
       select: {
-        id: true, name: true, status: true, templateName: true,
+        id: true, name: true, status: true, channel: true, templateName: true,
         audienceCount: true, sentCount: true,
         startedAt: true, completedAt: true, createdAt: true,
         whatsappNumber: { select: { id: true, phoneNumber: true, displayName: true } },
@@ -131,22 +230,45 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     return { optOuts };
   });
 
+  // ── GET /numeros-evolution — números Evolution conectados do usuário ────
+  // Só o que o canal 'evolution' precisa pra listar (id/nome/telefone) — endpoint
+  // próprio pra não mexer em routes/numbers.ts (usado por telas fora de Campanhas).
+  app.get('/numeros-evolution', auth, async (req: any) => {
+    const userId = req.user.sub;
+    const numeros = await prisma.whatsappNumber.findMany({
+      where: { userId, provider: 'evolution', status: 'connected', isPublic: false },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, phoneNumber: true, displayName: true },
+    });
+    return { numeros };
+  });
+
   // ── POST / — cria campanha (rascunho) ────────────────────────────────────
   app.post('/', auth, async (req: any, reply) => {
     const userId = req.user.sub;
     const v = validateRequest(createCampanhaSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
-    const { name, whatsappNumberId, templateName, templateLanguage, templateComponents } = v.data;
+    const { name, whatsappNumberId, channel, templateName, templateLanguage, templateComponents, messageBody } = v.data;
 
     const whatsappNumber = await prisma.whatsappNumber.findFirst({
-      where: { id: whatsappNumberId, userId, provider: 'meta' },
+      where: { id: whatsappNumberId, userId, provider: channel },
     });
     if (!whatsappNumber) {
-      return reply.code(400).send({ error: 'Número Meta inválido ou não pertence a este usuário.' });
+      return reply.code(400).send({
+        error: channel === 'meta'
+          ? 'Número Meta inválido ou não pertence a este usuário.'
+          : 'Número Evolution inválido ou não pertence a este usuário.',
+      });
     }
 
     const campanha = await prisma.campanha.create({
-      data: { userId, whatsappNumberId, name, templateName, templateLanguage, templateComponents },
+      data: {
+        userId, whatsappNumberId, name, channel,
+        templateName:     channel === 'meta' ? templateName : null,
+        templateLanguage,
+        templateComponents: channel === 'meta' ? templateComponents : undefined,
+        messageBody:      channel === 'evolution' ? messageBody : null,
+      },
     });
 
     return reply.code(201).send({ campanha });
@@ -207,12 +329,61 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
+  // ── POST /:id/contatos/from-conversas — audiência "quente" (canal evolution) ─
+  // Único jeito de popular contatos de uma campanha evolution — nunca CSV livre
+  // (guardrail server-side, não só de UI, ver CAMPANHAS_ARQUITETURA.md §8).
+  app.post('/:id/contatos/from-conversas', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { id } = req.params;
+    const campanha = await ownedCampanha(userId, id);
+    if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+    if (campanha.channel !== 'evolution') {
+      return reply.code(400).send({ error: 'Este endpoint é só para campanhas do canal Evolution.' });
+    }
+    if (campanha.status !== 'draft') {
+      return reply.code(400).send({ error: 'Só é possível adicionar contatos a campanhas em rascunho.' });
+    }
+
+    const [warmContacts, optOuts, existing] = await Promise.all([
+      warmContactsForNumber(campanha.whatsappNumberId),
+      prisma.campanhaOptOut.findMany({ where: { userId }, select: { phone: true } }),
+      prisma.campanhaContato.findMany({ where: { campanhaId: id }, select: { phone: true } }),
+    ]);
+    const optOutSet   = new Set(optOuts.map((o: any) => o.phone));
+    const existingSet = new Set(existing.map((e: any) => e.phone));
+
+    let skippedOptOut = 0;
+    let skippedDuplicate = 0;
+    const toCreate: { campanhaId: string; phone: string; name: string | null }[] = [];
+    for (const [phone, name] of warmContacts) {
+      if (optOutSet.has(phone)) { skippedOptOut++; continue; }
+      if (existingSet.has(phone)) { skippedDuplicate++; continue; }
+      toCreate.push({ campanhaId: id, phone, name });
+    }
+
+    if (toCreate.length > 0) {
+      await prisma.campanhaContato.createMany({ data: toCreate });
+      await prisma.campanha.update({
+        where: { id },
+        data: { audienceCount: { increment: toCreate.length } },
+      });
+    }
+
+    return reply.send({ imported: toCreate.length, skippedOptOut, skippedDuplicate, elegiveis: warmContacts.size });
+  });
+
   // ── POST /:id/contatos — upload de CSV (telefone,nome,var1,var2,...) ────
+  // Só para campanhas do canal 'meta' — evolution usa /from-conversas (guardrail).
   app.post('/:id/contatos', auth, async (req: any, reply) => {
     const userId = req.user.sub;
     const { id } = req.params;
     const campanha = await ownedCampanha(userId, id);
     if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+    if (campanha.channel === 'evolution') {
+      return reply.code(400).send({
+        error: 'Campanhas via Evolution só aceitam contatos que já conversaram com o número — use "Importar contatos que já falaram com você".',
+      });
+    }
     if (campanha.status !== 'draft') {
       return reply.code(400).send({ error: 'Só é possível adicionar contatos a campanhas em rascunho.' });
     }
@@ -298,14 +469,26 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'A data agendada precisa estar no futuro.' });
     }
 
+    const riskError = requireRiskAcknowledgement(campanha, req.body);
+    if (riskError) return reply.code(400).send({ error: riskError });
+
     const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
-    if (!whatsappNumber || whatsappNumber.status !== 'connected' || !whatsappNumber.metaAccessTokenEnc) {
-      return reply.code(400).send({ error: 'Número Meta desconectado. Reconecte em /dashboard/numeros.' });
+    if (!numberReadyToSend(whatsappNumber, campanha.channel)) {
+      return reply.code(400).send({
+        error: campanha.channel === 'evolution'
+          ? 'Número Evolution desconectado. Reconecte em /dashboard/numeros.'
+          : 'Número Meta desconectado. Reconecte em /dashboard/numeros.',
+      });
     }
 
     const updated = await prisma.campanha.update({
       where: { id },
-      data: { status: 'scheduled', scheduledAt },
+      data: {
+        status: 'scheduled', scheduledAt,
+        ...(campanha.channel === 'evolution' && !campanha.consentConfirmedAt
+          ? { consentConfirmedAt: new Date(), consentConfirmedIp: req.ip }
+          : {}),
+      },
     });
     return reply.send({ campanha: updated });
   });
@@ -339,9 +522,16 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Adicione contatos antes de iniciar a campanha.' });
     }
 
+    const riskError = requireRiskAcknowledgement(campanha, req.body);
+    if (riskError) return reply.code(400).send({ error: riskError });
+
     const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
-    if (!whatsappNumber || whatsappNumber.status !== 'connected' || !whatsappNumber.metaAccessTokenEnc) {
-      return reply.code(400).send({ error: 'Número Meta desconectado. Reconecte em /dashboard/numeros.' });
+    if (!numberReadyToSend(whatsappNumber, campanha.channel)) {
+      return reply.code(400).send({
+        error: campanha.channel === 'evolution'
+          ? 'Número Evolution desconectado. Reconecte em /dashboard/numeros.'
+          : 'Número Meta desconectado. Reconecte em /dashboard/numeros.',
+      });
     }
 
     const pendentes = await prisma.campanhaContato.findMany({
@@ -354,15 +544,25 @@ export default async function campanhasRoutes(app: FastifyInstance) {
 
     await prisma.campanha.update({
       where: { id },
-      data: { status: 'running', startedAt: campanha.startedAt ?? new Date() },
+      data: {
+        status: 'running', startedAt: campanha.startedAt ?? new Date(),
+        ...(campanha.channel === 'evolution' && !campanha.consentConfirmedAt
+          ? { consentConfirmedAt: new Date(), consentConfirmedIp: req.ip }
+          : {}),
+      },
     });
 
-    // jobId determinístico (campanhaId:contatoId) — reenviar /start não duplica jobs em voo
+    // jobId determinístico (campanhaId:contatoId) — reenviar /start não duplica jobs em voo.
+    // Canal evolution: delay crescente + jitter (evolutionSendDelayMs) — ritmo lento
+    // e "humano" em vez do disparo imediato em lote do canal Meta.
     await campanhasQueue.addBulk(
-      pendentes.map((p: any) => ({
+      pendentes.map((p: any, i: number) => ({
         name: 'send',
         data: { campanhaId: id, contatoId: p.id },
-        opts: { jobId: `${id}:${p.id}` },
+        opts: {
+          jobId: `${id}:${p.id}`,
+          ...(campanha.channel === 'evolution' ? { delay: evolutionSendDelayMs(i) } : {}),
+        },
       })),
     );
 

@@ -11,6 +11,7 @@ import {
   isCopilotoOwnerCommand, handleCopilotoOwnerCommand, handleCopilotoChoice, enqueueCopilotoMessage,
 } from '../services/copiloto-commands';
 import { ingestCopilotoGroupMessage } from '../services/copiloto-groups';
+import { OPT_OUT_KEYWORDS, registerCampanhaOptOut } from './modules/campanhas';
 import { io } from '../index';
 
 // Módulo Cobrança (#6): heurística leve p/ detectar cliente avisando que já
@@ -367,6 +368,24 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
                   return false;
                 });
               if (handled) return;
+            }
+
+            // ── Opt-out de campanhas por palavra-chave (paridade com o webhook Meta) ──
+            // Mesma prioridade que no webhook oficial: se bater a palavra-chave, não
+            // segue para Atende/Copiloto/Cobrança — só confirma o opt-out e sai.
+            if (number && !number.isPublic && messageText) {
+              const normalized = messageText.trim().toUpperCase();
+              if (OPT_OUT_KEYWORDS.has(normalized)) {
+                try {
+                  const optOutPhone = await registerCampanhaOptOut(number.userId, senderPhone, normalized);
+                  log.info(`[Evolution] 🚫 Opt-out registrado: ${optOutPhone} (${normalized})`);
+                  await sendText(instName, senderPhone, 'Você não receberá mais mensagens de campanhas deste número. ✅')
+                    .catch((err: any) => log.error({ err: err?.message }, '[Evolution] Erro ao confirmar opt-out'));
+                } catch (err: any) {
+                  log.error({ err: err?.message }, '[Evolution] Erro ao registrar opt-out');
+                }
+                return;
+              }
             }
 
             const cfg = number

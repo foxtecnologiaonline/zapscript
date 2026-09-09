@@ -337,10 +337,15 @@ export const legendaUploadUrlSchema = z.object({
 export const createCampanhaSchema = z.object({
   name:               z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
   whatsappNumberId:   z.string().cuid('Número inválido'),
-  templateName:       z.string().min(1, 'Selecione um template').max(512),
+  channel:            z.enum(['meta', 'evolution']).default('meta'),
+  templateName:       z.string().min(1).max(512).optional(),
   templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
   templateComponents: z.array(z.record(z.any())).optional(),
-});
+  messageBody:        z.string().min(1, 'Escreva a mensagem').max(4096).optional(),
+}).refine(
+  (v) => (v.channel === 'meta' ? !!v.templateName : !!v.messageBody),
+  { message: 'Campanhas via Meta exigem um template; via Evolution exigem o texto da mensagem.' },
+);
 
 export const scheduleCampanhaSchema = z.object({
   scheduledAt: z.coerce.date(),

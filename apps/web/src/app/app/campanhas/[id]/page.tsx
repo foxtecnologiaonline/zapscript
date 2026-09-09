@@ -9,8 +9,11 @@ interface Campanha {
   id: string;
   name: string;
   status: string;
-  templateName: string;
+  channel: string; // 'meta' | 'evolution'
+  templateName: string | null;
   templateLanguage: string;
+  messageBody: string | null;
+  consentConfirmedAt: string | null;
   audienceCount: number;
   sentCount: number;
   scheduledAt: string | null;
@@ -18,6 +21,13 @@ interface Campanha {
   completedAt: string | null;
   createdAt: string;
   whatsappNumber: { id: string; phoneNumber: string | null; displayName: string | null } | null;
+}
+
+interface FromConversasResult {
+  imported: number;
+  skippedOptOut: number;
+  skippedDuplicate: number;
+  elegiveis: number;
 }
 
 interface Contato {
@@ -92,6 +102,9 @@ export default function CampanhaDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [scheduleAt, setScheduleAt] = useState('');
+  const [riskAcknowledged, setRiskAcknowledged] = useState(false);
+  const [importingConversas, setImportingConversas] = useState(false);
+  const [importResult, setImportResult] = useState<FromConversasResult | null>(null);
 
   const loadCampanha = useCallback(async () => {
     try {
@@ -157,7 +170,8 @@ export default function CampanhaDetailPage() {
     setActionLoading(true);
     setActionError(null);
     try {
-      await api.post(`/modules/campanhas/${id}/${action}`, {});
+      const needsAck = action === 'start' && campanha?.channel === 'evolution' && !campanha?.consentConfirmedAt;
+      await api.post(`/modules/campanhas/${id}/${action}`, needsAck ? { acknowledgeRisk: riskAcknowledged } : {});
       await loadCampanha();
     } catch (err: any) {
       setActionError(err?.message || 'Ação falhou.');
@@ -172,13 +186,32 @@ export default function CampanhaDetailPage() {
     setActionLoading(true);
     setActionError(null);
     try {
-      await api.post(`/modules/campanhas/${id}/schedule`, { scheduledAt: new Date(scheduleAt).toISOString() });
+      const needsAck = campanha?.channel === 'evolution' && !campanha?.consentConfirmedAt;
+      await api.post(`/modules/campanhas/${id}/schedule`, {
+        scheduledAt: new Date(scheduleAt).toISOString(),
+        ...(needsAck ? { acknowledgeRisk: riskAcknowledged } : {}),
+      });
       setScheduleAt('');
       await loadCampanha();
     } catch (err: any) {
       setActionError(err?.message || 'Não foi possível agendar a campanha.');
     } finally {
       setActionLoading(false);
+    }
+  }
+
+  async function handleImportConversas() {
+    setImportingConversas(true);
+    setActionError(null);
+    setImportResult(null);
+    try {
+      const res = await api.post<FromConversasResult>(`/modules/campanhas/${id}/contatos/from-conversas`, {});
+      setImportResult(res);
+      await Promise.all([loadCampanha(), loadContatos()]);
+    } catch (err: any) {
+      setActionError(err?.message || 'Falha ao importar contatos.');
+    } finally {
+      setImportingConversas(false);
     }
   }
 
@@ -244,13 +277,22 @@ export default function CampanhaDetailPage() {
           <div>
             <h1 className="text-2xl font-bold">{campanha.name}</h1>
             <p className="text-neutral-400 mt-1 text-sm">
-              Template: {campanha.templateName} ({campanha.templateLanguage})
+              {campanha.channel === 'evolution'
+                ? `Mensagem livre (Evolution): "${campanha.messageBody?.slice(0, 60)}${(campanha.messageBody?.length || 0) > 60 ? '…' : ''}"`
+                : `Template: ${campanha.templateName} (${campanha.templateLanguage})`}
               {campanha.whatsappNumber?.displayName ? ` · ${campanha.whatsappNumber.displayName}` : ''}
             </p>
           </div>
-          <span className="text-xs rounded-full border border-neutral-700 px-2.5 py-1 text-neutral-300 whitespace-nowrap">
-            {CAMP_STATUS_LABEL[campanha.status] || campanha.status}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-xs rounded-full border border-neutral-700 px-2.5 py-1 text-neutral-300 whitespace-nowrap">
+              {CAMP_STATUS_LABEL[campanha.status] || campanha.status}
+            </span>
+            {campanha.channel === 'evolution' && (
+              <span className="text-xs rounded-full border border-amber-800 bg-amber-950/30 px-2.5 py-1 text-amber-300 whitespace-nowrap">
+                ⚠️ Evolution (experimental)
+              </span>
+            )}
+          </div>
         </div>
 
         {campanha.status === 'scheduled' && campanha.scheduledAt && (
@@ -277,20 +319,33 @@ export default function CampanhaDetailPage() {
         <div className="mt-6 flex flex-wrap gap-3">
           {campanha.status === 'draft' && (
             <>
-              <label className="rounded-lg bg-neutral-800 px-4 py-2 text-sm font-medium hover:bg-neutral-700 cursor-pointer">
-                {uploading ? 'Importando…' : '📄 Importar contatos (CSV)'}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv,text/csv"
-                  onChange={handleUpload}
-                  disabled={uploading}
-                  className="hidden"
-                />
-              </label>
+              {campanha.channel === 'evolution' ? (
+                <button
+                  onClick={handleImportConversas}
+                  disabled={importingConversas}
+                  className="rounded-lg bg-neutral-800 px-4 py-2 text-sm font-medium hover:bg-neutral-700 disabled:opacity-50"
+                >
+                  {importingConversas ? 'Importando…' : '💬 Importar contatos que já falaram com você'}
+                </button>
+              ) : (
+                <label className="rounded-lg bg-neutral-800 px-4 py-2 text-sm font-medium hover:bg-neutral-700 cursor-pointer">
+                  {uploading ? 'Importando…' : '📄 Importar contatos (CSV)'}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={handleUpload}
+                    disabled={uploading}
+                    className="hidden"
+                  />
+                </label>
+              )}
               <button
                 onClick={() => runAction('start')}
-                disabled={actionLoading || campanha.audienceCount === 0}
+                disabled={
+                  actionLoading || campanha.audienceCount === 0
+                  || (campanha.channel === 'evolution' && !campanha.consentConfirmedAt && !riskAcknowledged)
+                }
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ▶ Iniciar disparo
@@ -367,11 +422,42 @@ export default function CampanhaDetailPage() {
           )}
         </div>
 
-        {campanha.status === 'draft' && (
+        {campanha.status === 'draft' && campanha.channel !== 'evolution' && (
           <p className="mt-3 text-xs text-neutral-500">
             CSV: coluna 1 = telefone (obrigatório) · coluna 2 = nome (opcional) · colunas 3+ = variáveis do
             template, na ordem.
           </p>
+        )}
+
+        {campanha.status === 'draft' && campanha.channel === 'evolution' && (
+          <div className="mt-4 rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-200 space-y-3">
+            <p>
+              ⚠️ Este envio usa o seu número Evolution comum, não a API oficial do WhatsApp.
+              O WhatsApp pode banir o número usado para envio em massa automatizado — o
+              <strong> mesmo número que também atende core/Atende/Copiloto</strong>. Por isso o
+              disparo é deliberadamente lento (poucas dezenas de mensagens por dia) e restrito a
+              contatos que já conversaram com você.
+            </p>
+            {!campanha.consentConfirmedAt && (
+              <label className="flex items-start gap-2 text-amber-100">
+                <input
+                  type="checkbox"
+                  checked={riskAcknowledged}
+                  onChange={(e) => setRiskAcknowledged(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>Entendo o risco de banimento e vou usar isso só com clientes que já falaram comigo.</span>
+              </label>
+            )}
+          </div>
+        )}
+
+        {importResult && (
+          <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900 p-3 text-sm text-neutral-300">
+            {importResult.imported} de {importResult.elegiveis} contato{importResult.elegiveis === 1 ? '' : 's'} elegíve{importResult.elegiveis === 1 ? 'l' : 'is'} importado{importResult.imported === 1 ? '' : 's'}.
+            {importResult.skippedOptOut > 0 && ` ${importResult.skippedOptOut} já em opt-out.`}
+            {importResult.skippedDuplicate > 0 && ` ${importResult.skippedDuplicate} já estava(m) na campanha.`}
+          </div>
         )}
 
         {campanha.status === 'draft' && campanha.audienceCount > 0 && (
@@ -387,7 +473,10 @@ export default function CampanhaDetailPage() {
             />
             <button
               type="submit"
-              disabled={actionLoading || !scheduleAt}
+              disabled={
+                actionLoading || !scheduleAt
+                || (campanha.channel === 'evolution' && !campanha.consentConfirmedAt && !riskAcknowledged)
+              }
               className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               🗓️ Agendar disparo

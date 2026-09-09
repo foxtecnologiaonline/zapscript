@@ -4,11 +4,7 @@ import { whatsappAPI } from '../services/whatsapp-official';
 import { transcriptionQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
 import { io } from '../index';
-import { normalizePhone } from './modules/campanhas';
-
-// Palavras-chave de opt-out (convenção SMS/WhatsApp) — comparação por igualdade exata
-// após trim+uppercase, para não disparar em frases que apenas mencionem a palavra.
-const OPT_OUT_KEYWORDS = new Set(['PARAR', 'SAIR', 'STOP', 'CANCELAR', 'UNSUBSCRIBE']);
+import { OPT_OUT_KEYWORDS, registerCampanhaOptOut } from './modules/campanhas';
 
 /**
  * Webhook para receber mensagens do WhatsApp via Meta API
@@ -266,20 +262,10 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
           // ─────────────────────────────────
           const normalized = text.trim().toUpperCase();
           if (OPT_OUT_KEYWORDS.has(normalized)) {
-            const optOutPhone = normalizePhone(senderPhone);
             try {
-              await prisma.campanhaOptOut.upsert({
-                where:  { userId_phone: { userId, phone: optOutPhone } },
-                create: { userId, phone: optOutPhone, reason: normalized },
-                update: { reason: normalized },
-              });
-              // Contatos ainda não enviados saem de circulação; o worker também reconfere
-              // o status ao vivo antes de enviar (ver apps/worker/src/modules/campanhas.ts),
-              // então isso cobre tanto jobs futuros quanto os já enfileirados.
-              await prisma.campanhaContato.updateMany({
-                where: { phone: optOutPhone, status: 'pending', campanha: { userId } },
-                data:  { status: 'optout' },
-              });
+              // Cobre tanto jobs futuros quanto os já enfileirados — o worker também
+              // reconfere o status ao vivo antes de enviar (ver apps/worker/src/modules/campanhas.ts).
+              const optOutPhone = await registerCampanhaOptOut(userId, senderPhone, normalized);
               app.log.info(`[WhatsApp] 🚫 Opt-out registrado: ${optOutPhone} (${normalized})`);
 
               try {

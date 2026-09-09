@@ -19,14 +19,24 @@ jest.mock('../services/whatsapp-campaigns', () => ({
   sendTemplateMessage: jest.fn(),
 }));
 
+jest.mock('../services/evolution', () => ({
+  sendMessageViaEvolution: jest.fn(),
+}));
+
 import { prisma } from '../lib/prisma';
 import { sendTemplateMessage } from '../services/whatsapp-campaigns';
+import { sendMessageViaEvolution } from '../services/evolution';
 import { processCampanhaJob, markCampanhaJobExhausted } from '../modules/campanhas';
 
 const numeroConectado = {
   status: 'connected',
   metaAccessTokenEnc: 'enc-token',
   metaPhoneNumberId: 'phone-id-1',
+};
+
+const numeroEvolutionConectado = {
+  status: 'connected',
+  zapiInstanceId: 'zs-abc123',
 };
 
 function job(data: any) {
@@ -151,6 +161,64 @@ describe('processCampanhaJob', () => {
 
     await expect(processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }))).rejects.toThrow('Meta API timeout');
     expect(prisma.campanhaContato.update).not.toHaveBeenCalled();
+  });
+
+  describe('canal evolution', () => {
+    it('envia via Evolution, renderiza {{nome}} e marca sent com o id retornado', async () => {
+      (prisma.campanha.findUnique as jest.Mock).mockResolvedValueOnce({
+        id: 'c1', status: 'running', channel: 'evolution', messageBody: 'Oi {{nome}}, tudo bem?',
+        whatsappNumber: numeroEvolutionConectado,
+      });
+      (prisma.campanhaContato.findUnique as jest.Mock).mockResolvedValueOnce({
+        id: 'ct1', status: 'pending', phone: '5511999999999', name: 'João',
+      });
+      (sendMessageViaEvolution as jest.Mock).mockResolvedValueOnce({ id: 'evo-msg-1' });
+      (prisma.campanhaContato.count as jest.Mock).mockResolvedValueOnce(1);
+
+      const res = await processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }));
+
+      expect(res).toEqual({});
+      expect(sendMessageViaEvolution).toHaveBeenCalledWith('zs-abc123', '5511999999999', 'Oi João, tudo bem?');
+      expect(sendTemplateMessage).not.toHaveBeenCalled();
+      expect(prisma.campanhaContato.update).toHaveBeenCalledWith({
+        where: { id: 'ct1' },
+        data: expect.objectContaining({ status: 'sent', wamid: 'evo-msg-1' }),
+      });
+    });
+
+    it('usa o telefone quando o contato não tem nome salvo', async () => {
+      (prisma.campanha.findUnique as jest.Mock).mockResolvedValueOnce({
+        id: 'c1', status: 'running', channel: 'evolution', messageBody: 'Oi {{nome}}!',
+        whatsappNumber: numeroEvolutionConectado,
+      });
+      (prisma.campanhaContato.findUnique as jest.Mock).mockResolvedValueOnce({
+        id: 'ct1', status: 'pending', phone: '5511999999999', name: null,
+      });
+      (sendMessageViaEvolution as jest.Mock).mockResolvedValueOnce({ id: 'evo-msg-2' });
+      (prisma.campanhaContato.count as jest.Mock).mockResolvedValueOnce(0);
+
+      await processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }));
+
+      expect(sendMessageViaEvolution).toHaveBeenCalledWith('zs-abc123', '5511999999999', 'Oi 5511999999999!');
+    });
+
+    it('marca failed quando o número Evolution está desconectado (não checa credenciais Meta)', async () => {
+      (prisma.campanha.findUnique as jest.Mock).mockResolvedValueOnce({
+        id: 'c1', status: 'running', channel: 'evolution', messageBody: 'Oi {{nome}}!',
+        whatsappNumber: { status: 'disconnected' },
+      });
+      (prisma.campanhaContato.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'ct1', status: 'pending', phone: '5511999999999' });
+      (prisma.campanhaContato.count as jest.Mock).mockResolvedValueOnce(0);
+
+      const res = await processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }));
+
+      expect(res).toEqual({ skipped: true, reason: 'número desconectado' });
+      expect(sendMessageViaEvolution).not.toHaveBeenCalled();
+      expect(prisma.campanhaContato.update).toHaveBeenCalledWith({
+        where: { id: 'ct1' },
+        data: expect.objectContaining({ status: 'failed', errorMessage: expect.stringMatching(/evolution desconectado/i) }),
+      });
+    });
   });
 });
 

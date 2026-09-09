@@ -6,15 +6,19 @@
 > especificação técnica concreta dos itens de maior risco, no formato de
 > `MODULOS_ARQUITETURA.md`/`PLATAFORMA_BASE.md`.
 
-Data: 2026-09-09 (revisão 5 — decisões de produto do §6 fechadas) · Branch:
+Data: 2026-09-09 (revisão 6 — canal Evolution experimental, §8) · Branch:
 `claude/laughing-ritchie-3n4vj1`
 
 ## TL;DR
 
-- **O que é:** disparo em massa via WhatsApp Cloud API oficial (Meta), com template
-  pré-aprovado — a única via legal pós-fechamento de bots não autorizados (política Meta
-  dez/2025). Fluxo completo (CSV → agendamento/disparo → status de entrega → opt-out) já
-  funciona e é bem construído (idempotência, dedupe, isolamento por tenant).
+- **O que é:** disparo em massa via WhatsApp — dois canais agora. `meta`: API Cloud oficial,
+  template pré-aprovado, compliant (única via legal pós-fechamento de bots não autorizados,
+  política Meta dez/2025). `evolution` (novo, §8, experimental): pelo número Evolution que o
+  usuário já tem, mensagem livre, com guardrails (público restrito a quem já conversou, ritmo
+  bem mais lento, consentimento de risco explícito) porque reabre o risco de banimento que o
+  canal `meta` existe pra evitar — e nesse caso é o MESMO número que serve core/atende/copiloto.
+  Fluxo completo (contatos → agendamento/disparo → status → opt-out) já funciona nos dois
+  canais e é bem construído (idempotência, dedupe, isolamento por tenant).
 - **Achado de produção (revisão 4):** consultei o banco real — `Campanha`, `CampanhaContato`,
   `CampanhaOptOut` e `WhatsappNumber(provider='meta')` estão todos com **0 registros**. O
   módulo está pronto e "bundled" no catálogo, mas nenhum cliente conectou um número Meta ainda.
@@ -386,3 +390,63 @@ formatável de várias formas) — em vez de tentar forçar unicidade sobre `pho
 **Pendente de você:** a migration está no repo, mas só entra em produção no próximo deploy
 manual da API (`ops.yml`, `action=deploy`, per `CLAUDE.md`) — `prisma migrate deploy` aplica
 sozinho no boot. Não disparei o deploy; avise quando quiser que eu dispare.
+
+---
+
+## 8. Canal Evolution (experimental) — disparo pelo número atual do usuário
+
+### 8.1 Por que isso existe
+
+O canal `meta` cobre 0% dos usuários reais hoje — o comentário no próprio schema já dizia
+isso (`WhatsappNumber.provider`: *"Usado apenas para o fluxo de App Review da Meta. Usuários
+reais seguem no Evolution."*), confirmado na auditoria de produção (§7.6): zero números
+`provider='meta'` conectados. Restringir Campanhas ao Meta deixava o módulo essencialmente
+inacessível pra base real. O canal `evolution` usa o número Evolution que o usuário **já tem**
+(o mesmo do `core`), sem exigir WABA oficial nem template aprovado.
+
+### 8.2 O trade-off que isso reabre — e os guardrails
+
+Enviar em massa por um cliente WhatsApp não-oficial é o padrão de uso que a política da Meta
+de dez/2025 passou a coibir (é a própria razão de existir do canal `meta` — ver §1). A
+diferença de blast radius importa: um número **Meta** banido custa a campanha; um número
+**Evolution** banido custa `core`+`atende`+`copiloto` do cliente inteiro, porque é o mesmo
+número. Por isso o canal só foi construído com estes guardrails, todos **server-side** (não
+dependem de a UI se comportar):
+
+1. **Público restrito a quem já conversou** — `POST /:id/contatos/from-conversas` é o único
+   jeito de popular contatos de uma campanha `evolution` (`POST /:id/contatos`, o upload de
+   CSV, responde 400 pra esse canal). A audiência vem da união de `Transcription`,
+   `AtendeConversation` e `CopilotoConversation` daquele número (`warmContactsForNumber` em
+   `routes/modules/campanhas.ts`) — nunca uma lista fria.
+2. **Ritmo de envio lento e "humano"** — `evolutionSendDelayMs` (duplicada de propósito em
+   `apps/api/.../campanhas.ts` e `apps/worker/campanhas-scheduler.ts`, api/worker não
+   compartilham código neste monorepo) espaça os jobs por ~24h / `CAMPANHAS_EVOLUTION_DAILY_LIMIT`
+   (default 40/dia) com jitter de ±30%, calculado no enqueue — sem contador vivo em Redis. Bem
+   abaixo do teto de segurança global do Meta (10 msg/s) que continua valendo como cinto extra.
+3. **Consentimento/risco explícito** — `Campanha.consentConfirmedAt`/`consentConfirmedIp`,
+   exigido (`acknowledgeRisk: true` no body) na primeira chamada de `/schedule` ou `/start` pra
+   uma campanha `evolution`; UI mostra o aviso de banimento antes de deixar marcar.
+4. **Sem CSV, sem variáveis posicionais** — mensagem livre (`Campanha.messageBody`) com um único
+   placeholder (`{{nome}}`, resolvido a partir do `CampanhaContato.name` já capturado nas
+   conversas existentes) — não há colunas de CSV nesse canal pra ter variável numerada.
+
+### 8.3 O que NÃO foi feito de propósito (v1)
+
+- **Sem contador de limite diário vivo em Redis** — o espaçamento já calculado no enqueue
+  mantém o ritmo dentro do limite; um contador vivo seria mais preciso mas também mais
+  infraestrutura pra uma primeira versão deliberadamente conservadora.
+- **Sem status de entrega/leitura** — o canal Evolution não tem o mesmo webhook de status da
+  Meta; `CampanhaContato` só vai a `sent` (ou `failed`), nunca `delivered`/`read`, pra
+  campanhas `evolution`. Documentado, não é bug.
+- **Sem número mínimo de histórico pra elegibilidade** — `warmContactsForNumber` considera
+  "já conversou" qualquer contato com pelo menos 1 mensagem registrada, mesmo antiga. Um corte
+  por recência (ex.: só quem falou nos últimos N meses) é um ajuste futuro razoável, não feito
+  agora por falta de sinal do que faz sentido pro produto.
+
+### 8.4 Decisão que precisa do dono do produto
+
+**`CAMPANHAS_EVOLUTION_DAILY_LIMIT=40`** é um chute conservador, não um número validado pela
+Meta ou por dado de churn/banimento real (não existe fonte oficial pra isso em clientes
+não-oficiais). Vale tratar como uma env var ajustável e observar na prática — se números começarem
+a cair de `quality`/ser banidos com esse ritmo, baixar; se ninguém reclamar depois de uso real,
+pode subir com cautela.

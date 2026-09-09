@@ -9,7 +9,8 @@ interface CampanhaListItem {
   id: string;
   name: string;
   status: string;
-  templateName: string;
+  channel: string; // 'meta' | 'evolution'
+  templateName: string | null;
   audienceCount: number;
   sentCount: number;
   createdAt: string;
@@ -42,7 +43,7 @@ export default function CampanhasListPage() {
   const [error, setError] = useState<string | null>(null);
   const [upsell, setUpsell] = useState(false);
   const [campanhas, setCampanhas] = useState<CampanhaListItem[]>([]);
-  const [meta, setMeta] = useState<MetaConnection | null>(null);
+  const [, setMeta] = useState<MetaConnection | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -109,18 +110,12 @@ export default function CampanhasListPage() {
         </div>
 
         <div className="mb-6 flex items-center gap-3">
-          {meta ? (
-            <Link
-              href="/app/campanhas/nova"
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-            >
-              + Nova campanha
-            </Link>
-          ) : (
-            <span className="rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-500">
-              Conecte um número para criar campanhas
-            </span>
-          )}
+          <Link
+            href="/app/campanhas/nova"
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+          >
+            + Nova campanha
+          </Link>
           <Link href="/app/campanhas/optouts" className="text-sm text-neutral-400 hover:text-neutral-200">
             Ver opt-outs →
           </Link>
@@ -141,15 +136,24 @@ export default function CampanhasListPage() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="font-medium">{c.name}</div>
-                    <div className="text-sm text-neutral-500 mt-0.5">{c.templateName}</div>
+                    <div className="text-sm text-neutral-500 mt-0.5">
+                      {c.channel === 'evolution' ? 'Mensagem livre (Evolution)' : c.templateName}
+                    </div>
                   </div>
-                  <span
-                    className={`text-xs rounded-full border px-2 py-0.5 whitespace-nowrap ${
-                      STATUS_COLOR[c.status] || 'border-neutral-700 text-neutral-400'
-                    }`}
-                  >
-                    {STATUS_LABEL[c.status] || c.status}
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span
+                      className={`text-xs rounded-full border px-2 py-0.5 whitespace-nowrap ${
+                        STATUS_COLOR[c.status] || 'border-neutral-700 text-neutral-400'
+                      }`}
+                    >
+                      {STATUS_LABEL[c.status] || c.status}
+                    </span>
+                    {c.channel === 'evolution' && (
+                      <span className="text-xs rounded-full border border-amber-800 text-amber-400 px-2 py-0.5 whitespace-nowrap">
+                        Evolution
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
                   <span>{c.audienceCount} contatos</span>
