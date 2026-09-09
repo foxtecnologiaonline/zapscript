@@ -663,7 +663,7 @@ describe('Agendamento (schedule/unschedule)', () => {
       grantModuleAccess();
       const scheduledAt = futureIso();
       (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
-        id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: null,
+        id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: null, poolNumberIds: [],
       });
       (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
       (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled' });
@@ -688,7 +688,7 @@ describe('Agendamento (schedule/unschedule)', () => {
       grantModuleAccess();
       const scheduledAt = futureIso();
       (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
-        id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: new Date('2026-01-01'),
+        id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: new Date('2026-01-01'), poolNumberIds: [],
       });
       (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
       (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled' });
@@ -704,6 +704,52 @@ describe('Agendamento (schedule/unschedule)', () => {
         where: { id: 'c1' },
         data: { status: 'scheduled', scheduledAt: new Date(scheduledAt) },
       });
+    });
+
+    it('retorna 400 se a audiência já excede o tier no momento de agendar (gap conhecido §11.13)', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'c1', status: 'draft', audienceCount: 300, whatsappNumberId: NUM_ID,
+        consentConfirmedAt: new Date(), poolNumberIds: [],
+      });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({
+        id: NUM_ID, status: 'connected', metaAccessTokenEnc: 'enc', metaPhoneNumberId: 'phone-id-1',
+        metaMessagingLimitTier: 'TIER_250', metaQualityRating: 'GREEN',
+        metaLimitsSyncedAt: new Date(), // fresco — não bate na Graph API de novo
+      });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/schedule',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { scheduledAt: futureIso() },
+      });
+      expect(res.statusCode).toBe(400);
+      const body = res.json();
+      expect(body.metaTierCap).toBe(250);
+      expect(body.pendentesCount).toBe(300);
+      expect(prisma.campanha.update).not.toHaveBeenCalled();
+    });
+
+    it('agenda mesmo acima do tier com confirmExceedsTier', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'c1', status: 'draft', audienceCount: 300, whatsappNumberId: NUM_ID,
+        consentConfirmedAt: new Date(), poolNumberIds: [],
+      });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({
+        id: NUM_ID, status: 'connected', metaAccessTokenEnc: 'enc', metaPhoneNumberId: 'phone-id-1',
+        metaMessagingLimitTier: 'TIER_250', metaQualityRating: 'GREEN', metaLimitsSyncedAt: new Date(),
+      });
+      (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled' });
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/schedule',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { scheduledAt: futureIso(), confirmExceedsTier: true },
+      });
+      expect(res.statusCode).toBe(200);
     });
   });
 

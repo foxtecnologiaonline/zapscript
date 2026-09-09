@@ -1,6 +1,7 @@
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
 import { campanhasQueue } from './lib/queue';
+import { sendEmail } from './services/mailer';
 
 /**
  * ZapScript Campanhas — dispara automaticamente campanhas agendadas (status
@@ -59,6 +60,57 @@ function applySendWindow(delayMs: number, now: Date = new Date()): number {
   return delayMs + hoursUntilStart * 60 * 60 * 1000;
 }
 
+/** Puramente pura, duplicada de tierToNumericCap em
+ *  apps/api/src/services/whatsapp-campaigns.ts. Ver §11.13. */
+function tierToNumericCap(tier: string | null | undefined): number | null {
+  if (!tier) return null;
+  const t = tier.toUpperCase();
+  if (t.includes('UNLIMITED')) return Infinity;
+  const match = t.match(/(\d+)(K)?/);
+  if (!match) return null;
+  const n = parseInt(match[1], 10);
+  return match[2] ? n * 1000 : n;
+}
+
+function escHtml(s: string | null | undefined): string {
+  if (!s) return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/**
+ * Aviso por e-mail quando o disparo automático (agendado) começa acima do teto de
+ * tier conhecido (§11.13, gap do §9.3): diferente de /:id/start e /:id/schedule
+ * (que bloqueiam e pedem confirmExceedsTier), aqui não há usuário interativo às
+ * 3h da manhã pra confirmar — fail-open, dispara mesmo assim, mas avisa depois.
+ * Usa o tier em CACHE (WhatsappNumber.metaMessagingLimitTier, já sincronizado por
+ * alguma chamada anterior a /schedule ou /start) — não bate na Graph API aqui.
+ */
+async function notifyCampanhaExceedsTierAtFire(campanhaId: string, cap: number, pendentesCount: number): Promise<void> {
+  const campanha = await prisma.campanha.findUnique({
+    where: { id: campanhaId },
+    include: { user: { select: { email: true, name: true } } },
+  });
+  if (!campanha?.user?.email) return;
+  const APP_URL   = process.env.APP_URL || 'https://zapscript.me';
+  const firstName = escHtml(campanha.user.name?.split(' ')[0] || 'tudo bem');
+  const html = `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+    <div style="font-size:22px;font-weight:bold;margin-bottom:16px">⚠️ Campanha acima do limite da Meta</div>
+    <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
+      Olá, ${firstName}!<br><br>
+      Sua campanha agendada <strong>"${escHtml(campanha.name)}"</strong> começou a disparar automaticamente com
+      <strong>${pendentesCount}</strong> contatos pendentes, acima do teto conhecido de
+      <strong>${cap}</strong> contatos únicos/24h do número. A Meta pode rejeitar parte dos envios em massa.
+      O disparo prosseguiu mesmo assim (não há como pedir confirmação num disparo automático) — acompanhe o
+      resultado e considere pausar se as falhas se acumularem.
+    </div>
+    <div style="margin:24px 0;text-align:center">
+      <a href="${APP_URL}/dashboard/campanhas/${campanhaId}" style="background:#f59e0b;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Ver campanha →</a>
+    </div>
+    <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+  </div>`;
+  await sendEmail(campanha.user.email, `⚠️ Campanha "${campanha.name}" acima do limite da Meta`, html);
+}
+
 async function fireCampanha(campanhaId: string): Promise<void> {
   const campanha = await prisma.campanha.findUnique({ where: { id: campanhaId } });
   if (!campanha || campanha.status !== 'scheduled') return; // já processada em outro tick/réplica
@@ -108,6 +160,25 @@ async function fireCampanha(campanhaId: string): Promise<void> {
     data: { status: 'running', startedAt: new Date() },
   });
   if (claimed.count === 0) return; // outra réplica já iniciou
+
+  // Teto de tier conhecido (§11.13, gap do §9.3): diferente de /:id/start e
+  // /:id/schedule, aqui não há usuário pra confirmar acima do tier — fail-open,
+  // dispara mesmo assim (não vale travar um disparo já agendado às 3h da manhã),
+  // mas avisa por e-mail. Usa o tier em CACHE, sem bater na Graph API aqui.
+  if (campanha.channel !== 'evolution') {
+    let combinedCap: number | null = 0;
+    for (const n of sendNumbers) {
+      const cap = tierToNumericCap((n as any).metaMessagingLimitTier);
+      if (cap === null) continue;
+      if (!Number.isFinite(cap)) { combinedCap = Infinity; continue; }
+      if (combinedCap !== null && Number.isFinite(combinedCap)) combinedCap += cap;
+    }
+    if (combinedCap !== null && Number.isFinite(combinedCap) && pendentes.length > combinedCap) {
+      logger.warn(`[Campanhas][Scheduler] Campanha ${campanhaId} dispara acima do tier conhecido (${pendentes.length} > ${combinedCap}) — prosseguindo mesmo assim (fail-open).`);
+      notifyCampanhaExceedsTierAtFire(campanhaId, combinedCap, pendentes.length).catch((e: any) =>
+        logger.warn(`[Campanhas][Scheduler] Falha ao notificar excesso de tier da campanha ${campanhaId}: ${e.message}`));
+    }
+  }
 
   if (sendNumbers.length > 1) {
     const grupos = new Map<string, string[]>();

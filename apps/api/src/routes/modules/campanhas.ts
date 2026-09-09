@@ -251,6 +251,67 @@ async function ensureFreshMetaLimits(whatsappNumber: {
   }
 }
 
+interface TierDetail { numberId: string; tier: string | null; quality: string | null; cap: number | null }
+
+/**
+ * Números da "rotação de envio" de uma campanha (§11/item 2): o primário + os do
+ * pool que estiverem prontos pra enviar AGORA. Compartilhada entre /:id/schedule,
+ * /:id/start e o disparo automático (campanhas-scheduler.ts, cópia própria —
+ * api/worker não compartilham código neste monorepo).
+ */
+async function resolveSendNumbers(
+  campanha: { poolNumberIds: string[]; channel: string },
+  userId: string,
+  primary: { id: string; status: string; metaAccessTokenEnc: string | null; zapiInstanceId: string | null },
+): Promise<any[]> {
+  let sendNumbers: any[] = [primary];
+  if (campanha.poolNumberIds.length > 0) {
+    const poolNumbers = await prisma.whatsappNumber.findMany({
+      where: { id: { in: campanha.poolNumberIds }, userId, provider: campanha.channel },
+    });
+    sendNumbers = sendNumbers.concat(poolNumbers.filter((n: any) => numberReadyToSend(n, campanha.channel)));
+  }
+  return sendNumbers;
+}
+
+/**
+ * Teto combinado de contatos únicos/24h somando o tier de cada número da rotação
+ * (Graph API, cache de 1h via ensureFreshMetaLimits). null = tier desconhecido em
+ * todos os números (fail-open, não bloqueia); Infinity = algum número é UNLIMITED.
+ */
+async function checkCombinedTierCap(sendNumbers: any[]): Promise<{ combinedCap: number | null; tierDetails: TierDetail[] }> {
+  let combinedCap: number | null = 0;
+  const tierDetails: TierDetail[] = [];
+  for (const n of sendNumbers) {
+    const { tier, quality } = await ensureFreshMetaLimits(n);
+    const cap = tierToNumericCap(tier);
+    tierDetails.push({ numberId: n.id, tier, quality, cap });
+    if (cap === null) continue;
+    if (!Number.isFinite(cap)) { combinedCap = Infinity; continue; }
+    if (combinedCap !== null && Number.isFinite(combinedCap)) combinedCap += cap;
+  }
+  if (tierDetails.every((d) => d.cap === null)) combinedCap = null;
+  return { combinedCap, tierDetails };
+}
+
+function tierExceededResponse(combinedCap: number, tierDetails: TierDetail[], pendentesCount: number, multiplas: boolean) {
+  return {
+    error: multiplas
+      ? `Os ${tierDetails.length} números desta campanha somam um teto de ${combinedCap} contatos únicos/24h `
+        + `e esta campanha tem ${pendentesCount} contatos pendentes — pode ser rejeitada em massa pela `
+        + `Meta. Confirme que quer prosseguir mesmo assim (confirmExceedsTier: true) ou reduza a lista.`
+      : `Este número está no tier "${tierDetails[0]?.tier}" da Meta (até ${tierDetails[0]?.cap} contatos únicos por 24h) `
+        + `e esta campanha tem ${pendentesCount} contatos pendentes — pode ser rejeitada em `
+        + `massa pela Meta. Confirme que quer prosseguir mesmo assim (confirmExceedsTier: true) `
+        + `ou reduza a lista.`,
+    metaMessagingLimitTier: tierDetails[0]?.tier ?? null,
+    metaQualityRating: tierDetails[0]?.quality ?? null,
+    metaTierCap: combinedCap,
+    pendentesCount,
+    numeros: multiplas ? tierDetails : undefined,
+  };
+}
+
 const EVOLUTION_DAILY_LIMIT = parseInt(process.env.CAMPANHAS_EVOLUTION_DAILY_LIMIT || '40', 10);
 
 /**
@@ -775,6 +836,20 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       });
     }
 
+    // Mesmo teto real de tier/quality que /:id/start já checava (§11/item 2 do
+    // gap conhecido em §9.3) — avisa AGORA, no momento de agendar, em vez de só
+    // na hora do disparo automático (que não tem usuário pra confirmar). Se o
+    // tier mudar entre agendar e disparar, o disparo automático ainda assim
+    // prossegue (fail-open, ver campanhas-scheduler.ts) — aqui é só a chance
+    // inicial do usuário reconsiderar antes de comprometer a campanha.
+    if (campanha.channel !== 'evolution') {
+      const sendNumbers = await resolveSendNumbers(campanha, userId, whatsappNumber!);
+      const { combinedCap, tierDetails } = await checkCombinedTierCap(sendNumbers);
+      if (combinedCap !== null && Number.isFinite(combinedCap) && campanha.audienceCount > combinedCap && req.body?.confirmExceedsTier !== true) {
+        return reply.code(400).send(tierExceededResponse(combinedCap, tierDetails, campanha.audienceCount, sendNumbers.length > 1));
+      }
+    }
+
     const updated = await prisma.campanha.update({
       where: { id },
       data: {
@@ -878,13 +953,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     // Pool de números (§11/item 2): números extras do mesmo canal pra dividir o
     // disparo — só entram na rotação os que estiverem prontos pra enviar agora;
     // um número do pool que caiu não trava a campanha, só sai da rotação desta vez.
-    let sendNumbers = [whatsappNumber!];
-    if (campanha.poolNumberIds.length > 0) {
-      const poolNumbers = await prisma.whatsappNumber.findMany({
-        where: { id: { in: campanha.poolNumberIds }, userId, provider: campanha.channel },
-      });
-      sendNumbers = sendNumbers.concat(poolNumbers.filter((n: any) => numberReadyToSend(n, campanha.channel)));
-    }
+    const sendNumbers = await resolveSendNumbers(campanha, userId, whatsappNumber!);
 
     const pendentes = await prisma.campanhaContato.findMany({
       where: { campanhaId: id, status: 'pending' },
@@ -899,34 +968,9 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     // silenciosamente pela Meta sem que o usuário tenha sido avisado com o número de
     // verdade. Ver §5.1/§9.
     if (campanha.channel !== 'evolution') {
-      let combinedCap: number | null = 0;
-      const tierDetails: Array<{ numberId: string; tier: string | null; quality: string | null; cap: number | null }> = [];
-      for (const n of sendNumbers) {
-        const { tier, quality } = await ensureFreshMetaLimits(n);
-        const cap = tierToNumericCap(tier);
-        tierDetails.push({ numberId: n.id, tier, quality, cap });
-        if (cap === null) continue;
-        if (!Number.isFinite(cap)) { combinedCap = Infinity; continue; }
-        if (combinedCap !== null && Number.isFinite(combinedCap)) combinedCap += cap;
-      }
-      if (tierDetails.every((d) => d.cap === null)) combinedCap = null;
-
+      const { combinedCap, tierDetails } = await checkCombinedTierCap(sendNumbers);
       if (combinedCap !== null && Number.isFinite(combinedCap) && pendentes.length > combinedCap && req.body?.confirmExceedsTier !== true) {
-        return reply.code(400).send({
-          error: sendNumbers.length > 1
-            ? `Os ${sendNumbers.length} números desta campanha somam um teto de ${combinedCap} contatos únicos/24h `
-              + `e esta campanha tem ${pendentes.length} contatos pendentes — pode ser rejeitada em massa pela `
-              + `Meta. Confirme que quer prosseguir mesmo assim (confirmExceedsTier: true) ou reduza a lista.`
-            : `Este número está no tier "${tierDetails[0]?.tier}" da Meta (até ${tierDetails[0]?.cap} contatos únicos por 24h) `
-              + `e esta campanha tem ${pendentes.length} contatos pendentes — pode ser rejeitada em `
-              + `massa pela Meta. Confirme que quer prosseguir mesmo assim (confirmExceedsTier: true) `
-              + `ou reduza a lista.`,
-          metaMessagingLimitTier: tierDetails[0]?.tier ?? null,
-          metaQualityRating: tierDetails[0]?.quality ?? null,
-          metaTierCap: combinedCap,
-          pendentesCount: pendentes.length,
-          numeros: sendNumbers.length > 1 ? tierDetails : undefined,
-        });
+        return reply.code(400).send(tierExceededResponse(combinedCap, tierDetails, pendentes.length, sendNumbers.length > 1));
       }
     }
 

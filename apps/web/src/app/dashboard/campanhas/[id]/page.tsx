@@ -79,12 +79,12 @@ const CONTATO_STATUS_LABEL: Record<string, string> = {
 };
 
 const CONTATO_STATUS_COLOR: Record<string, string> = {
-  pending: 'text-neutral-400',
-  sent: 'text-blue-400',
-  delivered: 'text-emerald-400',
-  read: 'text-emerald-300',
-  failed: 'text-red-400',
-  optout: 'text-amber-400',
+  pending: 'text-brand-muted',
+  sent: 'text-blue-500',
+  delivered: 'text-emerald-600',
+  read: 'text-emerald-500',
+  failed: 'text-red-500',
+  optout: 'text-amber-600',
 };
 
 /** Valor mínimo aceito pelo <input type="datetime-local"> — pelo menos 5 min no futuro. */
@@ -271,7 +271,11 @@ export default function CampanhaDetailPage() {
       setScheduleAt('');
       await loadCampanha();
     } catch (err: any) {
-      setActionError(err?.message || 'Não foi possível agendar a campanha.');
+      if (typeof err?.metaTierCap === 'number') {
+        setTierExceeded({ tier: err.metaMessagingLimitTier, cap: err.metaTierCap, count: err.pendentesCount });
+      } else {
+        setActionError(err?.message || 'Não foi possível agendar a campanha.');
+      }
     } finally {
       setActionLoading(false);
     }
@@ -311,7 +315,7 @@ export default function CampanhaDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-300">
+      <div className="min-h-screen flex items-center justify-center text-brand-text-secondary">
         Carregando…
       </div>
     );
@@ -319,10 +323,10 @@ export default function CampanhaDetailPage() {
 
   if (notFound) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-100">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="mb-4">Campanha não encontrada.</p>
-          <Link href="/dashboard/campanhas" className="text-emerald-400 hover:text-emerald-300">← Voltar</Link>
+          <p className="mb-4 text-brand-text">Campanha não encontrada.</p>
+          <Link href="/dashboard/campanhas" className="text-emerald-600 hover:text-emerald-500">← Voltar</Link>
         </div>
       </div>
     );
@@ -330,7 +334,7 @@ export default function CampanhaDetailPage() {
 
   if (!campanha) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-red-300 px-5 text-center">
+      <div className="min-h-screen flex items-center justify-center text-red-500 px-5 text-center">
         {error || 'Erro ao carregar campanha.'}
       </div>
     );
@@ -341,19 +345,19 @@ export default function CampanhaDetailPage() {
     ['Enviados', campanha.sentCount, ''],
     ['Entregues', stats.delivered || 0, ''],
     ['Lidos', stats.read || 0, ''],
-    ['Falharam', stats.failed || 0, 'text-red-400'],
-    ['Opt-out', stats.optout || 0, 'text-amber-400'],
+    ['Falharam', stats.failed || 0, 'text-red-500'],
+    ['Opt-out', stats.optout || 0, 'text-amber-600'],
   ];
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="min-h-screen px-5 py-10">
       <div className="max-w-3xl mx-auto">
-        <Link href="/dashboard/campanhas" className="text-sm text-neutral-500 hover:text-neutral-300">← Campanhas</Link>
+        <Link href="/dashboard/campanhas" className="text-sm text-brand-muted hover:text-brand-text">← Campanhas</Link>
 
         <div className="mt-2 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">{campanha.name}</h1>
-            <p className="text-neutral-400 mt-1 text-sm">
+            <h1 className="text-2xl font-bold text-brand-text">{campanha.name}</h1>
+            <p className="text-brand-text-secondary mt-1 text-sm">
               {campanha.channel === 'evolution'
                 ? `Mensagem livre (Evolution): "${campanha.messageBody?.slice(0, 60)}${(campanha.messageBody?.length || 0) > 60 ? '…' : ''}"`
                 : `Template: ${campanha.templateName} (${campanha.templateLanguage})`}
@@ -361,18 +365,18 @@ export default function CampanhaDetailPage() {
             </p>
             {campanha.channel !== 'evolution'
               && (campanha.whatsappNumber?.metaMessagingLimitTier || campanha.whatsappNumber?.metaQualityRating) && (
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-brand-muted">
                 Meta: tier {campanha.whatsappNumber?.metaMessagingLimitTier || '—'}
                 {campanha.whatsappNumber?.metaQualityRating ? ` · qualidade ${campanha.whatsappNumber.metaQualityRating}` : ''}
               </p>
             )}
           </div>
           <div className="flex flex-col items-end gap-1">
-            <span className="text-xs rounded-full border border-neutral-700 px-2.5 py-1 text-neutral-300 whitespace-nowrap">
+            <span className="text-xs rounded-full border border-brand-border px-2.5 py-1 text-brand-text-secondary whitespace-nowrap">
               {CAMP_STATUS_LABEL[campanha.status] || campanha.status}
             </span>
             {campanha.channel === 'evolution' && (
-              <span className="text-xs rounded-full border border-amber-800 bg-amber-950/30 px-2.5 py-1 text-amber-300 whitespace-nowrap">
+              <span className="text-xs rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-amber-600 whitespace-nowrap">
                 ⚠️ Evolution (experimental)
               </span>
             )}
@@ -380,38 +384,38 @@ export default function CampanhaDetailPage() {
         </div>
 
         {campanha.status === 'scheduled' && campanha.scheduledAt && (
-          <p className="mt-2 text-sm text-emerald-400">
+          <p className="mt-2 text-sm text-emerald-600">
             🗓️ Agendada para {new Date(campanha.scheduledAt).toLocaleString('pt-BR')}
           </p>
         )}
 
         {campanha.status === 'paused' && campanha.pausedReason && (
-          <div className="mt-4 rounded-lg border border-amber-800 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+          <div className="mt-4 rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-brand-text-secondary">
             ⛔ {campanha.pausedReason}
           </div>
         )}
 
         <div className="mt-6 grid grid-cols-3 sm:grid-cols-6 gap-3">
           {statCards.map(([label, value, color]) => (
-            <div key={label} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3 text-center">
-              <div className={`text-lg font-semibold ${color}`}>{value}</div>
-              <div className="text-[11px] text-neutral-500">{label}</div>
+            <div key={label} className="card rounded-lg p-3 text-center">
+              <div className={`text-lg font-semibold ${color || 'text-brand-text'}`}>{value}</div>
+              <div className="text-[11px] text-brand-muted">{label}</div>
             </div>
           ))}
         </div>
 
         {actionError && (
-          <div className="mt-4 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-red-200 text-sm">
+          <div className="mt-4 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-600 text-sm">
             {actionError}
           </div>
         )}
 
         {tierExceeded && (
-          <div className="mt-4 rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-200 space-y-3">
+          <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-brand-text-secondary space-y-3">
             <p>
-              ⚠️ Seu número está no tier <strong>{tierExceeded.tier}</strong> da Meta — até{' '}
-              <strong>{tierExceeded.cap.toLocaleString('pt-BR')}</strong> contatos únicos por 24h.
-              Esta campanha tem <strong>{tierExceeded.count.toLocaleString('pt-BR')}</strong> contatos
+              ⚠️ Seu número está no tier <strong className="text-brand-text">{tierExceeded.tier}</strong> da Meta — até{' '}
+              <strong className="text-brand-text">{tierExceeded.cap.toLocaleString('pt-BR')}</strong> contatos únicos por 24h.
+              Esta campanha tem <strong className="text-brand-text">{tierExceeded.count.toLocaleString('pt-BR')}</strong> contatos
               pendentes, acima desse limite. A Meta pode rejeitar parte dos envios em massa se você
               prosseguir agora.
             </p>
@@ -419,13 +423,13 @@ export default function CampanhaDetailPage() {
               <button
                 onClick={() => runAction('start', { confirmExceedsTier: true })}
                 disabled={actionLoading}
-                className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+                className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50"
               >
                 Prosseguir mesmo assim
               </button>
               <button
                 onClick={() => setTierExceeded(null)}
-                className="rounded-lg border border-amber-700 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-900/40"
+                className="rounded-lg border border-amber-400/30 px-3 py-1.5 text-xs text-amber-600 hover:bg-amber-400/10"
               >
                 Cancelar e reduzir a lista
               </button>
@@ -440,12 +444,12 @@ export default function CampanhaDetailPage() {
                 <button
                   onClick={handleImportConversas}
                   disabled={importingConversas}
-                  className="rounded-lg bg-neutral-800 px-4 py-2 text-sm font-medium hover:bg-neutral-700 disabled:opacity-50"
+                  className="btn-ghost disabled:opacity-50"
                 >
                   {importingConversas ? 'Importando…' : '💬 Importar contatos que já falaram com você'}
                 </button>
               ) : (
-                <label className="rounded-lg bg-neutral-800 px-4 py-2 text-sm font-medium hover:bg-neutral-700 cursor-pointer">
+                <label className="btn-ghost cursor-pointer">
                   {uploading ? 'Importando…' : '📄 Importar contatos (CSV)'}
                   <input
                     ref={fileInputRef}
@@ -463,14 +467,14 @@ export default function CampanhaDetailPage() {
                   actionLoading || campanha.audienceCount === 0
                   || (!campanha.consentConfirmedAt && !consentAcknowledged)
                 }
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-primary px-4 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ▶ Iniciar disparo
               </button>
               <button
                 onClick={handleDelete}
                 disabled={actionLoading}
-                className="rounded-lg border border-red-800 px-4 py-2 text-sm text-red-300 hover:bg-red-950/40"
+                className="rounded-lg border border-red-400/30 px-4 py-2 text-sm text-red-500 hover:bg-red-400/10"
               >
                 Excluir
               </button>
@@ -481,21 +485,21 @@ export default function CampanhaDetailPage() {
               <button
                 onClick={() => runAction('start')}
                 disabled={actionLoading}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
               >
                 ▶ Iniciar agora
               </button>
               <button
                 onClick={() => runAction('unschedule')}
                 disabled={actionLoading}
-                className="rounded-lg bg-neutral-800 px-4 py-2 text-sm font-medium hover:bg-neutral-700 disabled:opacity-50"
+                className="btn-ghost disabled:opacity-50"
               >
                 Cancelar agendamento
               </button>
               <button
                 onClick={handleDelete}
                 disabled={actionLoading}
-                className="rounded-lg border border-red-800 px-4 py-2 text-sm text-red-300 hover:bg-red-950/40"
+                className="rounded-lg border border-red-400/30 px-4 py-2 text-sm text-red-500 hover:bg-red-400/10"
               >
                 Excluir
               </button>
@@ -513,7 +517,7 @@ export default function CampanhaDetailPage() {
               <button
                 onClick={handleCancel}
                 disabled={actionLoading}
-                className="rounded-lg border border-red-800 px-4 py-2 text-sm text-red-300 hover:bg-red-950/40"
+                className="rounded-lg border border-red-400/30 px-4 py-2 text-sm text-red-500 hover:bg-red-400/10"
               >
                 Cancelar
               </button>
@@ -524,14 +528,14 @@ export default function CampanhaDetailPage() {
               <button
                 onClick={() => runAction('start')}
                 disabled={actionLoading}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
               >
                 ▶ Retomar
               </button>
               <button
                 onClick={handleCancel}
                 disabled={actionLoading}
-                className="rounded-lg border border-red-800 px-4 py-2 text-sm text-red-300 hover:bg-red-950/40"
+                className="rounded-lg border border-red-400/30 px-4 py-2 text-sm text-red-500 hover:bg-red-400/10"
               >
                 Cancelar
               </button>
@@ -540,23 +544,23 @@ export default function CampanhaDetailPage() {
         </div>
 
         {campanha.status === 'draft' && campanha.channel !== 'evolution' && (
-          <p className="mt-3 text-xs text-neutral-500">
+          <p className="mt-3 text-xs text-brand-muted">
             CSV: coluna 1 = telefone (obrigatório) · coluna 2 = nome (opcional) · colunas 3+ = variáveis do
             template, na ordem.
           </p>
         )}
 
         {campanha.status === 'draft' && campanha.channel === 'evolution' && (
-          <div className="mt-4 rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-200 space-y-3">
+          <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-brand-text-secondary space-y-3">
             <p>
               ⚠️ Este envio usa o seu número Evolution comum, não a API oficial do WhatsApp.
               O WhatsApp pode banir o número usado para envio em massa automatizado — o
-              <strong> mesmo número que também atende core/Atende/Copiloto</strong>. Por isso o
+              <strong className="text-brand-text"> mesmo número que também atende core/Atende/Copiloto</strong>. Por isso o
               disparo é deliberadamente lento (poucas dezenas de mensagens por dia) e restrito a
               contatos que já conversaram com você.
             </p>
             {!campanha.consentConfirmedAt && (
-              <label className="flex items-start gap-2 text-amber-100">
+              <label className="flex items-start gap-2 text-brand-text">
                 <input
                   type="checkbox"
                   checked={consentAcknowledged}
@@ -570,13 +574,13 @@ export default function CampanhaDetailPage() {
         )}
 
         {campanha.status === 'draft' && campanha.channel !== 'evolution' && !campanha.consentConfirmedAt && (
-          <div className="mt-4 rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-200 space-y-3">
+          <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-brand-text-secondary space-y-3">
             <p>
               Antes de iniciar, confirme que você tem consentimento (opt-in) dos contatos desta
               lista para receber mensagens de marketing — exigido pela LGPD e pela política da
               Meta.
             </p>
-            <label className="flex items-start gap-2 text-amber-100">
+            <label className="flex items-start gap-2 text-brand-text">
               <input
                 type="checkbox"
                 checked={consentAcknowledged}
@@ -589,7 +593,7 @@ export default function CampanhaDetailPage() {
         )}
 
         {importResult && (
-          <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900 p-3 text-sm text-neutral-300">
+          <div className="mt-4 card rounded-lg p-3 text-sm text-brand-text-secondary">
             {importResult.imported} de {importResult.elegiveis} contato{importResult.elegiveis === 1 ? '' : 's'} elegíve{importResult.elegiveis === 1 ? 'l' : 'is'} importado{importResult.imported === 1 ? '' : 's'}.
             {importResult.skippedOptOut > 0 && ` ${importResult.skippedOptOut} já em opt-out.`}
             {importResult.skippedDuplicate > 0 && ` ${importResult.skippedDuplicate} já estava(m) na campanha.`}
@@ -598,14 +602,14 @@ export default function CampanhaDetailPage() {
 
         {campanha.status === 'draft' && campanha.audienceCount > 0 && (
           <form onSubmit={handleSchedule} className="mt-4 flex flex-wrap items-center gap-2">
-            <label className="text-sm text-neutral-400">Ou agende para depois:</label>
+            <label className="text-sm text-brand-text-secondary">Ou agende para depois:</label>
             <input
               type="datetime-local"
               required
               value={scheduleAt}
               min={minDatetimeLocal()}
               onChange={(e) => setScheduleAt(e.target.value)}
-              className="rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-emerald-600"
+              className="input w-auto"
             />
             <button
               type="submit"
@@ -613,7 +617,7 @@ export default function CampanhaDetailPage() {
                 actionLoading || !scheduleAt
                 || (!campanha.consentConfirmedAt && !consentAcknowledged)
               }
-              className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-ghost disabled:opacity-50 disabled:cursor-not-allowed"
             >
               🗓️ Agendar disparo
             </button>
@@ -621,7 +625,7 @@ export default function CampanhaDetailPage() {
         )}
 
         {uploadResult && (
-          <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900 p-3 text-sm text-neutral-300">
+          <div className="mt-4 card rounded-lg p-3 text-sm text-brand-text-secondary">
             {uploadResult.imported} contato{uploadResult.imported === 1 ? '' : 's'} importado
             {uploadResult.imported === 1 ? '' : 's'}.
             {uploadResult.skippedOptOut > 0 && ` ${uploadResult.skippedOptOut} já em opt-out.`}
@@ -632,15 +636,15 @@ export default function CampanhaDetailPage() {
         )}
 
         {canEditPool && poolCandidates.length > 0 && (
-          <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="text-sm font-semibold text-neutral-300">Pool de números</h2>
-            <p className="mt-1 text-xs text-neutral-500">
+          <div className="mt-6 card rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-brand-text">Pool de números</h2>
+            <p className="mt-1 text-xs text-brand-muted">
               Divida o disparo entre números extras do mesmo canal — reduz o volume por número e o
               risco de bater no teto/qualidade de um único número.
             </p>
             <div className="mt-3 space-y-1.5">
               {poolCandidates.map((n) => (
-                <label key={n.id} className="flex items-center gap-2 text-sm text-neutral-300">
+                <label key={n.id} className="flex items-center gap-2 text-sm text-brand-text-secondary">
                   <input
                     type="checkbox"
                     checked={poolSelected.includes(n.id)}
@@ -650,7 +654,7 @@ export default function CampanhaDetailPage() {
                   />
                   <span>{n.displayName || n.phoneNumber || n.id}</span>
                   {n.status !== 'connected' && (
-                    <span className="text-xs text-amber-400">(desconectado — só entra se reconectar antes do disparo)</span>
+                    <span className="text-xs text-amber-600">(desconectado — só entra se reconectar antes do disparo)</span>
                   )}
                 </label>
               ))}
@@ -659,18 +663,18 @@ export default function CampanhaDetailPage() {
               <button
                 onClick={handleSavePool}
                 disabled={poolSaving}
-                className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-50"
+                className="btn-ghost text-xs disabled:opacity-50"
               >
                 {poolSaving ? 'Salvando…' : 'Salvar pool'}
               </button>
-              {poolMessage && <span className="text-xs text-neutral-400">{poolMessage}</span>}
+              {poolMessage && <span className="text-xs text-brand-muted">{poolMessage}</span>}
             </div>
           </div>
         )}
 
-        <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-          <h2 className="text-sm font-semibold text-neutral-300">Enviar teste</h2>
-          <p className="mt-1 text-xs text-neutral-500">
+        <div className="mt-6 card rounded-xl p-4">
+          <h2 className="text-sm font-semibold text-brand-text">Enviar teste</h2>
+          <p className="mt-1 text-xs text-brand-muted">
             Manda esta mensagem pra um número (ex: o seu) sem contar nas métricas da campanha.
           </p>
           <form onSubmit={handleTestSend} className="mt-3 flex flex-wrap items-center gap-2">
@@ -679,17 +683,17 @@ export default function CampanhaDetailPage() {
               placeholder="Telefone com DDD"
               value={testPhone}
               onChange={(e) => setTestPhone(e.target.value)}
-              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm outline-none focus:border-emerald-600"
+              className="input flex-1 min-w-[160px] max-w-xs"
             />
             <button
               type="submit"
               disabled={testSending || !testPhone.trim()}
-              className="rounded-lg border border-neutral-700 px-3 py-2 text-xs font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-50"
+              className="btn-ghost text-xs disabled:opacity-50"
             >
               {testSending ? 'Enviando…' : '🧪 Enviar teste'}
             </button>
             {testResult && (
-              <span className={`text-xs ${testResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+              <span className={`text-xs ${testResult.ok ? 'text-emerald-600' : 'text-red-500'}`}>
                 {testResult.message}
               </span>
             )}
@@ -698,13 +702,13 @@ export default function CampanhaDetailPage() {
 
         <div className="mt-8">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-muted">
               Contatos ({contatosTotal})
             </h2>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-300"
+              className="rounded-lg border border-brand-border bg-brand-elevated px-2 py-1 text-xs text-brand-text-secondary"
             >
               <option value="">Todos</option>
               {Object.entries(CONTATO_STATUS_LABEL).map(([k, v]) => (
@@ -714,23 +718,23 @@ export default function CampanhaDetailPage() {
           </div>
 
           {contatos.length === 0 ? (
-            <p className="text-sm text-neutral-500">Nenhum contato {statusFilter ? 'com esse status' : 'ainda'}.</p>
+            <p className="text-sm text-brand-muted">Nenhum contato {statusFilter ? 'com esse status' : 'ainda'}.</p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-neutral-800">
+            <div className="overflow-x-auto rounded-lg border border-brand-border">
               <table className="w-full text-sm">
-                <thead className="bg-neutral-900 text-neutral-400 text-left">
+                <thead className="bg-brand-elevated text-brand-text-secondary text-left">
                   <tr>
                     <th className="px-3 py-2 font-medium">Telefone</th>
                     <th className="px-3 py-2 font-medium">Nome</th>
                     <th className="px-3 py-2 font-medium">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-800">
+                <tbody className="divide-y divide-brand-border">
                   {contatos.map((c) => (
                     <tr key={c.id} title={c.errorMessage || undefined}>
-                      <td className="px-3 py-2 text-neutral-300">{c.phone}</td>
-                      <td className="px-3 py-2 text-neutral-400">{c.name || '—'}</td>
-                      <td className={`px-3 py-2 ${CONTATO_STATUS_COLOR[c.status] || 'text-neutral-400'}`}>
+                      <td className="px-3 py-2 text-brand-text-secondary">{c.phone}</td>
+                      <td className="px-3 py-2 text-brand-muted">{c.name || '—'}</td>
+                      <td className={`px-3 py-2 ${CONTATO_STATUS_COLOR[c.status] || 'text-brand-muted'}`}>
                         {CONTATO_STATUS_LABEL[c.status] || c.status}
                       </td>
                     </tr>
@@ -738,7 +742,7 @@ export default function CampanhaDetailPage() {
                 </tbody>
               </table>
               {contatosTotal > contatos.length && (
-                <div className="px-3 py-2 text-xs text-neutral-500 bg-neutral-900/50">
+                <div className="px-3 py-2 text-xs text-brand-muted bg-brand-elevated">
                   Mostrando {contatos.length} de {contatosTotal}.
                 </div>
               )}

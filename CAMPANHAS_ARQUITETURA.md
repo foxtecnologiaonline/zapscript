@@ -739,9 +739,66 @@ não ordem relativa.
 
 - **UI do pool**: só o essencial (checklist + salvar) — sem indicar, por número, quantos
   contatos já foram atribuídos a ele numa campanha em andamento.
-- **`/:id/schedule` não recalcula tier/pool na hora do agendamento** — só `/:id/start` (manual)
-  e o disparo automático do scheduler fazem essa conta; agendar não valida nada disso
-  antecipadamente (mesma lacuna já registrada em §9.3 para o tier sozinho).
-- **Item 8 (recência)** usa `Transcription.createdAt` como proxy de "última interação" — não é
-  exatamente a data da última mensagem (é a data de criação do registro de transcrição), mas é
-  o campo disponível sem mudar o schema de outro módulo pra isso.
+
+Os outros dois itens desta lista (tier no agendamento, e o tema claro/escuro de todo o módulo)
+foram fechados na revisão seguinte — ver §12.
+
+---
+
+## 12. Fechamento dos gaps conhecidos (§11.13) + tema claro/escuro
+
+### 12.1 Tema claro/escuro nas páginas de Campanhas
+
+As 6 páginas (`page.tsx`, `nova/`, `[id]/`, `optouts/`, `performance/`, `_components/ConnectionCard.tsx`)
+foram convertidas do dark-mode fixo (`bg-neutral-950`, `text-neutral-100` etc., Tailwind hardcoded)
+pro sistema de tokens semânticos que o resto do `/dashboard` já usa (`globals.css` +
+`tailwind.config.js`: `brand-{bg,surface,elevated,primary,text,muted,border}`, classes
+`.card`/`.btn-primary`/`.btn-ghost`/`.input`/`.inner-block`), seguindo exatamente o padrão já
+em produção em `/dashboard/numeros`. Cores de status (falhou/opt-out/entregue/etc.) mantidas com
+a paleta nomeada do Tailwind (não os tokens de marca) mas em tons -500/-600 com fundo/borda em
+baixa opacidade (`bg-amber-400/10 border-amber-400/20 text-amber-600`), o mesmo truque que
+`numeros/page.tsx` já usa pra funcionar em ambos os temas sem precisar de `dark:` variant.
+
+Verificado visualmente (não dá pra logar como usuário real no sandbox — API de produção,
+sem credencial de teste): harness estático isolado com o `globals.css`/`tailwind.config.js`
+reais, screenshot em claro e escuro dos padrões usados (cards, badges de status, botões,
+banners, tabela) — contraste e legibilidade OK nos dois temas. Typecheck limpo.
+
+**Achado de quebra ao converter**: `nova/page.tsx` calculava `varCount` (nº de `{{n}}` do
+template) mas nunca mandava `templateVarCount` no `POST /` de criação — ou seja, a validação de
+variáveis do CSV (item 6, §11.6) nunca teria disparado de verdade pra nenhuma campanha criada
+pela tela, só nos testes (que setam o campo manualmente no mock). Corrigido junto.
+
+### 12.2 Tier/quality no momento de agendar (fecha a lacuna do §9.3/§11.13)
+
+Extraídos `resolveSendNumbers()` e `checkCombinedTierCap()` (antes só inline em `/:id/start`) e
+reaplicados em `/:id/schedule`: agendar uma campanha que já excede o teto de tier combinado
+(primário + pool prontos) agora avisa com os números reais e exige `confirmExceedsTier: true`
+pra prosseguir — mesma UX de `/:id/start`, só que na hora de agendar em vez de só na hora de
+iniciar. Front (`[id]/page.tsx`) reaproveita o mesmo estado `tierExceeded` pros erros de
+`/schedule` também.
+
+**O disparo automático em si (`campanhas-scheduler.ts`, quando `scheduledAt` chega) continua
+fail-open** — não bloqueia, porque não há usuário interativo às 3h da manhã pra confirmar
+`confirmExceedsTier`. O que mudou: agora ele *checa* o tier em cache (sem bater na Graph API de
+novo — só lê `WhatsappNumber.metaMessagingLimitTier`, já sincronizado por qualquer chamada
+anterior a `/schedule`/`/start`) e, se a audiência pendente excede o teto conhecido, dispara
+mesmo assim mas manda um e-mail avisando (`notifyCampanhaExceedsTierAtFire`, mesmo estilo dos
+e-mails do item 10). Isso cobre o caso real que motivava o gap: o tier pode ter mudado (ou a
+campanha pode ter crescido) entre o agendamento e o disparo de fato, dias depois.
+
+### 12.3 Recência via `Transcription.createdAt` (item 8) — não era gap de verdade
+
+Reavaliado: para `Transcription` com `source='whatsapp'`, o registro é criado pelo pipeline
+essencialmente em tempo real na chegada do áudio — `createdAt` **é** a data da última
+interação, não um proxy aproximado. A ressalva no §11.13 era excesso de cautela, não um defeito
+real; nenhuma mudança de código foi necessária aqui.
+
+### 12.4 Testes
+
+81 testes em `apps/api/src/__tests__/campanhas.test.ts` (era 79) — cobrindo o novo gate de
+`/:id/schedule` (bloqueia acima do tier, prossegue com `confirmExceedsTier`) — e 16 no worker
+(inalterado; `campanhas-scheduler.ts` continua sem suite própria, uma lacuna pré-existente à
+parte — o módulo tem efeito colateral de topo de arquivo (`setInterval` na importação) que
+dificulta testá-lo sem um refactor maior, fora do escopo deste fechamento). Typecheck limpo nos
+três apps.
