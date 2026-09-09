@@ -6,7 +6,7 @@
 > especificação técnica concreta dos itens de maior risco, no formato de
 > `MODULOS_ARQUITETURA.md`/`PLATAFORMA_BASE.md`.
 
-Data: 2026-09-09 (revisão 6 — canal Evolution experimental, §8) · Branch:
+Data: 2026-09-09 (revisão 7 — opt-in nos dois canais + tier/quality real, §9) · Branch:
 `claude/laughing-ritchie-3n4vj1`
 
 ## TL;DR
@@ -24,10 +24,14 @@ Data: 2026-09-09 (revisão 6 — canal Evolution experimental, §8) · Branch:
   módulo está pronto e "bundled" no catálogo, mas nenhum cliente conectou um número Meta ainda.
   Isso não muda nenhuma recomendação abaixo — só o contexto: é a janela ideal para aplicar
   correções de schema sem custo de migração de dados.
-- **Risco nº 1 (P0):** o módulo não sabe quantos contatos o número do cliente pode alcançar
-  em 24h nem o `quality_rating` dele — uma campanha grande pode simplesmente ser rejeitada em
-  massa pela Meta, e o único mecanismo de proteção hoje é um teto artificial de 10 msg/s
-  **compartilhado por todos os tenants**.
+- **Risco nº 1 (P0) — [PARCIALMENTE RESOLVIDO em §9]:** o `/:id/start` agora lê
+  `messaging_limit_tier`/`quality_rating` de verdade na Graph API e trava (com opção de
+  prosseguir mesmo assim) se a audiência excede o tier do número. O que falta do P0 original:
+  auto-pausa automática se a Meta começar a rejeitar em massa **durante** o envio (§3.2) e
+  rate limit por tenant/número em vez do teto global de 10 msg/s (§3.3) — nenhum dos dois foi
+  feito ainda.
+- **Risco nº 2 (P0) — [RESOLVIDO em §9]:** opt-in auditável agora existe nos dois canais —
+  antes só existia (e só de forma implícita) no canal Evolution.
 - **Risco nº 2 (P0):** não há checagem de opt-in — só opt-out reativo. Maior exposição
   LGPD/política Meta da suíte inteira.
 - **Correção desta revisão:** a v1 sugeria rate-limit "por grupo" do BullMQ — isso é recurso
@@ -450,3 +454,351 @@ Meta ou por dado de churn/banimento real (não existe fonte oficial pra isso em 
 não-oficiais). Vale tratar como uma env var ajustável e observar na prática — se números começarem
 a cair de `quality`/ser banidos com esse ritmo, baixar; se ninguém reclamar depois de uso real,
 pode subir com cautela.
+
+---
+
+## 9. Execução do plano "1, 2, 3": teste real, opt-in nos dois canais, tier real
+
+Sequência pedida depois da pergunta "o MVP está pronto?": (1) subir o que já estava pronto e
+testar ponta a ponta, (2) opt-in auditável também no Meta, (3) tier/quality rating de verdade
+(não só aviso de copy) antes de disparar. `2` e `3` foram implementados nesta revisão; `1` (o
+teste ponta a ponta com número real) segue **pendente de você** — ver §9.4.
+
+### 9.1 Deploy do que já existia
+
+Merge (fast-forward) + `ops.yml action=deploy` do canal Evolution completo (revisão 6) e do
+aviso de tier em copy — run [#68](https://github.com/foxtecnologiaonline/zapscript/actions/runs/34300425671),
+`conclusion: success`. Essas duas entregas já estão em produção.
+
+### 9.2 Opt-in generalizado (era só Evolution)
+
+`requireRiskAcknowledgement` virou `requireConsentAcknowledgement`, aplicado nos **dois**
+canais — antes só existia pro canal Evolution (risco de banimento); o canal Meta não tinha
+nenhuma checagem de consentimento, só o opt-out reativo (§3.1). Campo do body unificado pra
+`confirmConsent` (era `acknowledgeRisk`, exclusivo do Evolution) — texto do aviso muda por
+canal (consentimento de marketing/LGPD no Meta; risco de banimento no Evolution), mas é o
+mesmo campo `Campanha.consentConfirmedAt`/`consentConfirmedIp` para os dois. Gate roda no 1º
+`/schedule` ou `/start` de cada campanha; não pede de novo depois de confirmado.
+
+### 9.3 Tier/quality rating real (não só aviso estático)
+
+Implementado exatamente como especificado em §5.1, com um ajuste: em vez de bloquear
+incondicionalmente acima do tier, `/:id/start` **avisa com os números reais** e exige
+confirmação explícita (`confirmExceedsTier: true`) pra prosseguir — abortar silenciosamente
+uma campanha legítima de envio em lotes ao longo de vários dias seria pior que avisar.
+
+- **Schema:** `WhatsappNumber.metaMessagingLimitTier` / `metaQualityRating` /
+  `metaLimitsSyncedAt` (migration `20260909_whatsappnumber_meta_limits`).
+- **Graph API:** `getPhoneNumberLimits()` em `services/whatsapp-campaigns.ts` —
+  `GET /{phone-number-id}?fields=quality_rating,messaging_limit_tier`. `tierToNumericCap()`
+  interpreta o tier por regex (`TIER_250` → 250, `TIER_10K` → 10.000,
+  `TIER_UNLIMITED` → `Infinity`) em vez de um switch fixo — sobrevive a variações de nome que a
+  Meta já fez antes, sem precisar de update de código.
+- **Cache de 1h** (`ensureFreshMetaLimits`) — evita bater na Graph API a cada `/start`;
+  **fail-open** se a Meta estiver indisponível (usa o último valor conhecido, ou nenhum, em vez
+  de bloquear o disparo por instabilidade externa — mesma filosofia de `moduleGate.ts`).
+  Refresh acontece em `/:id/start`; **não** em `/:id/schedule` nem no disparo automático do
+  scheduler (`campanhas-scheduler.ts`) — uma campanha agendada para dali a dias pode disparar
+  contra um tier desatualizado. Consciente, não corrigido agora (escopo do pedido era
+  "antes de disparar", que é o `/start`; o scheduler fica como lacuna conhecida, próximo P1
+  natural junto com §3.2/auto-pausa).
+- **UI:** `GET /:id` agora devolve tier/quality do número (mostrado como info na tela da
+  campanha); ao tentar iniciar acima do tier, a tela mostra os números reais e um botão
+  "Prosseguir mesmo assim" que reenvia com `confirmExceedsTier: true`.
+- **Testes novos:** busca+persiste+bloqueia, prossegue com confirmação, usa cache dentro de 1h
+  sem nova chamada à Graph API, fail-open se a Graph API cair, e parsing de tier isolado — 10
+  testes novos, 53/53 passando no arquivo.
+
+### 9.4 O que ainda falta de você (não dá pra automatizar)
+
+O teste ponta a ponta real (item 1 do plano) não pôde ser feito por mim: exige conectar um
+número de verdade (Meta: WABA + template aprovado via Embedded Signup; Evolution: escanear QR
+com um celular) e mandar uma mensagem real a um contato real — nenhuma das duas coisas é algo
+que este sandbox consegue fazer. Verificado no banco antes desta revisão: **zero** números
+Meta conectados em produção, então o canal Meta nunca rodou contra a Graph API de verdade —
+inclusive o novo gate de tier/quality desta revisão só foi validado com mocks. Recomendo, antes
+de anunciar o módulo pra qualquer cliente: conectar um número (Meta ou Evolution) e rodar uma
+campanha pequena (poucos contatos) ponta a ponta, olhando o resultado real na tela da campanha.
+
+---
+
+## 10. Página nativa em /dashboard (exceção deliberada ao padrão /app/&lt;key&gt;)
+
+**Problema encontrado:** o item "Campanhas" já existia no menu lateral do `/dashboard` (sessão
+anterior), mas apontava pra `/app/campanhas` — árvore de rotas sem layout próprio
+(`apps/web/src/app/app/layout.tsx` não existe). Resultado real: clicar em "Campanhas" tirava o
+usuário do shell com sidebar e caía numa página solta, diferente de clicar em "Números" ou
+"Plano". Isso afeta **todos** os módulos hoje (`moduleRoute()` manda todo módulo não-`core` pra
+`/app/<key>`, nenhum tem sidebar) — `MODULOS_ARQUITETURA.md` já previa um shell com nav lateral
+pra essa área, mas nunca foi construído.
+
+**Decisão (pedida explicitamente):** em vez de construir o shell pra todo `/app/*` (conserto
+sistêmico, discutido e não escolhido), Campanhas virou a **única exceção** — página nativa em
+`/dashboard/campanhas`, com a sidebar do dashboard. Os demais módulos (atende, crm, tarefas,
+copiloto, vendas, legenda, cobranca) continuam em `/app/<key>`, sem sidebar, por ora.
+
+**O que foi feito:**
+- `git mv` de `apps/web/src/app/app/campanhas` → `apps/web/src/app/dashboard/campanhas`
+  (lista, `nova`, `[id]`, `optouts`, `_components/ConnectionCard`), preservando histórico.
+- Todos os links/redirects internos trocados de `/app/campanhas/*` → `/dashboard/campanhas/*`.
+- Wrapper de cada página trocado de `<main>` pra `<div>` — agora aninhadas dentro do `<main>`
+  que `DashboardLayout` já renderiza; dois `<main>` por página seria HTML/a11y inválido.
+- `dashboard/layout.tsx`: item do menu atualizado pra `/dashboard/campanhas`; o cálculo de
+  "ativo" no nav passou de igualdade exata pra prefixo (`pathname.startsWith(href + '/')`) —
+  Campanhas é a 1ª seção do dashboard com sub-rotas (`/nova`, `/[id]`, `/optouts`), sem isso o
+  item apagava ao entrar numa campanha específica.
+- `lib/modules.ts`: `moduleRoute('campanhas')` também aponta pra `/dashboard/campanhas` —
+  mantém o card "Abrir" do launcher `/app` consistente com o menu do dashboard.
+- `/app/campanhas` antigo foi **removido**, não redirecionado — seguro porque o módulo nunca
+  teve uso real em produção (0 campanhas, confirmado em §1/§7.6 desta revisão).
+
+**Não corrigido, sinalizado pra você decidir depois:** as 4 páginas mantêm o estilo escuro fixo
+que já tinham (`bg-neutral-950` etc., Tailwind hardcoded) — igual a todo o resto do produto
+(`/app/*`, páginas públicas), mas **diferente** do resto do `/dashboard`, que usa classes
+semânticas (`dashboard-bg`, `brand-primary`...) e responde ao tema claro/escuro do usuário
+(`.dark` via `prefers-color-scheme`, ver `ThemeProvider.tsx`). Um usuário em modo claro veria um
+bloco escuro dentro do dashboard claro ao abrir Campanhas. Não ajustei porque é trabalho de
+design à parte (reescrever classes nas 4 páginas) e não fazia parte do pedido — mas é uma
+inconsistência visual real caso o modo claro seja usado na prática.
+
+---
+
+## 11. Dez melhorias de eficiência/eficácia (revisão única)
+
+Pedido: gerar e executar 10 sugestões de melhoria pro que já estava construído (§1-10). As 10
+foram implementadas juntas, numa migration única (§11.0) — ainda **zero campanhas em produção**
+neste momento (reconfirmado antes desta revisão), então não há dado real a migrar/quebrar.
+
+### 11.0 Schema (migration `20260909_campanhas_10_melhorias`)
+
+Puramente aditivo:
+
+| Campo | Modelo | Uso |
+|---|---|---|
+| `templateVarCount` | `Campanha` | nº de `{{n}}` do template selecionado — item 6 |
+| `poolNumberIds` (`String[]`, default `[]`) | `Campanha` | números extras (mesmo canal) — item 2 |
+| `consecutiveFailures` (default `0`) | `Campanha` | circuit breaker — item 1 |
+| `pausedReason` | `Campanha` | motivo da pausa **automática** (null = foi o usuário) |
+| `processedCount` (default `0`) | `Campanha` | sent+failed+optout — item 9 |
+| `assignedNumberId` | `CampanhaContato` | qual número do pool enviou este contato — item 2 |
+
+### 11.1 Item 1 — Circuit breaker (auto-pausa por falhas consecutivas)
+
+Um número que começa a falhar sistematicamente (token revogado, número banido pelo WhatsApp,
+Evolution caiu) antes não tinha proteção: a campanha continuava tentando enviar pro resto da
+lista inteira, uma falha atrás da outra, sem que ninguém percebesse até checar manualmente.
+
+`Campanha.consecutiveFailures` incrementa a cada falha (número desconectado, envio exaurido
+pelo BullMQ) e **zera a cada sucesso** — só falhas *seguidas* importam. Ao bater
+`CAMPANHAS_CIRCUIT_BREAKER_THRESHOLD` (env, default `5`), a campanha vira `paused` sozinha, com
+`pausedReason` explicando o motivo (mostrado na tela — ver §11.10), e dispara e-mail (item 10).
+Channel-agnostic de propósito: não tenta interpretar códigos de erro específicos da Meta (que
+mudam) — falha é falha, nos dois canais.
+
+Implementado em `bumpProcessedAndMaybeComplete()` (`apps/worker/src/modules/campanhas.ts`),
+função central chamada após **todo** contato processado (sucesso ou falha definitiva) — ver
+§11.9, é o mesmo ponto que cuida do item 9.
+
+### 11.2 Item 2 — Pool de números (round-robin)
+
+Uma campanha grande batendo só num número concentra todo o risco (tier, quality rating, e no
+Evolution o próprio risco de ban) numa única linha. Agora dá pra somar números extras do
+**mesmo canal** à campanha:
+
+- `GET /:id/pool-candidates` lista números do usuário do mesmo canal, exceto o primário.
+- `POST /:id/pool` valida (dono + mesmo `provider`) e salva `poolNumberIds` (máx. 10) —
+  só permitido fora de uma campanha em execução.
+- `POST /:id/start` (e o disparo automático agendado, `campanhas-scheduler.ts`) monta a
+  "rotação de envio" = número primário + números do pool que estiverem `connected` **agora**
+  (um número do pool que caiu simplesmente sai da rotação daquela vez, não trava a campanha) e
+  distribui os contatos pendentes em round-robin puro por índice
+  (`sendNumbers[i % sendNumbers.length]`), gravando `CampanhaContato.assignedNumberId` em lote
+  (1 `updateMany` por número, não 1 por contato). Canal meta: o teto de tier/quality (§9.3)
+  passa a somar o cap de **todos** os números da rotação, não só do primário.
+- O worker (`processCampanhaJob`) resolve o número de envio por `assignedNumberId` quando
+  setado e diferente do primário; no caso comum (sem pool) não faz query nem write extra.
+- Canal Evolution com pool: o ritmo de envio (item 3) usa o número **mais novo** da rotação
+  como referência — o mais conservador, não o mais permissivo.
+
+### 11.3 Item 3 — Aquecimento progressivo (Evolution)
+
+Um número Evolution recém-conectado disparando no limite diário cheio desde o dia 1 é
+exatamente o padrão que mais aciona detecção de spam num número sem histórico de uso "normal"
+ainda. `effectiveEvolutionDailyLimit(connectedAt)` faz uma rampa linear a partir de
+`WhatsappNumber.connectedAt`: começa em 15% do limite configurado (`CAMPANHAS_EVOLUTION_*`) e
+chega a 100% depois de `CAMPANHAS_EVOLUTION_WARMUP_DAYS` (default 10) dias conectado. Sem
+`connectedAt` (não deveria acontecer com `status='connected'`, mas defensivo) usa o limite
+cheio — fail-open. Entra em `evolutionSendDelayMs(index, dailyLimit)` no lugar do limite
+constante, tanto em `/:id/start` quanto no scheduler.
+
+### 11.4 Item 4 — Janela de envio (não manda de madrugada)
+
+`applySendWindow(delayMs, now)` empurra o horário-alvo de cada mensagem pra dentro de
+`CAMPANHAS_SEND_WINDOW_START_HOUR`–`END_HOUR` (default 8h–21h, horário de Brasília fixo UTC-3 —
+não há mais horário de verão no Brasil desde 2019). Aplica-se **por contato**, não ao lote
+inteiro — importante numa campanha Evolution de vários dias, onde índices diferentes caem em
+madrugadas diferentes. Aplica-se aos **dois canais**: mesmo o Meta (template pré-aprovado,
+"compliant") não deveria acordar o destinatário às 3h — é sobre a experiência de quem recebe,
+não só sobre risco de banimento do canal Evolution.
+
+### 11.5 Item 5 — Envio de teste
+
+`POST /:id/test-send` manda a mensagem real (mesmo `sendTemplateMessage`/`sendText` que o
+worker usa) pra um telefone informado no corpo, **sem** criar `CampanhaContato` nem tocar
+`audienceCount`/`sentCount`/`processedCount` — é só uma prévia. Canal Evolution: texto prefixado
+com `[TESTE]`, `{{nome}}` renderizado com o nome informado (ou "Teste"). Canal Meta: variáveis
+de amostra (`Teste1`, `Teste2`...) se não informadas no corpo, no número certo de posições
+(`templateVarCount`).
+
+### 11.6 Item 6 — Validação de variáveis do template
+
+Antes, um CSV com número errado de colunas de variável só falhava **na hora do envio real**
+(rejeição da Meta por parâmetro faltando/sobrando), silenciosamente por contato. Agora
+`Campanha.templateVarCount` (setado na criação, calculado no front a partir do template
+escolhido) é conferido linha a linha no upload de CSV — mismatch vira `skippedVarMismatch` no
+retorno, contato nem é criado. Campanhas antigas sem `templateVarCount` (null) mantêm o
+comportamento anterior — sem essa checagem.
+
+### 11.7 Item 7 — Performance por template
+
+`GET /performance` agrega, entre todas as campanhas Meta do usuário, contagens por
+`templateName` (campanhas, audiência, sent/delivered/read/failed/optout — mesma fonte de
+`CampanhaContato.status` que `GET /:id` já usa) e calcula `successRate`/`failureRate`/
+`optoutRate` sobre a audiência total. Ajuda a responder "qual template eu devia parar de usar"
+sem abrir campanha por campanha. Página nova `/dashboard/campanhas/performance`, linkada da
+lista.
+
+### 11.8 Item 8 — Corte de recência na audiência "quente" (Evolution)
+
+O guardrail do canal Evolution (§8) já exigia "conversou alguma vez" — mas um contato que falou
+uma vez há 2 anos não é mais "quente" de verdade; mandar campanha pra ele carrega o mesmo risco
+de "mensagem não solicitada" que mandar pra um desconhecido. `warmContactsForNumber()` agora só
+considera transcrição/Atende/Copiloto dentro de `CAMPANHAS_WARM_AUDIENCE_DAYS` (default 180
+dias) — generoso de propósito, corta só o extremo.
+
+### 11.9 Item 9 — `processedCount` no lugar de `COUNT(*)` a cada envio
+
+Antes, cada job processado disparava um `COUNT(*)` em `CampanhaContato` só pra saber se a
+campanha tinha terminado — desperdício crescente conforme a lista cresce (uma campanha de 50k
+contatos faz 50k `COUNT(*)` num período curto). Agora `Campanha.processedCount` é incrementado
+uma vez por contato processado (sucesso ou falha) e comparado com `audienceCount`, já em mãos —
+zero query extra. Centralizado em `bumpProcessedAndMaybeComplete()` (worker), que também cuida
+do circuit breaker (item 1) e da notificação de conclusão (item 10).
+
+**Bug real encontrado e corrigido nesta revisão:** opt-out via webhook (`registerCampanhaOptOut`,
+usado pelos dois webhooks de entrada) nunca passava pelo worker — um contato que sai por opt-out
+nunca teria sua "vez" de incrementar `processedCount`. Resultado: uma campanha com opt-outs
+suficientes pra esgotar os pendentes **nunca bateria `audienceCount`** e ficaria `running` pra
+sempre, mesmo sem nenhum contato pendente de verdade. Corrigido: `registerCampanhaOptOut` agora
+busca os `CampanhaContato` pendentes afetados, agrupa por campanha, incrementa `processedCount`
+por campanha (não mexe em `consecutiveFailures` — opt-out é ação do destinatário, não falha de
+envio) e completa a campanha se `status='running'` e `processedCount >= audienceCount` — mesmo
+guard atômico (`updateMany` filtrado por status) que o worker usa.
+
+### 11.10 Item 10 — Notificação por e-mail (conclusão / auto-pausa)
+
+`notifyCampanhaCompleted()` e `notifyCampanhaAutoPaused()` (worker, via `sendEmail` do Resend,
+mesmo estilo dark-card já usado em outros e-mails do produto) disparam fire-and-forget (nunca
+bloqueiam nem derrubam o processamento do job) quando a campanha completa ou é auto-pausada pelo
+circuit breaker. `registerCampanhaOptOut` (API) tem sua própria cópia compacta do e-mail de
+conclusão pro caminho raro de completar via opt-out em massa (ver §11.9) — duplicada de
+propósito, api e worker não compartilham código neste monorepo. `pausedReason` também aparece
+direto na tela da campanha (`/dashboard/campanhas/[id]`), não só no e-mail.
+
+### 11.11 Duplicação entre api/worker (mantida deliberadamente)
+
+`evolutionSendDelayMs`, `effectiveEvolutionDailyLimit` e `applySendWindow` existem **duas
+vezes** — em `apps/api/src/routes/modules/campanhas.ts` (usado por `/:id/start`) e em
+`apps/worker/src/campanhas-scheduler.ts` (usado pelo disparo automático agendado). Mesma
+filosofia já estabelecida no resto do módulo (§8): api e worker não compartilham código neste
+monorepo, e a alternativa (extrair um pacote compartilhado só pra ~40 linhas de função pura)
+seria mais infraestrutura do que o problema justifica.
+
+### 11.12 Testes e cobertura
+
+79 testes em `apps/api/src/__tests__/campanhas.test.ts` (era 53) e 16 em
+`apps/worker/src/__tests__/campanhas.test.ts` (era 14), todos passando, mais typecheck limpo
+nos três apps (`api`/`worker`/`web`). Cobertura nova inclui: circuit breaker (falha acumula e
+dispara pausa+e-mail), pool round-robin (distribui certo, ignora número caído sem travar),
+`applySendWindow`/`effectiveEvolutionDailyLimit` isolados e determinísticos (datas fixas, sem
+depender do horário real de execução do teste), `registerCampanhaOptOut` isolado (incrementa
+por campanha, não mexe em `consecutiveFailures`, só completa campanha `running`), validação de
+variáveis do CSV, `/performance`, `/test-send` e o corte de recência de `/from-conversas`.
+
+**Achado durante a implementação, não um defeito do produto:** um teste de integração inicial
+comparava o delay de dois jobs consecutivos (`jobs[1].delay > jobs[0].delay`) — quebrou de forma
+intermitente perto da virada de hora, porque `applySendWindow` arredonda pro início da janela
+(8h) e um job com delay bruto maior pode, depois desse arredondamento, cair numa hora-alvo
+*menor* que o anterior (ex.: job 0 alvo 00:59 → empurra 8h; job 1 alvo 01:02, já na hora
+seguinte → empurra só 7h). O total pode inverter a ordem sem que nada esteja errado — é a janela
+funcionando. Teste corrigido para verificar corretude via `applySendWindow` isolado com horários
+fixos, e a asserção de integração passou a checar só forma (`jobId` certo, delay não-negativo),
+não ordem relativa.
+
+### 11.13 O que ficou de fora desta revisão (conhecido, não escolhido)
+
+- **UI do pool**: só o essencial (checklist + salvar) — sem indicar, por número, quantos
+  contatos já foram atribuídos a ele numa campanha em andamento.
+
+Os outros dois itens desta lista (tier no agendamento, e o tema claro/escuro de todo o módulo)
+foram fechados na revisão seguinte — ver §12.
+
+---
+
+## 12. Fechamento dos gaps conhecidos (§11.13) + tema claro/escuro
+
+### 12.1 Tema claro/escuro nas páginas de Campanhas
+
+As 6 páginas (`page.tsx`, `nova/`, `[id]/`, `optouts/`, `performance/`, `_components/ConnectionCard.tsx`)
+foram convertidas do dark-mode fixo (`bg-neutral-950`, `text-neutral-100` etc., Tailwind hardcoded)
+pro sistema de tokens semânticos que o resto do `/dashboard` já usa (`globals.css` +
+`tailwind.config.js`: `brand-{bg,surface,elevated,primary,text,muted,border}`, classes
+`.card`/`.btn-primary`/`.btn-ghost`/`.input`/`.inner-block`), seguindo exatamente o padrão já
+em produção em `/dashboard/numeros`. Cores de status (falhou/opt-out/entregue/etc.) mantidas com
+a paleta nomeada do Tailwind (não os tokens de marca) mas em tons -500/-600 com fundo/borda em
+baixa opacidade (`bg-amber-400/10 border-amber-400/20 text-amber-600`), o mesmo truque que
+`numeros/page.tsx` já usa pra funcionar em ambos os temas sem precisar de `dark:` variant.
+
+Verificado visualmente (não dá pra logar como usuário real no sandbox — API de produção,
+sem credencial de teste): harness estático isolado com o `globals.css`/`tailwind.config.js`
+reais, screenshot em claro e escuro dos padrões usados (cards, badges de status, botões,
+banners, tabela) — contraste e legibilidade OK nos dois temas. Typecheck limpo.
+
+**Achado de quebra ao converter**: `nova/page.tsx` calculava `varCount` (nº de `{{n}}` do
+template) mas nunca mandava `templateVarCount` no `POST /` de criação — ou seja, a validação de
+variáveis do CSV (item 6, §11.6) nunca teria disparado de verdade pra nenhuma campanha criada
+pela tela, só nos testes (que setam o campo manualmente no mock). Corrigido junto.
+
+### 12.2 Tier/quality no momento de agendar (fecha a lacuna do §9.3/§11.13)
+
+Extraídos `resolveSendNumbers()` e `checkCombinedTierCap()` (antes só inline em `/:id/start`) e
+reaplicados em `/:id/schedule`: agendar uma campanha que já excede o teto de tier combinado
+(primário + pool prontos) agora avisa com os números reais e exige `confirmExceedsTier: true`
+pra prosseguir — mesma UX de `/:id/start`, só que na hora de agendar em vez de só na hora de
+iniciar. Front (`[id]/page.tsx`) reaproveita o mesmo estado `tierExceeded` pros erros de
+`/schedule` também.
+
+**O disparo automático em si (`campanhas-scheduler.ts`, quando `scheduledAt` chega) continua
+fail-open** — não bloqueia, porque não há usuário interativo às 3h da manhã pra confirmar
+`confirmExceedsTier`. O que mudou: agora ele *checa* o tier em cache (sem bater na Graph API de
+novo — só lê `WhatsappNumber.metaMessagingLimitTier`, já sincronizado por qualquer chamada
+anterior a `/schedule`/`/start`) e, se a audiência pendente excede o teto conhecido, dispara
+mesmo assim mas manda um e-mail avisando (`notifyCampanhaExceedsTierAtFire`, mesmo estilo dos
+e-mails do item 10). Isso cobre o caso real que motivava o gap: o tier pode ter mudado (ou a
+campanha pode ter crescido) entre o agendamento e o disparo de fato, dias depois.
+
+### 12.3 Recência via `Transcription.createdAt` (item 8) — não era gap de verdade
+
+Reavaliado: para `Transcription` com `source='whatsapp'`, o registro é criado pelo pipeline
+essencialmente em tempo real na chegada do áudio — `createdAt` **é** a data da última
+interação, não um proxy aproximado. A ressalva no §11.13 era excesso de cautela, não um defeito
+real; nenhuma mudança de código foi necessária aqui.
+
+### 12.4 Testes
+
+81 testes em `apps/api/src/__tests__/campanhas.test.ts` (era 79) — cobrindo o novo gate de
+`/:id/schedule` (bloqueia acima do tier, prossegue com `confirmExceedsTier`) — e 16 no worker
+(inalterado; `campanhas-scheduler.ts` continua sem suite própria, uma lacuna pré-existente à
+parte — o módulo tem efeito colateral de topo de arquivo (`setInterval` na importação) que
+dificulta testá-lo sem um refactor maior, fora do escopo deste fechamento). Typecheck limpo nos
+três apps.

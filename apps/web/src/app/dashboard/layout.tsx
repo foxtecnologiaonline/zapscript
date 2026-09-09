@@ -28,11 +28,12 @@ function buildNav(user: any) {
 
   // "Campanhas" só aparece pra quem tem o módulo ativo (Entitlement) — cobre
   // tanto quem ganhou pelo bundle do Profissional/Empresas quanto quem
-  // manteve acesso avulso legado (source='paid'). Página vive em /app/campanhas
-  // (suíte de módulos), não sob /dashboard — ver apps/web/src/lib/modules.ts.
+  // manteve acesso avulso legado (source='paid'). Único módulo com página
+  // nativa em /dashboard (os demais seguem em /app/<key>, sem sidebar própria
+  // ainda) — ver apps/web/src/lib/modules.ts (moduleRoute) e CAMPANHAS_ARQUITETURA.md §10.
   if (user?.modules?.includes('campanhas')) {
     const idx = nav.findIndex(i => i.href === '/dashboard/configuracoes');
-    const campanhasItem = { href: '/app/campanhas', icon: '📣', label: 'Campanhas' };
+    const campanhasItem = { href: '/dashboard/campanhas', icon: '📣', label: 'Campanhas' };
     nav.splice(idx < 0 ? nav.length : idx, 0, campanhasItem);
   }
 
@@ -77,7 +78,11 @@ function NavContent({
       {/* Nav links */}
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
         {buildNav(user).map(item => {
-          const active = pathname === item.href;
+          // Campanhas é a 1ª seção com sub-rotas (/nova, /[id], /optouts) — precisa
+          // de match por prefixo pra continuar destacada nelas. '/dashboard' fica de
+          // fora do prefixo pra não "vazar" ativo em toda rota aninhada de outra seção.
+          const active = pathname === item.href
+            || (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`));
           return (
             <Link
               key={item.href}

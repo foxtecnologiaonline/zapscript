@@ -20,8 +20,8 @@ interface MetaStatusResponse {
 }
 
 /**
- * Card de status da conexão WhatsApp oficial (Meta). Reusado em /app/campanhas
- * e /app/campanhas/nova. onReady expõe a conexão (ou null) ao componente pai
+ * Card de status da conexão WhatsApp oficial (Meta). Reusado em /dashboard/campanhas
+ * e /dashboard/campanhas/nova. onReady expõe a conexão (ou null) ao componente pai
  * para gating de ações que exigem whatsappNumberId.
  */
 export default function ConnectionCard({ onReady }: { onReady?: (conn: MetaConnection | null) => void }) {
@@ -45,7 +45,7 @@ export default function ConnectionCard({ onReady }: { onReady?: (conn: MetaConne
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-400">
+      <div className="card rounded-xl p-4 text-sm text-brand-text-secondary">
         Verificando conexão com WhatsApp oficial…
       </div>
     );
@@ -53,9 +53,9 @@ export default function ConnectionCard({ onReady }: { onReady?: (conn: MetaConne
 
   if (!data?.connected || !data.connection) {
     return (
-      <div className="rounded-xl border border-amber-800 bg-amber-950/30 p-4">
-        <div className="font-medium text-amber-200">Nenhum WhatsApp oficial conectado</div>
-        <p className="mt-1 text-sm text-amber-200/70">
+      <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4">
+        <div className="font-medium text-brand-text">Nenhum WhatsApp oficial conectado</div>
+        <p className="mt-1 text-sm text-brand-text-secondary">
           Campanhas exigem um número conectado via API oficial da Meta (diferente do QR Code do Evolution).
         </p>
         <Link
@@ -70,14 +70,14 @@ export default function ConnectionCard({ onReady }: { onReady?: (conn: MetaConne
 
   const conn = data.connection;
   return (
-    <div className="rounded-xl border border-emerald-800 bg-emerald-950/20 p-4 flex items-center justify-between gap-4">
+    <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4 flex items-center justify-between gap-4">
       <div>
-        <div className="font-medium text-emerald-200">
+        <div className="font-medium text-brand-text">
           WhatsApp oficial conectado{conn.displayName ? ` — ${conn.displayName}` : ''}
         </div>
-        <div className="text-sm text-emerald-200/70">{conn.phoneNumber || 'número não confirmado'}</div>
+        <div className="text-sm text-brand-text-secondary">{conn.phoneNumber || 'número não confirmado'}</div>
       </div>
-      <Link href="/dashboard/numeros" className="text-sm text-emerald-300 hover:text-emerald-200 whitespace-nowrap">
+      <Link href="/dashboard/numeros" className="text-sm text-emerald-600 hover:text-emerald-500 whitespace-nowrap">
         Gerenciar →
       </Link>
     </div>

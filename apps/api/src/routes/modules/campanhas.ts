@@ -3,8 +3,11 @@ import { prisma } from '../../lib/prisma';
 import { requireModule } from '../../lib/moduleGate';
 import { validateRequest, createCampanhaSchema, scheduleCampanhaSchema } from '../../lib/validation';
 import { decryptStr } from '../../services/encryption';
-import { listTemplates } from '../../services/whatsapp-campaigns';
+import { listTemplates, getPhoneNumberLimits, tierToNumericCap, sendTemplateMessage } from '../../services/whatsapp-campaigns';
+import { sendText } from '../../services/evolution';
 import { campanhasQueue } from '../../services/queue';
+import { sendEmail } from '../../lib/mailer';
+import { logger } from '../../lib/logger';
 
 /**
  * ZapScript Campanhas — disparo em massa via WhatsApp API oficial (Meta Cloud API).
@@ -23,12 +26,55 @@ export function normalizePhone(raw: string): string {
 /** Palavras-chave de opt-out (convenção SMS/WhatsApp) — igualdade exata após trim+uppercase. */
 export const OPT_OUT_KEYWORDS = new Set(['PARAR', 'SAIR', 'STOP', 'CANCELAR', 'UNSUBSCRIBE']);
 
+function escHtml(s: string | null | undefined): string {
+  if (!s) return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/**
+ * E-mail de conclusão quando o gatilho é opt-out em massa — caminho raro (exige
+ * TODOS os pendentes de uma campanha 'running' saírem por opt-out antes do worker
+ * processá-los; o caminho comum é notifyCampanhaCompleted no worker). Duplicada de
+ * propósito — api e worker não compartilham código neste monorepo (ver §11/item 10).
+ */
+async function notifyCampanhaCompletedByOptOut(campanhaId: string): Promise<void> {
+  const campanha = await prisma.campanha.findUnique({
+    where: { id: campanhaId },
+    include: { user: { select: { email: true, name: true } } },
+  });
+  if (!campanha?.user?.email) return;
+  const APP_URL   = process.env.APP_URL || 'https://zapscript.me';
+  const firstName = escHtml(campanha.user.name?.split(' ')[0] || 'tudo bem');
+  const html = `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+    <div style="font-size:22px;font-weight:bold;margin-bottom:16px">📣 Campanha concluída: ${escHtml(campanha.name)}</div>
+    <div style="font-size:14px;line-height:1.9;color:#a7f3d0">
+      Olá, ${firstName}!<br><br>
+      Todos os contatos pendentes da campanha <strong>"${escHtml(campanha.name)}"</strong> saíram da lista por
+      opt-out antes do envio, e por isso ela foi concluída automaticamente.<br><br>
+      ✅ Enviados: <strong>${campanha.sentCount}</strong>
+    </div>
+    <div style="margin:24px 0;text-align:center">
+      <a href="${APP_URL}/dashboard/campanhas/${campanhaId}" style="background:#10b981;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Ver resultado completo →</a>
+    </div>
+    <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+  </div>`;
+  await sendEmail(campanha.user.email, `📣 Campanha "${campanha.name}" concluída`, html);
+}
+
 /**
  * Registra opt-out de campanhas (upsert + marca CampanhaContato pendentes como
  * 'optout'). Compartilhado pelos dois webhooks de entrada — Meta oficial
  * (routes/whatsapp-webhook.ts) e Evolution (routes/evolution-webhook.ts) — pra não
  * duplicar essa lógica; cada webhook manda a mensagem de confirmação com seu
  * próprio cliente de envio (Meta ou sendText do Evolution) depois de chamar isto.
+ *
+ * IMPORTANTE (§11/item 9): um contato que opta por sair nunca passa pelo worker
+ * (que é quem normalmente incrementa processedCount — ver bumpProcessedAndMaybeComplete
+ * em apps/worker/src/modules/campanhas.ts), então esta função precisa fazer esse
+ * incremento aqui, por campanha afetada — senão uma campanha com muitos opt-outs
+ * nunca bateria audienceCount e ficaria "running" pra sempre. consecutiveFailures
+ * (circuit breaker) NÃO é tocado aqui de propósito: opt-out é ação do destinatário,
+ * não falha de envio/número.
  */
 export async function registerCampanhaOptOut(userId: string, rawPhone: string, keyword: string): Promise<string> {
   const phone = normalizePhone(rawPhone);
@@ -37,32 +83,71 @@ export async function registerCampanhaOptOut(userId: string, rawPhone: string, k
     create: { userId, phone, reason: keyword },
     update: { reason: keyword },
   });
-  await prisma.campanhaContato.updateMany({
+
+  const afetados = await prisma.campanhaContato.findMany({
     where: { phone, status: 'pending', campanha: { userId } },
+    select: { id: true, campanhaId: true },
+  });
+  if (afetados.length === 0) return phone;
+
+  await prisma.campanhaContato.updateMany({
+    where: { id: { in: afetados.map((a: any) => a.id) } },
     data:  { status: 'optout' },
   });
+
+  const porCampanha = new Map<string, number>();
+  for (const a of afetados) porCampanha.set(a.campanhaId, (porCampanha.get(a.campanhaId) || 0) + 1);
+
+  for (const [campanhaId, count] of porCampanha) {
+    const updated = await prisma.campanha.update({
+      where: { id: campanhaId },
+      data: { processedCount: { increment: count } },
+      select: { processedCount: true, audienceCount: true, status: true },
+    });
+    if (updated.status === 'running' && updated.processedCount >= updated.audienceCount) {
+      const completed = await prisma.campanha.updateMany({
+        where: { id: campanhaId, status: 'running' },
+        data: { status: 'completed', completedAt: new Date() },
+      });
+      if (completed.count > 0) {
+        notifyCampanhaCompletedByOptOut(campanhaId).catch((e: any) =>
+          logger.warn(`[Campanhas] Falha ao notificar conclusão (via opt-out) da campanha ${campanhaId}: ${e.message}`));
+      }
+    }
+  }
+
   return phone;
 }
 
 /**
+ * Corte de recência da audiência "quente" (§11/item 8): contato que só falou com o
+ * número há muito tempo não é mais "quente" de verdade — mandar campanha pra ele
+ * carrega o mesmo risco de "mensagem não solicitada" que mandar pra um desconhecido.
+ * Default generoso (180 dias) porque o guardrail principal já é "conversou alguma
+ * vez"; isso só corta o extremo (contato de anos atrás), configurável por env.
+ */
+const WARM_AUDIENCE_DAYS = parseInt(process.env.CAMPANHAS_WARM_AUDIENCE_DAYS || '180', 10);
+
+/**
  * Audiência "quente" pra campanhas via Evolution (channel='evolution'): união dos
- * telefones que já trocaram mensagem com este número, via transcrição (core),
- * Atende ou Copiloto — nunca CSV livre. É o guardrail central do canal Evolution
- * (ver CAMPANHAS_ARQUITETURA.md §8): só quem já tem relação com o número, reduzindo
- * o padrão de "spam pra desconhecido" que o WhatsApp mais penaliza.
+ * telefones que já trocaram mensagem com este número recentemente, via transcrição
+ * (core), Atende ou Copiloto — nunca CSV livre. É o guardrail central do canal
+ * Evolution (ver CAMPANHAS_ARQUITETURA.md §8): só quem já tem relação com o número,
+ * reduzindo o padrão de "spam pra desconhecido" que o WhatsApp mais penaliza.
  */
 export async function warmContactsForNumber(numberId: string): Promise<Map<string, string | null>> {
+  const cutoff = new Date(Date.now() - WARM_AUDIENCE_DAYS * 24 * 60 * 60 * 1000);
   const [transcricoes, atende, copiloto] = await Promise.all([
     prisma.transcription.findMany({
-      where: { numberId, source: 'whatsapp' },
+      where: { numberId, source: 'whatsapp', createdAt: { gte: cutoff } },
       select: { contactPhone: true, contactName: true },
     }),
     prisma.atendeConversation.findMany({
-      where: { numberId },
+      where: { numberId, lastMessageAt: { gte: cutoff } },
       select: { contactPhone: true, contactName: true },
     }),
     prisma.copilotoConversation.findMany({
-      where: { numberId },
+      where: { numberId, lastMessageAt: { gte: cutoff } },
       select: { contactPhone: true, contactName: true },
     }),
   ]);
@@ -127,6 +212,106 @@ function numberReadyToSend(whatsappNumber: { status: string; metaAccessTokenEnc:
   return channel === 'evolution' ? !!whatsappNumber.zapiInstanceId : !!whatsappNumber.metaAccessTokenEnc;
 }
 
+const META_LIMITS_TTL_MS = 60 * 60 * 1000; // 1h — evita bater na Graph API a cada /start
+
+/**
+ * Garante um valor relativamente fresco de messaging_limit_tier/quality_rating
+ * do número (Graph API) — ver CAMPANHAS_ARQUITETURA.md §5.1/§9. Cache de até 1h
+ * em WhatsappNumber; se a Meta estiver indisponível, falha em silêncio e usa o
+ * último valor conhecido (ou nenhum) em vez de bloquear o disparo por
+ * instabilidade externa — mesma filosofia fail-open de moduleGate.ts.
+ */
+async function ensureFreshMetaLimits(whatsappNumber: {
+  id: string;
+  metaPhoneNumberId: string | null;
+  metaAccessTokenEnc: string | null;
+  metaMessagingLimitTier: string | null;
+  metaQualityRating: string | null;
+  metaLimitsSyncedAt: Date | null;
+}): Promise<{ tier: string | null; quality: string | null }> {
+  const fresh = !!whatsappNumber.metaLimitsSyncedAt
+    && Date.now() - whatsappNumber.metaLimitsSyncedAt.getTime() < META_LIMITS_TTL_MS;
+  const cached = { tier: whatsappNumber.metaMessagingLimitTier, quality: whatsappNumber.metaQualityRating };
+  if (fresh || !whatsappNumber.metaPhoneNumberId || !whatsappNumber.metaAccessTokenEnc) return cached;
+
+  try {
+    const token = decryptStr(whatsappNumber.metaAccessTokenEnc);
+    const limits = await getPhoneNumberLimits(token, whatsappNumber.metaPhoneNumberId);
+    await prisma.whatsappNumber.update({
+      where: { id: whatsappNumber.id },
+      data: {
+        metaMessagingLimitTier: limits.messagingLimitTier,
+        metaQualityRating: limits.qualityRating,
+        metaLimitsSyncedAt: new Date(),
+      },
+    });
+    return { tier: limits.messagingLimitTier, quality: limits.qualityRating };
+  } catch {
+    return cached;
+  }
+}
+
+interface TierDetail { numberId: string; tier: string | null; quality: string | null; cap: number | null }
+
+/**
+ * Números da "rotação de envio" de uma campanha (§11/item 2): o primário + os do
+ * pool que estiverem prontos pra enviar AGORA. Compartilhada entre /:id/schedule,
+ * /:id/start e o disparo automático (campanhas-scheduler.ts, cópia própria —
+ * api/worker não compartilham código neste monorepo).
+ */
+export async function resolveSendNumbers(
+  campanha: { poolNumberIds: string[]; channel: string },
+  userId: string,
+  primary: { id: string; status: string; metaAccessTokenEnc: string | null; zapiInstanceId: string | null },
+): Promise<any[]> {
+  let sendNumbers: any[] = [primary];
+  if (campanha.poolNumberIds.length > 0) {
+    const poolNumbers = await prisma.whatsappNumber.findMany({
+      where: { id: { in: campanha.poolNumberIds }, userId, provider: campanha.channel },
+    });
+    sendNumbers = sendNumbers.concat(poolNumbers.filter((n: any) => numberReadyToSend(n, campanha.channel)));
+  }
+  return sendNumbers;
+}
+
+/**
+ * Teto combinado de contatos únicos/24h somando o tier de cada número da rotação
+ * (Graph API, cache de 1h via ensureFreshMetaLimits). null = tier desconhecido em
+ * todos os números (fail-open, não bloqueia); Infinity = algum número é UNLIMITED.
+ */
+async function checkCombinedTierCap(sendNumbers: any[]): Promise<{ combinedCap: number | null; tierDetails: TierDetail[] }> {
+  let combinedCap: number | null = 0;
+  const tierDetails: TierDetail[] = [];
+  for (const n of sendNumbers) {
+    const { tier, quality } = await ensureFreshMetaLimits(n);
+    const cap = tierToNumericCap(tier);
+    tierDetails.push({ numberId: n.id, tier, quality, cap });
+    if (cap === null) continue;
+    if (!Number.isFinite(cap)) { combinedCap = Infinity; continue; }
+    if (combinedCap !== null && Number.isFinite(combinedCap)) combinedCap += cap;
+  }
+  if (tierDetails.every((d) => d.cap === null)) combinedCap = null;
+  return { combinedCap, tierDetails };
+}
+
+function tierExceededResponse(combinedCap: number, tierDetails: TierDetail[], pendentesCount: number, multiplas: boolean) {
+  return {
+    error: multiplas
+      ? `Os ${tierDetails.length} números desta campanha somam um teto de ${combinedCap} contatos únicos/24h `
+        + `e esta campanha tem ${pendentesCount} contatos pendentes — pode ser rejeitada em massa pela `
+        + `Meta. Confirme que quer prosseguir mesmo assim (confirmExceedsTier: true) ou reduza a lista.`
+      : `Este número está no tier "${tierDetails[0]?.tier}" da Meta (até ${tierDetails[0]?.cap} contatos únicos por 24h) `
+        + `e esta campanha tem ${pendentesCount} contatos pendentes — pode ser rejeitada em `
+        + `massa pela Meta. Confirme que quer prosseguir mesmo assim (confirmExceedsTier: true) `
+        + `ou reduza a lista.`,
+    metaMessagingLimitTier: tierDetails[0]?.tier ?? null,
+    metaQualityRating: tierDetails[0]?.quality ?? null,
+    metaTierCap: combinedCap,
+    pendentesCount,
+    numeros: multiplas ? tierDetails : undefined,
+  };
+}
+
 const EVOLUTION_DAILY_LIMIT = parseInt(process.env.CAMPANHAS_EVOLUTION_DAILY_LIMIT || '40', 10);
 
 /**
@@ -146,34 +331,108 @@ export function evolutionSendDelayMs(index: number, dailyLimit: number = EVOLUTI
   return Math.max(0, Math.round(index * baseIntervalMs + jitter));
 }
 
+const EVOLUTION_WARMUP_DAYS = parseInt(process.env.CAMPANHAS_EVOLUTION_WARMUP_DAYS || '10', 10);
+const EVOLUTION_WARMUP_FLOOR_PCT = 0.15; // dia 1 já manda uma fração, não zero
+
 /**
- * Confirmação de risco (canal evolution) — texto explícito de que o envio não é
- * pela API oficial e pode levar a Meta a banir o número do próprio usuário
- * (mesmo número que serve core/atende/copiloto). Guardrail deliberado, ver
- * CAMPANHAS_ARQUITETURA.md §8. Uma vez confirmado, fica salvo na campanha — não
- * pede de novo em pause/resume, só na primeira vez que ela é agendada ou iniciada.
+ * Aquecimento progressivo do canal Evolution (§11/item 3): um número recém-conectado
+ * disparando no limite diário cheio desde o dia 1 é justamente o padrão que mais
+ * aciona detecção de spam num número que ainda não tem histórico de uso "normal".
+ * Rampa linear de EVOLUTION_WARMUP_FLOOR_PCT até 100% do limite ao longo de
+ * EVOLUTION_WARMUP_DAYS a partir de connectedAt. Sem connectedAt (não deveria
+ * acontecer com status='connected', mas defensivo) usa o limite cheio — fail-open,
+ * mesma filosofia do resto do módulo.
  */
-function requireRiskAcknowledgement(campanha: { channel: string; consentConfirmedAt: Date | null }, body: any): string | null {
-  if (campanha.channel !== 'evolution' || campanha.consentConfirmedAt) return null;
-  if (body?.acknowledgeRisk !== true) {
-    return 'Confirme que entende o risco de banimento do seu número pelo WhatsApp ao usar o canal Evolution (acknowledgeRisk: true).';
-  }
-  return null;
+export function effectiveEvolutionDailyLimit(connectedAt: Date | null, dailyLimit: number = EVOLUTION_DAILY_LIMIT): number {
+  if (!connectedAt || EVOLUTION_WARMUP_DAYS <= 0) return dailyLimit;
+  const daysSinceConnected = (Date.now() - connectedAt.getTime()) / (24 * 60 * 60 * 1000);
+  if (daysSinceConnected >= EVOLUTION_WARMUP_DAYS) return dailyLimit;
+  const progress = Math.max(0, daysSinceConnected) / EVOLUTION_WARMUP_DAYS; // 0..1
+  const pct = EVOLUTION_WARMUP_FLOOR_PCT + (1 - EVOLUTION_WARMUP_FLOOR_PCT) * progress;
+  return Math.max(1, Math.round(dailyLimit * pct));
+}
+
+const SEND_WINDOW_START_HOUR = parseInt(process.env.CAMPANHAS_SEND_WINDOW_START_HOUR || '8', 10);
+const SEND_WINDOW_END_HOUR   = parseInt(process.env.CAMPANHAS_SEND_WINDOW_END_HOUR || '21', 10);
+
+/**
+ * Janela de envio (§11/item 4): empurra um delay (ms a partir de agora) pra fora do
+ * horário de silêncio (madrugada), horário de Brasília fixo (UTC-3, sem horário de
+ * verão no Brasil desde 2019) — evita a campanha começar a mandar mensagem às 3h da
+ * manhã só porque o usuário clicou em "iniciar" àquela hora, ou porque o índice de
+ * um contato específico caiu de madrugada num disparo Evolution de vários dias.
+ * Aplica-se por contato (cada horário-alvo é validado independentemente), não só
+ * ao lote inteiro — importante pra campanhas Evolution que atravessam mais de um dia.
+ */
+export function applySendWindow(delayMs: number, now: Date = new Date()): number {
+  if (SEND_WINDOW_START_HOUR <= 0 && SEND_WINDOW_END_HOUR >= 24) return delayMs; // janela desativada
+  const target = new Date(now.getTime() + delayMs);
+  const hourBRT = (target.getUTCHours() + 24 - 3) % 24;
+  if (hourBRT >= SEND_WINDOW_START_HOUR && hourBRT < SEND_WINDOW_END_HOUR) return delayMs;
+  const hoursUntilStart = hourBRT < SEND_WINDOW_START_HOUR
+    ? SEND_WINDOW_START_HOUR - hourBRT
+    : (24 - hourBRT) + SEND_WINDOW_START_HOUR;
+  return delayMs + hoursUntilStart * 60 * 60 * 1000;
 }
 
 /**
- * Enfileira o disparo dos contatos 'pending' de uma campanha (jobId
- * determinístico campanhaId:contatoId — reenviar não duplica jobs em voo).
- * Extraído de POST /:id/start pra ser reaproveitado pelo Chatbot Campanhas
- * (services/campanhas-chat-commands.ts), que cria e dispara campanhas sem
- * passar pela rota HTTP.
+ * Confirmação de consentimento/risco antes do 1º agendamento ou início de uma
+ * campanha — em AMBOS os canais, com texto diferente por canal:
+ * - 'meta': consentimento de marketing (opt-in) sobre a lista importada — LGPD e
+ *   política de mensageria da Meta (ver CAMPANHAS_ARQUITETURA.md §3.4/§5.4).
+ * - 'evolution': risco de banimento do próprio número pelo WhatsApp (mesmo número
+ *   que serve core/atende/copiloto) — ver CAMPANHAS_ARQUITETURA.md §8.
+ * Uma vez confirmado, fica salvo na campanha (consentConfirmedAt/Ip) — não pede
+ * de novo em pause/resume, só na primeira vez que ela é agendada ou iniciada.
  */
-export async function enqueueCampanhaSend(campanhaId: string, channel: string): Promise<number> {
-  const pendentes = await prisma.campanhaContato.findMany({
-    where: { campanhaId, status: 'pending' },
-    select: { id: true },
-  });
+function requireConsentAcknowledgement(campanha: { channel: string; consentConfirmedAt: Date | null }, body: any): string | null {
+  if (campanha.consentConfirmedAt) return null;
+  if (body?.confirmConsent === true) return null;
+  return campanha.channel === 'evolution'
+    ? 'Confirme que entende o risco de banimento do seu número pelo WhatsApp ao usar o canal Evolution (confirmConsent: true).'
+    : 'Confirme que tem consentimento (opt-in) destes contatos para campanhas de marketing, conforme LGPD e política da Meta (confirmConsent: true).';
+}
+
+/**
+ * Enfileira o disparo dos contatos 'pending' de uma campanha — jobId
+ * determinístico campanhaId:contatoId (reenviar não duplica jobs em voo),
+ * pool/round-robin (assignedNumberId — §11/item 2), aquecimento progressivo do
+ * canal Evolution (§11/item 3) e janela de silêncio (§11/item 4). Recebe
+ * `sendNumbers`/`pendentes` já resolvidos (pelo chamador) em vez de buscar de
+ * novo — POST /:id/start já precisa dos dois antes de chegar aqui (checagem de
+ * tier/audiência vazia), e o Chatbot Campanhas (services/
+ * campanhas-chat-commands.ts) resolve os mesmos dois via resolveSendNumbers
+ * (exportado) antes de chamar — mesma lógica dos dois caminhos, sem duplicar
+ * nem sem re-buscar o que o chamador já tem em mãos.
+ */
+export async function enqueueCampanhaSend(
+  campanhaId: string,
+  channel: string,
+  sendNumbers: any[],
+  pendentes: { id: string }[],
+): Promise<number> {
   if (pendentes.length === 0) return 0;
+
+  // Round-robin entre os números da rotação (assignedNumberId) — só grava quando
+  // há mais de 1 número; no caso comum (sem pool) o worker usa direto
+  // campanha.whatsappNumber, sem query nem write extra (ver modules/campanhas.ts).
+  if (sendNumbers.length > 1) {
+    const grupos = new Map<string, string[]>();
+    pendentes.forEach((p: any, i: number) => {
+      const numberId = sendNumbers[i % sendNumbers.length].id;
+      const arr = grupos.get(numberId);
+      if (arr) arr.push(p.id); else grupos.set(numberId, [p.id]);
+    });
+    await Promise.all(
+      Array.from(grupos.entries()).map(([numberId, ids]) =>
+        prisma.campanhaContato.updateMany({ where: { id: { in: ids } }, data: { assignedNumberId: numberId } }),
+      ),
+    );
+  }
+
+  const dailyLimit = channel === 'evolution'
+    ? Math.min(...sendNumbers.map((n: any) => effectiveEvolutionDailyLimit(n.connectedAt)))
+    : EVOLUTION_DAILY_LIMIT;
 
   await campanhasQueue.addBulk(
     pendentes.map((p: any, i: number) => ({
@@ -181,7 +440,7 @@ export async function enqueueCampanhaSend(campanhaId: string, channel: string): 
       data: { campanhaId, contatoId: p.id },
       opts: {
         jobId: `${campanhaId}:${p.id}`,
-        ...(channel === 'evolution' ? { delay: evolutionSendDelayMs(i) } : {}),
+        delay: applySendWindow(channel === 'evolution' ? evolutionSendDelayMs(i, dailyLimit) : 0),
       },
     })),
   );
@@ -257,6 +516,55 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     return { optOuts };
   });
 
+  // ── GET /performance — agregado por template (canal meta) ───────────────
+  // Ajuda o usuário a ver qual template converte melhor / falha mais, em vez de
+  // olhar campanha por campanha (§11/item 7). Baseado em CampanhaContato.status
+  // atual (mesma fonte que GET /:id/GET / já usam) — não é funil cumulativo.
+  app.get('/performance', auth, async (req: any) => {
+    const userId = req.user.sub;
+    const campanhas = await prisma.campanha.findMany({
+      where: { userId, channel: 'meta', templateName: { not: null } },
+      select: { id: true, templateName: true, audienceCount: true },
+    });
+    if (campanhas.length === 0) return { templates: [] };
+
+    const grouped = await prisma.campanhaContato.groupBy({
+      by: ['campanhaId', 'status'],
+      where: { campanhaId: { in: campanhas.map((c: any) => c.id) } },
+      _count: true,
+    });
+    const statsByCampanha = new Map<string, Record<string, number>>();
+    for (const g of grouped) {
+      const m = statsByCampanha.get(g.campanhaId) || {};
+      m[g.status] = g._count;
+      statsByCampanha.set(g.campanhaId, m);
+    }
+
+    const byTemplate = new Map<string, { campanhas: number; audienceCount: number; sent: number; delivered: number; read: number; failed: number; optout: number }>();
+    for (const c of campanhas) {
+      const stats = statsByCampanha.get(c.id) || {};
+      const acc = byTemplate.get(c.templateName!) || { campanhas: 0, audienceCount: 0, sent: 0, delivered: 0, read: 0, failed: 0, optout: 0 };
+      acc.campanhas += 1;
+      acc.audienceCount += c.audienceCount;
+      acc.sent += stats.sent || 0;
+      acc.delivered += stats.delivered || 0;
+      acc.read += stats.read || 0;
+      acc.failed += stats.failed || 0;
+      acc.optout += stats.optout || 0;
+      byTemplate.set(c.templateName!, acc);
+    }
+
+    const templates = Array.from(byTemplate.entries()).map(([templateName, s]) => ({
+      templateName,
+      ...s,
+      successRate: s.audienceCount > 0 ? (s.sent + s.delivered + s.read) / s.audienceCount : null,
+      failureRate: s.audienceCount > 0 ? s.failed / s.audienceCount : null,
+      optoutRate:  s.audienceCount > 0 ? s.optout / s.audienceCount : null,
+    })).sort((a, b) => b.audienceCount - a.audienceCount);
+
+    return { templates };
+  });
+
   // ── GET /numeros-evolution — números Evolution conectados do usuário ────
   // Só o que o canal 'evolution' precisa pra listar (id/nome/telefone) — endpoint
   // próprio pra não mexer em routes/numbers.ts (usado por telas fora de Campanhas).
@@ -275,7 +583,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     const userId = req.user.sub;
     const v = validateRequest(createCampanhaSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
-    const { name, whatsappNumberId, channel, templateName, templateLanguage, templateComponents, messageBody } = v.data;
+    const { name, whatsappNumberId, channel, templateName, templateLanguage, templateComponents, templateVarCount, messageBody } = v.data;
 
     const whatsappNumber = await prisma.whatsappNumber.findFirst({
       where: { id: whatsappNumberId, userId, provider: channel },
@@ -294,6 +602,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
         templateName:     channel === 'meta' ? templateName : null,
         templateLanguage,
         templateComponents: channel === 'meta' ? templateComponents : undefined,
+        templateVarCount: channel === 'meta' ? (templateVarCount ?? null) : null,
         messageBody:      channel === 'evolution' ? messageBody : null,
       },
     });
@@ -308,7 +617,14 @@ export default async function campanhasRoutes(app: FastifyInstance) {
 
     const campanha = await prisma.campanha.findFirst({
       where: { id, userId },
-      include: { whatsappNumber: { select: { id: true, phoneNumber: true, displayName: true } } },
+      include: {
+        whatsappNumber: {
+          select: {
+            id: true, phoneNumber: true, displayName: true,
+            metaMessagingLimitTier: true, metaQualityRating: true,
+          },
+        },
+      },
     });
     if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
 
@@ -448,6 +764,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     let skippedOptOut = 0;
     let skippedInvalid = 0;
     let skippedDuplicate = 0;
+    let skippedVarMismatch = 0;
     const toCreate: { campanhaId: string; phone: string; name: string | null; variables: string[] | undefined }[] = [];
 
     for (const row of dataRows) {
@@ -457,10 +774,17 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       if (phone.length < 12 || phone.length > 15) { skippedInvalid++; continue; }
       if (optOutSet.has(phone)) { skippedOptOut++; continue; }
       if (existingSet.has(phone) || seen.has(phone)) { skippedDuplicate++; continue; }
-      seen.add(phone);
 
       const name = row[1]?.trim() || null;
       const vars = row.slice(2).filter((v) => v.length > 0);
+      // Nº de variáveis precisa bater com o template selecionado — senão o envio
+      // desse contato falharia lá na frente (Meta rejeita template com parâmetro
+      // faltando/sobrando). templateVarCount null = campanha antiga, sem essa
+      // validação (comportamento anterior preservado). Ver §11/item 6.
+      if (campanha.templateVarCount != null && vars.length !== campanha.templateVarCount) {
+        skippedVarMismatch++; continue;
+      }
+      seen.add(phone);
 
       toCreate.push({ campanhaId: id, phone, name, variables: vars.length ? vars : undefined });
     }
@@ -473,7 +797,65 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       });
     }
 
-    return reply.send({ imported: toCreate.length, skippedOptOut, skippedInvalid, skippedDuplicate });
+    return reply.send({ imported: toCreate.length, skippedOptOut, skippedInvalid, skippedDuplicate, skippedVarMismatch });
+  });
+
+  // ── POST /:id/test-send — envia 1 mensagem de teste (não conta em métricas) ─
+  // Não cria CampanhaContato nem toca audienceCount/sentCount/processedCount —
+  // é só uma prévia real (mesmo path de envio do worker) pro usuário conferir
+  // antes de iniciar de verdade. Ver §11/item 5.
+  app.post('/:id/test-send', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { id } = req.params;
+    const campanha = await ownedCampanha(userId, id);
+    if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+    if (campanha.channel === 'meta' && !campanha.templateName) {
+      return reply.code(400).send({ error: 'Campanha sem template selecionado.' });
+    }
+    if (campanha.channel === 'evolution' && !campanha.messageBody) {
+      return reply.code(400).send({ error: 'Campanha sem mensagem definida.' });
+    }
+
+    const rawPhone = String(req.body?.phone || '');
+    if (!PHONE_LIKE.test(rawPhone)) {
+      return reply.code(400).send({ error: 'Informe um telefone válido pra receber o teste.' });
+    }
+    const phone = normalizePhone(rawPhone);
+
+    const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
+    if (!numberReadyToSend(whatsappNumber, campanha.channel)) {
+      return reply.code(400).send({
+        error: campanha.channel === 'evolution'
+          ? 'Número Evolution desconectado. Reconecte em /dashboard/numeros.'
+          : 'Número Meta desconectado. Reconecte em /dashboard/numeros.',
+      });
+    }
+
+    try {
+      if (campanha.channel === 'evolution') {
+        const nome  = typeof req.body?.nome === 'string' && req.body.nome.trim() ? req.body.nome.trim() : 'Teste';
+        const texto = (campanha.messageBody || '').replace(/\{\{\s*nome\s*\}\}/gi, nome);
+        const res = await sendText(whatsappNumber!.zapiInstanceId!, phone, `[TESTE] ${texto}`);
+        return reply.send({ ok: true, messageId: res.id });
+      }
+
+      const token = decryptStr(whatsappNumber!.metaAccessTokenEnc!);
+      const staticComponents = (campanha.templateComponents as Array<Record<string, any>> | null) || [];
+      const varCount = campanha.templateVarCount ?? 0;
+      const sampleVars: string[] = Array.isArray(req.body?.variables) && req.body.variables.length
+        ? req.body.variables.map((v: any) => String(v))
+        : Array.from({ length: varCount }, (_, i) => `Teste${i + 1}`);
+      const components = sampleVars.length
+        ? [...staticComponents, { type: 'body', parameters: sampleVars.map((v) => ({ type: 'text', text: v })) }]
+        : staticComponents;
+      const messageId = await sendTemplateMessage(
+        token, whatsappNumber!.metaPhoneNumberId!, phone,
+        campanha.templateName!, campanha.templateLanguage, components,
+      );
+      return reply.send({ ok: true, messageId });
+    } catch (err: any) {
+      return reply.code(502).send({ error: err.message || 'Falha ao enviar mensagem de teste.' });
+    }
   });
 
   // ── POST /:id/schedule — agenda o início automático do disparo ──────────
@@ -496,8 +878,8 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'A data agendada precisa estar no futuro.' });
     }
 
-    const riskError = requireRiskAcknowledgement(campanha, req.body);
-    if (riskError) return reply.code(400).send({ error: riskError });
+    const consentError = requireConsentAcknowledgement(campanha, req.body);
+    if (consentError) return reply.code(400).send({ error: consentError });
 
     const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
     if (!numberReadyToSend(whatsappNumber, campanha.channel)) {
@@ -508,11 +890,25 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       });
     }
 
+    // Mesmo teto real de tier/quality que /:id/start já checava (§11/item 2 do
+    // gap conhecido em §9.3) — avisa AGORA, no momento de agendar, em vez de só
+    // na hora do disparo automático (que não tem usuário pra confirmar). Se o
+    // tier mudar entre agendar e disparar, o disparo automático ainda assim
+    // prossegue (fail-open, ver campanhas-scheduler.ts) — aqui é só a chance
+    // inicial do usuário reconsiderar antes de comprometer a campanha.
+    if (campanha.channel !== 'evolution') {
+      const sendNumbers = await resolveSendNumbers(campanha, userId, whatsappNumber!);
+      const { combinedCap, tierDetails } = await checkCombinedTierCap(sendNumbers);
+      if (combinedCap !== null && Number.isFinite(combinedCap) && campanha.audienceCount > combinedCap && req.body?.confirmExceedsTier !== true) {
+        return reply.code(400).send(tierExceededResponse(combinedCap, tierDetails, campanha.audienceCount, sendNumbers.length > 1));
+      }
+    }
+
     const updated = await prisma.campanha.update({
       where: { id },
       data: {
         status: 'scheduled', scheduledAt,
-        ...(campanha.channel === 'evolution' && !campanha.consentConfirmedAt
+        ...(!campanha.consentConfirmedAt
           ? { consentConfirmedAt: new Date(), consentConfirmedIp: req.ip }
           : {}),
       },
@@ -536,6 +932,53 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     return reply.send({ campanha: updated });
   });
 
+  // ── GET /:id/pool-candidates — números do mesmo canal, elegíveis pro pool ──
+  app.get('/:id/pool-candidates', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { id } = req.params;
+    const campanha = await ownedCampanha(userId, id);
+    if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+    const numeros = await prisma.whatsappNumber.findMany({
+      where: { userId, provider: campanha.channel, isPublic: false, id: { not: campanha.whatsappNumberId } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, phoneNumber: true, displayName: true, status: true },
+    });
+    return { numeros };
+  });
+
+  // ── POST /:id/pool — define números extras (mesmo canal) pra dividir o disparo ─
+  // Round-robin de verdade acontece no /start (assignedNumberId por contato) —
+  // aqui só valida e salva a lista. Ver §11/item 2.
+  app.post('/:id/pool', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { id } = req.params;
+    const campanha = await ownedCampanha(userId, id);
+    if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+    if (!['draft', 'scheduled', 'paused'].includes(campanha.status)) {
+      return reply.code(400).send({ error: 'Só é possível ajustar o pool de números fora de uma campanha em execução.' });
+    }
+
+    const raw = Array.isArray(req.body?.numberIds) ? req.body.numberIds.filter((v: any) => typeof v === 'string') : [];
+    const uniqueIds = Array.from(new Set(raw)) as string[];
+    if (uniqueIds.length > 10) {
+      return reply.code(400).send({ error: 'Máximo de 10 números extras no pool.' });
+    }
+    const poolIds = uniqueIds.filter((nid) => nid !== campanha.whatsappNumberId);
+
+    if (poolIds.length > 0) {
+      const owned = await prisma.whatsappNumber.findMany({
+        where: { id: { in: poolIds }, userId, provider: campanha.channel },
+        select: { id: true },
+      });
+      if (owned.length !== poolIds.length) {
+        return reply.code(400).send({ error: 'Um ou mais números informados não existem, não são seus, ou não são do mesmo canal desta campanha.' });
+      }
+    }
+
+    const updated = await prisma.campanha.update({ where: { id }, data: { poolNumberIds: poolIds } });
+    return reply.send({ campanha: updated });
+  });
+
   // ── POST /:id/start — inicia (ou retoma após pausa/agendamento) o disparo ─
   app.post('/:id/start', auth, async (req: any, reply) => {
     const userId = req.user.sub;
@@ -549,8 +992,8 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Adicione contatos antes de iniciar a campanha.' });
     }
 
-    const riskError = requireRiskAcknowledgement(campanha, req.body);
-    if (riskError) return reply.code(400).send({ error: riskError });
+    const consentError = requireConsentAcknowledgement(campanha, req.body);
+    if (consentError) return reply.code(400).send({ error: consentError });
 
     const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
     if (!numberReadyToSend(whatsappNumber, campanha.channel)) {
@@ -561,24 +1004,50 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       });
     }
 
-    const pendingCount = await prisma.campanhaContato.count({ where: { campanhaId: id, status: 'pending' } });
-    if (pendingCount === 0) {
+    // Pool de números (§11/item 2): números extras do mesmo canal pra dividir o
+    // disparo — só entram na rotação os que estiverem prontos pra enviar agora;
+    // um número do pool que caiu não trava a campanha, só sai da rotação desta vez.
+    const sendNumbers = await resolveSendNumbers(campanha, userId, whatsappNumber!);
+
+    const pendentes = await prisma.campanhaContato.findMany({
+      where: { campanhaId: id, status: 'pending' },
+      select: { id: true },
+    });
+    if (pendentes.length === 0) {
       return reply.code(400).send({ error: 'Nenhum contato pendente de envio nesta campanha.' });
+    }
+
+    // Canal meta: teto real de contatos únicos/24h somado entre todos os números da
+    // rotação (Graph API, cache de 1h) — não deixa a campanha ser rejeitada em massa
+    // silenciosamente pela Meta sem que o usuário tenha sido avisado com o número de
+    // verdade. Ver §5.1/§9.
+    if (campanha.channel !== 'evolution') {
+      const { combinedCap, tierDetails } = await checkCombinedTierCap(sendNumbers);
+      if (combinedCap !== null && Number.isFinite(combinedCap) && pendentes.length > combinedCap && req.body?.confirmExceedsTier !== true) {
+        return reply.code(400).send(tierExceededResponse(combinedCap, tierDetails, pendentes.length, sendNumbers.length > 1));
+      }
     }
 
     await prisma.campanha.update({
       where: { id },
       data: {
+        // pausedReason/consecutiveFailures zerados ao (re)iniciar: se a pausa foi
+        // automática (circuit breaker), retomar é uma intervenção do usuário —
+        // merece um novo "crédito" de tentativas, e a mensagem de pausa antiga não
+        // deve ressurgir enganosamente numa pausa manual futura (ver §11/item 1).
         status: 'running', startedAt: campanha.startedAt ?? new Date(),
-        ...(campanha.channel === 'evolution' && !campanha.consentConfirmedAt
+        pausedReason: null, consecutiveFailures: 0,
+        ...(!campanha.consentConfirmedAt
           ? { consentConfirmedAt: new Date(), consentConfirmedIp: req.ip }
           : {}),
       },
     });
 
-    // Canal evolution: delay crescente + jitter (evolutionSendDelayMs) — ritmo lento
-    // e "humano" em vez do disparo imediato em lote do canal Meta.
-    const enqueued = await enqueueCampanhaSend(id, campanha.channel);
+    // Round-robin (assignedNumberId), aquecimento progressivo e janela de silêncio
+    // já ficam dentro de enqueueCampanhaSend (mesma função reaproveitada pelo
+    // Chatbot Campanhas) — não duplica aqui o que já foi resolvido acima
+    // (sendNumbers/pendentes) só pra decidir se a campanha tem o que enviar.
+    const enqueued = await enqueueCampanhaSend(id, campanha.channel, sendNumbers, pendentes);
 
     return reply.send({ ok: true, enqueued });
   });

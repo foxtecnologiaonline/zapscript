@@ -29,13 +29,13 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  draft: 'border-neutral-700 text-neutral-400',
-  scheduled: 'border-blue-700 text-blue-400',
-  running: 'border-emerald-700 text-emerald-400',
-  paused: 'border-amber-700 text-amber-400',
-  completed: 'border-blue-700 text-blue-400',
-  canceled: 'border-red-800 text-red-400',
-  failed: 'border-red-800 text-red-400',
+  draft: 'border-brand-border text-brand-muted',
+  scheduled: 'border-blue-400/30 text-blue-500',
+  running: 'border-emerald-400/30 text-emerald-600',
+  paused: 'border-amber-400/30 text-amber-600',
+  completed: 'border-blue-400/30 text-blue-500',
+  canceled: 'border-red-400/30 text-red-500',
+  failed: 'border-red-400/30 text-red-500',
 };
 
 export default function CampanhasListPage() {
@@ -61,46 +61,39 @@ export default function CampanhasListPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-300">
+      <div className="min-h-screen flex items-center justify-center text-brand-text-secondary">
         Carregando campanhas…
-      </main>
+      </div>
     );
   }
 
   if (upsell) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-100 px-5">
+      <div className="min-h-screen flex items-center justify-center px-5">
         <div className="max-w-md text-center">
           <div className="text-4xl mb-4">📣</div>
-          <h1 className="text-xl font-bold mb-2">Módulo Campanhas</h1>
-          <p className="text-neutral-400 mb-6">
+          <h1 className="text-xl font-bold mb-2 text-brand-text">Módulo Campanhas</h1>
+          <p className="text-brand-text-secondary mb-6">
             Disparo em massa compliant via API oficial da Meta — incluso nos planos Profissional e Empresas.
           </p>
-          <Link
-            href="/dashboard/plano?add=campanhas"
-            className="inline-block rounded-lg bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500"
-          >
+          <Link href="/dashboard/plano?add=campanhas" className="btn-primary inline-block px-4 py-2">
             Ver planos →
           </Link>
-          <div className="mt-4">
-            <Link href="/app" className="text-sm text-neutral-500 hover:text-neutral-300">← Voltar aos módulos</Link>
-          </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="min-h-screen px-5 py-10">
       <div className="max-w-4xl mx-auto">
         <header className="mb-6">
-          <Link href="/app" className="text-sm text-neutral-500 hover:text-neutral-300">← Módulos</Link>
-          <h1 className="text-2xl font-bold mt-2">📣 ZapScript Campanhas</h1>
-          <p className="text-neutral-400 mt-1">Disparo em massa compliant via API oficial da Meta.</p>
+          <h1 className="text-2xl font-bold text-brand-text">📣 ZapScript Campanhas</h1>
+          <p className="text-brand-text-secondary mt-1">Disparo em massa compliant via API oficial da Meta.</p>
         </header>
 
         {error && (
-          <div className="mb-6 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-red-200">
+          <div className="mb-6 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-600">
             {error}
           </div>
         )}
@@ -109,20 +102,20 @@ export default function CampanhasListPage() {
           <ConnectionCard onReady={setMeta} />
         </div>
 
-        <div className="mb-6 flex items-center gap-3">
-          <Link
-            href="/app/campanhas/nova"
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-          >
+        <div className="mb-6 flex items-center gap-3 flex-wrap">
+          <Link href="/dashboard/campanhas/nova" className="btn-primary px-4 py-2 text-sm">
             + Nova campanha
           </Link>
-          <Link href="/app/campanhas/optouts" className="text-sm text-neutral-400 hover:text-neutral-200">
+          <Link href="/dashboard/campanhas/optouts" className="text-sm text-brand-text-secondary hover:text-brand-text">
             Ver opt-outs →
+          </Link>
+          <Link href="/dashboard/campanhas/performance" className="text-sm text-brand-text-secondary hover:text-brand-text">
+            Performance por template →
           </Link>
         </div>
 
         {campanhas.length === 0 ? (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-8 text-center text-neutral-500">
+          <div className="rounded-xl border border-brand-border bg-brand-elevated p-8 text-center text-brand-muted">
             Nenhuma campanha ainda.
           </div>
         ) : (
@@ -130,43 +123,43 @@ export default function CampanhasListPage() {
             {campanhas.map((c) => (
               <Link
                 key={c.id}
-                href={`/app/campanhas/${c.id}`}
-                className="block rounded-xl border border-neutral-800 bg-neutral-900 p-4 hover:border-emerald-700 transition-colors"
+                href={`/dashboard/campanhas/${c.id}`}
+                className="card rounded-xl block p-4 hover:border-brand-primary/30 transition-colors"
               >
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <div className="font-medium">{c.name}</div>
-                    <div className="text-sm text-neutral-500 mt-0.5">
+                    <div className="font-medium text-brand-text">{c.name}</div>
+                    <div className="text-sm text-brand-muted mt-0.5">
                       {c.channel === 'evolution' ? 'Mensagem livre (Evolution)' : c.templateName}
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <span
                       className={`text-xs rounded-full border px-2 py-0.5 whitespace-nowrap ${
-                        STATUS_COLOR[c.status] || 'border-neutral-700 text-neutral-400'
+                        STATUS_COLOR[c.status] || 'border-brand-border text-brand-muted'
                       }`}
                     >
                       {STATUS_LABEL[c.status] || c.status}
                     </span>
                     {c.channel === 'evolution' && (
-                      <span className="text-xs rounded-full border border-amber-800 text-amber-400 px-2 py-0.5 whitespace-nowrap">
+                      <span className="text-xs rounded-full border border-amber-400/30 text-amber-600 px-2 py-0.5 whitespace-nowrap">
                         Evolution
                       </span>
                     )}
                   </div>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-brand-muted">
                   <span>{c.audienceCount} contatos</span>
                   <span>{c.sentCount} enviados</span>
                   {!!c.stats.delivered && <span>{c.stats.delivered} entregues</span>}
                   {!!c.stats.read && <span>{c.stats.read} lidos</span>}
-                  {!!c.stats.failed && <span className="text-red-400">{c.stats.failed} falharam</span>}
+                  {!!c.stats.failed && <span className="text-red-500">{c.stats.failed} falharam</span>}
                 </div>
               </Link>
             ))}
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }

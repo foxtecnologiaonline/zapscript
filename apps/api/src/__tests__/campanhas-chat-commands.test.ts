@@ -52,8 +52,12 @@ jest.mock('../lib/prisma', () => ({
         return { count: row ? 1 : 0 };
       }),
     },
-    campanhaContato: { createMany: jest.fn(async () => ({ count: 0 })) },
+    campanhaContato: {
+      createMany: jest.fn(async () => ({ count: 0 })),
+      findMany:   jest.fn(async () => [{ id: 'ct1' }, { id: 'ct2' }]),
+    },
     campanhaOptOut:  { findMany: jest.fn(async () => []) },
+    whatsappNumber:  { findUnique: jest.fn(async () => ({ id: 'num1', connectedAt: new Date() })) },
   },
 }));
 
@@ -65,6 +69,7 @@ jest.mock('../lib/moduleGate', () => ({ getUserModules: jest.fn(async () => ['ca
 jest.mock('../routes/modules/campanhas', () => ({
   warmContactsForNumber: jest.fn(async () => new Map([['5511999990001', 'Fulano'], ['5511999990002', null]])),
   enqueueCampanhaSend:    jest.fn(async () => 2),
+  resolveSendNumbers:     jest.fn(async () => [{ id: 'num1', connectedAt: new Date() }]),
 }));
 jest.mock('../lib/campanha-credit', () => {
   const actual = jest.requireActual('../lib/campanha-credit');

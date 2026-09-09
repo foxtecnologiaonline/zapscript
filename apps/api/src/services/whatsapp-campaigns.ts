@@ -46,6 +46,52 @@ export async function listTemplates(accessToken: string, wabaId: string): Promis
   }
 }
 
+export interface MetaPhoneNumberLimits {
+  messagingLimitTier: string | null; // ex.: 'TIER_250' | 'TIER_1K' | 'TIER_10K' | 'TIER_100K' | 'TIER_UNLIMITED'
+  qualityRating: string | null;      // 'GREEN' | 'YELLOW' | 'RED' | 'UNKNOWN'
+}
+
+/**
+ * Lê o tier de mensageria e o quality rating do número (Graph API) — usado pra
+ * avisar/travar antes de um disparo grande (ver CAMPANHAS_ARQUITETURA.md §5.1/§9),
+ * em vez de confiar só num aviso estático de UI. Nomes de campo confirmados na
+ * versão do Graph em uso (`META_GRAPH_VERSION`) — a Meta já os renomeou antes;
+ * se a resposta vier sem eles, retorna null (chamador decide o fallback).
+ */
+export async function getPhoneNumberLimits(accessToken: string, phoneNumberId: string): Promise<MetaPhoneNumberLimits> {
+  try {
+    const res = await axios.get(`${GRAPH_URL}/${phoneNumberId}`, {
+      params: { fields: 'quality_rating,messaging_limit_tier' },
+      headers: { Authorization: `Bearer ${accessToken}` },
+      timeout: 10_000,
+    });
+    return {
+      messagingLimitTier: res.data?.messaging_limit_tier ?? null,
+      qualityRating: res.data?.quality_rating ?? null,
+    };
+  } catch (error) {
+    const msg = formatError(error);
+    logger.error(`[Campanhas] getPhoneNumberLimits falhou: ${msg}`);
+    throw new Error(`Falha ao consultar limites do número na Meta: ${msg}`);
+  }
+}
+
+/**
+ * Converte o tier textual da Meta num teto numérico de contatos únicos/24h.
+ * Regex em vez de switch fixo: a Meta já mudou os nomes de tier antes, e isso
+ * sobrevive a variações tipo 'TIER_10K' / 'TIER_10000' sem precisar de update.
+ * Retorna null se não for possível interpretar (chamador não deve travar nesse caso).
+ */
+export function tierToNumericCap(tier: string | null | undefined): number | null {
+  if (!tier) return null;
+  const t = tier.toUpperCase();
+  if (t.includes('UNLIMITED')) return Infinity;
+  const match = t.match(/(\d+)(K)?/);
+  if (!match) return null;
+  const n = parseInt(match[1], 10);
+  return match[2] ? n * 1000 : n;
+}
+
 /**
  * Envia uma mensagem de template para um destinatário (permitido fora da janela de 24h).
  * `components` segue o formato da Graph API (ex: [{type:'body', parameters:[{type:'text', text:'João'}]}]).

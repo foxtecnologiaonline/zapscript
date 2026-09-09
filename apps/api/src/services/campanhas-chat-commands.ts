@@ -25,7 +25,7 @@
 import { prisma } from '../lib/prisma';
 import { sendText, sendImage } from './evolution';
 import { getUserModules } from '../lib/moduleGate';
-import { warmContactsForNumber, enqueueCampanhaSend } from '../routes/modules/campanhas';
+import { warmContactsForNumber, enqueueCampanhaSend, resolveSendNumbers } from '../routes/modules/campanhas';
 import { getOrCreateCampanhaBalance, debitCampanhaMessages, InsufficientCampanhaBalanceError } from '../lib/campanha-credit';
 import {
   CAMPANHA_MSG_PACKAGES, CAMPANHA_MONTHLY_MESSAGES, CAMPANHA_MONTHLY_PRICE_BRL,
@@ -352,7 +352,7 @@ async function handlePreviewing(ctx: Ctx, session: { campanhaId: string | null }
 }
 
 /** Debita o saldo e dispara — ou, sem saldo, oferece compra e deixa a campanha em draft para "campanha continuar". */
-async function startCampanha(ctx: Ctx, campanha: { id: string; userId: string; audienceCount: number; channel: string }): Promise<void> {
+async function startCampanha(ctx: Ctx, campanha: { id: string; userId: string; audienceCount: number; channel: string; whatsappNumberId: string; poolNumberIds: string[] }): Promise<void> {
   const { instanceName, selfPhone } = ctx;
   const balance = await getOrCreateCampanhaBalance(campanha.userId);
 
@@ -384,7 +384,10 @@ async function startCampanha(ctx: Ctx, campanha: { id: string; userId: string; a
       consentConfirmedAt: new Date(),
     },
   });
-  const enqueued = await enqueueCampanhaSend(campanha.id, campanha.channel);
+  const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
+  const sendNumbers = await resolveSendNumbers(campanha, campanha.userId, whatsappNumber!);
+  const pendentes = await prisma.campanhaContato.findMany({ where: { campanhaId: campanha.id, status: 'pending' }, select: { id: true } });
+  const enqueued = await enqueueCampanhaSend(campanha.id, campanha.channel, sendNumbers, pendentes);
   await resetToIdle(selfPhone);
   await reply(instanceName, selfPhone, `🚀 Disparo iniciado! ${enqueued} mensagens na fila. Acompanhe pelo painel (zapscript.me/dashboard/campanhas).`);
 }
