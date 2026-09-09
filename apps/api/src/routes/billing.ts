@@ -15,6 +15,7 @@ import { invalidatePlanCache } from '../lib/planGate';
 import { attributeAffiliateCommission, clawbackAffiliateCommissionOnCancel } from '../lib/affiliate';
 import { recordReferralCredit, clawbackPendingCreditsOnCancel } from '../lib/credit';
 import { invalidateModuleCache } from '../lib/moduleGate';
+import { creditCampanhaMessages } from '../lib/campanha-credit';
 
 /* ─────────────────────────────────────────────────────────
    ASAAS v3 — Billing Routes (Checkout Transparente)
@@ -83,6 +84,18 @@ export const MINUTE_PACKAGES = [
   { id: 'pkg_100', minutes: 100, priceBrl: 19, label: '100 minutos', desc: 'Melhor valor' },
 ] as const;
 
+/* ── Chatbot Campanhas: pacotes avulsos de mensagens (não expiram) + assinatura
+   mensal — vendidos via chat (Pix apenas, ver POST /buy-campanha-messages e
+   /campanha-subscribe) ou pelo painel. Créditos vão para CampanhaBalance
+   (lib/campanha-credit.ts), saldo independente do plano/módulo do usuário. ── */
+export const CAMPANHA_MSG_PACKAGES = [
+  { id: 'pkg_camp_1k',  messages: 1_000,  priceBrl: 200,   label: '1.000 mensagens',  desc: 'Pré-Pago 1' },
+  { id: 'pkg_camp_10k', messages: 10_000, priceBrl: 1_500, label: '10.000 mensagens', desc: 'Pré-Pago 10 — melhor valor' },
+] as const;
+
+export const CAMPANHA_MONTHLY_MESSAGES  = 2_000;
+export const CAMPANHA_MONTHLY_PRICE_BRL = 299;
+
 /* ── Validade do saldo extra (minutos avulsos / indicação) ── */
 const EXTRA_MINUTES_VALIDITY_DAYS = 60;
 export function extraMinutesExpiry(from: Date = new Date()): Date {
@@ -129,6 +142,14 @@ function decodeRef(ref: string | undefined): { userId: string; planName: string;
 }
 function encodeMinutePackageRef(userId: string, minutes: number): string {
   return `${userId}|pkg_minutes|${minutes}`;
+}
+/* "<userId>|pkg_campanha_msgs|<N>" — pacote avulso de mensagens de campanha (N = mensagens)
+   "<userId>|campanha_monthly"      — assinatura mensal de mensagens de campanha */
+function encodeCampanhaPackageRef(userId: string, messages: number): string {
+  return `${userId}|pkg_campanha_msgs|${messages}`;
+}
+function encodeCampanhaMonthlyRef(userId: string): string {
+  return `${userId}|campanha_monthly`;
 }
 
 /* ── externalReference de contratação de módulo ──
@@ -1635,6 +1656,34 @@ export default async function billingRoutes(app: FastifyInstance) {
         return reply.send({ received: true });
       }
 
+      // ── Chatbot Campanhas: pacote avulso de mensagens ─────────────────────
+      if (planName === 'pkg_campanha_msgs') {
+        const messages = parseInt(type || '0', 10);
+        if (!messages || isNaN(messages)) {
+          app.log.error({ ref: payment.externalReference }, 'pkg_campanha_msgs: quantidade inválida');
+          return reply.send({ received: true });
+        }
+        await creditCampanhaMessages(userId, messages, { referenceType: 'asaas_payment', referenceId: payment.id });
+        await markProcessed(payment.id);
+        app.log.info(`Pacote de mensagens de campanha creditado: userId=${userId} +${messages}msgs`);
+        return reply.send({ received: true });
+      }
+
+      // ── Chatbot Campanhas: renovação da assinatura mensal de mensagens ────
+      if (planName === 'campanha_monthly') {
+        const nextRenewal = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        await creditCampanhaMessages(userId, CAMPANHA_MONTHLY_MESSAGES, {
+          type: 'monthly_reset', referenceType: 'asaas_payment', referenceId: payment.id,
+        });
+        await prisma.campanhaBalance.update({
+          where: { userId },
+          data:  { plan: 'monthly', asaasCustomerId: payment.customer, renewalDate: nextRenewal },
+        }).catch(() => null);
+        await markProcessed(payment.id);
+        app.log.info(`Assinatura de mensagens de campanha renovada: userId=${userId} +${CAMPANHA_MONTHLY_MESSAGES}msgs`);
+        return reply.send({ received: true });
+      }
+
       if (type === 'upgrade' || type === 'upgrade_yearly') {
         // ── Cobrança de proration da migração de plano aprovada ──
         const isYearlyUpgrade = type === 'upgrade_yearly';
@@ -1737,6 +1786,17 @@ export default async function billingRoutes(app: FastifyInstance) {
     if (eventType === 'SUBSCRIPTION_DELETED') {
       const decoded = decodeRef(body?.subscription?.externalReference);
       const userId  = decoded?.userId;
+
+      // ── Assinatura mensal do Chatbot Campanhas — não mexe no plano core ──
+      if (userId && decoded?.planName === 'campanha_monthly') {
+        await prisma.campanhaBalance.update({
+          where: { userId },
+          data:  { plan: null, asaasSubscriptionId: null, renewalDate: null },
+        }).catch(() => null);
+        app.log.info(`Assinatura de mensagens de campanha cancelada: userId=${userId}`);
+        return reply.send({ received: true });
+      }
+
       if (userId) {
         const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
         if (freePlan) {
@@ -1848,6 +1908,110 @@ export default async function billingRoutes(app: FastifyInstance) {
       } else {
         return reply.code(400).send({ error: 'Método de pagamento não suportado. Use pix ou credit_card.' });
       }
+    },
+  );
+
+  /* ── Chatbot Campanhas: saldo de mensagens ──────────────────────────────
+     Pix apenas (sem cartão): o bot manda o "copia e cola" + QR direto no
+     chat — o próprio checkout do painel web também pode usar estas rotas. ── */
+
+  async function resolveAsaasCustomerId(userId: string, user: { email: string; name: string | null }): Promise<string> {
+    const [coreSub, campBalance] = await Promise.all([
+      prisma.subscription.findUnique({ where: { userId } }),
+      prisma.campanhaBalance.findUnique({ where: { userId } }),
+    ]);
+    if (coreSub?.asaasCustomerId) return coreSub.asaasCustomerId;
+    if (campBalance?.asaasCustomerId) return campBalance.asaasCustomerId;
+
+    const custRes = await asaas('/customers', {
+      method: 'POST',
+      body:   JSON.stringify({ name: user.name || user.email, email: user.email, externalReference: userId }),
+    }).then(r => r.json()) as any;
+    return custRes.id;
+  }
+
+  // ── GET /billing/campanha-packages — lista pacotes + assinatura mensal ──
+  app.get('/campanha-packages', async (_req, reply) => {
+    return reply.send({
+      packages: CAMPANHA_MSG_PACKAGES,
+      monthly:  { messages: CAMPANHA_MONTHLY_MESSAGES, priceBrl: CAMPANHA_MONTHLY_PRICE_BRL },
+    });
+  });
+
+  // ── POST /billing/buy-campanha-messages — compra pacote avulso via Pix ──
+  app.post<{ Body: { packageId: string } }>(
+    '/buy-campanha-messages',
+    { ...auth, config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } },
+    async (req: any, reply) => {
+      const userId = req.user.sub;
+      const { packageId } = req.body as any;
+
+      const pkg = CAMPANHA_MSG_PACKAGES.find(p => p.id === packageId);
+      if (!pkg) return reply.code(400).send({ error: 'Pacote inválido.' });
+
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      const asaasCustomerId = await resolveAsaasCustomerId(userId, user);
+      const pix = await asaas('/payments', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer: asaasCustomerId, billingType: 'PIX',
+          value: pkg.priceBrl, dueDate: todayStr(),
+          description: `ZapScript Campanhas — ${pkg.label}`,
+          externalReference: encodeCampanhaPackageRef(userId, pkg.messages),
+        }),
+      }).then(r => r.json()) as any;
+      if (pix.errors?.length) return reply.code(400).send({ error: pix.errors[0]?.description || 'Erro ao criar cobrança PIX.' });
+
+      const pixKey = await asaas(`/payments/${pix.id}/pixQrCode`).then(r => r.json()) as any;
+      return {
+        status: 'pending', paymentId: pix.id, messages: pkg.messages,
+        qrCodeUrl: pixKey?.encodedImage ? `data:image/png;base64,${pixKey.encodedImage}` : null,
+        copyPaste: pixKey?.payload || null,
+        expiresAt: threeHoursFromNow(),
+      };
+    },
+  );
+
+  // ── POST /billing/campanha-subscribe — assinatura mensal via Pix ────────
+  app.post(
+    '/campanha-subscribe',
+    { ...auth, config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } },
+    async (req: any, reply) => {
+      const userId = req.user.sub;
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      const existing = await prisma.campanhaBalance.findUnique({ where: { userId } });
+      if (existing?.plan === 'monthly' && existing.asaasSubscriptionId) {
+        return reply.code(400).send({ error: 'Você já tem uma assinatura de mensagens ativa.' });
+      }
+
+      const asaasCustomerId = await resolveAsaasCustomerId(userId, user);
+      const subRes = await asaas('/subscriptions', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer: asaasCustomerId, billingType: 'PIX',
+          value: CAMPANHA_MONTHLY_PRICE_BRL, nextDueDate: todayStr(), cycle: 'MONTHLY',
+          description: `ZapScript Campanhas — Plano Mensal (${CAMPANHA_MONTHLY_MESSAGES} msgs/mês)`,
+          externalReference: encodeCampanhaMonthlyRef(userId),
+        }),
+      }).then(r => r.json()) as any;
+      if (!subRes?.id) return reply.code(400).send({ error: subRes?.errors?.[0]?.description || 'Erro ao criar assinatura.' });
+
+      await prisma.campanhaBalance.upsert({
+        where:  { userId },
+        create: { userId, asaasCustomerId, asaasSubscriptionId: subRes.id },
+        update: { asaasCustomerId, asaasSubscriptionId: subRes.id },
+      });
+
+      const qr = await getPixQrForSubscription(subRes.id);
+      return {
+        status: 'pending_pix', subscriptionId: subRes.id, paymentId: qr.paymentId,
+        qrCodeUrl: qr.qrCodeUrl, copyPaste: qr.qrCode, expiresAt: qr.expiresAt,
+        amount: CAMPANHA_MONTHLY_PRICE_BRL,
+      };
     },
   );
 }
