@@ -12,18 +12,30 @@
  *
  * v1: só origem "histórico" (warmContactsForNumber) — CSV e print continuam
  * exclusivos do painel web (ver plano). Compra de saldo é só Pix (o bot não
- * manda formulário de cartão); o QR em si não é enviado como imagem nesta
- * fatia — só o "copia e cola" em texto, que já basta pra pagar.
+ * manda formulário de cartão) — o QR sai como imagem (sendImage) além do
+ * "copia e cola" em texto.
+ *
+ * `offerPlanUpgrade` é chamado por onboarding-whatsapp.ts (closeLeadOnConnected,
+ * flavor='campanhas') quando um lead novo termina de conectar o WhatsApp mas
+ * ainda não tem o módulo Campanhas (bundled nos planos Profissional/Empresas —
+ * ver migration 20260908_campanhas_bundled) — reaproveita a mesma
+ * CampanhaChatSession (stage 'awaiting_plan_upgrade') e o mesmo despacho de
+ * self-chat já usado pelo resto do bot.
  */
 import { prisma } from '../lib/prisma';
-import { sendText } from './evolution';
+import { sendText, sendImage } from './evolution';
 import { getUserModules } from '../lib/moduleGate';
 import { warmContactsForNumber, enqueueCampanhaSend } from '../routes/modules/campanhas';
 import { getOrCreateCampanhaBalance, debitCampanhaMessages, InsufficientCampanhaBalanceError } from '../lib/campanha-credit';
 import {
   CAMPANHA_MSG_PACKAGES, CAMPANHA_MONTHLY_MESSAGES, CAMPANHA_MONTHLY_PRICE_BRL,
-  buyCampanhaMessagesViaPix, subscribeCampanhaMonthlyViaPix,
+  buyCampanhaMessagesViaPix, subscribeCampanhaMonthlyViaPix, subscribeCorePlanViaPix,
 } from '../routes/billing';
+
+const PLAN_UPGRADE_LABEL: Record<'profissional' | 'empresas', string> = {
+  profissional: 'Profissional (R$49/mês)',
+  empresas:     'Empresas (R$99/mês)',
+};
 
 const COMMAND_PREFIX = /^\s*campanha\b/i;
 const DAILY_LIMIT = parseInt(process.env.CAMPANHAS_CHAT_RATE_LIMIT || '10', 10);
@@ -63,6 +75,13 @@ const HELP_TEXT = [
 
 async function reply(instanceName: string, phone: string, text: string): Promise<void> {
   await sendText(instanceName, phone, text).catch(() => { /* não crítico */ });
+}
+
+/** Manda o QR do Pix como imagem, best-effort — o "copia e cola" (texto) já basta pra pagar. */
+async function replyPixQr(instanceName: string, phone: string, qrCodeUrl: string | null | undefined): Promise<void> {
+  if (!qrCodeUrl?.startsWith('data:image/png;base64,')) return;
+  const base64 = qrCodeUrl.slice('data:image/png;base64,'.length);
+  await sendImage(instanceName, phone, base64, 'QR code do Pix').catch(() => { /* não crítico — o copia-e-cola em texto já basta */ });
 }
 
 async function balanceText(userId: string): Promise<string> {
@@ -178,11 +197,68 @@ export async function handleCampanhaChatReply(ctx: Ctx): Promise<boolean> {
   if (!session || session.stage === 'idle') return false;
 
   switch (session.stage) {
-    case 'awaiting_message':  await handleAwaitingMessage(ctx, session); return true;
-    case 'previewing':        await handlePreviewing(ctx, session);      return true;
-    case 'awaiting_purchase': await handleAwaitingPurchase(ctx);         return true;
-    default:                  return false;
+    case 'awaiting_message':      await handleAwaitingMessage(ctx, session); return true;
+    case 'previewing':            await handlePreviewing(ctx, session);      return true;
+    case 'awaiting_purchase':     await handleAwaitingPurchase(ctx);         return true;
+    case 'awaiting_plan_upgrade': await handlePlanUpgrade(ctx);              return true;
+    default:                      return false;
   }
+}
+
+/**
+ * Chamado por onboarding-whatsapp.ts quando um lead novo (flavor='campanhas')
+ * termina de conectar o WhatsApp mas ainda não tem o módulo Campanhas. `instanceName`
+ * é a instância do número QUE ELE ACABOU DE CONECTAR (self-chat dali em diante —
+ * mesmo canal que o resto do bot usa), não o número oficial de onboarding.
+ */
+export async function offerPlanUpgrade(instanceName: string, userId: string, phone: string): Promise<void> {
+  if ((await getUserModules(userId)).includes('campanhas')) {
+    await reply(instanceName, phone, 'Você já tem o módulo Campanhas ativo — mande *campanha nova* para criar sua primeira campanha! 🎉');
+    return;
+  }
+
+  await prisma.campanhaChatSession.upsert({
+    where:  { phone },
+    create: { phone, userId, stage: 'awaiting_plan_upgrade' },
+    update: { userId, stage: 'awaiting_plan_upgrade' },
+  });
+  await reply(instanceName, phone, [
+    'Campanhas é um módulo incluso nos planos pagos do ZapScript:',
+    `1️⃣ ${PLAN_UPGRADE_LABEL.profissional}`,
+    `2️⃣ ${PLAN_UPGRADE_LABEL.empresas}`,
+    '',
+    'Quer contratar agora via Pix? Responda 1, 2, ou "não" (e contrate depois pelo painel, se preferir).',
+  ].join('\n'));
+}
+
+async function handlePlanUpgrade(ctx: Ctx): Promise<void> {
+  const { userId, instanceName, selfPhone, text } = ctx;
+
+  if (isNegative(text)) {
+    await resetToIdle(selfPhone);
+    await reply(instanceName, selfPhone, 'Sem problema — quando quiser, contrate em zapscript.me/dashboard/plano. Depois é só mandar "campanha nova" por aqui.');
+    return;
+  }
+
+  const choice = text.trim();
+  const planName = choice === '1' ? 'profissional' : choice === '2' ? 'empresas' : null;
+  if (!planName) {
+    await reply(instanceName, selfPhone, `Não entendi — responda 1 (${PLAN_UPGRADE_LABEL.profissional}), 2 (${PLAN_UPGRADE_LABEL.empresas}), ou "não".`);
+    return;
+  }
+
+  const result = await subscribeCorePlanViaPix(userId, planName);
+  if (!result.ok) {
+    await reply(instanceName, selfPhone, `Não deu para gerar a assinatura: ${result.error}`);
+    return;
+  }
+  await resetToIdle(selfPhone);
+  await reply(instanceName, selfPhone, [
+    `💳 ${PLAN_UPGRADE_LABEL[planName]} — assinatura mensal.`,
+    'Pix copia e cola:', result.data.copyPaste || '(erro ao gerar o código — tente de novo)',
+    '', 'Assim que cair, seu plano é ativado automaticamente e o módulo Campanhas libera. Aí é só mandar "campanha nova".',
+  ].join('\n'));
+  await replyPixQr(instanceName, selfPhone, result.data.qrCodeUrl);
 }
 
 async function handleAwaitingMessage(ctx: Ctx, session: { campanhaId: string | null }): Promise<void> {
@@ -326,6 +402,7 @@ async function handleAwaitingPurchase(ctx: Ctx): Promise<void> {
       'Pix copia e cola:', result.data.copyPaste || '(erro ao gerar o código — tente de novo)',
       '', 'Assim que cair, eu credito automaticamente. Se tinha uma campanha esperando, mande "campanha continuar".',
     ].join('\n'));
+    await replyPixQr(instanceName, selfPhone, result.data.qrCodeUrl);
     return;
   }
 
@@ -344,4 +421,5 @@ async function handleAwaitingPurchase(ctx: Ctx): Promise<void> {
     'Pix copia e cola:', result.data.copyPaste || '(erro ao gerar o código — tente de novo)',
     '', 'Assim que cair, eu credito automaticamente. Se tinha uma campanha esperando, mande "campanha continuar".',
   ].join('\n'));
+  await replyPixQr(instanceName, selfPhone, result.data.qrCodeUrl);
 }

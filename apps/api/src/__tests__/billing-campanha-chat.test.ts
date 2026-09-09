@@ -24,9 +24,17 @@ function balanceFor(userId: string) {
 
 jest.mock('../lib/prisma', () => ({
   prisma: {
-    subscription:               { findUnique: jest.fn().mockResolvedValue(null) },
+    subscription: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      upsert:     jest.fn().mockResolvedValue({}),
+      update:     jest.fn().mockResolvedValue({}),
+    },
+    plan: {
+      findUnique: jest.fn(async ({ where }: any) =>
+        where.name === 'free' ? { id: 'plan_free', name: 'free', label: 'Free' } : { id: `plan_${where.id}`, name: where.id, label: where.id }),
+    },
     processedWebhook:           { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({}) },
-    user:                       { findUnique: jest.fn().mockResolvedValue({ email: 'x@x.com', name: 'Fulano' }) },
+    user:                       { findUnique: jest.fn().mockResolvedValue({ email: 'x@x.com', name: 'Fulano', emailVerified: true }) },
     campanhaBalance: {
       upsert:      jest.fn(async ({ where, create, update }: any) => {
         const exists = balances.has(where.userId);
@@ -79,6 +87,7 @@ global.fetch = jest.fn(async (url: any, opts: any) => {
 }) as any;
 
 import { prisma } from '../lib/prisma';
+import { subscribeCorePlanViaPix } from '../routes/billing';
 
 async function buildApp() {
   const app = Fastify({ logger: false });
@@ -96,7 +105,11 @@ describe('Chatbot Campanhas — billing', () => {
 
   beforeAll(async () => { app = await buildApp(); });
   afterAll(async () => { await app.close(); });
-  beforeEach(() => { balances.clear(); nextId = 1; jest.clearAllMocks(); (prisma.user.findUnique as jest.Mock).mockResolvedValue({ email: 'x@x.com', name: 'Fulano' }); });
+  beforeEach(() => {
+    balances.clear(); nextId = 1; jest.clearAllMocks();
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue({ email: 'x@x.com', name: 'Fulano', emailVerified: true });
+    (prisma.subscription.findUnique as jest.Mock).mockResolvedValue(null);
+  });
 
   it('GET /billing/campanha-packages lista pacotes e o plano mensal', async () => {
     const res = await app.inject({ method: 'GET', url: '/billing/campanha-packages' });
@@ -207,5 +220,43 @@ describe('Chatbot Campanhas — billing', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  describe('subscribeCorePlanViaPix (lead novo — assina Profissional/Empresas via Pix)', () => {
+    it('cria a assinatura e devolve o Pix quando o usuário está no free', async () => {
+      const result = await subscribeCorePlanViaPix('u1', 'profissional');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.subscriptionId).toBe('sub_camp_1');
+        expect(result.data.copyPaste).toBeTruthy();
+        expect(result.data.amount).toBe(49); // PLAN_PRICES.profissional
+      }
+      expect(prisma.subscription.update).toHaveBeenCalledWith(expect.objectContaining({ data: { asaasSubscriptionId: 'sub_camp_1' } }));
+    });
+
+    it('rejeita plano inválido', async () => {
+      const result = await subscribeCorePlanViaPix('u1', 'inexistente' as any);
+      expect(result.ok).toBe(false);
+    });
+
+    it('rejeita quando o e-mail não está verificado', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce({ email: 'x@x.com', name: 'Fulano', emailVerified: false });
+      const result = await subscribeCorePlanViaPix('u1', 'profissional');
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.status).toBe(403);
+    });
+
+    it('rejeita quando já existe assinatura paga ativa', async () => {
+      (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'active', planId: 'profissional' });
+      const result = await subscribeCorePlanViaPix('u1', 'empresas');
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toMatch(/já tem uma assinatura ativa/);
+    });
+
+    it('permite assinar quando a assinatura existente é do plano free', async () => {
+      (prisma.subscription.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'active', planId: 'free' });
+      const result = await subscribeCorePlanViaPix('u1', 'profissional');
+      expect(result.ok).toBe(true);
+    });
   });
 });

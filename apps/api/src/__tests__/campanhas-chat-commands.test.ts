@@ -57,7 +57,10 @@ jest.mock('../lib/prisma', () => ({
   },
 }));
 
-jest.mock('../services/evolution', () => ({ sendText: jest.fn(async () => ({ id: 'msg_1' })) }));
+jest.mock('../services/evolution', () => ({
+  sendText: jest.fn(async () => ({ id: 'msg_1' })),
+  sendImage: jest.fn(async () => {}),
+}));
 jest.mock('../lib/moduleGate', () => ({ getUserModules: jest.fn(async () => ['campanhas']) }));
 jest.mock('../routes/modules/campanhas', () => ({
   warmContactsForNumber: jest.fn(async () => new Map([['5511999990001', 'Fulano'], ['5511999990002', null]])),
@@ -75,15 +78,17 @@ jest.mock('../routes/billing', () => ({
   CAMPANHA_MSG_PACKAGES: [{ id: 'pkg_camp_1k', messages: 1000, priceBrl: 200, label: '1.000 mensagens', desc: 'Pré-Pago 1' }],
   CAMPANHA_MONTHLY_MESSAGES: 2000,
   CAMPANHA_MONTHLY_PRICE_BRL: 299,
-  buyCampanhaMessagesViaPix:      jest.fn(async () => ({ ok: true, data: { paymentId: 'pay_1', copyPaste: '00020126pix' } })),
+  buyCampanhaMessagesViaPix:      jest.fn(async () => ({ ok: true, data: { paymentId: 'pay_1', copyPaste: '00020126pix', qrCodeUrl: 'data:image/png;base64,QVBQ' } })),
   subscribeCampanhaMonthlyViaPix: jest.fn(async () => ({ ok: true, data: { paymentId: 'pay_2', copyPaste: '00020126pixsub' } })),
+  subscribeCorePlanViaPix:        jest.fn(async () => ({ ok: true, data: { paymentId: 'pay_3', copyPaste: '00020126pixplano', planName: 'profissional' } })),
 }));
 
-import { sendText } from '../services/evolution';
+import { sendText, sendImage } from '../services/evolution';
 import { getUserModules } from '../lib/moduleGate';
 import { getOrCreateCampanhaBalance, debitCampanhaMessages } from '../lib/campanha-credit';
+import { subscribeCorePlanViaPix } from '../routes/billing';
 import {
-  isCampanhaChatCommand, handleCampanhaChatCommand, handleCampanhaChatReply,
+  isCampanhaChatCommand, handleCampanhaChatCommand, handleCampanhaChatReply, offerPlanUpgrade,
 } from '../services/campanhas-chat-commands';
 
 const ctx = (text: string) => ({ userId: 'u1', numberId: 'num1', instanceName: 'inst1', selfPhone: '5511900000000', text });
@@ -188,12 +193,13 @@ describe('campanhas-chat-commands', () => {
     expect(lastReply()).toMatch(/Não encontrei ninguém/);
   });
 
-  it('"campanha comprar" e escolha de pacote geram o Pix', async () => {
+  it('"campanha comprar" e escolha de pacote geram o Pix (texto + QR em imagem)', async () => {
     await handleCampanhaChatCommand(ctx('campanha comprar'));
     expect(sessions.get('5511900000000').stage).toBe('awaiting_purchase');
 
     await handleCampanhaChatReply(ctx('1'));
     expect(lastReply()).toMatch(/00020126pix/);
+    expect(sendImage).toHaveBeenCalledWith('inst1', '5511900000000', 'QVBQ', expect.any(String));
   });
 
   it('"campanha cancelar" limpa a sessão e apaga rascunho pendente', async () => {
@@ -204,5 +210,40 @@ describe('campanhas-chat-commands', () => {
     await handleCampanhaChatCommand(ctx('campanha cancelar'));
     expect(campanhas.has(campanhaId)).toBe(false);
     expect(sessions.get('5511900000000').stage).toBe('idle');
+  });
+
+  describe('offerPlanUpgrade (lead novo, chamado por onboarding-whatsapp.ts)', () => {
+    it('já com o módulo Campanhas: só avisa, sem abrir sessão de upgrade', async () => {
+      (getUserModules as jest.Mock).mockResolvedValueOnce(['campanhas']);
+      await offerPlanUpgrade('instX', 'u2', '5511911112222');
+      expect(lastReply()).toMatch(/já tem o módulo Campanhas ativo/);
+      expect(sessions.get('5511911112222')).toBeUndefined();
+    });
+
+    it('sem o módulo: abre a sessão awaiting_plan_upgrade e oferece os planos', async () => {
+      (getUserModules as jest.Mock).mockResolvedValueOnce([]);
+      await offerPlanUpgrade('instX', 'u2', '5511911112222');
+      expect(sessions.get('5511911112222').stage).toBe('awaiting_plan_upgrade');
+      expect(lastReply()).toMatch(/Profissional/);
+    });
+
+    it('responder "1" assina o Profissional via Pix e reseta a sessão', async () => {
+      (getUserModules as jest.Mock).mockResolvedValueOnce([]);
+      await offerPlanUpgrade('instX', 'u2', '5511911112222');
+      await handleCampanhaChatReply({ userId: 'u2', numberId: 'num1', instanceName: 'instX', selfPhone: '5511911112222', text: '1' });
+
+      expect(subscribeCorePlanViaPix).toHaveBeenCalledWith('u2', 'profissional');
+      expect(lastReply()).toMatch(/00020126pixplano/);
+      expect(sessions.get('5511911112222').stage).toBe('idle');
+    });
+
+    it('responder "não" cancela a oferta sem cobrar nada', async () => {
+      (getUserModules as jest.Mock).mockResolvedValueOnce([]);
+      await offerPlanUpgrade('instX', 'u2', '5511911112222');
+      await handleCampanhaChatReply({ userId: 'u2', numberId: 'num1', instanceName: 'instX', selfPhone: '5511911112222', text: 'não' });
+
+      expect(subscribeCorePlanViaPix).not.toHaveBeenCalled();
+      expect(sessions.get('5511911112222').stage).toBe('idle');
+    });
   });
 });

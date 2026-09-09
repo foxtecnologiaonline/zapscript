@@ -32,6 +32,7 @@ import { sendText, instanceName as evoInstanceName } from './evolution';
 import { provisionInstance, requestPairingCode } from './number-provisioning';
 import { createPasswordlessAccount } from './account-provisioning';
 import { intakeMessage } from './support-intake';
+import { offerPlanUpgrade } from './campanhas-chat-commands';
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
 const MAX_ATTEMPTS_BEFORE_ESCALATE = 2;
@@ -388,10 +389,21 @@ export async function closeLeadOnConnected(numberId: string): Promise<void> {
   const nome = firstNameOf(lead.name || lead.pushName);
   const isCampanhas = lead.source === 'campanhas';
   const msg = isCampanhas
-    ? `✅ ${nome ? `${nome}, prontinho` : 'Prontinho'}! Seu WhatsApp já está conectado. Mande *campanha nova* aqui mesmo pra criar sua primeira campanha (se seu plano ainda não inclui o módulo Campanhas, contrate em ${APP_URL}/dashboard/plano). 🎉`
+    ? `✅ ${nome ? `${nome}, prontinho` : 'Prontinho'}! Seu WhatsApp já está conectado.`
     : `✅ ${nome ? `${nome}, prontinho` : 'Prontinho'}! Seu WhatsApp já está conectado ao ZapScript. A partir de agora, cada áudio que chegar por aqui já sai convertido e resumido automaticamente. 🎉`;
-  const instanceNameStr = isCampanhas ? await getOfficialInstanceName('campanhas') : null;
-  await sendOfficial(lead.phone, msg, instanceNameStr).catch(() => null);
+  const officialInstanceStr = isCampanhas ? await getOfficialInstanceName('campanhas') : null;
+  await sendOfficial(lead.phone, msg, officialInstanceStr).catch(() => null);
+
+  // Campanhas: a partir daqui a conversa continua no PRÓPRIO número que acabou de
+  // conectar (self-chat, mesmo canal do bot "campanha ..." — ver campanhas-chat-commands.ts),
+  // não mais no número oficial. Pergunta se quer contratar o plano que libera o módulo
+  // (bundled em Profissional/Empresas — ver migration 20260908_campanhas_bundled).
+  if (isCampanhas && lead.userId) {
+    const numero = await prisma.whatsappNumber.findUnique({ where: { id: numberId }, select: { zapiInstanceId: true } });
+    const ownInstanceStr = numero?.zapiInstanceId ?? evoInstanceName(numberId);
+    await offerPlanUpgrade(ownInstanceStr, lead.userId, lead.phone).catch((err: any) =>
+      logger.warn(`[OnboardingWA] Falha ao oferecer upgrade de plano (Campanhas) para ${lead.phone}: ${err.message}`));
+  }
 }
 
 type LeadRow = {

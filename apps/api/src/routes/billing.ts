@@ -557,6 +557,74 @@ export async function subscribeCampanhaMonthlyViaPix(userId: string): Promise<Ca
   };
 }
 
+/**
+ * Assina um plano-núcleo pago (Profissional/Empresas) via Pix — usado pelo lead
+ * novo do Chatbot Campanhas (sem cartão salvo, sem CPF no perfil) pra liberar o
+ * módulo Campanhas, que só vem incluso nesses planos (bundled — ver migration
+ * 20260908_campanhas_bundled). Reaproveita a mesma `externalReference`
+ * (encodeRef) do POST /checkout "normal" (sem type) — o webhook já trata esse
+ * formato no ramo genérico (linha ~1876: "Pagamento de assinatura normal"),
+ * então nenhuma mudança no webhook é necessária. Só cobre o caso de quem AINDA
+ * NÃO tem assinatura paga — troca de plano/proration continua exclusiva do
+ * painel (POST /checkout, /upgrade), com toda a lógica de cartão/promo/anual
+ * que não faz sentido reproduzir num chat.
+ */
+export async function subscribeCorePlanViaPix(userId: string, planName: 'profissional' | 'empresas'): Promise<CampanhaBillingResult<{
+  status: string; subscriptionId: string; paymentId: string | null; qrCodeUrl: string | null; copyPaste: string | null; expiresAt: string | null; amount: number; planName: string;
+}>> {
+  const price = PLAN_PRICES[planName];
+  if (!price) return { ok: false, status: 400, error: 'Plano inválido.' };
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return { ok: false, status: 404, error: 'Usuário não encontrado.' };
+  if (!user.emailVerified) return { ok: false, status: 403, error: 'Confirme seu e-mail antes de assinar um plano.' };
+
+  const existingSub = await prisma.subscription.findUnique({ where: { userId } });
+  if (existingSub?.status === 'active') {
+    const currentPlan = await prisma.plan.findUnique({ where: { id: existingSub.planId } });
+    if (currentPlan && currentPlan.name !== 'free') {
+      return { ok: false, status: 400, error: `Você já tem uma assinatura ativa (${currentPlan.label}) — use o painel para trocar de plano.` };
+    }
+  }
+
+  let asaasCustomerId: string;
+  try {
+    asaasCustomerId = await getOrCreateCustomer(user);
+  } catch (err: any) {
+    return { ok: false, status: 503, error: 'Serviço de pagamento indisponível. Tente novamente.' };
+  }
+
+  const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
+  await prisma.subscription.upsert({
+    where:  { userId },
+    create: { userId, planId: freePlan?.id ?? '', asaasCustomerId, paymentMethod: 'pix', status: 'pending' },
+    update: { asaasCustomerId, paymentMethod: 'pix', status: 'pending' },
+  }).catch(() => null);
+
+  const subRes = await asaas('/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify({
+      customer: asaasCustomerId, billingType: 'PIX',
+      value: price, nextDueDate: todayStr(), cycle: 'MONTHLY',
+      description: `ZapScript ${PLAN_LABELS[planName]} — Assinatura mensal`,
+      externalReference: encodeRef(userId, planName),
+    }),
+  }).then(r => r.json()) as any;
+  if (!subRes?.id) return { ok: false, status: 400, error: subRes?.errors?.[0]?.description || 'Erro ao criar assinatura.' };
+
+  await prisma.subscription.update({ where: { userId }, data: { asaasSubscriptionId: subRes.id } }).catch(() => null);
+
+  const qr = await getPixQrForSubscription(subRes.id);
+  return {
+    ok: true,
+    data: {
+      status: 'pending_pix', subscriptionId: subRes.id, paymentId: qr.paymentId,
+      qrCodeUrl: qr.qrCodeUrl, copyPaste: qr.qrCode, expiresAt: qr.expiresAt,
+      amount: price, planName,
+    },
+  };
+}
+
 /* ═══════════════════════════════════════════════════════ */
 export default async function billingRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
