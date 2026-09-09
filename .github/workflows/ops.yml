@@ -12,6 +12,18 @@
 #
 # COMO O DEPLOY REALMENTE FUNCIONA NESTE SERVIDOR (não é "docker compose
 # pull" — o servidor builda a imagem localmente a partir do código-fonte):
+#   0. (runner do GitHub, antes de tocar no servidor) `prisma migrate deploy`
+#      contra o Supabase via DATABASE_URL — aplica no schema "core" toda
+#      migration do repo ainda pendente. Adicionado depois do incidente de
+#      2026-09-09: até então este workflow nunca rodava isso, e uma migration
+#      podia ficar semanas sem ser aplicada em produção enquanto o código que
+#      já dependia dela ia sendo deployado — quebra silenciosa (a query cai
+#      num catch(()=>null) em vários pontos), não um erro óbvio no deploy.
+#      Falha aqui aborta o job ANTES do build/deploy — não faz sentido subir
+#      código que espera um schema que não existe. Módulos que replicam
+#      schema via runAutoMigrations() no boot da API (Copiloto, Cobrança,
+#      Legendas etc.) continuam funcionando à parte disso, mas o padrão daqui
+#      pra frente é: toda migration nova do Prisma passa por este passo.
 #   1. git clone --depth 1 do master para /root/zapscript-build-new
 #   2. docker build das imagens api/worker com tag :new (isolado — não toca
 #      no que está rodando enquanto builda)
@@ -53,6 +65,8 @@
 #                  isoladamente (remover a linha do authorized_keys encerra
 #                  o acesso deste workflow sem afetar o resto).
 #   DATABASE_URL   connection string do Supabase (mesma do .env de produção)
+#                  — usada tanto pelos migrate_core_* quanto pelo
+#                  `prisma migrate deploy` que roda em todo action = deploy
 #   ASAAS_API_KEY  necessária só para o action = migrate_core_apply
 
 name: Ops — Vultr / Migração
@@ -118,6 +132,31 @@ jobs:
       group: ops-vultr-remote-ssh
       cancel-in-progress: false
     steps:
+      - name: Checkout (schema Prisma)
+        if: inputs.action == 'deploy'
+        uses: actions/checkout@v4
+
+      # Roda ANTES do build/deploy: aplica no schema "core" (Supabase, via
+      # DATABASE_URL) toda migration do repo que ainda não foi aplicada.
+      # Motivo de existir (incidente 2026-09-09): este workflow builda e sobe
+      # as imagens direto no servidor, mas nunca rodava `prisma migrate
+      # deploy` — só o "core" schema é migrável por aqui; módulos que
+      # replicam schema via runAutoMigrations() no boot da API (Copiloto,
+      # Cobrança, Legendas etc.) não dependem deste passo. Sem isso, código
+      # que referencia uma coluna nova sem a migration correspondente
+      # aplicada quebra em produção de forma silenciosa (query cai num
+      # catch(() => null) em vários pontos do código) — foi exatamente o que
+      # derrubou o roteamento do webhook do WhatsApp por horas no incidente
+      # que motivou este passo (WhatsappNumber.publicPurpose ausente no banco).
+      # Falha aqui interrompe o job antes de buildar/subir código novo — não
+      # faz sentido subir uma versão que espera um schema que não existe.
+      - name: Aplicar migrations Prisma pendentes (schema core)
+        if: inputs.action == 'deploy'
+        working-directory: packages/database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx --yes prisma@5.22.0 migrate deploy
+
       - name: Configurar chave SSH
         env:
           SSH_KEY:  ${{ secrets.VULTR_SSH_KEY }}

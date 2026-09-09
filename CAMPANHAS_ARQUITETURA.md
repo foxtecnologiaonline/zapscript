@@ -737,11 +737,34 @@ não ordem relativa.
 
 ### 11.13 O que ficou de fora desta revisão (conhecido, não escolhido)
 
-- **UI do pool**: só o essencial (checklist + salvar) — sem indicar, por número, quantos
-  contatos já foram atribuídos a ele numa campanha em andamento.
+- ~~**UI do pool**: só o essencial (checklist + salvar) — sem indicar, por número, quantos
+  contatos já foram atribuídos a ele numa campanha em andamento.~~ Fechado — ver §14.1.
 
 Os outros dois itens desta lista (tier no agendamento, e o tema claro/escuro de todo o módulo)
 foram fechados na revisão seguinte — ver §12.
+
+---
+
+## 14. Itens da lista "o que falta" (WhatsApp) executados nesta revisão
+
+### 14.1 UI do pool — quebra de envio por número
+
+`GET /:id` agora devolve `statsByNumber` (contagem por status, agrupada por
+`CampanhaContato.assignedNumberId`) e `poolNumbers` (nome/telefone dos números do pool) quando
+a campanha tem `poolNumberIds` — só paga a query extra nesse caso, não no caminho comum sem
+pool. Contato com `assignedNumberId` nulo (criado antes do pool existir) cai no número
+primário; a soma por status usa acumulador (`+= count`), não atribuição direta, porque o mesmo
+número primário pode aparecer em duas linhas do `groupBy` (uma com `assignedNumberId` explícito,
+outra nula) — bug real pego pelo teste antes de chegar em produção. Tela: novo card "Envio por
+número (pool)" na página da campanha, mostrando total processado + falhas por número.
+
+### 14.2 Os demais itens da lista não foram executados — decisão pendente do usuário
+
+Segmentação de audiência, sequência/drip, A/B test de template e limite de uso por plano têm
+decisão de produto real embutida (quais filtros importam, se a sequência espera resposta ou é
+por tempo fixo, o que define "vencedor" do A/B, e — no caso do limite — números de verdade de
+plano/preço). Perguntado ao usuário antes de construir, pra não arriscar retrabalho grande
+numa direção errada.
 
 ---
 
@@ -802,3 +825,268 @@ real; nenhuma mudança de código foi necessária aqui.
 parte — o módulo tem efeito colateral de topo de arquivo (`setInterval` na importação) que
 dificulta testá-lo sem um refactor maior, fora do escopo deste fechamento). Typecheck limpo nos
 três apps.
+
+---
+
+## 13. Arquitetura multicanal (planejamento — nada implementado ainda)
+
+Pedido: planejar Campanhas multicanal — WhatsApp, E-mail, SMS, Bluetooth, WiFi, Telegram,
+Instagram, Facebook. Esta seção é só arquitetura/plano; nenhum código foi escrito ainda.
+
+### 13.0 Achado que muda o escopo: Bluetooth e WiFi não são canais de mensageria
+
+Os outros 6 (WhatsApp, E-mail, SMS, Telegram, Instagram, Facebook) são **canais remotos** — um
+servidor manda uma mensagem através de uma API pra um destinatário identificado por telefone/
+e-mail/@handle, esteja ele onde estiver. Bluetooth e WiFi são **rádio de curto alcance**: não
+existe "mandar uma mensagem Bluetooth" de um servidor na nuvem (Vultr) pra um contato — o rádio
+só alcança quem está fisicamente perto (metros) de um *hardware* de rádio. Pra "campanha
+Bluetooth/WiFi" funcionar de verdade, precisaria de:
+
+- **Hardware físico no local do cliente** (beacon BLE, ou o próprio roteador WiFi como portal
+  cativo) — o ZapScript no máximo configuraria remotamente o que esse hardware transmite; nunca
+  seria o remetente direto.
+- **Um público completamente diferente**: não é "meus N contatos com opt-in", é "qualquer
+  pessoa anônima que passar perto com Bluetooth/WiFi ligado" — não existe `CampanhaContato`,
+  não existe opt-in prévio (o "opt-in" é literalmente a pessoa escanear o beacon ou conectar na
+  rede). Nenhuma peça da arquitetura de Campanhas (fila, circuit breaker, pool de números,
+  processedCount, opt-out) se aplica.
+- **Um produto diferente**: isso é *marketing de proximidade* (comum em varejo físico, eventos,
+  restaurantes) — categoria de produto própria, não uma opção a mais no seletor de canal de uma
+  campanha que já existe.
+
+**Recomendação**: não incluir Bluetooth/WiFi neste plano. Se o objetivo é atingir cliente que
+está fisicamente na loja, o caminho natural já existe no produto — WhatsApp (via QR code na
+mesa/vitrine) ou e-mail continuam sendo o canal de fato, só a *captura* do contato é que
+aconteceria fisicamente. Se a intenção é mesmo *proximidade de verdade* (beacon/portal WiFi),
+isso merece uma conversa própria — qual problema de negócio resolve, e só depois arquitetura.
+Sigo com os 6 canais restantes abaixo; me avise se eu entendi errado a intenção de
+Bluetooth/WiFi.
+
+### 13.1 O problema com o desenho atual (2 canais → se manter, quebra em 6)
+
+Hoje `Campanha.channel` é `'meta' | 'evolution'`, e as rotas/worker resolvem a diferença com
+`if (channel === 'evolution') {...} else {...}` espalhado (ver `numberReadyToSend`,
+`processCampanhaJob`, etc.). Funciona com 2 ramos; com 6 vira um emaranhado de ifs e cada canal
+novo arrisca quebrar os outros (como quase aconteceu no §7 desta sessão, quando `undefined`
+era tratado como Evolution em vez de Meta). **Antes de somar canais, o núcleo precisa parar de
+ser "if/else por canal" e virar um registro de adaptadores.**
+
+### 13.2 Abstração central: `ChannelAdapter`
+
+```ts
+interface ChannelAdapter {
+  channel: string; // 'whatsapp_meta' | 'whatsapp_evolution' | 'email' | 'sms' | 'telegram' | 'instagram' | 'facebook'
+  isReady(account: ChannelAccount): boolean;
+  dailyLimit(account: ChannelAccount): number;          // pra evolutionSendDelayMs generalizado
+  warmupDays(account: ChannelAccount): number;            // pra effectiveEvolutionDailyLimit generalizado
+  render(content: MessageContent, contato: CampanhaContato): RenderedMessage;
+  send(account: ChannelAccount, to: string, msg: RenderedMessage): Promise<{ externalId: string }>;
+}
+```
+
+`processCampanhaJob` (worker) deixa de ter um branch por canal e passa a fazer só
+`const adapter = CHANNEL_ADAPTERS[campanha.channel]; await adapter.send(...)`. Circuit breaker
+(item 1), `processedCount` (item 9), pool/round-robin (item 2), janela de envio (item 4) e
+e-mail de conclusão/pausa (item 10) — tudo isso já foi construído §11 pra ser **agnóstico de
+canal** (nenhum deles olha pra `channel` além do se-é-evolution pontual que também migra pro
+adapter). Isso é o maior ativo pra essa expansão: a "máquina" de disparo não precisa ser
+reescrita, só parametrizada por adapter.
+
+`WhatsappNumber` continua exatamente como está (usado por core/Atende/Copiloto/CRM além de
+Campanhas — migrar isso teria um raio de impacto enorme e desproporcional). Os canais novos
+ganham uma tabela própria:
+
+```prisma
+model ChannelAccount {
+  id             String    @id @default(cuid())
+  userId         String
+  channel        String    // 'email' | 'sms' | 'telegram' | 'instagram' | 'facebook'
+  status         String    @default("disconnected")
+  displayName    String?
+  credentialsEnc String?   // AES-256-GCM — token/API key, formato depende do canal
+  externalId     String?   // bot id, Page id, IG business account id...
+  connectedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campanhas      Campanha[]
+  @@index([userId, channel])
+}
+```
+
+`Campanha` ganha `channelAccountId String?` ao lado do `whatsappNumberId` já existente —
+exatamente um dos dois é preenchido, dependendo se `channel` é WhatsApp ou um dos novos
+(checado na aplicação, não no schema — Postgres não tem "XOR de FK" nativo sem trigger, e não
+vale a complexidade aqui).
+
+### 13.3 Conteúdo: não force um "template" universal
+
+`templateName`/`templateComponents` são conceito específico do Meta WhatsApp (template
+pré-aprovado). `messageBody` (texto livre + `{{nome}}`, já construído pro Evolution) serve bem
+como conteúdo geral pra E-mail/SMS/Telegram/Instagram/Facebook. E-mail precisa só de mais um
+campo, `emailSubject`. Nenhum outro canal precisa de aprovação prévia de conteúdo como o Meta
+WhatsApp exige — então o modelo de dados já cobre os 5 canais novos sem mudança estrutural,
+só content por canal na hora de renderizar (HTML pro e-mail, texto puro truncado pro SMS,
+Markdown pro Telegram).
+
+### 13.4 Guardrails por canal — a parte que decide se o produto é seguro
+
+| Canal | Autenticação | Quem pode receber (audiência) | Risco se ignorado | Ritmo/aquecimento |
+|---|---|---|---|---|
+| **WhatsApp Meta** | OAuth Embedded Signup (já existe) | Opt-in explícito, qualquer contato (template aprovado) | Ban do WABA, quality rating cai | Tier da Meta (já existe, §9.3) |
+| **WhatsApp Evolution** | QR code (já existe) | Só quem já conversou (já existe) | Ban do número pessoal | `evolutionSendDelayMs` + warmup (já existe) |
+| **E-mail** | Domínio verificado (Resend) — recomendo subdomínio próprio do ZapScript + `Reply-To` do usuário, não domínio por cliente (mais rápido, sem esperar verificação DNS de cada usuário) | Opt-in explícito, CSV livre OK | Domínio marcado como spam (Gmail/Outlook passam a rejeitar TODOS os e-mails do domínio, não só os da campanha) | Mesmo princípio do warmup do Evolution, mas por *domínio de envio*, não por número — reaproveita `effectiveEvolutionDailyLimit` generalizado |
+| **SMS** | Credenciais de gateway (Twilio já tem conta configurada no projeto pra WhatsApp — dá pra reaproveitar se o número Twilio tiver SMS habilitado no Brasil; verificar antes de assumir) | Opt-in explícito — mais fiscalizado que e-mail (Anatel/LGPD); recomendo começar só com audiência quente, como o Evolution | Bloqueio da operadora, multa Anatel, reclamação vira custo real (cada SMS já é custo real, diferente de WhatsApp/e-mail) | Ritmo mais conservador ainda; **custo por mensagem exige mecanismo de saldo/cobrança — decisão de produto, não só técnica** |
+| **Telegram** | Token de bot (usuário cria no @BotFather — não automatizável via API, passo manual do usuário) | Só quem já mandou `/start` pro bot — Telegram *impede* mensagem fria estruturalmente | Bot bloqueado por usuários (não é catastrófico como ban de WhatsApp) | Frouxo — Telegram permite ritmo bem mais alto que WhatsApp |
+| **Instagram Direct** | Extensão do OAuth Meta já existente (mesmo Business Manager) — precisa de permissão nova (`instagram_manage_messages`) sujeita a **App Review da Meta (pode levar semanas)** | **Só dentro de 24h da última mensagem do contato** — fora disso a API rejeita, não é só política, é limite técnico | Restrição/bloqueio da conta comercial | N/A — é sempre reativo, não "campanha" no sentido de disparo em massa frio |
+| **Facebook Messenger** | Idem Instagram (`pages_messaging`) | Idem Instagram — janela de 24h | Idem Instagram | N/A |
+
+**Consequência prática pro produto**: Instagram e Facebook não conseguem fazer "campanha fria"
+no sentido que WhatsApp Meta faz — só dá pra reengajar quem mandou mensagem nas últimas 24h.
+Vale nomear essas duas como "Reengajamento" na UI, não "Campanha", pra não criar expectativa
+que a API não entrega (evita o cliente descobrir isso só quando o envio falhar em massa).
+
+### 13.5 O que já existe e encurta o caminho
+
+- **E-mail**: `sendEmail()` (Resend) já está em produção (api e worker) — só falta domínio
+  dedicado + link de descadastro (reaproveita `CampanhaOptOut`, o campo `phone` já é uma string
+  genérica, serve pra guardar e-mail sem mudar schema) + webhook de bounce/complaint do Resend.
+- **SMS**: `apps/worker/src/services/twilio.ts` já existe — hoje só baixa áudio e manda
+  WhatsApp via Twilio, mas a MESMA conta Twilio provavelmente já tem (ou pode habilitar) SMS —
+  verificar antes de contratar outro gateway (Zenvia, TotalVoice) só por achar que precisa de
+  um novo.
+- **Instagram/Facebook**: usam a mesma família de Graph API e o mesmo Business Manager que o
+  WhatsApp Meta já usa (`meta-embedded.ts`) — não é uma integração do zero, é extensão de
+  permissões sobre a MESMA conexão que o usuário já fez. O gargalo é o App Review da Meta
+  (tempo de calendário, não de código).
+- **Telegram**: bot API é grátis, sem review — o mais rápido de construir tecnicamente; a única
+  fricção é o usuário final ter que criar o bot manualmente no @BotFather.
+- **Pacing/circuit breaker/pool/janela de envio/e-mail de conclusão** (§11): já desenhados pra
+  não saber qual canal é — só precisam de `dailyLimit`/`warmupDays` vindo do adapter em vez de
+  constantes fixas do Evolution.
+
+### 13.6 Ordem de rollout recomendada (e por quê)
+
+1. **Refactor pro `ChannelAdapter`** primeiro, sem adicionar canal nenhum ainda — reduz o risco
+   de cada fase seguinte (é o mesmo tipo de "pagar a dívida antes de crescer" que já apliquei
+   dentro do próprio `/:id/start` no §12.2, só que em escala maior).
+2. **E-mail** — maior alavancagem: infra já existe (Resend), menor risco regulatório que SMS,
+   sem dependência de aprovação externa (App Review). Primeiro canal novo de verdade.
+3. **Telegram** — tecnicamente o mais simples e mais rápido dos que faltam, zero aprovação
+   externa; bom pra validar o `ChannelAdapter` com um 2º canal novo antes do mais complexo.
+4. **SMS** — depende de decisão de negócio (cobrança por mensagem) antes de codar; tecnicamente
+   pronto assim que essa decisão existir.
+5. **Instagram + Facebook juntos** — mesma integração (Graph API/Business Manager), mas
+   **disparar o App Review da Meta o quanto antes** (item 6.7 abaixo) porque o prazo dele é
+   quem manda o cronograma real dessa fase, não a implementação.
+
+### 13.7 Decisões que só você pode tomar antes de eu executar
+
+- **Bluetooth/WiFi**: confirma que fica de fora deste plano (proximidade é outro produto), ou
+  era outra coisa que eu não entendi?
+- **SMS**: reaproveitar a conta Twilio existente (se tiver SMS habilitado pro Brasil) ou avaliar
+  Zenvia/TotalVoice? E qual o modelo de cobrança (incluso no plano com limite, ou saldo avulso)?
+- **Ordem**: concorda com E-mail → Telegram → SMS → Instagram/Facebook, ou prioriza diferente
+  (ex: Instagram/Facebook primeiro, aceitando esperar o App Review em paralelo)?
+- Quer que eu já dispare o cadastro do App Review da Meta pras permissões de Instagram/Facebook
+  agora (não trava nada, só começa a contar o prazo), mesmo antes de codar essas fases?
+
+## 15. Segmentação, sequência/drip e A/B test (fecha o §14.2)
+
+Os 3 itens que o §14.2 tinha deixado pendentes por decisão de produto. Perguntado ao usuário com
+uma opção "(Recomendado)" pré-selecionada pra cada um; todas as 4 foram aceitas como estão:
+**segmentação por tag do CRM**, **sequência com passos fixos (sem checar resposta)**, **A/B só
+reportando por variante (sem promover vencedor automático)**, e **limite de uso por plano
+adiado** (sem mudança — ver §15.6). WhatsApp apenas (Meta + Evolution); nenhum dos 3 tem relação
+com o desenho multicanal do §13.
+
+### 15.0 Schema (migration `20260909_campanhas_sequencia_abtest`)
+
+Em `Campanha`: `sequenceParentId`/`sequenceIndex`/`sequenceDelayDays` (auto-relação
+`CampanhaSequence`, `onDelete: Cascade`) + `abTestEnabled` e os 5 campos `variantB*` (espelham
+`templateName`/`templateLanguage`/`templateComponents`/`templateVarCount`/`messageBody` pra
+variante B). Em `CampanhaContato`: `variant` (`'A' | 'B' | null`). Índice em
+`sequenceParentId`. Nenhum campo novo em `CampanhaOptOut` — reaproveitado como está.
+
+### 15.1 Segmentação por tag do CRM
+
+`GET /crm-tags` (dedup + sort das tags de `CrmContact` do usuário) e
+`POST /:id/contatos/from-crm` (`{ tag }`). Reaproveita `CrmContact.tags` — nenhum campo novo.
+Duas guardrails que fazem essa importação nunca furar regra que já existia:
+
+- **Evolution**: contatos da tag são intersectados com `warmContactsForNumber()` — a tag pode
+  *reduzir* a audiência, nunca driblar a exigência de "só quem já conversou" (§8).
+- **Meta**: bloqueado quando `campanha.templateVarCount` é truthy — o CRM não tem de onde tirar
+  `{{1}}`, `{{2}}`... posicionais; isso continua sendo papel exclusivo do CSV (§11/item 6).
+
+### 15.2 Sequência/drip — passos fixos
+
+Decisão de desenho: cada passo é uma **`Campanha` inteira**, ligada à mãe por
+`sequenceParentId`/`sequenceIndex`/`sequenceDelayDays`, em vez de uma estrutura aninhada dentro
+de uma campanha só. `POST /:id/sequence` (`{ steps: [{ delayDays, templateName|messageBody,
+... }] }`, 1 a 5 passos) cria essas campanhas-filhas em `draft` e copia a audiência atual da mãe
+(contatos não opt-out) pra cada uma.
+
+Isso é deliberadamente **zero lógica nova de disparo**: circuit breaker, pool, janela de envio,
+tier check, notificação de conclusão — tudo do worker/scheduler já existente passa a valer pra
+cada passo sem tocar em uma linha dessa infraestrutura. O único código novo é o agendamento em
+cascata: `POST /:id/start` (API) e `fireCampanha()` (`campanhas-scheduler.ts`, pro caso agendado)
+agora, ao iniciar a mãe, buscam os passos-filhos em `draft` e os agendam
+(`scheduledAt = startedAt da mãe + sequenceDelayDays de cada um`), copiando
+`consentConfirmedAt`/`consentConfirmedIp` da mãe — o usuário já deu consentimento pra essa mesma
+audiência ao iniciar o primeiro passo, não precisa reconfirmar por passo. `POST /:id/cancel`
+cascateia do mesmo jeito: cancelar a mãe cancela os passos que ainda não terminaram.
+
+Trade-off aceito: os passos herdam a audiência da mãe **no momento da criação da sequência**, não
+dinamicamente — se você importar mais contatos na mãe depois de criar a sequência, os passos não
+recebem esses novos contatos automaticamente. E os passos não suportam A/B (§15.3) — o
+`contatosBase` copiado pra cada filho não carrega `variant`. Nenhum dos dois era parte da decisão
+que o usuário confirmou ("passos fixos, sem checar resposta"); ficam registrados aqui como
+limitação conhecida, não como bug.
+
+### 15.3 A/B test — 2 variantes, sem vencedor automático
+
+Conteúdo da variante B mora direto em `Campanha` (`variantBTemplateName` etc. ou
+`variantBMessageBody`, conforme o canal — mesmo par de campos que a campanha já usa pra variante
+A). `CampanhaContato.variant` marca cada contato como `'A'` ou `'B'` no momento da criação —
+alternância determinística pela **posição entre os aceitos** (`toCreate.length % 2`), não pelo
+índice bruto do loop de import, nos 3 caminhos de importação (`from-conversas`, `from-crm`, CSV):
+isso garante split exato 50/50 mesmo com opt-out/duplicado/inválido intercalado nas linhas
+originais.
+
+No worker, `processCampanhaJob` resolve `isVariantB = campanha.abTestEnabled && contato.variant
+=== 'B'` e usa os campos `variantB*` em vez dos normais só nesse caso — mesmo path de envio,
+sem branch novo de fila/circuit-breaker/pool. `GET /:id` devolve `statsByVariant` (`{ A: {...},
+B: {...} }`, agrupado por `variant`+`status`) só quando `abTestEnabled`, pra não pagar o
+`groupBy` extra em campanhas comuns. Sem lógica de "vencedor" — por decisão explícita do usuário,
+é só leitura comparativa; promover automaticamente fica de fora até (se) for pedido.
+
+### 15.4 Web UI
+
+- **`nova/page.tsx`**: checkbox "Testar 2 versões (A/B)" nos dois formulários (Meta e Evolution),
+  revelando o seletor de template (Meta) ou textarea (Evolution) da variante B. Corrigido de
+  passagem um gap real encontrado ao mexer no formulário: o payload de criação calculava
+  `varCount` localmente mas nunca mandava `templateVarCount` pra API — a validação de variáveis
+  do item 6 (§11.6) não disparava de verdade pra campanhas criadas pela tela, só nos testes
+  (que setam o campo direto no mock). Corrigido junto.
+- **`[id]/page.tsx`**: card "Segmentar por tag do CRM" (só aparece se o usuário tem alguma tag
+  cadastrada) com select + botão, resultado da importação com a mesma contagem que o back-end
+  devolve (`imported`/`skippedOptOut`/`skippedDuplicate`/`skippedCold`/`elegiveis`). Card
+  "Sequência/drip" com 3 estados mutuamente exclusivos: link pra mãe (quando a campanha é um
+  passo), lista dos passos com status/data (quando a campanha é mãe com sequência já criada), ou
+  formulário "Criar sequência" (até 5 passos, campo de dias + template/mensagem por passo — só
+  aparece em rascunho com audiência e sem sequência ainda). Card "Teste A/B — por variante"
+  (comparação lado a lado, só quando `abTestEnabled`).
+
+### 15.5 Testes
+
+98 testes em `apps/api/src/__tests__/campanhas.test.ts` (+15 nesta revisão: 5 de segmentação, 6
+de sequência — incluindo o cálculo exato de `scheduledAt` por passo — e 4 de A/B) e 19 em
+`apps/worker/src/__tests__/campanhas.test.ts` (+3, cobrindo variante B/A/controle nos dois
+canais). `npx tsc --noEmit` limpo em `apps/api`, `apps/worker` e `apps/web`.
+
+### 15.6 Limite de uso por plano — continua adiado
+
+Único dos 4 itens do §14.2 sem mudança de status: o usuário escolheu adiar (não construir limite
+nenhum por enquanto). Nada foi implementado aqui de propósito — não é gap esquecido, é decisão
+tomada.

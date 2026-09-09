@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma';
 import { requireModule } from '../../lib/moduleGate';
-import { validateRequest, createCampanhaSchema, scheduleCampanhaSchema } from '../../lib/validation';
+import { validateRequest, createCampanhaSchema, scheduleCampanhaSchema, campanhaSequenceSchema } from '../../lib/validation';
 import { decryptStr } from '../../services/encryption';
 import { listTemplates, getPhoneNumberLimits, tierToNumericCap, sendTemplateMessage } from '../../services/whatsapp-campaigns';
 import { sendText } from '../../services/evolution';
@@ -516,6 +516,15 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     return { optOuts };
   });
 
+  // ── GET /crm-tags — tags do CRM do usuário (pra segmentar audiência, §15.1) ─
+  app.get('/crm-tags', auth, async (req: any) => {
+    const userId = req.user.sub;
+    const contacts = await prisma.crmContact.findMany({ where: { userId }, select: { tags: true } });
+    const tagSet = new Set<string>();
+    for (const c of contacts) for (const t of c.tags) tagSet.add(t);
+    return { tags: Array.from(tagSet).sort() };
+  });
+
   // ── GET /performance — agregado por template (canal meta) ───────────────
   // Ajuda o usuário a ver qual template converte melhor / falha mais, em vez de
   // olhar campanha por campanha (§11/item 7). Baseado em CampanhaContato.status
@@ -583,7 +592,10 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     const userId = req.user.sub;
     const v = validateRequest(createCampanhaSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
-    const { name, whatsappNumberId, channel, templateName, templateLanguage, templateComponents, templateVarCount, messageBody } = v.data;
+    const {
+      name, whatsappNumberId, channel, templateName, templateLanguage, templateComponents, templateVarCount, messageBody,
+      abTestEnabled, variantBTemplateName, variantBTemplateLanguage, variantBTemplateComponents, variantBTemplateVarCount, variantBMessageBody,
+    } = v.data;
 
     const whatsappNumber = await prisma.whatsappNumber.findFirst({
       where: { id: whatsappNumberId, userId, provider: channel },
@@ -604,6 +616,14 @@ export default async function campanhasRoutes(app: FastifyInstance) {
         templateComponents: channel === 'meta' ? templateComponents : undefined,
         templateVarCount: channel === 'meta' ? (templateVarCount ?? null) : null,
         messageBody:      channel === 'evolution' ? messageBody : null,
+        abTestEnabled: !!abTestEnabled,
+        ...(abTestEnabled ? {
+          variantBTemplateName:       channel === 'meta' ? variantBTemplateName : null,
+          variantBTemplateLanguage:   channel === 'meta' ? (variantBTemplateLanguage || templateLanguage) : null,
+          variantBTemplateComponents: channel === 'meta' ? variantBTemplateComponents : undefined,
+          variantBTemplateVarCount:   channel === 'meta' ? (variantBTemplateVarCount ?? null) : null,
+          variantBMessageBody:        channel === 'evolution' ? variantBMessageBody : null,
+        } : {}),
       },
     });
 
@@ -636,7 +656,72 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     const stats: Record<string, number> = {};
     for (const g of grouped) stats[g.status] = g._count;
 
-    return { campanha, stats };
+    // Quebra por número do pool (§11.13 — item que ficava pendente): só busca
+    // quando a campanha tem pool configurado, pra não pagar 2 queries extras à
+    // toa no caso comum (sem pool). assignedNumberId nulo (contato criado antes
+    // do pool existir, ou pool desativado depois) cai no número primário.
+    let statsByNumber: Record<string, Record<string, number>> | undefined;
+    let poolNumbers: Array<{ id: string; phoneNumber: string | null; displayName: string | null }> | undefined;
+    if (campanha.poolNumberIds.length > 0) {
+      const [groupedByNumber, poolNumbersRows] = await Promise.all([
+        prisma.campanhaContato.groupBy({
+          by: ['assignedNumberId', 'status'],
+          where: { campanhaId: id },
+          _count: true,
+        }),
+        prisma.whatsappNumber.findMany({
+          where: { id: { in: campanha.poolNumberIds } },
+          select: { id: true, phoneNumber: true, displayName: true },
+        }),
+      ]);
+      statsByNumber = {};
+      for (const g of groupedByNumber) {
+        // assignedNumberId nulo colapsa no primário — pode coincidir com um grupo
+        // que já tem assignedNumberId === primário explicitamente, então soma em
+        // vez de sobrescrever (senão um dos dois "sent" apaga o outro).
+        const key = g.assignedNumberId || campanha.whatsappNumberId;
+        statsByNumber[key] = statsByNumber[key] || {};
+        statsByNumber[key][g.status] = (statsByNumber[key][g.status] || 0) + g._count;
+      }
+      poolNumbers = poolNumbersRows;
+    }
+
+    // Sequência/drip (§15.2): mostra os passos-filhos (se esta é a mãe) ou a
+    // mãe (se esta é um passo) — só busca quando faz sentido, sem query extra
+    // pra campanha comum sem sequência.
+    let sequenceSteps: Array<{ id: string; name: string; status: string; sequenceIndex: number; sequenceDelayDays: number; scheduledAt: Date | null }> | undefined;
+    let sequenceParent: { id: string; name: string } | undefined;
+    if (!campanha.sequenceParentId) {
+      const steps = await prisma.campanha.findMany({
+        where: { sequenceParentId: id },
+        orderBy: { sequenceIndex: 'asc' },
+        select: { id: true, name: true, status: true, sequenceIndex: true, sequenceDelayDays: true, scheduledAt: true },
+      });
+      if (steps.length > 0) sequenceSteps = steps as any;
+    } else {
+      const parent = await prisma.campanha.findUnique({
+        where: { id: campanha.sequenceParentId },
+        select: { id: true, name: true },
+      });
+      if (parent) sequenceParent = parent;
+    }
+
+    // A/B test (§15.3): stats por variante — só reporta, sem promover vencedor.
+    let statsByVariant: Record<string, Record<string, number>> | undefined;
+    if (campanha.abTestEnabled) {
+      const groupedByVariant = await prisma.campanhaContato.groupBy({
+        by: ['variant', 'status'],
+        where: { campanhaId: id },
+        _count: true,
+      });
+      statsByVariant = { A: {}, B: {} };
+      for (const g of groupedByVariant) {
+        const key = g.variant === 'B' ? 'B' : 'A'; // contato sem variant (raro, pré-A/B) cai em A
+        statsByVariant[key][g.status] = (statsByVariant[key][g.status] || 0) + g._count;
+      }
+    }
+
+    return { campanha, stats, statsByNumber, poolNumbers, sequenceSteps, sequenceParent, statsByVariant };
   });
 
   // ── GET /:id/contatos — lista contatos (paginado, filtro por status) ────
@@ -697,11 +782,13 @@ export default async function campanhasRoutes(app: FastifyInstance) {
 
     let skippedOptOut = 0;
     let skippedDuplicate = 0;
-    const toCreate: { campanhaId: string; phone: string; name: string | null }[] = [];
+    const toCreate: { campanhaId: string; phone: string; name: string | null; variant?: string }[] = [];
     for (const [phone, name] of warmContacts) {
       if (optOutSet.has(phone)) { skippedOptOut++; continue; }
       if (existingSet.has(phone)) { skippedDuplicate++; continue; }
-      toCreate.push({ campanhaId: id, phone, name });
+      // A/B test (§15.3): alterna pela posição entre os aceitos, não pelo índice
+      // bruto do loop — garante split 50/50 de verdade mesmo com opt-out/duplicado no meio.
+      toCreate.push({ campanhaId: id, phone, name, variant: campanha.abTestEnabled ? (toCreate.length % 2 === 0 ? 'A' : 'B') : undefined });
     }
 
     if (toCreate.length > 0) {
@@ -713,6 +800,73 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     }
 
     return reply.send({ imported: toCreate.length, skippedOptOut, skippedDuplicate, elegiveis: warmContacts.size });
+  });
+
+  // ── POST /:id/contatos/from-crm — audiência segmentada por tag do CRM (§15.1) ─
+  // Canal evolution: intersecta com quem já conversou (warmContactsForNumber) —
+  // segmentação por tag NUNCA fura o guardrail de audiência quente, só reduz.
+  // Canal meta: só aceita quando o template não exige variáveis — o CRM não tem
+  // como preencher {{1}}, {{2}}... posicionais (isso é papel do CSV).
+  app.post('/:id/contatos/from-crm', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { id } = req.params;
+    const campanha = await ownedCampanha(userId, id);
+    if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+    if (campanha.status !== 'draft') {
+      return reply.code(400).send({ error: 'Só é possível adicionar contatos a campanhas em rascunho.' });
+    }
+    const tag = String(req.body?.tag || '').trim();
+    if (!tag) return reply.code(400).send({ error: 'Informe uma tag do CRM.' });
+    if (campanha.channel === 'meta' && campanha.templateVarCount) {
+      return reply.code(400).send({
+        error: `Este template exige ${campanha.templateVarCount} variável(is) — a importação por tag do CRM não `
+          + `preenche variáveis automaticamente. Use o upload de CSV pra esse template.`,
+      });
+    }
+
+    const crmContacts = await prisma.crmContact.findMany({
+      where: { userId, tags: { has: tag } },
+      select: { phone: true, name: true },
+    });
+    const candidates = new Map<string, string | null>();
+    for (const c of crmContacts) candidates.set(normalizePhone(c.phone), c.name ?? null);
+
+    let skippedCold = 0;
+    if (campanha.channel === 'evolution') {
+      const warm = await warmContactsForNumber(campanha.whatsappNumberId);
+      for (const phone of Array.from(candidates.keys())) {
+        if (!warm.has(phone)) { candidates.delete(phone); skippedCold++; }
+      }
+    }
+
+    const [optOuts, existing] = await Promise.all([
+      prisma.campanhaOptOut.findMany({ where: { userId }, select: { phone: true } }),
+      prisma.campanhaContato.findMany({ where: { campanhaId: id }, select: { phone: true } }),
+    ]);
+    const optOutSet   = new Set(optOuts.map((o: any) => o.phone));
+    const existingSet = new Set(existing.map((e: any) => e.phone));
+
+    let skippedOptOut = 0;
+    let skippedDuplicate = 0;
+    const toCreate: { campanhaId: string; phone: string; name: string | null; variant?: string }[] = [];
+    for (const [phone, name] of candidates) {
+      if (optOutSet.has(phone)) { skippedOptOut++; continue; }
+      if (existingSet.has(phone)) { skippedDuplicate++; continue; }
+      toCreate.push({ campanhaId: id, phone, name, variant: campanha.abTestEnabled ? (toCreate.length % 2 === 0 ? 'A' : 'B') : undefined });
+    }
+
+    if (toCreate.length > 0) {
+      await prisma.campanhaContato.createMany({ data: toCreate });
+      await prisma.campanha.update({
+        where: { id },
+        data: { audienceCount: { increment: toCreate.length } },
+      });
+    }
+
+    return reply.send({
+      imported: toCreate.length, skippedOptOut, skippedDuplicate, skippedCold,
+      elegiveis: crmContacts.length,
+    });
   });
 
   // ── POST /:id/contatos — upload de CSV (telefone,nome,var1,var2,...) ────
@@ -765,7 +919,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     let skippedInvalid = 0;
     let skippedDuplicate = 0;
     let skippedVarMismatch = 0;
-    const toCreate: { campanhaId: string; phone: string; name: string | null; variables: string[] | undefined }[] = [];
+    const toCreate: { campanhaId: string; phone: string; name: string | null; variables: string[] | undefined; variant?: string }[] = [];
 
     for (const row of dataRows) {
       const rawPhone = row[0] || '';
@@ -786,7 +940,10 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       }
       seen.add(phone);
 
-      toCreate.push({ campanhaId: id, phone, name, variables: vars.length ? vars : undefined });
+      toCreate.push({
+        campanhaId: id, phone, name, variables: vars.length ? vars : undefined,
+        variant: campanha.abTestEnabled ? (toCreate.length % 2 === 0 ? 'A' : 'B') : undefined,
+      });
     }
 
     if (toCreate.length > 0) {
@@ -856,6 +1013,75 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     } catch (err: any) {
       return reply.code(502).send({ error: err.message || 'Falha ao enviar mensagem de teste.' });
     }
+  });
+
+  // ── POST /:id/sequence — cria os passos de uma sequência/drip (§15.2) ───
+  // Cada passo é uma Campanha inteira ligada por sequenceParentId — reaproveita
+  // 100% do disparo/scheduler já existentes (nenhuma lógica nova de envio). Os
+  // passos ficam 'draft' até o pai iniciar (ver POST /:id/start), que os agenda
+  // automaticamente com scheduledAt = startedAt do pai + delayDays de cada um.
+  app.post('/:id/sequence', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { id } = req.params;
+    const campanha = await ownedCampanha(userId, id);
+    if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
+    if (campanha.status !== 'draft') {
+      return reply.code(400).send({ error: 'Só é possível criar sequência a partir de uma campanha em rascunho.' });
+    }
+    if (campanha.sequenceParentId) {
+      return reply.code(400).send({ error: 'Uma campanha que já é passo de outra sequência não pode iniciar a sua própria.' });
+    }
+    if (campanha.audienceCount === 0) {
+      return reply.code(400).send({ error: 'Adicione contatos à campanha antes de criar a sequência — os passos herdam a mesma audiência.' });
+    }
+    const existingSteps = await prisma.campanha.count({ where: { sequenceParentId: id } });
+    if (existingSteps > 0) {
+      return reply.code(400).send({ error: 'Esta campanha já tem uma sequência criada.' });
+    }
+
+    const v = validateRequest(campanhaSequenceSchema)(req.body);
+    if (!v.valid) return reply.code(400).send({ error: v.error });
+    for (const [i, step] of v.data.steps.entries()) {
+      const ok = campanha.channel === 'meta' ? !!step.templateName : !!step.messageBody;
+      if (!ok) {
+        return reply.code(400).send({
+          error: campanha.channel === 'meta'
+            ? `Passo ${i + 1}: informe templateName (campanha via Meta).`
+            : `Passo ${i + 1}: informe messageBody (campanha via Evolution).`,
+        });
+      }
+    }
+
+    const contatosBase = await prisma.campanhaContato.findMany({
+      where: { campanhaId: id, status: { not: 'optout' } },
+      select: { phone: true, name: true, variables: true },
+    });
+
+    const steps = [];
+    for (const [i, step] of v.data.steps.entries()) {
+      const child = await prisma.campanha.create({
+        data: {
+          userId, whatsappNumberId: campanha.whatsappNumberId, channel: campanha.channel,
+          poolNumberIds: campanha.poolNumberIds,
+          name: `${campanha.name} — passo ${i + 1}`,
+          templateName:       campanha.channel === 'meta' ? step.templateName : null,
+          templateLanguage:   step.templateLanguage,
+          templateComponents: campanha.channel === 'meta' ? step.templateComponents : undefined,
+          templateVarCount:   campanha.channel === 'meta' ? (step.templateVarCount ?? null) : null,
+          messageBody:        campanha.channel === 'evolution' ? step.messageBody : null,
+          sequenceParentId: id, sequenceIndex: i + 1, sequenceDelayDays: step.delayDays,
+          audienceCount: contatosBase.length,
+        },
+      });
+      if (contatosBase.length > 0) {
+        await prisma.campanhaContato.createMany({
+          data: contatosBase.map((c: any) => ({ campanhaId: child.id, phone: c.phone, name: c.name, variables: c.variables })),
+        });
+      }
+      steps.push(child);
+    }
+
+    return reply.code(201).send({ steps });
   });
 
   // ── POST /:id/schedule — agenda o início automático do disparo ──────────
@@ -1028,7 +1254,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       }
     }
 
-    await prisma.campanha.update({
+    const startedCampanha = await prisma.campanha.update({
       where: { id },
       data: {
         // pausedReason/consecutiveFailures zerados ao (re)iniciar: se a pausa foi
@@ -1042,6 +1268,26 @@ export default async function campanhasRoutes(app: FastifyInstance) {
           : {}),
       },
     });
+
+    // Sequência/drip (§15.2): se esta campanha tem passos-filhos ainda em
+    // rascunho, agenda cada um pra scheduledAt = startedAt + delayDays — a
+    // partir daqui é o campanhas-scheduler.ts existente que dispara, sem
+    // nenhuma lógica nova. Consentimento copiado do pai: o usuário já
+    // consentiu pra esta mesma audiência ao iniciar o primeiro passo.
+    if (!campanha.sequenceParentId) {
+      const steps = await prisma.campanha.findMany({
+        where: { sequenceParentId: id, status: 'draft' },
+      });
+      await Promise.all(steps.map((step: any) => prisma.campanha.update({
+        where: { id: step.id },
+        data: {
+          status: 'scheduled',
+          scheduledAt: new Date(startedCampanha.startedAt!.getTime() + step.sequenceDelayDays * 24 * 60 * 60 * 1000),
+          consentConfirmedAt: startedCampanha.consentConfirmedAt,
+          consentConfirmedIp: startedCampanha.consentConfirmedIp,
+        },
+      })));
+    }
 
     // Round-robin (assignedNumberId), aquecimento progressivo e janela de silêncio
     // já ficam dentro de enqueueCampanhaSend (mesma função reaproveitada pelo
@@ -1077,6 +1323,17 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Campanha já finalizada.' });
     }
     await prisma.campanha.update({ where: { id }, data: { status: 'canceled', completedAt: new Date() } });
+
+    // Sequência/drip (§15.2): cancelar o pai cancela os passos que ainda não
+    // terminaram — não faz sentido a campanha "acabar" mas os próximos passos
+    // continuarem disparando sozinhos depois.
+    if (!campanha.sequenceParentId) {
+      await prisma.campanha.updateMany({
+        where: { sequenceParentId: id, status: { in: ['draft', 'scheduled', 'paused', 'running'] } },
+        data: { status: 'canceled', completedAt: new Date() },
+      });
+    }
+
     return reply.send({ ok: true });
   });
 }

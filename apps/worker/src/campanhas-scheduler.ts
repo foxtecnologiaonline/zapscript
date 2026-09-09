@@ -155,11 +155,29 @@ async function fireCampanha(campanhaId: string): Promise<void> {
     return;
   }
 
+  const startedAt = new Date();
   const claimed = await prisma.campanha.updateMany({
     where: { id: campanhaId, status: 'scheduled' },
-    data: { status: 'running', startedAt: new Date() },
+    data: { status: 'running', startedAt },
   });
   if (claimed.count === 0) return; // outra réplica já iniciou
+
+  // Sequência/drip (§15.2) — espelha o mesmo hook de POST /:id/start (api):
+  // uma campanha agendada (em vez de iniciada manualmente) também pode ser mãe
+  // de uma sequência; sem isso os passos-filhos nunca seriam agendados quando
+  // o pai dispara pelo relógio em vez de clique do usuário.
+  if (!campanha.sequenceParentId) {
+    const steps = await prisma.campanha.findMany({ where: { sequenceParentId: campanhaId, status: 'draft' } });
+    await Promise.all(steps.map((step) => prisma.campanha.update({
+      where: { id: step.id },
+      data: {
+        status: 'scheduled',
+        scheduledAt: new Date(startedAt.getTime() + step.sequenceDelayDays! * 24 * 60 * 60 * 1000),
+        consentConfirmedAt: campanha.consentConfirmedAt,
+        consentConfirmedIp: campanha.consentConfirmedIp,
+      },
+    })));
+  }
 
   // Teto de tier conhecido (§11.13, gap do §9.3): diferente de /:id/start e
   // /:id/schedule, aqui não há usuário pra confirmar acima do tier — fail-open,

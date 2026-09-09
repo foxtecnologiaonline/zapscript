@@ -847,6 +847,23 @@ model Campanha {
   audienceCount      Int               @default(0)
   sentCount          Int               @default(0) // contador incremental — único escritor é o worker (evita drift)
   processedCount     Int               @default(0) // sent+failed+optout — evita um COUNT(*) a cada contato pra saber se a campanha terminou
+  // ── Sequência/drip (§15.2): um "passo" é uma Campanha inteira, ligada ao pai.
+  // Reaproveita 100% do disparo/scheduler existentes — nenhuma lógica nova de
+  // envio, só criação + auto-agendamento das filhas quando o pai inicia.
+  sequenceParentId  String?
+  sequenceIndex     Int? // 1, 2, 3... (o próprio pai é o "passo 0", implícito)
+  sequenceDelayDays Int? // dias após o startedAt do pai em que este passo agenda
+  sequenceParent    Campanha?         @relation("CampanhaSequence", fields: [sequenceParentId], references: [id], onDelete: Cascade)
+  sequenceSteps     Campanha[]        @relation("CampanhaSequence")
+  // ── A/B test (§15.3): variante B do mesmo conteúdo — só reporta métricas por
+  // variante, sem promoção automática de vencedor. Variante A é o conteúdo
+  // "normal" (templateName/messageBody) já existente.
+  abTestEnabled              Boolean  @default(false)
+  variantBTemplateName       String?
+  variantBTemplateLanguage   String?
+  variantBTemplateComponents Json?
+  variantBTemplateVarCount   Int?
+  variantBMessageBody        String?
   scheduledAt        DateTime?
   startedAt          DateTime?
   completedAt        DateTime?
@@ -861,6 +878,7 @@ model Campanha {
   @@index([userId])
   @@index([whatsappNumberId])
   @@index([status])
+  @@index([sequenceParentId])
 }
 
 model CampanhaContato {
@@ -871,6 +889,7 @@ model CampanhaContato {
   variables    Json? // valores das variáveis do template para este contato ({{1}}, {{2}}, ...)
   status       String    @default("pending") // pending|sent|delivered|read|failed|optout
   assignedNumberId String? // qual número (primário ou do pool) vai enviar este contato — setado no /start
+  variant      String? // 'A' | 'B' — setado na criação quando Campanha.abTestEnabled; null no caso comum
   wamid        String? // message id da Meta — correlaciona com o status recebido no webhook
   errorMessage String?
   sentAt       DateTime?

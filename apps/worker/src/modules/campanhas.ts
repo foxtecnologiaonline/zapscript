@@ -67,6 +67,10 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
     ? await prisma.whatsappNumber.findUnique({ where: { id: contato.assignedNumberId } })
     : campanha.whatsappNumber;
 
+  // A/B test (§15.3): variante B usa o conteúdo variantB* da campanha; variante
+  // A (ou contato sem variant, campanha sem A/B) usa o conteúdo normal.
+  const isVariantB = campanha.abTestEnabled && contato.variant === 'B';
+
   let messageId: string | null;
   if (campanha.channel === 'evolution') {
     if (!numero || numero.status !== 'connected' || !numero.zapiInstanceId) {
@@ -74,7 +78,8 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
       await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: false });
       return { skipped: true, reason: 'número desconectado' };
     }
-    const texto = renderEvolutionMessage(campanha.messageBody || '', contato);
+    const body  = (isVariantB ? campanha.variantBMessageBody : campanha.messageBody) || '';
+    const texto = renderEvolutionMessage(body, contato);
     const res = await sendMessageViaEvolution(numero.zapiInstanceId, contato.phone, texto);
     messageId = res.id;
   } else {
@@ -84,14 +89,16 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
       return { skipped: true, reason: 'número desconectado' };
     }
     const token = decryptStr(numero.metaAccessTokenEnc);
-    const staticComponents = (campanha.templateComponents as Array<Record<string, any>> | null) || [];
+    const templateName     = (isVariantB ? campanha.variantBTemplateName : campanha.templateName)!;
+    const templateLanguage = (isVariantB ? campanha.variantBTemplateLanguage : campanha.templateLanguage)!;
+    const staticComponents = ((isVariantB ? campanha.variantBTemplateComponents : campanha.templateComponents) as Array<Record<string, any>> | null) || [];
     const bodyVars = (contato.variables as string[] | null) || [];
     const components = bodyVars.length
       ? [...staticComponents, { type: 'body', parameters: bodyVars.map((v) => ({ type: 'text', text: String(v) })) }]
       : staticComponents;
     messageId = await sendTemplateMessage(
       token, numero.metaPhoneNumberId, contato.phone,
-      campanha.templateName!, campanha.templateLanguage, components,
+      templateName, templateLanguage, components,
     );
   }
 
