@@ -75,14 +75,13 @@ jest.mock('../lib/campanha-credit', () => {
   const actual = jest.requireActual('../lib/campanha-credit');
   return {
     InsufficientCampanhaBalanceError: actual.InsufficientCampanhaBalanceError,
-    getOrCreateCampanhaBalance: jest.fn(async () => ({ availableMessages: 100, plan: null, renewalDate: null })),
+    getOrCreateCampanhaBalance: jest.fn(async () => ({ availableMessages: 100, freeMessages: 30, plan: null, renewalDate: null })),
     debitCampanhaMessages:      jest.fn(async () => ({ balanceAfter: 98 })),
   };
 });
 jest.mock('../routes/billing', () => ({
-  CAMPANHA_MSG_PACKAGES: [{ id: 'pkg_camp_1k', messages: 1000, priceBrl: 200, label: '1.000 mensagens', desc: 'Pré-Pago 1' }],
-  CAMPANHA_MONTHLY_MESSAGES: 2000,
-  CAMPANHA_MONTHLY_PRICE_BRL: 299,
+  CAMPANHA_MSG_PACKAGES: [{ id: 'pkg_camp_1k', messages: 1000, priceBrl: 200, label: '1.000 mensagens', desc: 'Pré-Pago 1', validityDays: 90 }],
+  CAMPANHA_MONTHLY_PRICE_BRL: 699,
   buyCampanhaMessagesViaPix:      jest.fn(async () => ({ ok: true, data: { paymentId: 'pay_1', copyPaste: '00020126pix', qrCodeUrl: 'data:image/png;base64,QVBQ' } })),
   subscribeCampanhaMonthlyViaPix: jest.fn(async () => ({ ok: true, data: { paymentId: 'pay_2', copyPaste: '00020126pixsub' } })),
   subscribeCorePlanViaPix:        jest.fn(async () => ({ ok: true, data: { paymentId: 'pay_3', copyPaste: '00020126pixplano', planName: 'profissional' } })),
@@ -110,7 +109,7 @@ describe('campanhas-chat-commands', () => {
     campanhaSeq = 1;
     jest.clearAllMocks();
     (getUserModules as jest.Mock).mockResolvedValue(['campanhas']);
-    (getOrCreateCampanhaBalance as jest.Mock).mockResolvedValue({ availableMessages: 100, plan: null, renewalDate: null });
+    (getOrCreateCampanhaBalance as jest.Mock).mockResolvedValue({ availableMessages: 100, freeMessages: 30, plan: null, renewalDate: null });
   });
 
   it('isCampanhaChatCommand reconhece só o prefixo "campanha"', () => {
@@ -179,7 +178,7 @@ describe('campanhas-chat-commands', () => {
   });
 
   it('saldo insuficiente na confirmação oferece compra e não dispara', async () => {
-    (getOrCreateCampanhaBalance as jest.Mock).mockResolvedValue({ availableMessages: 1, plan: null, renewalDate: null });
+    (getOrCreateCampanhaBalance as jest.Mock).mockResolvedValue({ availableMessages: 1, freeMessages: 1, plan: null, renewalDate: null });
     await handleCampanhaChatCommand(ctx('campanha nova'));
     await handleCampanhaChatReply(ctx('promo'));
 

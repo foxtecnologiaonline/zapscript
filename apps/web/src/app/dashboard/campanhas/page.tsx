@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import ConnectionCard, { MetaConnection } from './_components/ConnectionCard';
+import BalanceCard from './_components/BalanceCard';
 
 interface CampanhaListItem {
   id: string;
@@ -97,6 +98,8 @@ export default function CampanhasListPage() {
             {error}
           </div>
         )}
+
+        <BalanceCard />
 
         <div className="mb-6">
           <ConnectionCard onReady={setMeta} />

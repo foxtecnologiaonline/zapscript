@@ -78,6 +78,82 @@ function escHtml(s: string | null | undefined): string {
 }
 
 /**
+ * Débito do saldo de mensagens de Campanhas (30 grátis/mês + pré-pago com
+ * validade + Mensal Ilimitado) — duplicada de propósito de
+ * apps/api/src/lib/campanha-credit.ts (api e worker não compartilham código
+ * neste monorepo, ver §11.11 da arquitetura). Usada só aqui, pro disparo
+ * automático de campanhas agendadas não furar a cobrança que POST /:id/start
+ * (api) já aplica pro disparo manual — ver CAMPANHAS_ARQUITETURA.md §17.
+ * Retorna `true` se debitou (ou é ilimitado), `false` se não há saldo.
+ */
+const CAMPANHA_FREE_MESSAGES_PER_MONTH = 30;
+function nextFreeReset(from: Date): Date {
+  return new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
+}
+async function debitCampanhaMessagesOrFail(userId: string, count: number, campanhaId: string): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    let balance = await tx.campanhaBalance.upsert({ where: { userId }, update: {}, create: { userId } });
+    const now = new Date();
+
+    // Mensal Ilimitado: sai antes de mexer na cota grátis — assinante nem precisa dela.
+    if (balance.plan === 'monthly') {
+      await tx.campanhaBalanceTransaction.create({
+        data: { balanceId: balance.id, type: 'debit_unlimited', amount: 0, balanceAfter: balance.availableMessages, referenceType: 'campanha', referenceId: campanhaId },
+      });
+      return true;
+    }
+
+    if (!balance.freeResetAt || balance.freeResetAt <= now) {
+      const delta = CAMPANHA_FREE_MESSAGES_PER_MONTH - balance.freeMessages;
+      balance = await tx.campanhaBalance.update({
+        where: { id: balance.id },
+        data: { freeMessages: CAMPANHA_FREE_MESSAGES_PER_MONTH, freeResetAt: nextFreeReset(now), availableMessages: { increment: delta } },
+      });
+      if (delta !== 0) {
+        await tx.campanhaBalanceTransaction.create({
+          data: { balanceId: balance.id, type: 'monthly_reset', amount: delta, balanceAfter: balance.availableMessages, referenceType: 'free_tier' },
+        });
+      }
+    }
+
+    const paidUsable = balance.paidExpiresAt && balance.paidExpiresAt > now ? balance.paidMessages : 0;
+    if (balance.freeMessages + paidUsable < count) return false;
+
+    const fromFree = Math.min(balance.freeMessages, count);
+    const fromPaid = count - fromFree;
+    const updated = await tx.campanhaBalance.update({
+      where: { id: balance.id },
+      data: { freeMessages: { decrement: fromFree }, paidMessages: { decrement: fromPaid }, availableMessages: { decrement: count } },
+    });
+    await tx.campanhaBalanceTransaction.create({
+      data: { balanceId: balance.id, type: 'debit', amount: -count, balanceAfter: updated.availableMessages, referenceType: 'campanha', referenceId: campanhaId },
+    });
+    return true;
+  });
+}
+
+async function notifyCampanhaInsufficientBalance(campanhaId: string): Promise<void> {
+  const campanha = await prisma.campanha.findUnique({ where: { id: campanhaId }, include: { user: { select: { email: true, name: true } } } });
+  if (!campanha?.user?.email) return;
+  const APP_URL   = process.env.APP_URL || 'https://zapscript.me';
+  const firstName = escHtml(campanha.user.name?.split(' ')[0] || 'tudo bem');
+  const html = `<div style="font-family:sans-serif;max-width:540px;margin:0 auto;background:#050a07;color:#d1fae5;padding:32px;border-radius:12px">
+    <div style="font-size:22px;font-weight:bold;margin-bottom:16px">💬 Saldo de mensagens insuficiente</div>
+    <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
+      Olá, ${firstName}!<br><br>
+      Sua campanha agendada <strong>"${escHtml(campanha.name)}"</strong> chegou no horário de disparo, mas
+      você não tem saldo de mensagens suficiente pra ela agora. Ficou pausada — compre mais mensagens ou
+      assine o Mensal Ilimitado e retome pelo painel.
+    </div>
+    <div style="margin:24px 0;text-align:center">
+      <a href="${APP_URL}/dashboard/campanhas/${campanhaId}" style="background:#f59e0b;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Ver campanha →</a>
+    </div>
+    <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
+  </div>`;
+  await sendEmail(campanha.user.email, `💬 Campanha "${campanha.name}" pausada — saldo insuficiente`, html);
+}
+
+/**
  * Aviso por e-mail quando o disparo automático (agendado) começa acima do teto de
  * tier conhecido (§11.13, gap do §9.3): diferente de /:id/start e /:id/schedule
  * (que bloqueiam e pedem confirmExceedsTier), aqui não há usuário interativo às
@@ -161,6 +237,21 @@ async function fireCampanha(campanhaId: string): Promise<void> {
     data: { status: 'running', startedAt },
   });
   if (claimed.count === 0) return; // outra réplica já iniciou
+
+  // Cobra ANTES de enfileirar (mesmo princípio de POST /:id/start, api) —
+  // sem saldo, volta pra pausado (intervenção manual do usuário) em vez de
+  // travar a campanha em 'running' sem nunca disparar nada.
+  const debited = await debitCampanhaMessagesOrFail(campanha.userId, pendentes.length, campanhaId);
+  if (!debited) {
+    await prisma.campanha.updateMany({
+      where: { id: campanhaId, status: 'running' },
+      data: { status: 'paused', pausedReason: 'Saldo de mensagens insuficiente.' },
+    });
+    logger.warn(`[Campanhas][Scheduler] Campanha ${campanhaId} → pausada: saldo de mensagens insuficiente no horário agendado.`);
+    notifyCampanhaInsufficientBalance(campanhaId).catch((e: any) =>
+      logger.warn(`[Campanhas][Scheduler] Falha ao notificar saldo insuficiente da campanha ${campanhaId}: ${e.message}`));
+    return;
+  }
 
   // Sequência/drip (§15.2) — espelha o mesmo hook de POST /:id/start (api):
   // uma campanha agendada (em vez de iniciada manualmente) também pode ser mãe

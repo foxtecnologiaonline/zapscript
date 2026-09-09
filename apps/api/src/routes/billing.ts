@@ -15,7 +15,7 @@ import { invalidatePlanCache } from '../lib/planGate';
 import { attributeAffiliateCommission, clawbackAffiliateCommissionOnCancel } from '../lib/affiliate';
 import { recordReferralCredit, clawbackPendingCreditsOnCancel } from '../lib/credit';
 import { invalidateModuleCache } from '../lib/moduleGate';
-import { creditCampanhaMessages } from '../lib/campanha-credit';
+import { creditCampanhaMessages, getOrCreateCampanhaBalance, CAMPANHA_FREE_MESSAGES_PER_MONTH } from '../lib/campanha-credit';
 
 /* ─────────────────────────────────────────────────────────
    ASAAS v3 — Billing Routes (Checkout Transparente)
@@ -88,17 +88,21 @@ export const MINUTE_PACKAGES = [
   { id: 'pkg_100', minutes: 100, priceBrl: 19, label: '100 minutos', desc: 'Melhor valor' },
 ] as const;
 
-/* ── Chatbot Campanhas: pacotes avulsos de mensagens (não expiram) + assinatura
-   mensal — vendidos via chat (Pix apenas, ver POST /buy-campanha-messages e
-   /campanha-subscribe) ou pelo painel. Créditos vão para CampanhaBalance
-   (lib/campanha-credit.ts), saldo independente do plano/módulo do usuário. ── */
+/* ── Módulo Campanhas: 30 mensagens grátis por mês pra todo usuário (não
+   cumulativas — ver CAMPANHA_FREE_MESSAGES_PER_MONTH em lib/campanha-credit.ts),
+   pacotes pré-pagos avulsos com validade, e assinatura Mensal Ilimitado —
+   vendidos via chat (Pix apenas, ver POST /buy-campanha-messages e
+   /campanha-subscribe) ou pelo painel (POST /:id/start em
+   routes/modules/campanhas.ts também debita daqui, decisão de produto,
+   2026-09-09 — ver CAMPANHAS_ARQUITETURA.md §17). Créditos vão para
+   CampanhaBalance (lib/campanha-credit.ts), saldo independente do
+   plano/módulo do usuário. ── */
 export const CAMPANHA_MSG_PACKAGES = [
-  { id: 'pkg_camp_1k',  messages: 1_000,  priceBrl: 200,   label: '1.000 mensagens',  desc: 'Pré-Pago 1' },
-  { id: 'pkg_camp_10k', messages: 10_000, priceBrl: 1_500, label: '10.000 mensagens', desc: 'Pré-Pago 10 — melhor valor' },
+  { id: 'pkg_camp_1k',  messages: 1_000,  priceBrl: 200,   label: '1.000 mensagens',  desc: 'Pré-Pago 1',                 validityDays: 90 },
+  { id: 'pkg_camp_10k', messages: 10_000, priceBrl: 1_500, label: '10.000 mensagens', desc: 'Pré-Pago 10 — melhor valor', validityDays: 120 },
 ] as const;
 
-export const CAMPANHA_MONTHLY_MESSAGES  = 2_000;
-export const CAMPANHA_MONTHLY_PRICE_BRL = 299;
+export const CAMPANHA_MONTHLY_PRICE_BRL = 699; // Mensal Ilimitado — mensagens sem limite enquanto a assinatura estiver ativa
 
 /* ── Validade do saldo extra (minutos avulsos / indicação) ── */
 const EXTRA_MINUTES_VALIDITY_DAYS = 60;
@@ -538,7 +542,7 @@ export async function subscribeCampanhaMonthlyViaPix(userId: string): Promise<Ca
     body: JSON.stringify({
       customer: asaasCustomerId, billingType: 'PIX',
       value: CAMPANHA_MONTHLY_PRICE_BRL, nextDueDate: todayStr(), cycle: 'MONTHLY',
-      description: `ZapScript Campanhas — Plano Mensal (${CAMPANHA_MONTHLY_MESSAGES} msgs/mês)`,
+      description: `ZapScript Campanhas — Plano Mensal Ilimitado`,
       externalReference: encodeCampanhaMonthlyRef(userId),
     }),
   }).then(r => r.json()) as any;
@@ -1826,31 +1830,30 @@ export default async function billingRoutes(app: FastifyInstance) {
         return reply.send({ received: true });
       }
 
-      // ── Chatbot Campanhas: pacote avulso de mensagens ─────────────────────
+      // ── Módulo Campanhas: pacote avulso de mensagens ──────────────────────
       if (planName === 'pkg_campanha_msgs') {
         const messages = parseInt(type || '0', 10);
         if (!messages || isNaN(messages)) {
           app.log.error({ ref: payment.externalReference }, 'pkg_campanha_msgs: quantidade inválida');
           return reply.send({ received: true });
         }
-        await creditCampanhaMessages(userId, messages, { referenceType: 'asaas_payment', referenceId: payment.id });
+        const validityDays = CAMPANHA_MSG_PACKAGES.find(p => p.messages === messages)?.validityDays;
+        await creditCampanhaMessages(userId, messages, { referenceType: 'asaas_payment', referenceId: payment.id, validityDays });
         await markProcessed(payment.id);
-        app.log.info(`Pacote de mensagens de campanha creditado: userId=${userId} +${messages}msgs`);
+        app.log.info(`Pacote de mensagens de campanha creditado: userId=${userId} +${messages}msgs (validade ${validityDays ?? '?'}d)`);
         return reply.send({ received: true });
       }
 
-      // ── Chatbot Campanhas: renovação da assinatura mensal de mensagens ────
+      // ── Módulo Campanhas: renovação da assinatura Mensal Ilimitado ────────
       if (planName === 'campanha_monthly') {
         const nextRenewal = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-        await creditCampanhaMessages(userId, CAMPANHA_MONTHLY_MESSAGES, {
-          type: 'monthly_reset', referenceType: 'asaas_payment', referenceId: payment.id,
-        });
-        await prisma.campanhaBalance.update({
-          where: { userId },
-          data:  { plan: 'monthly', asaasCustomerId: payment.customer, renewalDate: nextRenewal },
+        await prisma.campanhaBalance.upsert({
+          where:  { userId },
+          create: { userId, plan: 'monthly', asaasCustomerId: payment.customer, renewalDate: nextRenewal },
+          update: { plan: 'monthly', asaasCustomerId: payment.customer, renewalDate: nextRenewal },
         }).catch(() => null);
         await markProcessed(payment.id);
-        app.log.info(`Assinatura de mensagens de campanha renovada: userId=${userId} +${CAMPANHA_MONTHLY_MESSAGES}msgs`);
+        app.log.info(`Assinatura Mensal Ilimitado de campanhas renovada/ativada: userId=${userId}`);
         return reply.send({ received: true });
       }
 
@@ -2087,11 +2090,29 @@ export default async function billingRoutes(app: FastifyInstance) {
      pelo bot (services/campanhas-chat-commands.ts), ver funções exportadas
      logo acima de billingRoutes(). ── */
 
-  // ── GET /billing/campanha-packages — lista pacotes + assinatura mensal ──
+  // ── GET /billing/campanha-packages — lista cota grátis, pacotes e assinatura mensal ──
   app.get('/campanha-packages', async (_req, reply) => {
     return reply.send({
+      freeMessagesPerMonth: CAMPANHA_FREE_MESSAGES_PER_MONTH,
       packages: CAMPANHA_MSG_PACKAGES,
-      monthly:  { messages: CAMPANHA_MONTHLY_MESSAGES, priceBrl: CAMPANHA_MONTHLY_PRICE_BRL },
+      monthly:  { unlimited: true, priceBrl: CAMPANHA_MONTHLY_PRICE_BRL },
+    });
+  });
+
+  // ── GET /billing/campanha-balance — saldo efetivo do usuário logado ─────
+  app.get('/campanha-balance', { ...auth }, async (req: any, reply) => {
+    const balance = await getOrCreateCampanhaBalance(req.user.sub);
+    const unlimited = balance.plan === 'monthly';
+    const now = new Date();
+    const paidUsable = balance.paidExpiresAt && balance.paidExpiresAt > now ? balance.paidMessages : 0;
+    return reply.send({
+      unlimited,
+      renewalDate:  unlimited ? balance.renewalDate : null,
+      freeMessages: balance.freeMessages,
+      freeResetAt:  balance.freeResetAt,
+      paidMessages: paidUsable,
+      paidExpiresAt: paidUsable > 0 ? balance.paidExpiresAt : null,
+      totalAvailable: unlimited ? null : balance.freeMessages + paidUsable,
     });
   });
 

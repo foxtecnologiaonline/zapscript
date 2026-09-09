@@ -7,6 +7,7 @@ import { sendText } from '../../services/evolution';
 import { campanhasQueue } from '../../services/queue';
 import { sendEmail } from '../../lib/mailer';
 import { logger } from '../../lib/logger';
+import { debitCampanhaMessages, InsufficientCampanhaBalanceError } from '../../lib/campanha-credit';
 
 /**
  * ZapScript Campanhas — disparo em massa via WhatsApp API oficial (Meta Cloud API).
@@ -14,6 +15,14 @@ import { logger } from '../../lib/logger';
  * login (authenticate), sem gate de módulo/Entitlement. Ver CAMPANHAS_ARQUITETURA.md §16.
  * Credenciais Meta vêm do WhatsappNumber do próprio usuário (provider='meta'),
  * nunca de env global — ver services/whatsapp-campaigns.ts.
+ *
+ * O ENVIO em si (mensagens de verdade, não o acesso à tela) consome o mesmo
+ * saldo do módulo Campanhas (30 grátis/mês + pré-pago + Mensal Ilimitado —
+ * lib/campanha-credit.ts) que antes só o Chatbot debitava — decisão de
+ * produto, 2026-09-09, ver CAMPANHAS_ARQUITETURA.md §17. Debitado em
+ * POST /:id/start, pelo tamanho do lote que vai pra fila AGORA
+ * (pendentes.length, não audienceCount) — uma campanha pausada/retomada só
+ * cobra de novo pelos contatos que ainda não saíram.
  */
 
 const PHONE_LIKE = /^\+?\d[\d\s()-]{7,}$/;
@@ -1252,6 +1261,22 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       if (combinedCap !== null && Number.isFinite(combinedCap) && pendentes.length > combinedCap && req.body?.confirmExceedsTier !== true) {
         return reply.code(400).send(tierExceededResponse(combinedCap, tierDetails, pendentes.length, sendNumbers.length > 1));
       }
+    }
+
+    // Cobra ANTES de iniciar o disparo (nunca depois) — mesmo princípio do
+    // Chatbot Campanhas (services/campanhas-chat-commands.ts). Sem saldo,
+    // 402 com o que falta em vez de travar o disparo pela metade.
+    try {
+      await debitCampanhaMessages(userId, pendentes.length, { referenceType: 'campanha', referenceId: id });
+    } catch (err) {
+      if (err instanceof InsufficientCampanhaBalanceError) {
+        return reply.code(402).send({
+          error:   'Saldo de mensagens insuficiente.',
+          message: `Essa campanha precisa de ${pendentes.length} mensagens. Compre mais em /dashboard/campanhas ou assine o Mensal Ilimitado.`,
+          upsellUrl: '/dashboard/campanhas?upsell=saldo',
+        });
+      }
+      throw err;
     }
 
     const startedCampanha = await prisma.campanha.update({

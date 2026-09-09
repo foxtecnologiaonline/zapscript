@@ -926,11 +926,15 @@ model CampanhaOptOut {
 model CampanhaBalance {
   id                  String                        @id @default(cuid())
   userId              String                        @unique
-  availableMessages   Int                            @default(0)
-  plan                String? // 'monthly' quando há assinatura ativa; null = só pré-pago
+  availableMessages   Int                            @default(0) // = freeMessages + paidMessages, denormalizado só pra leitura rápida (saldo total exibido)
+  freeMessages        Int                            @default(0) // cota grátis do mês corrente (30/mês, não cumulativa — resetada, não incrementada)
+  freeResetAt         DateTime? // próximo reset da cota grátis (1º dia do mês seguinte ao último reset)
+  paidMessages        Int                            @default(0) // saldo pago (pacotes pré-pagos avulsos)
+  paidExpiresAt       DateTime? // validade do saldo pago — estendida pra frente (nunca encolhe) a cada compra
+  plan                String? // 'monthly' quando há assinatura Mensal Ilimitado ativa; null = só pré-pago/grátis
   asaasSubscriptionId String? // assinatura mensal de mensagens — separada da Subscription core (1 usuário só tem 1 Subscription)
   asaasCustomerId     String?
-  renewalDate         DateTime? // próxima renovação/reset (assinatura mensal)
+  renewalDate         DateTime? // próxima renovação (assinatura mensal ilimitada)
   createdAt           DateTime                       @default(now())
   updatedAt           DateTime                       @updatedAt
   user                User                           @relation(fields: [userId], references: [id], onDelete: Cascade)

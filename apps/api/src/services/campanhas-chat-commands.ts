@@ -28,7 +28,7 @@ import { getUserModules } from '../lib/moduleGate';
 import { warmContactsForNumber, enqueueCampanhaSend, resolveSendNumbers } from '../routes/modules/campanhas';
 import { getOrCreateCampanhaBalance, debitCampanhaMessages, InsufficientCampanhaBalanceError } from '../lib/campanha-credit';
 import {
-  CAMPANHA_MSG_PACKAGES, CAMPANHA_MONTHLY_MESSAGES, CAMPANHA_MONTHLY_PRICE_BRL,
+  CAMPANHA_MSG_PACKAGES, CAMPANHA_MONTHLY_PRICE_BRL,
   buyCampanhaMessagesViaPix, subscribeCampanhaMonthlyViaPix, subscribeCorePlanViaPix,
 } from '../routes/billing';
 
@@ -86,16 +86,16 @@ async function replyPixQr(instanceName: string, phone: string, qrCodeUrl: string
 
 async function balanceText(userId: string): Promise<string> {
   const balance = await getOrCreateCampanhaBalance(userId);
-  const planLine = balance.plan === 'monthly'
-    ? `\nAssinatura mensal ativa (renova ${balance.renewalDate?.toLocaleDateString('pt-BR') ?? '—'}).`
-    : '';
-  return `💬 Saldo: *${balance.availableMessages}* mensagens.${planLine}`;
+  if (balance.plan === 'monthly') {
+    return `💬 Plano Mensal Ilimitado ativo (renova ${balance.renewalDate?.toLocaleDateString('pt-BR') ?? '—'}) — mensagens sem limite.`;
+  }
+  return `💬 Saldo: *${balance.availableMessages}* mensagens (${balance.freeMessages} grátis do mês + ${balance.availableMessages - balance.freeMessages} pagas).`;
 }
 
 function packagesText(): string {
   const lines = CAMPANHA_MSG_PACKAGES.map((p, i) =>
-    `${i + 1}️⃣ ${p.label} — R$${p.priceBrl} (${p.desc})`);
-  lines.push(`💳 mensal — Plano Mensal, ${CAMPANHA_MONTHLY_MESSAGES} msgs/mês por R$${CAMPANHA_MONTHLY_PRICE_BRL}`);
+    `${i + 1}️⃣ ${p.label} — R$${p.priceBrl} (${p.desc}, válido por ${p.validityDays} dias)`);
+  lines.push(`💳 mensal — Plano Mensal Ilimitado, mensagens sem limite por R$${CAMPANHA_MONTHLY_PRICE_BRL}/mês`);
   return ['Como você quer comprar?', ...lines, '', 'Responda com o número do pacote ou "mensal".'].join('\n');
 }
 
@@ -364,7 +364,7 @@ async function startCampanha(ctx: Ctx, campanha: { id: string; userId: string; a
   const { instanceName, selfPhone } = ctx;
   const balance = await getOrCreateCampanhaBalance(campanha.userId);
 
-  if (balance.availableMessages < campanha.audienceCount) {
+  if (balance.plan !== 'monthly' && balance.availableMessages < campanha.audienceCount) {
     const faltam = campanha.audienceCount - balance.availableMessages;
     await prisma.campanhaChatSession.update({ where: { phone: selfPhone }, data: { stage: 'awaiting_purchase' } });
     await reply(instanceName, selfPhone, [
@@ -409,7 +409,7 @@ async function handleAwaitingPurchase(ctx: Ctx): Promise<void> {
     if (!result.ok) { await reply(instanceName, selfPhone, `Não deu para criar a assinatura: ${result.error}`); return; }
     await prisma.campanhaChatSession.update({ where: { phone: selfPhone }, data: { pendingChargeId: result.data.paymentId ?? undefined } });
     await reply(instanceName, selfPhone, [
-      `💳 Plano Mensal — R$${CAMPANHA_MONTHLY_PRICE_BRL}/mês (${CAMPANHA_MONTHLY_MESSAGES} msgs).`,
+      `💳 Plano Mensal Ilimitado — R$${CAMPANHA_MONTHLY_PRICE_BRL}/mês (mensagens sem limite).`,
       'Pix copia e cola:', result.data.copyPaste || '(erro ao gerar o código — tente de novo)',
       '', 'Assim que cair, eu credito automaticamente. Se tinha uma campanha esperando, mande "campanha continuar".',
     ].join('\n'));

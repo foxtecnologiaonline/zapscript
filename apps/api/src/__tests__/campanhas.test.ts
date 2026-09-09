@@ -52,7 +52,21 @@ jest.mock('../services/evolution', () => ({
   sendText: jest.fn().mockResolvedValue({ id: 'evo-test-msg' }),
 }));
 
+// Saldo de mensagens (lib/campanha-credit.ts) — por padrão sempre tem saldo,
+// pra não exigir setup de CampanhaBalance em todo teste de /:id/start que já
+// existia antes da cobrança entrar no fluxo web (decisão de produto,
+// 2026-09-09, ver CAMPANHAS_ARQUITETURA.md §17). Os testes específicos de
+// saldo insuficiente sobrescrevem com mockRejectedValueOnce.
+jest.mock('../lib/campanha-credit', () => {
+  const actual = jest.requireActual('../lib/campanha-credit');
+  return {
+    InsufficientCampanhaBalanceError: actual.InsufficientCampanhaBalanceError,
+    debitCampanhaMessages: jest.fn().mockResolvedValue({ balanceAfter: 999999 }),
+  };
+});
+
 import { prisma } from '../lib/prisma';
+import { debitCampanhaMessages, InsufficientCampanhaBalanceError } from '../lib/campanha-credit';
 import { redis, campanhasQueue } from '../services/queue';
 import { sendEmail } from '../lib/mailer';
 import { listTemplates, getPhoneNumberLimits, tierToNumericCap } from '../services/whatsapp-campaigns';
@@ -554,6 +568,39 @@ describe('Ciclo start/pause/cancel', () => {
         where: { id: 'c1' },
         data: { status: 'running', startedAt: expect.any(Date), pausedReason: null, consecutiveFailures: 0 },
       });
+    });
+
+    it('debita o saldo de mensagens pelos contatos pendentes antes de iniciar', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 2, whatsappNumberId: NUM_ID, startedAt: null, consentConfirmedAt: new Date(), poolNumberIds: [] });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
+      (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }, { id: 'ct2' }]);
+      (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/start',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(debitCampanhaMessages).toHaveBeenCalledWith('u1', 2, expect.objectContaining({ referenceType: 'campanha', referenceId: 'c1' }));
+    });
+
+    it('retorna 402 e não inicia quando o saldo de mensagens é insuficiente', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 2, whatsappNumberId: NUM_ID, startedAt: null, consentConfirmedAt: new Date(), poolNumberIds: [] });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
+      (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }, { id: 'ct2' }]);
+      (debitCampanhaMessages as jest.Mock).mockRejectedValueOnce(new InsufficientCampanhaBalanceError());
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/start',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(402);
+      expect(prisma.campanha.update).not.toHaveBeenCalled();
+      expect(campanhasQueue.addBulk).not.toHaveBeenCalled();
     });
   });
 

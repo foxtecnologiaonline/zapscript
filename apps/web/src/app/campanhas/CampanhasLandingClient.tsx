@@ -79,7 +79,7 @@ const FAQS = [
   },
   {
     q: 'Quanto custa?',
-    a: 'Nada — o ZapScript Campanhas é gratuito para todos os usuários da plataforma, em qualquer plano. Só as tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) ficam de fora, e são pagas direto pra Meta, não pra gente.',
+    a: 'A ferramenta é gratuita pra todos os usuários da plataforma, em qualquer plano — e todo mundo tem 30 mensagens grátis por mês. Acima disso: Pré-Pago 1 (1.000 msgs por R$200, 90 dias), Pré-Pago 10 (10.000 msgs por R$1.500, 120 dias) ou Mensal Ilimitado (R$699/mês, sem limite). Tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) ficam de fora, e são pagas direto pra Meta, não pra gente.',
   },
 ];
 
@@ -303,14 +303,20 @@ export default function CampanhasLandingClient() {
         <section id="preco" className="px-5 pb-10">
           <div className="mb-6">
             <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>Investimento</span>
-            <h2 className="font-display text-2xl font-bold mt-2 leading-tight tracking-tight">Grátis, sem pegadinha</h2>
-          </div>
-          <div className="rounded-3xl p-6 text-center"
-            style={{ background: 'rgb(var(--color-surface))', border: '2px solid rgb(var(--color-primary))', boxShadow: 'var(--shadow-glow)' }}>
-            <p className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>ZapScript Campanhas</p>
-            <p className="font-display font-bold mt-2" style={{ fontSize: 'clamp(32px, 9vw, 44px)' }}>
-              Grátis
+            <h2 className="font-display text-2xl font-bold mt-2 leading-tight tracking-tight">A ferramenta é grátis. As mensagens têm 30 de cortesia por mês.</h2>
+            <p className="text-sm mt-2" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Acesso ao painel, templates, CSV e acompanhamento: incluso pra todo usuário do ZapScript, sem custo. Acima
+              das 30 mensagens grátis do mês, escolha um dos planos abaixo.
             </p>
+          </div>
+
+          <div className="rounded-3xl p-6 text-center mb-4"
+            style={{ background: 'rgb(var(--color-surface))', border: '2px solid rgb(var(--color-primary))', boxShadow: 'var(--shadow-glow)' }}>
+            <p className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>Cortesia mensal</p>
+            <p className="font-display font-bold mt-2" style={{ fontSize: 'clamp(32px, 9vw, 44px)' }}>
+              30 mensagens/mês
+            </p>
+            <p className="text-sm mt-1" style={{ color: 'rgb(var(--color-text-secondary))' }}>Grátis, todo mês, pra todo mundo</p>
             <ul className="text-sm text-left mt-5 space-y-2.5">
               {[
                 'Envio pela API oficial da Meta (WhatsApp Business Platform)',
@@ -327,15 +333,34 @@ export default function CampanhasLandingClient() {
                 </li>
               ))}
             </ul>
-            <p className="text-[11px] mt-5 leading-relaxed" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              Sem custo pela plataforma ZapScript, incluso pra todos os usuários. Tarifas de mensagem cobradas
-              diretamente pela Meta (conforme categoria do template e política vigente) não estão incluídas.
-            </p>
-            <Link href="/cadastro?utm_source=lp&utm_campaign=campanhas_preco" data-cta="campanhas_preco_cta"
-              className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2 mt-6">
-              Quero começar
-            </Link>
           </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[
+              { name: 'Pré-Pago 1', price: 'R$200', detail: '1.000 mensagens', validity: 'válido por 90 dias' },
+              { name: 'Pré-Pago 10', price: 'R$1.500', detail: '10.000 mensagens', validity: 'válido por 120 dias', highlight: 'melhor valor' },
+              { name: 'Mensal Ilimitado', price: 'R$699/mês', detail: 'mensagens sem limite', validity: 'renova todo mês' },
+            ].map((plan) => (
+              <div key={plan.name} className="rounded-2xl p-5 text-center" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border-light))' }}>
+                {plan.highlight && (
+                  <span className="text-[10px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ background: 'rgb(var(--color-primary) / .12)', color: 'rgb(var(--color-primary))' }}>{plan.highlight}</span>
+                )}
+                <p className="text-sm font-semibold mt-2" style={{ color: 'rgb(var(--color-primary))' }}>{plan.name}</p>
+                <p className="font-display font-bold mt-1 text-2xl">{plan.price}</p>
+                <p className="text-sm mt-1" style={{ color: 'rgb(var(--color-text-secondary))' }}>{plan.detail}</p>
+                <p className="text-xs mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.validity}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-[11px] mt-5 leading-relaxed text-center" style={{ color: 'rgb(var(--color-text-muted))' }}>
+            Tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) não
+            estão incluídas. Pacotes pré-pagos e assinatura são pagos via Pix.
+          </p>
+          <Link href="/cadastro?utm_source=lp&utm_campaign=campanhas_preco" data-cta="campanhas_preco_cta"
+            className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2 mt-6">
+            Quero começar
+          </Link>
         </section>
 
         {/* ══ FAQ ══ */}

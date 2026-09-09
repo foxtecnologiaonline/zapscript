@@ -10,16 +10,36 @@ process.env.ASAAS_API_KEY  = 'test-key';
 import Fastify from 'fastify';
 import jwt from '@fastify/jwt';
 
-const balances = new Map<string, { id: string; userId: string; availableMessages: number; plan: string | null; asaasSubscriptionId: string | null; asaasCustomerId: string | null; renewalDate: Date | null }>();
+type Balance = {
+  id: string; userId: string; availableMessages: number;
+  freeMessages: number; freeResetAt: Date | null;
+  paidMessages: number; paidExpiresAt: Date | null;
+  plan: string | null; asaasSubscriptionId: string | null; asaasCustomerId: string | null; renewalDate: Date | null;
+};
+const balances = new Map<string, Balance>();
 let nextId = 1;
 
-function balanceFor(userId: string) {
+function balanceFor(userId: string): Balance {
   let b = balances.get(userId);
   if (!b) {
-    b = { id: `bal_${nextId++}`, userId, availableMessages: 0, plan: null, asaasSubscriptionId: null, asaasCustomerId: null, renewalDate: null };
+    b = {
+      id: `bal_${nextId++}`, userId, availableMessages: 0,
+      freeMessages: 0, freeResetAt: null,
+      paidMessages: 0, paidExpiresAt: null,
+      plan: null, asaasSubscriptionId: null, asaasCustomerId: null, renewalDate: null,
+    };
     balances.set(userId, b);
   }
   return b;
+}
+
+function applyUpdate(b: Balance, data: any) {
+  for (const key of Object.keys(data)) {
+    const val = data[key];
+    if (val && typeof val === 'object' && 'increment' in val) (b as any)[key] += val.increment;
+    else if (val && typeof val === 'object' && 'decrement' in val) (b as any)[key] -= val.decrement;
+    else (b as any)[key] = val;
+  }
 }
 
 jest.mock('../lib/prisma', () => ({
@@ -45,10 +65,7 @@ jest.mock('../lib/prisma', () => ({
       }),
       update:      jest.fn(async ({ where, data }: any) => {
         const b = [...balances.values()].find(x => x.id === where.id || x.userId === where.userId)!;
-        if (data.availableMessages?.increment !== undefined) b.availableMessages += data.availableMessages.increment;
-        for (const k of ['plan', 'asaasSubscriptionId', 'asaasCustomerId', 'renewalDate']) {
-          if (k in data) (b as any)[k] = data[k];
-        }
+        applyUpdate(b, data);
         return b;
       }),
       findUnique:  jest.fn(async ({ where }: any) => balances.get(where.userId) ?? null),
@@ -116,7 +133,8 @@ describe('Chatbot Campanhas — billing', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.packages.some((p: any) => p.id === 'pkg_camp_1k')).toBe(true);
-    expect(body.monthly.messages).toBeGreaterThan(0);
+    expect(body.monthly.unlimited).toBe(true);
+    expect(body.freeMessagesPerMonth).toBeGreaterThan(0);
   });
 
   it('webhook PAYMENT_CONFIRMED credita pacote avulso de mensagens', async () => {
@@ -144,7 +162,7 @@ describe('Chatbot Campanhas — billing', () => {
     expect(balanceFor('u1').availableMessages).toBe(0);
   });
 
-  it('webhook PAYMENT_CONFIRMED da assinatura mensal credita a cota e marca o plano', async () => {
+  it('webhook PAYMENT_CONFIRMED da assinatura mensal ativa o plano Ilimitado (sem creditar mensagens)', async () => {
     const res = await app.inject({
       method: 'POST', url: '/billing/webhook',
       headers: { 'asaas-access-token': 'test-webhook-token' },
@@ -155,13 +173,17 @@ describe('Chatbot Campanhas — billing', () => {
     });
     expect(res.statusCode).toBe(200);
     const b = balanceFor('u1');
-    expect(b.availableMessages).toBe(2000);
+    expect(b.availableMessages).toBe(0); // ilimitado não credita mensagens no pool
     expect(b.plan).toBe('monthly');
     expect(b.renewalDate).not.toBeNull();
   });
 
   it('webhook SUBSCRIPTION_DELETED da assinatura de campanhas limpa só o CampanhaBalance (não mexe no plano core)', async () => {
-    balances.set('u1', { id: 'bal_1', userId: 'u1', availableMessages: 500, plan: 'monthly', asaasSubscriptionId: 'sub_camp_1', asaasCustomerId: 'cus_1', renewalDate: new Date() });
+    balances.set('u1', {
+      id: 'bal_1', userId: 'u1', availableMessages: 500,
+      freeMessages: 0, freeResetAt: null, paidMessages: 500, paidExpiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+      plan: 'monthly', asaasSubscriptionId: 'sub_camp_1', asaasCustomerId: 'cus_1', renewalDate: new Date(),
+    });
     const res = await app.inject({
       method: 'POST', url: '/billing/webhook',
       headers: { 'asaas-access-token': 'test-webhook-token' },
@@ -213,7 +235,11 @@ describe('Chatbot Campanhas — billing', () => {
   });
 
   it('POST /billing/campanha-subscribe rejeita quando já existe assinatura ativa', async () => {
-    balances.set('u1', { id: 'bal_1', userId: 'u1', availableMessages: 0, plan: 'monthly', asaasSubscriptionId: 'sub_camp_1', asaasCustomerId: 'cus_1', renewalDate: new Date() });
+    balances.set('u1', {
+      id: 'bal_1', userId: 'u1', availableMessages: 0,
+      freeMessages: 0, freeResetAt: null, paidMessages: 0, paidExpiresAt: null,
+      plan: 'monthly', asaasSubscriptionId: 'sub_camp_1', asaasCustomerId: 'cus_1', renewalDate: new Date(),
+    });
     const token = app.jwt.sign({ sub: 'u1', email: 'x@x.com' });
     const res = await app.inject({
       method: 'POST', url: '/billing/campanha-subscribe',

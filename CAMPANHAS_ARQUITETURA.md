@@ -1190,3 +1190,76 @@ Pra não sobrar "Campanhas — R$67/mês, incluso no plano X" em telas que ningu
 - **`Entitlement` rows existentes com `productKey='campanhas'`**: não havia nenhuma em produção no
   momento da mudança (conferido antes de agir) — não há necessidade de migração de dados de
   usuário, nem grandfathering.
+
+## 17. Política de preços do saldo de mensagens (30 grátis/mês + pré-pago com validade + Mensal Ilimitado)
+
+Decisão de produto, 2026-09-09 (mesmo dia do §16): agora que o módulo/tela é grátis pra todo mundo,
+o **volume de mensagens enviadas** ganha uma política de preços própria — 30 mensagens grátis por
+mês pra todo usuário (estilo teste/degustação), e acima disso três opções: Pré-Pago 1 (1.000
+mensagens, R$200, válido 90 dias), Pré-Pago 10 (10.000 mensagens, R$1.500, válido 120 dias) e
+Mensal Ilimitado (R$699/mês, sem limite de mensagens). Decisão explícita do usuário: essa cobrança
+passa a valer também pro **disparo pelo painel web** (`POST /:id/start` em
+`routes/modules/campanhas.ts`), que até aqui era ilimitado de propósito (§15.6 tinha isso como
+"adiado") — reverte aquele adiamento.
+
+### 17.1 Engine de saldo (`lib/campanha-credit.ts`) — reescrito, não só re-precificado
+
+`CampanhaBalance` ganhou 4 campos (migration `20260909_campanhas_msg_pricing_tiers`):
+`freeMessages`/`freeResetAt` (cota grátis do mês, **não cumulativa** — todo reset vira exatamente
+30, não soma sobre sobra) e `paidMessages`/`paidExpiresAt` (saldo pago, validade estendida pra
+frente a cada compra nova — nunca encolhe, mesmo padrão de `extraMinutesExpiry()`/`MinuteBalance`
+em `routes/billing.ts`, só que por pacote em vez de fixo em 60 dias). `availableMessages` continua
+existindo como soma denormalizada (`freeMessages + paidMessages`) só pra leitura rápida — quem
+manda de verdade em cada débito são os 4 campos novos.
+
+`debitCampanhaMessages()` decide em 3 passos: (1) `plan === 'monthly'` → Mensal Ilimitado, débito
+zero, sempre passa, registra transação tipo `debit_unlimited` só pra auditoria; (2) senão, garante
+a cota grátis do mês em dia (`ensureFreeQuota`, idempotente — só reseta se `freeResetAt` já
+passou); (3) consome primeiro `freeMessages`, depois `paidMessages` (só se `paidExpiresAt` ainda
+não venceu — saldo pago vencido conta como zero, sem sweep/job, checado só na hora do débito, igual
+`extraExpiresAt` de minutos). Sem saldo nos dois juntos, `InsufficientCampanhaBalanceError` sem
+tocar em nada. `creditCampanhaMessages()` ganhou `validityDays` opcional (pego de
+`CAMPANHA_MSG_PACKAGES[].validityDays` no webhook, por lookup do número de mensagens já que o
+`externalReference` só carrega a contagem).
+
+### 17.2 Dois pontos de débito — api e worker, cada um com o seu (sem código compartilhado)
+
+- **`POST /:id/start`** (`routes/modules/campanhas.ts`, disparo manual/retomada do painel web):
+  debita `pendentes.length` (não `audienceCount`) ANTES de marcar `running` e enfileirar — uma
+  campanha pausada e retomada só cobra de novo pelo que ainda não saiu. Sem saldo, 402 com
+  `upsellUrl` em vez de travar o disparo pela metade.
+- **`campanhas-scheduler.ts`** (worker, disparo automático de campanha agendada): mesmo saldo,
+  cobrado no mesmo lugar do fluxo (depois do `updateMany` que reivindica `scheduled → running`,
+  nunca antes — evita débito duplo se duas réplicas do worker baterem no mesmo tick). Sem saldo,
+  volta pra `paused` com `pausedReason` e manda e-mail — mesmo padrão do circuit breaker (§11/item
+  1) e do aviso de tier excedido (§9.3/§11.13), só que fail-**closed** em vez de fail-open (dinheiro
+  não é o mesmo tipo de risco que "a Meta pode rejeitar parte dos envios").
+
+Api e worker não compartilham código neste monorepo (§11.11) — o motor de débito do worker
+(`debitCampanhaMessagesOrFail` em `campanhas-scheduler.ts`) é uma cópia deliberada do de
+`lib/campanha-credit.ts`, mesmo padrão já usado pra `evolutionSendDelayMs`/`tierToNumericCap`/etc.
+Diferente dessas, aqui criar um pacote compartilhado *seria* o mais correto architecturally (é
+dinheiro, não uma constante de pacing) — não foi feito por não existir ainda a infra de build
+cross-app (workspace linking, tsconfig paths) pros dois times consumirem um pacote TS comum; ver
+§16.4 sobre `packages/modules/catalog.ts` ser outro sintoma da mesma divergência pré-existente.
+
+O Chatbot Campanhas (`campanhas-chat-commands.ts`) usa o mesmo motor da api sem debitar duas vezes
+— ele nunca chama `POST /:id/start`, dispara direto via `enqueueCampanhaSend()`, e tinha seu próprio
+precheck de saldo (`balance.availableMessages < audienceCount`) que precisou aprender a pular
+quando `plan === 'monthly'` (senão bloquearia assinante Ilimitado com saldo zerado no pool).
+
+### 17.3 Painel web — saldo e compra (novo, não existia antes)
+
+`GET /billing/campanha-balance` (novo) devolve saldo efetivo (grátis/pago já filtrados por
+validade, ou `unlimited: true`). `dashboard/campanhas/_components/BalanceCard.tsx` (novo) mostra
+isso na lista de campanhas, com botões que chamam os MESMOS endpoints Pix que o bot já usava
+(`POST /billing/buy-campanha-messages`, `/campanha-subscribe`) — QR + copia-e-cola inline, sem
+formulário de cartão (decisão original do Chatbot Campanhas, mantida). Landing pública `/campanhas`
+(preço) e FAQ atualizados nos dois lugares (`CampanhasLandingClient.tsx` e `page.tsx`, JSON-LD
+incluso) pra não sobrar "grátis, sem pegadinha" ao lado de uma tabela de preços.
+
+### 17.4 Migração de saldo existente
+
+Balances com `availableMessages > 0` antes desta migration (saldo comprado sob a regra antiga, sem
+separação grátis/pago nem validade) viraram `paidMessages` com 90 dias de carência a partir do
+deploy — ninguém perde mensagens já compradas por causa da mudança de modelo.
