@@ -27,6 +27,7 @@ import './crm'; // registra o cron de notificação de lembretes vencidos (ZapSc
 import './tarefas'; // registra o cron de tarefas atrasadas (ZapScript Tarefas)
 import './copiloto'; // registra o worker da fila 'copiloto' (ZapScript Copiloto — briefings ao dono)
 import './campanhas-scheduler'; // registra o agendador de disparo automático (ZapScript Campanhas)
+import './modules/campanhas-chat-notifier'; // updates de progresso a cada 30s no chat (Chatbot Campanhas)
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
 // ── Supabase Storage — download/delete de áudios temporários ─────────────────

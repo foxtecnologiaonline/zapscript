@@ -363,7 +363,11 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
             // direto por aqui). Tem prioridade sobre o fluxo padrão do Atende —
             // o número oficial não é um número de Atende de cliente algum.
             if (number?.isPublic && messageText) {
-              const handled = await handleOfficialNumberText(instName, senderPhone, senderName, messageText, messageId)
+              // publicPurpose distingue o número oficial dedicado ao Chatbot Campanhas
+              // (copy própria + funil de compra ao final) do número oficial padrão
+              // (suporte/onboarding geral) — mesma máquina de estados nos dois casos.
+              const flavor = number.publicPurpose === 'campanhas' ? 'campanhas' : undefined;
+              const handled = await handleOfficialNumberText(instName, senderPhone, senderName, messageText, messageId, flavor)
                 .catch((err: any) => {
                   log.error({ err: err?.message }, '[Evolution] Erro no onboarding via número oficial');
                   return false;
