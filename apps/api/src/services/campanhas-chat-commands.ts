@@ -274,6 +274,14 @@ async function handleAwaitingMessage(ctx: Ctx, session: { campanhaId: string | n
     // veio de "editar" — atualiza o rascunho existente, contatos já importados continuam valendo
     await prisma.campanha.update({ where: { id: campanhaId }, data: { messageBody } });
   } else {
+    // Sem numberId: quem escreveu não tem (ainda) um WhatsApp próprio conectado —
+    // acontece quando o comando chega pelo número oficial (ver onboarding-whatsapp.ts,
+    // handleOfficialNumberText) em vez do self-chat de um número já conectado.
+    if (!numberId) {
+      await resetToIdle(selfPhone);
+      await reply(instanceName, selfPhone, 'Antes de criar uma campanha, conecte um WhatsApp em zapscript.me/dashboard/numeros.');
+      return;
+    }
     const warm = await warmContactsForNumber(numberId);
     if (warm.size === 0) {
       await resetToIdle(selfPhone);

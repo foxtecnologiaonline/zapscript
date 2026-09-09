@@ -32,7 +32,9 @@ import { sendText, instanceName as evoInstanceName } from './evolution';
 import { provisionInstance, requestPairingCode } from './number-provisioning';
 import { createPasswordlessAccount } from './account-provisioning';
 import { intakeMessage } from './support-intake';
-import { offerPlanUpgrade } from './campanhas-chat-commands';
+import {
+  offerPlanUpgrade, isCampanhaChatCommand, handleCampanhaChatCommand, handleCampanhaChatReply,
+} from './campanhas-chat-commands';
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
 const MAX_ATTEMPTS_BEFORE_ESCALATE = 2;
@@ -180,6 +182,13 @@ export async function startFromOfficialNumber(phone: string, pushName: string | 
  * Ponto de entrada único chamado pelo webhook (evolution-webhook.ts) para
  * toda mensagem de TEXTO que chega na instância do número oficial.
  * Retorna true se tratou a mensagem (o webhook não deve seguir o fluxo padrão).
+ *
+ * Chatbot Campanhas roda NO MESMO número oficial (não precisa de um número
+ * dedicado à parte) — detectado por palavra-chave ("campanha ...") ou por uma
+ * CampanhaChatSession já em andamento pro telefone, checado ANTES do fallback
+ * de suporte. `flavor` força o pitch de Campanhas mesmo sem a palavra-chave
+ * (usado por quem chama sabendo de antemão a intenção); normalmente omitido —
+ * a detecção automática já cobre o caso comum.
  */
 export async function handleOfficialNumberText(
   instanceNameStr: string,
@@ -198,25 +207,53 @@ export async function handleOfficialNumberText(
     return true;
   }
 
-  // Onboarding já concluído/escalado antes, ou nunca existiu — mas pode ser
-  // cliente cadastrado mandando mensagem por outro motivo. Nesse caso não é
-  // onboarding, mas o número oficial também é o canal de suporte: vira caso
-  // na mesma esteira usada pelo Agente de Suporte nos outros canais.
-  let clienteNome = lead?.name || lead?.pushName || senderName || null;
-  if (!lead) {
-    const digits = phoneClean.slice(-8);
-    const existingUser = await prisma.user.findFirst({
-      where:  { phone: { contains: digits } },
-      select: { name: true },
-    }).catch(() => null);
-    if (!existingUser) {
-      // Estranho de verdade → inicia cadastro conversacional
-      await startFromOfficialNumber(senderPhone, senderName, instanceNameStr, flavor);
+  // Onboarding já concluído/escalado antes, ou nunca existiu — resolve se é
+  // cliente cadastrado (mesmo número oficial serve suporte E Campanhas).
+  const digits = phoneClean.slice(-8);
+  const existingUser = !lead
+    ? await prisma.user.findFirst({ where: { phone: { contains: digits } }, select: { id: true, name: true } }).catch(() => null)
+    : null;
+
+  // Chatbot Campanhas: comando explícito ("campanha ...") OU continuação de uma
+  // sessão já em andamento (ex.: respondendo "1" a uma escolha de pacote) — mesma
+  // CampanhaChatSession/máquina de estados do self-chat (campanhas-chat-commands.ts).
+  const campanhaSession = await prisma.campanhaChatSession.findUnique({ where: { phone: phoneClean } });
+  const wantsCampanha = flavor === 'campanhas' || isCampanhaChatCommand(text) || (!!campanhaSession && campanhaSession.stage !== 'idle');
+
+  if (wantsCampanha) {
+    if (existingUser) {
+      // Cliente existente gerenciando campanhas pelo número oficial: o disparo em
+      // si continua saindo pelo WhatsApp PRÓPRIO dele (numberId), não pelo oficial
+      // — só a conversa do bot acontece aqui.
+      const ownNumber = await prisma.whatsappNumber.findFirst({
+        where:   { userId: existingUser.id, provider: 'evolution', isPublic: false },
+        orderBy: { connectedAt: 'desc' },
+        select:  { id: true },
+      });
+      const ctx = { userId: existingUser.id, numberId: ownNumber?.id ?? '', instanceName: instanceNameStr, selfPhone: phoneClean, text };
+      if (isCampanhaChatCommand(text)) {
+        await handleCampanhaChatCommand(ctx);
+        return true;
+      }
+      const handled = await handleCampanhaChatReply(ctx);
+      if (handled) return true;
+      // sessão inexistente/idle e sem prefixo — cai no fallback de suporte abaixo
+    } else if (!lead) {
+      // Estranho pedindo Campanhas → cadastro conversacional já com esse pitch
+      await startFromOfficialNumber(senderPhone, senderName, instanceNameStr, 'campanhas');
       return true;
     }
-    clienteNome = existingUser.name || senderName || null;
   }
 
+  if (!lead && !existingUser) {
+    // Estranho de verdade (sem intenção de Campanhas) → cadastro conversacional padrão
+    await startFromOfficialNumber(senderPhone, senderName, instanceNameStr, flavor);
+    return true;
+  }
+
+  // Nem onboarding, nem Campanhas — mas o número oficial também é o canal de
+  // suporte: vira caso na mesma esteira usada pelo Agente de Suporte nos outros canais.
+  const clienteNome = existingUser?.name || lead?.name || lead?.pushName || senderName || null;
   await intakeMessage({
     canal:           'whatsapp',
     mensagem:        text,

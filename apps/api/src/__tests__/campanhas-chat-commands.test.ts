@@ -198,6 +198,14 @@ describe('campanhas-chat-commands', () => {
     expect(lastReply()).toMatch(/Não encontrei ninguém/);
   });
 
+  it('sem numberId (ex.: comando chegou pelo número oficial, cliente sem WhatsApp próprio conectado) orienta a conectar um número', async () => {
+    await handleCampanhaChatCommand(ctx('campanha nova'));
+    await handleCampanhaChatReply({ userId: 'u1', numberId: '', instanceName: 'inst1', selfPhone: '5511900000000', text: 'promo' });
+    expect(sessions.get('5511900000000').stage).toBe('idle');
+    expect(lastReply()).toMatch(/conecte um WhatsApp/);
+    expect(campanhas.size).toBe(0);
+  });
+
   it('"campanha comprar" e escolha de pacote geram o Pix (texto + QR em imagem)', async () => {
     await handleCampanhaChatCommand(ctx('campanha comprar'));
     expect(sessions.get('5511900000000').stage).toBe('awaiting_purchase');
