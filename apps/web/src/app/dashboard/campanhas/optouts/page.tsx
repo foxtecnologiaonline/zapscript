@@ -30,9 +30,9 @@ export default function OptOutsPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
       <div className="max-w-2xl mx-auto">
-        <Link href="/app/campanhas" className="text-sm text-neutral-500 hover:text-neutral-300">← Campanhas</Link>
+        <Link href="/dashboard/campanhas" className="text-sm text-neutral-500 hover:text-neutral-300">← Campanhas</Link>
         <h1 className="text-2xl font-bold mt-2 mb-2">Opt-outs</h1>
         <p className="text-neutral-400 text-sm mb-6">
           Contatos que responderam PARAR, SAIR, STOP, CANCELAR ou UNSUBSCRIBE. Eles são excluídos automaticamente
@@ -78,6 +78,6 @@ export default function OptOutsPage() {
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }

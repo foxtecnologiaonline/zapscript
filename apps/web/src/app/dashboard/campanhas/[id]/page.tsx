@@ -232,7 +232,7 @@ export default function CampanhaDetailPage() {
     setActionLoading(true);
     try {
       await api.delete(`/modules/campanhas/${id}`);
-      router.push('/app/campanhas');
+      router.push('/dashboard/campanhas');
     } catch (err: any) {
       setActionError(err?.message || 'Não foi possível excluir.');
       setActionLoading(false);
@@ -246,28 +246,28 @@ export default function CampanhaDetailPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-300">
+      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-300">
         Carregando…
-      </main>
+      </div>
     );
   }
 
   if (notFound) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-100">
+      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-100">
         <div className="text-center">
           <p className="mb-4">Campanha não encontrada.</p>
-          <Link href="/app/campanhas" className="text-emerald-400 hover:text-emerald-300">← Voltar</Link>
+          <Link href="/dashboard/campanhas" className="text-emerald-400 hover:text-emerald-300">← Voltar</Link>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (!campanha) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-red-300 px-5 text-center">
+      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-red-300 px-5 text-center">
         {error || 'Erro ao carregar campanha.'}
-      </main>
+      </div>
     );
   }
 
@@ -281,9 +281,9 @@ export default function CampanhaDetailPage() {
   ];
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
       <div className="max-w-3xl mx-auto">
-        <Link href="/app/campanhas" className="text-sm text-neutral-500 hover:text-neutral-300">← Campanhas</Link>
+        <Link href="/dashboard/campanhas" className="text-sm text-neutral-500 hover:text-neutral-300">← Campanhas</Link>
 
         <div className="mt-2 flex items-start justify-between gap-4">
           <div>
@@ -609,6 +609,6 @@ export default function CampanhaDetailPage() {
           )}
         </div>
       </div>
-    </main>
+    </div>
   );
 }

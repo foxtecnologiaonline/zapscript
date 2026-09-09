@@ -20,8 +20,8 @@ interface MetaStatusResponse {
 }
 
 /**
- * Card de status da conexão WhatsApp oficial (Meta). Reusado em /app/campanhas
- * e /app/campanhas/nova. onReady expõe a conexão (ou null) ao componente pai
+ * Card de status da conexão WhatsApp oficial (Meta). Reusado em /dashboard/campanhas
+ * e /dashboard/campanhas/nova. onReady expõe a conexão (ou null) ao componente pai
  * para gating de ações que exigem whatsappNumberId.
  */
 export default function ConnectionCard({ onReady }: { onReady?: (conn: MetaConnection | null) => void }) {

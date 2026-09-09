@@ -112,7 +112,7 @@ export default function NovaCampanhaPage() {
         ? { name, whatsappNumberId: meta?.id, channel, templateName: selected?.name, templateLanguage: selected?.language }
         : { name, whatsappNumberId: evoNumeroId, channel, messageBody };
       const res = await api.post<{ campanha: { id: string } }>('/modules/campanhas/', payload);
-      router.push(`/app/campanhas/${res.campanha.id}`);
+      router.push(`/dashboard/campanhas/${res.campanha.id}`);
     } catch (err: any) {
       setError(err?.message || 'Não foi possível criar a campanha.');
       setSaving(false);
@@ -124,9 +124,9 @@ export default function NovaCampanhaPage() {
     : !!evoNumeroId && messageBody.trim().length > 0 && !!name;
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
       <div className="max-w-2xl mx-auto">
-        <Link href="/app/campanhas" className="text-sm text-neutral-500 hover:text-neutral-300">← Campanhas</Link>
+        <Link href="/dashboard/campanhas" className="text-sm text-neutral-500 hover:text-neutral-300">← Campanhas</Link>
         <h1 className="text-2xl font-bold mt-2 mb-6">Nova campanha</h1>
 
         <div className="mb-6 flex rounded-lg border border-neutral-800 overflow-hidden text-sm">
@@ -319,6 +319,6 @@ export default function NovaCampanhaPage() {
           </>
         )}
       </div>
-    </main>
+    </div>
   );
 }

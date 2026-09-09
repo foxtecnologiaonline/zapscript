@@ -519,3 +519,44 @@ Meta conectados em produção, então o canal Meta nunca rodou contra a Graph AP
 inclusive o novo gate de tier/quality desta revisão só foi validado com mocks. Recomendo, antes
 de anunciar o módulo pra qualquer cliente: conectar um número (Meta ou Evolution) e rodar uma
 campanha pequena (poucos contatos) ponta a ponta, olhando o resultado real na tela da campanha.
+
+---
+
+## 10. Página nativa em /dashboard (exceção deliberada ao padrão /app/&lt;key&gt;)
+
+**Problema encontrado:** o item "Campanhas" já existia no menu lateral do `/dashboard` (sessão
+anterior), mas apontava pra `/app/campanhas` — árvore de rotas sem layout próprio
+(`apps/web/src/app/app/layout.tsx` não existe). Resultado real: clicar em "Campanhas" tirava o
+usuário do shell com sidebar e caía numa página solta, diferente de clicar em "Números" ou
+"Plano". Isso afeta **todos** os módulos hoje (`moduleRoute()` manda todo módulo não-`core` pra
+`/app/<key>`, nenhum tem sidebar) — `MODULOS_ARQUITETURA.md` já previa um shell com nav lateral
+pra essa área, mas nunca foi construído.
+
+**Decisão (pedida explicitamente):** em vez de construir o shell pra todo `/app/*` (conserto
+sistêmico, discutido e não escolhido), Campanhas virou a **única exceção** — página nativa em
+`/dashboard/campanhas`, com a sidebar do dashboard. Os demais módulos (atende, crm, tarefas,
+copiloto, vendas, legenda, cobranca) continuam em `/app/<key>`, sem sidebar, por ora.
+
+**O que foi feito:**
+- `git mv` de `apps/web/src/app/app/campanhas` → `apps/web/src/app/dashboard/campanhas`
+  (lista, `nova`, `[id]`, `optouts`, `_components/ConnectionCard`), preservando histórico.
+- Todos os links/redirects internos trocados de `/app/campanhas/*` → `/dashboard/campanhas/*`.
+- Wrapper de cada página trocado de `<main>` pra `<div>` — agora aninhadas dentro do `<main>`
+  que `DashboardLayout` já renderiza; dois `<main>` por página seria HTML/a11y inválido.
+- `dashboard/layout.tsx`: item do menu atualizado pra `/dashboard/campanhas`; o cálculo de
+  "ativo" no nav passou de igualdade exata pra prefixo (`pathname.startsWith(href + '/')`) —
+  Campanhas é a 1ª seção do dashboard com sub-rotas (`/nova`, `/[id]`, `/optouts`), sem isso o
+  item apagava ao entrar numa campanha específica.
+- `lib/modules.ts`: `moduleRoute('campanhas')` também aponta pra `/dashboard/campanhas` —
+  mantém o card "Abrir" do launcher `/app` consistente com o menu do dashboard.
+- `/app/campanhas` antigo foi **removido**, não redirecionado — seguro porque o módulo nunca
+  teve uso real em produção (0 campanhas, confirmado em §1/§7.6 desta revisão).
+
+**Não corrigido, sinalizado pra você decidir depois:** as 4 páginas mantêm o estilo escuro fixo
+que já tinham (`bg-neutral-950` etc., Tailwind hardcoded) — igual a todo o resto do produto
+(`/app/*`, páginas públicas), mas **diferente** do resto do `/dashboard`, que usa classes
+semânticas (`dashboard-bg`, `brand-primary`...) e responde ao tema claro/escuro do usuário
+(`.dark` via `prefers-color-scheme`, ver `ThemeProvider.tsx`). Um usuário em modo claro veria um
+bloco escuro dentro do dashboard claro ao abrir Campanhas. Não ajustei porque é trabalho de
+design à parte (reescrever classes nas 4 páginas) e não fazia parte do pedido — mas é uma
+inconsistência visual real caso o modo claro seja usado na prática.
