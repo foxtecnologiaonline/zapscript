@@ -104,6 +104,14 @@ export default function NovaCampanhaPage() {
         </div>
 
         {meta && (
+          <>
+            <div className="mb-6 rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-200">
+              ⚠️ <strong>Números novos na API oficial começam com um limite diário de envio</strong>{' '}
+              definido pela própria Meta, que sobe conforme o número acumula histórico de boas
+              entregas. Se sua campanha tiver muitos contatos, o disparo pode ficar limitado nos
+              primeiros dias — isso é normal e não depende do ZapScript.
+            </div>
+
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-neutral-300 mb-1">Nome da campanha</label>
@@ -177,6 +185,7 @@ export default function NovaCampanhaPage() {
               {saving ? 'Criando…' : 'Criar campanha (rascunho) →'}
             </button>
           </form>
+          </>
         )}
       </div>
     </main>

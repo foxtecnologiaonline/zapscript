@@ -6,7 +6,7 @@
 > especificação técnica concreta dos itens de maior risco, no formato de
 > `MODULOS_ARQUITETURA.md`/`PLATAFORMA_BASE.md`.
 
-Data: 2026-09-09 (revisão 4 — correção aplicada e verificada em produção) · Branch:
+Data: 2026-09-09 (revisão 5 — decisões de produto do §6 fechadas) · Branch:
 `claude/laughing-ritchie-3n4vj1`
 
 ## TL;DR
@@ -241,16 +241,17 @@ independente da ordem de implementação:
 
 ---
 
-## 6. Decisões que precisam do dono do produto
+## 6. Decisões do dono do produto — [DECIDIDO] (revisão 5)
 
-1. **Custo Meta:** repassar por volume ou manter absorvido no bundle Profissional/Empresas
-   (é o comportamento implícito hoje)? Só vira urgente se o volume por cliente crescer.
-2. **Expectativa de tier baixo:** cliente com número novo (tier inicial baixo) vai esperar
-   "disparo em massa" e esbarrar num teto pequeno — vale um aviso proativo na UI mesmo antes
-   da Fase 0 técnica estar pronta (pura copy, custo zero).
-3. **Template in-app (Fase 4):** só investir em UI de composição/submissão se houver evidência
-   de que "ir até o Business Manager" está de fato barrando conversão — validar com clientes
-   reais antes de construir.
+1. **Custo Meta → mantido absorvido no bundle Profissional/Empresas.** Sem mudança de billing
+   agora; reavaliar quando o volume por cliente crescer o suficiente para pressionar a margem
+   (nenhuma ação de código associada a esta decisão).
+2. **Aviso de tier baixo → copy já em produção.** Adicionado em `nova/page.tsx` (revisão 5):
+   aviso visível assim que o usuário conecta o número, explicando que números novos têm limite
+   diário de envio que sobe com o histórico de boas entregas. Zero dependência da Fase 0
+   técnica (não lê o tier real via Graph API — é só uma expectativa correta desde já).
+3. **Template in-app → não construir agora.** Fica fora do roadmap até haver evidência de
+   clientes reais travando em "ir até o Business Manager". Fase 4 permanece como estava.
 
 ---
 
