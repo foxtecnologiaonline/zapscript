@@ -6,7 +6,7 @@
 > especificação técnica concreta dos itens de maior risco, no formato de
 > `MODULOS_ARQUITETURA.md`/`PLATAFORMA_BASE.md`.
 
-Data: 2026-09-09 (revisão 6 — canal Evolution experimental, §8) · Branch:
+Data: 2026-09-09 (revisão 7 — opt-in nos dois canais + tier/quality real, §9) · Branch:
 `claude/laughing-ritchie-3n4vj1`
 
 ## TL;DR
@@ -24,10 +24,14 @@ Data: 2026-09-09 (revisão 6 — canal Evolution experimental, §8) · Branch:
   módulo está pronto e "bundled" no catálogo, mas nenhum cliente conectou um número Meta ainda.
   Isso não muda nenhuma recomendação abaixo — só o contexto: é a janela ideal para aplicar
   correções de schema sem custo de migração de dados.
-- **Risco nº 1 (P0):** o módulo não sabe quantos contatos o número do cliente pode alcançar
-  em 24h nem o `quality_rating` dele — uma campanha grande pode simplesmente ser rejeitada em
-  massa pela Meta, e o único mecanismo de proteção hoje é um teto artificial de 10 msg/s
-  **compartilhado por todos os tenants**.
+- **Risco nº 1 (P0) — [PARCIALMENTE RESOLVIDO em §9]:** o `/:id/start` agora lê
+  `messaging_limit_tier`/`quality_rating` de verdade na Graph API e trava (com opção de
+  prosseguir mesmo assim) se a audiência excede o tier do número. O que falta do P0 original:
+  auto-pausa automática se a Meta começar a rejeitar em massa **durante** o envio (§3.2) e
+  rate limit por tenant/número em vez do teto global de 10 msg/s (§3.3) — nenhum dos dois foi
+  feito ainda.
+- **Risco nº 2 (P0) — [RESOLVIDO em §9]:** opt-in auditável agora existe nos dois canais —
+  antes só existia (e só de forma implícita) no canal Evolution.
 - **Risco nº 2 (P0):** não há checagem de opt-in — só opt-out reativo. Maior exposição
   LGPD/política Meta da suíte inteira.
 - **Correção desta revisão:** a v1 sugeria rate-limit "por grupo" do BullMQ — isso é recurso
@@ -450,3 +454,68 @@ Meta ou por dado de churn/banimento real (não existe fonte oficial pra isso em 
 não-oficiais). Vale tratar como uma env var ajustável e observar na prática — se números começarem
 a cair de `quality`/ser banidos com esse ritmo, baixar; se ninguém reclamar depois de uso real,
 pode subir com cautela.
+
+---
+
+## 9. Execução do plano "1, 2, 3": teste real, opt-in nos dois canais, tier real
+
+Sequência pedida depois da pergunta "o MVP está pronto?": (1) subir o que já estava pronto e
+testar ponta a ponta, (2) opt-in auditável também no Meta, (3) tier/quality rating de verdade
+(não só aviso de copy) antes de disparar. `2` e `3` foram implementados nesta revisão; `1` (o
+teste ponta a ponta com número real) segue **pendente de você** — ver §9.4.
+
+### 9.1 Deploy do que já existia
+
+Merge (fast-forward) + `ops.yml action=deploy` do canal Evolution completo (revisão 6) e do
+aviso de tier em copy — run [#68](https://github.com/foxtecnologiaonline/zapscript/actions/runs/34300425671),
+`conclusion: success`. Essas duas entregas já estão em produção.
+
+### 9.2 Opt-in generalizado (era só Evolution)
+
+`requireRiskAcknowledgement` virou `requireConsentAcknowledgement`, aplicado nos **dois**
+canais — antes só existia pro canal Evolution (risco de banimento); o canal Meta não tinha
+nenhuma checagem de consentimento, só o opt-out reativo (§3.1). Campo do body unificado pra
+`confirmConsent` (era `acknowledgeRisk`, exclusivo do Evolution) — texto do aviso muda por
+canal (consentimento de marketing/LGPD no Meta; risco de banimento no Evolution), mas é o
+mesmo campo `Campanha.consentConfirmedAt`/`consentConfirmedIp` para os dois. Gate roda no 1º
+`/schedule` ou `/start` de cada campanha; não pede de novo depois de confirmado.
+
+### 9.3 Tier/quality rating real (não só aviso estático)
+
+Implementado exatamente como especificado em §5.1, com um ajuste: em vez de bloquear
+incondicionalmente acima do tier, `/:id/start` **avisa com os números reais** e exige
+confirmação explícita (`confirmExceedsTier: true`) pra prosseguir — abortar silenciosamente
+uma campanha legítima de envio em lotes ao longo de vários dias seria pior que avisar.
+
+- **Schema:** `WhatsappNumber.metaMessagingLimitTier` / `metaQualityRating` /
+  `metaLimitsSyncedAt` (migration `20260909_whatsappnumber_meta_limits`).
+- **Graph API:** `getPhoneNumberLimits()` em `services/whatsapp-campaigns.ts` —
+  `GET /{phone-number-id}?fields=quality_rating,messaging_limit_tier`. `tierToNumericCap()`
+  interpreta o tier por regex (`TIER_250` → 250, `TIER_10K` → 10.000,
+  `TIER_UNLIMITED` → `Infinity`) em vez de um switch fixo — sobrevive a variações de nome que a
+  Meta já fez antes, sem precisar de update de código.
+- **Cache de 1h** (`ensureFreshMetaLimits`) — evita bater na Graph API a cada `/start`;
+  **fail-open** se a Meta estiver indisponível (usa o último valor conhecido, ou nenhum, em vez
+  de bloquear o disparo por instabilidade externa — mesma filosofia de `moduleGate.ts`).
+  Refresh acontece em `/:id/start`; **não** em `/:id/schedule` nem no disparo automático do
+  scheduler (`campanhas-scheduler.ts`) — uma campanha agendada para dali a dias pode disparar
+  contra um tier desatualizado. Consciente, não corrigido agora (escopo do pedido era
+  "antes de disparar", que é o `/start`; o scheduler fica como lacuna conhecida, próximo P1
+  natural junto com §3.2/auto-pausa).
+- **UI:** `GET /:id` agora devolve tier/quality do número (mostrado como info na tela da
+  campanha); ao tentar iniciar acima do tier, a tela mostra os números reais e um botão
+  "Prosseguir mesmo assim" que reenvia com `confirmExceedsTier: true`.
+- **Testes novos:** busca+persiste+bloqueia, prossegue com confirmação, usa cache dentro de 1h
+  sem nova chamada à Graph API, fail-open se a Graph API cair, e parsing de tier isolado — 10
+  testes novos, 53/53 passando no arquivo.
+
+### 9.4 O que ainda falta de você (não dá pra automatizar)
+
+O teste ponta a ponta real (item 1 do plano) não pôde ser feito por mim: exige conectar um
+número de verdade (Meta: WABA + template aprovado via Embedded Signup; Evolution: escanear QR
+com um celular) e mandar uma mensagem real a um contato real — nenhuma das duas coisas é algo
+que este sandbox consegue fazer. Verificado no banco antes desta revisão: **zero** números
+Meta conectados em produção, então o canal Meta nunca rodou contra a Graph API de verdade —
+inclusive o novo gate de tier/quality desta revisão só foi validado com mocks. Recomendo, antes
+de anunciar o módulo pra qualquer cliente: conectar um número (Meta ou Evolution) e rodar uma
+campanha pequena (poucos contatos) ponta a ponta, olhando o resultado real na tela da campanha.

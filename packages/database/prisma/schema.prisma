@@ -163,6 +163,12 @@ model WhatsappNumber {
   metaBusinessId      String? // Business Manager ID
   metaAccessTokenEnc  String? // Token de acesso AES-256-GCM (encryptStr)
   metaTokenExpiresAt  DateTime? // Expiração do token (se aplicável)
+  // Limite de mensageria e qualidade do número, lidos da Graph API antes de um
+  // disparo de campanha (ver CAMPANHAS_ARQUITETURA.md §5.1/§9) — cache curto,
+  // não uma fonte de verdade duradoura; metaLimitsSyncedAt controla a validade.
+  metaMessagingLimitTier String? // ex.: 'TIER_250' | 'TIER_1K' | 'TIER_10K' | 'TIER_100K' | 'TIER_UNLIMITED'
+  metaQualityRating      String? // 'GREEN' | 'YELLOW' | 'RED' | 'UNKNOWN'
+  metaLimitsSyncedAt     DateTime?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)

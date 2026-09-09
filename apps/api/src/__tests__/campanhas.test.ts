@@ -12,7 +12,7 @@ jest.mock('../lib/prisma', () => ({
     campanha:        { findMany: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
     campanhaContato: { findMany: jest.fn(), groupBy: jest.fn(), createMany: jest.fn(), count: jest.fn() },
     campanhaOptOut:  { findMany: jest.fn() },
-    whatsappNumber:  { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
+    whatsappNumber:  { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     entitlement:     { findMany: jest.fn() },
     product:         { findMany: jest.fn() },
     transcription:        { findMany: jest.fn() },
@@ -32,12 +32,16 @@ jest.mock('../services/encryption', () => ({
 }));
 
 jest.mock('../services/whatsapp-campaigns', () => ({
+  // tierToNumericCap é pura (sem I/O) — mantém a implementação real; só o que
+  // fala com a Graph API (listTemplates, getPhoneNumberLimits) é mockado.
+  ...jest.requireActual('../services/whatsapp-campaigns'),
   listTemplates: jest.fn(),
+  getPhoneNumberLimits: jest.fn(),
 }));
 
 import { prisma } from '../lib/prisma';
 import { redis, campanhasQueue } from '../services/queue';
-import { listTemplates } from '../services/whatsapp-campaigns';
+import { listTemplates, getPhoneNumberLimits, tierToNumericCap } from '../services/whatsapp-campaigns';
 import { evolutionSendDelayMs } from '../routes/modules/campanhas';
 
 async function buildApp() {
@@ -860,5 +864,138 @@ describe('evolutionSendDelayMs (pacing)', () => {
       expect(delay).toBeGreaterThanOrEqual(Math.round(i * base * 0.7) - 1);
       expect(delay).toBeLessThanOrEqual(Math.round(i * base * 1.3) + 1);
     }
+  });
+});
+
+describe('Tier/quality rating real da Meta (POST /:id/start)', () => {
+  let app: Awaited<ReturnType<typeof buildApp>>;
+
+  beforeAll(async () => { app = await buildApp(); });
+  afterAll(async () => { await app.close(); });
+  beforeEach(() => jest.clearAllMocks());
+
+  const numeroSemCache = {
+    id: NUM_ID, status: 'connected', metaAccessTokenEnc: 'enc', metaPhoneNumberId: 'phone-id-1',
+    metaMessagingLimitTier: null, metaQualityRating: null, metaLimitsSyncedAt: null,
+  };
+
+  it('busca na Graph API quando não há cache, persiste, e bloqueia se a audiência excede o tier', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: 'c1', status: 'draft', audienceCount: 300, whatsappNumberId: NUM_ID, consentConfirmedAt: new Date(),
+    });
+    (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce(numeroSemCache);
+    (getPhoneNumberLimits as jest.Mock).mockResolvedValueOnce({ messagingLimitTier: 'TIER_250', qualityRating: 'GREEN' });
+    (prisma.whatsappNumber.update as jest.Mock).mockResolvedValueOnce({});
+    (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce(
+      Array.from({ length: 300 }, (_, i) => ({ id: `ct${i}` })),
+    );
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/modules/campanhas/c1/start',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body.metaMessagingLimitTier).toBe('TIER_250');
+    expect(body.metaTierCap).toBe(250);
+    expect(body.pendentesCount).toBe(300);
+    expect(prisma.whatsappNumber.update).toHaveBeenCalledWith({
+      where: { id: NUM_ID },
+      data: {
+        metaMessagingLimitTier: 'TIER_250', metaQualityRating: 'GREEN',
+        metaLimitsSyncedAt: expect.any(Date),
+      },
+    });
+    expect(campanhasQueue.addBulk).not.toHaveBeenCalled();
+  });
+
+  it('prossegue com confirmExceedsTier mesmo acima do tier', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: 'c1', status: 'draft', audienceCount: 300, whatsappNumberId: NUM_ID, consentConfirmedAt: new Date(), startedAt: null,
+    });
+    (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce(numeroSemCache);
+    (getPhoneNumberLimits as jest.Mock).mockResolvedValueOnce({ messagingLimitTier: 'TIER_250', qualityRating: 'GREEN' });
+    (prisma.whatsappNumber.update as jest.Mock).mockResolvedValueOnce({});
+    (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce(
+      Array.from({ length: 300 }, (_, i) => ({ id: `ct${i}` })),
+    );
+    (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/modules/campanhas/c1/start',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { confirmExceedsTier: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true, enqueued: 300 });
+  });
+
+  it('não bate na Graph API de novo se metaLimitsSyncedAt está fresco (<1h)', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: new Date(), startedAt: null,
+    });
+    (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({
+      status: 'connected', metaAccessTokenEnc: 'enc', metaPhoneNumberId: 'phone-id-1',
+      metaMessagingLimitTier: 'TIER_100K', metaQualityRating: 'GREEN',
+      metaLimitsSyncedAt: new Date(Date.now() - 5 * 60 * 1000), // 5 min atrás
+    });
+    (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }]);
+    (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/modules/campanhas/c1/start',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(getPhoneNumberLimits).not.toHaveBeenCalled();
+    expect(prisma.whatsappNumber.update).not.toHaveBeenCalled();
+  });
+
+  it('não bloqueia o disparo se a Graph API falhar ao consultar os limites (fail-open)', async () => {
+    grantModuleAccess();
+    (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: 'c1', status: 'draft', audienceCount: 5, whatsappNumberId: NUM_ID, consentConfirmedAt: new Date(), startedAt: null,
+    });
+    (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce(numeroSemCache);
+    (getPhoneNumberLimits as jest.Mock).mockRejectedValueOnce(new Error('Graph API fora do ar'));
+    (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }]);
+    (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
+
+    const token = makeToken(app);
+    const res = await app.inject({
+      method: 'POST', url: '/modules/campanhas/c1/start',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(prisma.whatsappNumber.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('tierToNumericCap (parsing do tier da Meta)', () => {
+  it('interpreta os formatos conhecidos de tier', () => {
+    expect(tierToNumericCap('TIER_250')).toBe(250);
+    expect(tierToNumericCap('TIER_1K')).toBe(1000);
+    expect(tierToNumericCap('TIER_10K')).toBe(10000);
+    expect(tierToNumericCap('TIER_100K')).toBe(100000);
+  });
+
+  it('trata UNLIMITED como sem teto', () => {
+    expect(tierToNumericCap('TIER_UNLIMITED')).toBe(Infinity);
+  });
+
+  it('retorna null para valores ausentes ou não reconhecíveis', () => {
+    expect(tierToNumericCap(null)).toBeNull();
+    expect(tierToNumericCap(undefined)).toBeNull();
+    expect(tierToNumericCap('ALGO_SEM_NUMERO')).toBeNull();
   });
 });

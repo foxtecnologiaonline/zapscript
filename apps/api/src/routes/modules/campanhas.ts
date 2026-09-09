@@ -3,7 +3,7 @@ import { prisma } from '../../lib/prisma';
 import { requireModule } from '../../lib/moduleGate';
 import { validateRequest, createCampanhaSchema, scheduleCampanhaSchema } from '../../lib/validation';
 import { decryptStr } from '../../services/encryption';
-import { listTemplates } from '../../services/whatsapp-campaigns';
+import { listTemplates, getPhoneNumberLimits, tierToNumericCap } from '../../services/whatsapp-campaigns';
 import { campanhasQueue } from '../../services/queue';
 
 /**
@@ -125,6 +125,45 @@ function numberReadyToSend(whatsappNumber: { status: string; metaAccessTokenEnc:
   // 'meta' é o default histórico (linhas antigas da migration não têm channel setado
   // explicitamente) — só trata como evolution quando for exatamente isso.
   return channel === 'evolution' ? !!whatsappNumber.zapiInstanceId : !!whatsappNumber.metaAccessTokenEnc;
+}
+
+const META_LIMITS_TTL_MS = 60 * 60 * 1000; // 1h — evita bater na Graph API a cada /start
+
+/**
+ * Garante um valor relativamente fresco de messaging_limit_tier/quality_rating
+ * do número (Graph API) — ver CAMPANHAS_ARQUITETURA.md §5.1/§9. Cache de até 1h
+ * em WhatsappNumber; se a Meta estiver indisponível, falha em silêncio e usa o
+ * último valor conhecido (ou nenhum) em vez de bloquear o disparo por
+ * instabilidade externa — mesma filosofia fail-open de moduleGate.ts.
+ */
+async function ensureFreshMetaLimits(whatsappNumber: {
+  id: string;
+  metaPhoneNumberId: string | null;
+  metaAccessTokenEnc: string | null;
+  metaMessagingLimitTier: string | null;
+  metaQualityRating: string | null;
+  metaLimitsSyncedAt: Date | null;
+}): Promise<{ tier: string | null; quality: string | null }> {
+  const fresh = !!whatsappNumber.metaLimitsSyncedAt
+    && Date.now() - whatsappNumber.metaLimitsSyncedAt.getTime() < META_LIMITS_TTL_MS;
+  const cached = { tier: whatsappNumber.metaMessagingLimitTier, quality: whatsappNumber.metaQualityRating };
+  if (fresh || !whatsappNumber.metaPhoneNumberId || !whatsappNumber.metaAccessTokenEnc) return cached;
+
+  try {
+    const token = decryptStr(whatsappNumber.metaAccessTokenEnc);
+    const limits = await getPhoneNumberLimits(token, whatsappNumber.metaPhoneNumberId);
+    await prisma.whatsappNumber.update({
+      where: { id: whatsappNumber.id },
+      data: {
+        metaMessagingLimitTier: limits.messagingLimitTier,
+        metaQualityRating: limits.qualityRating,
+        metaLimitsSyncedAt: new Date(),
+      },
+    });
+    return { tier: limits.messagingLimitTier, quality: limits.qualityRating };
+  } catch {
+    return cached;
+  }
 }
 
 const EVOLUTION_DAILY_LIMIT = parseInt(process.env.CAMPANHAS_EVOLUTION_DAILY_LIMIT || '40', 10);
@@ -284,7 +323,14 @@ export default async function campanhasRoutes(app: FastifyInstance) {
 
     const campanha = await prisma.campanha.findFirst({
       where: { id, userId },
-      include: { whatsappNumber: { select: { id: true, phoneNumber: true, displayName: true } } },
+      include: {
+        whatsappNumber: {
+          select: {
+            id: true, phoneNumber: true, displayName: true,
+            metaMessagingLimitTier: true, metaQualityRating: true,
+          },
+        },
+      },
     });
     if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
 
@@ -543,6 +589,26 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     });
     if (pendentes.length === 0) {
       return reply.code(400).send({ error: 'Nenhum contato pendente de envio nesta campanha.' });
+    }
+
+    // Canal meta: teto real de contatos únicos/24h do número (Graph API, cache de
+    // 1h) — não deixa a campanha ser rejeitada em massa silenciosamente pela Meta
+    // sem que o usuário tenha sido avisado com o número de verdade. Ver §5.1/§9.
+    if (campanha.channel !== 'evolution') {
+      const { tier, quality } = await ensureFreshMetaLimits(whatsappNumber!);
+      const cap = tierToNumericCap(tier);
+      if (cap !== null && Number.isFinite(cap) && pendentes.length > cap && req.body?.confirmExceedsTier !== true) {
+        return reply.code(400).send({
+          error: `Este número está no tier "${tier}" da Meta (até ${cap} contatos únicos por 24h) `
+            + `e esta campanha tem ${pendentes.length} contatos pendentes — pode ser rejeitada em `
+            + `massa pela Meta. Confirme que quer prosseguir mesmo assim (confirmExceedsTier: true) `
+            + `ou reduza a lista.`,
+          metaMessagingLimitTier: tier,
+          metaQualityRating: quality,
+          metaTierCap: cap,
+          pendentesCount: pendentes.length,
+        });
+      }
     }
 
     await prisma.campanha.update({

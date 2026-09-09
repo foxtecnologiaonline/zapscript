@@ -20,7 +20,10 @@ interface Campanha {
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
-  whatsappNumber: { id: string; phoneNumber: string | null; displayName: string | null } | null;
+  whatsappNumber: {
+    id: string; phoneNumber: string | null; displayName: string | null;
+    metaMessagingLimitTier: string | null; metaQualityRating: string | null;
+  } | null;
 }
 
 interface FromConversasResult {
@@ -105,6 +108,7 @@ export default function CampanhaDetailPage() {
   const [consentAcknowledged, setConsentAcknowledged] = useState(false);
   const [importingConversas, setImportingConversas] = useState(false);
   const [importResult, setImportResult] = useState<FromConversasResult | null>(null);
+  const [tierExceeded, setTierExceeded] = useState<{ tier: string; cap: number; count: number } | null>(null);
 
   const loadCampanha = useCallback(async () => {
     try {
@@ -166,15 +170,23 @@ export default function CampanhaDetailPage() {
     }
   }
 
-  async function runAction(action: 'start' | 'pause' | 'cancel' | 'unschedule') {
+  async function runAction(action: 'start' | 'pause' | 'cancel' | 'unschedule', extra?: Record<string, any>) {
     setActionLoading(true);
     setActionError(null);
     try {
       const needsAck = action === 'start' && !campanha?.consentConfirmedAt;
-      await api.post(`/modules/campanhas/${id}/${action}`, needsAck ? { confirmConsent: consentAcknowledged } : {});
+      await api.post(`/modules/campanhas/${id}/${action}`, {
+        ...(needsAck ? { confirmConsent: consentAcknowledged } : {}),
+        ...extra,
+      });
+      setTierExceeded(null);
       await loadCampanha();
     } catch (err: any) {
-      setActionError(err?.message || 'Ação falhou.');
+      if (action === 'start' && typeof err?.metaTierCap === 'number') {
+        setTierExceeded({ tier: err.metaMessagingLimitTier, cap: err.metaTierCap, count: err.pendentesCount });
+      } else {
+        setActionError(err?.message || 'Ação falhou.');
+      }
     } finally {
       setActionLoading(false);
     }
@@ -282,6 +294,13 @@ export default function CampanhaDetailPage() {
                 : `Template: ${campanha.templateName} (${campanha.templateLanguage})`}
               {campanha.whatsappNumber?.displayName ? ` · ${campanha.whatsappNumber.displayName}` : ''}
             </p>
+            {campanha.channel !== 'evolution'
+              && (campanha.whatsappNumber?.metaMessagingLimitTier || campanha.whatsappNumber?.metaQualityRating) && (
+              <p className="mt-1 text-xs text-neutral-500">
+                Meta: tier {campanha.whatsappNumber?.metaMessagingLimitTier || '—'}
+                {campanha.whatsappNumber?.metaQualityRating ? ` · qualidade ${campanha.whatsappNumber.metaQualityRating}` : ''}
+              </p>
+            )}
           </div>
           <div className="flex flex-col items-end gap-1">
             <span className="text-xs rounded-full border border-neutral-700 px-2.5 py-1 text-neutral-300 whitespace-nowrap">
@@ -313,6 +332,33 @@ export default function CampanhaDetailPage() {
         {actionError && (
           <div className="mt-4 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-red-200 text-sm">
             {actionError}
+          </div>
+        )}
+
+        {tierExceeded && (
+          <div className="mt-4 rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-200 space-y-3">
+            <p>
+              ⚠️ Seu número está no tier <strong>{tierExceeded.tier}</strong> da Meta — até{' '}
+              <strong>{tierExceeded.cap.toLocaleString('pt-BR')}</strong> contatos únicos por 24h.
+              Esta campanha tem <strong>{tierExceeded.count.toLocaleString('pt-BR')}</strong> contatos
+              pendentes, acima desse limite. A Meta pode rejeitar parte dos envios em massa se você
+              prosseguir agora.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => runAction('start', { confirmExceedsTier: true })}
+                disabled={actionLoading}
+                className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+              >
+                Prosseguir mesmo assim
+              </button>
+              <button
+                onClick={() => setTierExceeded(null)}
+                className="rounded-lg border border-amber-700 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-900/40"
+              >
+                Cancelar e reduzir a lista
+              </button>
+            </div>
           </div>
         )}
 
