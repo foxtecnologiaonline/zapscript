@@ -54,15 +54,16 @@ export default function ConnectionCard({ onReady }: { onReady?: (conn: MetaConne
   if (!data?.connected || !data.connection) {
     return (
       <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4">
-        <div className="font-medium text-brand-text">Nenhum WhatsApp oficial conectado</div>
+        <div className="font-medium text-brand-text">Nenhum WhatsApp oficial (Meta) conectado</div>
         <p className="mt-1 text-sm text-brand-text-secondary">
-          Campanhas exigem um número conectado via API oficial da Meta (diferente do QR Code do Evolution).
+          Opcional — só pra quem quer volume maior com menos risco de banimento. Por padrão, suas
+          campanhas já disparam pelo número que você conectou no ZapScript (o mesmo do Atende/transcrição).
         </p>
         <Link
           href="/dashboard/numeros"
           className="mt-3 inline-block rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500"
         >
-          Conectar número →
+          Conectar WhatsApp oficial →
         </Link>
       </div>
     );

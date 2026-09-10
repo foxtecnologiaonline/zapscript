@@ -110,7 +110,10 @@ export default function NovaCampanhaPage() {
   const [campanha, setCampanha] = useState<CampanhaState | null>(null);
 
   // ── Passo 1: escolher campanha (canal, nome, template/mensagem) ─────────
-  const [channel, setChannel] = useState<'meta' | 'evolution'>('meta');
+  // Default 'evolution' — usa o número que o usuário já tem conectado no ZapScript
+  // (o mesmo do core/Atende), sem exigir configurar WABA oficial da Meta antes de
+  // conseguir disparar. Meta continua disponível pra quem quer volume maior/menos risco.
+  const [channel, setChannel] = useState<'meta' | 'evolution'>('evolution');
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -392,17 +395,17 @@ export default function NovaCampanhaPage() {
             <div className="mb-6 flex rounded-lg border border-brand-border overflow-hidden text-sm">
               <button
                 type="button"
+                onClick={() => setChannel('evolution')}
+                className={`flex-1 px-4 py-2 font-medium ${channel === 'evolution' ? 'bg-brand-primary text-white' : 'bg-brand-elevated text-brand-text-secondary hover:text-brand-text'}`}
+              >
+                Meu número atual (recomendado)
+              </button>
+              <button
+                type="button"
                 onClick={() => setChannel('meta')}
                 className={`flex-1 px-4 py-2 font-medium ${channel === 'meta' ? 'bg-brand-primary text-white' : 'bg-brand-elevated text-brand-text-secondary hover:text-brand-text'}`}
               >
                 WhatsApp oficial (Meta)
-              </button>
-              <button
-                type="button"
-                onClick={() => setChannel('evolution')}
-                className={`flex-1 px-4 py-2 font-medium ${channel === 'evolution' ? 'bg-brand-primary text-white' : 'bg-brand-elevated text-brand-text-secondary hover:text-brand-text'}`}
-              >
-                Meu número atual (Evolution)
               </button>
             </div>
 
