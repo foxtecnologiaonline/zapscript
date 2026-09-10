@@ -473,13 +473,13 @@ export default function CampanhaDetailPage() {
   ];
 
   return (
-    <div className="min-h-screen px-5 py-10">
+    <div className="min-h-screen px-5 py-10 overflow-x-hidden">
       <div className="max-w-3xl mx-auto">
         <Link href="/dashboard/campanhas" className="text-sm text-brand-muted hover:text-brand-text">← Campanhas</Link>
 
         <div className="mt-2 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-brand-text">{campanha.name}</h1>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-brand-text break-words">{campanha.name}</h1>
             <p className="text-brand-text-secondary mt-1 text-sm">
               {campanha.channel === 'evolution'
                 ? `Mensagem livre (Evolution): "${campanha.messageBody?.slice(0, 60)}${(campanha.messageBody?.length || 0) > 60 ? '…' : ''}"`
@@ -494,7 +494,7 @@ export default function CampanhaDetailPage() {
               </p>
             )}
           </div>
-          <div className="flex flex-col items-end gap-1">
+          <div className="flex flex-col items-end gap-1 shrink-0">
             <span className="text-xs rounded-full border border-brand-border px-2.5 py-1 text-brand-text-secondary whitespace-nowrap">
               {CAMP_STATUS_LABEL[campanha.status] || campanha.status}
             </span>

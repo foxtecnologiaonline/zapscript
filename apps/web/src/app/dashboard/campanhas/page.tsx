@@ -106,7 +106,7 @@ export default function CampanhasListPage() {
   }
 
   return (
-    <div className="min-h-screen px-5 py-10">
+    <div className="min-h-screen px-5 py-10 overflow-x-hidden">
       <div className="max-w-4xl mx-auto">
         <header className="mb-6">
           <h1 className="text-2xl font-bold text-brand-text">📣 ZapScript Campanhas</h1>
@@ -182,13 +182,13 @@ export default function CampanhasListPage() {
                       className="card rounded-xl block p-4 hover:border-brand-primary/30 transition-colors"
                     >
                       <div className="flex items-center justify-between gap-4">
-                        <div>
-                          <div className="font-medium text-brand-text">{c.name}</div>
-                          <div className="text-sm text-brand-muted mt-0.5">
+                        <div className="min-w-0">
+                          <div className="font-medium text-brand-text truncate">{c.name}</div>
+                          <div className="text-sm text-brand-muted mt-0.5 truncate">
                             {c.channel === 'evolution' ? 'Mensagem livre (Evolution)' : c.templateName}
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1">
+                        <div className="flex flex-col items-end gap-1 shrink-0">
                           {incompleteDraft ? (
                             <span className="text-xs rounded-full border border-brand-primary/30 text-brand-primary px-2 py-0.5 whitespace-nowrap">
                               Continuar configuração →

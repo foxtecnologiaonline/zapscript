@@ -213,20 +213,20 @@ export default function ListaDetailPage() {
   }
 
   return (
-    <div className="min-h-screen px-5 py-10">
+    <div className="min-h-screen px-5 py-10 overflow-x-hidden">
       <div className="max-w-3xl mx-auto">
         <Link href="/dashboard/campanhas/listas" className="text-sm text-brand-muted hover:text-brand-text">← Listas</Link>
 
         <div className="mt-2 flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">
             {editingName ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <input
                   autoFocus
                   value={nameDraft}
                   onChange={(e) => setNameDraft(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setEditingName(false); }}
-                  className="input text-xl font-bold w-auto"
+                  className="input text-xl font-bold w-auto max-w-full"
                 />
                 <button onClick={handleSaveName} disabled={savingName} className="btn-ghost text-xs disabled:opacity-50">
                   Salvar
@@ -237,7 +237,7 @@ export default function ListaDetailPage() {
               </div>
             ) : (
               <h1
-                className="text-2xl font-bold text-brand-text cursor-pointer hover:underline decoration-dashed underline-offset-4"
+                className="text-2xl font-bold text-brand-text cursor-pointer hover:underline decoration-dashed underline-offset-4 break-words"
                 onClick={() => { setNameDraft(lista.name); setEditingName(true); }}
                 title="Clique para renomear"
               >
