@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import ConnectionCard, { MetaConnection } from './_components/ConnectionCard';
 import BalanceCard from './_components/BalanceCard';
 
 interface CampanhaListItem {
@@ -54,7 +53,6 @@ export default function CampanhasListPage() {
   const [error, setError] = useState<string | null>(null);
   const [upsell, setUpsell] = useState(false);
   const [campanhas, setCampanhas] = useState<CampanhaListItem[]>([]);
-  const [, setMeta] = useState<MetaConnection | null>(null);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>('todas');
@@ -122,10 +120,6 @@ export default function CampanhasListPage() {
         )}
 
         <BalanceCard />
-
-        <div className="mb-6">
-          <ConnectionCard onReady={setMeta} />
-        </div>
 
         <div className="mb-6 flex items-center gap-3 flex-wrap">
           <Link href="/dashboard/campanhas/nova" className="btn-primary px-4 py-2 text-sm">
