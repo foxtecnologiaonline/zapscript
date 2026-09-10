@@ -98,13 +98,13 @@ export default function VsWhatsappBusinessPage() {
                 </tr>
                 <tr>
                   <td className="px-4 py-3 font-semibold">Custo/mensagem</td>
-                  <td className="px-4 py-3 text-green-600">
-                    R$ 0,03-0,08* <br />
-                    <span className="text-xs">(dependendo do template)</span>
+                  <td className="px-4 py-3 text-orange-600">
+                    R$ 0,33* <br />
+                    <span className="text-xs">(tarifa Meta 2026)</span>
                   </td>
                   <td className="px-4 py-3 text-orange-600">
-                    R$ 0,03-0,15* <br />
-                    <span className="text-xs">(cobrado direto pela Meta)</span>
+                    R$ 0,33* <br />
+                    <span className="text-xs">(mesma tarifa Meta)</span>
                   </td>
                 </tr>
                 <tr>
@@ -229,30 +229,32 @@ export default function VsWhatsappBusinessPage() {
           {/* Pricing Comparison */}
           <div className="mb-12">
             <h2 className="mb-6 text-2xl font-bold">Comparação de Custo (1 ano, 50k msg/mês)</h2>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               {[
                 {
-                  name: 'ZapScript',
+                  name: 'ZapScript Campanhas',
                   setup: 'R$ 0',
-                  perMonth: 'R$ 699 (ilimitado)',
-                  yearlyMeta: 'R$ 0 (incluído)',
-                  total: 'R$ 8.388/ano',
+                  platform: 'R$ 699/mês (opcional)',
+                  meta: 'R$ 198k/ano (0,33/msg × 50k × 12)',
+                  total: 'R$ 198k-206k/ano',
                   highlight: true,
+                  note: '✅ Dashboard incluído, suporte 24/7, templates gerenciados',
                 },
                 {
-                  name: 'API Direto + Dev',
-                  setup: 'R$ 5.000',
-                  perMonth: 'R$ 0',
-                  yearlyMeta: 'R$ 3.000 (aprox.)',
-                  total: 'R$ 8.000/ano',
+                  name: 'API WhatsApp Direto',
+                  setup: 'R$ 5.000-10k',
+                  platform: 'Infraestrutura + dev',
+                  meta: 'R$ 198k/ano (mesma tarifa)',
+                  total: 'R$ 208k-213k+/ano',
                   highlight: false,
+                  note: '⚠️ Dev, manutenção, escalabilidade por sua conta',
                 },
               ].map((plan, i) => (
                 <div
                   key={i}
                   className={`rounded-lg p-6 ${
                     plan.highlight
-                      ? 'border-2 border-green-400 bg-green-50 dark:border-green-600 dark:bg-green-950'
+                      ? 'border-2 border-blue-400 bg-blue-50 dark:border-blue-600 dark:bg-blue-950'
                       : 'border border-slate-200 dark:border-slate-700'
                   }`}
                 >
@@ -262,10 +264,10 @@ export default function VsWhatsappBusinessPage() {
                       <span className="font-semibold">Setup:</span> {plan.setup}
                     </p>
                     <p>
-                      <span className="font-semibold">Plataforma/mês:</span> {plan.perMonth}
+                      <span className="font-semibold">Plataforma:</span> {plan.platform}
                     </p>
                     <p>
-                      <span className="font-semibold">Tarifas Meta/ano:</span> {plan.yearlyMeta}
+                      <span className="font-semibold">Tarifa Meta:</span> {plan.meta}
                     </p>
                     <div className="border-t border-slate-300 pt-2 dark:border-slate-600">
                       <p className="font-bold">
@@ -273,11 +275,12 @@ export default function VsWhatsappBusinessPage() {
                       </p>
                     </div>
                   </div>
+                  <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">{plan.note}</p>
                 </div>
               ))}
             </div>
             <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
-              *Cálculo simplificado. API Direto pode custar mais com infra, manutenção e atualizações.
+              *Tarifa Meta: R$ 0,33/mensagem (2026). Ambas as opções usam mesma API. A diferença é tempo de implementação + gerenciamento.
             </p>
           </div>
 

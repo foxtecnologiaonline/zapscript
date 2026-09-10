@@ -76,32 +76,55 @@ export default function CampanhasVarejoPage() {
             </div>
           </div>
 
-          {/* Por que não SMS */}
-          <div className="mb-16 rounded-lg bg-yellow-50 p-8 dark:bg-yellow-950">
-            <h2 className="mb-4 text-2xl font-bold">Por que WhatsApp e não SMS?</h2>
-            <div className="grid gap-4 sm:grid-cols-2">
+          {/* WhatsApp vs SMS — Foco em ROI */}
+          <div className="mb-16 rounded-lg bg-blue-50 p-8 dark:bg-blue-950">
+            <h2 className="mb-4 text-2xl font-bold">WhatsApp vs SMS — Qual dá mais Retorno?</h2>
+            <div className="mb-6 grid gap-4 sm:grid-cols-2">
               <div>
-                <p className="mb-2 font-semibold text-yellow-900 dark:text-yellow-100">WhatsApp (ZapScript)</p>
-                <ul className="space-y-1 text-sm text-yellow-800 dark:text-yellow-200">
-                  <li>✅ R$ 0,03 a 0,08 por mensagem*</li>
-                  <li>✅ Abertura: 70%+ em 2 horas</li>
-                  <li>✅ Respostas imediatas</li>
-                  <li>✅ Mídia e links interativos</li>
-                  <li>✅ Cliente já usa (conforto)</li>
+                <p className="mb-2 font-semibold text-blue-900 dark:text-blue-100">WhatsApp (ZapScript Campanhas)</p>
+                <ul className="space-y-1 text-sm text-blue-800 dark:text-blue-200">
+                  <li>💰 R$ 0,33 por mensagem (Meta)</li>
+                  <li>👁️ Abertura: 75%+ em 2 horas</li>
+                  <li>💬 Respostas imediatas</li>
+                  <li>📱 Mídia, botões, links interativos</li>
+                  <li>🔐 API oficial (sem banimento)</li>
                 </ul>
               </div>
               <div>
-                <p className="mb-2 font-semibold text-yellow-900 dark:text-yellow-100">SMS</p>
-                <ul className="space-y-1 text-sm text-yellow-800 dark:text-yellow-200">
-                  <li>❌ R$ 0,15 a 0,30 por mensagem</li>
-                  <li>❌ Abertura: 10-20%</li>
+                <p className="mb-2 font-semibold text-blue-900 dark:text-blue-100">SMS</p>
+                <ul className="space-y-1 text-sm text-blue-800 dark:text-blue-200">
+                  <li>💰 R$ 0,15-0,30 por mensagem</li>
+                  <li>👁️ Abertura: 10-15%</li>
                   <li>❌ Sem resposta direta</li>
-                  <li>❌ Só texto</li>
-                  <li>❌ Número genérico</li>
+                  <li>📄 Só texto, sem mídia</li>
+                  <li>⚠️ Número genérico</li>
                 </ul>
               </div>
             </div>
-            <p className="mt-4 text-sm text-yellow-700 dark:text-yellow-300">*Tarifas da Meta; ZapScript é gratuito</p>
+
+            {/* ROI Example */}
+            <div className="rounded-lg bg-white p-4 dark:bg-slate-800">
+              <p className="mb-3 font-semibold text-blue-900 dark:text-blue-100">📊 Exemplo Real: 10.000 clientes</p>
+              <div className="grid gap-4 text-sm sm:grid-cols-2">
+                <div className="border-l-4 border-green-500 pl-3">
+                  <p className="font-semibold">WhatsApp ZapScript</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Custo: 10k × R$ 0,33 = R$ 3.300</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Abertura: 75% = 7.500 pessoas veem</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Conversão 5% = 375 vendas</p>
+                  <p className="mt-2 font-bold text-green-600">ROI: 375 vendas por R$ 3.300 = R$ 8,80/venda</p>
+                </div>
+                <div className="border-l-4 border-orange-500 pl-3">
+                  <p className="font-semibold">SMS</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Custo: 10k × R$ 0,25 = R$ 2.500</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Abertura: 12% = 1.200 pessoas veem</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Conversão 0,5% = 60 vendas</p>
+                  <p className="mt-2 font-bold text-orange-600">ROI: 60 vendas por R$ 2.500 = R$ 41,67/venda</p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                ⚠️ <strong>Resultado:</strong> WhatsApp custa 32% a mais, mas converte 6x melhor. Lucro final: ~6x maior com WhatsApp.
+              </p>
+            </div>
           </div>
 
           {/* Casos de Uso */}
@@ -190,41 +213,52 @@ export default function CampanhasVarejoPage() {
 
           {/* Preços */}
           <div className="mb-16">
-            <h2 className="mb-8 text-3xl font-bold">Preços — Quanto Você Economiza?</h2>
+            <h2 className="mb-8 text-3xl font-bold">Planos de Campanhas</h2>
             <div className="mb-6 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b-2 border-slate-200 dark:border-slate-700">
-                    <th className="px-4 py-3 text-left">Plan</th>
-                    <th className="px-4 py-3 text-left">Mensagens</th>
+                    <th className="px-4 py-3 text-left">Plano</th>
+                    <th className="px-4 py-3 text-left">Mensagens/mês</th>
                     <th className="px-4 py-3 text-left">Custo ZapScript</th>
-                    <th className="px-4 py-3 text-left">Vs SMS*</th>
+                    <th className="px-4 py-3 text-left">Custo Meta*</th>
+                    <th className="px-4 py-3 text-left">Total/mês</th>
                   </tr>
                 </thead>
                 <tbody className="text-xs sm:text-sm">
                   <tr className="border-b border-slate-200 dark:border-slate-700">
                     <td className="px-4 py-3 font-semibold">Grátis</td>
-                    <td className="px-4 py-3">30/mês</td>
+                    <td className="px-4 py-3">30</td>
                     <td className="px-4 py-3">R$ 0</td>
-                    <td className="px-4 py-3 text-green-600">Economiza R$ 9</td>
+                    <td className="px-4 py-3">R$ 9,90</td>
+                    <td className="px-4 py-3 font-semibold">R$ 10</td>
                   </tr>
                   <tr className="border-b border-slate-200 dark:border-slate-700">
                     <td className="px-4 py-3 font-semibold">Pré-Pago 1</td>
                     <td className="px-4 py-3">1.000 (90 dias)</td>
-                    <td className="px-4 py-3">R$ 150</td>
-                    <td className="px-4 py-3 text-green-600">Economiza R$ 150</td>
+                    <td className="px-4 py-3">R$ 150/3 meses</td>
+                    <td className="px-4 py-3">R$ 330 (÷ 3)</td>
+                    <td className="px-4 py-3 font-semibold">R$ 160/mês</td>
+                  </tr>
+                  <tr className="border-b border-slate-200 dark:border-slate-700">
+                    <td className="px-4 py-3 font-semibold">Pré-Pago 5</td>
+                    <td className="px-4 py-3">5.000 (120 dias)</td>
+                    <td className="px-4 py-3">R$ 450/4 meses</td>
+                    <td className="px-4 py-3">R$ 1.650 (÷ 4)</td>
+                    <td className="px-4 py-3 font-semibold">R$ 562/mês</td>
                   </tr>
                   <tr>
                     <td className="px-4 py-3 font-semibold">Ilimitado</td>
-                    <td className="px-4 py-3">Sem limite/mês</td>
-                    <td className="px-4 py-3">R$ 699/mês</td>
-                    <td className="px-4 py-3 text-green-600">Economiza 2-3k+/mês</td>
+                    <td className="px-4 py-3">Sem limite</td>
+                    <td className="px-4 py-3">R$ 699</td>
+                    <td className="px-4 py-3">R$ 0,33/msg</td>
+                    <td className="px-4 py-3 font-semibold">R$ 699 + msgs</td>
                   </tr>
                 </tbody>
               </table>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              *Comparação com SMS a R$ 0,20/msg. Tarifas de mensagem da Meta (enviadas) não incluem custo ZapScript (gratuito).
+              *Tarifa Meta: R$ 0,33 por mensagem enviada (varia por tipo de template). ZapScript é gratuito; você paga só o que envia.
             </p>
           </div>
 

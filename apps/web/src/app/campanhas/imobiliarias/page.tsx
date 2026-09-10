@@ -79,22 +79,24 @@ export default function CampanhasImobiliariasPage() {
           {/* Problemas & Soluções */}
           <div className="mb-16 grid gap-8 sm:grid-cols-2">
             <div className="rounded-lg border border-red-200 bg-red-50 p-6 dark:border-red-900 dark:bg-red-950">
-              <h3 className="mb-2 font-bold text-red-700 dark:text-red-300">❌ Problema</h3>
+              <h3 className="mb-2 font-bold text-red-700 dark:text-red-300">❌ Problema Atual</h3>
               <ul className="space-y-2 text-sm text-red-600 dark:text-red-200">
                 <li>• Bots não autorizados sendo banidos pela Meta</li>
-                <li>• SMS caro (R$ 0,10 a 0,30 por mensagem)</li>
-                <li>• Perda de contatos por desorganização</li>
-                <li>• Sem acompanhamento de resultados</li>
+                <li>• Número do WhatsApp com risco de bloqueio</li>
+                <li>• Sem histórico/registro das ofertas enviadas</li>
+                <li>• Sem visibilidade de quem abriu/clicou</li>
+                <li>• Difícil gerenciar contatos e templates</li>
               </ul>
             </div>
 
             <div className="rounded-lg border border-green-200 bg-green-50 p-6 dark:border-green-900 dark:bg-green-950">
-              <h3 className="mb-2 font-bold text-green-700 dark:text-green-300">✅ Solução</h3>
+              <h3 className="mb-2 font-bold text-green-700 dark:text-green-300">✅ Solução Segura</h3>
               <ul className="space-y-2 text-sm text-green-600 dark:text-green-200">
-                <li>• API oficial Meta (WhatsApp Business Platform)</li>
-                <li>• Campanhas ilimitadas sem sobretaxa</li>
-                <li>• Segmentação inteligente por localização/tipo</li>
-                <li>• Dashboard com métricas em tempo real</li>
+                <li>• API oficial Meta (sem risco de bloqueio)</li>
+                <li>• Templates aprovados pela própria Meta</li>
+                <li>• Histórico completo de campanhas</li>
+                <li>• Dashboard com taxa de abertura/cliques/conversão</li>
+                <li>• Segmentação por localização, tipo imóvel, valor</li>
               </ul>
             </div>
           </div>
@@ -146,22 +148,51 @@ export default function CampanhasImobiliariasPage() {
 
           {/* Preços */}
           <div className="mb-16">
-            <h2 className="mb-8 text-3xl font-bold">Preços Simples e Transparentes</h2>
+            <h2 className="mb-8 text-3xl font-bold">Planos de Campanhas</h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {[
-                { title: 'Grátis', msg: '30 msgs/mês', price: 'R$ 0' },
-                { title: 'Pré-Pago 1', msg: '1.000 msgs, 90 dias', price: 'R$ 150' },
-                { title: 'Ilimitado', msg: 'Sem limite/mês', price: 'R$ 699/mês' },
+                {
+                  title: 'Grátis',
+                  msgs: '30/mês',
+                  zapscript: 'R$ 0',
+                  meta: 'R$ 10',
+                  total: 'R$ 10/mês',
+                  color: 'blue'
+                },
+                {
+                  title: 'Pré-Pago 1',
+                  msgs: '1.000 (90 dias)',
+                  zapscript: 'R$ 150',
+                  meta: 'R$ 330',
+                  total: 'R$ 480 total',
+                  color: 'green'
+                },
+                {
+                  title: 'Ilimitado',
+                  msgs: 'Sem limite',
+                  zapscript: 'R$ 699/mês',
+                  meta: '+R$ 0,33/msg',
+                  total: 'Conforme uso',
+                  color: 'purple'
+                },
               ].map((plan, i) => (
-                <div key={i} className="rounded-lg border border-slate-200 p-6 text-center dark:border-slate-700">
+                <div key={i} className={`rounded-lg border-2 p-6 text-center ${
+                  plan.color === 'green'
+                    ? 'border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-950'
+                    : 'border-slate-200 dark:border-slate-700'
+                }`}>
                   <h3 className="mb-2 font-bold">{plan.title}</h3>
-                  <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">{plan.msg}</p>
-                  <p className="text-2xl font-bold">{plan.price}</p>
+                  <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">{plan.msgs}</p>
+                  <div className="space-y-1 text-xs text-slate-500 dark:text-slate-500">
+                    <p>ZapScript: {plan.zapscript}</p>
+                    <p>Tarifa Meta*: {plan.meta}</p>
+                  </div>
+                  <p className="mt-3 border-t border-slate-300 pt-2 font-bold dark:border-slate-600">{plan.total}</p>
                 </div>
               ))}
             </div>
             <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
-              *Tarifas de mensagem cobradas pela Meta conforme categoria do template. ZapScript Campanhas é gratuito.
+              *Tarifa Meta: R$ 0,33 por mensagem (2026). ZapScript é grátis; você paga só à Meta.
             </p>
           </div>
 
