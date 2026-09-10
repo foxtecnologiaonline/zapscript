@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma';
 import {
   validateRequest, createCampanhaSchema, scheduleCampanhaSchema, campanhaSequenceSchema,
   createCampanhaListaSchema, updateCampanhaListaSchema, addCampanhaListaContatosSchema, applyCampanhaListaSchema,
+  mergeCampanhaListasSchema,
 } from '../../lib/validation';
 import { decryptStr } from '../../services/encryption';
 import { listTemplates, getPhoneNumberLimits, tierToNumericCap, sendTemplateMessage } from '../../services/whatsapp-campaigns';
@@ -607,7 +608,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     });
     return {
       listas: listas.map((l: any) => ({
-        id: l.id, name: l.name, description: l.description,
+        id: l.id, name: l.name, description: l.description, consentConfirmedAt: l.consentConfirmedAt,
         contatosCount: l._count.contatos, createdAt: l.createdAt, updatedAt: l.updatedAt,
       })),
     };
@@ -618,7 +619,10 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     const v = validateRequest(createCampanhaListaSchema)(req.body);
     if (!v.valid) return reply.code(400).send({ error: v.error });
     const lista = await prisma.campanhaLista.create({
-      data: { userId, name: v.data.name, description: v.data.description || null },
+      data: {
+        userId, name: v.data.name, description: v.data.description || null,
+        consentConfirmedAt: v.data.consentConfirmed ? new Date() : null,
+      },
     });
     return reply.code(201).send({ lista: { ...lista, contatosCount: 0 } });
   });
@@ -647,9 +651,76 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       data: {
         ...(v.data.name !== undefined ? { name: v.data.name } : {}),
         ...(v.data.description !== undefined ? { description: v.data.description } : {}),
+        ...(v.data.consentConfirmed !== undefined
+          ? { consentConfirmedAt: v.data.consentConfirmed ? (lista.consentConfirmedAt || new Date()) : null }
+          : {}),
       },
     });
     return { lista: updated };
+  });
+
+  // Duplicar (item 7) — cópia independente, útil pra testar uma variação sem
+  // arriscar a lista original que já pode estar em uso noutra campanha.
+  app.post('/listas/:listaId/duplicate', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { listaId } = req.params;
+    const lista = await ownedLista(userId, listaId);
+    if (!lista) return reply.code(404).send({ error: 'Lista não encontrada.' });
+    const contatos = await prisma.campanhaListaContato.findMany({
+      where: { listaId }, select: { phone: true, name: true },
+    });
+    const copy = await prisma.campanhaLista.create({
+      data: {
+        userId, name: `${lista.name} (cópia)`, description: lista.description,
+        consentConfirmedAt: lista.consentConfirmedAt,
+        contatos: { createMany: { data: contatos.map((c: any) => ({ phone: c.phone, name: c.name })) } },
+      },
+    });
+    return reply.code(201).send({ lista: { ...copy, contatosCount: contatos.length } });
+  });
+
+  // Mesclar (item 7) — combina os números de N listas numa nova, sem alterar
+  // as originais; dedupe por telefone (mantém o 1º nome encontrado).
+  app.post('/listas/merge', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const v = validateRequest(mergeCampanhaListasSchema)(req.body);
+    if (!v.valid) return reply.code(400).send({ error: v.error });
+    const listas = await prisma.campanhaLista.findMany({
+      where: { id: { in: v.data.listaIds }, userId },
+      select: { id: true },
+    });
+    if (listas.length !== v.data.listaIds.length) {
+      return reply.code(404).send({ error: 'Uma ou mais listas não foram encontradas.' });
+    }
+    const contatos = await prisma.campanhaListaContato.findMany({
+      where: { listaId: { in: v.data.listaIds } },
+      select: { phone: true, name: true },
+    });
+    const merged = new Map<string, string | null>();
+    for (const c of contatos) if (!merged.has(c.phone)) merged.set(c.phone, c.name);
+
+    const lista = await prisma.campanhaLista.create({
+      data: {
+        userId, name: v.data.name,
+        contatos: { createMany: { data: Array.from(merged, ([phone, name]) => ({ phone, name })) } },
+      },
+    });
+    return reply.code(201).send({ lista: { ...lista, contatosCount: merged.size } });
+  });
+
+  // Exportar CSV (item 7) — devolve o texto pronto; o download em si acontece
+  // no browser (Blob local), sem esse endpoint precisar setar content-disposition.
+  app.get('/listas/:listaId/export', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { listaId } = req.params;
+    const lista = await ownedLista(userId, listaId);
+    if (!lista) return reply.code(404).send({ error: 'Lista não encontrada.' });
+    const contatos = await prisma.campanhaListaContato.findMany({
+      where: { listaId }, orderBy: { createdAt: 'asc' }, select: { phone: true, name: true },
+    });
+    const csvEsc = (s: string) => (/[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+    const csv = contatos.map((c: any) => `${csvEsc(c.phone)},${csvEsc(c.name || '')}`).join('\n');
+    return { csv, filename: `${lista.name.replace(/[^\w-]+/g, '_')}.csv` };
   });
 
   app.delete('/listas/:listaId', auth, async (req: any, reply) => {
@@ -1099,7 +1170,14 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       await prisma.campanhaContato.createMany({ data: toCreate });
       await prisma.campanha.update({
         where: { id },
-        data: { audienceCount: { increment: toCreate.length } },
+        data: {
+          audienceCount: { increment: toCreate.length },
+          // Consentimento confirmado na origem (lista) cobre a campanha também —
+          // evita reconfirmar na hora do disparo quando a lista já foi validada.
+          ...(lista.consentConfirmedAt && !campanha.consentConfirmedAt
+            ? { consentConfirmedAt: lista.consentConfirmedAt }
+            : {}),
+        },
       });
     }
 

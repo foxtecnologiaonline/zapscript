@@ -381,12 +381,14 @@ export const campanhaSequenceSchema = z.object({
 
 // ── Listas de números (contatos salvos e reutilizáveis entre campanhas) ────
 export const createCampanhaListaSchema = z.object({
-  name:        z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
-  description: z.string().max(300).optional(),
+  name:             z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+  description:      z.string().max(300).optional(),
+  consentConfirmed: z.boolean().optional(),
 });
 export const updateCampanhaListaSchema = z.object({
-  name:        z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100).optional(),
-  description: z.string().max(300).nullable().optional(),
+  name:             z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100).optional(),
+  description:      z.string().max(300).nullable().optional(),
+  consentConfirmed: z.boolean().optional(),
 });
 const listaContatoManualSchema = z.object({
   phone: z.string().min(8, 'Telefone inválido').max(20),
@@ -397,6 +399,10 @@ export const addCampanhaListaContatosSchema = z.object({
 });
 export const applyCampanhaListaSchema = z.object({
   listaId: z.string().cuid('Lista inválida'),
+});
+export const mergeCampanhaListasSchema = z.object({
+  listaIds: z.array(z.string().cuid()).min(2, 'Selecione ao menos 2 listas'),
+  name:     z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
 });
 
 // ── API pública (tier Empresas) ────────────────────────────

@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, ChangeEvent, FormEvent } from 'react';
+import { useEffect, useState, useCallback, FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import AudienceImporter from '../_components/AudienceImporter';
 
 interface Campanha {
   id: string;
@@ -12,10 +13,12 @@ interface Campanha {
   channel: string; // 'meta' | 'evolution'
   templateName: string | null;
   templateLanguage: string;
+  templateVarCount: number | null;
   messageBody: string | null;
   consentConfirmedAt: string | null;
   audienceCount: number;
   sentCount: number;
+  processedCount: number;
   poolNumberIds: string[];
   pausedReason: string | null;
   scheduledAt: string | null;
@@ -43,13 +46,6 @@ interface PoolNumberInfo {
   displayName: string | null;
 }
 
-interface FromConversasResult {
-  imported: number;
-  skippedOptOut: number;
-  skippedDuplicate: number;
-  elegiveis: number;
-}
-
 interface Contato {
   id: string;
   phone: string;
@@ -57,22 +53,6 @@ interface Contato {
   status: string;
   errorMessage: string | null;
   createdAt: string;
-}
-
-interface UploadResult {
-  imported: number;
-  skippedOptOut: number;
-  skippedInvalid: number;
-  skippedDuplicate: number;
-  skippedVarMismatch: number;
-}
-
-interface CrmImportResult {
-  imported: number;
-  skippedOptOut: number;
-  skippedDuplicate: number;
-  skippedCold: number;
-  elegiveis: number;
 }
 
 interface MetaTemplateComponent {
@@ -146,6 +126,24 @@ function minDatetimeLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** Estimativa simples de tempo restante (item 4) a partir do ritmo observado desde o início — sem depender de dados extras do backend. */
+function estimateEta(c: Campanha): string | null {
+  if (c.status !== 'running' || !c.startedAt || c.processedCount <= 0) return null;
+  const elapsedMin = (Date.now() - new Date(c.startedAt).getTime()) / 60000;
+  const remaining = c.audienceCount - c.processedCount;
+  if (elapsedMin <= 0 || remaining <= 0) return null;
+  const rate = c.processedCount / elapsedMin;
+  if (rate <= 0) return null;
+  const etaMin = remaining / rate;
+  if (etaMin < 1) return 'menos de 1 min restante';
+  if (etaMin < 60) return `~${Math.ceil(etaMin)} min restantes`;
+  const h = Math.floor(etaMin / 60);
+  const m = Math.round(etaMin % 60);
+  return `~${h}h${m > 0 ? ` ${m}min` : ''} restantes`;
+}
+
+const CONTATOS_PAGE_SIZE = 100;
+
 export default function CampanhaDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -157,19 +155,17 @@ export default function CampanhaDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
 
+  const [activeTab, setActiveTab] = useState<'audiencia' | 'avancado'>('audiencia');
+
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [contatosTotal, setContatosTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [scheduleAt, setScheduleAt] = useState('');
   const [consentAcknowledged, setConsentAcknowledged] = useState(false);
-  const [importingConversas, setImportingConversas] = useState(false);
-  const [importResult, setImportResult] = useState<FromConversasResult | null>(null);
   const [tierExceeded, setTierExceeded] = useState<{ tier: string; cap: number; count: number } | null>(null);
 
   const [testPhone, setTestPhone] = useState('');
@@ -182,12 +178,6 @@ export default function CampanhaDetailPage() {
   const [poolMessage, setPoolMessage] = useState<string | null>(null);
   const [statsByNumber, setStatsByNumber] = useState<Record<string, Record<string, number>> | undefined>();
   const [poolNumbersInfo, setPoolNumbersInfo] = useState<PoolNumberInfo[] | undefined>();
-
-  // ── Segmentação por tag do CRM (§15.1) ───────────────────────────────────
-  const [crmTags, setCrmTags] = useState<string[]>([]);
-  const [selectedCrmTag, setSelectedCrmTag] = useState('');
-  const [importingCrm, setImportingCrm] = useState(false);
-  const [crmImportResult, setCrmImportResult] = useState<CrmImportResult | null>(null);
 
   // ── Sequência/drip (§15.2) ───────────────────────────────────────────────
   const [sequenceSteps, setSequenceSteps] = useState<SequenceStep[] | undefined>();
@@ -228,7 +218,7 @@ export default function CampanhaDetailPage() {
 
   const loadContatos = useCallback(async () => {
     try {
-      const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}&limit=100` : '?limit=100';
+      const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}&limit=${CONTATOS_PAGE_SIZE}` : `?limit=${CONTATOS_PAGE_SIZE}`;
       const res = await api.get<{ contatos: Contato[]; total: number }>(`/modules/campanhas/${id}/contatos${qs}`);
       setContatos(res.contatos || []);
       setContatosTotal(res.total || 0);
@@ -236,6 +226,21 @@ export default function CampanhaDetailPage() {
       /* erro de carregamento da campanha acima já cobre o estado visível */
     }
   }, [id, statusFilter]);
+
+  async function handleLoadMoreContatos() {
+    setLoadingMore(true);
+    try {
+      const qs = new URLSearchParams({ limit: String(CONTATOS_PAGE_SIZE), offset: String(contatos.length) });
+      if (statusFilter) qs.set('status', statusFilter);
+      const res = await api.get<{ contatos: Contato[]; total: number }>(`/modules/campanhas/${id}/contatos?${qs}`);
+      setContatos((prev) => [...prev, ...(res.contatos || [])]);
+      setContatosTotal(res.total || 0);
+    } catch {
+      /* falha ao paginar não precisa de banner próprio — usuário pode tentar de novo */
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -271,19 +276,6 @@ export default function CampanhaDetailPage() {
   useEffect(() => {
     if (campanha) setPoolSelected(campanha.poolNumberIds || []);
   }, [campanha?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Tags do CRM (§15.1) — só interessa enquanto ainda dá pra montar a audiência.
-  useEffect(() => {
-    if (!campanha || campanha.status !== 'draft') return;
-    (async () => {
-      try {
-        const res = await api.get<{ tags: string[] }>('/modules/campanhas/crm-tags');
-        setCrmTags(res.tags || []);
-      } catch {
-        /* segmentação por tag é opcional — falha aqui não deve travar a tela */
-      }
-    })();
-  }, [campanha?.id, campanha?.status]);
 
   // Templates Meta (§15.2) — só pra montar os passos de uma sequência nova.
   useEffect(() => {
@@ -326,26 +318,6 @@ export default function CampanhaDetailPage() {
       setTestResult({ ok: false, message: err?.message || 'Falha ao enviar teste.' });
     } finally {
       setTestSending(false);
-    }
-  }
-
-  async function handleUpload(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    setActionError(null);
-    setUploadResult(null);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await api.postFormData<UploadResult>(`/modules/campanhas/${id}/contatos`, fd);
-      setUploadResult(res);
-      await Promise.all([loadCampanha(), loadContatos()]);
-    } catch (err: any) {
-      setActionError(err?.message || 'Falha ao importar CSV.');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
 
@@ -392,37 +364,6 @@ export default function CampanhaDetailPage() {
       }
     } finally {
       setActionLoading(false);
-    }
-  }
-
-  async function handleImportConversas() {
-    setImportingConversas(true);
-    setActionError(null);
-    setImportResult(null);
-    try {
-      const res = await api.post<FromConversasResult>(`/modules/campanhas/${id}/contatos/from-conversas`, {});
-      setImportResult(res);
-      await Promise.all([loadCampanha(), loadContatos()]);
-    } catch (err: any) {
-      setActionError(err?.message || 'Falha ao importar contatos.');
-    } finally {
-      setImportingConversas(false);
-    }
-  }
-
-  async function handleImportCrm() {
-    if (!selectedCrmTag) return;
-    setImportingCrm(true);
-    setActionError(null);
-    setCrmImportResult(null);
-    try {
-      const res = await api.post<CrmImportResult>(`/modules/campanhas/${id}/contatos/from-crm`, { tag: selectedCrmTag });
-      setCrmImportResult(res);
-      await Promise.all([loadCampanha(), loadContatos()]);
-    } catch (err: any) {
-      setActionError(err?.message || 'Falha ao importar contatos por tag.');
-    } finally {
-      setImportingCrm(false);
     }
   }
 
@@ -518,6 +459,10 @@ export default function CampanhaDetailPage() {
     return campanha.channel === 'meta' ? !!s.templateName : s.messageBody.trim().length > 0;
   });
 
+  const progressPct = campanha.audienceCount > 0 ? Math.min(100, (campanha.processedCount / campanha.audienceCount) * 100) : 0;
+  const showProgress = campanha.audienceCount > 0 && ['running', 'paused', 'completed'].includes(campanha.status);
+  const eta = estimateEta(campanha);
+
   const statCards: [string, number, string][] = [
     ['Contatos', campanha.audienceCount, ''],
     ['Enviados', campanha.sentCount, ''],
@@ -573,7 +518,7 @@ export default function CampanhaDetailPage() {
           </div>
         )}
 
-        <div className="mt-6 grid grid-cols-3 sm:grid-cols-6 gap-3">
+        <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {statCards.map(([label, value, color]) => (
             <div key={label} className="card rounded-lg p-3 text-center">
               <div className={`text-lg font-semibold ${color || 'text-brand-text'}`}>{value}</div>
@@ -581,6 +526,21 @@ export default function CampanhaDetailPage() {
             </div>
           ))}
         </div>
+
+        {showProgress && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs text-brand-muted mb-1">
+              <span>{Math.round(progressPct)}% processado ({campanha.processedCount} de {campanha.audienceCount})</span>
+              {eta && <span>{eta}</span>}
+            </div>
+            <div className="h-2 rounded-full bg-brand-elevated overflow-hidden">
+              <div
+                className={`h-full transition-all ${campanha.status === 'completed' ? 'bg-emerald-500' : 'bg-brand-primary'}`}
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {actionError && (
           <div className="mt-4 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-600 text-sm">
@@ -618,27 +578,6 @@ export default function CampanhaDetailPage() {
         <div className="mt-6 flex flex-wrap gap-3">
           {campanha.status === 'draft' && (
             <>
-              {campanha.channel === 'evolution' ? (
-                <button
-                  onClick={handleImportConversas}
-                  disabled={importingConversas}
-                  className="btn-ghost disabled:opacity-50"
-                >
-                  {importingConversas ? 'Importando…' : '💬 Importar contatos que já falaram com você'}
-                </button>
-              ) : (
-                <label className="btn-ghost cursor-pointer">
-                  {uploading ? 'Importando…' : '📄 Importar contatos (CSV)'}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".csv,text/csv"
-                    onChange={handleUpload}
-                    disabled={uploading}
-                    className="hidden"
-                  />
-                </label>
-              )}
               <button
                 onClick={() => runAction('start')}
                 disabled={
@@ -721,13 +660,6 @@ export default function CampanhaDetailPage() {
           )}
         </div>
 
-        {campanha.status === 'draft' && campanha.channel !== 'evolution' && (
-          <p className="mt-3 text-xs text-brand-muted">
-            CSV: coluna 1 = telefone (obrigatório) · coluna 2 = nome (opcional) · colunas 3+ = variáveis do
-            template, na ordem.
-          </p>
-        )}
-
         {campanha.status === 'draft' && campanha.channel === 'evolution' && (
           <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-brand-text-secondary space-y-3">
             <p>
@@ -770,14 +702,6 @@ export default function CampanhaDetailPage() {
           </div>
         )}
 
-        {importResult && (
-          <div className="mt-4 card rounded-lg p-3 text-sm text-brand-text-secondary">
-            {importResult.imported} de {importResult.elegiveis} contato{importResult.elegiveis === 1 ? '' : 's'} elegíve{importResult.elegiveis === 1 ? 'l' : 'is'} importado{importResult.imported === 1 ? '' : 's'}.
-            {importResult.skippedOptOut > 0 && ` ${importResult.skippedOptOut} já em opt-out.`}
-            {importResult.skippedDuplicate > 0 && ` ${importResult.skippedDuplicate} já estava(m) na campanha.`}
-          </div>
-        )}
-
         {campanha.status === 'draft' && campanha.audienceCount > 0 && (
           <form onSubmit={handleSchedule} className="mt-4 flex flex-wrap items-center gap-2">
             <label className="text-sm text-brand-text-secondary">Ou agende para depois:</label>
@@ -802,356 +726,356 @@ export default function CampanhaDetailPage() {
           </form>
         )}
 
-        {uploadResult && (
-          <div className="mt-4 card rounded-lg p-3 text-sm text-brand-text-secondary">
-            {uploadResult.imported} contato{uploadResult.imported === 1 ? '' : 's'} importado
-            {uploadResult.imported === 1 ? '' : 's'}.
-            {uploadResult.skippedOptOut > 0 && ` ${uploadResult.skippedOptOut} já em opt-out.`}
-            {uploadResult.skippedInvalid > 0 && ` ${uploadResult.skippedInvalid} inválido(s).`}
-            {uploadResult.skippedDuplicate > 0 && ` ${uploadResult.skippedDuplicate} duplicado(s).`}
-            {uploadResult.skippedVarMismatch > 0 && ` ${uploadResult.skippedVarMismatch} com nº de variáveis diferente do template.`}
+        {/* ── Abas (item 2): Audiência fica em foco, Avançado agrupa o resto ── */}
+        <div className="mt-8 mb-6 flex rounded-lg border border-brand-border overflow-hidden text-sm">
+          <button
+            type="button"
+            onClick={() => setActiveTab('audiencia')}
+            className={`flex-1 px-4 py-2 font-medium ${activeTab === 'audiencia' ? 'bg-brand-primary text-white' : 'bg-brand-elevated text-brand-text-secondary hover:text-brand-text'}`}
+          >
+            Audiência
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('avancado')}
+            className={`flex-1 px-4 py-2 font-medium ${activeTab === 'avancado' ? 'bg-brand-primary text-white' : 'bg-brand-elevated text-brand-text-secondary hover:text-brand-text'}`}
+          >
+            Avançado
+          </button>
+        </div>
+
+        {activeTab === 'audiencia' && (
+          <div className="space-y-6">
+            {campanha.status === 'draft' && (
+              <>
+                <AudienceImporter
+                  campanhaId={campanha.id}
+                  channel={campanha.channel}
+                  templateVarCount={campanha.templateVarCount}
+                  onImported={loadCampanha}
+                />
+                {campanha.channel !== 'evolution' && (
+                  <p className="text-xs text-brand-muted">
+                    CSV: coluna 1 = telefone (obrigatório) · coluna 2 = nome (opcional) · colunas 3+ = variáveis do
+                    template, na ordem.
+                  </p>
+                )}
+              </>
+            )}
+
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-muted">
+                  Contatos ({contatosTotal})
+                </h2>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="rounded-lg border border-brand-border bg-brand-elevated px-2 py-1 text-xs text-brand-text-secondary"
+                >
+                  <option value="">Todos</option>
+                  {Object.entries(CONTATO_STATUS_LABEL).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+              </div>
+
+              {contatos.length === 0 ? (
+                <p className="text-sm text-brand-muted">Nenhum contato {statusFilter ? 'com esse status' : 'ainda'}.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-brand-border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-brand-elevated text-brand-text-secondary text-left">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Telefone</th>
+                        <th className="px-3 py-2 font-medium">Nome</th>
+                        <th className="px-3 py-2 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-brand-border">
+                      {contatos.map((c) => (
+                        <tr key={c.id} title={c.errorMessage || undefined}>
+                          <td className="px-3 py-2 text-brand-text-secondary">{c.phone}</td>
+                          <td className="px-3 py-2 text-brand-muted">{c.name || '—'}</td>
+                          <td className={`px-3 py-2 ${CONTATO_STATUS_COLOR[c.status] || 'text-brand-muted'}`}>
+                            {CONTATO_STATUS_LABEL[c.status] || c.status}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {contatosTotal > contatos.length && (
+                    <div className="px-3 py-2 text-xs bg-brand-elevated flex items-center justify-between">
+                      <span className="text-brand-muted">Mostrando {contatos.length} de {contatosTotal}.</span>
+                      <button
+                        onClick={handleLoadMoreContatos}
+                        disabled={loadingMore}
+                        className="text-emerald-600 hover:text-emerald-500 font-medium disabled:opacity-50"
+                      >
+                        {loadingMore ? 'Carregando…' : 'Carregar mais →'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {campanha.status === 'draft' && crmTags.length > 0 && (
-          <div className="mt-6 card rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-brand-text">Segmentar por tag do CRM</h2>
-            <p className="mt-1 text-xs text-brand-muted">
-              Importa só os contatos do seu CRM com a tag escolhida
-              {campanha.channel === 'evolution' ? ' (ainda restrito a quem já falou com você).' : '.'}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <select
-                value={selectedCrmTag}
-                onChange={(e) => setSelectedCrmTag(e.target.value)}
-                className="input w-auto"
-              >
-                <option value="">Selecione uma tag…</option>
-                {crmTags.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-              <button
-                onClick={handleImportCrm}
-                disabled={!selectedCrmTag || importingCrm}
-                className="btn-ghost text-xs disabled:opacity-50"
-              >
-                {importingCrm ? 'Importando…' : '🏷️ Importar por tag'}
-              </button>
-            </div>
-            {crmImportResult && (
-              <div className="mt-3 text-sm text-brand-text-secondary">
-                {crmImportResult.imported} de {crmImportResult.elegiveis} contato{crmImportResult.elegiveis === 1 ? '' : 's'} da
-                tag importado{crmImportResult.imported === 1 ? '' : 's'}.
-                {crmImportResult.skippedOptOut > 0 && ` ${crmImportResult.skippedOptOut} já em opt-out.`}
-                {crmImportResult.skippedDuplicate > 0 && ` ${crmImportResult.skippedDuplicate} já estava(m) na campanha.`}
-                {crmImportResult.skippedCold > 0
-                  && ` ${crmImportResult.skippedCold} sem conversa recente (não elegíve${crmImportResult.skippedCold === 1 ? 'l' : 'is'} pro Evolution).`}
+        {activeTab === 'avancado' && (
+          <div className="space-y-6">
+            {canEditPool && poolCandidates.length > 0 && (
+              <div className="card rounded-xl p-4">
+                <h2 className="text-sm font-semibold text-brand-text">Pool de números</h2>
+                <p className="mt-1 text-xs text-brand-muted">
+                  Divida o disparo entre números extras do mesmo canal — reduz o volume por número e o
+                  risco de bater no teto/qualidade de um único número.
+                </p>
+                <div className="mt-3 space-y-1.5">
+                  {poolCandidates.map((n) => (
+                    <label key={n.id} className="flex items-center gap-2 text-sm text-brand-text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={poolSelected.includes(n.id)}
+                        onChange={(e) => setPoolSelected((prev) => (
+                          e.target.checked ? [...prev, n.id] : prev.filter((x) => x !== n.id)
+                        ))}
+                      />
+                      <span>{n.displayName || n.phoneNumber || n.id}</span>
+                      {n.status !== 'connected' && (
+                        <span className="text-xs text-amber-600">(desconectado — só entra se reconectar antes do disparo)</span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    onClick={handleSavePool}
+                    disabled={poolSaving}
+                    className="btn-ghost text-xs disabled:opacity-50"
+                  >
+                    {poolSaving ? 'Salvando…' : 'Salvar pool'}
+                  </button>
+                  {poolMessage && <span className="text-xs text-brand-muted">{poolMessage}</span>}
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {canEditPool && poolCandidates.length > 0 && (
-          <div className="mt-6 card rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-brand-text">Pool de números</h2>
-            <p className="mt-1 text-xs text-brand-muted">
-              Divida o disparo entre números extras do mesmo canal — reduz o volume por número e o
-              risco de bater no teto/qualidade de um único número.
-            </p>
-            <div className="mt-3 space-y-1.5">
-              {poolCandidates.map((n) => (
-                <label key={n.id} className="flex items-center gap-2 text-sm text-brand-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={poolSelected.includes(n.id)}
-                    onChange={(e) => setPoolSelected((prev) => (
-                      e.target.checked ? [...prev, n.id] : prev.filter((x) => x !== n.id)
-                    ))}
-                  />
-                  <span>{n.displayName || n.phoneNumber || n.id}</span>
-                  {n.status !== 'connected' && (
-                    <span className="text-xs text-amber-600">(desconectado — só entra se reconectar antes do disparo)</span>
-                  )}
-                </label>
-              ))}
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <button
-                onClick={handleSavePool}
-                disabled={poolSaving}
-                className="btn-ghost text-xs disabled:opacity-50"
-              >
-                {poolSaving ? 'Salvando…' : 'Salvar pool'}
-              </button>
-              {poolMessage && <span className="text-xs text-brand-muted">{poolMessage}</span>}
-            </div>
-          </div>
-        )}
-
-        {statsByNumber && Object.keys(statsByNumber).length > 0 && (
-          <div className="mt-6 card rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-brand-text">Envio por número (pool)</h2>
-            <p className="mt-1 text-xs text-brand-muted">
-              Quanto cada número da rotação já processou nesta campanha.
-            </p>
-            <div className="mt-3 space-y-2">
-              {Object.entries(statsByNumber).map(([numberId, byStatus]) => {
-                const info = numberId === campanha.whatsappNumber?.id
-                  ? campanha.whatsappNumber
-                  : poolNumbersInfo?.find((n) => n.id === numberId);
-                const total = Object.values(byStatus).reduce((a, b) => a + b, 0);
-                return (
-                  <div key={numberId} className="flex items-center justify-between text-sm border-t border-brand-border pt-2 first:border-t-0 first:pt-0">
-                    <span className="text-brand-text-secondary">{info?.displayName || info?.phoneNumber || numberId}</span>
-                    <span className="text-xs text-brand-muted">
-                      {total} processado{total === 1 ? '' : 's'}
-                      {byStatus.failed ? ` · ${byStatus.failed} falhou/falharam` : ''}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {sequenceParent && (
-          <div className="mt-6 card rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-brand-text">Sequência/drip</h2>
-            <p className="mt-1 text-sm text-brand-text-secondary">
-              Este é um passo da sequência disparada por{' '}
-              <Link href={`/dashboard/campanhas/${sequenceParent.id}`} className="text-emerald-600 hover:text-emerald-500">
-                {sequenceParent.name}
-              </Link>.
-            </p>
-          </div>
-        )}
-
-        {sequenceSteps && sequenceSteps.length > 0 && (
-          <div className="mt-6 card rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-brand-text">Sequência/drip</h2>
-            <p className="mt-1 text-xs text-brand-muted">
-              Passos seguintes, disparados automaticamente após o início desta campanha.
-            </p>
-            <div className="mt-3 space-y-2">
-              {sequenceSteps.map((s) => (
-                <div key={s.id} className="flex items-center justify-between text-sm border-t border-brand-border pt-2 first:border-t-0 first:pt-0">
-                  <Link href={`/dashboard/campanhas/${s.id}`} className="text-brand-text-secondary hover:text-brand-text">
-                    Passo {s.sequenceIndex} — {s.name}
-                  </Link>
-                  <span className="text-xs text-brand-muted">
-                    {s.sequenceDelayDays}d depois · {CAMP_STATUS_LABEL[s.status] || s.status}
-                    {s.scheduledAt && ` · ${new Date(s.scheduledAt).toLocaleString('pt-BR')}`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {canCreateSequence && (
-          <div className="mt-6 card rounded-xl p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-brand-text">Sequência/drip</h2>
+            {statsByNumber && Object.keys(statsByNumber).length > 0 && (
+              <div className="card rounded-xl p-4">
+                <h2 className="text-sm font-semibold text-brand-text">Envio por número (pool)</h2>
                 <p className="mt-1 text-xs text-brand-muted">
-                  Crie até 5 passos seguintes (ex: lembrete, follow-up) — disparados automaticamente
-                  depois de X dias do início desta campanha, pra mesma audiência.
+                  Quanto cada número da rotação já processou nesta campanha.
+                </p>
+                <div className="mt-3 space-y-2">
+                  {Object.entries(statsByNumber).map(([numberId, byStatus]) => {
+                    const info = numberId === campanha.whatsappNumber?.id
+                      ? campanha.whatsappNumber
+                      : poolNumbersInfo?.find((n) => n.id === numberId);
+                    const total = Object.values(byStatus).reduce((a, b) => a + b, 0);
+                    return (
+                      <div key={numberId} className="flex items-center justify-between text-sm border-t border-brand-border pt-2 first:border-t-0 first:pt-0">
+                        <span className="text-brand-text-secondary">{info?.displayName || info?.phoneNumber || numberId}</span>
+                        <span className="text-xs text-brand-muted">
+                          {total} processado{total === 1 ? '' : 's'}
+                          {byStatus.failed ? ` · ${byStatus.failed} falhou/falharam` : ''}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {sequenceParent && (
+              <div className="card rounded-xl p-4">
+                <h2 className="text-sm font-semibold text-brand-text">Sequência/drip</h2>
+                <p className="mt-1 text-sm text-brand-text-secondary">
+                  Este é um passo da sequência disparada por{' '}
+                  <Link href={`/dashboard/campanhas/${sequenceParent.id}`} className="text-emerald-600 hover:text-emerald-500">
+                    {sequenceParent.name}
+                  </Link>.
                 </p>
               </div>
-              {!showSequenceForm && (
-                <button onClick={() => setShowSequenceForm(true)} className="btn-ghost text-xs whitespace-nowrap">
-                  + Criar sequência
-                </button>
-              )}
-            </div>
-
-            {showSequenceForm && (
-              <form onSubmit={handleCreateSequence} className="mt-4 space-y-4">
-                {seqSteps.map((s, i) => (
-                  <div key={i} className="inner-block space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-brand-text-secondary">Passo {i + 1}</span>
-                      {seqSteps.length > 1 && (
-                        <button type="button" onClick={() => removeSeqStep(i)} className="text-xs text-red-500 hover:underline">
-                          Remover
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-brand-muted whitespace-nowrap">Disparar</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={90}
-                        required
-                        value={s.delayDays}
-                        onChange={(e) => updateSeqStep(i, { delayDays: e.target.value })}
-                        className="input w-20"
-                      />
-                      <span className="text-xs text-brand-muted">dia(s) após o início</span>
-                    </div>
-                    {campanha.channel === 'meta' ? (
-                      <select
-                        required
-                        value={s.templateName}
-                        onChange={(e) => updateSeqStep(i, { templateName: e.target.value })}
-                        className="input"
-                      >
-                        <option value="">Selecione o template…</option>
-                        {templates.map((t) => (
-                          <option key={t.id} value={t.name}>{t.name} ({t.language})</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <textarea
-                        required
-                        value={s.messageBody}
-                        onChange={(e) => updateSeqStep(i, { messageBody: e.target.value })}
-                        rows={3}
-                        maxLength={4096}
-                        placeholder="Oi {{nome}}, tudo bem? ..."
-                        className="input"
-                      />
-                    )}
-                  </div>
-                ))}
-
-                {seqSteps.length < 5 && (
-                  <button type="button" onClick={addSeqStep} className="text-xs text-emerald-600 hover:text-emerald-500">
-                    + Adicionar passo
-                  </button>
-                )}
-
-                {seqError && (
-                  <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-600 text-sm">
-                    {seqError}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-3">
-                  <button
-                    type="submit"
-                    disabled={seqSaving || !seqStepsReady}
-                    className="btn-primary px-4 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {seqSaving ? 'Criando…' : 'Salvar sequência'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowSequenceForm(false)}
-                    className="text-xs text-brand-muted hover:text-brand-text"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </form>
             )}
-          </div>
-        )}
 
-        {campanha.abTestEnabled && statsByVariant && (
-          <div className="mt-6 card rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-brand-text">Teste A/B — por variante</h2>
-            <p className="mt-1 text-xs text-brand-muted">
-              Audiência dividida 50/50 entre as 2 versões. Sem promoção automática de vencedor — compare abaixo.
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-4">
-              {(['A', 'B'] as const).map((v) => {
-                const s = statsByVariant[v] || {};
-                const total = Object.values(s).reduce((a, b) => a + b, 0);
-                return (
-                  <div key={v}>
-                    <div className="text-xs font-medium text-brand-muted mb-1">Variante {v}</div>
-                    <div className="text-lg font-semibold text-brand-text">{total}</div>
-                    <div className="text-[11px] text-brand-muted">
-                      {s.delivered || 0} entregue{s.delivered === 1 ? '' : 's'} · {s.read || 0} lido{s.read === 1 ? '' : 's'} ·{' '}
-                      {s.failed || 0} falhou/falharam
+            {sequenceSteps && sequenceSteps.length > 0 && (
+              <div className="card rounded-xl p-4">
+                <h2 className="text-sm font-semibold text-brand-text">Sequência/drip</h2>
+                <p className="mt-1 text-xs text-brand-muted">
+                  Passos seguintes, disparados automaticamente após o início desta campanha.
+                </p>
+                <div className="mt-3 space-y-2">
+                  {sequenceSteps.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between text-sm border-t border-brand-border pt-2 first:border-t-0 first:pt-0">
+                      <Link href={`/dashboard/campanhas/${s.id}`} className="text-brand-text-secondary hover:text-brand-text">
+                        Passo {s.sequenceIndex} — {s.name}
+                      </Link>
+                      <span className="text-xs text-brand-muted">
+                        {s.sequenceDelayDays}d depois · {CAMP_STATUS_LABEL[s.status] || s.status}
+                        {s.scheduledAt && ` · ${new Date(s.scheduledAt).toLocaleString('pt-BR')}`}
+                      </span>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-6 card rounded-xl p-4">
-          <h2 className="text-sm font-semibold text-brand-text">Enviar teste</h2>
-          <p className="mt-1 text-xs text-brand-muted">
-            Manda esta mensagem pra um número (ex: o seu) sem contar nas métricas da campanha.
-          </p>
-          <form onSubmit={handleTestSend} className="mt-3 flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              placeholder="Telefone com DDD"
-              value={testPhone}
-              onChange={(e) => setTestPhone(e.target.value)}
-              className="input flex-1 min-w-[160px] max-w-xs"
-            />
-            <button
-              type="submit"
-              disabled={testSending || !testPhone.trim()}
-              className="btn-ghost text-xs disabled:opacity-50"
-            >
-              {testSending ? 'Enviando…' : '🧪 Enviar teste'}
-            </button>
-            {testResult && (
-              <span className={`text-xs ${testResult.ok ? 'text-emerald-600' : 'text-red-500'}`}>
-                {testResult.message}
-              </span>
-            )}
-          </form>
-        </div>
-
-        <div className="mt-8">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-muted">
-              Contatos ({contatosTotal})
-            </h2>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-lg border border-brand-border bg-brand-elevated px-2 py-1 text-xs text-brand-text-secondary"
-            >
-              <option value="">Todos</option>
-              {Object.entries(CONTATO_STATUS_LABEL).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
-          </div>
-
-          {contatos.length === 0 ? (
-            <p className="text-sm text-brand-muted">Nenhum contato {statusFilter ? 'com esse status' : 'ainda'}.</p>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-brand-border">
-              <table className="w-full text-sm">
-                <thead className="bg-brand-elevated text-brand-text-secondary text-left">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">Telefone</th>
-                    <th className="px-3 py-2 font-medium">Nome</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand-border">
-                  {contatos.map((c) => (
-                    <tr key={c.id} title={c.errorMessage || undefined}>
-                      <td className="px-3 py-2 text-brand-text-secondary">{c.phone}</td>
-                      <td className="px-3 py-2 text-brand-muted">{c.name || '—'}</td>
-                      <td className={`px-3 py-2 ${CONTATO_STATUS_COLOR[c.status] || 'text-brand-muted'}`}>
-                        {CONTATO_STATUS_LABEL[c.status] || c.status}
-                      </td>
-                    </tr>
                   ))}
-                </tbody>
-              </table>
-              {contatosTotal > contatos.length && (
-                <div className="px-3 py-2 text-xs text-brand-muted bg-brand-elevated">
-                  Mostrando {contatos.length} de {contatosTotal}.
                 </div>
-              )}
+              </div>
+            )}
+
+            {canCreateSequence && (
+              <div className="card rounded-xl p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold text-brand-text">Sequência/drip</h2>
+                    <p className="mt-1 text-xs text-brand-muted">
+                      Crie até 5 passos seguintes (ex: lembrete, follow-up) — disparados automaticamente
+                      depois de X dias do início desta campanha, pra mesma audiência.
+                    </p>
+                  </div>
+                  {!showSequenceForm && (
+                    <button onClick={() => setShowSequenceForm(true)} className="btn-ghost text-xs whitespace-nowrap">
+                      + Criar sequência
+                    </button>
+                  )}
+                </div>
+
+                {showSequenceForm && (
+                  <form onSubmit={handleCreateSequence} className="mt-4 space-y-4">
+                    {seqSteps.map((s, i) => (
+                      <div key={i} className="inner-block space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-brand-text-secondary">Passo {i + 1}</span>
+                          {seqSteps.length > 1 && (
+                            <button type="button" onClick={() => removeSeqStep(i)} className="text-xs text-red-500 hover:underline">
+                              Remover
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-brand-muted whitespace-nowrap">Disparar</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={90}
+                            required
+                            value={s.delayDays}
+                            onChange={(e) => updateSeqStep(i, { delayDays: e.target.value })}
+                            className="input w-20"
+                          />
+                          <span className="text-xs text-brand-muted">dia(s) após o início</span>
+                        </div>
+                        {campanha.channel === 'meta' ? (
+                          <select
+                            required
+                            value={s.templateName}
+                            onChange={(e) => updateSeqStep(i, { templateName: e.target.value })}
+                            className="input"
+                          >
+                            <option value="">Selecione o template…</option>
+                            {templates.map((t) => (
+                              <option key={t.id} value={t.name}>{t.name} ({t.language})</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <textarea
+                            required
+                            value={s.messageBody}
+                            onChange={(e) => updateSeqStep(i, { messageBody: e.target.value })}
+                            rows={3}
+                            maxLength={4096}
+                            placeholder="Oi {{nome}}, tudo bem? ..."
+                            className="input"
+                          />
+                        )}
+                      </div>
+                    ))}
+
+                    {seqSteps.length < 5 && (
+                      <button type="button" onClick={addSeqStep} className="text-xs text-emerald-600 hover:text-emerald-500">
+                        + Adicionar passo
+                      </button>
+                    )}
+
+                    {seqError && (
+                      <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-600 text-sm">
+                        {seqError}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="submit"
+                        disabled={seqSaving || !seqStepsReady}
+                        className="btn-primary px-4 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {seqSaving ? 'Criando…' : 'Salvar sequência'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowSequenceForm(false)}
+                        className="text-xs text-brand-muted hover:text-brand-text"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {campanha.abTestEnabled && statsByVariant && (
+              <div className="card rounded-xl p-4">
+                <h2 className="text-sm font-semibold text-brand-text">Teste A/B — por variante</h2>
+                <p className="mt-1 text-xs text-brand-muted">
+                  Audiência dividida 50/50 entre as 2 versões. Sem promoção automática de vencedor — compare abaixo.
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-4">
+                  {(['A', 'B'] as const).map((v) => {
+                    const s = statsByVariant[v] || {};
+                    const total = Object.values(s).reduce((a, b) => a + b, 0);
+                    return (
+                      <div key={v}>
+                        <div className="text-xs font-medium text-brand-muted mb-1">Variante {v}</div>
+                        <div className="text-lg font-semibold text-brand-text">{total}</div>
+                        <div className="text-[11px] text-brand-muted">
+                          {s.delivered || 0} entregue{s.delivered === 1 ? '' : 's'} · {s.read || 0} lido{s.read === 1 ? '' : 's'} ·{' '}
+                          {s.failed || 0} falhou/falharam
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="card rounded-xl p-4">
+              <h2 className="text-sm font-semibold text-brand-text">Enviar teste</h2>
+              <p className="mt-1 text-xs text-brand-muted">
+                Manda esta mensagem pra um número (ex: o seu) sem contar nas métricas da campanha.
+              </p>
+              <form onSubmit={handleTestSend} className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Telefone com DDD"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  className="input flex-1 min-w-[160px] max-w-xs"
+                />
+                <button
+                  type="submit"
+                  disabled={testSending || !testPhone.trim()}
+                  className="btn-ghost text-xs disabled:opacity-50"
+                >
+                  {testSending ? 'Enviando…' : '🧪 Enviar teste'}
+                </button>
+                {testResult && (
+                  <span className={`text-xs ${testResult.ok ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {testResult.message}
+                  </span>
+                )}
+              </form>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
