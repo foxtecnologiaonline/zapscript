@@ -1825,7 +1825,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
 
     // Dedup + insert
     const existing = await prisma.campanhaListaContato.findMany({
-      where: { listaId: targetListaId },
+      where: { listaId: targetListaId! },
       select: { phone: true },
     });
     const existingPhones = new Set(existing.map(e => e.phone));
@@ -1835,7 +1835,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
 
     if (toInsert.length > 0) {
       await prisma.campanhaListaContato.createMany({
-        data: toInsert.map(c => ({ listaId: targetListaId, phone: c.phone, name: c.name })),
+        data: toInsert.map(c => ({ listaId: targetListaId!, phone: c.phone, name: c.name })),
         skipDuplicates: true,
       });
     }
