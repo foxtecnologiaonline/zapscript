@@ -19,7 +19,9 @@ import {
 } from '../lib/affiliateConfig';
 import { maskEmail } from '../lib/mask';
 import { invalidateModuleCache } from '../lib/moduleGate';
-import { PLAN_PRICES } from './billing';
+import { invalidatePlanCache } from '../lib/planGate';
+import { PLAN_PRICES, activatePlan } from './billing';
+import { creditCampanhaMessages, getOrCreateCampanhaBalance } from '../lib/campanha-credit';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -431,7 +433,12 @@ export default async function adminRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Informe ao menos um campo: planName, isAdmin ou audios.' });
       }
 
-      const VALID_PLANS = ['free', 'pro', 'ultra', 'executive', 'pro-tester'];
+      // 'free'/'pro'/'executive' são os tiers "clássicos" (executive/pro grandfathered — não
+      // vendidos a novos usuários, mas ainda válidos pra quem já está neles); 'profissional'/
+      // 'empresas' são os tiers pagos atuais ("Tiers ZapScript 2.0", ver TIER_MODULE_BUNDLES em
+      // routes/billing.ts); 'pro-tester' é o plano interno de tester. 'ultra' nunca existiu como
+      // Plan de verdade (não está no seed) — removido daqui de propósito.
+      const VALID_PLANS = ['free', 'pro', 'executive', 'profissional', 'empresas', 'pro-tester'];
       if (planName !== undefined && !VALID_PLANS.includes(planName)) {
         return reply.code(400).send({ error: `Plano inválido. Use: ${VALID_PLANS.join(', ')}` });
       }
@@ -441,42 +448,34 @@ export default async function adminRoutes(app: FastifyInstance) {
 
       const ops: any[] = [];
 
-      if (planName !== undefined) {
+      if (planName !== undefined && planName !== 'free') {
         const plan = await prisma.plan.findUnique({ where: { name: planName } });
         if (!plan) return reply.code(400).send({ error: `Plano "${planName}" não encontrado.` });
-
-        // Para planos pagos: resetAt = data de aquisição + 30 dias
-        const nextPeriod = planName !== 'free'
-          ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-          : null;
-
+        // Reaproveita a mesma ativação usada em pagamento real (upsert de Subscription +
+        // MinuteBalance) — sincroniza também os módulos do bundle do tier (Entitlement
+        // source='bundle', ex.: Atende/Tarefas no Profissional), que o código manual antigo
+        // aqui nunca fazia: um admin setando "profissional" na mão deixava o usuário sem os
+        // módulos que o tier deveria incluir.
+        await activatePlan(id, planName, {});
+      } else if (planName === 'free') {
+        const plan = await prisma.plan.findUnique({ where: { name: 'free' } });
+        if (!plan) return reply.code(400).send({ error: `Plano "free" não encontrado.` });
         ops.push(
           prisma.subscription.update({
             where: { userId: id },
-            data: {
-              planId:              plan.id,
-              status:              planName === 'free' ? 'canceled' : 'active',
-              asaasSubscriptionId: planName === 'free' ? null : undefined,
-              currentPeriodEnd:    planName === 'free' ? null : nextPeriod,
-            },
+            data: { planId: plan.id, status: 'canceled', asaasSubscriptionId: null, currentPeriodEnd: null },
           }),
-          // ao trocar plano: cota de áudios reiniciada (audiosUsed = 0)
-          // minutos internos reabastecidos p/ métrica de custo; resetAt ancorado na aquisição
           prisma.minuteBalance.upsert({
             where:  { userId: id },
-            create: {
-              userId:           id,
-              availableMinutes: plan.minutesPerMonth,
-              audiosUsed:       0,
-              resetAt:          nextPeriod ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-              lastAlertSent:    null,
-            },
-            update: {
-              availableMinutes: plan.minutesPerMonth,
-              audiosUsed:       0,
-              lastAlertSent:    null,
-              ...(nextPeriod ? { resetAt: nextPeriod } : {}),
-            },
+            create: { userId: id, availableMinutes: plan.minutesPerMonth, audiosUsed: 0, resetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), lastAlertSent: null },
+            update: { availableMinutes: plan.minutesPerMonth, audiosUsed: 0, lastAlertSent: null },
+          }),
+          // Downgrade pra free revoga os módulos que vinham só do bundle do tier antigo
+          // (Atende/Tarefas/CRM) — mesma limpeza que activatePlan() faz ao trocar de tier,
+          // só que aqui o tier novo não tem bundle nenhum (free = sem módulo algum).
+          prisma.entitlement.updateMany({
+            where: { userId: id, source: 'bundle', status: { in: ['active', 'trialing'] } },
+            data:  { status: 'canceled', canceledAt: new Date() },
           }),
         );
       }
@@ -486,7 +485,15 @@ export default async function adminRoutes(app: FastifyInstance) {
       }
 
       // Executa operações acima antes de ajustar minutos
-      if (ops.length) await prisma.$transaction(ops);
+      if (ops.length) {
+        await prisma.$transaction(ops);
+        // activatePlan() já invalida os caches sozinho pro branch de plano pago — aqui só o
+        // downgrade pra free (ops manual) e o isAdmin (sem cache) passam por este caminho.
+        if (planName === 'free') {
+          await invalidatePlanCache(id);
+          await invalidateModuleCache(id);
+        }
+      }
 
       // Ajuste de áudios consumidos no ciclo (independente ou após troca de plano)
       if (audios !== undefined) {
@@ -677,7 +684,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params;
 
-      const [user, transcriptions, numbers, usageLogs, auditLogs] = await Promise.all([
+      const [user, transcriptions, numbers, usageLogs, auditLogs, campanhaBalance] = await Promise.all([
         prisma.user.findUnique({
           where:   { id },
           select: {
@@ -716,6 +723,10 @@ export default async function adminRoutes(app: FastifyInstance) {
           take:    10,
           select:  { action: true, timestamp: true, changes: true, metadata: true },
         }),
+        // Saldo de mensagens do módulo Campanhas — mesmo motor de GET /billing/campanha-balance
+        // (grátis do mês + pago não-vencido + Mensal Ilimitado), pra conceder saldo/plano ao
+        // usuário direto pelo painel admin. Ver lib/campanha-credit.ts.
+        getOrCreateCampanhaBalance(id),
       ]);
 
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
@@ -724,6 +735,10 @@ export default async function adminRoutes(app: FastifyInstance) {
       const planLimit        = (user.subscription?.plan as any)?.audiosPerMonth || 0;
       const audiosUsed       = (user.balance as any)?.audiosUsed || 0;
       const usagePct         = planLimit > 0 ? Math.min(100, (audiosUsed / planLimit) * 100) : 0;
+
+      const campanhaUnlimited = campanhaBalance.plan === 'monthly';
+      const campanhaPaidUsable = campanhaBalance.paidExpiresAt && campanhaBalance.paidExpiresAt > new Date()
+        ? campanhaBalance.paidMessages : 0;
 
       return {
         user,
@@ -738,7 +753,65 @@ export default async function adminRoutes(app: FastifyInstance) {
         numbers,
         usageLogs,
         auditLogs,
+        campanha: {
+          unlimited:     campanhaUnlimited,
+          renewalDate:   campanhaUnlimited ? campanhaBalance.renewalDate : null,
+          freeMessages:  campanhaBalance.freeMessages,
+          paidMessages:  campanhaPaidUsable,
+          paidExpiresAt: campanhaPaidUsable > 0 ? campanhaBalance.paidExpiresAt : null,
+        },
       };
+    }
+  );
+
+  // POST /admin/users/:id/campanha-grant — concede saldo de mensagens (courtesy,
+  // sem cobrança) ou o plano Mensal Ilimitado pra um usuário específico do módulo
+  // Campanhas. Mesmo motor de lib/campanha-credit.ts (routes/billing.ts, chatbot);
+  // aqui é só um jeito de creditar sem passar pelo Pix/Asaas — pra suporte/cortesia.
+  app.post<{
+    Params: { id: string };
+    Body: { type: 'messages' | 'unlimited' | 'revoke-unlimited'; messages?: number; validityDays?: number; days?: number };
+  }>(
+    '/users/:id/campanha-grant',
+    { preHandler: [adminAuth], schema: { body: { type: 'object' } } },
+    async (req, reply) => {
+      const { id } = req.params;
+      const { type, messages, validityDays, days } = req.body ?? ({} as any);
+
+      const user = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+      if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
+
+      if (type === 'messages') {
+        if (!messages || messages <= 0) return reply.code(400).send({ error: 'Informe "messages" (> 0).' });
+        const { balanceAfter } = await creditCampanhaMessages(id, Math.floor(messages), {
+          referenceType: 'admin_grant',
+          validityDays:  validityDays && validityDays > 0 ? Math.floor(validityDays) : undefined,
+        });
+        app.log.info({ adminAction: 'campanha-grant-messages', userId: id, messages }, '[Admin] Cortesia de mensagens de campanha concedida');
+        return { ok: true, balanceAfter };
+      }
+
+      if (type === 'unlimited') {
+        const renewalDate = new Date(Date.now() + (days && days > 0 ? Math.floor(days) : 30) * 24 * 60 * 60 * 1000);
+        await prisma.campanhaBalance.upsert({
+          where:  { userId: id },
+          create: { userId: id, plan: 'monthly', renewalDate },
+          update: { plan: 'monthly', renewalDate },
+        });
+        app.log.info({ adminAction: 'campanha-grant-unlimited', userId: id, renewalDate }, '[Admin] Mensal Ilimitado de campanhas concedido por cortesia');
+        return { ok: true, renewalDate };
+      }
+
+      if (type === 'revoke-unlimited') {
+        await prisma.campanhaBalance.updateMany({
+          where: { userId: id, plan: 'monthly' },
+          data:  { plan: null, renewalDate: null },
+        });
+        app.log.info({ adminAction: 'campanha-revoke-unlimited', userId: id }, '[Admin] Mensal Ilimitado de campanhas revogado');
+        return { ok: true };
+      }
+
+      return reply.code(400).send({ error: 'type deve ser "messages", "unlimited" ou "revoke-unlimited".' });
     }
   );
 
@@ -1854,21 +1927,34 @@ export default async function adminRoutes(app: FastifyInstance) {
             });
 
           } else if (action === 'set-plan') {
-            const plan = await prisma.plan.findUnique({ where: { name: String(value) } });
-            if (!plan) throw new Error(`Plano "${value}" não existe`);
-            const nextReset = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-            await prisma.$transaction([
-              prisma.subscription.upsert({
-                where:  { userId },
-                create: { userId, planId: plan.id, status: 'active' },
-                update: { planId: plan.id, status: 'active' },
-              }),
-              prisma.minuteBalance.upsert({
-                where:  { userId },
-                create: { userId, audiosUsed: 0, availableMinutes: plan.minutesPerMonth, resetAt: nextReset, lastAlertSent: null } as any,
-                update: { audiosUsed: 0, availableMinutes: plan.minutesPerMonth, lastAlertSent: null, resetAt: nextReset } as any,
-              }),
-            ]);
+            const planName = String(value);
+            if (planName === 'free') {
+              const plan = await prisma.plan.findUnique({ where: { name: 'free' } });
+              if (!plan) throw new Error('Plano "free" não existe');
+              await prisma.$transaction([
+                prisma.subscription.update({
+                  where: { userId },
+                  data:  { planId: plan.id, status: 'canceled', asaasSubscriptionId: null, currentPeriodEnd: null },
+                }),
+                prisma.minuteBalance.upsert({
+                  where:  { userId },
+                  create: { userId, audiosUsed: 0, availableMinutes: plan.minutesPerMonth, resetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), lastAlertSent: null } as any,
+                  update: { audiosUsed: 0, availableMinutes: plan.minutesPerMonth, lastAlertSent: null } as any,
+                }),
+                prisma.entitlement.updateMany({
+                  where: { userId, source: 'bundle', status: { in: ['active', 'trialing'] } },
+                  data:  { status: 'canceled', canceledAt: new Date() },
+                }),
+              ]);
+              await invalidatePlanCache(userId);
+              await invalidateModuleCache(userId);
+            } else {
+              const plan = await prisma.plan.findUnique({ where: { name: planName } });
+              if (!plan) throw new Error(`Plano "${planName}" não existe`);
+              // Mesma ativação de pagamento real — sincroniza os módulos do bundle do tier
+              // (ver comentário equivalente em PATCH /users/:id).
+              await activatePlan(userId, planName, {});
+            }
 
           } else if (action === 'ban') {
             await prisma.user.update({ where: { id: userId }, data: { deletedAt: new Date() } });

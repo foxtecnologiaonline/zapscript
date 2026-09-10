@@ -238,7 +238,7 @@ async function getOrCreateCustomer(user: {
 }
 
 /* ── Ativar plano no banco ── */
-async function activatePlan(userId: string, planName: string, opts: {
+export async function activatePlan(userId: string, planName: string, opts: {
   asaasSubscriptionId?: string | null;
   asaasCustomerId?:     string | null;
   paymentMethod?:       string | null;

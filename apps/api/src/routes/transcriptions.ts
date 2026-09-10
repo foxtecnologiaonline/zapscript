@@ -18,12 +18,14 @@ function getSupabase() {
   });
 }
 
-// Planos com acesso a cada feature (pro-tester tem paridade total com pro)
-const PLAN_SEARCH  = ['free', 'pro', 'pro-tester', 'executive']; // busca liberada para todos os planos
-const PLAN_EXPORT  = ['pro', 'pro-tester', 'executive'];   // Exportação disponível para Pro+
-const PLAN_TAGS    = ['pro', 'pro-tester', 'executive'];   // tags abertas para Pro+
-const PLAN_LANG    = ['pro', 'pro-tester', 'executive'];   // filtro por idioma para Pro+
-const PLAN_AI_FEAT = ['pro', 'pro-tester', 'executive'];   // reply sugerida + doc para Pro+
+// Planos com acesso a cada feature (pro-tester tem paridade total com pro; profissional/empresas
+// são os tiers pagos atuais — ver "Tiers ZapScript 2.0" em routes/billing.ts — e precisam de
+// paridade com pro/executive aqui, senão um assinante pago fica com menos acesso que o free).
+const PLAN_SEARCH  = ['free', 'pro', 'pro-tester', 'executive', 'profissional', 'empresas']; // busca liberada para todos os planos
+const PLAN_EXPORT  = ['pro', 'pro-tester', 'executive', 'profissional', 'empresas'];   // Exportação disponível para Pro+
+const PLAN_TAGS    = ['pro', 'pro-tester', 'executive', 'profissional', 'empresas'];   // tags abertas para Pro+
+const PLAN_LANG    = ['pro', 'pro-tester', 'executive', 'profissional', 'empresas'];   // filtro por idioma para Pro+
+const PLAN_AI_FEAT = ['pro', 'pro-tester', 'executive', 'profissional', 'empresas'];   // reply sugerida + doc para Pro+
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 

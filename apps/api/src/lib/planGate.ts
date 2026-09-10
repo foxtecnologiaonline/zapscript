@@ -8,7 +8,7 @@ const planCacheKey   = (userId: string) => `plan:${userId}`;
 /**
  * M6: Retorna o nome do plano do usuário com cache Redis de 60s.
  * Evita query extra em toda rota que usa planGate.
- * ('free' | 'pro' | 'ultra' | 'executive')
+ * ('free' | 'pro' | 'executive' | 'profissional' | 'empresas' | 'pro-tester')
  */
 export async function getUserPlan(userId: string): Promise<string> {
   // Tentar cache primeiro
@@ -41,7 +41,7 @@ export async function invalidatePlanCache(userId: string): Promise<void> {
  * Se não estiver, envia 403 e retorna false.
  * Use assim:
  *   const plan = await getUserPlan(userId);
- *   if (!requirePlan(plan, ['pro','ultra','executive'], reply)) return;
+ *   if (!requirePlan(plan, ['pro','executive','profissional','empresas'], reply)) return;
  */
 export function requirePlan(
   planName: string,

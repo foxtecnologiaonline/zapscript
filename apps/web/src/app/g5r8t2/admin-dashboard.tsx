@@ -21,8 +21,9 @@ const commRatePct = (c: { commissionAmount: number; saleAmount: number }) =>
 const PLAN_CLS: Record<string, string> = {
   free:         'text-gray-400 bg-gray-400/10 border-gray-400/20',
   pro:          'text-teal-400 bg-teal-400/10 border-teal-400/20',
-  ultra:        'text-purple-400 bg-purple-400/10 border-purple-400/20',
   executive:    'text-amber-400 bg-amber-400/10 border-amber-400/20',
+  profissional: 'text-teal-400 bg-teal-400/10 border-teal-400/20',
+  empresas:     'text-amber-400 bg-amber-400/10 border-amber-400/20',
   'pro-tester': 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20',
 };
 const STATUS_CLS: Record<string, string> = {
@@ -336,8 +337,8 @@ function PlanosPanel({ apiBase, token, notify }: { apiBase: string; token: strin
   }
 
   const PLAN_COLOR: Record<string, string> = {
-    free: 'text-gray-400', pro: 'text-teal-400', ultra: 'text-purple-400',
-    executive: 'text-amber-400', 'pro-tester': 'text-emerald-300',
+    free: 'text-gray-400', pro: 'text-teal-400', executive: 'text-amber-400',
+    profissional: 'text-teal-400', empresas: 'text-amber-400', 'pro-tester': 'text-emerald-300',
   };
 
   return (
@@ -735,8 +736,9 @@ function TesterUpgradePanel({ token, notify }: { token: string; notify: (t: stri
 
   const PLAN_COLOR: Record<string, string> = {
     executive:    'text-amber-400',
-    ultra:        'text-purple-400',
+    empresas:     'text-amber-400',
     pro:          'text-teal-400',
+    profissional: 'text-teal-400',
     'pro-tester': 'text-emerald-300',
     free:         'text-gray-400',
   };
@@ -3081,6 +3083,11 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
   const [editMode, setEditMode]       = useState<'set' | 'add'>('set');
   const [editSaving, setEditSaving]   = useState(false);
 
+  // Cortesia de saldo/plano do módulo Campanhas
+  const [campMessages, setCampMessages]         = useState('1000');
+  const [campValidityDays, setCampValidityDays] = useState('90');
+  const [campUnlimitedDays, setCampUnlimitedDays] = useState('30');
+
   const h = { 'x-admin-token': token, 'content-type': 'application/json' };
 
   const load = useCallback(async () => {
@@ -3158,6 +3165,20 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
     } finally { setEditSaving(false); }
   }
 
+  async function grantCampanhaMessages() {
+    const messages = parseInt(campMessages, 10);
+    if (!messages || messages <= 0) { onAction('❌ Informe uma quantidade de mensagens válida', 'err'); return; }
+    const validityDays = parseInt(campValidityDays, 10);
+    await act('campanha-grant', 'POST', { type: 'messages', messages, validityDays: validityDays > 0 ? validityDays : undefined });
+  }
+  async function grantCampanhaUnlimited() {
+    const days = parseInt(campUnlimitedDays, 10);
+    await act('campanha-grant', 'POST', { type: 'unlimited', days: days > 0 ? days : undefined });
+  }
+  async function revokeCampanhaUnlimited() {
+    await act('campanha-grant', 'POST', { type: 'revoke-unlimited' });
+  }
+
   async function sendMessage() {
     if (!msgText.trim()) return;
     setMsgSending(true); setMsgResult(null);
@@ -3184,7 +3205,7 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
   );
   if (!data) return null;
 
-  const { user, stats, transcriptions, numbers, auditLogs } = data;
+  const { user, stats, transcriptions, numbers, auditLogs, campanha } = data;
   const plan   = user?.subscription?.plan?.name || 'free';
   const status = user?.subscription?.status || '—';
 
@@ -3364,11 +3385,14 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
                 <label className="block text-[10px] text-[rgba(16,185,129,.4)] mb-1.5">PLANO</label>
                 <select value={editPlan} onChange={e => setEditPlan(e.target.value)}
                   className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] outline-none focus:border-[rgba(16,185,129,.35)]">
-                  <option value="free">🆓 Free</option>
-                  <option value="pro">⚡ Pro</option>
-                  <option value="ultra">🚀 Ultra</option>
-                  <option value="executive">💎 Executive</option>
+                  <option value="free">🆓 Free (Core)</option>
+                  <option value="profissional">⚡ Profissional</option>
+                  <option value="empresas">💎 Empresas</option>
                   <option value="pro-tester">🧪 Pro Tester</option>
+                  <optgroup label="── Legado (grandfathered, não vendidos) ──">
+                    <option value="pro">Pro (antigo)</option>
+                    <option value="executive">Executive (antigo)</option>
+                  </optgroup>
                 </select>
               </div>
               <div>
@@ -3393,6 +3417,57 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
             <Btn variant="primary" disabled={editSaving} onClick={saveEdit} cls="w-full justify-center py-2">
               {editSaving ? '⟳ Salvando...' : '💾 Salvar alterações'}
             </Btn>
+          </div>
+
+          {/* Campanhas — saldo de mensagens (30 grátis/mês + pré-pago + Mensal Ilimitado, ver
+              CAMPANHAS_ARQUITETURA.md §17) + concessão de cortesia por este painel. */}
+          <div className="bg-[#0d1c19] border border-[rgba(16,185,129,.10)] rounded-xl p-4">
+            <div className="text-xs font-bold text-[rgba(16,185,129,.5)] uppercase tracking-wide mb-3">📣 Campanhas — Saldo de Mensagens</div>
+            {campanha && (
+              <div className="bg-[#132621] rounded-lg px-3 py-2.5 mb-3 text-xs">
+                {campanha.unlimited ? (
+                  <span className="text-[#10b981] font-semibold">💳 Mensal Ilimitado ativo — renova {campanha.renewalDate ? fmt(campanha.renewalDate) : '—'}</span>
+                ) : (
+                  <>
+                    <span className="text-[#d1fae5] font-semibold">
+                      {(campanha.freeMessages ?? 0) + (campanha.paidMessages ?? 0)} mensagens disponíveis
+                    </span>
+                    <span className="text-[rgba(16,185,129,.5)]"> ({campanha.freeMessages ?? 0} grátis do mês + {campanha.paidMessages ?? 0} pagas)</span>
+                    {campanha.paidExpiresAt && (
+                      <div className="text-[rgba(16,185,129,.4)] mt-0.5">Saldo pago válido até {fmt(campanha.paidExpiresAt)}</div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="text-[10px] text-[rgba(16,185,129,.4)] mb-1.5">CONCEDER MENSAGENS (cortesia, sem cobrança)</div>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <input type="number" min="1" value={campMessages} onChange={e => setCampMessages(e.target.value)}
+                placeholder="Quantidade"
+                className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] font-mono outline-none focus:border-[rgba(16,185,129,.35)]" />
+              <input type="number" min="1" value={campValidityDays} onChange={e => setCampValidityDays(e.target.value)}
+                placeholder="Validade (dias)"
+                className="w-full bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] font-mono outline-none focus:border-[rgba(16,185,129,.35)]" />
+            </div>
+            <Btn variant="ghost" disabled={acting === 'campanha-grant'} onClick={grantCampanhaMessages} cls="w-full justify-center py-1.5 mb-4">
+              {acting === 'campanha-grant' ? '⟳ Concedendo...' : '🎁 Conceder mensagens'}
+            </Btn>
+
+            <div className="text-[10px] text-[rgba(16,185,129,.4)] mb-1.5">MENSAL ILIMITADO (cortesia)</div>
+            <div className="flex gap-2">
+              <input type="number" min="1" value={campUnlimitedDays} onChange={e => setCampUnlimitedDays(e.target.value)}
+                placeholder="Dias"
+                className="w-24 bg-[#132621] border border-[rgba(16,185,129,.15)] rounded-lg px-3 py-2 text-sm text-[#d1fae5] font-mono outline-none focus:border-[rgba(16,185,129,.35)]" />
+              <Btn variant="ghost" disabled={acting === 'campanha-grant'} onClick={grantCampanhaUnlimited} cls="flex-1 justify-center py-1.5">
+                {acting === 'campanha-grant' ? '⟳...' : '💳 Conceder Ilimitado'}
+              </Btn>
+              {campanha?.unlimited && (
+                <Btn variant="warn" disabled={acting === 'campanha-grant'} onClick={revokeCampanhaUnlimited} cls="justify-center py-1.5 px-3">
+                  ✕ Revogar
+                </Btn>
+              )}
+            </div>
           </div>
 
           {numbers.length > 0 && (
@@ -4380,11 +4455,12 @@ Equipe ZapScript`,
   }
 
   const planOpts: [string, string][] = [
-    ['free',       '🆓 Free'],
-    ['pro',        '⚡ Pro'],
-    ['ultra',      '🚀 Ultra'],
-    ['executive',  '💎 Executive'],
-    ['pro-tester', '🧪 Pro Tester'],
+    ['free',         '🆓 Free'],
+    ['profissional', '⚡ Profissional'],
+    ['empresas',     '💎 Empresas'],
+    ['pro-tester',   '🧪 Pro Tester'],
+    ['pro',          'Pro (legado)'],
+    ['executive',    'Executive (legado)'],
   ];
 
   return (

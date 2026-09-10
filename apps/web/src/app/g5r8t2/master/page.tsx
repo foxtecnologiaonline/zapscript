@@ -9,9 +9,12 @@ const fmtFull = (d: string) => new Date(d).toLocaleString('pt-BR');
 const fmtMin  = (m: number) => `${m.toFixed(1)} min`;
 
 const PLAN_CLS: Record<string, string> = {
-  free:  'text-gray-400 bg-gray-400/10 border-gray-400/20',
-  pro:   'text-teal-400 bg-teal-400/10 border-teal-400/20',
-  ultra: 'text-purple-400 bg-purple-400/10 border-purple-400/20',
+  free:         'text-gray-400 bg-gray-400/10 border-gray-400/20',
+  pro:          'text-teal-400 bg-teal-400/10 border-teal-400/20',
+  executive:    'text-amber-400 bg-amber-400/10 border-amber-400/20',
+  profissional: 'text-teal-400 bg-teal-400/10 border-teal-400/20',
+  empresas:     'text-amber-400 bg-amber-400/10 border-amber-400/20',
+  'pro-tester': 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20',
 };
 const STATUS_CLS: Record<string, string> = {
   active:      'text-green-400 bg-green-400/10 border-green-400/20',
