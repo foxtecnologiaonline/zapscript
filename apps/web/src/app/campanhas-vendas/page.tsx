@@ -291,28 +291,25 @@ export default function CampanhasVendas() {
         <section>
           <h2>🔥 PITCH DESTRUIDOR</h2>
 
-          <div className="pitch-box">{`Oi [Nome], tudo bem?
+          <div className="pitch-box">{`Oi [Nome],
 
-Seu número de WhatsApp já levou bloqueio ou aviso recente?
+Seu número de WhatsApp já levou bloqueio nos últimos 6 meses?
 
-Pergunto porque a Meta banciu 5,1 MILHÕES de números em 6 meses. Pode ser seu amanhã.
+Pergunto porque a Meta banciu 5,1 MILHÕES de números — maioria por disparo fora da API oficial. Pode ser seu HOJE.
 
-Se usa bot não-oficial (QR code, clone), o risco não é "pode" — é QUANDO.
+Se tá usando bot não-oficial, o risco não é "pode" — é QUANDO.
 
-Desenvolvemos o ZapScript Campanhas pra quem precisa de solução JÁ:
+SOLUÇÃO:
+→ Dispara HOJE pelo ZapScript Campanhas (conecta em 10 min via QR)
+→ API oficial da Meta (zero risco novo)
+→ 30 msgs grátis/mês
+→ Depois R$150/1000 msgs (sem setup, sem contrato)
 
-→ Conecta via QR (30 min e tá pronto)
-→ Usa API oficial da Meta (sem risco novo)
-→ 30 msgs grátis/mês (testa sem custo)
-→ R$150/1000 msgs depois (ou R$699/mês ilimitado)
+Seus concorrentes já estão lá. Você tá esperando o quê?
 
-Sem taxa de setup. Sem contrato. Sem espera.
+Entra aqui e dispara tua primeira campanha AGORA:
+zapscript.me/wappcampanhas
 
-Seus concorrentes já estão migrando. Enquanto tem tempo, quer que mostre como sai pra vocês?
-
-zapscript.me/campanhas-vendas
-
-Abraço,
 [seu nome]`}</div>
         </section>
 
@@ -321,27 +318,27 @@ Abraço,
 
           <div className="technique">
             <h3>1️⃣ Comentário em blog sobre banimento</h3>
-            <div className="example">Bateu certo — Meta apertou demais desde janeiro. Testei ZapScript Campanhas (dispara pela API oficial aprovada), tem 30 msgs grátis. Resolveu. zapscript.me/campanhas-vendas</div>
+            <div className="example">Meta apertou demais desde jan — 5M+ banidos. Testei ZapScript Campanhas, dispara pela API oficial aprovada, 30 msgs grátis/mês. Resolveu. Entra e começa: zapscript.me/wappcampanhas</div>
           </div>
 
           <div className="technique">
             <h3>2️⃣ Resposta em Reclame Aqui / Fórum / Grupo</h3>
-            <div className="example">Passei exatamente por isso. Solução: migrar pra API oficial da Meta — ou é oficial ou o risco volta. Achei ZapScript Campanhas, conecta fácil, cota grátis. zapscript.me/campanhas-vendas</div>
+            <div className="example">Passei por isso. Solução: migrar pra API oficial da Meta JÁ — ou é oficial ou o risco volta. ZapScript Campanhas: conecta em 10 min via QR. Entra agora: zapscript.me/wappcampanhas</div>
           </div>
 
           <div className="technique">
             <h3>3️⃣ YouTube — Comentário em vídeo</h3>
-            <div className="example">Seria legal um vídeo sobre alternativas oficiais. Enquanto isso: ZapScript Campanhas dispara direto pela API oficial — já sai aprovado. zapscript.me/campanhas-vendas</div>
+            <div className="example">ZapScript Campanhas dispara direto pela API oficial aprovada — sem esperar, sem risco, sem taxa. 30 msgs grátis pra testar. Começa agora: zapscript.me/wappcampanhas</div>
           </div>
 
           <div className="technique">
             <h3>4️⃣ Live chat — Curtíssimo</h3>
-            <div className="example">bot banido? testei zapscript.me/campanhas-vendas — dispara pela API oficial, 30 msgs grátis</div>
+            <div className="example">bot banido? ZapScript Campanhas dispara pela API oficial, 30 msgs grátis. Entra já: zapscript.me/wappcampanhas</div>
           </div>
 
           <div className="technique">
             <h3>5️⃣ Grupo Telegram / Facebook — Tom de par</h3>
-            <div className="example">Vi post aqui sobre bot banido — tava igual comigo até janeiro. Resolvi indo pro canal oficial via ZapScript Campanhas. Conecta via QR, dispara já. zapscript.me/campanhas-vendas</div>
+            <div className="example">Tava igual vcs com bot banido. Migrei pro canal oficial pelo ZapScript Campanhas — conecta via QR, dispara em 10 min. Entra agora: zapscript.me/wappcampanhas</div>
           </div>
         </section>
 
@@ -349,49 +346,52 @@ Abraço,
           <h2>🎬 ROTEIRO B2B — 3 PASSOS</h2>
 
           <p><strong>DIA 0 — Dispara no mesmo dia</strong></p>
-          <div className="pitch-box">{`Oi [Nome], tudo bem?
+          <div className="pitch-box">{`Oi [Nome],
 
 Seu número de WhatsApp já levou bloqueio nos últimos 6 meses?
 
-Pergunto porque a Meta banciu 5M+ números — pode ser seu amanhã.
+A Meta banciu 5M+ números — pode ser seu HOJE. Sem aviso.
 
-Desenvolvemos ZapScript Campanhas pra resolver isso:
-• Conecta hoje via QR (30 min e tá pronto)
-• API oficial da Meta (sem risco novo)
-• 30 msgs grátis/mês, depois R$150/1000
+ZapScript Campanhas resolve isso:
+• Conecta AGORA via QR (10 min e dispara)
+• API oficial da Meta (zero risco)
+• 30 msgs grátis/mês, depois R$150/1000 msgs
 
-Quer que mostre como sai pro seu caso?
+Seus concorrentes já estão lá.
 
-zapscript.me/campanhas-vendas`}</div>
+Entra e dispara tua primeira campanha:
+zapscript.me/wappcampanhas`}</div>
 
           <p style={{ marginTop: '20px' }}><strong>DIA 3 — Follow-up (ainda não respondeu)</strong></p>
-          <div className="pitch-box">{`Oi [Nome],
+          <div className="pitch-box">{`[Nome],
 
-Rápido: ainda faz sentido aquela conversa sobre a migração pro canal oficial?
+Rápido: ainda tá esperando? Seus concorrentes JÁ migraram pro canal oficial.
 
-Seus concorrentes já estão fazendo. A Meta tá banindo todo dia.
+Meta está banindo HOJE. Enquanto você pensa, seu número pode levar bloqueio.
 
-zapscript.me/campanhas-vendas`}</div>
+Entra e começa AGORA:
+zapscript.me/wappcampanhas`}</div>
 
           <p style={{ marginTop: '20px' }}><strong>DIA 7 — Último toque (com prova social)</strong></p>
           <div className="pitch-box">{`[Nome],
 
-Última msg: Zenvia cobra R$5-15k pra começar. ZapScript não cobra setup, zero taxa.
+Última msg: Zenvia cobra R$5-15k pra começar. Aqui: ZERO taxa.
 
-Corretoras, clínicas, agências — todos já migraram pro canal oficial.
+Corretoras, clínicas e agências já estão lá disparando. Você ficando pra trás.
 
-Enquanto tem tempo:
-zapscript.me/campanhas-vendas`}</div>
+Entra AGORA e começa grátis:
+zapscript.me/wappcampanhas`}</div>
 
           <p style={{ marginTop: '20px' }}><strong>QUANDO OUVE: "Já usamos bot, tá tudo certo"</strong></p>
           <div className="example">
-            Tá — por enquanto. Mas risco é REAL. Semana passada 5 clientes meus levaram bloqueio. Tavam "tudo certo" também. Meta não avisa.
+            Tá — por enquanto. Mas risco é 100% REAL. Semana passada 5 clientes meus levaram bloqueio — tavam "tudo certo" também.
 
-            Questão não é SE vai — é QUANDO.
+            Questão não é SE vai levar — é QUANDO vai levar.
 
-            Prefere contar com sorte ou migrar pro canal que Meta aprova?
+            Meta não avisa. Um dia tá funcionando, próximo dia seu número some. Sem volta.
 
-            Oferecemos transição suave — teste grátis, depois converte.
+            Migra pro canal que Meta APROVA. Entra agora e dispara grátis:
+            zapscript.me/wappcampanhas
           </div>
         </section>
 
@@ -410,9 +410,9 @@ zapscript.me/campanhas-vendas`}</div>
         </section>
 
         <section className="cta">
-          <h3>COMEÇA AGORA</h3>
-          <p>Comenta nos 6 blogs + dispara 3 DMs B2B. Leva 40 minutos.</p>
-          <a href="https://zapscript.me/campanhas" className="btn">→ Criar Primeira Campanha</a>
+          <h3>ENTRA AGORA E DISPARA</h3>
+          <p>Seus concorrentes já estão lá. Não fica pra trás.</p>
+          <a href="https://zapscript.me/wappcampanhas" className="btn">→ Disparar Primeira Campanha AGORA</a>
         </section>
       </div>
 
