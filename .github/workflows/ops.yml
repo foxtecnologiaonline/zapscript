@@ -65,11 +65,13 @@
 #                  isoladamente (remover a linha do authorized_keys encerra
 #                  o acesso deste workflow sem afetar o resto).
 #   DATABASE_URL   connection string do Supabase — pooler (mesma do .env de
-#                  produção) — usada pelos migrate_core_*, pelo `prisma migrate
-#                  deploy` que roda em todo action = deploy (também como
-#                  DIRECT_URL — ver comentário no passo, não precisa de um 2º
-#                  secret) e por qualquer outro uso futuro que precise falar
-#                  com o Postgres direto do runner do GitHub.
+#                  produção) — usada pelos migrate_core_*, e pelo `prisma
+#                  migrate deploy` que roda em todo action = deploy (que
+#                  também deriva DIRECT_URL dela na hora, trocando a porta do
+#                  pooler pra modo session — ver comentário no passo, não
+#                  precisa de um 2º secret) e por qualquer outro uso futuro
+#                  que precise falar com o Postgres direto do runner do
+#                  GitHub.
 #   ASAAS_API_KEY  necessária só para o action = migrate_core_apply
 
 name: Ops — Vultr / Migração
@@ -168,20 +170,29 @@ jobs:
         timeout-minutes: 5
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          # schema.prisma declara datasource com url + directUrl — migrate deploy
-          # exige a env DIRECT_URL só pra passar na validação do schema (P1012 se
-          # ausente); não precisa ser uma connection string DIFERENTE. Reaproveita
-          # o mesmo valor de DATABASE_URL (secret único, sem precisar cadastrar um
-          # 2º): é a mesma URL que apps/api/apps/worker já usam com sucesso em
-          # produção — DATABASE_URL, por padrão, já é o pooler Supabase em modo
-          # SESSION (porta 5432, preferido pra servidor persistente — ver
-          # apps/api/src/lib/prisma.ts:buildDatasourceUrl), que aceita DDL e tem
-          # saída IPv4 normal. Só teria que virar um secret à parte se um dia
-          # DATABASE_URL passar a usar o pooler em modo transaction (porta 6543
-          # com pgbouncer=true) — aí sim precisaria de uma conexão de fato direta
-          # pra rodar migrate.
-          DIRECT_URL: ${{ secrets.DATABASE_URL }}
-        run: npx --yes prisma@5.22.0 migrate deploy
+        # schema.prisma declara datasource com url + directUrl — migrate deploy
+        # exige a env DIRECT_URL pra passar na validação do schema (P1012 se
+        # ausente), e ela precisa apontar pro pooler em modo SESSION (porta
+        # 5432, sem pgbouncer=true): é o modo que suporta o advisory lock que
+        # o motor do Prisma Migrate usa internamente. Confirmado na prática no
+        # run #84 (2026-09-09): DATABASE_URL de produção é o pooler em modo
+        # TRANSACTION (porta 6543, pgbouncer=true) — reaproveitá-la também como
+        # DIRECT_URL fez o migrate conectar normalmente ("Datasource db..."
+        # logado) e travar para sempre depois disso, sem nenhum erro, porque
+        # em modo transaction cada statement pode cair numa conexão de backend
+        # diferente e o lock nunca "solta". Em vez de cadastrar um 2º secret
+        # com a URL de sessão, deriva ela aqui a partir de DATABASE_URL
+        # (troca a porta 6543→5432 e remove pgbouncer=true) — funciona com
+        # qualquer connection string do Supabase, sem depender de como o
+        # secret está configurado hoje.
+        run: |
+          export DIRECT_URL=$(node -e "
+            const u = new URL(process.env.DATABASE_URL);
+            if (u.port === '6543') u.port = '5432';
+            u.searchParams.delete('pgbouncer');
+            process.stdout.write(u.toString());
+          ")
+          npx --yes prisma@5.22.0 migrate deploy
 
       - name: Configurar chave SSH
         env:
