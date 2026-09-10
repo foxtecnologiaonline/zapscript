@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, ChangeEvent, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback, useRef, Suspense, FormEvent } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import ConnectionCard, { MetaConnection } from '../_components/ConnectionCard';
+import AudienceImporter from '../_components/AudienceImporter';
 
 interface MetaTemplateComponent {
   type: string;
@@ -27,14 +28,9 @@ interface EvolutionNumero {
   displayName: string | null;
 }
 
-interface ListaItem {
-  id: string;
-  name: string;
-  contatosCount: number;
-}
-
 interface CampanhaState {
   id: string;
+  name: string;
   status: string;
   channel: string;
   templateVarCount: number | null;
@@ -72,16 +68,16 @@ const STEPS = ['Campanha', 'Números', 'Enviar'] as const;
 
 function Stepper({ step }: { step: 1 | 2 | 3 }) {
   return (
-    <div className="mb-8 flex items-center">
+    <div className="mb-8 flex items-center overflow-x-auto">
       {STEPS.map((label, i) => {
         const n = (i + 1) as 1 | 2 | 3;
         const done = step > n;
         const active = step === n;
         return (
-          <div key={label} className="flex items-center">
-            <div className="flex items-center gap-2">
+          <div key={label} className="flex items-center shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <div
-                className={`h-7 w-7 shrink-0 rounded-full flex items-center justify-center text-xs font-semibold ${
+                className={`h-6 w-6 sm:h-7 sm:w-7 shrink-0 rounded-full flex items-center justify-center text-xs font-semibold ${
                   active
                     ? 'bg-brand-primary text-white'
                     : done
@@ -91,11 +87,11 @@ function Stepper({ step }: { step: 1 | 2 | 3 }) {
               >
                 {done ? '✓' : n}
               </div>
-              <span className={`text-sm whitespace-nowrap ${active ? 'font-medium text-brand-text' : 'text-brand-muted'}`}>
+              <span className={`text-xs sm:text-sm whitespace-nowrap ${active ? 'font-medium text-brand-text' : 'text-brand-muted'}`}>
                 {label}
               </span>
             </div>
-            {i < STEPS.length - 1 && <div className="w-8 sm:w-14 h-px bg-brand-border mx-2 sm:mx-3" />}
+            {i < STEPS.length - 1 && <div className="w-6 sm:w-14 h-px bg-brand-border mx-1.5 sm:mx-3" />}
           </div>
         );
       })}
@@ -103,11 +99,15 @@ function Stepper({ step }: { step: 1 | 2 | 3 }) {
   );
 }
 
-export default function NovaCampanhaPage() {
+function NovaCampanhaInner() {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [campanhaId, setCampanhaId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const resumeId = searchParams.get('campanhaId');
+
+  const [step, setStep] = useState<1 | 2 | 3>(resumeId ? 2 : 1);
+  const [campanhaId, setCampanhaId] = useState<string | null>(resumeId);
   const [campanha, setCampanha] = useState<CampanhaState | null>(null);
+  const resumedStepDecided = useRef(false);
 
   // ── Passo 1: escolher campanha (canal, nome, template/mensagem) ─────────
   // Default 'evolution' — usa o número que o usuário já tem conectado no ZapScript
@@ -215,116 +215,12 @@ export default function NovaCampanhaPage() {
 
   useEffect(() => { if (campanhaId) reloadCampanha(); }, [campanhaId, reloadCampanha]);
 
-  const [listas, setListas] = useState<ListaItem[]>([]);
-  const [selectedListaId, setSelectedListaId] = useState('');
-  const [applyingLista, setApplyingLista] = useState(false);
-
-  const [crmTags, setCrmTags] = useState<string[]>([]);
-  const [selectedCrmTag, setSelectedCrmTag] = useState('');
-  const [importingCrm, setImportingCrm] = useState(false);
-
-  const [uploading, setUploading] = useState(false);
-  const [importingConversas, setImportingConversas] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [audienceMsg, setAudienceMsg] = useState<string | null>(null);
-  const [audienceError, setAudienceError] = useState<string | null>(null);
-
+  // Retomar rascunho (item 1): campanha já tem números? pula direto pra revisão.
   useEffect(() => {
-    if (step !== 2 || !campanhaId) return;
-    (async () => {
-      try {
-        const res = await api.get<{ listas: ListaItem[] }>('/modules/campanhas/listas');
-        setListas(res.listas || []);
-      } catch { /* seleção de lista salva é opcional */ }
-      try {
-        const res = await api.get<{ tags: string[] }>('/modules/campanhas/crm-tags');
-        setCrmTags(res.tags || []);
-      } catch { /* segmentação por tag é opcional */ }
-    })();
-  }, [step, campanhaId]);
-
-  function fmtImportResult(res: { imported: number; skippedOptOut?: number; skippedDuplicate?: number; skippedInvalid?: number; skippedVarMismatch?: number; skippedCold?: number; elegiveis?: number }) {
-    const base = res.elegiveis != null
-      ? `${res.imported} de ${res.elegiveis} contato${res.elegiveis === 1 ? '' : 's'} elegíve${res.elegiveis === 1 ? 'l' : 'is'} importado${res.imported === 1 ? '' : 's'}.`
-      : `${res.imported} contato${res.imported === 1 ? '' : 's'} importado${res.imported === 1 ? '' : 's'}.`;
-    const extras = [
-      res.skippedOptOut ? `${res.skippedOptOut} já em opt-out.` : '',
-      res.skippedDuplicate ? `${res.skippedDuplicate} já estava(m) na campanha.` : '',
-      res.skippedInvalid ? `${res.skippedInvalid} inválido(s).` : '',
-      res.skippedVarMismatch ? `${res.skippedVarMismatch} com nº de variáveis diferente do template.` : '',
-      res.skippedCold ? `${res.skippedCold} sem conversa recente (não elegível pro Evolution).` : '',
-    ].filter(Boolean).join(' ');
-    return extras ? `${base} ${extras}` : base;
-  }
-
-  async function handleApplyLista() {
-    if (!campanhaId || !selectedListaId) return;
-    setApplyingLista(true);
-    setAudienceError(null);
-    setAudienceMsg(null);
-    try {
-      const res = await api.post<any>(`/modules/campanhas/${campanhaId}/contatos/from-lista`, { listaId: selectedListaId });
-      setAudienceMsg(fmtImportResult(res));
-      await reloadCampanha();
-    } catch (err: any) {
-      setAudienceError(err?.message || 'Não foi possível aplicar a lista.');
-    } finally {
-      setApplyingLista(false);
-    }
-  }
-
-  async function handleImportCrm() {
-    if (!campanhaId || !selectedCrmTag) return;
-    setImportingCrm(true);
-    setAudienceError(null);
-    setAudienceMsg(null);
-    try {
-      const res = await api.post<any>(`/modules/campanhas/${campanhaId}/contatos/from-crm`, { tag: selectedCrmTag });
-      setAudienceMsg(fmtImportResult(res));
-      await reloadCampanha();
-    } catch (err: any) {
-      setAudienceError(err?.message || 'Falha ao importar contatos por tag.');
-    } finally {
-      setImportingCrm(false);
-    }
-  }
-
-  async function handleUploadCsv(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !campanhaId) return;
-    setUploading(true);
-    setAudienceError(null);
-    setAudienceMsg(null);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await api.postFormData<any>(`/modules/campanhas/${campanhaId}/contatos`, fd);
-      setAudienceMsg(fmtImportResult(res));
-      await reloadCampanha();
-    } catch (err: any) {
-      setAudienceError(err?.message || 'Falha ao importar CSV.');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  }
-
-  async function handleImportConversas() {
-    if (!campanhaId) return;
-    setImportingConversas(true);
-    setAudienceError(null);
-    setAudienceMsg(null);
-    try {
-      const res = await api.post<any>(`/modules/campanhas/${campanhaId}/contatos/from-conversas`, {});
-      setAudienceMsg(fmtImportResult(res));
-      await reloadCampanha();
-    } catch (err: any) {
-      setAudienceError(err?.message || 'Falha ao importar contatos.');
-    } finally {
-      setImportingConversas(false);
-    }
-  }
+    if (!resumeId || !campanha || resumedStepDecided.current) return;
+    resumedStepDecided.current = true;
+    setStep(campanha.audienceCount > 0 ? 3 : 2);
+  }, [resumeId, campanha]);
 
   // ── Passo 3: revisar e enviar ─────────────────────────────────────────────
   const [consentAcknowledged, setConsentAcknowledged] = useState(false);
@@ -385,7 +281,9 @@ export default function NovaCampanhaPage() {
     <div className="min-h-screen px-5 py-10">
       <div className="max-w-2xl mx-auto">
         <Link href="/dashboard/campanhas" className="text-sm text-brand-muted hover:text-brand-text">← Campanhas</Link>
-        <h1 className="text-2xl font-bold mt-2 mb-6 text-brand-text">Nova campanha</h1>
+        <h1 className="text-2xl font-bold mt-2 mb-6 text-brand-text">
+          {resumeId ? 'Continuar campanha' : 'Nova campanha'}
+        </h1>
 
         <Stepper step={step} />
 
@@ -636,113 +534,12 @@ export default function NovaCampanhaPage() {
               <span className="text-lg font-semibold text-brand-text">{campanha.audienceCount}</span>
             </div>
 
-            {audienceError && (
-              <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-600 text-sm">
-                {audienceError}
-              </div>
-            )}
-            {audienceMsg && (
-              <div className="card rounded-lg p-3 text-sm text-brand-text-secondary">{audienceMsg}</div>
-            )}
-
-            {listas.length > 0 && (
-              <div className="card rounded-xl p-4">
-                <h2 className="text-sm font-semibold text-brand-text">Usar uma lista salva</h2>
-                <p className="mt-1 text-xs text-brand-muted">
-                  {campanha.channel === 'meta' && campanha.templateVarCount
-                    ? 'Este template usa variáveis — listas salvas não preenchem variáveis automaticamente. Use o upload de CSV abaixo.'
-                    : 'Aplica os números de uma lista que você já montou antes.'}
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <select
-                    value={selectedListaId}
-                    onChange={(e) => setSelectedListaId(e.target.value)}
-                    disabled={campanha.channel === 'meta' && !!campanha.templateVarCount}
-                    className="input w-auto"
-                  >
-                    <option value="">Selecione uma lista…</option>
-                    {listas.map((l) => (
-                      <option key={l.id} value={l.id}>{l.name} ({l.contatosCount})</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={handleApplyLista}
-                    disabled={!selectedListaId || applyingLista || (campanha.channel === 'meta' && !!campanha.templateVarCount)}
-                    className="btn-ghost text-xs disabled:opacity-50"
-                  >
-                    {applyingLista ? 'Aplicando…' : '📋 Usar esta lista'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {campanha.channel === 'evolution' ? (
-              <div className="card rounded-xl p-4">
-                <h2 className="text-sm font-semibold text-brand-text">Importar contatos que já falaram com você</h2>
-                <p className="mt-1 text-xs text-brand-muted">
-                  Guardrail do canal Evolution: só contatos com conversa recente entram na campanha.
-                </p>
-                <button
-                  onClick={handleImportConversas}
-                  disabled={importingConversas}
-                  className="btn-ghost text-xs mt-3 disabled:opacity-50"
-                >
-                  {importingConversas ? 'Importando…' : '💬 Importar contatos'}
-                </button>
-              </div>
-            ) : (
-              <div className="card rounded-xl p-4">
-                <h2 className="text-sm font-semibold text-brand-text">Importar CSV</h2>
-                <p className="mt-1 text-xs text-brand-muted">
-                  Coluna 1 = telefone (obrigatório) · coluna 2 = nome (opcional) · colunas 3+ = variáveis do
-                  template, na ordem.
-                </p>
-                <label className="btn-ghost text-xs mt-3 cursor-pointer inline-block">
-                  {uploading ? 'Importando…' : '📄 Escolher arquivo'}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".csv,text/csv"
-                    onChange={handleUploadCsv}
-                    disabled={uploading}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-            )}
-
-            {crmTags.length > 0 && (
-              <div className="card rounded-xl p-4">
-                <h2 className="text-sm font-semibold text-brand-text">Segmentar por tag do CRM</h2>
-                <p className="mt-1 text-xs text-brand-muted">
-                  Importa só os contatos do seu CRM com a tag escolhida
-                  {campanha.channel === 'evolution' ? ' (ainda restrito a quem já falou com você).' : '.'}
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <select
-                    value={selectedCrmTag}
-                    onChange={(e) => setSelectedCrmTag(e.target.value)}
-                    className="input w-auto"
-                  >
-                    <option value="">Selecione uma tag…</option>
-                    {crmTags.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={handleImportCrm}
-                    disabled={!selectedCrmTag || importingCrm}
-                    className="btn-ghost text-xs disabled:opacity-50"
-                  >
-                    {importingCrm ? 'Importando…' : '🏷️ Importar por tag'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <p className="text-xs text-brand-muted">
-              Precisa de uma lista nova? <Link href="/dashboard/campanhas/listas" className="text-emerald-600 hover:text-emerald-500">Crie uma em Listas de números →</Link>
-            </p>
+            <AudienceImporter
+              campanhaId={campanha.id}
+              channel={campanha.channel}
+              templateVarCount={campanha.templateVarCount}
+              onImported={reloadCampanha}
+            />
 
             <button
               onClick={() => setStep(3)}
@@ -769,7 +566,7 @@ export default function NovaCampanhaPage() {
               <dl className="mt-3 space-y-1.5 text-sm">
                 <div className="flex justify-between">
                   <dt className="text-brand-muted">Nome</dt>
-                  <dd className="text-brand-text">{name}</dd>
+                  <dd className="text-brand-text">{campanha.name}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-brand-muted">Canal</dt>
@@ -886,5 +683,13 @@ export default function NovaCampanhaPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function NovaCampanhaPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-brand-text-secondary">Carregando…</div>}>
+      <NovaCampanhaInner />
+    </Suspense>
   );
 }

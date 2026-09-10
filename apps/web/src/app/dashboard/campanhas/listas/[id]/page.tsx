@@ -9,6 +9,7 @@ interface Lista {
   id: string;
   name: string;
   description: string | null;
+  consentConfirmedAt: string | null;
 }
 
 interface ListaContato {
@@ -51,6 +52,7 @@ export default function ListaDetailPage() {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [savingConsent, setSavingConsent] = useState(false);
 
   const [pasteText, setPasteText] = useState('');
   const [importing, setImporting] = useState(false);
@@ -87,6 +89,38 @@ export default function ListaDetailPage() {
       setError(err?.message || 'Não foi possível renomear a lista.');
     } finally {
       setSavingName(false);
+    }
+  }
+
+  async function handleToggleConsent(checked: boolean) {
+    if (!lista) return;
+    setSavingConsent(true);
+    try {
+      const res = await api.put<{ lista: Lista }>(`/modules/campanhas/listas/${id}`, { consentConfirmed: checked });
+      setLista(res.lista);
+    } catch (err: any) {
+      setError(err?.message || 'Não foi possível atualizar o consentimento.');
+    } finally {
+      setSavingConsent(false);
+    }
+  }
+
+  async function handleExportCsv() {
+    if (!lista) return;
+    setError(null);
+    try {
+      const res = await api.get<{ csv: string; filename: string }>(`/modules/campanhas/listas/${id}/export`);
+      const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.filename || `${lista.name}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err?.message || 'Não foi possível exportar a lista.');
     }
   }
 
@@ -212,13 +246,36 @@ export default function ListaDetailPage() {
             )}
             {lista.description && <p className="text-brand-text-secondary mt-1 text-sm">{lista.description}</p>}
           </div>
-          <button
-            onClick={handleDeleteLista}
-            className="rounded-lg border border-red-400/30 px-3 py-1.5 text-xs text-red-500 hover:bg-red-400/10 whitespace-nowrap"
-          >
-            Excluir lista
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportCsv}
+              className="rounded-lg border border-brand-border px-3 py-1.5 text-xs text-brand-text-secondary hover:text-brand-text whitespace-nowrap"
+            >
+              Exportar CSV
+            </button>
+            <button
+              onClick={handleDeleteLista}
+              className="rounded-lg border border-red-400/30 px-3 py-1.5 text-xs text-red-500 hover:bg-red-400/10 whitespace-nowrap"
+            >
+              Excluir lista
+            </button>
+          </div>
         </div>
+
+        <label className="mt-3 flex items-start gap-2 text-sm text-brand-text-secondary">
+          <input
+            type="checkbox"
+            checked={!!lista.consentConfirmedAt}
+            onChange={(e) => handleToggleConsent(e.target.checked)}
+            disabled={savingConsent}
+            className="mt-0.5"
+          />
+          <span>
+            {lista.consentConfirmedAt
+              ? <>✓ Consentimento confirmado — campanhas que usarem esta lista não vão pedir de novo.</>
+              : 'Confirmar consentimento (opt-in) destes contatos para campanhas de marketing.'}
+          </span>
+        </label>
 
         {error && (
           <div className="mt-4 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-600 text-sm">

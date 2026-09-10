@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import ConnectionCard, { MetaConnection } from './_components/ConnectionCard';
@@ -39,12 +39,25 @@ const STATUS_COLOR: Record<string, string> = {
   failed: 'border-red-400/30 text-red-500',
 };
 
+const STATUS_FILTERS = ['todas', 'draft', 'scheduled', 'running', 'paused', 'completed'] as const;
+const STATUS_FILTER_LABEL: Record<(typeof STATUS_FILTERS)[number], string> = {
+  todas: 'Todas',
+  draft: 'Rascunho',
+  scheduled: 'Agendada',
+  running: 'Em andamento',
+  paused: 'Pausada',
+  completed: 'Concluída',
+};
+
 export default function CampanhasListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [upsell, setUpsell] = useState(false);
   const [campanhas, setCampanhas] = useState<CampanhaListItem[]>([]);
   const [, setMeta] = useState<MetaConnection | null>(null);
+
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>('todas');
 
   useEffect(() => {
     (async () => {
@@ -59,6 +72,15 @@ export default function CampanhasListPage() {
       }
     })();
   }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return campanhas.filter((c) => {
+      if (statusFilter !== 'todas' && c.status !== statusFilter) return false;
+      if (q && !c.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [campanhas, search, statusFilter]);
 
   if (loading) {
     return (
@@ -121,49 +143,91 @@ export default function CampanhasListPage() {
         </div>
 
         {campanhas.length === 0 ? (
-          <div className="rounded-xl border border-brand-border bg-brand-elevated p-8 text-center text-brand-muted">
-            Nenhuma campanha ainda.
+          <div className="rounded-xl border border-brand-border bg-brand-elevated p-8 text-center">
+            <p className="text-brand-muted">Nenhuma campanha ainda.</p>
+            <p className="mt-2 text-sm text-brand-text-secondary">
+              Alguns exemplos comuns: aviso de cobrança, reativação de clientes inativos, divulgação de promoção.
+            </p>
+            <Link href="/dashboard/campanhas/nova" className="btn-primary inline-block px-4 py-2 text-sm mt-4">
+              + Criar minha primeira campanha
+            </Link>
           </div>
         ) : (
-          <div className="space-y-3">
-            {campanhas.map((c) => (
-              <Link
-                key={c.id}
-                href={`/dashboard/campanhas/${c.id}`}
-                className="card rounded-xl block p-4 hover:border-brand-primary/30 transition-colors"
+          <>
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por nome…"
+                className="input w-auto flex-1 min-w-[180px] max-w-xs"
+              />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as (typeof STATUS_FILTERS)[number])}
+                className="rounded-lg border border-brand-border bg-brand-elevated px-2 py-2 text-sm text-brand-text-secondary"
               >
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="font-medium text-brand-text">{c.name}</div>
-                    <div className="text-sm text-brand-muted mt-0.5">
-                      {c.channel === 'evolution' ? 'Mensagem livre (Evolution)' : c.templateName}
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span
-                      className={`text-xs rounded-full border px-2 py-0.5 whitespace-nowrap ${
-                        STATUS_COLOR[c.status] || 'border-brand-border text-brand-muted'
-                      }`}
+                {STATUS_FILTERS.map((s) => (
+                  <option key={s} value={s}>{STATUS_FILTER_LABEL[s]}</option>
+                ))}
+              </select>
+            </div>
+
+            {filtered.length === 0 ? (
+              <div className="rounded-xl border border-brand-border bg-brand-elevated p-8 text-center text-brand-muted">
+                Nenhuma campanha encontrada com esse filtro.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filtered.map((c) => {
+                  const incompleteDraft = c.status === 'draft' && c.audienceCount === 0;
+                  return (
+                    <Link
+                      key={c.id}
+                      href={incompleteDraft ? `/dashboard/campanhas/nova?campanhaId=${c.id}` : `/dashboard/campanhas/${c.id}`}
+                      className="card rounded-xl block p-4 hover:border-brand-primary/30 transition-colors"
                     >
-                      {STATUS_LABEL[c.status] || c.status}
-                    </span>
-                    {c.channel === 'evolution' && (
-                      <span className="text-xs rounded-full border border-amber-400/30 text-amber-600 px-2 py-0.5 whitespace-nowrap">
-                        Evolution
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-brand-muted">
-                  <span>{c.audienceCount} contatos</span>
-                  <span>{c.sentCount} enviados</span>
-                  {!!c.stats.delivered && <span>{c.stats.delivered} entregues</span>}
-                  {!!c.stats.read && <span>{c.stats.read} lidos</span>}
-                  {!!c.stats.failed && <span className="text-red-500">{c.stats.failed} falharam</span>}
-                </div>
-              </Link>
-            ))}
-          </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <div className="font-medium text-brand-text">{c.name}</div>
+                          <div className="text-sm text-brand-muted mt-0.5">
+                            {c.channel === 'evolution' ? 'Mensagem livre (Evolution)' : c.templateName}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          {incompleteDraft ? (
+                            <span className="text-xs rounded-full border border-brand-primary/30 text-brand-primary px-2 py-0.5 whitespace-nowrap">
+                              Continuar configuração →
+                            </span>
+                          ) : (
+                            <span
+                              className={`text-xs rounded-full border px-2 py-0.5 whitespace-nowrap ${
+                                STATUS_COLOR[c.status] || 'border-brand-border text-brand-muted'
+                              }`}
+                            >
+                              {STATUS_LABEL[c.status] || c.status}
+                            </span>
+                          )}
+                          {c.channel === 'evolution' && (
+                            <span className="text-xs rounded-full border border-amber-400/30 text-amber-600 px-2 py-0.5 whitespace-nowrap">
+                              Evolution
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-brand-muted">
+                        <span>{c.audienceCount} contatos</span>
+                        <span>{c.sentCount} enviados</span>
+                        {!!c.stats.delivered && <span>{c.stats.delivered} entregues</span>}
+                        {!!c.stats.read && <span>{c.stats.read} lidos</span>}
+                        {!!c.stats.failed && <span className="text-red-500">{c.stats.failed} falharam</span>}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
