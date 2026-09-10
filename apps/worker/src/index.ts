@@ -2737,9 +2737,9 @@ async function cleanupOptinTimeouts() {
             where: { userId_phone: { userId: t.campanha.userId, phone: t.phone } },
             create: { userId: t.campanha.userId, phone: t.phone, reason: 'TIMEOUT_OPTIN' },
             update: { reason: 'TIMEOUT_OPTIN' },
-          }).catch(() => null),
+          }),
         ])
-      ));
+      ).catch(() => null));
     }
 
     logger.info(`[Campanhas] Cleanup: ${timedOut.length} contato(s) marcado(s) como optout por timeout`);
