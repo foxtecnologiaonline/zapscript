@@ -3,7 +3,7 @@ import { prisma } from '../../lib/prisma';
 import {
   validateRequest, createCampanhaSchema, scheduleCampanhaSchema, campanhaSequenceSchema,
   createCampanhaListaSchema, updateCampanhaListaSchema, addCampanhaListaContatosSchema, applyCampanhaListaSchema,
-  mergeCampanhaListasSchema,
+  mergeCampanhaListasSchema, uploadContatosCsvSchema, previewContatosSchema,
 } from '../../lib/validation';
 import { decryptStr } from '../../services/encryption';
 import { listTemplates, getPhoneNumberLimits, tierToNumericCap, sendTemplateMessage } from '../../services/whatsapp-campaigns';
