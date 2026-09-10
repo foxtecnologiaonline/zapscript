@@ -1,6 +1,6 @@
 export const metadata = {
   title: 'ZapScript Campanhas — Playbook de Vendas',
-  description: 'Técnicas de vendas diretas: urgência, gatilhos psicológicos, pitches prontos pra copiar e guerrilha comprovada.',
+  description: 'Pitch destruidor + 5 variações de guerrilha + roteiro B2B. Técnicas de venda que funcionam. Copie e comece hoje.',
 };
 
 export default function CampanhasVendas() {
@@ -229,193 +229,195 @@ export default function CampanhasVendas() {
 
       <div className="container">
         <header>
-          <div className="tagline">⚠️ A REALIDADE DO MERCADO</div>
+          <div className="tagline">⚠️ SITUAÇÃO CRÍTICA</div>
           <h1>ZapScript Campanhas</h1>
-          <p className="subtitle">Playbook de Vendas — Técnicas que funcionam</p>
+          <p className="subtitle">Pitch destruidor + técnicas que fecham</p>
         </header>
 
         <section>
           <div className="alert">
-            <strong>FATO:</strong> A Meta banciu mais de 5,1 milhões de números em junho de 2026 por disparo não oficial. Seu cliente está com medo de perder o número. Essa é a porta de entrada.
+            <strong>FATO:</strong> Meta banciu 5,1 MILHÕES de números em 6 meses por disparo não oficial. Seu prospect ESTÁ com medo agora. Esse é o momento.
           </div>
 
           <div className="stat-row">
             <div className="stat">
               <div className="stat-value">5M+</div>
-              <div className="stat-label">números banidos em 6 meses</div>
+              <div className="stat-label">banidos em 6 meses</div>
             </div>
             <div className="stat">
               <div className="stat-value">R$0</div>
-              <div className="stat-label">taxa de adesão (diferente de Zenvia/Take Blip que cobram R$5-15k)</div>
+              <div className="stat-label">taxa de setup (vs R$5-15k da concorrência)</div>
             </div>
             <div className="stat">
               <div className="stat-value">30 min</div>
-              <div className="stat-label">tempo até primeira campanha disparada</div>
+              <div className="stat-label">até primeira campanha disparada</div>
             </div>
           </div>
         </section>
 
         <section>
-          <h2>🎯 OS 3 GATILHOS PSICOLÓGICOS QUE VENDEM</h2>
+          <h2>🎯 3 GATILHOS QUE VENDEM</h2>
 
           <div className="technique">
-            <h3>1️⃣ URGÊNCIA + ESCASSEZ</h3>
-            <p><strong>"Seu número pode ser banido hoje. Depois não tem volta."</strong></p>
-            <p>O cliente não está comprando um produto. Está comprando SEGURANÇA. A dor é AGORA. Não amanhã. Use linguagem de crise: "risco iminente", "banimento em processo", "enquanto tem tempo".</p>
+            <h3>1️⃣ URGÊNCIA — Pode ser amanhã</h3>
+            <p><strong>"Seu número pode levar bloqueio HOJE. Depois não volta."</strong></p>
+            <p>Não vende produto. Vende SEGURANÇA. A dor é AGORA. Use: "risco iminente", "pode ser amanhã", "enquanto tem tempo".</p>
             <div className="example">
-              ❌ "Você pode usar nossa API oficial pra disparar mensagens"
-              <br />✅ "Seu número já foi ameaçado? A Meta está banindo AGORA. Seus concorrentes já estão migrando pro canal oficial."
+              ❌ "Você pode usar API oficial pra disparar"<br/>
+              ✅ "Seu número já foi ameaçado? Meta está banindo AGORA."
             </div>
           </div>
 
           <div className="technique">
-            <h3>2️⃣ PROVA SOCIAL + AUTORIDADE</h3>
-            <p><strong>"Outros já resolveram. Você é o único ainda em risco."</strong></p>
-            <p>Mostre que isso NÃO é experimental. Que os maiores nomes já fazem. Que a Meta EXIGE. Que a Lei EXIGE (LGPD, opt-out automático).</p>
+            <h3>2️⃣ PROVA SOCIAL — Todos já migraram</h3>
+            <p><strong>"Seus concorrentes já estão no canal oficial."</strong></p>
+            <p>Mostre que não é experimental. Que OUTROS já fazem. Que a Lei EXIGE (LGPD). Que é OBRIGAÇÃO agora, não opção.</p>
             <div className="example">
-              ✅ "Corretoras, clínicas e agências já estão usando a API oficial. É o padrão agora — não é mais opção, é obrigação."
+              ✅ "Corretoras, clínicas e agências já migraram. É padrão agora — não é mais opção."
             </div>
           </div>
 
           <div className="technique">
-            <h3>3️⃣ CONTRASTE DE PREÇO</h3>
-            <p><strong>"Zenvia cobra R$5-15k de setup + contrato mínimo. ZapScript: zero taxa, paga quando usar, via Pix."</strong></p>
-            <p>Não fale de preço absoluto. Fale de DIFERENÇA. O cliente não ouve "R$150", ouve "R$5.000 a menos do que a concorrência + zero taxa".</p>
+            <h3>3️⃣ CONTRASTE — 10x mais barato</h3>
+            <p><strong>"Zenvia cobra R$5-15k setup. Aqui: zero taxa, paga só o uso."</strong></p>
+            <p>Não fala preço absoluto. Fala DIFERENÇA. Cliente não ouve "R$150", ouve "R$5.000 a menos + zero taxa".</p>
             <div className="example">
-              ❌ "Campanhas saem R$150 por 1.000 mensagens"
-              <br />✅ "Zenvia cobra R$5-15k pra começar. Aqui você não paga NADA pra conectar — só as mensagens que realmente dispara. Sem setup, sem contrato."
+              ❌ "R$150 por 1.000 mensagens"<br/>
+              ✅ "Zenvia cobra R$5-15k pra começar. Aqui você não paga setup — só as mensagens que dispara."
             </div>
           </div>
         </section>
 
         <section>
-          <h2>🔥 PITCH DESTRUIDOR (copia inteira)</h2>
+          <h2>🔥 PITCH DESTRUIDOR</h2>
 
-          <div className="pitch-box">{`Oi [Nome],
+          <div className="pitch-box">{`Oi [Nome], tudo bem?
 
-Sou [seu nome] da ZapScript. Pergunta rápida: seu número [empresa] já levou bloqueio ou aviso recente no WhatsApp?
+Seu número de WhatsApp já levou bloqueio ou aviso recente?
 
-Pergunto porque a Meta apertou MUITO desde janeiro — 5,1 MILHÕES de números foram banidos só em junho. A maioria por disparo fora da API oficial.
+Pergunto porque a Meta banciu 5,1 MILHÕES de números em 6 meses. Pode ser seu amanhã.
 
-Se você usa bot ou automação não-oficial (QR code de terceiro, clone), o risco é REAL e pode acontecer amanhã. Não é "pode", é QUANDO.
+Se usa bot não-oficial (QR code, clone), o risco não é "pode" — é QUANDO.
 
-Montamos o ZapScript Campanhas exatamente pra quem tá nessa situação:
+Desenvolvemos o ZapScript Campanhas pra quem precisa de solução JÁ:
 
-→ Conecta o seu número via QR Code (sem esperar aprovação)
-→ Dispara HOJE MESMO pro seu próprio WhatsApp, já compliant
-→ Depois migra pro canal oficial da Meta sem restrição
-→ 30 msgs grátis por mês pra testar sem custo
+→ Conecta via QR (30 min e tá pronto)
+→ Usa API oficial da Meta (sem risco novo)
+→ 30 msgs grátis/mês (testa sem custo)
+→ R$150/1000 msgs depois (ou R$699/mês ilimitado)
 
-Só isso. Sem R$15k de setup, sem contrato, sem enrolação.
+Sem taxa de setup. Sem contrato. Sem espera.
 
-O preço? R$150/1000 msgs ou R$699/mês ilimitado. Paga via Pix na hora.
+Seus concorrentes já estão migrando. Enquanto tem tempo, quer que mostre como sai pra vocês?
 
-Faz sentido uma conversa de 10 min pra eu mostrar como sai no seu caso específico? Sem obrigação, é só pra você ver que é simples mesmo.
+zapscript.me/campanhas-vendas
 
-Abraço`}</div>
-
-          <p><strong>Por que funciona:</strong></p>
-          <ul>
-            <li>Começa com PERGUNTA (não é venda, é conversa)</li>
-            <li>Cita NÚMERO REAL de banimento (prova social)</li>
-            <li>Explica o RISCO DELE especificamente</li>
-            <li>Oferece DOIS caminhos (hoje + depois)</li>
-            <li>Compara com concorrente (CONTRASTE)</li>
-            <li>Fecha com PERMISSÃO (não é forcado)</li>
-          </ul>
+Abraço,
+[seu nome]`}</div>
         </section>
 
         <section>
-          <h2>⚡ 5 VARIAÇÕES PARA A GUERRILHA (comentários, DMs, grupos)</h2>
+          <h2>⚡ 5 VARIAÇÕES — GUERRILHA</h2>
 
           <div className="technique">
-            <h3>Variação 1: Blog sobre banimento</h3>
-            <div className="example">Isso tá batendo certo com jan/2026 — Meta apertou pra caramba. Testei o ZapScript Campanhas (tem 30 msgs grátis) que dispara pela API oficial aprovada. Resolveu meu caso e é bem rápido de conectar. [zapscript.me/campanhas]</div>
+            <h3>1️⃣ Comentário em blog sobre banimento</h3>
+            <div className="example">Bateu certo — Meta apertou demais desde janeiro. Testei ZapScript Campanhas (dispara pela API oficial aprovada), tem 30 msgs grátis. Resolveu. zapscript.me/campanhas-vendas</div>
           </div>
 
           <div className="technique">
-            <h3>Variação 2: Resposta a reclamação (Reclame Aqui)</h3>
-            <div className="example">Passei exatamente por isso. Solução: migrar pra API oficial da Meta. Sem API oficial = risco volta. Achei o ZapScript (zapscript.me/campanhas) que conecta fácil e tem cota grátis. Pode valer.</div>
+            <h3>2️⃣ Resposta em Reclame Aqui / Fórum / Grupo</h3>
+            <div className="example">Passei exatamente por isso. Solução: migrar pra API oficial da Meta — ou é oficial ou o risco volta. Achei ZapScript Campanhas, conecta fácil, cota grátis. zapscript.me/campanhas-vendas</div>
           </div>
 
           <div className="technique">
-            <h3>Variação 3: YouTube comment</h3>
-            <div className="example">Queria saber se o canal cobre alternativas oficiais agora. Existe o ZapScript Campanhas que dispara direto pela API da Meta — já sai aprovado. Compartilho em caso alguém aqui tá na mesma situação: zapscript.me/campanhas</div>
+            <h3>3️⃣ YouTube — Comentário em vídeo</h3>
+            <div className="example">Seria legal um vídeo sobre alternativas oficiais. Enquanto isso: ZapScript Campanhas dispara direto pela API oficial — já sai aprovado. zapscript.me/campanhas-vendas</div>
           </div>
 
           <div className="technique">
-            <h3>Variação 4: Live chat</h3>
-            <div className="example">pra quem teve bot banido — tentei ZapScript Campanhas, dispara pela API da Meta, tem 30 msgs grátis — zapscript.me/campanhas</div>
+            <h3>4️⃣ Live chat — Curtíssimo</h3>
+            <div className="example">bot banido? testei zapscript.me/campanhas-vendas — dispara pela API oficial, 30 msgs grátis</div>
           </div>
 
           <div className="technique">
-            <h3>Variação 5: Grupo Telegram/Facebook</h3>
-            <div className="example">Vi post aqui sobre bot banido — rolava o mesmo comigo até jan. Resolvi indo pro canal oficial via ZapScript (zapscript.me/campanhas). Tem QR Code fácil, começa já. Compartilhando em caso ajude alguém.</div>
+            <h3>5️⃣ Grupo Telegram / Facebook — Tom de par</h3>
+            <div className="example">Vi post aqui sobre bot banido — tava igual comigo até janeiro. Resolvi indo pro canal oficial via ZapScript Campanhas. Conecta via QR, dispara já. zapscript.me/campanhas-vendas</div>
           </div>
         </section>
 
         <section>
-          <h2>🎬 O ROTEIRO DO FECHAMENTO (B2B direto)</h2>
+          <h2>🎬 ROTEIRO B2B — 3 PASSOS</h2>
 
-          <p><strong>PASSO 1 — Primeira mensagem (conexão via LinkedIn ou WhatsApp):</strong></p>
-          <div className="pitch-box">{`Oi [Nome], tudo ok?
-
-Sou [você] da ZapScript — fiz uma pergunta rápida pra [empresa]:
+          <p><strong>DIA 0 — Dispara no mesmo dia</strong></p>
+          <div className="pitch-box">{`Oi [Nome], tudo bem?
 
 Seu número de WhatsApp já levou bloqueio nos últimos 6 meses?
 
-Pergunto porque a Meta intensificou a repressão contra disparo fora da API oficial. 5 milhões de números foram banidos só em junho.
+Pergunto porque a Meta banciu 5M+ números — pode ser seu amanhã.
 
-A gente desenvolveu uma solução pra quem tá nessa situação — conecta hoje via QR e dispara compliant.
+Desenvolvemos ZapScript Campanhas pra resolver isso:
+• Conecta hoje via QR (30 min e tá pronto)
+• API oficial da Meta (sem risco novo)
+• 30 msgs grátis/mês, depois R$150/1000
 
-Faz sentido eu enviar um resumo de 2 min de como isso sairia pra vocês?`}</div>
+Quer que mostre como sai pro seu caso?
 
-          <p style={{ marginTop: '20px' }}><strong>PASSO 2 — Depois de "sim" (ou no follow-up):</strong></p>
-          <div className="pitch-box">{`Perfeito! Deixa eu explicar rápido:
+zapscript.me/campanhas-vendas`}</div>
 
-HOJE: conectam o número de vocês via QR Code (tipo WhatsApp Web, mas pra disparar). PRONTO. Já dispara de verdade, sem esperar nada.
+          <p style={{ marginTop: '20px' }}><strong>DIA 3 — Follow-up (ainda não respondeu)</strong></p>
+          <div className="pitch-box">{`Oi [Nome],
 
-DEPOIS: migramos pra API oficial da Meta (com templates aprovados, escala sem limite, entrega rastreada).
+Rápido: ainda faz sentido aquela conversa sobre a migração pro canal oficial?
 
-Preço:
-- 30 msgs grátis/mês (pra testar)
-- R$150 por 1.000 msgs (90 dias)
-- R$699/mês ilimitado
-- Sem taxa de setup, sem contrato mínimo
+Seus concorrentes já estão fazendo. A Meta tá banindo todo dia.
 
-Diferente de Zenvia/Take Blip que cobram R$5-15k só pra começar.
+zapscript.me/campanhas-vendas`}</div>
 
-Todos os números ficam com opt-out automático (LGPD). Quem responde "SAIR" é excluído na hora — sem trabalho manual.
+          <p style={{ marginTop: '20px' }}><strong>DIA 7 — Último toque (com prova social)</strong></p>
+          <div className="pitch-box">{`[Nome],
 
-Volume de vocês é quanto por mês? Com isso dou um número exato de quanto sairia.`}</div>
+Última msg: Zenvia cobra R$5-15k pra começar. ZapScript não cobra setup, zero taxa.
 
-          <p style={{ marginTop: '20px' }}><strong>PASSO 3 — Objeção: "já usamos bot, tá tudo certo":</strong></p>
-          <div className="example">"Tá — por enquanto. Mas o risco é REAL. Semana passada levaram bloqueio 5 clientes nossos que estavam "tudo certo" também. A Meta não avisa antes. É de um dia pro outro. A questão não é SE vai levar, é QUANDO. Prefere contar com sorte ou migrar pra canal que a própria Meta aprova? A gente oferece transição suave — testam grátis, depois convertem."</div>
+Corretoras, clínicas, agências — todos já migraram pro canal oficial.
+
+Enquanto tem tempo:
+zapscript.me/campanhas-vendas`}</div>
+
+          <p style={{ marginTop: '20px' }}><strong>QUANDO OUVE: "Já usamos bot, tá tudo certo"</strong></p>
+          <div className="example">
+            Tá — por enquanto. Mas risco é REAL. Semana passada 5 clientes meus levaram bloqueio. Tavam "tudo certo" também. Meta não avisa.
+
+            Questão não é SE vai — é QUANDO.
+
+            Prefere contar com sorte ou migrar pro canal que Meta aprova?
+
+            Oferecemos transição suave — teste grátis, depois converte.
+          </div>
         </section>
 
         <section>
-          <h2>📊 MÉTRICA QUE IMPORTA</h2>
+          <h2>📊 O QUE IMPORTA MEDIR</h2>
 
-          <p>Não mede clic. Mede <strong>primeira campanha disparada</strong>.</p>
+          <p><strong>Não é clique. É PRIMEIRA CAMPANHA DISPARADA.</strong></p>
 
           <ul>
-            <li><strong>Cadastro = tráfego</strong> (vai pra GA4 com utm_source=guerrilha ou utm_source=b2b)</li>
-            <li><strong>Primeira campanha = ativação</strong> (é quando ele sente o produto é real)</li>
-            <li><strong>Segunda compra = conversão</strong> (aí você sabe que o LTV é positivo)</li>
+            <li><strong>Cadastro</strong> = tráfego chegando (GA4: utm_source=guerrilha ou b2b)</li>
+            <li><strong>Primeira campanha</strong> = ativação real (ele sentiu o produto funcionar)</li>
+            <li><strong>Segunda compra</strong> = LTV positivo (aí você venceu)</li>
           </ul>
 
-          <p style={{ marginTop: '20px' }}>Se após 4 dias um canal não gerar nenhuma primeira campanha, mata e realoca tempo pro vencedor.</p>
+          <p style={{ marginTop: '20px' }}><strong>Regra:</strong> Se após 4 dias um canal não gera nenhuma primeira campanha disparada, MATA e realoca tempo pro vencedor.</p>
         </section>
 
         <section className="cta">
-          <h3>COMECE HOJE</h3>
-          <p>Comenta nos 6 blogs listados na execução + dispara 3 DMs B2B. Leva 40 minutos, zero custo.</p>
+          <h3>COMEÇA AGORA</h3>
+          <p>Comenta nos 6 blogs + dispara 3 DMs B2B. Leva 40 minutos.</p>
           <a href="https://zapscript.me/campanhas" className="btn">→ Criar Primeira Campanha</a>
         </section>
       </div>
 
       <footer>
-        <p>ZapScript Campanhas © 2026 | Playbook de Vendas</p>
+        <p>ZapScript Campanhas © 2026 | Playbook de Vendas Otimizado</p>
       </footer>
     </>
   );
