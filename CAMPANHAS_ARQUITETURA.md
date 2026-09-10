@@ -1263,3 +1263,21 @@ incluso) pra não sobrar "grátis, sem pegadinha" ao lado de uma tabela de preç
 Balances com `availableMessages > 0` antes desta migration (saldo comprado sob a regra antiga, sem
 separação grátis/pago nem validade) viraram `paidMessages` com 90 dias de carência a partir do
 deploy — ninguém perde mensagens já compradas por causa da mudança de modelo.
+
+### 17.5 Revisão de preço, 2026-09-10 — Pré-Pago 5 substitui o Pré-Pago 10
+
+Pacotes atualizados (mesmos slots/validade, volume e preço novos):
+
+| Pacote | Antes | Depois |
+|---|---|---|
+| Pré-Pago 1 | 1.000 msgs · R$200 (R$0,20/msg) · 90 dias | 1.000 msgs · **R$150** (R$0,15/msg) · 90 dias |
+| Pré-Pago 2 | Pré-Pago 10 — 10.000 msgs · R$1.500 (R$0,15/msg) · 120 dias | **Pré-Pago 5** — 5.000 msgs · **R$450** (R$0,09/msg) · 120 dias |
+| Mensal Ilimitado | R$699/mês | R$699/mês (sem mudança) |
+
+`id` do pacote maior trocou de `pkg_camp_10k` pra `pkg_camp_5k` (reflete o volume novo) — sem
+efeito em saldo já concedido, já que o webhook credita por `messages` do pagamento, não por `id`
+fixo no `externalReference`. Só `CAMPANHA_MSG_PACKAGES` (routes/billing.ts) mudou; todo o resto —
+engine de crédito, `GET /campanha-packages`, `GET /campanha-balance`, `BalanceCard.tsx`, o texto do
+Chatbot Campanhas (`packagesText()`) — lê os pacotes dinamicamente dali, sem valor hardcoded. Só
+precisou editar à mão a landing pública `/campanhas` (preço aparece como texto solto no JSX/FAQ,
+não vem da API).

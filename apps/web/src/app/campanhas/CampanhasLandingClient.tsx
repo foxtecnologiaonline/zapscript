@@ -79,7 +79,7 @@ const FAQS = [
   },
   {
     q: 'Quanto custa?',
-    a: 'A ferramenta é gratuita pra todos os usuários da plataforma, em qualquer plano — e todo mundo tem 30 mensagens grátis por mês. Acima disso: Pré-Pago 1 (1.000 msgs por R$200, 90 dias), Pré-Pago 10 (10.000 msgs por R$1.500, 120 dias) ou Mensal Ilimitado (R$699/mês, sem limite). Tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) ficam de fora, e são pagas direto pra Meta, não pra gente.',
+    a: 'A ferramenta é gratuita pra todos os usuários da plataforma, em qualquer plano — e todo mundo tem 30 mensagens grátis por mês. Acima disso: Pré-Pago 1 (1.000 msgs por R$150, 90 dias), Pré-Pago 5 (5.000 msgs por R$450, 120 dias) ou Mensal Ilimitado (R$699/mês, sem limite). Tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) ficam de fora, e são pagas direto pra Meta, não pra gente.',
   },
 ];
 
@@ -337,8 +337,8 @@ export default function CampanhasLandingClient() {
 
           <div className="grid gap-4 sm:grid-cols-3">
             {[
-              { name: 'Pré-Pago 1', price: 'R$200', detail: '1.000 mensagens', validity: 'válido por 90 dias' },
-              { name: 'Pré-Pago 10', price: 'R$1.500', detail: '10.000 mensagens', validity: 'válido por 120 dias', highlight: 'melhor valor' },
+              { name: 'Pré-Pago 1', price: 'R$150', detail: '1.000 mensagens', validity: 'válido por 90 dias' },
+              { name: 'Pré-Pago 5', price: 'R$450', detail: '5.000 mensagens', validity: 'válido por 120 dias', highlight: 'melhor valor' },
               { name: 'Mensal Ilimitado', price: 'R$699/mês', detail: 'mensagens sem limite', validity: 'renova todo mês' },
             ].map((plan) => (
               <div key={plan.name} className="rounded-2xl p-5 text-center" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border-light))' }}>

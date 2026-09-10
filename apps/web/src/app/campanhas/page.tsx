@@ -97,7 +97,7 @@ const faqSchema = {
       name: 'Quanto custa o ZapScript Campanhas?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'A ferramenta é gratuita para todos os usuários da plataforma ZapScript, e todo mundo tem 30 mensagens grátis por mês. Acima disso: Pré-Pago 1 (1.000 mensagens por R$200, válido 90 dias), Pré-Pago 10 (10.000 mensagens por R$1.500, válido 120 dias) ou Mensal Ilimitado (R$699/mês, sem limite). Tarifas de mensagem cobradas diretamente pela Meta, conforme categoria do template e política vigente, ficam de fora.',
+        text: 'A ferramenta é gratuita para todos os usuários da plataforma ZapScript, e todo mundo tem 30 mensagens grátis por mês. Acima disso: Pré-Pago 1 (1.000 mensagens por R$150, válido 90 dias), Pré-Pago 5 (5.000 mensagens por R$450, válido 120 dias) ou Mensal Ilimitado (R$699/mês, sem limite). Tarifas de mensagem cobradas diretamente pela Meta, conforme categoria do template e política vigente, ficam de fora.',
       },
     },
   ],

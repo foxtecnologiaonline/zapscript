@@ -98,8 +98,8 @@ export const MINUTE_PACKAGES = [
    CampanhaBalance (lib/campanha-credit.ts), saldo independente do
    plano/módulo do usuário. ── */
 export const CAMPANHA_MSG_PACKAGES = [
-  { id: 'pkg_camp_1k',  messages: 1_000,  priceBrl: 200,   label: '1.000 mensagens',  desc: 'Pré-Pago 1',                 validityDays: 90 },
-  { id: 'pkg_camp_10k', messages: 10_000, priceBrl: 1_500, label: '10.000 mensagens', desc: 'Pré-Pago 10 — melhor valor', validityDays: 120 },
+  { id: 'pkg_camp_1k', messages: 1_000, priceBrl: 150, label: '1.000 mensagens', desc: 'Pré-Pago 1',                validityDays: 90 },
+  { id: 'pkg_camp_5k', messages: 5_000, priceBrl: 450, label: '5.000 mensagens', desc: 'Pré-Pago 5 — melhor valor', validityDays: 120 },
 ] as const;
 
 export const CAMPANHA_MONTHLY_PRICE_BRL = 699; // Mensal Ilimitado — mensagens sem limite enquanto a assinatura estiver ativa

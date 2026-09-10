@@ -80,7 +80,7 @@ jest.mock('../lib/campanha-credit', () => {
   };
 });
 jest.mock('../routes/billing', () => ({
-  CAMPANHA_MSG_PACKAGES: [{ id: 'pkg_camp_1k', messages: 1000, priceBrl: 200, label: '1.000 mensagens', desc: 'Pré-Pago 1', validityDays: 90 }],
+  CAMPANHA_MSG_PACKAGES: [{ id: 'pkg_camp_1k', messages: 1000, priceBrl: 150, label: '1.000 mensagens', desc: 'Pré-Pago 1', validityDays: 90 }],
   CAMPANHA_MONTHLY_PRICE_BRL: 699,
   buyCampanhaMessagesViaPix:      jest.fn(async () => ({ ok: true, data: { paymentId: 'pay_1', copyPaste: '00020126pix', qrCodeUrl: 'data:image/png;base64,QVBQ' } })),
   subscribeCampanhaMonthlyViaPix: jest.fn(async () => ({ ok: true, data: { paymentId: 'pay_2', copyPaste: '00020126pixsub' } })),
