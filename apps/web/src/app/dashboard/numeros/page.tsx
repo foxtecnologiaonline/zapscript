@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
+import { isPaidPlanName } from '@/lib/planPricing';
 import MetaEmbeddedSignup from './MetaEmbeddedSignup';
 
 interface WNumber {
@@ -694,7 +695,7 @@ export default function NumerosPage() {
   const [savingPrivate, setSavingPrivate]   = useState<string | null>(null);
   const [hidePrivadoTip, setHidePrivadoTip] = useState(true);
 
-  const isPaid = planName === 'pro' || planName === 'pro-tester' || planName === 'executive';
+  const isPaid = isPaidPlanName(planName);
 
   const loadNumbers = useCallback(async () => {
     setLoading(true); setError('');
