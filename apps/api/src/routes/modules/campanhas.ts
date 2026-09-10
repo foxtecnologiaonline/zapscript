@@ -42,8 +42,8 @@ export const OPT_OUT_KEYWORDS = new Set(['PARAR', 'SAIR', 'STOP', 'CANCELAR', 'U
 /** Palavras-chave de opt-in (SIM). */
 export const OPT_IN_KEYWORDS = new Set(['SIM']);
 
-/** Palavras-chave de negação (NÃO). */
-export const OPT_OUT_RESPONSE_KEYWORDS = new Set(['NÃO', 'NAO', 'NÃO']);
+/** Palavras-chave de negação (NÃO/NAO). */
+export const OPT_OUT_RESPONSE_KEYWORDS = new Set(['NÃO', 'NAO']);
 
 /**
  * Detecta e processa resposta a pergunta de opt-in pendente.
@@ -1731,7 +1731,12 @@ export default async function campanhasRoutes(app: FastifyInstance) {
   // Aceita file multipart + listaId (reutilizar) ou listName (criar nova)
   app.post<{ Body: any }>('/contatos/from-csv', auth, async (req: any, reply) => {
     const userId = req.user.sub;
-    const data = await req.file();
+    let data;
+    try {
+      data = await req.file();
+    } catch (err: any) {
+      return reply.code(400).send({ error: 'Erro ao processar arquivo. Verifique se é um CSV válido.' });
+    }
     if (!data) return reply.code(400).send({ error: 'Arquivo CSV é obrigatório.' });
 
     const validation = validateRequest(uploadContatosCsvSchema)(data.fields);
@@ -1755,40 +1760,67 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       }
     }
 
-    // Parse CSV
-    const buffer = await data.file.toBuffer();
-    const csv = buffer.toString('utf-8');
+    // Parse CSV com melhor tratamento de erros
+    let csv: string;
+    try {
+      const buffer = await data.file.toBuffer();
+      csv = buffer.toString('utf-8');
+      if (!csv || csv.length === 0) {
+        return reply.code(400).send({ error: 'Arquivo vazio.' });
+      }
+    } catch (err: any) {
+      return reply.code(400).send({ error: 'Erro ao ler arquivo.' });
+    }
+
     const lines = csv.split('\n').map(l => l.trim()).filter(l => l);
     if (lines.length < 2) return reply.code(400).send({ error: 'CSV deve ter ao menos 1 contato + header.' });
 
     const headerLine = lines[0].toLowerCase();
     const hasPhone = /\b(phone|numero|telefone)\b/.test(headerLine);
     const hasName = /\b(name|nome)\b/.test(headerLine);
-    if (!hasPhone) return reply.code(400).send({ error: 'CSV deve conter coluna "phone" ou "numero" ou "telefone".' });
+    if (!hasPhone) return reply.code(400).send({ error: 'CSV deve conter coluna "phone", "numero" ou "telefone".' });
 
-    const headers = headerLine.split(/[,;]/).map((h: string) => h.trim());
+    // Detectar delimiter (preferir , se ambos existem)
+    const commaCnt = (headerLine.match(/,/g) || []).length;
+    const semiCnt = (headerLine.match(/;/g) || []).length;
+    const delimiter = commaCnt >= semiCnt ? ',' : ';';
+
+    const headers = headerLine.split(delimiter).map((h: string) => h.trim());
     const phoneIdx = headers.findIndex(h => ['phone', 'numero', 'telefone'].includes(h));
     const nameIdx = hasName ? headers.findIndex(h => ['name', 'nome'].includes(h)) : -1;
+
+    if (phoneIdx === -1) {
+      return reply.code(400).send({ error: 'Não foi possível localizar coluna de telefone.' });
+    }
 
     const contatos: Array<{ phone: string; name?: string }> = [];
     const errors: string[] = [];
     let imported = 0, skipped = 0;
 
     for (let i = 1; i < lines.length; i++) {
-      const cells = lines[i].split(/[,;]/).map(c => c.trim().replace(/^"|"$/g, ''));
-      if (!cells[phoneIdx]) continue;
+      const cells = lines[i].split(delimiter).map(c => c.trim().replace(/^"|"$/g, ''));
+      if (cells.length <= phoneIdx || !cells[phoneIdx]) continue;
 
-      const rawPhone = cells[phoneIdx];
+      const rawPhone = cells[phoneIdx].trim();
       if (!PHONE_LIKE.test(rawPhone)) {
-        errors.push(`Linha ${i + 1}: "${rawPhone}" — formato inválido.`);
+        if (errors.length < 10) errors.push(`Linha ${i + 1}: "${rawPhone}" inválido.`);
         skipped++;
         continue;
       }
 
-      const phone = normalizePhone(rawPhone);
-      const name = nameIdx >= 0 && cells[nameIdx] ? cells[nameIdx] : undefined;
-      contatos.push({ phone, name });
-      imported++;
+      try {
+        const phone = normalizePhone(rawPhone);
+        const name = nameIdx >= 0 && cells[nameIdx] ? cells[nameIdx] : undefined;
+        contatos.push({ phone, name });
+        imported++;
+      } catch (err: any) {
+        if (errors.length < 10) errors.push(`Linha ${i + 1}: erro ao processar.`);
+        skipped++;
+      }
+    }
+
+    if (imported === 0) {
+      return reply.code(400).send({ error: 'Nenhum contato válido encontrado no CSV.' });
     }
 
     // Dedup + insert
@@ -1799,6 +1831,8 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     const existingPhones = new Set(existing.map(e => e.phone));
 
     const toInsert = contatos.filter(c => !existingPhones.has(c.phone));
+    const dedupedCount = contatos.length - toInsert.length;
+
     if (toInsert.length > 0) {
       await prisma.campanhaListaContato.createMany({
         data: toInsert.map(c => ({ listaId: targetListaId, phone: c.phone, name: c.name })),
@@ -1811,8 +1845,8 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       listaId: targetListaId,
       importedCount: toInsert.length,
       skippedCount: skipped,
-      dedupedCount: contatos.length - toInsert.length,
-      errors: errors.slice(0, 10), // max 10 erros
+      dedupedCount,
+      errors,
     });
   });
 

@@ -2721,26 +2721,30 @@ async function cleanupOptinTimeouts() {
         status: 'pending_optin',
         optinTimeoutAt: { lte: new Date() },
       },
-      select: { id: true, phone: true, campanhaId: true },
-      take: 100, // evitar operação muito grande de uma vez
+      select: { id: true, phone: true, campanhaId: true, campanha: { select: { userId: true } } },
+      take: 100,
     });
 
     if (timedOut.length === 0) return;
 
     // Marcar como optout + registrar no CampanhaOptOut
-    await Promise.all(timedOut.map((t) =>
-      prisma.$transaction([
-        prisma.campanhaContato.update({
-          where: { id: t.id },
-          data: { status: 'optout', errorMessage: 'Timeout: nenhuma resposta ao opt-in' },
-        }),
-        prisma.campanhaOptOut.upsert({
-          where: { userId_phone: { userId: 'temp', phone: t.phone } }, // userId será atualizado depois
-          create: { userId: 'temp', phone: t.phone, reason: 'TIMEOUT_OPTIN' },
-          update: { reason: 'TIMEOUT_OPTIN' },
-        }).catch(() => null), // pode falhar se não conseguir resolver userId — ignora
-      ])
-    ));
+    const batchSize = 10;
+    for (let i = 0; i < timedOut.length; i += batchSize) {
+      const batch = timedOut.slice(i, i + batchSize);
+      await Promise.all(batch.map((t) =>
+        prisma.$transaction([
+          prisma.campanhaContato.update({
+            where: { id: t.id },
+            data: { status: 'optout', errorMessage: 'Timeout: sem resposta ao opt-in' },
+          }),
+          prisma.campanhaOptOut.upsert({
+            where: { userId_phone: { userId: t.campanha.userId, phone: t.phone } },
+            create: { userId: t.campanha.userId, phone: t.phone, reason: 'TIMEOUT_OPTIN' },
+            update: { reason: 'TIMEOUT_OPTIN' },
+          }).catch(() => null),
+        ])
+      ));
+    }
 
     logger.info(`[Campanhas] Cleanup: ${timedOut.length} contato(s) marcado(s) como optout por timeout`);
   } catch (err: any) {
