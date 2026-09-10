@@ -57,9 +57,12 @@ export default function CampanhasVarejoPage() {
             <h1 className="mb-4 text-4xl font-bold sm:text-5xl">
               Campanhas WhatsApp para <span className="text-green-600">Varejo e E-commerce</span>
             </h1>
-            <p className="mb-6 text-xl text-slate-600 dark:text-slate-300">
-              Envie promoções, cupons e notificações de pedido direto no WhatsApp — oficial, seguro e sem risco de banimento.
+            <p className="mb-3 text-xl text-slate-600 dark:text-slate-300">
+              Envie promoções, cupons e notificações direto no WhatsApp — oficial, seguro e sem risco.
             </p>
+            <div className="mb-6 rounded-lg bg-green-100 px-4 py-2 text-lg font-bold text-green-800 dark:bg-green-900 dark:text-green-200">
+              💰 55-79% MAIS BARATO que Meta direto
+            </div>
             <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
               <Link
                 href="https://app.zapscript.me/cadastro"
@@ -73,6 +76,48 @@ export default function CampanhasVarejoPage() {
               >
                 Voltar para Campanhas
               </Link>
+            </div>
+          </div>
+
+          {/* Economia comparada */}
+          <div className="mb-16 rounded-lg bg-green-50 p-8 dark:bg-green-950">
+            <h2 className="mb-4 text-2xl font-bold text-green-900 dark:text-green-100">💸 Economia — ZapScript vs Meta vs SMS</h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {[
+                {
+                  title: '1.000 Mensagens',
+                  meta: 'Meta: R$ 330',
+                  zapscript: 'ZapScript: R$ 150',
+                  economia: '55% de desconto',
+                  sms: 'SMS: ~R$ 200'
+                },
+                {
+                  title: '5.000 Mensagens',
+                  meta: 'Meta: R$ 1.650',
+                  zapscript: 'ZapScript: R$ 450',
+                  economia: '73% de desconto',
+                  sms: 'SMS: ~R$ 1.000'
+                },
+                {
+                  title: '10.000/mês (Ilimitado)',
+                  meta: 'Meta: R$ 3.300/mês',
+                  zapscript: 'ZapScript: R$ 699/mês',
+                  economia: '79% de desconto',
+                  sms: 'SMS: ~R$ 2.500-3k'
+                },
+              ].map((item, i) => (
+                <div key={i} className="rounded-lg border-2 border-green-300 bg-white p-4 dark:border-green-700 dark:bg-slate-800">
+                  <p className="mb-3 font-bold text-green-700 dark:text-green-300">{item.title}</p>
+                  <div className="space-y-1 text-sm">
+                    <p className="text-slate-600 dark:text-slate-400">{item.meta}</p>
+                    <p className="font-semibold text-green-600 dark:text-green-400">✅ {item.zapscript}</p>
+                    <p className="text-orange-600 dark:text-orange-400">{item.sms}</p>
+                    <p className="mt-2 border-t border-green-200 pt-2 font-bold text-green-700 dark:border-green-700 dark:text-green-300">
+                      💰 {item.economia}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -213,52 +258,47 @@ export default function CampanhasVarejoPage() {
 
           {/* Preços */}
           <div className="mb-16">
-            <h2 className="mb-8 text-3xl font-bold">Planos de Campanhas</h2>
+            <h2 className="mb-8 text-3xl font-bold">Planos de Campanhas — Economize até 79%</h2>
             <div className="mb-6 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b-2 border-slate-200 dark:border-slate-700">
+                  <tr className="border-b-2 border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
                     <th className="px-4 py-3 text-left">Plano</th>
-                    <th className="px-4 py-3 text-left">Mensagens/mês</th>
-                    <th className="px-4 py-3 text-left">Custo ZapScript</th>
-                    <th className="px-4 py-3 text-left">Custo Meta*</th>
-                    <th className="px-4 py-3 text-left">Total/mês</th>
+                    <th className="px-4 py-3 text-left">Você Paga</th>
+                    <th className="px-4 py-3 text-left">Meta Cobraria</th>
+                    <th className="px-4 py-3 text-left">💰 Economiza</th>
                   </tr>
                 </thead>
                 <tbody className="text-xs sm:text-sm">
                   <tr className="border-b border-slate-200 dark:border-slate-700">
                     <td className="px-4 py-3 font-semibold">Grátis</td>
-                    <td className="px-4 py-3">30</td>
                     <td className="px-4 py-3">R$ 0</td>
-                    <td className="px-4 py-3">R$ 9,90</td>
-                    <td className="px-4 py-3 font-semibold">R$ 10</td>
+                    <td className="px-4 py-3">R$ 10 (30 msgs)</td>
+                    <td className="px-4 py-3 font-bold text-green-600">R$ 10 (100%)</td>
                   </tr>
-                  <tr className="border-b border-slate-200 dark:border-slate-700">
+                  <tr className="border-b border-slate-200 bg-green-50 dark:border-slate-700 dark:bg-green-950">
                     <td className="px-4 py-3 font-semibold">Pré-Pago 1</td>
-                    <td className="px-4 py-3">1.000 (90 dias)</td>
-                    <td className="px-4 py-3">R$ 150/3 meses</td>
-                    <td className="px-4 py-3">R$ 330 (÷ 3)</td>
-                    <td className="px-4 py-3 font-semibold">R$ 160/mês</td>
+                    <td className="px-4 py-3 font-bold text-green-700">R$ 150</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-400">R$ 330 (1k msgs)</td>
+                    <td className="px-4 py-3 font-bold text-green-600">R$ 180 (55%)</td>
                   </tr>
-                  <tr className="border-b border-slate-200 dark:border-slate-700">
+                  <tr className="border-b border-slate-200 bg-green-50 dark:border-slate-700 dark:bg-green-950">
                     <td className="px-4 py-3 font-semibold">Pré-Pago 5</td>
-                    <td className="px-4 py-3">5.000 (120 dias)</td>
-                    <td className="px-4 py-3">R$ 450/4 meses</td>
-                    <td className="px-4 py-3">R$ 1.650 (÷ 4)</td>
-                    <td className="px-4 py-3 font-semibold">R$ 562/mês</td>
+                    <td className="px-4 py-3 font-bold text-green-700">R$ 450</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-400">R$ 1.650 (5k msgs)</td>
+                    <td className="px-4 py-3 font-bold text-green-600">R$ 1.200 (73%)</td>
                   </tr>
-                  <tr>
+                  <tr className="bg-green-50 dark:border-slate-700 dark:bg-green-950">
                     <td className="px-4 py-3 font-semibold">Ilimitado</td>
-                    <td className="px-4 py-3">Sem limite</td>
-                    <td className="px-4 py-3">R$ 699</td>
-                    <td className="px-4 py-3">R$ 0,33/msg</td>
-                    <td className="px-4 py-3 font-semibold">R$ 699 + msgs</td>
+                    <td className="px-4 py-3 font-bold text-green-700">R$ 699/mês</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-400">R$ 3.300 (10k msgs)</td>
+                    <td className="px-4 py-3 font-bold text-green-600">R$ 2.601/mês (79%)</td>
                   </tr>
                 </tbody>
               </table>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              *Tarifa Meta: R$ 0,33 por mensagem enviada (varia por tipo de template). ZapScript é gratuito; você paga só o que envia.
+              *Tarifa Meta: R$ 0,33 por mensagem. ZapScript revende com desconto. Você economiza a diferença.
             </p>
           </div>
 

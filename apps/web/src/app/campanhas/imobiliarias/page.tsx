@@ -57,9 +57,12 @@ export default function CampanhasImobiliariasPage() {
             <h1 className="mb-4 text-4xl font-bold sm:text-5xl">
               Campanhas WhatsApp para <span className="text-blue-600">Imobiliárias</span>
             </h1>
-            <p className="mb-6 text-xl text-slate-600 dark:text-slate-300">
-              Dispare ofertas de imóveis, confirmações de visita e follow-up direto no WhatsApp — oficial, seguro e sem risco de banimento.
+            <p className="mb-3 text-xl text-slate-600 dark:text-slate-300">
+              Dispare ofertas de imóveis, confirmações e follow-up direto no WhatsApp — oficial, seguro e sem risco.
             </p>
+            <div className="mb-6 rounded-lg bg-blue-100 px-4 py-2 text-lg font-bold text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+              💰 Economize 55-79% vs Meta direto
+            </div>
             <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
               <Link
                 href="https://app.zapscript.me/cadastro"
@@ -148,51 +151,63 @@ export default function CampanhasImobiliariasPage() {
 
           {/* Preços */}
           <div className="mb-16">
-            <h2 className="mb-8 text-3xl font-bold">Planos de Campanhas</h2>
+            <h2 className="mb-8 text-3xl font-bold">Planos de Campanhas — Economize até 79%</h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {[
                 {
                   title: 'Grátis',
-                  msgs: '30/mês',
-                  zapscript: 'R$ 0',
-                  meta: 'R$ 10',
-                  total: 'R$ 10/mês',
-                  color: 'blue'
+                  voce: 'R$ 0',
+                  meta: 'R$ 10 (30 msgs)',
+                  economia: '100%',
+                  msgs: '30/mês'
                 },
                 {
                   title: 'Pré-Pago 1',
-                  msgs: '1.000 (90 dias)',
-                  zapscript: 'R$ 150',
-                  meta: 'R$ 330',
-                  total: 'R$ 480 total',
-                  color: 'green'
+                  voce: 'R$ 150',
+                  meta: 'R$ 330 (1k msgs)',
+                  economia: '55%',
+                  msgs: '1.000 msgs'
+                },
+                {
+                  title: 'Pré-Pago 5',
+                  voce: 'R$ 450',
+                  meta: 'R$ 1.650 (5k msgs)',
+                  economia: '73%',
+                  msgs: '5.000 msgs'
                 },
                 {
                   title: 'Ilimitado',
-                  msgs: 'Sem limite',
-                  zapscript: 'R$ 699/mês',
-                  meta: '+R$ 0,33/msg',
-                  total: 'Conforme uso',
-                  color: 'purple'
+                  voce: 'R$ 699/mês',
+                  meta: 'R$ 3.300/mês (10k)',
+                  economia: '79%',
+                  msgs: 'Sem limite'
                 },
               ].map((plan, i) => (
                 <div key={i} className={`rounded-lg border-2 p-6 text-center ${
-                  plan.color === 'green'
+                  plan.economia === '100%' || plan.economia === '55%' || plan.economia === '73%' || plan.economia === '79%'
                     ? 'border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-950'
                     : 'border-slate-200 dark:border-slate-700'
                 }`}>
-                  <h3 className="mb-2 font-bold">{plan.title}</h3>
-                  <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">{plan.msgs}</p>
-                  <div className="space-y-1 text-xs text-slate-500 dark:text-slate-500">
-                    <p>ZapScript: {plan.zapscript}</p>
-                    <p>Tarifa Meta*: {plan.meta}</p>
+                  <h3 className="mb-1 text-lg font-bold">{plan.title}</h3>
+                  <p className="mb-3 text-xs text-slate-600 dark:text-slate-400">{plan.msgs}</p>
+                  <div className="space-y-2 rounded bg-white p-2 dark:bg-slate-800">
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-500">Você paga</p>
+                      <p className="font-bold text-green-700 dark:text-green-300">{plan.voce}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-500">Meta cobraria</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">{plan.meta}</p>
+                    </div>
                   </div>
-                  <p className="mt-3 border-t border-slate-300 pt-2 font-bold dark:border-slate-600">{plan.total}</p>
+                  <p className="mt-3 border-t-2 border-green-300 pt-2 font-bold text-green-700 dark:border-green-700 dark:text-green-300">
+                    💰 {plan.economia} off
+                  </p>
                 </div>
               ))}
             </div>
             <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
-              *Tarifa Meta: R$ 0,33 por mensagem (2026). ZapScript é grátis; você paga só à Meta.
+              *Tarifa Meta: R$ 0,33/mensagem. ZapScript revende com desconto especial. Economia é a diferença.
             </p>
           </div>
 

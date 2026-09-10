@@ -51,11 +51,15 @@
 
 ### Campanhas (Disparo em Massa WhatsApp)
 - **Grátis para todos:** 30 mensagens/mês inclusos em qualquer plano
-- **Pré-Pago 1:** 1.000 mensagens = R$ 150 (válido 90 dias) → R$ 0,15/msg
-- **Pré-Pago 5:** 5.000 mensagens = R$ 450 (válido 120 dias) → R$ 0,09/msg
-- **Ilimitado:** R$ 699/mês sem limite
-- *Tarifas da Meta: R$ 0,33 por mensagem enviada (2026) — você paga o que envia*
-- *ZapScript Campanhas é ferramenta gratuita; você paga só à Meta pelas mensagens*
+- **Pré-Pago 1:** 1.000 mensagens = R$ 150 (90 dias) | Meta cobraria R$ 330 | 💰 **55% de desconto**
+- **Pré-Pago 5:** 5.000 mensagens = R$ 450 (120 dias) | Meta cobraria R$ 1.650 | 💰 **73% de desconto**
+- **Ilimitado:** R$ 699/mês sem limite | Meta cobraria R$ 3.300+ (10k msgs) | 💰 **79% de desconto**
+
+**Como funciona:**
+- ZapScript gerencia API Meta e oferece desconto ao cliente
+- Você paga ZapScript (R$ 150/450/699)
+- Mensagens são enviadas via API Meta oficial (sem risco)
+- Economia: diferença entre ZapScript e tarifa Meta (R$ 0,33/msg)
 
 - Cancelamento a qualquer momento, em 1 clique.
 
@@ -74,11 +78,11 @@
 - **Funciona em iPhone, Android e PC?** Sim — é um serviço no número do WhatsApp; o resultado é lido em qualquer dispositivo.
 
 ### Campanhas (Disparo em Massa)
-- **Por que usar WhatsApp ao invés de SMS?** Taxa de abertura 75% vs 10% no SMS; respostas diretas no app (não precisa sair do WhatsApp); mídia, botões, links interativos. Custo é parecido (R$ 0,33 vs R$ 0,15-0,30), mas conversão é 5-10x melhor.
-- **Qual é o risco de banimento?** Nenhum. ZapScript Campanhas usa a API oficial da Meta (WhatsApp Business Platform) — mesma usada por grandes empresas; templates aprovados pela Meta. Seguro.
-- **Posso enviar para lista de transmissão?** Sim. Lista de transmissão é o jeito mais seguro; ZapScript gerencia templates, aprovações e entrega.
-- **Quanto custa?** Gratuito: 30 msgs/mês. Pré-Pago: R$ 150 por 1.000 msgs (R$ 0,15/msg, 90 dias) ou Ilimitado: R$ 699/mês. Tarifas da Meta: R$ 0,33/msg adicional. Você paga só o que envia.
-- **Posso segmentar clientes?** Sim. Por região, histórico de compra, valor gasto, tipo de produto, últimas interações. Envie só ofertas relevantes.
+- **Por que usar ZapScript Campanhas?** Três motivos: (1) **Seguro:** API oficial Meta, sem risco. (2) **Rápido:** implementa em 90 minutos. (3) **Economiza:** 55-79% mais barato que Meta direto (1.000 msgs = R$ 150 vs R$ 330 Meta; 10k/mês = R$ 699 vs R$ 3.300 Meta).
+- **Qual é o risco de banimento?** Nenhum. Usa API oficial da Meta — mesma que WhatsApp Business usa. Templates aprovados. 100% seguro.
+- **Quanto economizo vs Meta direto?** Pré-Pago 1k: 55% desconto (R$ 150 vs R$ 330). Pré-Pago 5k: 73% desconto (R$ 450 vs R$ 1.650). Ilimitado: 79% desconto (R$ 699/mês vs R$ 3.300/mês).
+- **Preciso de número Business?** Não. ZapScript gerencia tudo. Conecta uma vez, pronto.
+- **Posso segmentar clientes?** Sim. Por região, histórico de compra, valor gasto, tipo de produto, últimas interações.
 
 ## Programa de afiliados
 
