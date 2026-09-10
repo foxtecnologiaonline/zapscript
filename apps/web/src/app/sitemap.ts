@@ -20,6 +20,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/campanhas`,    lastModified: now, priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/campanhas/imobiliarias`, lastModified: now, priority: 0.9, changeFrequency: 'monthly' },
     { url: `${base}/campanhas/varejo`, lastModified: now, priority: 0.9, changeFrequency: 'monthly' },
+    { url: `${base}/campanhas/dentistas`, lastModified: now, priority: 0.9, changeFrequency: 'monthly' },
+    { url: `${base}/campanhas/saude`, lastModified: now, priority: 0.9, changeFrequency: 'monthly' },
     { url: `${base}/para/contabilidade`, lastModified: d('2026-06-23'), priority: 0.9, changeFrequency: 'monthly' },
     { url: `${base}/cobranca`,     lastModified: d('2026-07-16'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/crm`,          lastModified: now,             priority: 0.9,  changeFrequency: 'monthly' },

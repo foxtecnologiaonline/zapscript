@@ -1738,6 +1738,202 @@ export const POSTS: BlogPost[] = [
     `,
   },
 
+  /* ══════════════════════════════════════════════════════════════════════
+     BLOG POST — Meta vs ZapScript vs SMS: Comparação de ROI
+     Keyword: "disparo whatsapp vs sms", "campanhas whatsapp roi", "whatsapp mais barato"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'meta-vs-zapscript-vs-sms-comparacao-roi',
+    title:       'Meta vs ZapScript vs SMS — Qual canal dá mais retorno em 2026?',
+    description: 'Análise real: custo, taxa abertura e conversão. WhatsApp é 6x melhor que SMS? Meta direto é mais barato que ZapScript? Dados completos para sua decisão.',
+    keywords:    ['whatsapp vs sms custo', 'campanhas whatsapp roi', 'meta vs zapscript', 'disparos whatsapp barato', 'taxa abertura whatsapp sms'],
+    publishedAt: '2026-09-10',
+    readingTime: 12,
+    category:    'Campanhas',
+    coverEmoji:  '💰',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
+    content: `
+<p>Marketing digital é tudo sobre ROI. Você gasta R$ 1.000 em campanha, quer saber quanto dinheiro ganhou. Não é mais aceitável simplesmente escolher um canal porque "é mais barato" — você precisa escolher porque dá <strong>mais resultado</strong>.</p>
+
+<p>Neste artigo, vamos comparar três caminhos para comunicar com seus clientes: <strong>SMS tradicional, WhatsApp pela API da Meta direto, e WhatsApp via ZapScript</strong>. Mostraremos custo real, taxa de abertura, conversão esperada e qual ROI total você deve esperar de cada um.</p>
+
+<h2>Tabela Comparativa Rápida</h2>
+<table style="width:100%; border-collapse: collapse; margin: 20px 0;">
+  <thead>
+    <tr style="background: #f0f0f0;">
+      <th style="padding: 12px; border: 1px solid #ddd;">Métrica</th>
+      <th style="padding: 12px; border: 1px solid #ddd;">SMS</th>
+      <th style="padding: 12px; border: 1px solid #ddd;">WhatsApp (Meta Direto)</th>
+      <th style="padding: 12px; border: 1px solid #ddd;">WhatsApp (ZapScript)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="padding: 12px; border: 1px solid #ddd;"><strong>Custo/1.000 msgs</strong></td>
+      <td style="padding: 12px; border: 1px solid #ddd;">R$ 250</td>
+      <td style="padding: 12px; border: 1px solid #ddd;">R$ 330</td>
+      <td style="padding: 12px; border: 1px solid #ddd;">R$ 150 (55% off)</td>
+    </tr>
+    <tr style="background: #fafafa;">
+      <td style="padding: 12px; border: 1px solid #ddd;"><strong>Taxa Abertura</strong></td>
+      <td style="padding: 12px; border: 1px solid #ddd;">~12%</td>
+      <td style="padding: 12px; border: 1px solid #ddd;">~75%</td>
+      <td style="padding: 12px; border: 1px solid #ddd;">~75%</td>
+    </tr>
+    <tr>
+      <td style="padding: 12px; border: 1px solid #ddd;"><strong>Taxa Conversão</strong></td>
+      <td style="padding: 12px; border: 1px solid #ddd;">0,5-1%</td>
+      <td style="padding: 12px; border: 1px solid #ddd;">5-10%</td>
+      <td style="padding: 12px; border: 1px solid #ddd;">5-10%</td>
+    </tr>
+    <tr style="background: #fafafa;">
+      <td style="padding: 12px; border: 1px solid #ddd;"><strong>Setup</strong></td>
+      <td style="padding: 12px; border: 1px solid #ddd;">5 min</td>
+      <td style="padding: 12px; border: 1px solid #ddd;">2-4 semanas</td>
+      <td style="padding: 12px; border: 1px solid #ddd;">5 min</td>
+    </tr>
+    <tr>
+      <td style="padding: 12px; border: 1px solid #ddd;"><strong>Custo Setup</strong></td>
+      <td style="padding: 12px; border: 1px solid #ddd;">R$ 0</td>
+      <td style="padding: 12px; border: 1px solid #ddd;">R$ 2.000-10.000</td>
+      <td style="padding: 12px; border: 1px solid #ddd;">R$ 0</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Cenário Real: 10.000 clientes, 1 campanha/mês</h2>
+
+<h3>SMS</h3>
+<ul>
+  <li><strong>Custo:</strong> 10k × R$ 0,25 = R$ 2.500</li>
+  <li><strong>Abrem mensagem:</strong> 12% = 1.200 pessoas</li>
+  <li><strong>Conversão:</strong> 1.200 × 0,5% = 6 vendas</li>
+  <li><strong>ROI:</strong> R$ 2.500 / 6 vendas = R$ 417/venda</li>
+</ul>
+
+<h3>WhatsApp (Meta Direto)</h3>
+<ul>
+  <li><strong>Custo:</strong> 10k × R$ 0,33 = R$ 3.300 + R$ 5k dev = R$ 8.300 (mês 1)</li>
+  <li><strong>Abrem mensagem:</strong> 75% = 7.500 pessoas</li>
+  <li><strong>Conversão:</strong> 7.500 × 7% = 525 vendas</li>
+  <li><strong>ROI:</strong> R$ 8.300 / 525 vendas = R$ 16/venda (mês 1)</li>
+  <li><strong>ROI meses seguintes:</strong> R$ 3.300 / 525 = R$ 6,30/venda</li>
+</ul>
+
+<h3>WhatsApp (ZapScript)</h3>
+<ul>
+  <li><strong>Custo:</strong> R$ 150 (Pré-Pago 1.000) ou R$ 699 (ilimitado) = R$ 699 max</li>
+  <li><strong>Abrem mensagem:</strong> 75% = 7.500 pessoas</li>
+  <li><strong>Conversão:</strong> 7.500 × 7% = 525 vendas</li>
+  <li><strong>ROI:</strong> R$ 699 / 525 vendas = R$ 1,33/venda</li>
+</ul>
+
+<h2>Conclusão: Qual escolher?</h2>
+
+<p><strong>Se você está começando:</strong> ZapScript. Sem dev, sem espera, sem risco.</p>
+
+<p><strong>Se você precisa de integração nativa:</strong> Meta direto. Mas só depois de validar que funciona com ZapScript.</p>
+
+<p><strong>SMS: só se você tiver público legado</strong> (avó que não tem WhatsApp). Não faz mais sentido como canal único em 2026.</p>
+
+<p>O diferencial real não é o preço. É o ROI. E WhatsApp converte 6x mais. ZapScript custa 55-79% menos que Meta direto. Combine os dois e sua campanha vai ser 40x mais eficiente que SMS.</p>
+    `,
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════
+     BLOG POST — Como não ser banido no WhatsApp em 2026
+     Keyword: "como não ser banido whatsapp", "evitar banimento whatsapp", "whatsapp business seguro"
+  ══════════════════════════════════════════════════════════════════════ */
+  {
+    slug:        'como-nao-ser-banido-whatsapp-2026',
+    title:       'Como não ser banido do WhatsApp em 2026 — Guia Completo',
+    description: 'A Meta está baniando números não autorizados. Guia prático: o que causa banimento, o que fazer para estar seguro, e quando usar API oficial.',
+    keywords:    ['como evitar banimento whatsapp', 'whatsapp não autorizado banido', 'api oficial whatsapp seguro', 'alternativa bot whatsapp banido', 'usar whatsapp legal em 2026'],
+    publishedAt: '2026-09-10',
+    readingTime: 10,
+    category:    'Campanhas',
+    coverEmoji:  '🛡️',
+    author:     { name: 'Roberto', role: 'Founder ZapScript', linkedin: 'https://linkedin.com/in/zapscript' },
+    content: `
+<p>Se você está em marketing, suporte ao cliente ou vendas em 2026, já deve ter ouvido: <em>"Cuidado, estão banindo números WhatsApp que usam bot."</em></p>
+
+<p>A Meta realmente está intensificando o combate a automações não autorizadas. Centenas de empresas perderam acesso ao WhatsApp depois de usar bots fora da API oficial. Neste guia, você vai entender exatamente o que causa banimento e como ficar seguro.</p>
+
+<h2>O que causa banimento no WhatsApp?</h2>
+
+<h3>❌ NÃO FAÇA — Vai levar ao banimento</h3>
+<ul>
+  <li><strong>Usar bots via WhatsApp Web ou cliente não oficial:</strong> violação dos termos. Meta detecta e bane em dias.</li>
+  <li><strong>Enviar muitas mensagens muito rápido:</strong> padrão de bot óbvio (100+ msgs/min = red flag).</li>
+  <li><strong>Mensagens genéricas em massa:</strong> "Oi", "Olá", "+55 999..." para números aleatórios = spam puro.</li>
+  <li><strong>Templates não aprovados:</strong> usar templates criados por bot, não revistos pela Meta.</li>
+  <li><strong>Scraping de números:</strong> pegar lista de contatos sem consentimento.</li>
+  <li><strong>Número pessoal para campanha em massa:</strong> números pessoais têm limite de ~1k msgs/dia; números business podem mais.</li>
+</ul>
+
+<h3>✅ FAÇA — Vai manter você seguro</h3>
+<ul>
+  <li><strong>Use API oficial:</strong> WhatsApp Business Platform (via Meta direto ou reseller como ZapScript).</li>
+  <li><strong>Templates aprovados:</strong> só use templates que a Meta aprovou.</li>
+  <li><strong>Consentimento explícito:</strong> dispare só para quem pediu.</li>
+  <li><strong>Opt-out automático:</strong> PARAR/SAIR/STOP = excluído. Respeite sempre.</li>
+  <li><strong>Mensagens por categoria:</strong> Marketing, Transacional, Atendimento — a Meta tem limites para cada.</li>
+  <li><strong>Taxa de sucesso de entrega > 98%:</strong> se muitas mensagens falham, Meta suspeita de bot.</li>
+</ul>
+
+<h2>Cenários comuns — qual é seguro e qual não é?</h2>
+
+<h3>Cenário 1: "Quero enviar 5 mil cupons no fim de semana"</h3>
+<p><strong>❌ Inseguro:</strong> WhatsApp Web + macro, ou bot não autorizado.</p>
+<p><strong>✅ Seguro:</strong> ZapScript ou Meta API com template aprovado. Envio em segundos, sem risco.</p>
+
+<h3>Cenário 2: "Preciso confirmar 100 consultas automaticamente"</h3>
+<p><strong>❌ Inseguro:</strong> Bot que copia conversa de cliente e responde automático (pode violar direito autoral).</p>
+<p><strong>✅ Seguro:</strong> Notificação template ("Confirme sua consulta: [Link]"). Cliente clica, confirma, pronto.</p>
+
+<h3>Cenário 3: "Vou para empresa grande, preciso de automação 24/7"</h3>
+<p><strong>❌ Inseguro:</strong> API direto mal feita, sem rate limiting.</p>
+<p><strong>✅ Seguro:</strong> API oficial com respeito a rate limits. Integração com CRM (Salesforce, HubSpot, etc).</p>
+
+<h2>Como saber se você está em risco</h2>
+
+<p>Sinais de que você pode ser banido nas próximas semanas:</p>
+<ul>
+  <li>Seus contatos reclamam que recebem "mensagens duplicadas ou estranhas".</li>
+  <li>Taxa de rejeição alta (>5% de mensagens falhando).</li>
+  <li>Seu número começa recusando mensagens ("you are blocked").</li>
+  <li>Suporte da Meta começou investigando você (email: "suspicious activity").</li>
+  <li>Você já sofreu suspeita de banimento antes com outro número.</li>
+</ul>
+
+<h2>O que fazer se seu número foi banido</h2>
+
+<ol>
+  <li><strong>Aceite a perda:</strong> número banido é perda total. Não há recuperação garantida.</li>
+  <li><strong>Crie novo número:</strong> use outro chip ou número (Whatsapp permite 4 números por pessoa em 90 dias).</li>
+  <li><strong>Mude de estratégia:</strong> use API oficial desta vez. ZapScript fica pronto em 5 minutos.</li>
+  <li><strong>Reporte só se</strong> você realmente acredita que foi erro — Meta raramente reverte.</li>
+</ol>
+
+<h2>Tecnicamente: por que baniram você?</h2>
+
+<p>A Meta usa múltiplos sinais:</p>
+<ul>
+  <li><strong>Padrão de envio:</strong> hora, intervalo, quantidade. Bots têm padrão claro. Humanos não.</li>
+  <li><strong>Tipo de conteúdo:</strong> links suspeitos, phishing, etc.</li>
+  <li><strong>Feedback de usuários:</strong> bloqueios, reports "este contato é spam".</li>
+  <li><strong>Score de reputação:</strong> sua história com Meta, outros números associados, etc.</li>
+  <li><strong>Integração com sistemas de bot conhecidos:</strong> ela detecta n8n, Make, bots customizados.</li>
+</ul>
+
+<h2>Conclusão</h2>
+
+<p>Banimento é real. Mas não é aleatório. Se você seguir as regras (API oficial, templates aprovados, consentimento), o risco é praticamente zero.</p>
+
+<p>ZapScript usa 100% API oficial — zero risco de banimento. Grátis com 30 msgs/mês. Sem cartão, sem contrato. Se tiver dúvida, teste gratuito e veja que funciona.</p>
+    `,
+  },
+
 ];
 
 export function getPost(slug: string): BlogPost | undefined {
