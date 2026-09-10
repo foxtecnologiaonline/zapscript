@@ -39,6 +39,53 @@ export function normalizePhone(raw: string): string {
 /** Palavras-chave de opt-out (convenção SMS/WhatsApp) — igualdade exata após trim+uppercase. */
 export const OPT_OUT_KEYWORDS = new Set(['PARAR', 'SAIR', 'STOP', 'CANCELAR', 'UNSUBSCRIBE']);
 
+/** Palavras-chave de opt-in (SIM). */
+export const OPT_IN_KEYWORDS = new Set(['SIM']);
+
+/** Palavras-chave de negação (NÃO). */
+export const OPT_OUT_RESPONSE_KEYWORDS = new Set(['NÃO', 'NAO', 'NÃO']);
+
+/**
+ * Detecta e processa resposta a pergunta de opt-in pendente.
+ * Retorna: 'confirmed' | 'rejected' | 'none' (nenhuma resposta detectada)
+ */
+export async function handleOptinResponse(userId: string, rawPhone: string, messageText: string): Promise<'confirmed' | 'rejected' | 'none'> {
+  const phone = normalizePhone(rawPhone);
+  const normalized = messageText.trim().toUpperCase();
+
+  // Detectar resposta: Sim = confirmar, Não/Sair = rejeitar
+  if (OPT_IN_KEYWORDS.has(normalized)) {
+    // Marca todos os CampanhaContato com status 'pending_optin' deste contato como 'confirmed'
+    const updated = await prisma.campanhaContato.updateMany({
+      where: {
+        phone,
+        status: 'pending_optin',
+        campanha: { userId },
+      },
+      data: {
+        optinConfirmedAt: new Date(),
+        status: 'pending', // volta a enviar
+      },
+    });
+    if (updated.count > 0) {
+      // Também marcar no CrmContact se existir
+      await prisma.crmContact.updateMany({
+        where: { phone, userId },
+        data: { whatsappOptinConfirmedAt: new Date() },
+      });
+      return 'confirmed';
+    }
+  }
+
+  if (OPT_OUT_RESPONSE_KEYWORDS.has(normalized) || OPT_OUT_KEYWORDS.has(normalized)) {
+    // Registra opt-out + marca como optout
+    await registerCampanhaOptOut(userId, rawPhone, normalized);
+    return 'rejected';
+  }
+
+  return 'none';
+}
+
 function escHtml(s: string | null | undefined): string {
   if (!s) return '';
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -1678,5 +1725,159 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     }
 
     return reply.send({ ok: true });
+  });
+
+  // ── POST /contatos/from-csv — upload de contatos via CSV ────────────────
+  // Aceita file multipart + listaId (reutilizar) ou listName (criar nova)
+  app.post<{ Body: any }>('/contatos/from-csv', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const data = await req.file();
+    if (!data) return reply.code(400).send({ error: 'Arquivo CSV é obrigatório.' });
+
+    const validation = validateRequest(uploadContatosCsvSchema)(data.fields);
+    if (!validation.valid) return reply.code(400).send({ error: validation.error });
+
+    const { listaId, listName } = validation.data;
+    if (!listaId && !listName) {
+      return reply.code(400).send({ error: 'Informe listaId (reutilizar) ou listName (criar nova).' });
+    }
+
+    let targetListaId = listaId;
+    if (!listaId) {
+      const newLista = await prisma.campanhaLista.create({
+        data: { userId, name: listName || 'Import CSV', description: `Importado em ${new Date().toLocaleString('pt-BR')}` },
+      });
+      targetListaId = newLista.id;
+    } else {
+      const lista = await prisma.campanhaLista.findUnique({ where: { id: listaId } });
+      if (!lista || lista.userId !== userId) {
+        return reply.code(404).send({ error: 'Lista não encontrada.' });
+      }
+    }
+
+    // Parse CSV
+    const buffer = await data.file.toBuffer();
+    const csv = buffer.toString('utf-8');
+    const lines = csv.split('\n').map(l => l.trim()).filter(l => l);
+    if (lines.length < 2) return reply.code(400).send({ error: 'CSV deve ter ao menos 1 contato + header.' });
+
+    const headerLine = lines[0].toLowerCase();
+    const hasPhone = /\b(phone|numero|telefone)\b/.test(headerLine);
+    const hasName = /\b(name|nome)\b/.test(headerLine);
+    if (!hasPhone) return reply.code(400).send({ error: 'CSV deve conter coluna "phone" ou "numero" ou "telefone".' });
+
+    const headers = headerLine.split(/[,;]/).map((h: string) => h.trim());
+    const phoneIdx = headers.findIndex(h => ['phone', 'numero', 'telefone'].includes(h));
+    const nameIdx = hasName ? headers.findIndex(h => ['name', 'nome'].includes(h)) : -1;
+
+    const contatos: Array<{ phone: string; name?: string }> = [];
+    const errors: string[] = [];
+    let imported = 0, skipped = 0;
+
+    for (let i = 1; i < lines.length; i++) {
+      const cells = lines[i].split(/[,;]/).map(c => c.trim().replace(/^"|"$/g, ''));
+      if (!cells[phoneIdx]) continue;
+
+      const rawPhone = cells[phoneIdx];
+      if (!PHONE_LIKE.test(rawPhone)) {
+        errors.push(`Linha ${i + 1}: "${rawPhone}" — formato inválido.`);
+        skipped++;
+        continue;
+      }
+
+      const phone = normalizePhone(rawPhone);
+      const name = nameIdx >= 0 && cells[nameIdx] ? cells[nameIdx] : undefined;
+      contatos.push({ phone, name });
+      imported++;
+    }
+
+    // Dedup + insert
+    const existing = await prisma.campanhaListaContato.findMany({
+      where: { listaId: targetListaId },
+      select: { phone: true },
+    });
+    const existingPhones = new Set(existing.map(e => e.phone));
+
+    const toInsert = contatos.filter(c => !existingPhones.has(c.phone));
+    if (toInsert.length > 0) {
+      await prisma.campanhaListaContato.createMany({
+        data: toInsert.map(c => ({ listaId: targetListaId, phone: c.phone, name: c.name })),
+        skipDuplicates: true,
+      });
+    }
+
+    return reply.send({
+      ok: true,
+      listaId: targetListaId,
+      importedCount: toInsert.length,
+      skippedCount: skipped,
+      dedupedCount: contatos.length - toInsert.length,
+      errors: errors.slice(0, 10), // max 10 erros
+    });
+  });
+
+  // ── GET /contatos/preview-historico — lista contatos do histórico ────────
+  app.get<{ Querystring: any }>('/contatos/preview-historico', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const validation = validateRequest(previewContatosSchema)(req.query);
+    if (!validation.valid) return reply.code(400).send({ error: validation.error });
+
+    const { numberId, since, limit } = validation.data;
+    const whereFilter: any = { userId };
+    if (numberId) whereFilter.numberId = numberId;
+    if (since) whereFilter.createdAt = { gte: since };
+
+    const transcricoes = await prisma.transcription.findMany({
+      where: whereFilter,
+      select: { contactPhone: true, contactName: true },
+      distinct: ['contactPhone'],
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Filtro: já em CampanhaOptOut deste usuário?
+    const optOuts = await prisma.campanhaOptOut.findMany({
+      where: { userId },
+      select: { phone: true },
+    });
+    const optOutPhones = new Set(optOuts.map(o => o.phone));
+
+    const contatos = transcricoes
+      .filter(t => !optOutPhones.has(normalizePhone(t.contactPhone)))
+      .map(t => ({
+        phone: normalizePhone(t.contactPhone),
+        name: t.contactName || undefined,
+      }));
+
+    return reply.send({ ok: true, contatos, total: contatos.length });
+  });
+
+  // ── GET /contatos/preview-crm — lista contatos do CRM ─────────────────────
+  app.get<{ Querystring: any }>('/contatos/preview-crm', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const validation = validateRequest(previewContatosSchema)(req.query);
+    if (!validation.valid) return reply.code(400).send({ error: validation.error });
+
+    const { limit } = validation.data;
+
+    const crmContacts = await prisma.crmContact.findMany({
+      where: { userId },
+      select: { phone: true, name: true },
+      take: limit,
+      orderBy: { lastActivityAt: 'desc' },
+    });
+
+    // Filtro: já em CampanhaOptOut?
+    const optOuts = await prisma.campanhaOptOut.findMany({
+      where: { userId },
+      select: { phone: true },
+    });
+    const optOutPhones = new Set(optOuts.map(o => o.phone));
+
+    const contatos = crmContacts
+      .filter(c => !optOutPhones.has(c.phone))
+      .map(c => ({ phone: c.phone, name: c.name }));
+
+    return reply.send({ ok: true, contatos, total: contatos.length });
   });
 }

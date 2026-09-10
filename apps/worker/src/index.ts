@@ -2712,6 +2712,45 @@ async function releaseDueCreditWallets(): Promise<void> {
 releaseDueCreditWallets();
 setInterval(releaseDueCreditWallets, 60 * 60 * 1000);
 
+// ── Cleanup: Timeout de respostas de opt-in (campanhas) ───────────
+// Cada 5 min, marca como 'optout' os contatos que não responderam à pergunta de opt-in no prazo
+async function cleanupOptinTimeouts() {
+  try {
+    const timedOut = await prisma.campanhaContato.findMany({
+      where: {
+        status: 'pending_optin',
+        optinTimeoutAt: { lte: new Date() },
+      },
+      select: { id: true, phone: true, campanhaId: true },
+      take: 100, // evitar operação muito grande de uma vez
+    });
+
+    if (timedOut.length === 0) return;
+
+    // Marcar como optout + registrar no CampanhaOptOut
+    await Promise.all(timedOut.map((t) =>
+      prisma.$transaction([
+        prisma.campanhaContato.update({
+          where: { id: t.id },
+          data: { status: 'optout', errorMessage: 'Timeout: nenhuma resposta ao opt-in' },
+        }),
+        prisma.campanhaOptOut.upsert({
+          where: { userId_phone: { userId: 'temp', phone: t.phone } }, // userId será atualizado depois
+          create: { userId: 'temp', phone: t.phone, reason: 'TIMEOUT_OPTIN' },
+          update: { reason: 'TIMEOUT_OPTIN' },
+        }).catch(() => null), // pode falhar se não conseguir resolver userId — ignora
+      ])
+    ));
+
+    logger.info(`[Campanhas] Cleanup: ${timedOut.length} contato(s) marcado(s) como optout por timeout`);
+  } catch (err: any) {
+    logger.error(`[Campanhas] Falha no cleanup de opt-in timeout: ${err?.message}`);
+  }
+}
+
+cleanupOptinTimeouts();
+setInterval(cleanupOptinTimeouts, 5 * 60 * 1000); // 5 minutos
+
 // ── Graceful shutdown ────────────────────────────────────────────
 process.on('SIGTERM', async () => {
   logger.info('Worker encerrando...');

@@ -11,7 +11,7 @@ import {
   isCopilotoOwnerCommand, handleCopilotoOwnerCommand, handleCopilotoChoice, enqueueCopilotoMessage,
 } from '../services/copiloto-commands';
 import { ingestCopilotoGroupMessage } from '../services/copiloto-groups';
-import { OPT_OUT_KEYWORDS, registerCampanhaOptOut } from './modules/campanhas';
+import { OPT_OUT_KEYWORDS, registerCampanhaOptOut, handleOptinResponse } from './modules/campanhas';
 import { isCampanhaChatCommand, handleCampanhaChatCommand, handleCampanhaChatReply } from '../services/campanhas-chat-commands';
 import { io } from '../index';
 
@@ -374,10 +374,30 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
               if (handled) return;
             }
 
-            // ── Opt-out de campanhas por palavra-chave (paridade com o webhook Meta) ──
-            // Mesma prioridade que no webhook oficial: se bater a palavra-chave, não
-            // segue para Atende/Copiloto/Cobrança — só confirma o opt-out e sai.
+            // ── Opt-in/Opt-out de campanhas ────────────────────────────────────────
             if (number && !number.isPublic && messageText) {
+              // Primeiro: verifica se é resposta a pergunta de opt-in pendente
+              const optinResponse = await handleOptinResponse(number.userId, senderPhone, messageText)
+                .catch((err: any) => {
+                  log.error({ err: err?.message }, '[Evolution] Erro ao processar resposta de opt-in');
+                  return 'none';
+                });
+
+              if (optinResponse === 'confirmed') {
+                log.info(`[Evolution] ✅ Opt-in confirmado: ${senderPhone}`);
+                await sendText(instName, senderPhone, 'Ótimo! Você receberá nossas mensagens. 📱')
+                  .catch((err: any) => log.error({ err: err?.message }, '[Evolution] Erro ao confirmar opt-in'));
+                return;
+              }
+
+              if (optinResponse === 'rejected') {
+                log.info(`[Evolution] 🚫 Opt-out confirmado: ${senderPhone}`);
+                await sendText(instName, senderPhone, 'Você não receberá mais mensagens deste número. ✅')
+                  .catch((err: any) => log.error({ err: err?.message }, '[Evolution] Erro ao confirmar opt-out'));
+                return;
+              }
+
+              // Se não for resposta de opt-in, verifica opt-out direto
               const normalized = messageText.trim().toUpperCase();
               if (OPT_OUT_KEYWORDS.has(normalized)) {
                 try {

@@ -78,6 +78,33 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
       await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: false });
       return { skipped: true, reason: 'número desconectado' };
     }
+
+    // Optin WhatsApp: se é a primeira vez (optinConfirmedAt é nulo) e campanha via Evolution,
+    // envia pergunta compacta em vez da mensagem normal, e aguarda resposta
+    if (!contato.optinConfirmedAt) {
+      const optinMessage = `Olá${contato.name ? ', ' + contato.name : ''}! 👋\n\nVocê concorda em receber mensagens deste número?\n\n📱 Responda:\n• Sim — Continuar\n• Não — Sair`;
+      const res = await sendMessageViaEvolution(numero.zapiInstanceId, contato.phone, optinMessage);
+      messageId = res.id;
+
+      // Marca como pending_optin + timeout de 5 min
+      const timeoutAt = new Date(Date.now() + 5 * 60 * 1000);
+      await prisma.campanhaContato.update({
+        where: { id: contatoId },
+        data: {
+          status: 'pending_optin',
+          wamid: messageId,
+          optinTimeoutAt: timeoutAt,
+          sentAt: new Date(),
+          errorMessage: null,
+        },
+      });
+      logger.info(`[Campanhas] 🔔 Pergunta de opt-in enviada: ${contato.phone} (campanha ${campanhaId})`);
+      // NÃO incrementa sentCount aqui — é apenas a pergunta, não a mensagem real
+      await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: true });
+      return {};
+    }
+
+    // Optin já confirmado ou não necessário — enviar mensagem normal
     const body  = (isVariantB ? campanha.variantBMessageBody : campanha.messageBody) || '';
     const texto = renderEvolutionMessage(body, contato);
     const res = await sendMessageViaEvolution(numero.zapiInstanceId, contato.phone, texto);

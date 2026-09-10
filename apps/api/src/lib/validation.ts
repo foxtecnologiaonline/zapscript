@@ -405,6 +405,19 @@ export const mergeCampanhaListasSchema = z.object({
   name:     z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
 });
 
+// ── Upload CSV de Contatos ────────────────────────────────
+export const uploadContatosCsvSchema = z.object({
+  listaId:  z.string().cuid('Lista inválida').optional(), // reutilizar lista existente ou criar nova
+  listName: z.string().min(2).max(100).optional(), // nome da nova lista (obrigatório se listaId não informado)
+});
+
+// ── Preview Contatos (from-historico / from-crm) ──────────
+export const previewContatosSchema = z.object({
+  numberId: z.string().cuid('Número inválido').optional(),
+  since:    z.coerce.date().optional(),
+  limit:    z.coerce.number().min(1).max(100).default(20),
+});
+
 // ── API pública (tier Empresas) ────────────────────────────
 export const createApiKeySchema = z.object({
   name:   z.string().min(2, 'Nome precisa ter pelo menos 2 caracteres').max(60),

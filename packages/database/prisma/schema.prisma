@@ -888,11 +888,13 @@ model CampanhaContato {
   phone        String
   name         String?
   variables    Json? // valores das variáveis do template para este contato ({{1}}, {{2}}, ...)
-  status       String    @default("pending") // pending|sent|delivered|read|failed|optout
+  status       String    @default("pending") // pending|sent|delivered|read|failed|optout|pending_optin
   assignedNumberId String? // qual número (primário ou do pool) vai enviar este contato — setado no /start
   variant      String? // 'A' | 'B' — setado na criação quando Campanha.abTestEnabled; null no caso comum
   wamid        String? // message id da Meta — correlaciona com o status recebido no webhook
   errorMessage String?
+  optinConfirmedAt DateTime? // quando o contato confirmou opt-in nesta campanha (Evolution only)
+  optinTimeoutAt   DateTime? // timeout para resposta do opt-in (auto-optout se expirado)
   sentAt       DateTime?
   deliveredAt  DateTime?
   readAt       DateTime?
@@ -1053,6 +1055,7 @@ model CrmContact {
   numberId       String? // WhatsappNumber de origem, quando importado
   source         String          @default("manual") // 'manual' | 'import_whatsapp'
   lostReason     String?
+  whatsappOptinConfirmedAt DateTime? // quando o contato confirmou opt-in via WhatsApp neste número
   lastActivityAt DateTime        @default(now())
   closedAt       DateTime? // preenchido quando entra em estágio isWon/isLost
   createdAt      DateTime        @default(now())
