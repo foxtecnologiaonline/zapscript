@@ -2,13 +2,13 @@
 
 ## 📌 Resumo Executivo
 
-O **Modo Privado** é uma feature **opt-in** (desligado por padrão) disponível **apenas para usuários com planos pagos** (Pro, Pro-Tester, Executive).
+O **Modo Privado** é uma feature **opt-in** (desligado por padrão) disponível **para TODOS os usuários** (Free, Pago, Novos, Antigos).
 
 | Aspecto | Status |
 |---------|--------|
-| Aparece na UI? | ✅ SIM (apenas planos pagos) |
+| Aparece na UI? | ✅ SIM (para todos) |
 | Ativado por padrão? | ❌ NÃO (opt-in manual) |
-| Disponível para novos usuários? | ✅ SIM (se plano pago) |
+| Disponível para novos usuários? | ✅ SIM (sempre) |
 
 ---
 
@@ -29,16 +29,12 @@ O **Modo Privado** é uma feature **opt-in** (desligado por padrão) disponível
 ## 👥 Quem vê a opção?
 
 ### ✅ Veem o toggle:
-- Usuários **Pro**
-- Usuários **Pro-Tester**
-- Usuários **Executive**
+- ✅ Todos os usuários (Free, Pro, Executive, Profissional, Empresas)
+- ✅ Usuários novos
+- ✅ Usuários antigos
 
-### ❌ Não veem:
-- Usuários **Free** (Core)
-- Usuários **Starter**
-
-**Código:** `isPaid = planName === 'pro' || planName === 'pro-tester' || planName === 'executive'`
-**Arquivo:** `apps/web/src/app/dashboard/numeros/page.tsx` (linha 697)
+**Código:** `showPrivateMode = true` (sempre ativado)
+**Arquivo:** `apps/web/src/app/dashboard/numeros/page.tsx` (linha ~698)
 
 ---
 
@@ -50,16 +46,16 @@ O **Modo Privado** é uma feature **opt-in** (desligado por padrão) disponível
 data: { userId, displayName: finalName, privateMode: false, ... }
 ```
 
-- Nasce com `privateMode: false` (desligado)
-- Usuário pago pode ativar no painel a qualquer momento
-- Toggle fica no card de cada número (linhas 952-961)
+- Nasce com `privateMode: false` (desligado — padrão opt-in)
+- **Qualquer usuário** pode ativar no painel a qualquer momento
+- Toggle fica no card de cada número para todos
 
 ### First-time tip (dica de boas-vindas)
-- Mostrada **uma única vez** para usuários pagos
+- Mostrada **uma única vez** para todos os usuários
 - Armazenada em `localStorage` sob `zs_privado_tip_v1`
-- Diz: "Como você é assinante, cada resumo chega **só no seu número**"
+- Diz: "Novo: Modo Privado para todos" e explica como funciona
 
-**Código:** `apps/web/src/app/dashboard/numeros/page.tsx` (linhas 820-833)
+**Código:** `apps/web/src/app/dashboard/numeros/page.tsx` (linhas ~819-833)
 
 ---
 
@@ -99,15 +95,16 @@ model WhatsappNumber {
 
 ## ✅ Checklist de Visibilidade
 
-- [x] Modo Privado aparece apenas para planos pagos
+- [x] Modo Privado aparece para TODOS (free, pago, novos, antigos)
 - [x] Toggle funciona para ativar/desativar
-- [x] Novos números começam desligados
-- [x] Novos usuários pagos veem a opção
-- [x] Dica de primeira vez funciona
+- [x] Novos números começam desligados (opt-in)
+- [x] Qualquer novo usuário vê a opção
+- [x] Dica de primeira vez funciona para todos
 - [x] API retorna `privateMode` no GET /numbers
 - [x] API permite atualizar via PATCH /numbers/:id
 - [x] Schema.prisma sincronizado com banco
 - [x] Backend sincronizado com expectativa opt-in
+- [x] Frontend liberado para todos os usuários
 
 ---
 
@@ -132,7 +129,9 @@ Após merge:
 - ✅ Usuário descobre toggle no painel
 - ✅ Pode ativar se quiser privacidade
 
-### Por que apenas planos pagos?
-- Feature de privacidade/controle granular = diferencial premium
-- Core (free) recebe resumos na conversa sempre
-- Pro+ pode escolher onde recebe
+### Por que para todos agora?
+- Feature de privacidade/controle = básico para todos
+- Todos os usuários precisam controlar onde o resumo chega
+- Free e Pago têm mesma liberdade de escolha
+- Opt-in conservador: padrão é conversa do contato (público)
+- Usuário ativa privado quando deseja
