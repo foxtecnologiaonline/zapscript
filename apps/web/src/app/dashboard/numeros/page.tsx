@@ -2,7 +2,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
-import { isPaidPlanName } from '@/lib/planPricing';
 import MetaEmbeddedSignup from './MetaEmbeddedSignup';
 
 interface WNumber {
@@ -695,7 +694,8 @@ export default function NumerosPage() {
   const [savingPrivate, setSavingPrivate]   = useState<string | null>(null);
   const [hidePrivadoTip, setHidePrivadoTip] = useState(true);
 
-  const isPaid = isPaidPlanName(planName);
+  // Modo Privado agora é disponível para TODOS os usuários (free, pago, novos, antigos)
+  const showPrivateMode = true;
 
   const loadNumbers = useCallback(async () => {
     setLoading(true); setError('');
@@ -710,9 +710,8 @@ export default function NumerosPage() {
       setUserId(u.id);
       const plan = u.subscription?.plan?.name || 'free';
       setPlanName(plan);
-      const paid = plan === 'pro' || plan === 'pro-tester' || plan === 'executive';
-      // Dica de primeira vez do Modo Privado: só para pago, uma vez.
-      if (paid && typeof window !== 'undefined' && !localStorage.getItem('zs_privado_tip_v1')) {
+      // Dica de primeira vez do Modo Privado: para todos, uma única vez
+      if (typeof window !== 'undefined' && !localStorage.getItem('zs_privado_tip_v1')) {
         setHidePrivadoTip(false);
       }
     });
@@ -817,15 +816,15 @@ export default function NumerosPage() {
         </div>
       </div>
 
-      {/* ── Dica de primeira vez: Modo Privado automático (só pago) ── */}
-      {isPaid && !hidePrivadoTip && (
+      {/* ── Dica de primeira vez: Modo Privado (novo para todos) ── */}
+      {!hidePrivadoTip && (
         <div className="mb-5 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 flex items-start gap-3">
           <span className="text-lg leading-none mt-0.5">🔒</span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-brand-text">Modo Privado já está ligado</p>
+            <p className="text-sm font-semibold text-brand-text">Novo: Modo Privado para todos</p>
             <p className="text-xs text-brand-text-secondary mt-1 leading-relaxed">
-              Como você é assinante, cada resumo chega <strong>só no seu número</strong> — nunca na conversa de quem mandou o áudio.
-              Prefere que apareça na própria conversa? É só desligar o Modo Privado no cartão do número.
+              Cada resumo pode chegar <strong>só no seu número</strong> (privado) ou <strong>na conversa do contato</strong> (padrão).
+              Você controla com o toggle no cartão de cada número. Ative quando quiser privacidade.
             </p>
           </div>
           <button onClick={dismissPrivadoTip} aria-label="Entendi"
@@ -933,8 +932,8 @@ export default function NumerosPage() {
                 </div>
               </div>
 
-              {/* Modo Privado — opt-in (apenas planos pagos) */}
-              {isPaid ? (
+              {/* Modo Privado — opt-in (todos os usuários) */}
+              {showPrivateMode ? (
                 <div className="bg-brand-elevated rounded-xl px-3 py-2.5 mb-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
