@@ -16,6 +16,53 @@ export const metadata: Metadata = {
   },
 };
 
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [
+    {
+      '@type': 'Question',
+      name: 'Qual a diferença de custo entre ZapScript e API WhatsApp direto?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Ambas usam a mesma tarifa da Meta: R$ 0,33 por mensagem. A diferença é que ZapScript oferece 55-79% de desconto ao revender (R$ 150 vs R$ 330 por 1k msgs). No setup: ZapScript custa R$ 0, API direto custa R$ 2k-10k em desenvolvimento.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Quanto tempo leva para começar com cada opção?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'ZapScript: 5-90 minutos. API WhatsApp direto: 2-4 semanas (planejamento, integração, QA, deploy).',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Quando devo usar API direto vs ZapScript?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Use ZapScript se: quer começar hoje, precisa de UI fácil, quer economizar. Use API direto se: precisa integração nativa, escala de milhões de msgs/mês, automações complexas 24/7, tem time dev dedicado.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Preciso de desenvolvedor para usar ZapScript?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Não. ZapScript tem interface visual. Para API direto você precisa de dev.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Qual escalabilidade cada uma oferece?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'ZapScript: até 100k+ msgs/mês sem problema. API direto: ilimitada (você gerencia infraestrutura).',
+      },
+    },
+  ],
+};
+
 const breadcrumbSchema = {
   '@context': 'https://schema.org',
   '@type': 'BreadcrumbList',
@@ -29,6 +76,7 @@ const breadcrumbSchema = {
 export default function VsWhatsappBusinessPage() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900">
         <div className="mx-auto max-w-4xl px-6 py-16 sm:py-24">

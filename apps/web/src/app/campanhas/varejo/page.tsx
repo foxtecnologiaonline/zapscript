@@ -35,6 +35,53 @@ const softwareSchema = {
   ],
 };
 
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [
+    {
+      '@type': 'Question',
+      name: 'Quanto economizo vs Meta direto?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: '55-79% de desconto. Exemplos: 1.000 mensagens custam R$150 no ZapScript vs R$330 da Meta (55% desconto). 5.000 custa R$450 vs R$1.650 (73% desconto). Ilimitado custa R$699/mês vs R$3.300/mês (79% desconto).',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Consigo enviar fotos de produtos?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Sim! Templates aprovados podem incluir imagem, botões interativos e links diretos para o produto.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Meus clientes podem responder?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Sim. Mensagens chegam no seu WhatsApp. ZapScript também integra com atendimento automático (IA) se quiser responder em massa.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Posso automatizar por gatilho (ex: comprou)?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Ainda não é automático de forma nativa, mas permite mandar em segundos. Integração com e-commerce vem em breve.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Funciona em WhatsApp Web?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Não. Precisa do app oficial de Business no seu número. ZapScript gerencia a API — você só conecta e pronto.',
+      },
+    },
+  ],
+};
+
 const breadcrumbSchema = {
   '@context': 'https://schema.org',
   '@type': 'BreadcrumbList',
@@ -49,6 +96,7 @@ export default function CampanhasVarejoPage() {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900">
         <div className="mx-auto max-w-4xl px-6 py-16 sm:py-24">
