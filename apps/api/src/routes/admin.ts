@@ -709,7 +709,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         }),
         prisma.whatsappNumber.findMany({
           where:  { userId: id },
-          select: { id: true, displayName: true, status: true, createdAt: true, connectedAt: true },
+          select: { id: true, displayName: true, status: true, privateMode: true, createdAt: true, connectedAt: true },
         }),
         prisma.usageLog.findMany({
           where:   { userId: id },

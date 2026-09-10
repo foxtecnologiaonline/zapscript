@@ -1513,14 +1513,10 @@ async function processEvolutionJob(job: Job) {
       return { ok: true, isPublicDemo: true };
     }
 
-    // Modo Privado é OPT-IN: usuário ativa manualmente no painel.
-    // Disponível apenas para planos pagos. Quando ligado (privateMode === true),
-    // a transcrição vai só ao próprio número (nunca cai na conversa do contato).
-    // Desativado em self-notes (áudio que o próprio usuário encaminhou).
-    const usage = await loadUsage(userId);
-    const isPaidPlan  = usage.plan === 'pro';
+    // Modo Privado é OPT-IN: usuário ativa manualmente no painel (disponível para todos).
+    // Quando ligado (privateMode === true), a transcrição vai só ao próprio número
+    // (nunca cai na conversa do contato). Desativado em self-notes (áudio que o próprio usuário encaminhou).
     const isPrivate   = !isSelfNote
-                        && isPaidPlan
                         && !!whatsappNumber.privateMode
                         && !!whatsappNumber.phoneNumber
                         && whatsappNumber.phoneNumber !== 'pending';
