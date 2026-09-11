@@ -42,27 +42,28 @@ interface LiveStats {
 type TemplateFn = (s: LiveStats) => string;
 
 const TEMPLATES: TemplateFn[] = [
-  // ── Aquisição ──
-  (_s) => `+1 conta criada agora`,
-  (_s) => `+1 assinatura Pro ativada`,
+  // ── Volume total ──
+  (s) => `Já são ${fmt(s.totalAudios)} áudios convertidos em texto`,
+  (s) => `Mais de ${fmt(s.totalAudios)} áudios já transcritos na plataforma`,
+  (s) => `${fmt(s.totalAudios)} áudios convertidos — e contando`,
 
-  // ── Volume real (API) ──
-  (s) => `${fmt(s.todayAudios ?? 0)} áudios convertidos hoje`,
-  (s) => `${fmt(s.weekAudios ?? 0)} áudios convertidos esta semana`,
-  (s) => `${fmt(s.totalAudios)} áudios convertidos desde o lançamento`,
+  // ── Hoje / semana ──
+  (s) => `${fmt(s.todayAudios ?? 0)} áudios convertidos nas últimas 24h`,
+  (s) => `Hoje: ${fmt(s.todayAudios ?? 0)} áudios transformados em texto`,
+  (s) => `${fmt(s.weekAudios ?? 0)} áudios convertidos nos últimos 7 dias`,
+  (s) => `Essa semana: ${fmt(s.weekAudios ?? 0)} áudios já processados`,
 
-  // ── Base de usuários (API) ──
-  (s) => `${fmt(s.totalUsers)} pessoas cadastradas`,
+  // ── Tempo economizado ──
+  (s) => `${fmt(s.hoursSaved)}h de áudio que ninguém precisou ouvir`,
+  (s) => `${fmt(s.hoursSaved)}h economizadas em escuta de áudio`,
+  (s) => `Equivalente a ${fmt(Math.round(s.hoursSaved / 24))} dias de escuta poupados`,
+  (s) => `Cerca de ${fmt(Math.round(s.hoursSaved * 60))} minutos de áudio poupados dos seus ouvidos`,
 
-  // ── Valor entregue (API) ──
-  (s) => `${fmt(s.hoursSaved)}h de escuta economizadas`,
+  // ── Médias ──
+  (s) => `Média de ${fmt(Math.round((s.weekAudios ?? 0) / 7))} áudios convertidos por dia essa semana`,
 
-  // ── Infra / produto ──
-  (_s) => `+1 número WhatsApp conectado agora`,
-  (_s) => `99% de precisão em português`,
-
-  // ── Economia de tempo ──
-  (_s) => `Cada áudio convertido em segundos`,
+  // ── Combinado ──
+  (s) => `${fmt(s.todayAudios ?? 0)} áudios hoje, ${fmt(s.weekAudios ?? 0)} essa semana — só cresce`,
 ];
 
 function fmt(n: number): string {
