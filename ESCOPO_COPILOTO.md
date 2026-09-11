@@ -261,24 +261,20 @@ existe: `isSelfChat` já é detectado no webhook e
 `apps/api/src/services/atende-commands.ts` já processa comandos do dono por lá.
 
 ```
-🎯 *Maria Souza* — orçamento de bolo (3º contato)
+🎯 *Maria Souza* — 🔥 Quente · risco ⚠️ médio · trava: confiança
+Perguntou preço pela 2ª vez e citou concorrente (quer: fechar bolo de 2kg pra sábado)
 
-Perguntou preço pela 2ª vez e citou uma concorrente. Quer decidir hoje;
-trava é confiança no prazo, não valor.
-🌡️ Quente · ⚠️ Risco médio de perder para o concorrente
+*1 · Fechar com data* "Maria, consigo garantir a entrega quinta 14h. Fecho pra você agora?"
+*2 · Descobrir a real* "Maria, a entrega é pra qual dia mesmo? Pergunto pra te dar o prazo certo."
+*3 · Ancorar valor* "Entendo a comparação. O meu inclui montagem no local e reposição se algo chegar danificado — te mando foto de duas entregas dessa semana?"
 
-*1 · Fechar com data* ⟨fechamento-assumido⟩
-"Maria, consigo garantir a entrega quinta 14h. Fecho pra você agora?"
-
-*2 · Descobrir a real* ⟨qualificacao⟩
-"Maria, a entrega é pra qual dia mesmo? Pergunto pra te dar o prazo certo."
-
-*3 · Ancorar valor* ⟨ancoragem⟩
-"Entendo a comparação. O meu inclui montagem no local e reposição
-se algo chegar danificado — te mando foto de duas entregas dessa semana?"
-
-Responda *1*, *2* ou *3* pra enviar · *1e* pra editar antes · *0* pra ignorar
+*1*, *2*, *3* envia · *1e* edita · *0* ignora
 ```
+
+Formato compacto de propósito (ver `renderBriefingMessage` em
+`apps/worker/src/copiloto.ts`) — sem tag de técnica visível, sem linha em
+branco entre opções, sem separador. O dono lê isso no celular; cada linha a
+mais é atrito.
 
 **Interação:** `1` envia a opção 1 ao contato. `1e` devolve o texto para o dono
 editar e ele responde com a versão final. `0` descarta (e isso também é sinal de

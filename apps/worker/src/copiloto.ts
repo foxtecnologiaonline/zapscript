@@ -357,6 +357,10 @@ const BLOCKER_LABEL: Record<string, string> = {
   autoridade: 'quem decide', urgencia: 'falta de urgência',
 };
 
+// Compacta de propósito — a versão anterior (intent em linha própria, técnica
+// entre ⟨⟩, cada opção em 2 linhas + branco, separador "─────") virava uma
+// mensagem de 15-20 linhas pra 3 opções. O dono lê isso no celular entre uma
+// tarefa e outra; cada linha a mais é atrito. Ver ESCOPO_COPILOTO.md §4.1.
 export function renderBriefingMessage(params: {
   contactLabel: string;
   briefing: { summary: string; intent: string; temperature: string; riskLevel: string; blocker: string | null; note: string | null };
@@ -366,47 +370,34 @@ export function renderBriefingMessage(params: {
   const { contactLabel, briefing, offered, sensitive } = params;
   const lines: string[] = [];
 
-  lines.push(`🎯 *${contactLabel}*`);
-  lines.push('');
-  if (briefing.summary) lines.push(briefing.summary);
-  if (briefing.intent) lines.push(`_O que ele quer:_ ${briefing.intent}`);
-
   const status = [
     TEMP_ICON[briefing.temperature] ?? briefing.temperature,
     `risco ${RISK_ICON[briefing.riskLevel] ?? briefing.riskLevel}`,
     briefing.blocker ? `trava: ${BLOCKER_LABEL[briefing.blocker] ?? briefing.blocker}` : null,
   ].filter(Boolean).join(' · ');
-  lines.push(status);
+  lines.push(`🎯 *${contactLabel}* — ${status}`);
 
-  if (sensitive) {
-    lines.push('');
-    lines.push('🕊️ _Sinal delicado nessa conversa. Acolha antes de qualquer proposta._');
-  }
+  const summaryLine = [briefing.summary, briefing.intent ? `(quer: ${briefing.intent})` : null]
+    .filter(Boolean).join(' ');
+  if (summaryLine) lines.push(summaryLine);
 
-  if (briefing.note) {
-    lines.push('');
-    lines.push(`💭 ${briefing.note}`);
-  }
+  if (sensitive) lines.push('🕊️ _Sinal delicado — acolha antes de propor._');
+  if (briefing.note) lines.push(`💭 ${briefing.note}`);
 
   if (offered.length === 0) {
     lines.push('');
-    lines.push('Não gerei sugestão segura desta vez (faltou informação confiável do seu negócio para responder sem chutar). Responda você mesmo — e, se for algo que se repete, cadastre na base de conhecimento.');
+    lines.push('Não gerei sugestão segura desta vez (faltou info confiável do seu negócio). Responda você mesmo.');
     return lines.join('\n');
   }
 
   lines.push('');
   for (const o of offered) {
-    lines.push(`*${o.rank} · ${o.title}* ⟨${o.technique}⟩`);
-    lines.push(`"${o.draft}"`);
-    lines.push('');
+    lines.push(`*${o.rank} · ${o.title}* "${o.draft}"`);
   }
 
   const nums = offered.map((o) => o.rank);
-  lines.push('─────');
-  lines.push(
-    `Responda *${nums.join('*, *')}* pra enviar · ` +
-    `*${nums[0]}e* pra editar antes · *0* pra ignorar`,
-  );
+  lines.push('');
+  lines.push(`*${nums.join('*, *')}* envia · *${nums[0]}e* edita · *0* ignora`);
 
   return lines.join('\n');
 }

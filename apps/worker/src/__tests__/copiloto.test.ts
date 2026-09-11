@@ -76,7 +76,8 @@ describe('renderBriefingMessage', () => {
     expect(msg).toContain('*Maria Souza*');
     expect(msg).toContain('Perguntou preço pela 2ª vez');
     expect(msg).toContain('*1 · Fechar com data*');
-    expect(msg).toContain('⟨fechamento-assumido⟩');
+    // Compacta de propósito: sem tag de técnica (⟨...⟩) na mensagem do dono.
+    expect(msg).not.toContain('⟨fechamento-assumido⟩');
     expect(msg).toContain('trava: preço');
     // Só oferece os números que sobreviveram aos guardrails.
     expect(msg).toContain('*1*, *2*');

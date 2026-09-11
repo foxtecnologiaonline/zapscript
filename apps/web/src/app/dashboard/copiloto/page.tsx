@@ -82,6 +82,14 @@ interface CopilotoGroupRow {
   active: boolean;
 }
 
+interface CopilotoGroupDigestRow {
+  id: string;
+  date: string; // 'YYYY-MM-DD'
+  groupsIncluded: number;
+  summaryMd: string; // já vem formatado por grupo ("👥 *Grupo* ...") — ver apps/worker/src/copiloto.ts
+  createdAt: string;
+}
+
 const TEMP_LABEL: Record<string, string> = { quente: '🔥 Quente', morno: '🌤️ Morno', frio: '❄️ Frio' };
 const RISK_LABEL: Record<string, string> = { baixo: 'risco baixo', medio: '⚠️ risco médio', alto: '🚨 risco alto' };
 const BLOCKER_LABEL: Record<string, string> = {
@@ -358,6 +366,9 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
   const [savingHour, setSavingHour] = useState(false);
   const [hourSaved, setHourSaved] = useState(false);
 
+  const [digests, setDigests] = useState<CopilotoGroupDigestRow[]>([]);
+  const [loadingDigests, setLoadingDigests] = useState(false);
+
   const loadGroups = useCallback((id: string) => {
     if (!id) return;
     setLoadingGroups(true);
@@ -378,6 +389,15 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
     api.get<{ groupDigestHour: number }>(`/copiloto/numbers/${numberId}/config`)
       .then((res) => setDigestHour(res.groupDigestHour))
       .catch(() => null);
+  }, [numberId]);
+
+  useEffect(() => {
+    if (!numberId) return;
+    setLoadingDigests(true);
+    api.get<{ digests: CopilotoGroupDigestRow[] }>(`/copiloto/numbers/${numberId}/digests`)
+      .then((res) => setDigests(res.digests.filter((d) => d.summaryMd)))
+      .catch(() => null)
+      .finally(() => setLoadingDigests(false));
   }, [numberId]);
 
   async function saveDigestHour(hour: number) {
@@ -455,6 +475,31 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
               <input type="checkbox" checked={g.active} disabled={busyJid === g.groupJid} onChange={() => toggle(g)} />
               <span className="text-sm flex-1 min-w-0 truncate">{g.name}</span>
             </label>
+          ))}
+        </div>
+      )}
+
+      <h2 className="text-sm font-bold text-neutral-300 mb-3 mt-7">Resumos entregues</h2>
+      {loadingDigests ? (
+        <div className="text-sm text-neutral-600 text-center py-6 rounded-xl border border-neutral-800">Carregando resumos...</div>
+      ) : digests.length === 0 ? (
+        <div className="text-sm text-neutral-600 text-center py-6 rounded-xl border border-neutral-800">
+          Nenhum resumo com destaque ainda — chega aqui e no seu self-chat assim que sair o primeiro, no horário configurado acima.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {digests.map((d) => (
+            <div key={d.id} className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-semibold text-neutral-300">
+                  {new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </span>
+                <span className="text-[11px] text-neutral-500">
+                  {d.groupsIncluded} grupo{d.groupsIncluded !== 1 ? 's' : ''} com destaque
+                </span>
+              </div>
+              <p className="text-sm text-neutral-300 whitespace-pre-wrap">{d.summaryMd}</p>
+            </div>
           ))}
         </div>
       )}
