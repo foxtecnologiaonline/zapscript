@@ -19,6 +19,12 @@ export const metadata: Metadata = {
     locale: 'pt_BR',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ZapScript para Contabilidade — Nunca mais perca um áudio de cliente',
+    description:
+      'Conversão automática + resumo com IA de cada áudio do WhatsApp. Registro pesquisável de tudo que o cliente pediu. Servidores no Brasil, conformidade LGPD.',
+  },
 };
 
 const proPriceLabel = `${PROFISSIONAL_PRICE_MONTHLY}/mês`;

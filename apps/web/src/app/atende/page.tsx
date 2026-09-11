@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale:      'pt_BR',
     type:        'website',
   },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'ZapScript Atende — Atendimento automático no WhatsApp com IA',
+    description: 'IA treinada no seu negócio responde clientes na hora, 24/7. Escalonamento humano quando não sabe responder.',
+  },
 };
 
 export default function AtendePage() {

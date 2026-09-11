@@ -29,6 +29,11 @@ export async function generateMetadata(
       siteName:    'ZapScript',
       locale:      'pt_BR',
     },
+    twitter: {
+      card:        'summary_large_image',
+      title,
+      description: category.description,
+    },
   };
 }
 

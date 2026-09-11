@@ -9,7 +9,7 @@
 export interface ModuleCatalogItem {
   key: string;
   name: string;
-  status: 'ga' | 'beta' | 'planned' | 'discovery' | 'bundled';
+  status: 'ga' | 'beta' | 'planned' | 'discovery' | 'bundled' | 'free';
   priceMonthly: number;
   priceYearly: number;
   dependsOn: string[];
@@ -30,9 +30,12 @@ export const MODULE_ICON: Record<string, string> = {
   tarefas: '✅',
 };
 
-/** Rota interna para "Abrir" um módulo contratado. core e copiloto vivem dentro do /dashboard. */
+/** Rota interna para "Abrir" um módulo contratado. core reutiliza o dashboard atual.
+ *  campanhas e copiloto também vivem sob /dashboard (com sidebar própria) —
+ *  ver CAMPANHAS_ARQUITETURA.md §10. Os demais módulos seguem em /app/<key>. */
 export function moduleRoute(key: string): string {
   if (key === 'core') return '/dashboard';
+  if (key === 'campanhas') return '/dashboard/campanhas';
   if (key === 'copiloto') return '/dashboard/copiloto';
   return `/app/${key}`;
 }
@@ -44,9 +47,10 @@ export const STATUS_LABEL: Record<ModuleCatalogItem['status'], string> = {
   planned: 'Em breve',
   discovery: 'Em estudo',
   bundled: 'Incluso no plano',
+  free: 'Grátis para todos',
 };
 
-/** Um módulo pode ser contratado agora avulso? (planned/discovery/bundled não). */
+/** Um módulo pode ser contratado agora avulso? (planned/discovery/bundled/free não). */
 export function isContractable(status: ModuleCatalogItem['status']): boolean {
   return status === 'ga' || status === 'beta';
 }

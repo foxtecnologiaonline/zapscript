@@ -16,7 +16,8 @@ export type ModuleStatus =
   | 'beta'      // liberado, em amadurecimento
   | 'planned'   // no roadmap, ainda não construído
   | 'discovery' // especulativo — validar demanda antes de construir
-  | 'bundled';  // só via tier (Profissional/Empresas) — não vendido avulso
+  | 'bundled'   // só via tier (Profissional/Empresas) — não vendido avulso
+  | 'free';     // gratuito pra todos os usuários — não vendido, nem avulso nem via tier
 
 export interface ModuleSpec {
   /** Chave estável (== Product.key no banco, == segmento de rota /app/<key>). */
@@ -118,13 +119,14 @@ export const MODULES: readonly ModuleSpec[] = [
     icon: '📣',
     tagline: 'Disparo em massa compliant via API oficial',
     jtbd: 'Perdi meu bot não autorizado (política Meta dez/2025) e preciso de alternativa legal agora.',
-    // Empacotado no Profissional e no Empresas (revisão de tiers 2026-09) —
-    // deixa de ser vendido avulso (ver TIER_MODULE_BUNDLES em routes/billing.ts).
-    // Quem já era assinante avulso (source='paid') mantém acesso; só a
-    // contratação nova é bloqueada. Preço aqui é só referência histórica.
-    status: 'bundled',
-    priceMonthly: 67,
-    priceYearly: 643,
+    // Gratuito pra todos os usuários (decisão de produto, 2026-09-09) — deixou
+    // de ser perk pago do Profissional/Empresas. Gate real fica em
+    // lib/moduleGate.ts (getUserModules() sempre inclui 'campanhas'), não em
+    // Entitlement/tier nenhum. Preço aqui é só referência histórica. Ver
+    // CAMPANHAS_ARQUITETURA.md §16.
+    status: 'free',
+    priceMonthly: 0,
+    priceYearly: 0,
     dependsOn: [],
     reuses: ['whatsapp-oficial', 'mensageria'],
     phase: 3,

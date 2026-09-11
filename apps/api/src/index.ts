@@ -810,15 +810,18 @@ async function runAutoMigrations() {
         ALTER TABLE "CampanhaOptOut" ADD CONSTRAINT "CampanhaOptOut_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
-    // Módulo mantido oculto (status 'planned') até decisão explícita de lançamento —
-    // ver packages/modules/catalog.ts. NÃO promover para 'beta' aqui sem confirmação.
+    // Campanhas é grátis pra todos os usuários (decisão de produto,
+    // 2026-09-09) — não é mais vendido, nem avulso nem via bundle de plano.
+    // Força 'free'/preço zero a cada boot (mesmo padrão do bloco de
+    // atende/crm acima); quem acha uma migração formal:
+    // 20260909_campanhas_free_for_all. Ver CAMPANHAS_ARQUITETURA.md §16.
     `DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM "Product" WHERE "key" = 'campanhas') THEN
-        UPDATE "Product" SET "status" = 'planned', "priceMonthly" = 67, "priceYearly" = 643
+        UPDATE "Product" SET "status" = 'free', "priceMonthly" = 0, "priceYearly" = 0
           WHERE "key" = 'campanhas' AND "status" NOT IN ('beta', 'ga');
       ELSE
         INSERT INTO "Product" ("id","key","name","status","priceMonthly","priceYearly","dependsOn","createdAt","updatedAt")
-        VALUES ('campanhas-product-seed', 'campanhas', 'ZapScript Campanhas', 'planned', 67, 643, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        VALUES ('campanhas-product-seed', 'campanhas', 'ZapScript Campanhas', 'free', 0, 0, ARRAY[]::TEXT[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
       END IF;
     END $$`,
     // ── Plano Empresas Multi-Seat (migração 20260722_team_multiseat) ──

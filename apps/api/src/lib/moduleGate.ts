@@ -24,7 +24,7 @@ const ACTIVE_STATUSES = new Set(['active', 'trialing']);
 export async function getUserModules(userId: string): Promise<string[]> {
   try {
     const cached = await (redis as any).get(entCacheKey(userId));
-    if (cached) return JSON.parse(cached) as string[];
+    if (cached) return withFreeModules(JSON.parse(cached));
   } catch { /* Redis indisponível — segue sem cache */ }
 
   let keys: string[] = [];
@@ -44,7 +44,22 @@ export async function getUserModules(userId: string): Promise<string[]> {
     await (redis as any).set(entCacheKey(userId), JSON.stringify(keys), 'EX', ENT_CACHE_TTL);
   } catch { /* ignorar */ }
 
-  return keys;
+  return withFreeModules(keys);
+}
+
+/**
+ * Módulos gratuitos pra todo mundo, sem Entitlement real — nunca gravados no
+ * cache/DB, só somados na resposta. 'campanhas' virou grátis pra todos os
+ * usuários (decisão de produto, 2026-09-09; ver CAMPANHAS_ARQUITETURA.md
+ * §16) — isso cobre de uma vez o gate do front (sidebar), o requireModule()
+ * das rotas /modules/campanhas/*, e os dois checks equivalentes no Chatbot
+ * Campanhas (services/campanhas-chat-commands.ts), sem precisar reescrever
+ * cada checagem individualmente.
+ */
+const FREE_MODULES = ['campanhas'];
+function withFreeModules(keys: string[]): string[] {
+  const missing = FREE_MODULES.filter((k) => !keys.includes(k));
+  return missing.length ? [...keys, ...missing] : keys;
 }
 
 /** Invalida o cache de módulos — chamar após alteração de entitlement. */

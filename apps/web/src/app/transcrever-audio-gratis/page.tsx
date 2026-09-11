@@ -18,6 +18,12 @@ export const metadata: Metadata = {
     locale: 'pt_BR',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Transcrever Áudio do WhatsApp Grátis — Online, na hora',
+    description:
+      'Envie um áudio e receba o texto completo + resumo com IA em segundos. Grátis, online, sem instalar nada.',
+  },
 };
 
 const FAQS = [

@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale: 'pt_BR',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ZapScript vs LuzIA — Qual é o melhor para converter WhatsApp?',
+    description: 'Compare automação, preço e privacidade. O ZapScript converte todo áudio recebido automaticamente, sem precisar encaminhar nada para um bot.',
+  },
 };
 
 const schema = {

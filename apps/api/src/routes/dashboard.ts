@@ -70,8 +70,8 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       extraExpiresAt:      extraValid > 0 ? balance?.extraExpiresAt?.toISOString() ?? null : null,
       activeNumbers,
       avgConfidence:       +(avgConf._avg.confidenceScore || 99.1).toFixed(1),
-      // planName = slug do plano ('free'|'pro'|'ultra'|'executive') — usado para gating
-      // planLabel = label exibível ('Core'|'Pro'|'Ultra'|'Executive')
+      // planName = slug do plano ('free'|'pro'|'executive'|'profissional'|'empresas'|'pro-tester') — usado para gating
+      // planLabel = label exibível ('Core'|'Pro'|'Executive'|'Profissional'|'Empresas'|'Pro Tester')
       planName:            sub?.plan.name  || 'free',
       planLabel:           sub?.plan.label || 'Core',
       planStatus:          sub?.status || 'active',

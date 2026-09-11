@@ -9,6 +9,7 @@ import { createPasswordlessAccount } from '../services/account-provisioning';
 import { provisionInstance, requestPairingCode } from '../services/number-provisioning';
 import { startFromSiteSignup } from '../services/onboarding-whatsapp';
 import { resolveReferralHandle } from '../lib/referralSlug';
+import { getUserModules } from '../lib/moduleGate';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -734,18 +735,12 @@ export default async function authRoutes(app: FastifyInstance) {
       req.log?.warn(`[Auth] Falha ao ler marcação de afiliado (ignorada): ${err?.message}`);
     }
 
-    // Módulos ativos da suíte (login único + acesso à la carte). Tolerante a
+    // Módulos ativos da suíte (login único + acesso à la carte) — mesma fonte
+    // de verdade de requireModule()/GET /modules/me (lib/moduleGate.ts), pra
+    // não duplicar a query e não divergir do que o resto do gate considera
+    // ativo (ex.: módulos gratuitos pra todos, como 'campanhas'). Tolerante a
     // falhas/ausência de migração: degrada para lista vazia. Ver MODULOS_ARQUITETURA.md.
-    let modules: string[] = [];
-    try {
-      const ents = await prisma.entitlement.findMany({
-        where:  { userId: req.user.sub, status: { in: ['active', 'trialing'] } },
-        select: { productKey: true },
-      });
-      modules = ents.map((e: { productKey: string }) => e.productKey);
-    } catch (err: any) {
-      req.log?.warn(`[Auth] Falha ao ler entitlements (ignorada): ${err?.message}`);
-    }
+    const modules = await getUserModules(req.user.sub);
 
     // C2: decriptar document (AES-256-GCM) antes de retornar ao frontend
     return { ...user, document: decryptStr(user.document) || null, affiliate, modules };

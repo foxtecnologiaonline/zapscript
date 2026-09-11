@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale:      'pt_BR',
     type:        'website',
   },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'ZapScript para Advogados — Relato do cliente em texto pesquisável',
+    description: 'Relato do cliente em áudio vira texto seguro. Criptografia padrão bancário, LGPD. Grátis.',
+  },
 };
 
 const variant: Variant = {

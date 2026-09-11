@@ -5,12 +5,17 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
-// "Carteira" (Regulamento v4) é automática pra todo mundo — sem aprovação,
-// sem aplicação — por isso entra direto no menu base, sem condição nenhuma.
+// "Carteira" (Regulamento v4) e "Campanhas" (decisão de produto, 2026-09-09 —
+// deixou de ser perk pago, ver CAMPANHAS_ARQUITETURA.md §16) são automáticas
+// pra todo mundo — sem aprovação, sem módulo/Entitlement — por isso entram
+// direto no menu base, sem condição nenhuma. Único módulo com página nativa
+// em /dashboard (os demais seguem em /app/<key>, sem sidebar própria ainda)
+// — ver apps/web/src/lib/modules.ts (moduleRoute) e CAMPANHAS_ARQUITETURA.md §10.
 const NAV_BASE = [
   { href: '/dashboard',               icon: '🏠', label: 'Dashboard' },
   { href: '/dashboard/transcricoes',  icon: '📝', label: 'Conversões' },
   { href: '/dashboard/numeros',       icon: '📱', label: 'Números' },
+  { href: '/dashboard/campanhas',     icon: '📣', label: 'Campanhas' },
   { href: '/dashboard/plano',         icon: '💳', label: 'Plano' },
   { href: '/dashboard/afiliado',      icon: '💰', label: 'Carteira' },
   { href: '/dashboard/configuracoes', icon: '⚙️', label: 'Configurações' },
@@ -30,10 +35,12 @@ function buildNav(user: any) {
 }
 
 const PLAN_COLORS: Record<string, string> = {
-  free:      'text-[rgba(16,185,129,.4)]',
-  pro:       'text-[#10b981]',
-  ultra:     'text-yellow-400',
-  executive: 'text-amber-400',
+  free:         'text-[rgba(16,185,129,.4)]',
+  pro:          'text-[#10b981]',
+  executive:    'text-amber-400',
+  profissional: 'text-[#10b981]',
+  empresas:     'text-amber-400',
+  'pro-tester': 'text-emerald-300',
 };
 
 /* ── Sidebar content — shared between desktop & mobile drawer ── */
@@ -67,7 +74,11 @@ function NavContent({
       {/* Nav links */}
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
         {buildNav(user).map(item => {
-          const active = pathname === item.href;
+          // Campanhas é a 1ª seção com sub-rotas (/nova, /[id], /optouts) — precisa
+          // de match por prefixo pra continuar destacada nelas. '/dashboard' fica de
+          // fora do prefixo pra não "vazar" ativo em toda rota aninhada de outra seção.
+          const active = pathname === item.href
+            || (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`));
           return (
             <Link
               key={item.href}

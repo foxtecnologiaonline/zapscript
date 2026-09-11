@@ -337,13 +337,85 @@ export const legendaUploadUrlSchema = z.object({
 export const createCampanhaSchema = z.object({
   name:               z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
   whatsappNumberId:   z.string().cuid('Número inválido'),
-  templateName:       z.string().min(1, 'Selecione um template').max(512),
+  channel:            z.enum(['meta', 'evolution']).default('meta'),
+  templateName:       z.string().min(1).max(512).optional(),
   templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
   templateComponents: z.array(z.record(z.any())).optional(),
-});
+  templateVarCount:   z.coerce.number().int().min(0).max(20).optional(),
+  messageBody:        z.string().min(1, 'Escreva a mensagem').max(4096).optional(),
+  // A/B test (§15.3) — variante B opcional, só reporta métricas por variante,
+  // sem promoção automática de vencedor. Mesmas regras de conteúdo por canal
+  // que os campos principais (templateName no Meta, messageBody no Evolution).
+  abTestEnabled:              z.boolean().optional(),
+  variantBTemplateName:       z.string().min(1).max(512).optional(),
+  variantBTemplateLanguage:   z.string().min(2).max(10).optional(),
+  variantBTemplateComponents: z.array(z.record(z.any())).optional(),
+  variantBTemplateVarCount:   z.coerce.number().int().min(0).max(20).optional(),
+  variantBMessageBody:        z.string().min(1).max(4096).optional(),
+}).refine(
+  (v) => (v.channel === 'meta' ? !!v.templateName : !!v.messageBody),
+  { message: 'Campanhas via Meta exigem um template; via Evolution exigem o texto da mensagem.' },
+).refine(
+  (v) => !v.abTestEnabled || (v.channel === 'meta' ? !!v.variantBTemplateName : !!v.variantBMessageBody),
+  { message: 'Com A/B test ativado, informe o conteúdo da variante B (variantBTemplateName no Meta, variantBMessageBody no Evolution).' },
+);
 
 export const scheduleCampanhaSchema = z.object({
   scheduledAt: z.coerce.date(),
+});
+
+// Sequência/drip (§15.2) — cada passo tem seu próprio conteúdo; a validação de
+// "template exige messageBody vs templateName" depende do canal da campanha-mãe
+// (não vem no body), então fica a cargo da rota, não do refine do zod aqui.
+const campanhaSequenceStepSchema = z.object({
+  delayDays:          z.number().int().min(1, 'delayDays deve ser pelo menos 1').max(90, 'delayDays máximo é 90'),
+  templateName:       z.string().min(1).max(512).optional(),
+  templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
+  templateComponents: z.array(z.record(z.any())).optional(),
+  templateVarCount:   z.coerce.number().int().min(0).max(20).optional(),
+  messageBody:        z.string().min(1).max(4096).optional(),
+});
+export const campanhaSequenceSchema = z.object({
+  steps: z.array(campanhaSequenceStepSchema).min(1, 'Informe ao menos 1 passo').max(5, 'Máximo de 5 passos'),
+});
+
+// ── Listas de números (contatos salvos e reutilizáveis entre campanhas) ────
+export const createCampanhaListaSchema = z.object({
+  name:             z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+  description:      z.string().max(300).optional(),
+  consentConfirmed: z.boolean().optional(),
+});
+export const updateCampanhaListaSchema = z.object({
+  name:             z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100).optional(),
+  description:      z.string().max(300).nullable().optional(),
+  consentConfirmed: z.boolean().optional(),
+});
+const listaContatoManualSchema = z.object({
+  phone: z.string().min(8, 'Telefone inválido').max(20),
+  name:  z.string().max(100).optional(),
+});
+export const addCampanhaListaContatosSchema = z.object({
+  contatos: z.array(listaContatoManualSchema).min(1, 'Informe ao menos 1 número').max(5000),
+});
+export const applyCampanhaListaSchema = z.object({
+  listaId: z.string().cuid('Lista inválida'),
+});
+export const mergeCampanhaListasSchema = z.object({
+  listaIds: z.array(z.string().cuid()).min(2, 'Selecione ao menos 2 listas'),
+  name:     z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
+});
+
+// ── Upload CSV de Contatos ────────────────────────────────
+export const uploadContatosCsvSchema = z.object({
+  listaId:  z.string().cuid('Lista inválida').optional(), // reutilizar lista existente ou criar nova
+  listName: z.string().min(2).max(100).optional(), // nome da nova lista (obrigatório se listaId não informado)
+});
+
+// ── Preview Contatos (from-historico / from-crm) ──────────
+export const previewContatosSchema = z.object({
+  numberId: z.string().cuid('Número inválido').optional(),
+  since:    z.coerce.date().optional(),
+  limit:    z.coerce.number().min(1).max(100).default(20),
 });
 
 // ── API pública (tier Empresas) ────────────────────────────

@@ -133,6 +133,33 @@ export async function getConnectionState(name: string): Promise<'open' | 'close'
 }
 
 /**
+ * Força a instância a reabrir o socket usando as credenciais de sessão já
+ * salvas (auth state do Baileys) — NÃO gera QR novo e não é um "novo login".
+ * Cobre o caso comum de socket caído por instabilidade momentânea (rede,
+ * restart do container Evolution, etc.) sem depender de ação do usuário.
+ *
+ * Se o WhatsApp tiver de fato invalidado a sessão (logout pelo celular,
+ * banimento, "conflito" com outro dispositivo), isso NÃO resolve — é uma
+ * limitação do próprio WhatsApp (Baileys/multi-device), não nossa: só um
+ * novo QR Code/código de pareamento, escaneado pelo usuário, resolve nesse
+ * caso. O chamador deve reconferir o estado após o restart e, se continuar
+ * fechado, tratar como desconexão real (ver health-monitor.ts checkWhatsApp).
+ */
+export async function restartInstance(name: string): Promise<boolean> {
+  try {
+    const base = evolutionBaseUrl();
+    const res = await fetch(`${base}/instance/restart/${name}`, {
+      method:  'PUT',
+      headers: evolutionHeaders(),
+      signal:  AbortSignal.timeout(15_000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Re-aplica webhooks em uma instância existente.
  * Útil após restart do servidor para garantir que Evolution sabe para onde enviar eventos.
  */
@@ -351,6 +378,33 @@ export async function sendPtt(instanceNameStr: string, phone: string, audioBase6
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`Evolution sendPtt falhou (${res.status}): ${text}`);
+  }
+}
+
+/**
+ * Envia uma imagem via Evolution API — base64 inline, sem depender de URL
+ * pública (mesmo padrão de sendPtt). Usado pelo Chatbot Campanhas pra mandar
+ * o QR code do Pix junto do código copia-e-cola.
+ */
+export async function sendImage(instanceNameStr: string, phone: string, imageBase64: string, caption = ''): Promise<void> {
+  const base  = evolutionBaseUrl();
+  const clean = phone.replace(/\D/g, '');
+  const res = await fetch(`${base}/message/sendMedia/${instanceNameStr}`, {
+    method:  'POST',
+    headers: evolutionHeaders(),
+    body: JSON.stringify({
+      number: clean,
+      mediatype: 'image',
+      mimetype: 'image/png',
+      caption,
+      media: imageBase64,
+      fileName: 'pix-qrcode.png',
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Evolution sendMedia falhou (${res.status}): ${text}`);
   }
 }
 

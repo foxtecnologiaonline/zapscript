@@ -79,7 +79,7 @@ const FAQS = [
   },
   {
     q: 'Quanto custa?',
-    a: 'R$67/mês pela plataforma ZapScript Campanhas. Tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) não estão incluídas nesse valor.',
+    a: 'A ferramenta é gratuita pra todos os usuários da plataforma, em qualquer plano — e todo mundo tem 30 mensagens grátis por mês. Acima disso: Pré-Pago 1 (1.000 msgs por R$150, 90 dias), Pré-Pago 5 (5.000 msgs por R$450, 120 dias) ou Mensal Ilimitado (R$699/mês, sem limite). Tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) ficam de fora, e são pagas direto pra Meta, não pra gente.',
   },
 ];
 
@@ -166,12 +166,12 @@ export default function CampanhasLandingClient() {
                 </p>
                 <Link href="/cadastro?utm_source=lp&utm_campaign=campanhas" data-cta="campanhas_hero_cadastro"
                   className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2">
-                  Criar conta e conhecer
+                  Criar conta grátis
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M12 5l7 7-7 7" />
                   </svg>
                 </Link>
-                <span className="block text-center text-xs mt-2 text-brand-muted">R$67/mês · sem taxa de adesão</span>
+                <span className="block text-center text-xs mt-2 text-brand-muted">Grátis pra todo mundo · sem taxa de adesão</span>
               </div>
 
               <div className="flex items-center gap-3">
@@ -184,14 +184,14 @@ export default function CampanhasLandingClient() {
                 <p className="flex items-center gap-1.5 text-xs font-medium mb-2" style={{ color: 'rgb(var(--color-text-secondary))' }}>
                   <span>🔑</span> Já tem uma conta ZapScript?
                 </p>
-                <Link href="/dashboard/plano?add=campanhas" data-cta="campanhas_hero_contratar"
+                <Link href="/dashboard/campanhas" data-cta="campanhas_hero_abrir"
                   className="w-full py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-80 active:scale-[.98]"
                   style={{
                     border: '1.5px solid rgb(var(--color-border))',
                     color: 'rgb(var(--color-text-secondary))',
                     background: 'rgb(var(--color-surface))',
                   }}>
-                  Ativar Campanhas na minha conta
+                  Ir direto pra Campanhas
                 </Link>
               </div>
             </div>
@@ -303,14 +303,20 @@ export default function CampanhasLandingClient() {
         <section id="preco" className="px-5 pb-10">
           <div className="mb-6">
             <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgb(var(--color-accent))' }}>Investimento</span>
-            <h2 className="font-display text-2xl font-bold mt-2 leading-tight tracking-tight">Um plano, sem pegadinha</h2>
-          </div>
-          <div className="rounded-3xl p-6 text-center"
-            style={{ background: 'rgb(var(--color-surface))', border: '2px solid rgb(var(--color-primary))', boxShadow: 'var(--shadow-glow)' }}>
-            <p className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>ZapScript Campanhas</p>
-            <p className="font-display font-bold mt-2" style={{ fontSize: 'clamp(32px, 9vw, 44px)' }}>
-              R$67<span className="text-base font-medium" style={{ color: 'rgb(var(--color-text-muted))' }}>/mês</span>
+            <h2 className="font-display text-2xl font-bold mt-2 leading-tight tracking-tight">A ferramenta é grátis. As mensagens têm 30 de cortesia por mês.</h2>
+            <p className="text-sm mt-2" style={{ color: 'rgb(var(--color-text-secondary))' }}>
+              Acesso ao painel, templates, CSV e acompanhamento: incluso pra todo usuário do ZapScript, sem custo. Acima
+              das 30 mensagens grátis do mês, escolha um dos planos abaixo.
             </p>
+          </div>
+
+          <div className="rounded-3xl p-6 text-center mb-4"
+            style={{ background: 'rgb(var(--color-surface))', border: '2px solid rgb(var(--color-primary))', boxShadow: 'var(--shadow-glow)' }}>
+            <p className="text-sm font-semibold" style={{ color: 'rgb(var(--color-primary))' }}>Cortesia mensal</p>
+            <p className="font-display font-bold mt-2" style={{ fontSize: 'clamp(32px, 9vw, 44px)' }}>
+              30 mensagens/mês
+            </p>
+            <p className="text-sm mt-1" style={{ color: 'rgb(var(--color-text-secondary))' }}>Grátis, todo mês, pra todo mundo</p>
             <ul className="text-sm text-left mt-5 space-y-2.5">
               {[
                 'Envio pela API oficial da Meta (WhatsApp Business Platform)',
@@ -327,15 +333,34 @@ export default function CampanhasLandingClient() {
                 </li>
               ))}
             </ul>
-            <p className="text-[11px] mt-5 leading-relaxed" style={{ color: 'rgb(var(--color-text-muted))' }}>
-              Valor referente ao uso da plataforma ZapScript. Tarifas de mensagem cobradas diretamente pela Meta
-              (conforme categoria do template e política vigente) não estão incluídas.
-            </p>
-            <Link href="/cadastro?utm_source=lp&utm_campaign=campanhas_preco" data-cta="campanhas_preco_cta"
-              className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2 mt-6">
-              Quero contratar
-            </Link>
           </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[
+              { name: 'Pré-Pago 1', price: 'R$150', detail: '1.000 mensagens', validity: 'válido por 90 dias' },
+              { name: 'Pré-Pago 5', price: 'R$450', detail: '5.000 mensagens', validity: 'válido por 120 dias', highlight: 'melhor valor' },
+              { name: 'Mensal Ilimitado', price: 'R$699/mês', detail: 'mensagens sem limite', validity: 'renova todo mês' },
+            ].map((plan) => (
+              <div key={plan.name} className="rounded-2xl p-5 text-center" style={{ background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-border-light))' }}>
+                {plan.highlight && (
+                  <span className="text-[10px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ background: 'rgb(var(--color-primary) / .12)', color: 'rgb(var(--color-primary))' }}>{plan.highlight}</span>
+                )}
+                <p className="text-sm font-semibold mt-2" style={{ color: 'rgb(var(--color-primary))' }}>{plan.name}</p>
+                <p className="font-display font-bold mt-1 text-2xl">{plan.price}</p>
+                <p className="text-sm mt-1" style={{ color: 'rgb(var(--color-text-secondary))' }}>{plan.detail}</p>
+                <p className="text-xs mt-1" style={{ color: 'rgb(var(--color-text-muted))' }}>{plan.validity}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-[11px] mt-5 leading-relaxed text-center" style={{ color: 'rgb(var(--color-text-muted))' }}>
+            Tarifas de mensagem cobradas diretamente pela Meta (conforme categoria do template e política vigente) não
+            estão incluídas. Pacotes pré-pagos e assinatura são pagos via Pix.
+          </p>
+          <Link href="/cadastro?utm_source=lp&utm_campaign=campanhas_preco" data-cta="campanhas_preco_cta"
+            className="btn-primary w-full py-[14px] text-[15px] font-semibold flex items-center justify-center gap-2 mt-6">
+            Quero começar
+          </Link>
         </section>
 
         {/* ══ FAQ ══ */}
@@ -405,9 +430,9 @@ export default function CampanhasLandingClient() {
             </p>
             <Link href="/cadastro?utm_source=lp&utm_campaign=campanhas_footer" data-cta="campanhas_footer_cadastro"
               className="btn-primary inline-flex items-center justify-center py-4 px-8 text-base gap-2">
-              Criar conta e conhecer
+              Criar conta grátis
             </Link>
-            <span className="block text-sm mt-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>R$67/mês</span>
+            <span className="block text-sm mt-4" style={{ color: 'rgb(var(--color-text-secondary))' }}>Grátis pra todo mundo</span>
           </div>
         </section>
 

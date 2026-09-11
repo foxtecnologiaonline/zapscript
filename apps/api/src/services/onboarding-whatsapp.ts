@@ -32,6 +32,9 @@ import { sendText, instanceName as evoInstanceName } from './evolution';
 import { provisionInstance, requestPairingCode } from './number-provisioning';
 import { createPasswordlessAccount } from './account-provisioning';
 import { intakeMessage } from './support-intake';
+import {
+  offerPlanUpgrade, isCampanhaChatCommand, handleCampanhaChatCommand, handleCampanhaChatReply,
+} from './campanhas-chat-commands';
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
 const MAX_ATTEMPTS_BEFORE_ESCALATE = 2;
@@ -62,10 +65,17 @@ function extractPhone(text: string): string | null {
   return digits.length >= 8 && digits.length <= 13 ? digits : null;
 }
 
-/** Instância do número oficial (isPublic=true) — usada para toda mensagem do onboarding. */
-export async function getOfficialInstanceName(): Promise<string | null> {
+/**
+ * Instância do número oficial (isPublic=true) — usada para toda mensagem do onboarding.
+ * Sem `purpose`, pega o comportamento histórico (1º isPublic encontrado — hoje sempre
+ * o número de suporte/onboarding geral). Com `purpose: 'campanhas'`, resolve o número
+ * oficial dedicado do Chatbot Campanhas (WhatsappNumber.publicPurpose), quando existir
+ * — ver campanhas-chat-lead.ts. Nunca filtra por publicPurpose quando purpose não é
+ * passado, pra não quebrar os chamadores existentes (closeLeadOnConnected, nudgeStuckLead).
+ */
+export async function getOfficialInstanceName(purpose?: 'campanhas'): Promise<string | null> {
   const official = await prisma.whatsappNumber.findFirst({
-    where:  { isPublic: true },
+    where:  { isPublic: true, ...(purpose ? { publicPurpose: purpose } : {}) },
     select: { id: true, zapiInstanceId: true },
   });
   if (!official) return null;
@@ -138,18 +148,26 @@ export async function startFromSiteSignup(
 }
 
 // ── Entrada 2: estranho manda texto pro número oficial (sem conta ainda) ──
-export async function startFromOfficialNumber(phone: string, pushName: string | null, instanceNameStr: string): Promise<void> {
+// flavor='campanhas': entrada pelo número oficial dedicado do Chatbot Campanhas
+// (ver campanhas-chat-lead.ts) — mesma máquina de estados, só muda a mensagem de
+// boas-vindas e o `source` gravado no lead (usado depois por closeLeadOnConnected
+// pra decidir qual mensagem de conclusão mandar).
+export async function startFromOfficialNumber(phone: string, pushName: string | null, instanceNameStr: string, flavor?: 'campanhas'): Promise<void> {
   const phoneClean = cleanPhone(phone);
+  const source = flavor === 'campanhas' ? 'campanhas' : 'oficial';
 
   await prisma.whatsappOnboardingLead.upsert({
     where:  { phone: phoneClean },
-    create: { phone: phoneClean, stage: 'awaiting_consent', pushName, source: 'oficial' },
-    update: { stage: 'awaiting_consent', pushName, source: 'oficial', attempts: 0 },
+    create: { phone: phoneClean, stage: 'awaiting_consent', pushName, source },
+    update: { stage: 'awaiting_consent', pushName, source, attempts: 0 },
   });
 
   const nome = firstNameOf(pushName);
+  const pitch = flavor === 'campanhas'
+    ? 'Aqui é o ZapScript Campanhas — eu crio e disparo campanhas de WhatsApp em massa pra você, tudo pelo chat.'
+    : 'Aqui é o ZapScript — eu converto e resumo áudios do WhatsApp automaticamente.';
   const msg = [
-    `👋 ${nome ? `Oi, ${nome}!` : 'Oi!'} Aqui é o ZapScript — eu converto e resumo áudios do WhatsApp automaticamente.`,
+    `👋 ${nome ? `Oi, ${nome}!` : 'Oi!'} ${pitch}`,
     '',
     'Posso criar sua conta grátis e já deixar seu WhatsApp conectado, tudo por aqui mesmo. Antes, preciso do seu aceite:',
     `📄 Termos de Uso e Política de Privacidade: ${APP_URL}/termos`,
@@ -164,6 +182,13 @@ export async function startFromOfficialNumber(phone: string, pushName: string | 
  * Ponto de entrada único chamado pelo webhook (evolution-webhook.ts) para
  * toda mensagem de TEXTO que chega na instância do número oficial.
  * Retorna true se tratou a mensagem (o webhook não deve seguir o fluxo padrão).
+ *
+ * Chatbot Campanhas roda NO MESMO número oficial (não precisa de um número
+ * dedicado à parte) — detectado por palavra-chave ("campanha ...") ou por uma
+ * CampanhaChatSession já em andamento pro telefone, checado ANTES do fallback
+ * de suporte. `flavor` força o pitch de Campanhas mesmo sem a palavra-chave
+ * (usado por quem chama sabendo de antemão a intenção); normalmente omitido —
+ * a detecção automática já cobre o caso comum.
  */
 export async function handleOfficialNumberText(
   instanceNameStr: string,
@@ -171,6 +196,7 @@ export async function handleOfficialNumberText(
   senderName: string | null,
   text: string,
   messageId?: string,
+  flavor?: 'campanhas',
 ): Promise<boolean> {
   const phoneClean = cleanPhone(senderPhone);
 
@@ -181,25 +207,53 @@ export async function handleOfficialNumberText(
     return true;
   }
 
-  // Onboarding já concluído/escalado antes, ou nunca existiu — mas pode ser
-  // cliente cadastrado mandando mensagem por outro motivo. Nesse caso não é
-  // onboarding, mas o número oficial também é o canal de suporte: vira caso
-  // na mesma esteira usada pelo Agente de Suporte nos outros canais.
-  let clienteNome = lead?.name || lead?.pushName || senderName || null;
-  if (!lead) {
-    const digits = phoneClean.slice(-8);
-    const existingUser = await prisma.user.findFirst({
-      where:  { phone: { contains: digits } },
-      select: { name: true },
-    }).catch(() => null);
-    if (!existingUser) {
-      // Estranho de verdade → inicia cadastro conversacional
-      await startFromOfficialNumber(senderPhone, senderName, instanceNameStr);
+  // Onboarding já concluído/escalado antes, ou nunca existiu — resolve se é
+  // cliente cadastrado (mesmo número oficial serve suporte E Campanhas).
+  const digits = phoneClean.slice(-8);
+  const existingUser = !lead
+    ? await prisma.user.findFirst({ where: { phone: { contains: digits } }, select: { id: true, name: true } }).catch(() => null)
+    : null;
+
+  // Chatbot Campanhas: comando explícito ("campanha ...") OU continuação de uma
+  // sessão já em andamento (ex.: respondendo "1" a uma escolha de pacote) — mesma
+  // CampanhaChatSession/máquina de estados do self-chat (campanhas-chat-commands.ts).
+  const campanhaSession = await prisma.campanhaChatSession.findUnique({ where: { phone: phoneClean } });
+  const wantsCampanha = flavor === 'campanhas' || isCampanhaChatCommand(text) || (!!campanhaSession && campanhaSession.stage !== 'idle');
+
+  if (wantsCampanha) {
+    if (existingUser) {
+      // Cliente existente gerenciando campanhas pelo número oficial: o disparo em
+      // si continua saindo pelo WhatsApp PRÓPRIO dele (numberId), não pelo oficial
+      // — só a conversa do bot acontece aqui.
+      const ownNumber = await prisma.whatsappNumber.findFirst({
+        where:   { userId: existingUser.id, provider: 'evolution', isPublic: false },
+        orderBy: { connectedAt: 'desc' },
+        select:  { id: true },
+      });
+      const ctx = { userId: existingUser.id, numberId: ownNumber?.id ?? '', instanceName: instanceNameStr, selfPhone: phoneClean, text };
+      if (isCampanhaChatCommand(text)) {
+        await handleCampanhaChatCommand(ctx);
+        return true;
+      }
+      const handled = await handleCampanhaChatReply(ctx);
+      if (handled) return true;
+      // sessão inexistente/idle e sem prefixo — cai no fallback de suporte abaixo
+    } else if (!lead) {
+      // Estranho pedindo Campanhas → cadastro conversacional já com esse pitch
+      await startFromOfficialNumber(senderPhone, senderName, instanceNameStr, 'campanhas');
       return true;
     }
-    clienteNome = existingUser.name || senderName || null;
   }
 
+  if (!lead && !existingUser) {
+    // Estranho de verdade (sem intenção de Campanhas) → cadastro conversacional padrão
+    await startFromOfficialNumber(senderPhone, senderName, instanceNameStr, flavor);
+    return true;
+  }
+
+  // Nem onboarding, nem Campanhas — mas o número oficial também é o canal de
+  // suporte: vira caso na mesma esteira usada pelo Agente de Suporte nos outros canais.
+  const clienteNome = existingUser?.name || lead?.name || lead?.pushName || senderName || null;
   await intakeMessage({
     canal:           'whatsapp',
     mensagem:        text,
@@ -370,8 +424,23 @@ export async function closeLeadOnConnected(numberId: string): Promise<void> {
   await prisma.whatsappOnboardingLead.update({ where: { phone: lead.phone }, data: { stage: 'completed' } });
 
   const nome = firstNameOf(lead.name || lead.pushName);
-  const msg = `✅ ${nome ? `${nome}, prontinho` : 'Prontinho'}! Seu WhatsApp já está conectado ao ZapScript. A partir de agora, cada áudio que chegar por aqui já sai convertido e resumido automaticamente. 🎉`;
-  await sendOfficial(lead.phone, msg).catch(() => null);
+  const isCampanhas = lead.source === 'campanhas';
+  const msg = isCampanhas
+    ? `✅ ${nome ? `${nome}, prontinho` : 'Prontinho'}! Seu WhatsApp já está conectado.`
+    : `✅ ${nome ? `${nome}, prontinho` : 'Prontinho'}! Seu WhatsApp já está conectado ao ZapScript. A partir de agora, cada áudio que chegar por aqui já sai convertido e resumido automaticamente. 🎉`;
+  const officialInstanceStr = isCampanhas ? await getOfficialInstanceName('campanhas') : null;
+  await sendOfficial(lead.phone, msg, officialInstanceStr).catch(() => null);
+
+  // Campanhas: a partir daqui a conversa continua no PRÓPRIO número que acabou de
+  // conectar (self-chat, mesmo canal do bot "campanha ..." — ver campanhas-chat-commands.ts),
+  // não mais no número oficial. Pergunta se quer contratar o plano que libera o módulo
+  // (bundled em Profissional/Empresas — ver migration 20260908_campanhas_bundled).
+  if (isCampanhas && lead.userId) {
+    const numero = await prisma.whatsappNumber.findUnique({ where: { id: numberId }, select: { zapiInstanceId: true } });
+    const ownInstanceStr = numero?.zapiInstanceId ?? evoInstanceName(numberId);
+    await offerPlanUpgrade(ownInstanceStr, lead.userId, lead.phone).catch((err: any) =>
+      logger.warn(`[OnboardingWA] Falha ao oferecer upgrade de plano (Campanhas) para ${lead.phone}: ${err.message}`));
+  }
 }
 
 type LeadRow = {

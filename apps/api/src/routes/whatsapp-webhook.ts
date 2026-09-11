@@ -4,11 +4,7 @@ import { whatsappAPI } from '../services/whatsapp-official';
 import { transcriptionQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
 import { io } from '../index';
-import { normalizePhone } from './modules/campanhas';
-
-// Palavras-chave de opt-out (convenção SMS/WhatsApp) — comparação por igualdade exata
-// após trim+uppercase, para não disparar em frases que apenas mencionem a palavra.
-const OPT_OUT_KEYWORDS = new Set(['PARAR', 'SAIR', 'STOP', 'CANCELAR', 'UNSUBSCRIBE']);
+import { OPT_OUT_KEYWORDS, registerCampanhaOptOut } from './modules/campanhas';
 
 /**
  * Webhook para receber mensagens do WhatsApp via Meta API
@@ -20,6 +16,27 @@ const OPT_OUT_KEYWORDS = new Set(['PARAR', 'SAIR', 'STOP', 'CANCELAR', 'UNSUBSCR
 export default async function whatsappWebhookRoutes(app: FastifyInstance) {
   const webhookToken = process.env.WHATSAPP_WEBHOOK_TOKEN || 'webhook-token-not-set';
   const appSecret    = process.env.WHATSAPP_APP_SECRET;
+
+  if (!appSecret) {
+    app.log.error(
+      '[WhatsApp Webhook] ⚠️ WHATSAPP_APP_SECRET não configurado — a assinatura ' +
+      'x-hub-signature-256 NÃO está sendo validada nesta instância. Qualquer requisição ' +
+      'POST bem-formada é aceita como se viesse da Meta (pode forjar status de entrega e ' +
+      'opt-out de campanhas). Configure a env var em produção — ver .env.example.'
+    );
+  }
+
+  /**
+   * Compara duas strings em tempo constante sem lançar exceção quando os tamanhos
+   * diferem (crypto.timingSafeEqual exige buffers do mesmo tamanho — um comparando
+   * com tamanho diferente do esperado derrubaria a requisição com 500 em vez de 401).
+   */
+  function safeEqual(a: string, b: string): boolean {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+  }
 
   /**
    * GET /webhook - Verificação inicial do webhook
@@ -36,7 +53,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
 
       app.log.info(`[WhatsApp Webhook GET] mode=${mode}, token_match=${token === webhookToken}`);
 
-      if (mode === 'subscribe' && token === webhookToken) {
+      if (mode === 'subscribe' && safeEqual(token || '', webhookToken)) {
         app.log.info('[WhatsApp Webhook] ✅ Validação bem-sucedida');
         reply.type('text/plain').code(200);
         return reply.send(challenge);
@@ -64,7 +81,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
       }
       const rawBody = (req as any).rawBody?.toString() || JSON.stringify(req.body);
       const expected = crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
-      if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+      if (!safeEqual(expected, signature)) {
         app.log.warn('[WhatsApp Webhook] Assinatura inválida — possível payload forjado');
         return reply.code(401).send({ error: 'Invalid signature' });
       }
@@ -140,7 +157,50 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
       // ─────────────────────────────────
       // Processar mensagens recebidas
       // ─────────────────────────────────
-      for (const msg of messages) {
+      if (messages.length > 0) {
+        // Resolve o dono da conta Business UMA vez por webhook — metadata é o mesmo
+        // para todas as mensagens do lote, então reconsultar por mensagem era redundante.
+        //
+        // Preferência por metaPhoneNumberId (ID atribuído pela própria Meta — único por
+        // natureza, ver @unique em schema.prisma) em vez de phoneNumber (string exibível,
+        // que só passou a ter constraint única por provider='meta' na migration
+        // 20260909_whatsappnumber_meta_unique). Isso evita que o webhook atribua
+        // mensagem/status/opt-out de campanha ao tenant errado caso existam linhas
+        // legadas duplicadas — ver CAMPANHAS_ARQUITETURA.md §7.6. O fallback por
+        // phoneNumber fica só para linhas antigas sem metaPhoneNumberId preenchido,
+        // priorizando a conexão 'connected' mais recente como desempate.
+        const businessPhoneNumberId = value.metadata?.phone_number_id as string | undefined;
+        const cleanBusiness = businessPhone?.replace(/\D/g, '');
+
+        let whatsappNumber = businessPhoneNumberId
+          ? await prisma.whatsappNumber.findFirst({
+              where: { metaPhoneNumberId: businessPhoneNumberId, provider: 'meta' },
+              include: { user: true },
+            })
+          : null;
+
+        if (!whatsappNumber && cleanBusiness) {
+          whatsappNumber =
+            (await prisma.whatsappNumber.findFirst({
+              where: { phoneNumber: cleanBusiness, provider: 'meta', status: 'connected' },
+              orderBy: { connectedAt: 'desc' },
+              include: { user: true },
+            })) ||
+            (await prisma.whatsappNumber.findFirst({
+              where: { phoneNumber: cleanBusiness, provider: 'meta' },
+              orderBy: { updatedAt: 'desc' },
+              include: { user: true },
+            }));
+        }
+
+        if (!whatsappNumber) {
+          app.log.warn(`[WhatsApp] Conta Business ${businessPhone} (phone_number_id=${businessPhoneNumberId}) não registrada no sistema — mensagens do lote ignoradas`);
+          return;
+        }
+
+        const userId = whatsappNumber.userId;
+
+        for (const msg of messages) {
         const senderPhone = msg.from;
         const messageId   = msg.id;
 
@@ -148,25 +208,6 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
         const senderName = contact?.profile?.name || senderPhone;
 
         app.log.info(`[WhatsApp] Mensagem de ${senderName} (${senderPhone}) - tipo: ${msg.type}`);
-
-        // Encontrar conta do usuário pelo número Business que recebeu a mensagem
-        const cleanBusiness = businessPhone?.replace(/\D/g, '');
-        if (!cleanBusiness) {
-          app.log.warn('[WhatsApp] display_phone_number ausente no webhook — mensagem ignorada');
-          return;
-        }
-
-        const whatsappNumber = await prisma.whatsappNumber.findFirst({
-          where: { phoneNumber: cleanBusiness },
-          include: { user: true },
-        });
-
-        if (!whatsappNumber) {
-          app.log.warn(`[WhatsApp] Conta Business ${businessPhone} não registrada no sistema`);
-          return;
-        }
-
-        const userId = whatsappNumber.userId;
 
         // ─────────────────────────────────
         // Processar áudio
@@ -221,20 +262,10 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
           // ─────────────────────────────────
           const normalized = text.trim().toUpperCase();
           if (OPT_OUT_KEYWORDS.has(normalized)) {
-            const optOutPhone = normalizePhone(senderPhone);
             try {
-              await prisma.campanhaOptOut.upsert({
-                where:  { userId_phone: { userId, phone: optOutPhone } },
-                create: { userId, phone: optOutPhone, reason: normalized },
-                update: { reason: normalized },
-              });
-              // Contatos ainda não enviados saem de circulação; o worker também reconfere
-              // o status ao vivo antes de enviar (ver apps/worker/src/modules/campanhas.ts),
-              // então isso cobre tanto jobs futuros quanto os já enfileirados.
-              await prisma.campanhaContato.updateMany({
-                where: { phone: optOutPhone, status: 'pending', campanha: { userId } },
-                data:  { status: 'optout' },
-              });
+              // Cobre tanto jobs futuros quanto os já enfileirados — o worker também
+              // reconfere o status ao vivo antes de enviar (ver apps/worker/src/modules/campanhas.ts).
+              const optOutPhone = await registerCampanhaOptOut(userId, senderPhone, normalized);
               app.log.info(`[WhatsApp] 🚫 Opt-out registrado: ${optOutPhone} (${normalized})`);
 
               try {
@@ -304,6 +335,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
           } catch (err: any) {
             app.log.error({ err: err.message }, '[WhatsApp] Erro ao marcar documento como lido');
           }
+        }
         }
       }
     } catch (error: any) {

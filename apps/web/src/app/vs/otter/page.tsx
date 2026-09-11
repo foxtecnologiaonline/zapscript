@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale: 'pt_BR',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ZapScript vs Otter.ai — Qual é o melhor para o WhatsApp?',
+    description: 'O Otter.ai é focado em reuniões em inglês; o ZapScript converte automaticamente os áudios do seu WhatsApp, em português, no seu próprio número.',
+  },
 };
 
 const schema = {

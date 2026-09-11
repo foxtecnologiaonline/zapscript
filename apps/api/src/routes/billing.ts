@@ -15,6 +15,7 @@ import { invalidatePlanCache } from '../lib/planGate';
 import { attributeAffiliateCommission, clawbackAffiliateCommissionOnCancel } from '../lib/affiliate';
 import { recordReferralCredit, clawbackPendingCreditsOnCancel } from '../lib/credit';
 import { invalidateModuleCache } from '../lib/moduleGate';
+import { creditCampanhaMessages, getOrCreateCampanhaBalance, CAMPANHA_FREE_MESSAGES_PER_MONTH } from '../lib/campanha-credit';
 
 /* ─────────────────────────────────────────────────────────
    ASAAS v3 — Billing Routes (Checkout Transparente)
@@ -57,15 +58,19 @@ const PLAN_LABELS:        Record<string, string> = { pro: 'Pro',  executive: 'Ex
 /* ── Tiers ZapScript 2.0 (revisão): "tiers absorvem os módulos" — cada tier
    paga empacota um conjunto fixo de módulos já existentes na suíte.
    Core (free) = transcrição + resumo, sem módulo algum.
-   Profissional = Core + Atende + Tarefas + Campanhas (1 usuário/1 conexão).
-   Empresas = Core + Atende + CRM + Tarefas + Campanhas (até 5 usuários).
+   Profissional = Core + Atende + Tarefas (1 usuário/1 conexão).
+   Empresas = Core + Atende + CRM + Tarefas (até 5 usuários).
    Sincronizado em activatePlan() via Entitlement(source='bundle'), nunca
    mexendo em módulos comprados avulso (source='paid'). Ver MODULOS_ARQUITETURA.md.
    'copiloto' FORA dos planos por enquanto — liberado só manualmente por admin
-   (Entitlement source='comp'), nunca por aqui. Ver /sys/g5r8t2/users/:id/modules/copiloto/toggle. ── */
+   (Entitlement source='comp'), nunca por aqui. Ver /sys/g5r8t2/users/:id/modules/copiloto/toggle.
+   'campanhas' também FORA — deixou de ser perk pago (decisão de produto,
+   2026-09-09): agora é grátis pra todos os usuários, direto em
+   lib/moduleGate.ts (getUserModules() sempre inclui), sem passar por
+   Entitlement/bundle nenhum. Ver CAMPANHAS_ARQUITETURA.md §16. ── */
 const TIER_MODULE_BUNDLES: Record<string, string[]> = {
-  profissional: ['atende', 'tarefas', 'campanhas'],
-  empresas:     ['atende', 'crm', 'tarefas', 'campanhas'],
+  profissional: ['atende', 'tarefas'],
+  empresas:     ['atende', 'crm', 'tarefas'],
 };
 
 /* ── Combo (Core + módulos disponíveis): % fixo sobre a soma do valor agregado ── */
@@ -82,6 +87,22 @@ export const MINUTE_PACKAGES = [
   { id: 'pkg_50',  minutes: 50,  priceBrl: 11, label: '50 minutos',  desc: 'Mais econômico' },
   { id: 'pkg_100', minutes: 100, priceBrl: 19, label: '100 minutos', desc: 'Melhor valor' },
 ] as const;
+
+/* ── Módulo Campanhas: 30 mensagens grátis por mês pra todo usuário (não
+   cumulativas — ver CAMPANHA_FREE_MESSAGES_PER_MONTH em lib/campanha-credit.ts),
+   pacotes pré-pagos avulsos com validade, e assinatura Mensal Ilimitado —
+   vendidos via chat (Pix apenas, ver POST /buy-campanha-messages e
+   /campanha-subscribe) ou pelo painel (POST /:id/start em
+   routes/modules/campanhas.ts também debita daqui, decisão de produto,
+   2026-09-09 — ver CAMPANHAS_ARQUITETURA.md §17). Créditos vão para
+   CampanhaBalance (lib/campanha-credit.ts), saldo independente do
+   plano/módulo do usuário. ── */
+export const CAMPANHA_MSG_PACKAGES = [
+  { id: 'pkg_camp_1k', messages: 1_000, priceBrl: 150, label: '1.000 mensagens', desc: 'Pré-Pago 1',                validityDays: 90 },
+  { id: 'pkg_camp_5k', messages: 5_000, priceBrl: 450, label: '5.000 mensagens', desc: 'Pré-Pago 5 — melhor valor', validityDays: 120 },
+] as const;
+
+export const CAMPANHA_MONTHLY_PRICE_BRL = 699; // Mensal Ilimitado — mensagens sem limite enquanto a assinatura estiver ativa
 
 /* ── Validade do saldo extra (minutos avulsos / indicação) ── */
 const EXTRA_MINUTES_VALIDITY_DAYS = 60;
@@ -129,6 +150,14 @@ function decodeRef(ref: string | undefined): { userId: string; planName: string;
 }
 function encodeMinutePackageRef(userId: string, minutes: number): string {
   return `${userId}|pkg_minutes|${minutes}`;
+}
+/* "<userId>|pkg_campanha_msgs|<N>" — pacote avulso de mensagens de campanha (N = mensagens)
+   "<userId>|campanha_monthly"      — assinatura mensal de mensagens de campanha */
+function encodeCampanhaPackageRef(userId: string, messages: number): string {
+  return `${userId}|pkg_campanha_msgs|${messages}`;
+}
+function encodeCampanhaMonthlyRef(userId: string): string {
+  return `${userId}|campanha_monthly`;
 }
 
 /* ── externalReference de contratação de módulo ──
@@ -209,7 +238,7 @@ async function getOrCreateCustomer(user: {
 }
 
 /* ── Ativar plano no banco ── */
-async function activatePlan(userId: string, planName: string, opts: {
+export async function activatePlan(userId: string, planName: string, opts: {
   asaasSubscriptionId?: string | null;
   asaasCustomerId?:     string | null;
   paymentMethod?:       string | null;
@@ -438,6 +467,169 @@ function buildHolderInfo(user: any, card: { document?: string } | undefined, bil
     postalCode:    billingAddress?.postalCode?.replace(/\D/g, '') || undefined,
     addressNumber: billingAddress?.addressNumber || undefined,
     mobilePhone:   user.phone?.replace(/\D/g, '') || undefined,
+  };
+}
+
+/* ── Chatbot Campanhas: compra de saldo de mensagens ──────────────────────
+   Extraído das rotas HTTP (abaixo) pra ser reaproveitado também pelo bot
+   (services/campanhas-chat-commands.ts) sem chamada HTTP interna — o bot
+   roda server-side, dentro do próprio processo da API. Pix apenas: nem o
+   painel web nem o chat mandam formulário de cartão por aqui. ── */
+async function resolveAsaasCustomerId(userId: string, user: { email: string; name: string | null }): Promise<string> {
+  const [coreSub, campBalance] = await Promise.all([
+    prisma.subscription.findUnique({ where: { userId } }),
+    prisma.campanhaBalance.findUnique({ where: { userId } }),
+  ]);
+  if (coreSub?.asaasCustomerId) return coreSub.asaasCustomerId;
+  if (campBalance?.asaasCustomerId) return campBalance.asaasCustomerId;
+
+  const custRes = await asaas('/customers', {
+    method: 'POST',
+    body:   JSON.stringify({ name: user.name || user.email, email: user.email, externalReference: userId }),
+  }).then(r => r.json()) as any;
+  return custRes.id;
+}
+
+type CampanhaBillingResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
+
+export async function buyCampanhaMessagesViaPix(userId: string, packageId: string | undefined): Promise<CampanhaBillingResult<{
+  status: string; paymentId: string; messages: number; qrCodeUrl: string | null; copyPaste: string | null; expiresAt: string;
+}>> {
+  const pkg = CAMPANHA_MSG_PACKAGES.find(p => p.id === packageId);
+  if (!pkg) return { ok: false, status: 400, error: 'Pacote inválido.' };
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+  if (!user) return { ok: false, status: 404, error: 'Usuário não encontrado.' };
+
+  const asaasCustomerId = await resolveAsaasCustomerId(userId, user);
+  const pix = await asaas('/payments', {
+    method: 'POST',
+    body: JSON.stringify({
+      customer: asaasCustomerId, billingType: 'PIX',
+      value: pkg.priceBrl, dueDate: todayStr(),
+      description: `ZapScript Campanhas — ${pkg.label}`,
+      externalReference: encodeCampanhaPackageRef(userId, pkg.messages),
+    }),
+  }).then(r => r.json()) as any;
+  if (pix.errors?.length) return { ok: false, status: 400, error: pix.errors[0]?.description || 'Erro ao criar cobrança PIX.' };
+
+  const pixKey = await asaas(`/payments/${pix.id}/pixQrCode`).then(r => r.json()) as any;
+  return {
+    ok: true,
+    data: {
+      status: 'pending', paymentId: pix.id, messages: pkg.messages,
+      qrCodeUrl: pixKey?.encodedImage ? `data:image/png;base64,${pixKey.encodedImage}` : null,
+      copyPaste: pixKey?.payload || null,
+      expiresAt: threeHoursFromNow(),
+    },
+  };
+}
+
+export async function subscribeCampanhaMonthlyViaPix(userId: string): Promise<CampanhaBillingResult<{
+  status: string; subscriptionId: string; paymentId: string | null; qrCodeUrl: string | null; copyPaste: string | null; expiresAt: string | null; amount: number;
+}>> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+  if (!user) return { ok: false, status: 404, error: 'Usuário não encontrado.' };
+
+  const existing = await prisma.campanhaBalance.findUnique({ where: { userId } });
+  if (existing?.plan === 'monthly' && existing.asaasSubscriptionId) {
+    return { ok: false, status: 400, error: 'Você já tem uma assinatura de mensagens ativa.' };
+  }
+
+  const asaasCustomerId = await resolveAsaasCustomerId(userId, user);
+  const subRes = await asaas('/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify({
+      customer: asaasCustomerId, billingType: 'PIX',
+      value: CAMPANHA_MONTHLY_PRICE_BRL, nextDueDate: todayStr(), cycle: 'MONTHLY',
+      description: `ZapScript Campanhas — Plano Mensal Ilimitado`,
+      externalReference: encodeCampanhaMonthlyRef(userId),
+    }),
+  }).then(r => r.json()) as any;
+  if (!subRes?.id) return { ok: false, status: 400, error: subRes?.errors?.[0]?.description || 'Erro ao criar assinatura.' };
+
+  await prisma.campanhaBalance.upsert({
+    where:  { userId },
+    create: { userId, asaasCustomerId, asaasSubscriptionId: subRes.id },
+    update: { asaasCustomerId, asaasSubscriptionId: subRes.id },
+  });
+
+  const qr = await getPixQrForSubscription(subRes.id);
+  return {
+    ok: true,
+    data: {
+      status: 'pending_pix', subscriptionId: subRes.id, paymentId: qr.paymentId,
+      qrCodeUrl: qr.qrCodeUrl, copyPaste: qr.qrCode, expiresAt: qr.expiresAt,
+      amount: CAMPANHA_MONTHLY_PRICE_BRL,
+    },
+  };
+}
+
+/**
+ * Assina um plano-núcleo pago (Profissional/Empresas) via Pix — usado pelo lead
+ * novo do Chatbot Campanhas (sem cartão salvo, sem CPF no perfil) pra liberar o
+ * módulo Campanhas, que só vem incluso nesses planos (bundled — ver migration
+ * 20260908_campanhas_bundled). Reaproveita a mesma `externalReference`
+ * (encodeRef) do POST /checkout "normal" (sem type) — o webhook já trata esse
+ * formato no ramo genérico (linha ~1876: "Pagamento de assinatura normal"),
+ * então nenhuma mudança no webhook é necessária. Só cobre o caso de quem AINDA
+ * NÃO tem assinatura paga — troca de plano/proration continua exclusiva do
+ * painel (POST /checkout, /upgrade), com toda a lógica de cartão/promo/anual
+ * que não faz sentido reproduzir num chat.
+ */
+export async function subscribeCorePlanViaPix(userId: string, planName: 'profissional' | 'empresas'): Promise<CampanhaBillingResult<{
+  status: string; subscriptionId: string; paymentId: string | null; qrCodeUrl: string | null; copyPaste: string | null; expiresAt: string | null; amount: number; planName: string;
+}>> {
+  const price = PLAN_PRICES[planName];
+  if (!price) return { ok: false, status: 400, error: 'Plano inválido.' };
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return { ok: false, status: 404, error: 'Usuário não encontrado.' };
+  if (!user.emailVerified) return { ok: false, status: 403, error: 'Confirme seu e-mail antes de assinar um plano.' };
+
+  const existingSub = await prisma.subscription.findUnique({ where: { userId } });
+  if (existingSub?.status === 'active') {
+    const currentPlan = await prisma.plan.findUnique({ where: { id: existingSub.planId } });
+    if (currentPlan && currentPlan.name !== 'free') {
+      return { ok: false, status: 400, error: `Você já tem uma assinatura ativa (${currentPlan.label}) — use o painel para trocar de plano.` };
+    }
+  }
+
+  let asaasCustomerId: string;
+  try {
+    asaasCustomerId = await getOrCreateCustomer(user);
+  } catch (err: any) {
+    return { ok: false, status: 503, error: 'Serviço de pagamento indisponível. Tente novamente.' };
+  }
+
+  const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
+  await prisma.subscription.upsert({
+    where:  { userId },
+    create: { userId, planId: freePlan?.id ?? '', asaasCustomerId, paymentMethod: 'pix', status: 'pending' },
+    update: { asaasCustomerId, paymentMethod: 'pix', status: 'pending' },
+  }).catch(() => null);
+
+  const subRes = await asaas('/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify({
+      customer: asaasCustomerId, billingType: 'PIX',
+      value: price, nextDueDate: todayStr(), cycle: 'MONTHLY',
+      description: `ZapScript ${PLAN_LABELS[planName]} — Assinatura mensal`,
+      externalReference: encodeRef(userId, planName),
+    }),
+  }).then(r => r.json()) as any;
+  if (!subRes?.id) return { ok: false, status: 400, error: subRes?.errors?.[0]?.description || 'Erro ao criar assinatura.' };
+
+  await prisma.subscription.update({ where: { userId }, data: { asaasSubscriptionId: subRes.id } }).catch(() => null);
+
+  const qr = await getPixQrForSubscription(subRes.id);
+  return {
+    ok: true,
+    data: {
+      status: 'pending_pix', subscriptionId: subRes.id, paymentId: qr.paymentId,
+      qrCodeUrl: qr.qrCodeUrl, copyPaste: qr.qrCode, expiresAt: qr.expiresAt,
+      amount: price, planName,
+    },
   };
 }
 
@@ -992,6 +1184,9 @@ export default async function billingRoutes(app: FastifyInstance) {
       }
       if (product.status === 'bundled') {
         return reply.code(400).send({ error: 'Este módulo não é vendido avulso — ele já vem incluso no plano Profissional/Empresas. Veja /dashboard/plano.' });
+      }
+      if (product.status === 'free') {
+        return reply.code(400).send({ error: 'Este módulo é gratuito para todos os usuários do ZapScript — não precisa contratar.' });
       }
       if (existing?.status === 'active') {
         return reply.code(400).send({ error: 'Você já tem este módulo ativo.' });
@@ -1635,6 +1830,33 @@ export default async function billingRoutes(app: FastifyInstance) {
         return reply.send({ received: true });
       }
 
+      // ── Módulo Campanhas: pacote avulso de mensagens ──────────────────────
+      if (planName === 'pkg_campanha_msgs') {
+        const messages = parseInt(type || '0', 10);
+        if (!messages || isNaN(messages)) {
+          app.log.error({ ref: payment.externalReference }, 'pkg_campanha_msgs: quantidade inválida');
+          return reply.send({ received: true });
+        }
+        const validityDays = CAMPANHA_MSG_PACKAGES.find(p => p.messages === messages)?.validityDays;
+        await creditCampanhaMessages(userId, messages, { referenceType: 'asaas_payment', referenceId: payment.id, validityDays });
+        await markProcessed(payment.id);
+        app.log.info(`Pacote de mensagens de campanha creditado: userId=${userId} +${messages}msgs (validade ${validityDays ?? '?'}d)`);
+        return reply.send({ received: true });
+      }
+
+      // ── Módulo Campanhas: renovação da assinatura Mensal Ilimitado ────────
+      if (planName === 'campanha_monthly') {
+        const nextRenewal = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        await prisma.campanhaBalance.upsert({
+          where:  { userId },
+          create: { userId, plan: 'monthly', asaasCustomerId: payment.customer, renewalDate: nextRenewal },
+          update: { plan: 'monthly', asaasCustomerId: payment.customer, renewalDate: nextRenewal },
+        }).catch(() => null);
+        await markProcessed(payment.id);
+        app.log.info(`Assinatura Mensal Ilimitado de campanhas renovada/ativada: userId=${userId}`);
+        return reply.send({ received: true });
+      }
+
       if (type === 'upgrade' || type === 'upgrade_yearly') {
         // ── Cobrança de proration da migração de plano aprovada ──
         const isYearlyUpgrade = type === 'upgrade_yearly';
@@ -1737,6 +1959,17 @@ export default async function billingRoutes(app: FastifyInstance) {
     if (eventType === 'SUBSCRIPTION_DELETED') {
       const decoded = decodeRef(body?.subscription?.externalReference);
       const userId  = decoded?.userId;
+
+      // ── Assinatura mensal do Chatbot Campanhas — não mexe no plano core ──
+      if (userId && decoded?.planName === 'campanha_monthly') {
+        await prisma.campanhaBalance.update({
+          where: { userId },
+          data:  { plan: null, asaasSubscriptionId: null, renewalDate: null },
+        }).catch(() => null);
+        app.log.info(`Assinatura de mensagens de campanha cancelada: userId=${userId}`);
+        return reply.send({ received: true });
+      }
+
       if (userId) {
         const freePlan = await prisma.plan.findUnique({ where: { name: 'free' } });
         if (freePlan) {
@@ -1848,6 +2081,60 @@ export default async function billingRoutes(app: FastifyInstance) {
       } else {
         return reply.code(400).send({ error: 'Método de pagamento não suportado. Use pix ou credit_card.' });
       }
+    },
+  );
+
+  /* ── Chatbot Campanhas: saldo de mensagens ──────────────────────────────
+     Pix apenas (sem cartão): o bot manda o "copia e cola" + QR direto no
+     chat — reaproveitado tanto pelas rotas HTTP abaixo (painel web) quanto
+     pelo bot (services/campanhas-chat-commands.ts), ver funções exportadas
+     logo acima de billingRoutes(). ── */
+
+  // ── GET /billing/campanha-packages — lista cota grátis, pacotes e assinatura mensal ──
+  app.get('/campanha-packages', async (_req, reply) => {
+    return reply.send({
+      freeMessagesPerMonth: CAMPANHA_FREE_MESSAGES_PER_MONTH,
+      packages: CAMPANHA_MSG_PACKAGES,
+      monthly:  { unlimited: true, priceBrl: CAMPANHA_MONTHLY_PRICE_BRL },
+    });
+  });
+
+  // ── GET /billing/campanha-balance — saldo efetivo do usuário logado ─────
+  app.get('/campanha-balance', { ...auth }, async (req: any, reply) => {
+    const balance = await getOrCreateCampanhaBalance(req.user.sub);
+    const unlimited = balance.plan === 'monthly';
+    const now = new Date();
+    const paidUsable = balance.paidExpiresAt && balance.paidExpiresAt > now ? balance.paidMessages : 0;
+    return reply.send({
+      unlimited,
+      renewalDate:  unlimited ? balance.renewalDate : null,
+      freeMessages: balance.freeMessages,
+      freeResetAt:  balance.freeResetAt,
+      paidMessages: paidUsable,
+      paidExpiresAt: paidUsable > 0 ? balance.paidExpiresAt : null,
+      totalAvailable: unlimited ? null : balance.freeMessages + paidUsable,
+    });
+  });
+
+  // ── POST /billing/buy-campanha-messages — compra pacote avulso via Pix ──
+  app.post<{ Body: { packageId: string } }>(
+    '/buy-campanha-messages',
+    { ...auth, config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } },
+    async (req: any, reply) => {
+      const result = await buyCampanhaMessagesViaPix(req.user.sub, (req.body as any)?.packageId);
+      if (!result.ok) return reply.code(result.status).send({ error: result.error });
+      return result.data;
+    },
+  );
+
+  // ── POST /billing/campanha-subscribe — assinatura mensal via Pix ────────
+  app.post(
+    '/campanha-subscribe',
+    { ...auth, config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } },
+    async (req: any, reply) => {
+      const result = await subscribeCampanhaMonthlyViaPix(req.user.sub);
+      if (!result.ok) return reply.code(result.status).send({ error: result.error });
+      return result.data;
     },
   );
 }

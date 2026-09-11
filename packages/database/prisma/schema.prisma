@@ -56,6 +56,8 @@ model User {
   cobrancaConfig          CobrancaConfig?
   campanhas               Campanha[]
   campanhaOptOuts         CampanhaOptOut[]
+  campanhaBalance         CampanhaBalance?
+  campanhaListas          CampanhaLista[]
   crmStages               CrmStage[]
   crmContacts             CrmContact[]
   crmActivities           CrmActivity[]
@@ -148,14 +150,28 @@ model WhatsappNumber {
   zapiToken           String? // Token da instância Z-API criada dinamicamente
   privateMode         Boolean              @default(false) // Modo Privado: ativado manualmente pelo usuário (opt-in). Quando true, resumo vai só ao próprio número.
   isPublic            Boolean              @default(false) // Número público do ZapScript: qualquer pessoa pode encaminhar áudio e receber demo grátis. Sem custo contra quota de usuário.
+  publicPurpose       String? // só quando isPublic=true e há mais de um número oficial: 'campanhas' distingue do padrão (suporte/onboarding geral, null)
   // ── Conexão via API oficial da Meta (WhatsApp Cloud API / Embedded Signup) ──
   // Usado apenas para o fluxo de App Review da Meta. Usuários reais seguem no Evolution.
   provider            String               @default("evolution") // 'evolution' | 'meta'
   metaWabaId          String? // WhatsApp Business Account ID
-  metaPhoneNumberId   String? // Phone Number ID (Cloud API)
+  // ID do número atribuído pela própria Meta (Cloud API) — chave estável e globalmente
+  // única, ao contrário de `phoneNumber` (string exibível, sem garantia de unicidade).
+  // @unique aqui é seguro com múltiplos NULL (Postgres não considera NULL = NULL).
+  // O webhook oficial (routes/whatsapp-webhook.ts) resolve o dono da mensagem por este
+  // campo em vez de `phoneNumber`, evitando colisão entre tenants — ver
+  // CAMPANHAS_ARQUITETURA.md §7.6. Constraint adicional (parcial, provider='meta') sobre
+  // `phoneNumber` vive fora do DSL do Prisma — ver migration 20260909_whatsappnumber_meta_unique.
+  metaPhoneNumberId   String?              @unique // Phone Number ID (Cloud API)
   metaBusinessId      String? // Business Manager ID
   metaAccessTokenEnc  String? // Token de acesso AES-256-GCM (encryptStr)
   metaTokenExpiresAt  DateTime? // Expiração do token (se aplicável)
+  // Limite de mensageria e qualidade do número, lidos da Graph API antes de um
+  // disparo de campanha (ver CAMPANHAS_ARQUITETURA.md §5.1/§9) — cache curto,
+  // não uma fonte de verdade duradoura; metaLimitsSyncedAt controla a validade.
+  metaMessagingLimitTier String? // ex.: 'TIER_250' | 'TIER_1K' | 'TIER_10K' | 'TIER_100K' | 'TIER_UNLIMITED'
+  metaQualityRating      String? // 'GREEN' | 'YELLOW' | 'RED' | 'UNKNOWN'
+  metaLimitsSyncedAt     DateTime?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -800,8 +816,17 @@ model CobrancaConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ZapScript Campanhas — disparo em massa via WhatsApp API oficial (Meta Cloud API).
-// Exige template pré-aprovado pela Meta (mensagem fora da janela de 24h de sessão).
+// ZapScript Campanhas — disparo em massa via WhatsApp.
+// channel='meta': API oficial (Meta Cloud API), exige template pré-aprovado
+//   (mensagem fora da janela de 24h de sessão) — compliant, sem risco de banimento.
+// channel='evolution': via número Evolution do próprio usuário (não-oficial),
+//   mensagem livre (messageBody). Guardrails deliberados (ver
+//   CAMPANHAS_ARQUITETURA.md §8): público restrito a quem já conversou com o
+//   número (POST /:id/contatos/from-conversas, nunca CSV livre), ritmo de envio
+//   bem mais lento que o do Meta (delay+jitter calculado no /start, ver
+//   apps/worker/src/modules/campanhas.ts), e exige consentConfirmedAt (usuário
+//   confirmou entender o risco de banimento do PRÓPRIO número, que também serve
+//   core/atende/copiloto) antes de iniciar.
 // ─────────────────────────────────────────────────────────────────────────────
 model Campanha {
   id                 String            @id @default(cuid())
@@ -809,14 +834,42 @@ model Campanha {
   whatsappNumberId   String
   name               String
   status             String            @default("draft") // draft|scheduled|running|paused|completed|canceled|failed
-  templateName       String
+  channel            String            @default("meta") // 'meta' | 'evolution'
+  templateName       String? // obrigatório quando channel='meta'
   templateLanguage   String            @default("pt_BR")
   templateComponents Json? // estrutura de componentes do template (header/body/botões) usada no envio
+  messageBody        String? // obrigatório quando channel='evolution' — texto livre, suporta {{nome}}
+  consentConfirmedAt DateTime? // quando o usuário confirmou consentimento/risco no /start
+  consentConfirmedIp String?
+  templateVarCount   Int? // nº de {{n}} no corpo do template (meta) — setado na criação, valida CSV no upload
+  poolNumberIds      String[]          @default([]) // números extras (mesmo canal) pra dividir uma campanha grande — round-robin no /start
+  consecutiveFailures Int              @default(0) // reseta a cada envio OK; N seguidas aciona a auto-pausa (circuit breaker)
+  pausedReason       String? // motivo da pausa AUTOMÁTICA (circuit breaker) — null quando foi o usuário que pausou
   audienceCount      Int               @default(0)
   sentCount          Int               @default(0) // contador incremental — único escritor é o worker (evita drift)
+  processedCount     Int               @default(0) // sent+failed+optout — evita um COUNT(*) a cada contato pra saber se a campanha terminou
+  // ── Sequência/drip (§15.2): um "passo" é uma Campanha inteira, ligada ao pai.
+  // Reaproveita 100% do disparo/scheduler existentes — nenhuma lógica nova de
+  // envio, só criação + auto-agendamento das filhas quando o pai inicia.
+  sequenceParentId  String?
+  sequenceIndex     Int? // 1, 2, 3... (o próprio pai é o "passo 0", implícito)
+  sequenceDelayDays Int? // dias após o startedAt do pai em que este passo agenda
+  sequenceParent    Campanha?         @relation("CampanhaSequence", fields: [sequenceParentId], references: [id], onDelete: Cascade)
+  sequenceSteps     Campanha[]        @relation("CampanhaSequence")
+  // ── A/B test (§15.3): variante B do mesmo conteúdo — só reporta métricas por
+  // variante, sem promoção automática de vencedor. Variante A é o conteúdo
+  // "normal" (templateName/messageBody) já existente.
+  abTestEnabled              Boolean  @default(false)
+  variantBTemplateName       String?
+  variantBTemplateLanguage   String?
+  variantBTemplateComponents Json?
+  variantBTemplateVarCount   Int?
+  variantBMessageBody        String?
   scheduledAt        DateTime?
   startedAt          DateTime?
   completedAt        DateTime?
+  createdViaChat     Boolean           @default(false) // criada pelo Chatbot Campanhas (número oficial ou comando no próprio número)
+  messagesCost       Int? // mensagens debitadas do CampanhaBalance ao disparar (null = criada pelo painel, não metrificada)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -826,6 +879,7 @@ model Campanha {
   @@index([userId])
   @@index([whatsappNumberId])
   @@index([status])
+  @@index([sequenceParentId])
 }
 
 model CampanhaContato {
@@ -834,9 +888,13 @@ model CampanhaContato {
   phone        String
   name         String?
   variables    Json? // valores das variáveis do template para este contato ({{1}}, {{2}}, ...)
-  status       String    @default("pending") // pending|sent|delivered|read|failed|optout
+  status       String    @default("pending") // pending|sent|delivered|read|failed|optout|pending_optin
+  assignedNumberId String? // qual número (primário ou do pool) vai enviar este contato — setado no /start
+  variant      String? // 'A' | 'B' — setado na criação quando Campanha.abTestEnabled; null no caso comum
   wamid        String? // message id da Meta — correlaciona com o status recebido no webhook
   errorMessage String?
+  optinConfirmedAt DateTime? // quando o contato confirmou opt-in nesta campanha (Evolution only)
+  optinTimeoutAt   DateTime? // timeout para resposta do opt-in (auto-optout se expirado)
   sentAt       DateTime?
   deliveredAt  DateTime?
   readAt       DateTime?
@@ -850,6 +908,42 @@ model CampanhaContato {
   @@index([wamid]) // correlação de status recebido no webhook (hot path)
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Listas de números — grupos de contatos salvos e reutilizáveis pelo usuário,
+// independentes de qualquer Campanha. Criadas uma vez (CSV ou colados à mão),
+// depois aplicadas a quantas campanhas quiser via POST /:id/contatos/from-lista
+// (que copia os números pra CampanhaContato — editar a lista depois não afeta
+// campanhas que já a usaram). Ver layout do fluxo "Nova campanha" (wizard).
+// ─────────────────────────────────────────────────────────────────────────────
+model CampanhaLista {
+  id                 String                 @id @default(cuid())
+  userId             String
+  name               String
+  description        String?
+  // Confirmado uma vez na origem dos números (ao criar/editar a lista) em vez
+  // de re-perguntar em toda campanha que reusa a mesma lista — from-lista copia
+  // esse timestamp pra Campanha.consentConfirmedAt quando ainda não setado.
+  consentConfirmedAt DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contatos           CampanhaListaContato[]
+
+  @@index([userId])
+}
+
+model CampanhaListaContato {
+  id        String        @id @default(cuid())
+  listaId   String
+  phone     String
+  name      String?
+  createdAt DateTime      @default(now())
+  lista     CampanhaLista @relation(fields: [listaId], references: [id], onDelete: Cascade)
+
+  @@unique([listaId, phone])
+  @@index([listaId])
+}
+
 model CampanhaOptOut {
   id        String   @id @default(cuid())
   userId    String // dono do número Business — opt-out é por conta, não global
@@ -859,6 +953,65 @@ model CampanhaOptOut {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, phone])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chatbot Campanhas — saldo de mensagens (pré-pago + assinatura mensal,
+// vendido via chat no número oficial dedicado) + estado da conversa. Ledger
+// separado de CreditWallet/CreditTransaction (lib/credit.ts) porque é outra
+// coisa: saldo de MENSAGENS de campanha, não crédito em R$ de indicação.
+// ─────────────────────────────────────────────────────────────────────────────
+model CampanhaBalance {
+  id                  String                        @id @default(cuid())
+  userId              String                        @unique
+  availableMessages   Int                            @default(0) // = freeMessages + paidMessages, denormalizado só pra leitura rápida (saldo total exibido)
+  freeMessages        Int                            @default(0) // cota grátis do mês corrente (30/mês, não cumulativa — resetada, não incrementada)
+  freeResetAt         DateTime? // próximo reset da cota grátis (1º dia do mês seguinte ao último reset)
+  paidMessages        Int                            @default(0) // saldo pago (pacotes pré-pagos avulsos)
+  paidExpiresAt       DateTime? // validade do saldo pago — estendida pra frente (nunca encolhe) a cada compra
+  plan                String? // 'monthly' quando há assinatura Mensal Ilimitado ativa; null = só pré-pago/grátis
+  asaasSubscriptionId String? // assinatura mensal de mensagens — separada da Subscription core (1 usuário só tem 1 Subscription)
+  asaasCustomerId     String?
+  renewalDate         DateTime? // próxima renovação (assinatura mensal ilimitada)
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+  user                User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions        CampanhaBalanceTransaction[]
+}
+
+model CampanhaBalanceTransaction {
+  id            String          @id @default(cuid())
+  balanceId     String
+  balance       CampanhaBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+  type          String // 'purchase' | 'monthly_reset' | 'debit' | 'refund'
+  amount        Int // mensagens — positivo = crédito, negativo = débito
+  balanceAfter  Int
+  referenceType String? // 'asaas_payment' | 'campanha'
+  referenceId   String?
+  createdAt     DateTime        @default(now())
+
+  @@index([balanceId, createdAt])
+}
+
+// Estado da conversa do bot de Campanhas (dono do número gerenciando saldo/
+// criação, ou lead novo em funil de compra) — uma sessão por telefone, tanto
+// pra cliente existente quanto pra lead sem conta ainda (userId nulo até a
+// conta ser criada via onboarding, mesmo padrão de WhatsappOnboardingLead).
+model CampanhaChatSession {
+  id                 String   @id @default(cuid())
+  phone              String   @unique
+  userId             String?
+  stage              String   @default("idle")
+  draftMessageBody   String?
+  draftContactSource String? // 'historico' | 'csv' | 'print'
+  campanhaId         String? // rascunho/campanha em andamento
+  pendingPackageId   String? // pacote/plano sendo comprado (aguardando webhook)
+  pendingChargeId    String? // id da cobrança Asaas em aberto
+  attempts           Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
   @@index([userId])
 }
 
@@ -902,6 +1055,7 @@ model CrmContact {
   numberId       String? // WhatsappNumber de origem, quando importado
   source         String          @default("manual") // 'manual' | 'import_whatsapp'
   lostReason     String?
+  whatsappOptinConfirmedAt DateTime? // quando o contato confirmou opt-in via WhatsApp neste número
   lastActivityAt DateTime        @default(now())
   closedAt       DateTime? // preenchido quando entra em estágio isWon/isLost
   createdAt      DateTime        @default(now())

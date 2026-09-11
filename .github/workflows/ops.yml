@@ -12,6 +12,18 @@
 #
 # COMO O DEPLOY REALMENTE FUNCIONA NESTE SERVIDOR (não é "docker compose
 # pull" — o servidor builda a imagem localmente a partir do código-fonte):
+#   0. (runner do GitHub, antes de tocar no servidor) `prisma migrate deploy`
+#      contra o Supabase via DATABASE_URL — aplica no schema "core" toda
+#      migration do repo ainda pendente. Adicionado depois do incidente de
+#      2026-09-09: até então este workflow nunca rodava isso, e uma migration
+#      podia ficar semanas sem ser aplicada em produção enquanto o código que
+#      já dependia dela ia sendo deployado — quebra silenciosa (a query cai
+#      num catch(()=>null) em vários pontos), não um erro óbvio no deploy.
+#      Falha aqui aborta o job ANTES do build/deploy — não faz sentido subir
+#      código que espera um schema que não existe. Módulos que replicam
+#      schema via runAutoMigrations() no boot da API (Copiloto, Cobrança,
+#      Legendas etc.) continuam funcionando à parte disso, mas o padrão daqui
+#      pra frente é: toda migration nova do Prisma passa por este passo.
 #   1. git clone --depth 1 do master para /root/zapscript-build-new
 #   2. docker build das imagens api/worker com tag :new (isolado — não toca
 #      no que está rodando enquanto builda)
@@ -52,7 +64,14 @@
 #                  a chave/senha de root existente — esta deve ser revogável
 #                  isoladamente (remover a linha do authorized_keys encerra
 #                  o acesso deste workflow sem afetar o resto).
-#   DATABASE_URL   connection string do Supabase (mesma do .env de produção)
+#   DATABASE_URL   connection string do Supabase — pooler em modo TRANSACTION
+#                  (porta 6543, pgbouncer=true; mesma do .env de produção) —
+#                  usada pelos migrate_core_*, pelo `prisma migrate deploy`
+#                  (só como datasource "url") e por qualquer outro uso futuro
+#                  que precise falar com o Postgres direto do runner do GitHub.
+#                  NÃO existe (nem precisa existir) um secret DIRECT_URL — ver
+#                  comentário no passo de migrate: a versão em modo session é
+#                  derivada de DATABASE_URL na hora, trocando só a porta.
 #   ASAAS_API_KEY  necessária só para o action = migrate_core_apply
 
 name: Ops — Vultr / Migração
@@ -118,6 +137,64 @@ jobs:
       group: ops-vultr-remote-ssh
       cancel-in-progress: false
     steps:
+      - name: Checkout (schema Prisma)
+        if: inputs.action == 'deploy'
+        uses: actions/checkout@v4
+
+      # Roda ANTES do build/deploy: aplica no schema "core" (Supabase, via
+      # DATABASE_URL) toda migration do repo que ainda não foi aplicada.
+      # Motivo de existir (incidente 2026-09-09): este workflow builda e sobe
+      # as imagens direto no servidor, mas nunca rodava `prisma migrate
+      # deploy` — só o "core" schema é migrável por aqui; módulos que
+      # replicam schema via runAutoMigrations() no boot da API (Copiloto,
+      # Cobrança, Legendas etc.) não dependem deste passo. Sem isso, código
+      # que referencia uma coluna nova sem a migration correspondente
+      # aplicada quebra em produção de forma silenciosa (query cai num
+      # catch(() => null) em vários pontos do código) — foi exatamente o que
+      # derrubou o roteamento do webhook do WhatsApp por horas no incidente
+      # que motivou este passo (WhatsappNumber.publicPurpose ausente no banco).
+      # Falha aqui interrompe o job antes de buildar/subir código novo — não
+      # faz sentido subir uma versão que espera um schema que não existe.
+      - name: Aplicar migrations Prisma pendentes (schema core)
+        if: inputs.action == 'deploy'
+        working-directory: packages/database
+        # Sem timeout, um hang aqui (visto na prática: nem chega a logar "Prisma
+        # schema loaded" — trava antes disso, provavelmente resolvendo o pacote
+        # via npx, não a conexão em si) prende o job "in_progress" por dezenas de
+        # minutos SEM nenhuma sessão aberta no Postgres (conferido via
+        # pg_stat_activity) — e como o job seguinte (remote-ssh) usa o mesmo
+        # concurrency group (ops-vultr-remote-ssh, cancel-in-progress: false),
+        # todo deploy novo fica preso na fila atrás dele até alguém cancelar à
+        # mão. 5 min é generoso (o caso normal — sucesso ou falha de auth —
+        # sempre resolveu em menos de 1 min nos runs observados).
+        timeout-minutes: 5
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        # schema.prisma declara datasource com url + directUrl. DATABASE_URL é
+        # o pooler Supabase em modo TRANSACTION (porta 6543, pgbouncer=true) —
+        # incompatível com o advisory lock que o motor do Prisma Migrate usa
+        # internamente: conecta normal ("Datasource db..." loga certinho) e
+        # trava pra sempre depois, sem erro nenhum (confirmado no run #84,
+        # 2026-09-09 — travou os 5min do timeout). Um secret DIRECT_URL
+        # separado NÃO resolve sozinho: já existe um configurado apontando pro
+        # host de conexão DIRETA do Supabase (db.<ref>.supabase.co:5432, não
+        # o pooler) — esse host é IPv6-only e inalcançável do runner do GitHub
+        # (P1001, confirmado no run #90, 2026-09-10 — o MESMO erro original
+        # que motivou reaproveitar DATABASE_URL da primeira vez). O que
+        # funciona de fato é o pooler em modo SESSION: mesmo host de
+        # DATABASE_URL, porta 5432 em vez de 6543, sem pgbouncer=true. Deriva
+        # isso na hora a partir de DATABASE_URL em vez de depender de um
+        # secret (que precisaria ficar sincronizado manualmente e já mostrou
+        # ter o valor errado uma vez).
+        run: |
+          export DIRECT_URL=$(node -e "
+            const u = new URL(process.env.DATABASE_URL);
+            if (u.port === '6543') u.port = '5432';
+            u.searchParams.delete('pgbouncer');
+            process.stdout.write(u.toString());
+          ")
+          npx --yes prisma@5.22.0 migrate deploy
+
       - name: Configurar chave SSH
         env:
           SSH_KEY:  ${{ secrets.VULTR_SSH_KEY }}

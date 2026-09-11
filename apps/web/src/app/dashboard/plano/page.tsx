@@ -14,8 +14,8 @@ interface Stats {
   minutesTotal: number; minutesPct: number;
   extraMinutes?: number;            // saldo avulso/indicação válido (60 dias)
   extraExpiresAt?: string | null;   // validade do saldo extra
-  planName: string;   // slug: 'free' | 'pro' | 'ultra' | 'executive'
-  planLabel: string;  // exibível: 'Core' | 'Pro' | 'Ultra' | 'Executive'
+  planName: string;   // slug: 'free' | 'pro' | 'executive' | 'profissional' | 'empresas' | 'pro-tester'
+  planLabel: string;  // exibível: 'Core' | 'Pro' | 'Executive' | 'Profissional' | 'Empresas' | 'Pro Tester'
   planStatus: string;
   renewAt: string | null;
   isTester: boolean;

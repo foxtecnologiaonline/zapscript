@@ -27,6 +27,7 @@ import './crm'; // registra o cron de notificação de lembretes vencidos (ZapSc
 import './tarefas'; // registra o cron de tarefas atrasadas (ZapScript Tarefas)
 import './copiloto'; // registra o worker da fila 'copiloto' (ZapScript Copiloto — briefings ao dono)
 import './campanhas-scheduler'; // registra o agendador de disparo automático (ZapScript Campanhas)
+import './modules/campanhas-chat-notifier'; // updates de progresso a cada 30s no chat (Chatbot Campanhas)
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
 // ── Supabase Storage — download/delete de áudios temporários ─────────────────
@@ -1512,14 +1513,10 @@ async function processEvolutionJob(job: Job) {
       return { ok: true, isPublicDemo: true };
     }
 
-    // Modo Privado é OPT-IN: usuário ativa manualmente no painel.
-    // Disponível apenas para planos pagos. Quando ligado (privateMode === true),
-    // a transcrição vai só ao próprio número (nunca cai na conversa do contato).
-    // Desativado em self-notes (áudio que o próprio usuário encaminhou).
-    const usage = await loadUsage(userId);
-    const isPaidPlan  = usage.plan === 'pro';
+    // Modo Privado é OPT-IN: usuário ativa manualmente no painel (disponível para todos).
+    // Quando ligado (privateMode === true), a transcrição vai só ao próprio número
+    // (nunca cai na conversa do contato). Desativado em self-notes (áudio que o próprio usuário encaminhou).
     const isPrivate   = !isSelfNote
-                        && isPaidPlan
                         && !!whatsappNumber.privateMode
                         && !!whatsappNumber.phoneNumber
                         && whatsappNumber.phoneNumber !== 'pending';
@@ -2710,6 +2707,49 @@ async function releaseDueCreditWallets(): Promise<void> {
 
 releaseDueCreditWallets();
 setInterval(releaseDueCreditWallets, 60 * 60 * 1000);
+
+// ── Cleanup: Timeout de respostas de opt-in (campanhas) ───────────
+// Cada 5 min, marca como 'optout' os contatos que não responderam à pergunta de opt-in no prazo
+async function cleanupOptinTimeouts() {
+  try {
+    const timedOut = await prisma.campanhaContato.findMany({
+      where: {
+        status: 'pending_optin',
+        optinTimeoutAt: { lte: new Date() },
+      },
+      select: { id: true, phone: true, campanhaId: true, campanha: { select: { userId: true } } },
+      take: 100,
+    });
+
+    if (timedOut.length === 0) return;
+
+    // Marcar como optout + registrar no CampanhaOptOut
+    const batchSize = 10;
+    for (let i = 0; i < timedOut.length; i += batchSize) {
+      const batch = timedOut.slice(i, i + batchSize);
+      await Promise.all(batch.map((t) =>
+        prisma.$transaction([
+          prisma.campanhaContato.update({
+            where: { id: t.id },
+            data: { status: 'optout', errorMessage: 'Timeout: sem resposta ao opt-in' },
+          }),
+          prisma.campanhaOptOut.upsert({
+            where: { userId_phone: { userId: t.campanha.userId, phone: t.phone } },
+            create: { userId: t.campanha.userId, phone: t.phone, reason: 'TIMEOUT_OPTIN' },
+            update: { reason: 'TIMEOUT_OPTIN' },
+          }),
+        ]).catch(() => null)
+      ));
+    }
+
+    logger.info(`[Campanhas] Cleanup: ${timedOut.length} contato(s) marcado(s) como optout por timeout`);
+  } catch (err: any) {
+    logger.error(`[Campanhas] Falha no cleanup de opt-in timeout: ${err?.message}`);
+  }
+}
+
+cleanupOptinTimeouts();
+setInterval(cleanupOptinTimeouts, 5 * 60 * 1000); // 5 minutos
 
 // ── Graceful shutdown ────────────────────────────────────────────
 process.on('SIGTERM', async () => {

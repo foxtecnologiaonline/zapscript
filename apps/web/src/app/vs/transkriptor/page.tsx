@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     locale: 'pt_BR',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ZapScript vs Transkriptor — Qual é o melhor para o WhatsApp?',
+    description: 'O Transkriptor transcreve arquivos enviados manualmente; o ZapScript converte automaticamente os áudios do seu WhatsApp, em português, no seu próprio número.',
+  },
 };
 
 const schema = {
