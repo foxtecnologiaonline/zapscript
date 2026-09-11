@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 
 /* ─────────────────────────────────────────────────────────────────
    SocialProofToast — notificações rotativas de prova social.
@@ -9,9 +10,25 @@ import { useState, useEffect, useCallback, useRef } from 'react';
    um de cada vez, com fade in/out. As mensagens mesclam dados
    reais da API /demo/stats com variações textuais.
 
+   Só roda nas rotas de topo de funil (home, /lp, /cadastro, /login) —
+   em qualquer outra rota (dashboard etc.) o componente não renderiza
+   nem inicia o polling/timers.
+
    Ciclo: aparece → fica visível 3.5s → fade out 500ms → pausa
-   1.5-3s (aleatório) → próximo item.
+   11.5-13.5s (aleatório) → próximo item. Total entre um toast e
+   outro: ~15-17s.
    ──────────────────────────────────────────────────────────────── */
+
+/* Rotas onde o toast pode aparecer — "LP" cobre a home (que é a
+   landing page principal) e a /lp dedicada (tráfego pago). */
+const ALLOWED_PATHS = ['/', '/lp', '/cadastro', '/login'];
+
+function isAllowedPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return ALLOWED_PATHS.some((p) =>
+    p === '/' ? pathname === '/' : pathname === p || pathname.startsWith(`${p}/`)
+  );
+}
 
 interface LiveStats {
   totalAudios: number;
@@ -25,27 +42,28 @@ interface LiveStats {
 type TemplateFn = (s: LiveStats) => string;
 
 const TEMPLATES: TemplateFn[] = [
-  // ── Aquisição ──
-  (_s) => `+1 conta criada agora`,
-  (_s) => `+1 assinatura Pro ativada`,
+  // ── Volume total ──
+  (s) => `Já são ${fmt(s.totalAudios)} áudios convertidos em texto`,
+  (s) => `Mais de ${fmt(s.totalAudios)} áudios já transcritos na plataforma`,
+  (s) => `${fmt(s.totalAudios)} áudios convertidos — e contando`,
 
-  // ── Volume real (API) ──
-  (s) => `${fmt(s.todayAudios ?? 0)} áudios convertidos hoje`,
-  (s) => `${fmt(s.weekAudios ?? 0)} áudios convertidos esta semana`,
-  (s) => `${fmt(s.totalAudios)} áudios convertidos desde o lançamento`,
+  // ── Hoje / semana ──
+  (s) => `${fmt(s.todayAudios ?? 0)} áudios convertidos nas últimas 24h`,
+  (s) => `Hoje: ${fmt(s.todayAudios ?? 0)} áudios transformados em texto`,
+  (s) => `${fmt(s.weekAudios ?? 0)} áudios convertidos nos últimos 7 dias`,
+  (s) => `Essa semana: ${fmt(s.weekAudios ?? 0)} áudios já processados`,
 
-  // ── Base de usuários (API) ──
-  (s) => `${fmt(s.totalUsers)} pessoas cadastradas`,
+  // ── Tempo economizado ──
+  (s) => `${fmt(s.hoursSaved)}h de áudio que ninguém precisou ouvir`,
+  (s) => `${fmt(s.hoursSaved)}h economizadas em escuta de áudio`,
+  (s) => `Equivalente a ${fmt(Math.round(s.hoursSaved / 24))} dias de escuta poupados`,
+  (s) => `Cerca de ${fmt(Math.round(s.hoursSaved * 60))} minutos de áudio poupados dos seus ouvidos`,
 
-  // ── Valor entregue (API) ──
-  (s) => `${fmt(s.hoursSaved)}h de escuta economizadas`,
+  // ── Médias ──
+  (s) => `Média de ${fmt(Math.round((s.weekAudios ?? 0) / 7))} áudios convertidos por dia essa semana`,
 
-  // ── Infra / produto ──
-  (_s) => `+1 número WhatsApp conectado agora`,
-  (_s) => `99% de precisão em português`,
-
-  // ── Economia de tempo ──
-  (_s) => `Cada áudio convertido em segundos`,
+  // ── Combinado ──
+  (s) => `${fmt(s.todayAudios ?? 0)} áudios hoje, ${fmt(s.weekAudios ?? 0)} essa semana — só cresce`,
 ];
 
 function fmt(n: number): string {
@@ -61,14 +79,18 @@ const FALLBACK: LiveStats = { totalAudios: 1240, totalUsers: 380, hoursSaved: 41
 type Toast = { id: number; text: string };
 
 export default function SocialProofToast() {
+  const pathname = usePathname();
+  const allowed = isAllowedPath(pathname);
+
   const [stats, setStats] = useState<LiveStats>(FALLBACK);
   const [toast, setToast] = useState<Toast | null>(null);
   const nextId = useRef(1);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(true);
 
-  // Puxa stats reais a cada 5 min
+  // Puxa stats reais a cada 5 min — só nas rotas permitidas
   useEffect(() => {
+    if (!allowed) return;
     let cancelled = false;
     const fetchStats = async () => {
       try {
@@ -81,7 +103,7 @@ export default function SocialProofToast() {
     fetchStats();
     const iv = setInterval(fetchStats, 5 * 60 * 1000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, []);
+  }, [allowed]);
 
   // Ciclo de toasts — nunca repete o mesmo consecutivo
   const lastIdx = useRef(-1);
@@ -101,14 +123,19 @@ export default function SocialProofToast() {
     timer.current = setTimeout(() => {
       if (!mounted.current) return;
       setToast(null);
-      // Pausa aleatória entre 1.5s e 3.5s antes do próximo
-      const gap = 1500 + Math.random() * 2000;
+      // Pausa aleatória entre 11.5s e 13.5s antes do próximo
+      // (3.5s visível + pausa = ~15-17s entre um toast e outro)
+      const gap = 11500 + Math.random() * 2000;
       timer.current = setTimeout(showNext, gap);
     }, 3500);
   }, [stats]);
 
-  // Inicia o ciclo
+  // Inicia o ciclo — só nas rotas permitidas
   useEffect(() => {
+    if (!allowed) {
+      setToast(null);
+      return;
+    }
     mounted.current = true;
     // Primeiro toast após 2s
     const init = setTimeout(showNext, 2000);
@@ -117,9 +144,9 @@ export default function SocialProofToast() {
       clearTimeout(init);
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [showNext]);
+  }, [showNext, allowed]);
 
-  if (!toast) return null;
+  if (!allowed || !toast) return null;
 
   return (
     <div
