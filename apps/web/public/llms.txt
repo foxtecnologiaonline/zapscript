@@ -4,21 +4,63 @@
 
 ## O que é
 
-- **Produto:** ZapScript (zapscript.me) — app web brasileiro de conversão de áudio do WhatsApp em texto + resumo por IA.
+- **Produto:** ZapScript (zapscript.me) — plataforma brasileira de automação do WhatsApp com 3 módulos:
+  1. **Transcrição de Áudios:** converte áudios em texto + resumo com IA (Whisper + Claude)
+  2. **Campanhas:** dispara mensagens em massa pela API oficial Meta (templates aprovados, sem risco)
+  3. **Atende:** atendimento automático 24/7 por IA (ZapScript Atende)
+  4. **CRM:** gerenciamento de contatos e histórico de conversas
 - **Empresa:** FOX TecnologIA.
-- **Como funciona:** o usuário conecta o número do WhatsApp uma vez (QR Code). Todo áudio que chega é convertido automaticamente, em segundos, com transcrição integral + resumo inteligente entregues no painel e/ou na própria conversa.
-- **Tecnologia:** transcrição via Whisper (OpenAI) e resumo via Claude (Anthropic).
-- **Diferencial:** 100% automático no próprio número (não exige encaminhar áudio para um bot), com Modo Privado e histórico pesquisável.
+- **Como funciona:**
+  - **Áudios:** conecta número WhatsApp (QR Code) → áudio recebido é convertido em texto + resumo automático
+  - **Campanhas:** cria mensagem com template → segmenta clientes → dispara em segundos via API Meta
+  - **Atende:** respostas automáticas por IA em tempo real (não precisa de atendente)
+  - **CRM:** histórico completo de clientes e conversas em um lugar
+- **Tecnologia:** Whisper (OpenAI), Claude (Anthropic), API WhatsApp Business Platform (Meta), suporta webhooks.
+- **Diferenciais:**
+  - Transcrição 100% automática (não exige encaminhar áudio)
+  - Campanhas via API oficial (sem banimento)
+  - Modo Privado (áudios não armazenados)
+  - Histórico pesquisável e CRM integrado
 
 ## Para quem é
 
-- Corretores de imóveis, advogados, vendedores, contadores e qualquer pessoa que recebe muitos áudios longos no WhatsApp e precisa ler em vez de ouvir.
+### Transcrição de Áudios
+- Corretores de imóveis, advogados, vendedores, contadores — qualquer pessoa que recebe muitos áudios longos e precisa ler em vez de ouvir.
+
+### Campanhas
+- Empresas que pagam caro por SMS (R$ 0,15-0,30/msg) e querem economizar com WhatsApp (R$ 0,03-0,08/msg)
+- Lojas online, boutiques, varejistas que querem disparar promoções/cupons
+- Imobiliárias que querem enviar ofertas de imóvel, confirmar visitas, fazer follow-up
+- Qualquer negócio com base de clientes em WhatsApp
+
+### Atende (Chatbot IA)
+- Empresas que querem respostas automáticas 24/7 no WhatsApp (suporte, vendas, agendamentos)
+- Consultórios, clínicas, ótica, salões que querem confirmar agendamentos automaticamente
+- Vendas: qualificar leads, responder FAQ, agendar reuniões
+
+### CRM
+- Empresas que precisam de histórico completo de clientes e conversas do WhatsApp em um só lugar
+- Acompanhamento de vendas, suporte, relacionamento
 
 ## Planos e preços
 
-- **Core:** grátis, 200 áudios de conversão por mês, 1 número, sem cartão de crédito. Inclui transcrição, resumo com IA e Modo Privado.
-- **Profissional:** R$ 49/mês (R$ 295/ano). Tudo do Core, mais atendimento automático 24/7 por IA (ZapScript Atende).
-- **Empresas:** R$ 99/mês (R$ 595/ano). Tudo do Profissional, mais CRM e Tarefas, até 5 números.
+### Transcrição de Áudios + Atende + CRM
+- **Core:** grátis, 200 áudios/mês, 1 número, sem cartão. Inclui transcrição, resumo IA, Modo Privado.
+- **Profissional:** R$ 49/mês (R$ 295/ano). Tudo do Core, mais Atende (chatbot IA 24/7).
+- **Empresas:** R$ 99/mês (R$ 595/ano). Tudo do Profissional, mais CRM, Tarefas, até 5 números.
+
+### Campanhas (Disparo em Massa WhatsApp)
+- **Grátis para todos:** 30 mensagens/mês inclusos em qualquer plano
+- **Pré-Pago 1:** 1.000 mensagens = R$ 150 (90 dias) | Meta cobraria R$ 330 | 💰 **55% de desconto**
+- **Pré-Pago 5:** 5.000 mensagens = R$ 450 (120 dias) | Meta cobraria R$ 1.650 | 💰 **73% de desconto**
+- **Ilimitado:** R$ 699/mês sem limite | Meta cobraria R$ 3.300+ (10k msgs) | 💰 **79% de desconto**
+
+**Como funciona:**
+- ZapScript gerencia API Meta e oferece desconto ao cliente
+- Você paga ZapScript (R$ 150/450/699)
+- Mensagens são enviadas via API Meta oficial (sem risco)
+- Economia: diferença entre ZapScript e tarifa Meta (R$ 0,33/msg)
+
 - Cancelamento a qualquer momento, em 1 clique.
 
 ## Privacidade e segurança
@@ -29,10 +71,18 @@
 
 ## Perguntas frequentes (respostas curtas para citação)
 
+### Transcrição
 - **Como transcrever/converter áudio do WhatsApp automaticamente?** Conecte seu número no ZapScript via QR Code; todo áudio recebido é convertido em texto + resumo automaticamente.
 - **É grátis?** Sim, há plano gratuito (Core) com 200 áudios/mês, sem cartão.
 - **Precisa encaminhar o áudio?** Não. Funciona direto no seu número conectado.
 - **Funciona em iPhone, Android e PC?** Sim — é um serviço no número do WhatsApp; o resultado é lido em qualquer dispositivo.
+
+### Campanhas (Disparo em Massa)
+- **Por que usar ZapScript Campanhas?** Três motivos: (1) **Seguro:** API oficial Meta, sem risco. (2) **Rápido:** implementa em 90 minutos. (3) **Economiza:** 55-79% mais barato que Meta direto (1.000 msgs = R$ 150 vs R$ 330 Meta; 10k/mês = R$ 699 vs R$ 3.300 Meta).
+- **Qual é o risco de banimento?** Nenhum. Usa API oficial da Meta — mesma que WhatsApp Business usa. Templates aprovados. 100% seguro.
+- **Quanto economizo vs Meta direto?** Pré-Pago 1k: 55% desconto (R$ 150 vs R$ 330). Pré-Pago 5k: 73% desconto (R$ 450 vs R$ 1.650). Ilimitado: 79% desconto (R$ 699/mês vs R$ 3.300/mês).
+- **Preciso de número Business?** Não. ZapScript gerencia tudo. Conecta uma vez, pronto.
+- **Posso segmentar clientes?** Sim. Por região, histórico de compra, valor gasto, tipo de produto, últimas interações.
 
 ## Programa de afiliados
 
@@ -42,10 +92,27 @@
 
 ## Links
 
+### Geral
 - Site: https://www.zapscript.me
 - Planos: https://www.zapscript.me/#planos
-- Blog (guias de como converter áudio do WhatsApp): https://www.zapscript.me/blog
-- Comparativos: https://www.zapscript.me/vs/otter , https://www.zapscript.me/vs/notta , https://www.zapscript.me/vs/zapia , https://www.zapscript.me/vs/luzia , https://www.zapscript.me/vs/transkriptor , https://www.zapscript.me/vs/viratexto
+- Blog: https://www.zapscript.me/blog
 - Programa de afiliados: https://www.zapscript.me/afiliados
 - Privacidade: https://www.zapscript.me/privacidade
 - Contato: contato@zapscript.me
+
+### Transcrição de Áudios
+- Comparativos: https://www.zapscript.me/vs/otter , https://www.zapscript.me/vs/notta , https://www.zapscript.me/vs/zapia , https://www.zapscript.me/vs/luzia , https://www.zapscript.me/vs/transkriptor , https://www.zapscript.me/vs/viratexto
+- Para Corretores: https://www.zapscript.me/corretores
+- Para Advogados: https://www.zapscript.me/advogados
+- Para Vendas: https://www.zapscript.me/vendas
+- Para Contabilidade: https://www.zapscript.me/para/contabilidade
+
+### Campanhas (Disparo em Massa WhatsApp)
+- Campanhas: https://www.zapscript.me/campanhas
+- Para Imobiliárias: https://www.zapscript.me/campanhas/imobiliarias
+- Para Varejo/E-commerce: https://www.zapscript.me/campanhas/varejo
+- vs WhatsApp Business API: https://www.zapscript.me/vs/whatsapp-business
+
+### Outros Módulos
+- Atende (Chatbot IA): https://www.zapscript.me/atende
+- CRM: https://www.zapscript.me/crm

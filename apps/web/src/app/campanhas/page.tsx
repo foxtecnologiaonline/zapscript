@@ -2,16 +2,16 @@ import type { Metadata } from 'next';
 import CampanhasLandingClient from './CampanhasLandingClient';
 
 export const metadata: Metadata = {
-  title: 'ZapScript Campanhas — Disparo em Massa Oficial no WhatsApp (API Meta)',
+  title: 'ZapScript Campanhas — Disparo em Massa WhatsApp 55-79% Mais Barato que Meta Direto',
   description:
-    'Perdeu o disparo em massa depois que a Meta reforçou o combate a bots não autorizados? O ZapScript Campanhas dispara pela API oficial da Meta — templates aprovados, opt-out automático, sem risco de banimento. Grátis pra todos os usuários.',
+    'Dispare em massa pelo WhatsApp usando API oficial da Meta — 55-79% mais barato que comprar direto. Templates aprovados, opt-out automático, sem risco de banimento. Grátis com 30 msgs/mês. Implanta em 90 minutos.',
   keywords:
-    'disparo em massa whatsapp, api oficial whatsapp business, whatsapp business platform, campanha whatsapp compliant, envio em massa whatsapp, bot whatsapp banido, alternativa bot whatsapp',
+    'disparo em massa whatsapp, campanhas whatsapp barato, api oficial whatsapp business, whatsapp business platform, campanha whatsapp segura, lista de transmissao whatsapp, alternativa bot whatsapp, whatsapp marketing automatizado, disparo em massa mais barato',
   alternates: { canonical: 'https://www.zapscript.me/campanhas' },
   openGraph: {
-    title: 'ZapScript Campanhas — Disparo em Massa Oficial no WhatsApp',
+    title: 'ZapScript Campanhas — 55-79% Mais Barato que Meta Direto',
     description:
-      'Dispare em massa pela API oficial da Meta. Templates aprovados, entrega rastreada e opt-out automático — sem risco de banimento.',
+      'Disparo em massa WhatsApp pela API oficial da Meta. 55-79% de desconto vs comprar direto. Seguro, rápido (90 min), com templates aprovados.',
     url: 'https://www.zapscript.me/campanhas',
     siteName: 'ZapScript',
     locale: 'pt_BR',
@@ -20,8 +20,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ZapScript Campanhas — Disparo em Massa Oficial no WhatsApp',
-    description: 'Dispare em massa pela API oficial da Meta, sem risco de banimento. Grátis pra todos os usuários.',
+    title: 'ZapScript Campanhas — 55-79% Mais Barato',
+    description: 'Disparo em massa WhatsApp 55-79% mais barato que Meta. API oficial, sem risco de banimento, grátis com 30 msgs/mês.',
     images: ['/opengraph-image'],
   },
 };
@@ -90,6 +90,22 @@ const faqSchema = {
       acceptedAnswer: {
         '@type': 'Answer',
         text: 'Contatos que respondem PARAR, SAIR, STOP, CANCELAR ou UNSUBSCRIBE são excluídos automaticamente de futuras campanhas, conforme a LGPD.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Quanto custa o ZapScript Campanhas vs Meta direto?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'ZapScript é 55-79% mais barato que comprar direto da Meta. Exemplos: 1.000 mensagens custam R$150 no ZapScript vs R$330 da Meta (55% de desconto). 5.000 mensagens custam R$450 vs R$1.650 (73% de desconto). Ilimitado custa R$699/mês vs R$3.300/mês (79% de desconto). ZapScript revende a API oficial da Meta com subsídio.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'É realmente mais barato que SMS?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'O custo por mensagem é similar (R$ 0,33 WhatsApp vs R$ 0,15-0,30 SMS), mas WhatsApp tem ROI muito melhor: taxa de abertura de 75% vs 12% no SMS. Mesmo mensagem mais cara, você vende 6x mais. É sobre ROI, não só preço.',
       },
     },
     {
