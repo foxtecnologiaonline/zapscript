@@ -4,7 +4,8 @@ import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
 import { sendMessageViaEvolution } from './services/evolution';
 import {
-  triageConversation, buildBriefing, buildGroupDigest, type CopilotoMessageLike,
+  triageConversation, buildBriefing, buildGroupDigest,
+  type CopilotoMessageLike, type GroupDigestBlock,
 } from './services/copiloto-agent';
 import { validateDraft, isOptOut, hasVulnerabilitySignal } from './services/copiloto-guardrails';
 
@@ -466,23 +467,32 @@ async function runCopilotoGroupDigests() {
 
     for (const { numberId } of numbersWithGroups) {
       const already = await prisma.copilotoGroupDigest.findUnique({ where: { numberId_date: { numberId, date } } });
-      if (already) continue;
+      if (already) {
+        logger.info(`[Copiloto] Digest de grupo: número ${numberId} já processado hoje (${date})`);
+        continue;
+      }
 
       const config = await prisma.copilotoConfig.findUnique({ where: { numberId }, select: { groupDigestHour: true } });
       const digestHour = config?.groupDigestHour ?? GROUP_DIGEST_HOUR_DEFAULT;
-      if (nowHour < digestHour) continue; // esse número ainda não chegou no horário configurado — tenta de novo no próximo poll
+      if (nowHour < digestHour) continue; // esse número ainda não chegou no horário configurado — tenta de novo no próximo poll (log seria ruído: acontece em toda rodada antes do horário)
 
       const number = await prisma.whatsappNumber.findUnique({
         where:  { id: numberId },
         select: { userId: true, zapiInstanceId: true, phoneNumber: true, status: true },
       });
-      if (!number || number.status !== 'connected' || !number.zapiInstanceId || !number.phoneNumber) continue;
+      if (!number || number.status !== 'connected' || !number.zapiInstanceId || !number.phoneNumber) {
+        logger.info(`[Copiloto] Digest de grupo: número ${numberId} não conectado — tenta de novo no próximo poll`);
+        continue;
+      }
 
       const hasCopilotoModule = await prisma.entitlement.findFirst({
         where: { userId: number.userId, productKey: 'copiloto', status: { in: ['active', 'trialing'] } },
         select: { id: true },
       });
-      if (!hasCopilotoModule) continue;
+      if (!hasCopilotoModule) {
+        logger.info(`[Copiloto] Digest de grupo: número ${numberId} sem módulo Copiloto ativo`);
+        continue;
+      }
 
       const groups = await prisma.copilotoGroup.findMany({
         where: { numberId, active: true },
@@ -494,23 +504,24 @@ async function runCopilotoGroupDigests() {
           },
         },
       });
-      if (groups.length === 0) continue;
+      if (groups.length === 0) continue; // groupBy já garantiu >=1 grupo ativo; corrida rara com desativação no meio do poll
 
-      const totalMessages = groups.reduce((s, g) => s + g.messages.length, 0);
-      if (totalMessages === 0) {
+      const groupsWithActivity = groups.filter((g) => g.messages.length > 0);
+      if (groupsWithActivity.length === 0) {
         // Marca o dia como processado mesmo sem envio — silêncio total não gera
         // mensagem nenhuma, mas evita reprocessar o mesmo número o dia todo.
         await prisma.copilotoGroupDigest.create({
           data: { userId: number.userId, numberId, date, groupsIncluded: 0, summaryMd: '' },
         }).catch(() => null);
+        logger.info(`[Copiloto] Digest de grupo: número ${numberId} sem mensagem hoje em nenhum dos ${groups.length} grupo(s) ativo(s)`);
         continue;
       }
 
-      let blocos;
+      let blocos: GroupDigestBlock[];
       try {
         const result = await buildGroupDigest({
           userId: number.userId,
-          groups: groups.map((g) => ({
+          groups: groupsWithActivity.map((g) => ({
             name:     g.name,
             messages: g.messages.map((m) => `${m.senderName || m.senderJid}: ${m.content}`),
           })),
@@ -521,19 +532,24 @@ async function runCopilotoGroupDigests() {
         continue; // tenta de novo no próximo poll do mesmo dia
       }
 
-      const relevantes = blocos.filter((b) => b.decidido || b.pendente);
-      if (relevantes.length === 0) {
-        await prisma.copilotoGroupDigest.create({
-          data: { userId: number.userId, numberId, date, groupsIncluded: groups.length, summaryMd: '' },
-        }).catch(() => null);
-        continue;
-      }
-
-      const summaryMd = relevantes.map((b) => {
-        const lines = [`👥 *${b.grupo}*`];
-        if (b.decidido) lines.push(`• Decidido: ${b.decidido}`);
-        if (b.pendente) lines.push(`• Pendente com você: ${b.pendente} ❗`);
-        if (b.ruido > 0) lines.push(`• Ruído: ${b.ruido} msgs`);
+      // Uma linha por grupo que teve conversa — não só os que a IA marcou como
+      // "decidido"/"pendente". Antes, um dia só com papo sem decisão nenhuma
+      // (comum logo que o grupo é ativado) marcava o dia como processado com
+      // summaryMd vazio: nenhuma mensagem saía e nunca mais tentava de novo
+      // naquele dia, mesmo que o grupo bombasse horas depois. Casa a resposta
+      // da IA pelo nome do grupo; se ela não devolveu bloco pra algum, ainda
+      // assim mostra que teve conversa (ver ESCOPO_COPILOTO.md §4.2).
+      const blocoByName = new Map<string, GroupDigestBlock>(blocos.map((b) => [b.grupo, b]));
+      const summaryMd = groupsWithActivity.map((g) => {
+        const b = blocoByName.get(g.name);
+        const lines = [`👥 *${g.name}*`];
+        if (b?.decidido) lines.push(`• Decidido: ${b.decidido}`);
+        if (b?.pendente) lines.push(`• Pendente com você: ${b.pendente} ❗`);
+        if (!b?.decidido && !b?.pendente) {
+          lines.push(`• Nada exige você hoje (${g.messages.length} msg${g.messages.length === 1 ? '' : 's'})`);
+        } else if (b?.ruido) {
+          lines.push(`• Ruído: ${b.ruido} msgs`);
+        }
         return lines.join('\n');
       }).join('\n\n');
       const msg = [`📋 *Resumo dos grupos — hoje*`, '', summaryMd].join('\n');
@@ -542,10 +558,10 @@ async function runCopilotoGroupDigests() {
         logger.error(`[Copiloto] ❌ Falha ao entregar digest de grupo (número ${numberId}): ${err.message}`));
 
       await prisma.copilotoGroupDigest.create({
-        data: { userId: number.userId, numberId, date, groupsIncluded: relevantes.length, summaryMd },
+        data: { userId: number.userId, numberId, date, groupsIncluded: groupsWithActivity.length, summaryMd },
       }).catch(() => null);
 
-      logger.info(`[Copiloto] ✅ Digest de grupo enviado — número ${numberId} (${relevantes.length}/${groups.length} grupos com destaque)`);
+      logger.info(`[Copiloto] ✅ Digest de grupo enviado — número ${numberId} (${groupsWithActivity.length}/${groups.length} grupos com atividade)`);
     }
   } catch (err: any) {
     logger.error(`[Copiloto] Erro no digest diário de grupo: ${err.message}`);

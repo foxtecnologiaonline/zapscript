@@ -484,7 +484,7 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
         <div className="text-sm text-neutral-600 text-center py-6 rounded-xl border border-neutral-800">Carregando resumos...</div>
       ) : digests.length === 0 ? (
         <div className="text-sm text-neutral-600 text-center py-6 rounded-xl border border-neutral-800">
-          Nenhum resumo com destaque ainda — chega aqui e no seu self-chat assim que sair o primeiro, no horário configurado acima.
+          Nenhum resumo ainda — chega aqui e no seu self-chat assim que sair o primeiro, no horário configurado acima.
         </div>
       ) : (
         <div className="space-y-3">
@@ -495,7 +495,7 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
                   {new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
                 </span>
                 <span className="text-[11px] text-neutral-500">
-                  {d.groupsIncluded} grupo{d.groupsIncluded !== 1 ? 's' : ''} com destaque
+                  {d.groupsIncluded} grupo{d.groupsIncluded !== 1 ? 's' : ''} com conversa
                 </span>
               </div>
               <p className="text-sm text-neutral-300 whitespace-pre-wrap">{d.summaryMd}</p>
