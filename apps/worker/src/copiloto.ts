@@ -448,7 +448,7 @@ logger.info('Worker Copiloto (briefings do dono) iniciado');
 // ─────────────────────────────────────────────────────────────────────────
 
 // Hora padrão pra quem nunca configurou (CopilotoConfig.groupDigestHour é por
-// número, ajustável na tela /app/copiloto → aba Grupos). Env var só entra
+// número, ajustável na tela /dashboard/copiloto → aba Grupos). Env var só entra
 // como fallback de instalação nova/config ausente.
 const GROUP_DIGEST_HOUR_DEFAULT = parseInt(process.env.COPILOTO_GROUP_DIGEST_HOUR || '20', 10);
 const GROUP_DIGEST_POLL_MS = 30 * 60 * 1000; // checa a cada 30 min

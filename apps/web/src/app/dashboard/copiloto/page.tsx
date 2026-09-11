@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import Link from 'next/link';
 import { api } from '@/lib/api';
 
 /**
@@ -12,6 +11,9 @@ import { api } from '@/lib/api';
  *
  * Duas abas: Conversas (Função 1 — briefing individual) e Grupos (Função 2 —
  * opt-in pro resumo diário, única parte que sempre teve tela própria).
+ *
+ * Vive dentro de /dashboard (layout já traz sidebar/nav) — por isso não tem
+ * <main> nem header próprio, diferente de quando morava em /app/copiloto.
  */
 
 interface WNumber {
@@ -484,76 +486,68 @@ export default function CopilotoPage() {
 
   if (loadingNumbers) {
     return (
-      <main className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center">
-        <div className="text-neutral-500">Carregando...</div>
-      </main>
+      <div className="p-4 sm:p-6 max-w-5xl">
+        <div className="text-neutral-500 text-sm">Carregando...</div>
+      </div>
     );
   }
 
   if (notEntitled) {
     return (
-      <main className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center px-5 py-10">
-        <div className="max-w-md w-full rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center">
+      <div className="p-4 sm:p-6 max-w-5xl">
+        <div className="max-w-md rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center">
           <div className="text-4xl mb-4">🎯</div>
-          <h1 className="text-xl font-bold mb-2">Copiloto</h1>
-          <p className="text-neutral-400 mb-6">
+          <h1 className="text-xl font-bold mb-2 text-neutral-100">Copiloto</h1>
+          <p className="text-neutral-400">
             Lê suas conversas, resume pra você e sugere 3 ações — liberado usuário a usuário, não vendido. Fale com o suporte se quiser entrar no MVP.
           </p>
-          <Link href="/app" className="text-sm text-neutral-500 hover:text-neutral-300">← Voltar aos módulos</Link>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
-      <header className="border-b border-neutral-800 bg-neutral-900/60 px-4 sm:px-6 py-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href="/app" className="text-neutral-500 hover:text-neutral-300 text-sm">← Módulos</Link>
-          <h1 className="text-lg font-bold flex items-center gap-2">🎯 Copiloto</h1>
-        </div>
-      </header>
+    <div className="p-4 sm:p-6 max-w-5xl text-neutral-100">
+      <h1 className="text-lg font-bold flex items-center gap-2 mb-4">🎯 Copiloto</h1>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 mb-6 text-sm text-neutral-400">
-          Esta tela é só pra acompanhar — pra agir numa sugestão (enviar, editar, ignorar), responda no próprio WhatsApp,
-          no chat <strong className="text-neutral-200">&ldquo;Mensagens para você mesmo&rdquo;</strong>. Mande
-          <code className="mx-1 px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300">copiloto status</code>
-          por lá pra ver o que está pendente ali também.
-        </div>
-
-        {numbers.length > 1 && (
-          <div className="mb-4">
-            <label className="block text-xs text-neutral-500 mb-1">Número</label>
-            <select
-              value={numberId} onChange={(e) => setNumberId(e.target.value)}
-              className="w-full sm:w-64 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
-            >
-              {numbers.map((n) => (
-                <option key={n.id} value={n.id}>{n.displayName || n.phoneNumber || n.id}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        <div className="flex gap-1 mb-5 border-b border-neutral-800">
-          {(['conversas', 'grupos'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                tab === t ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-neutral-500 hover:text-neutral-300'
-              }`}
-            >
-              {t === 'conversas' ? 'Conversas' : 'Grupos'}
-            </button>
-          ))}
-        </div>
-
-        {tab === 'conversas'
-          ? <ConversasTab numbers={numbers} numberId={numberId} onNotEntitled={onNotEntitled} />
-          : <GruposTab numberId={numberId} onNotEntitled={onNotEntitled} />}
+      <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 mb-6 text-sm text-neutral-400">
+        Esta tela é só pra acompanhar — pra agir numa sugestão (enviar, editar, ignorar), responda no próprio WhatsApp,
+        no chat <strong className="text-neutral-200">&ldquo;Mensagens para você mesmo&rdquo;</strong>. Mande
+        <code className="mx-1 px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300">copiloto status</code>
+        por lá pra ver o que está pendente ali também.
       </div>
-    </main>
+
+      {numbers.length > 1 && (
+        <div className="mb-4">
+          <label className="block text-xs text-neutral-500 mb-1">Número</label>
+          <select
+            value={numberId} onChange={(e) => setNumberId(e.target.value)}
+            className="w-full sm:w-64 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+          >
+            {numbers.map((n) => (
+              <option key={n.id} value={n.id}>{n.displayName || n.phoneNumber || n.id}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div className="flex gap-1 mb-5 border-b border-neutral-800">
+        {(['conversas', 'grupos'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-neutral-500 hover:text-neutral-300'
+            }`}
+          >
+            {t === 'conversas' ? 'Conversas' : 'Grupos'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'conversas'
+        ? <ConversasTab numbers={numbers} numberId={numberId} onNotEntitled={onNotEntitled} />
+        : <GruposTab numberId={numberId} onNotEntitled={onNotEntitled} />}
+    </div>
   );
 }

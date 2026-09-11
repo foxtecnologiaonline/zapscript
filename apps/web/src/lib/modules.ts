@@ -30,9 +30,10 @@ export const MODULE_ICON: Record<string, string> = {
   tarefas: '✅',
 };
 
-/** Rota interna para "Abrir" um módulo contratado. core reutiliza o dashboard atual. */
+/** Rota interna para "Abrir" um módulo contratado. core e copiloto vivem dentro do /dashboard. */
 export function moduleRoute(key: string): string {
   if (key === 'core') return '/dashboard';
+  if (key === 'copiloto') return '/dashboard/copiloto';
   return `/app/${key}`;
 }
 

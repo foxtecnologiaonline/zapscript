@@ -143,7 +143,7 @@ export default function DashboardPage() {
 
       {/* ── Copiloto (só pra quem foi liberado pelo admin — não é vendido) ── */}
       {hasCopiloto && (
-        <Link href="/app/copiloto"
+        <Link href="/dashboard/copiloto"
           className="flex items-center gap-3 rounded-xl px-4 py-3 mb-6 hover:opacity-90 transition-opacity"
           style={{ background: 'linear-gradient(90deg, rgba(16,185,129,.12), rgba(16,185,129,.03))', border: '1px solid rgba(16,185,129,.25)' }}>
           <span className="text-lg flex-shrink-0">🎯</span>

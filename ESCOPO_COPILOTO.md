@@ -60,7 +60,7 @@ decidido (§8), basta promover o `Product`; nenhuma linha do agente muda.
 | Envia sozinho | **Nunca** sem confirmação | Sim, acima do limiar de confiança |
 | Objetivo | Decidir melhor e mais rápido | Não deixar cliente sem resposta |
 | Falha típica | Sugestão ruim → dono ignora (custo baixo) | Resposta errada em nome do negócio (custo alto) |
-| Onde vive | `apps/worker/src/copiloto.ts` + `/app/copiloto` | `apps/worker/src/atende.ts` + `/app/atende` |
+| Onde vive | `apps/worker/src/copiloto.ts` + `/dashboard/copiloto` | `apps/worker/src/atende.ts` + `/app/atende` |
 
 Essa separação é a decisão de arquitetura mais importante do documento. O Copiloto
 é **assistivo, não autônomo**: ele nunca escreve no chat do cliente por conta própria.
@@ -72,7 +72,7 @@ sempre há um humano no gatilho.
 (isso é `campanhas`); um CRM (isso é `crm`, mas o Copiloto alimenta ele).
 
 **Chave do módulo:** `copiloto` — entra em `packages/modules/catalog.ts`, rota
-`/app/copiloto`, gate `requireModule('copiloto')` como qualquer outro módulo.
+`/dashboard/copiloto`, gate `requireModule('copiloto')` como qualquer outro módulo.
 
 ---
 
@@ -116,7 +116,7 @@ Para cada evento que passa na triagem, o Copiloto produz:
 - **Risco de perder** — baixo/médio/alto + o que dispara a perda.
 
 O briefing **nunca** é enviado ao cliente. Vive em `CopilotoBriefing`, aparece no
-canal escolhido (§4) e no painel `/app/copiloto`.
+canal escolhido (§4) e no painel `/dashboard/copiloto`.
 
 ### 2.3 As 3 opções de ação
 
@@ -288,7 +288,7 @@ Por que este é o canal principal: o dono já está no WhatsApp o dia inteiro. U
 produto que exige abrir um painel para ser útil não é usado. E responder "1" é a
 menor fricção possível entre "ver a sugestão" e "a ação acontecer".
 
-### 4.2 Canal secundário — painel `/app/copiloto`
+### 4.2 Canal secundário — painel `/dashboard/copiloto`
 
 Inbox de cards com o briefing, as 3 opções, o histórico do contato e os botões
 Enviar / Editar / Descartar. É onde o dono revisa em lote, ajusta configuração,
@@ -372,7 +372,7 @@ apps/worker/src/copiloto.ts
 | `apps/worker/src/services/copiloto-playbook.ts` | **Novo** — técnicas Specter/Belfort/boas práticas |
 | `apps/worker/src/services/copiloto-guardrails.ts` | **Novo** — validador determinístico pós-geração |
 | `apps/worker/src/services/copiloto-style.ts` | **Novo** — extração e versionamento do perfil |
-| `apps/web/src/app/app/copiloto/*` | **Novo** — inbox, config, grupos, estilo |
+| `apps/web/src/app/dashboard/copiloto/*` | **Novo** — inbox, config, grupos, estilo |
 
 Reaproveitamento direto, sem reconstruir nada: `sendMessageViaEvolution` e
 `downloadAudioFromEvolution` (envio e mídia), `transcribeAudio` (áudio do
@@ -598,7 +598,7 @@ Empresas: hoje esse degrau vende CRM e Tarefas (features), o Copiloto vende
 
 | Fase | Entrega | Critério de saída |
 |---|---|---|
-| **0 — Fundação** ✅ | Módulo no catálogo, schema + migration, gate, fila, config vazia em `/app/copiloto` | Módulo aparece, liga/desliga, nada quebra no Atende |
+| **0 — Fundação** ✅ | Módulo no catálogo, schema + migration, gate, fila, config vazia em `/dashboard/copiloto` | Módulo aparece, liga/desliga, nada quebra no Atende |
 | **1 — Briefing** ✅ | Triagem + briefing + 3 opções, entrega por self-chat, resposta 1/2/3/0 | 10 usuários internos, adoção > 30% |
 | **2 — Estilo** (1 sem) | `CopilotoStyleProfile`, espelho das mensagens do dono, tela editável | Taxa de edição cai entre semana 1 e 3 |
 | **3 — Grupos** (1–2 sem) | Opt-in por grupo, ingestão, resumo diário, retenção | **Bloqueado por revisão jurídica** do consentimento |
