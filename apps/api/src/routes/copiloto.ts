@@ -215,6 +215,17 @@ export default async function copilotoRoutes(app: FastifyInstance) {
         create: { userId, numberId: number.id, groupDigestHour },
       });
 
+      // Destrava o dia de hoje se ele ainda não recebeu resumo de verdade: sem
+      // isso, mudar a hora não adiantava nada — o worker (runCopilotoGroupDigests)
+      // já tinha marcado o número como "processado hoje" e não tentava de novo
+      // até amanhã, mesmo com a hora nova. Só apaga o registro se summaryMd
+      // estiver vazio (nada foi realmente enviado) — nunca mexe num dia que já
+      // teve resumo de verdade entregue, pra não duplicar mensagem.
+      const todayBr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+      await prisma.copilotoGroupDigest.deleteMany({
+        where: { numberId: number.id, date: todayBr, summaryMd: '' },
+      }).catch(() => null);
+
       return { ok: true, groupDigestHour };
     },
   );
