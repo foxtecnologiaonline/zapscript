@@ -28,10 +28,12 @@
 - Corretores de imóveis, advogados, vendedores, contadores — qualquer pessoa que recebe muitos áudios longos e precisa ler em vez de ouvir.
 
 ### Campanhas
-- Empresas que pagam caro por SMS (R$ 0,15-0,30/msg) e querem economizar com WhatsApp (R$ 0,03-0,08/msg)
+- Empresas que querem disparar mensagens em massa no WhatsApp (API oficial, sem risco de banimento)
 - Lojas online, boutiques, varejistas que querem disparar promoções/cupons
-- Imobiliárias que querem enviar ofertas de imóvel, confirmar visitas, fazer follow-up
-- Qualquer negócio com base de clientes em WhatsApp
+- Imobiliárias que querem enviar ofertas de imóvel, confirmar visitas, fazer follow-up (reduz faltas 30-50%)
+- Consultórios dentários e clínicas que precisam confirmar consultas e reduzir falta
+- Farmácias e clínicas que precisam notificar pacientes sobre receita pronta, agendamentos, medicações
+- Qualquer negócio com base de clientes em WhatsApp que quer 6x melhor taxa de abertura vs SMS
 
 ### Atende (Chatbot IA)
 - Empresas que querem respostas automáticas 24/7 no WhatsApp (suporte, vendas, agendamentos)
@@ -108,10 +110,14 @@
 - Para Contabilidade: https://www.zapscript.me/para/contabilidade
 
 ### Campanhas (Disparo em Massa WhatsApp)
-- Campanhas: https://www.zapscript.me/campanhas
-- Para Imobiliárias: https://www.zapscript.me/campanhas/imobiliarias
-- Para Varejo/E-commerce: https://www.zapscript.me/campanhas/varejo
-- vs WhatsApp Business API: https://www.zapscript.me/vs/whatsapp-business
+- Campanhas (Hub): https://www.zapscript.me/campanhas (economia 55-79% vs Meta direto)
+- Para Imobiliárias: https://www.zapscript.me/campanhas/imobiliarias (oferta, agendamento, follow-up)
+- Para Varejo/E-commerce: https://www.zapscript.me/campanhas/varejo (cupom, notificação pedido, abandoned cart)
+- Para Dentistas/Consultórios: https://www.zapscript.me/campanhas/dentistas (confirmação, reduz faltas 30-50%)
+- Para Saúde/Farmácia: https://www.zapscript.me/campanhas/saude (receita pronta, agendamento, lembrete medicação)
+- Blog: Meta vs ZapScript vs SMS: https://www.zapscript.me/blog/meta-vs-zapscript-vs-sms-comparacao-roi (ROI, taxa abertura, conversão)
+- Blog: Como não ser banido: https://www.zapscript.me/blog/como-nao-ser-banido-whatsapp-2026 (segurança, compliance, API oficial)
+- vs WhatsApp Business API: https://www.zapscript.me/vs/whatsapp-business (90 min vs 4 semanas, mesmo custo)
 
 ### Outros Módulos
 - Atende (Chatbot IA): https://www.zapscript.me/atende
