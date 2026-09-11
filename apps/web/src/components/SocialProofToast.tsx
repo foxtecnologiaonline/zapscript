@@ -14,9 +14,9 @@ import { usePathname } from 'next/navigation';
    em qualquer outra rota (dashboard etc.) o componente não renderiza
    nem inicia o polling/timers.
 
-   Ciclo: aparece → fica visível 3.5s → fade out 500ms → pausa
-   11.5-13.5s (aleatório) → próximo item. Total entre um toast e
-   outro: ~15-17s.
+   Ciclo: aparece → fica visível 5.65s → fade out 350ms → pausa
+   24-26s (aleatório) → próximo item. Total entre um toast e
+   outro: ~30-32s.
    ──────────────────────────────────────────────────────────────── */
 
 /* Rotas onde o toast pode aparecer — "LP" cobre a home (que é a
@@ -119,15 +119,15 @@ export default function SocialProofToast() {
     const id = nextId.current++;
     setToast({ id, text });
 
-    // Remove após 3.5s visível + 500ms fade
+    // Remove após 5.65s visível + 350ms fade (= 6s no ar)
     timer.current = setTimeout(() => {
       if (!mounted.current) return;
       setToast(null);
-      // Pausa aleatória entre 11.5s e 13.5s antes do próximo
-      // (3.5s visível + pausa = ~15-17s entre um toast e outro)
-      const gap = 11500 + Math.random() * 2000;
+      // Pausa aleatória entre 24s e 26s antes do próximo
+      // (6s visível + pausa = ~30-32s entre um toast e outro)
+      const gap = 24000 + Math.random() * 2000;
       timer.current = setTimeout(showNext, gap);
-    }, 3500);
+    }, 6000);
   }, [stats]);
 
   // Inicia o ciclo — só nas rotas permitidas
@@ -182,7 +182,7 @@ export default function SocialProofToast() {
       <style jsx>{`
         .social-toast {
           animation: toastIn .4s cubic-bezier(.16,1,.3,1),
-                     toastOut .35s cubic-bezier(.4,0,1,1) 3.15s forwards;
+                     toastOut .35s cubic-bezier(.4,0,1,1) 5.65s forwards;
         }
         @keyframes toastIn {
           from { opacity: 0; transform: translateY(16px) scale(.94); }
