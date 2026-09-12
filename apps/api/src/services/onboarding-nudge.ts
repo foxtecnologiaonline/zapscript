@@ -3,21 +3,66 @@
  *
  * Cobre abandono do onboarding conversacional via WhatsApp (site simultâneo
  * ou número oficial) — mesmo molde de services/lifecycle-whatsapp.ts.
- * Sem resposta há 30-60min: reenvia o passo pendente uma vez (nudgeStuckLead).
- * Ainda sem resposta depois disso (>60min): escala pro Agente de Suporte.
+ *
+ * Ciclo:
+ *   1. Se parado >5min em code_sent → regenera código (pois expira em 3-5min)
+ *   2. Se parado 30-60min → reenvia lembrete (nudgeStuckLead)
+ *   3. Se parado >60min → escala pro Agente de Suporte
  */
 import { prisma } from '../lib/prisma';
-import { nudgeStuckLead, escalateAbandonedLead } from './onboarding-whatsapp';
+import { logger } from '../lib/logger';
+import { nudgeStuckLead, escalateAbandonedLead, getOfficialInstanceName } from './onboarding-whatsapp';
+import { sendText } from './evolution';
+import { requestPairingCode } from './number-provisioning';
 
-const INTERVAL_MS  = 15 * 60 * 1000; // a cada 15 min
-const FIRST_RUN_MS = 5  * 60 * 1000; // 5 min após startup
-
-const NUDGE_FROM_MS = 30 * 60 * 1000; // janela de lembrete: 30-60min sem atualização
-const NUDGE_TO_MS   = 60 * 60 * 1000;
+const INTERVAL_MS         = 15 * 60 * 1000;  // a cada 15 min
+const FIRST_RUN_MS        = 5  * 60 * 1000;  // 5 min após startup
+const REGEN_CODE_AFTER_MS = 5  * 60 * 1000;  // regenerar código após 5 min (expira em 3)
+const NUDGE_FROM_MS       = 30 * 60 * 1000;  // janela de lembrete: 30-60min
+const NUDGE_TO_MS         = 60 * 60 * 1000;
 
 async function runOnce(log: any) {
   try {
     const now = Date.now();
+
+    // ────────────────────────────────────────────────────────────────────
+    // 1. Regenerar código em code_sent se passaram >5 min (código expirou)
+    // ────────────────────────────────────────────────────────────────────
+    const toRegenCode = await prisma.whatsappOnboardingLead.findMany({
+      where: {
+        stage: 'code_sent',
+        updatedAt: { lt: new Date(now - REGEN_CODE_AFTER_MS) },
+      },
+    }).catch(() => [] as any[]);
+
+    let regened = 0;
+    for (const lead of toRegenCode) {
+      if (!lead.numberId) continue;
+      try {
+        const newCode = await requestPairingCode(lead.numberId, lead.phone);
+        if (newCode.ok) {
+          // Enviar mensagem com urgência
+          const officialInstance = await getOfficialInstanceName();
+          if (officialInstance) {
+            await sendText(officialInstance, lead.phone,
+              `Código anterior expirou! Novo código:\n\n*${newCode.code}*\n\n⚠️ *Válido por 3 minutos apenas* — digita agora mesmo!`
+            ).catch(() => null);
+          }
+          // Reset timer (updatedAt) pra não regenerar novamente tão cedo
+          await prisma.whatsappOnboardingLead.update({
+            where: { phone: lead.phone },
+            data: { updatedAt: new Date() },
+          });
+          regened++;
+        }
+      } catch (e: any) {
+        log?.warn?.(`[OnboardingNudge] Falha ao regenerar código ${lead.phone}: ${e.message}`);
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // 2. Lembrete automático (30-60min sem atualização)
+    // ────────────────────────────────────────────────────────────────────
     const windowStart = new Date(now - NUDGE_TO_MS);   // 60min atrás
     const windowEnd   = new Date(now - NUDGE_FROM_MS);  // 30min atrás
 
@@ -35,6 +80,9 @@ async function runOnce(log: any) {
       }
     }
 
+    // ────────────────────────────────────────────────────────────────────
+    // 3. Escalação (>60min sem resposta)
+    // ────────────────────────────────────────────────────────────────────
     const toEscalate = await prisma.whatsappOnboardingLead.findMany({
       where: { stage: { notIn: ['completed', 'escalated'] }, updatedAt: { lt: windowStart } },
     }).catch(() => [] as any[]);
@@ -49,7 +97,7 @@ async function runOnce(log: any) {
       }
     }
 
-    log?.info?.(`[OnboardingNudge] Ciclo concluído — lembretes=${nudged} escalados=${escalated}`);
+    log?.info?.(`[OnboardingNudge] Ciclo — regen=${regened} nudges=${nudged} escalados=${escalated}`);
   } catch (e: any) {
     log?.error?.(`[OnboardingNudge] Erro no ciclo: ${e.message}`);
   }
