@@ -262,7 +262,7 @@ describe('processCampanhaJob', () => {
         whatsappNumber: numeroEvolutionConectado,
       });
       (prisma.campanhaContato.findUnique as jest.Mock).mockResolvedValueOnce({
-        id: 'ct1', status: 'pending', phone: '5511999999999', name: 'João',
+        id: 'ct1', status: 'pending', phone: '5511999999999', name: 'João', optinConfirmedAt: new Date(),
       });
       (sendMessageViaEvolution as jest.Mock).mockResolvedValueOnce({ id: 'evo-msg-1' });
       (prisma.campanha.update as jest.Mock)
@@ -286,7 +286,7 @@ describe('processCampanhaJob', () => {
         whatsappNumber: numeroEvolutionConectado,
       });
       (prisma.campanhaContato.findUnique as jest.Mock).mockResolvedValueOnce({
-        id: 'ct1', status: 'pending', phone: '5511999999999', name: null,
+        id: 'ct1', status: 'pending', phone: '5511999999999', name: null, optinConfirmedAt: new Date(),
       });
       (sendMessageViaEvolution as jest.Mock).mockResolvedValueOnce({ id: 'evo-msg-2' });
       (prisma.campanha.update as jest.Mock)
@@ -413,7 +413,7 @@ describe('A/B test — 2 variantes (§15.3)', () => {
       whatsappNumber: numeroEvolutionConectado,
     });
     (prisma.campanhaContato.findUnique as jest.Mock).mockResolvedValueOnce({
-      id: 'ct1', status: 'pending', phone: '5511999999999', name: 'João', variant: 'B',
+      id: 'ct1', status: 'pending', phone: '5511999999999', name: 'João', variant: 'B', optinConfirmedAt: new Date(),
     });
     (sendMessageViaEvolution as jest.Mock).mockResolvedValueOnce({ id: 'evo-b' });
     (prisma.campanha.update as jest.Mock)
