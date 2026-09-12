@@ -4,7 +4,6 @@
  * - POST /avisos (DB-first-send-second)
  * - GET /config/:numberId (auto-create config)
  */
-import Fastify from 'fastify';
 import { prisma } from '../lib/prisma';
 import { sendText } from '../services/evolution';
 

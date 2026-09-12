@@ -14,7 +14,6 @@ import {
   structureWithClaude,
   AiInputError,
 } from '../services/ai-input';
-import { sendText } from '../services/evolution';
 import { sendTextWithRetry } from '../services/send-with-retry';
 import { exportAtendeCsvStream, csvToString } from '../services/atende-csv-export';
 
@@ -435,7 +434,8 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // WhatsApp), enquanto a conversa está sob takeover — reaproveita sendText()
   // (mesmo helper de convites/campanhas/health-monitor) e grava a mensagem
   // como humanAuthored=true, alimentando também a Feature 5.
-  app.post<{ Params: { id: string }; Body: { message?: string } }>('/conversations/:id/reply', auth, {
+  app.post<{ Params: { id: string }; Body: { message?: string } }>('/conversations/:id/reply', {
+    ...auth,
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
   }, async (req: any, reply) => {
     const { ownerId } = req.teamScope;
