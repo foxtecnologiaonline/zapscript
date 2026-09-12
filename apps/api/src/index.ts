@@ -1187,6 +1187,23 @@ async function runAutoMigrations() {
           FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       END IF;
     END $$`,
+    // Recap semanal de técnica + resumo de grupo semanal (opcional) + undo de
+    // envio + compilação de rajadas + tendência de grupo + watchdog de cron.
+    `ALTER TABLE "CopilotoConfig" ADD COLUMN IF NOT EXISTS "groupDigestFrequency" TEXT NOT NULL DEFAULT 'daily'`,
+    `ALTER TABLE "CopilotoConfig" ADD COLUMN IF NOT EXISTS "lastTechniqueRecapAt" TIMESTAMP(3)`,
+    `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "selfChatBody" TEXT`,
+    `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "deliveredAt" TIMESTAMP(3)`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "sentMessageId" TEXT`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "sentAt" TIMESTAMP(3)`,
+    `ALTER TABLE "CopilotoGroupDigest" ADD COLUMN IF NOT EXISTS "blocksJson" JSONB`,
+    `CREATE TABLE IF NOT EXISTS "CronHeartbeat" (
+      "jobName"          TEXT NOT NULL,
+      "lastOkAt"         TIMESTAMP(3),
+      "lastErrorAt"      TIMESTAMP(3),
+      "lastErrorMessage" TEXT,
+      "updatedAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CronHeartbeat_pkey" PRIMARY KEY ("jobName")
+    )`,
   ];
   // Loga índice + prefixo do SQL antes de cada await: se travar (ex.: lock de
   // uma conexão órfã do container anterior ainda não coletada pelo Postgres),

@@ -82,11 +82,20 @@ interface CopilotoGroupRow {
   active: boolean;
 }
 
+interface CopilotoGroupDigestBlock {
+  grupo: string;
+  decidido: string | null;
+  pendente: string | null;
+  ruido: number;
+  messageCount: number;
+}
+
 interface CopilotoGroupDigestRow {
   id: string;
   date: string; // 'YYYY-MM-DD'
   groupsIncluded: number;
   summaryMd: string; // já vem formatado por grupo ("👥 *Grupo* ...") — ver apps/worker/src/copiloto.ts
+  blocksJson: CopilotoGroupDigestBlock[] | null; // mesmo conteúdo, estruturado — alimenta a tendência abaixo
   createdAt: string;
 }
 
@@ -104,6 +113,19 @@ const SUGGESTION_STATUS_LABEL: Record<string, string> = {
   offered: 'Oferecida', sent: '✅ Enviada', edited: '✏️ Editada e enviada', discarded: '🚫 Bloqueada',
 };
 const OUTCOME_LABEL: Record<string, string> = { replied: 'Cliente respondeu depois', no_reply: 'Sem resposta ainda' };
+// Português de loja em vez do jargão de técnica de vendas — nem todo dono de
+// pequeno negócio reconhece "fechamento-assumido" ou "ancoragem" de cara.
+const TECHNIQUE_LABEL: Record<string, string> = {
+  'fechamento-assumido': 'Fechar a venda',
+  'qualificacao':        'Perguntar antes de propor',
+  'loop-objecao':        'Contornar objeção',
+  'ancoragem':           'Ancorar valor',
+  'prova-social':        'Prova social',
+  'saida-digna':         'Dar saída sem perder a venda',
+  'reciprocidade':       'Reciprocidade',
+  'escuta-ativa':        'Confirmar antes de responder',
+  'proximo-passo':       'Propor próximo passo',
+};
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -122,7 +144,7 @@ function SuggestionCard({ s }: { s: SuggestionRow }) {
     <div className={`rounded-lg border p-3 text-sm ${blocked ? 'border-red-900/60 bg-red-950/20 opacity-70' : 'border-neutral-800 bg-neutral-950'}`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <span className="font-medium text-neutral-200">{s.rank} · {s.title}</span>
-        <span className="text-[10px] text-neutral-500">⟨{s.technique}⟩</span>
+        <span className="text-[10px] text-neutral-500">⟨{TECHNIQUE_LABEL[s.technique] || s.technique}⟩</span>
       </div>
       <p className="text-neutral-400 mt-1 whitespace-pre-wrap">&ldquo;{s.draft}&rdquo;</p>
       <div className="flex items-center gap-2 flex-wrap mt-2 text-[11px]">
@@ -363,6 +385,7 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
   const [busyJid, setBusyJid] = useState<string | null>(null);
 
   const [digestHour, setDigestHour] = useState(20);
+  const [frequency, setFrequency] = useState<'daily' | 'weekly'>('daily');
   const [savingHour, setSavingHour] = useState(false);
   const [hourSaved, setHourSaved] = useState(false);
 
@@ -386,8 +409,8 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
 
   useEffect(() => {
     if (!numberId) return;
-    api.get<{ groupDigestHour: number }>(`/copiloto/numbers/${numberId}/config`)
-      .then((res) => setDigestHour(res.groupDigestHour))
+    api.get<{ groupDigestHour: number; groupDigestFrequency: 'daily' | 'weekly' }>(`/copiloto/numbers/${numberId}/config`)
+      .then((res) => { setDigestHour(res.groupDigestHour); setFrequency(res.groupDigestFrequency ?? 'daily'); })
       .catch(() => null);
   }, [numberId]);
 
@@ -415,6 +438,44 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
     }
   }
 
+  async function saveFrequency(freq: 'daily' | 'weekly') {
+    setFrequency(freq);
+    setSavingHour(true);
+    setHourSaved(false);
+    try {
+      await api.put(`/copiloto/numbers/${numberId}/config`, { groupDigestFrequency: freq });
+      setHourSaved(true);
+      setTimeout(() => setHourSaved(false), 2500);
+    } catch (e: any) {
+      setError(e?.message || 'Não foi possível salvar a frequência.');
+    } finally {
+      setSavingHour(false);
+    }
+  }
+
+  // Tendência (Função 2): agrega os últimos 7 resumos com conteúdo — grupo
+  // mais falado da semana e grupos sem nenhuma decisão/pendência (candidatos a
+  // "vale a pena continuar acompanhando esse grupo?"). Só usa dado que já veio
+  // no fetch dos digests — sem rota nova.
+  const trend = useMemo(() => {
+    const recent = digests.slice(0, 7).flatMap((d) => d.blocksJson ?? []);
+    if (recent.length === 0) return null;
+
+    const byGroup = new Map<string, { messages: number; hadContent: boolean }>();
+    for (const b of recent) {
+      const cur = byGroup.get(b.grupo) ?? { messages: 0, hadContent: false };
+      cur.messages += b.messageCount;
+      if (b.decidido || b.pendente) cur.hadContent = true;
+      byGroup.set(b.grupo, cur);
+    }
+
+    const ranked = [...byGroup.entries()].sort((a, b) => b[1].messages - a[1].messages);
+    const busiest = ranked[0];
+    const quiet = ranked.filter(([, v]) => !v.hadContent).map(([name]) => name);
+
+    return { busiest: busiest ? { name: busiest[0], messages: busiest[1].messages } : null, quiet };
+  }, [digests]);
+
   async function toggle(group: CopilotoGroupRow) {
     setBusyJid(group.groupJid);
     const nextActive = !group.active;
@@ -441,12 +502,21 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
 
       <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 mb-5 flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[220px]">
-          <div className="text-sm font-medium text-neutral-200">Horário do resumo</div>
+          <div className="text-sm font-medium text-neutral-200">Frequência e horário do resumo</div>
           <p className="text-xs text-neutral-500 mt-0.5">
-            A partir de que horário (do dia) o resumo pode sair — chega no seu próprio WhatsApp
+            Diário ou semanal, a partir de que horário pode sair — chega no seu próprio WhatsApp
             (&ldquo;Mensagens para você mesmo&rdquo;), no mesmo número conectado.
           </p>
         </div>
+        <select
+          value={frequency}
+          disabled={savingHour}
+          onChange={(e) => saveFrequency(e.target.value as 'daily' | 'weekly')}
+          className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm disabled:opacity-50"
+        >
+          <option value="daily">Todo dia</option>
+          <option value="weekly">Toda segunda (semanal)</option>
+        </select>
         <select
           value={digestHour}
           disabled={savingHour}
@@ -476,6 +546,22 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
               <span className="text-sm flex-1 min-w-0 truncate">{g.name}</span>
             </label>
           ))}
+        </div>
+      )}
+
+      {trend && (trend.busiest || trend.quiet.length > 0) && (
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 mb-5 text-sm space-y-1.5">
+          <div className="text-xs font-semibold text-neutral-400 mb-1">Tendência (últimos resumos)</div>
+          {trend.busiest && (
+            <p className="text-neutral-300">
+              📈 Grupo mais falado: <strong className="text-neutral-100">{trend.busiest.name}</strong> ({trend.busiest.messages} msgs)
+            </p>
+          )}
+          {trend.quiet.length > 0 && (
+            <p className="text-neutral-400">
+              💤 Sem nada pra decidir há um tempo: {trend.quiet.join(', ')}
+            </p>
+          )}
         </div>
       )}
 
@@ -515,6 +601,7 @@ export default function CopilotoPage() {
   const [loadingNumbers, setLoadingNumbers] = useState(true);
   const [notEntitled, setNotEntitled] = useState(false);
   const [tab, setTab] = useState<'conversas' | 'grupos'>('conversas');
+  const [usage, setUsage] = useState<{ calls: number } | null>(null);
 
   useEffect(() => {
     api.get<WNumber[]>('/numbers')
@@ -525,6 +612,9 @@ export default function CopilotoPage() {
       })
       .catch(() => null)
       .finally(() => setLoadingNumbers(false));
+
+    // Custo de IA do mês — só informativo, não bloqueia nada.
+    api.get<{ calls: number }>('/copiloto/usage').then(setUsage).catch(() => null);
   }, []);
 
   const onNotEntitled = useCallback(() => setNotEntitled(true), []);
@@ -553,7 +643,10 @@ export default function CopilotoPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl text-neutral-100">
-      <h1 className="text-lg font-bold flex items-center gap-2 mb-4">🎯 Copiloto</h1>
+      <h1 className="text-lg font-bold flex items-center gap-2 mb-1">🎯 Copiloto</h1>
+      <p className="text-xs text-neutral-500 mb-4">
+        {usage && usage.calls > 0 ? `${usage.calls} chamada${usage.calls !== 1 ? 's' : ''} de IA este mês` : ' '}
+      </p>
 
       <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 mb-6 text-sm text-neutral-400">
         Esta tela é só pra acompanhar — pra agir numa sugestão (enviar, editar, ignorar), responda no próprio WhatsApp,

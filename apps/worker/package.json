@@ -11,7 +11,7 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.24.3",
+    "@anthropic-ai/sdk": "^0.125.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@prisma/client": "5.22.0",
     "@supabase/supabase-js": "^2.108.0",

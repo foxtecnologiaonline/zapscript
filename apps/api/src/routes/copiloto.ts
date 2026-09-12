@@ -184,49 +184,84 @@ export default async function copilotoRoutes(app: FastifyInstance) {
 
   // ── GET /copiloto/numbers/:numberId/config ──────────────────────────────
   // Só o que tem tela própria (resumo de grupos). O resto (silêncio, limite,
-  // negócio, ligar/desligar) continua só via comando no self-chat — ver
-  // copiloto-commands.ts.
+  // negócio, ligar/desligar, agressividade) continua só via comando no
+  // self-chat — ver copiloto-commands.ts.
   app.get<{ Params: { numberId: string } }>('/numbers/:numberId/config', async (req: any, reply) => {
     const userId = req.user.sub;
     const number = await ownedNumber(userId, req.params.numberId);
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
     const config = await prisma.copilotoConfig.findUnique({ where: { numberId: number.id } });
-    return { groupDigestHour: config?.groupDigestHour ?? 20 };
+    return {
+      groupDigestHour: config?.groupDigestHour ?? 20,
+      groupDigestFrequency: config?.groupDigestFrequency ?? 'daily',
+    };
   });
 
   // ── PUT /copiloto/numbers/:numberId/config ──────────────────────────────
-  app.put<{ Params: { numberId: string }; Body: { groupDigestHour?: number } }>(
+  app.put<{ Params: { numberId: string }; Body: { groupDigestHour?: number; groupDigestFrequency?: string } }>(
     '/numbers/:numberId/config',
     async (req: any, reply) => {
       const userId = req.user.sub;
       const number = await ownedNumber(userId, req.params.numberId);
       if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-      const { groupDigestHour } = req.body || {};
-      if (groupDigestHour === undefined) return reply.code(200).send({ ok: true });
-      if (!Number.isInteger(groupDigestHour) || groupDigestHour < 0 || groupDigestHour > 23) {
-        return reply.code(400).send({ error: 'groupDigestHour precisa ser um número inteiro entre 0 e 23.' });
-      }
+      const { groupDigestHour, groupDigestFrequency } = req.body || {};
+      const data: { groupDigestHour?: number; groupDigestFrequency?: string } = {};
 
-      await prisma.copilotoConfig.upsert({
+      if (groupDigestHour !== undefined) {
+        if (!Number.isInteger(groupDigestHour) || groupDigestHour < 0 || groupDigestHour > 23) {
+          return reply.code(400).send({ error: 'groupDigestHour precisa ser um número inteiro entre 0 e 23.' });
+        }
+        data.groupDigestHour = groupDigestHour;
+      }
+      if (groupDigestFrequency !== undefined) {
+        if (groupDigestFrequency !== 'daily' && groupDigestFrequency !== 'weekly') {
+          return reply.code(400).send({ error: "groupDigestFrequency precisa ser 'daily' ou 'weekly'." });
+        }
+        data.groupDigestFrequency = groupDigestFrequency;
+      }
+      if (Object.keys(data).length === 0) return reply.code(200).send({ ok: true });
+
+      const config = await prisma.copilotoConfig.upsert({
         where:  { numberId: number.id },
-        update: { groupDigestHour },
-        create: { userId, numberId: number.id, groupDigestHour },
+        update: data,
+        create: { userId, numberId: number.id, ...data },
       });
 
-      // Destrava o dia de hoje se ele ainda não recebeu resumo de verdade: sem
-      // isso, mudar a hora não adiantava nada — o worker (runCopilotoGroupDigests)
-      // já tinha marcado o número como "processado hoje" e não tentava de novo
-      // até amanhã, mesmo com a hora nova. Só apaga o registro se summaryMd
-      // estiver vazio (nada foi realmente enviado) — nunca mexe num dia que já
-      // teve resumo de verdade entregue, pra não duplicar mensagem.
+      // Destrava o período atual se ele ainda não recebeu resumo de verdade:
+      // sem isso, mudar a hora (ou a frequência) não adiantava nada — o worker
+      // (runCopilotoGroupDigests) já tinha marcado o número como "processado" e
+      // não tentava de novo, mesmo com a config nova. Só apaga o registro se
+      // summaryMd estiver vazio (nada foi realmente enviado) — nunca mexe num
+      // período que já teve resumo de verdade entregue, pra não duplicar mensagem.
       const todayBr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
       await prisma.copilotoGroupDigest.deleteMany({
         where: { numberId: number.id, date: todayBr, summaryMd: '' },
       }).catch(() => null);
 
-      return { ok: true, groupDigestHour };
+      return { ok: true, groupDigestHour: config.groupDigestHour, groupDigestFrequency: config.groupDigestFrequency };
     },
   );
+
+  // ── GET /copiloto/usage ──────────────────────────────────────────────────
+  // Custo de IA do mês corrente, só das features do Copiloto — AiUsageLog já
+  // gravava isso por userId, só nunca tinha ficado visível pra ninguém.
+  app.get('/usage', async (req: any) => {
+    const userId = req.user.sub;
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const logs = await prisma.aiUsageLog.findMany({
+      where: { userId, feature: { startsWith: 'copiloto_' }, createdAt: { gte: startOfMonth } },
+      select: { inputTokens: true, outputTokens: true },
+    });
+
+    const calls = logs.length;
+    const inputTokens = logs.reduce((s, l) => s + l.inputTokens, 0);
+    const outputTokens = logs.reduce((s, l) => s + l.outputTokens, 0);
+
+    return { calls, inputTokens, outputTokens, since: startOfMonth };
+  });
 }

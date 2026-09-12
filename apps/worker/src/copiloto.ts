@@ -263,14 +263,34 @@ async function processBrief(job: Job<BriefJobData>) {
     select: { question: true, answer: true },
   }).catch(() => [] as Array<{ question: string; answer: string }>);
 
-  const briefing = await buildBriefing({
-    userId,
-    contactName: conversation.contactName,
-    businessContext: config.businessContext,
-    aggressiveness: config.aggressiveness,
-    knowledgeBase: kb,
-    history,
-  });
+  let briefing;
+  try {
+    briefing = await buildBriefing({
+      userId,
+      contactName: conversation.contactName,
+      businessContext: config.businessContext,
+      aggressiveness: config.aggressiveness,
+      knowledgeBase: kb,
+      history,
+    });
+  } catch (err: any) {
+    // Antes disso, uma falha aqui (todos os provedores de IA fora) derrubava o
+    // job inteiro em silêncio — a triagem já tinha decidido que valia a pena
+    // interromper o dono, o custo já foi "gasto", e ele nunca ficava sabendo
+    // que nada chegou. Agora: avisa no self-chat (o job ainda falha e o BullMQ
+    // reprocessa — se der certo na próxima, o dono recebe o briefing normal
+    // depois desse aviso) e registra pra alertar o admin (health-monitor.ts).
+    logger.error(`[Copiloto] ❌ buildBriefing falhou (todos os provedores) — ${contactLabel}: ${err.message}`);
+    await prisma.systemError.create({
+      data: { service: 'copiloto-ai', message: `buildBriefing falhou: ${err.message}`, context: { numberId, feature: 'copiloto_brief' } },
+    }).catch(() => null);
+    await sendMessageViaEvolution(
+      number.zapiInstanceId,
+      number.phoneNumber,
+      `⚠️ Não consegui montar o briefing de *${contactLabel}* agora — os provedores de IA falharam. Vou tentar de novo em breve.`,
+    ).catch(() => null);
+    throw err; // deixa o BullMQ reprocessar — não marca como briefado
+  }
 
   // Ancoragem dos guardrails: só é "fato do negócio" o que já existe na conversa,
   // no contexto do negócio ou na base de conhecimento. Qualquer preço fora disso
@@ -329,24 +349,101 @@ async function processBrief(job: Job<BriefJobData>) {
   }
 
   const sensitive = briefing.sensitive || hasVulnerabilitySignal(lastText);
-  const message = renderBriefingMessage({
+  // Sem rodapé aqui de propósito: o job 'deliver' (compilação de rajadas, ver
+  // abaixo) é quem manda de verdade, alguns segundos depois, e anexa o rodapé
+  // só no envio final — combinando com outro contato do mesmo número que
+  // tenha ficado pronto na mesma janela, se for o caso.
+  const body = renderBriefingMessage({
     contactLabel,
+    lastQuote: lastText,
     briefing,
     offered,
     sensitive,
+    footer: false,
   });
 
-  try {
-    await sendMessageViaEvolution(number.zapiInstanceId, number.phoneNumber, message);
-  } catch (err: any) {
-    // Envio falho não pode reprocessar o job: a IA já foi paga e o briefing já
-    // está gravado. Fica registrado e aparece na próxima interação do dono.
-    logger.error(`[Copiloto] ❌ Falha ao entregar briefing: ${err.message}`);
-  }
+  await prisma.copilotoBriefing.update({
+    where: { id: created.id },
+    data: { selfChatBody: body },
+  }).catch(() => null);
+
+  const deliverBucket = Math.floor(Date.now() / DELIVER_WINDOW_MS);
+  await copilotoQueue.add(
+    'deliver',
+    { numberId },
+    {
+      jobId: `copiloto-deliver-${numberId}-${deliverBucket}`,
+      delay: DELIVER_WINDOW_MS,
+      // Este Queue (instanciado aqui no worker) não herda o defaultJobOptions
+      // do Queue('copiloto') do lado da API (services/queue.ts) — sem isso,
+      // BullMQ usaria attempts:1 (sem retry) pra um job cujo êxito é a única
+      // forma do dono saber que a conversa mereceu atenção.
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 10_000 },
+    },
+  ).catch((err: any) => logger.error(`[Copiloto] ❌ Falha ao enfileirar entrega — ${contactLabel}: ${err.message}`));
 
   await markBriefed();
-  logger.info(`[Copiloto] ✅ Briefing entregue — ${contactLabel} (${offered.length} opção(ões))`);
+  logger.info(`[Copiloto] ✅ Briefing pronto — ${contactLabel} (${offered.length} opção(ões)) — entrega em até ${DELIVER_WINDOW_MS / 1000}s`);
   return { briefingId: created.id, offered: offered.length };
+}
+
+// ── deliver — compila rajadas de contatos diferentes num só envio ──────────
+// Cada processBrief() concluído agenda este job com delay fixo e jobId
+// bucketado por número+janela de tempo — dois briefings do MESMO número
+// prontos dentro da mesma janela colapsam no MESMO job 'deliver' (igual ao
+// padrão de debounce do 'brief'), e um só self-chat sai com os dois.
+const DELIVER_WINDOW_MS = parseInt(process.env.COPILOTO_DELIVER_WINDOW_MS || '8000'); // 8s
+
+async function processDeliver(job: Job<{ numberId: string }>) {
+  const { numberId } = job.data;
+
+  const pending = await prisma.copilotoBriefing.findMany({
+    where: { numberId, deliveredAt: null, selfChatBody: { not: null } },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (pending.length === 0) return { skipped: true, reason: 'nada_pendente' }; // outro job 'deliver' do mesmo bucket já entregou
+
+  const number = await prisma.whatsappNumber.findUnique({
+    where: { id: numberId },
+    select: { zapiInstanceId: true, phoneNumber: true, status: true },
+  });
+  if (!number?.zapiInstanceId || !number.phoneNumber || number.status !== 'connected') {
+    // Número caiu entre o briefing ficar pronto e a entrega — bem raro (janela
+    // de segundos). O sweep de pendências pega isso na próxima rodada horária.
+    logger.info(`[Copiloto] Entrega adiada — número ${numberId} desconectado (${pending.length} briefing(s) no buffer)`);
+    return { skipped: true, reason: 'numero_desconectado' };
+  }
+
+  const last = pending[pending.length - 1];
+  const lastSuggestions = await prisma.copilotoSuggestion.findMany({
+    where: { briefingId: last.id, status: 'offered' },
+    orderBy: { rank: 'asc' },
+    select: { rank: true },
+  });
+  const footer = lastSuggestions.length > 0 ? renderReplyFooter(lastSuggestions.map((s) => s.rank)) : null;
+
+  const text = pending.length === 1
+    ? [pending[0].selfChatBody, footer].filter(Boolean).join('\n\n')
+    : [
+        `📥 *${pending.length} conversas novas*`,
+        pending.map((p) => p.selfChatBody as string).join('\n\n───\n\n'),
+        '_Só a mais recente (a última acima) responde a 1/2/3 por enquanto._',
+        footer,
+      ].filter(Boolean).join('\n\n');
+
+  await sendMessageViaEvolution(number.zapiInstanceId, number.phoneNumber, text).catch((err: any) => {
+    logger.error(`[Copiloto] ❌ Falha ao entregar ${pending.length} briefing(s) — número ${numberId}: ${err.message}`);
+    throw err; // sem marcar deliveredAt — BullMQ reprocessa e tenta nesse mesmo lote de novo
+  });
+
+  await prisma.copilotoBriefing.updateMany({
+    where: { id: { in: pending.map((p) => p.id) } },
+    data: { deliveredAt: new Date() },
+  });
+
+  logger.info(`[Copiloto] ✅ Entregue — número ${numberId} (${pending.length} conversa(s) compilada(s))`);
+  return { delivered: pending.length };
 }
 
 // ── Formatação da mensagem no WhatsApp ───────────────────────────────────────
@@ -360,28 +457,47 @@ const AXIS_LABEL: Record<string, string> = {
   avancar: 'Avançar', qualificar: 'Qualificar', posicionar: 'Posicionar',
 };
 
-// Estrutura fixa e mínima: nome · resumo+intenção · 3 opções (eixo + rascunho)
-// · rodapé de resposta. Temperatura/risco/trava continuam gravados no banco e
-// visíveis em /dashboard/copiloto — tirados daqui pra sobrar só o que muda a
-// decisão do dono na hora. Ver ESCOPO_COPILOTO.md §4.1.
+/** Corta a citação verbatim do cliente pra não inflar a mensagem com um textão. */
+function truncateQuote(text: string, max = 140): string {
+  const t = text.trim().replace(/\s+/g, ' ');
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
+
+/** Rodapé de resposta — extraído pra ser reaproveitado pelo job 'deliver' (rajadas compiladas). */
+export function renderReplyFooter(nums: number[]): string {
+  return `*${nums.join('*, *')}* envia · *${nums[0]}e* edita · *0* ignora`;
+}
+
+// Estrutura fixa e mínima: nome · citação do cliente · resumo+intenção · 3
+// opções (eixo + rascunho) · rodapé de resposta. Temperatura/risco/trava
+// continuam gravados no banco e visíveis em /dashboard/copiloto — tirados
+// daqui pra sobrar só o que muda a decisão do dono na hora. A "observação"
+// (4ª opção implícita: não agir agora) entra na própria linha de resumo em vez
+// de linha própria — mais um corte de compactação. Ver ESCOPO_COPILOTO.md §4.1.
 export function renderBriefingMessage(params: {
   contactLabel: string;
+  lastQuote?: string | null;
   briefing: { summary: string; intent: string; temperature: string; riskLevel: string; blocker: string | null; note: string | null };
   offered: Array<{ rank: number; axis: string; title: string; draft: string; technique: string }>;
   sensitive: boolean;
+  // false = compilação de rajada (ver runCopilotoBriefDelivery): manda sem
+  // rodapé, o job 'deliver' anexa um só rodapé no final do lote combinado.
+  footer?: boolean;
 }): string {
-  const { contactLabel, briefing, offered, sensitive } = params;
+  const { contactLabel, briefing, offered, sensitive, lastQuote } = params;
+  const footer = params.footer ?? true;
   const lines: string[] = [];
 
   lines.push(`🎯 *${contactLabel}*`);
 
+  if (lastQuote?.trim()) lines.push(`_"${truncateQuote(lastQuote)}"_`);
+
   const summaryLine = [
     sensitive ? '🕊️' : null,
     [briefing.summary, briefing.intent ? `(quer: ${briefing.intent})` : null].filter(Boolean).join(' '),
+    briefing.note ? `— ${briefing.note}` : null,
   ].filter(Boolean).join(' ');
   if (summaryLine) lines.push(summaryLine);
-
-  if (briefing.note) lines.push(`💭 ${briefing.note}`);
 
   if (offered.length === 0) {
     lines.push('');
@@ -395,9 +511,10 @@ export function renderBriefingMessage(params: {
     lines.push(`*${o.rank} · ${axisLabel}* "${o.draft}"`);
   }
 
-  const nums = offered.map((o) => o.rank);
-  lines.push('');
-  lines.push(`*${nums.join('*, *')}* envia · *${nums[0]}e* edita · *0* ignora`);
+  if (footer) {
+    lines.push('');
+    lines.push(renderReplyFooter(offered.map((o) => o.rank)));
+  }
 
   return lines.join('\n');
 }
@@ -405,8 +522,9 @@ export function renderBriefingMessage(params: {
 // ── Worker ───────────────────────────────────────────────────────────────────
 
 async function processCopilotoJob(job: Job<any>) {
-  if (job.name === 'ingest') return processIngest(job as Job<IngestJobData>);
-  if (job.name === 'brief')  return processBrief(job as Job<BriefJobData>);
+  if (job.name === 'ingest')  return processIngest(job as Job<IngestJobData>);
+  if (job.name === 'brief')   return processBrief(job as Job<BriefJobData>);
+  if (job.name === 'deliver') return processDeliver(job as Job<{ numberId: string }>);
   logger.warn(`[Copiloto] Job desconhecido: ${job.name}`);
   return { skipped: true, reason: 'job_desconhecido' };
 }
@@ -454,6 +572,34 @@ function groupDigestLocalHour(): number {
   return parseInt(new Date().toLocaleString('en-US', { timeZone: GROUP_TZ, hour: '2-digit', hour12: false }), 10);
 }
 
+// Heartbeat genérico (tabela CronHeartbeat) — lido pelo health-monitor.ts do
+// lado da API pra alertar se um desses pollers parar de rodar. api e worker
+// são processos/imagens Docker separados; o banco é o único jeito de um saber
+// do outro sem acoplar os dois. Nunca lança — heartbeat não pode derrubar o
+// próprio cron que ele está monitorando.
+async function recordHeartbeat(jobName: string, ok: boolean, errorMessage?: string): Promise<void> {
+  // try/catch (não só .catch na promise) — proteção contra o método nem
+  // existir ainda no client (mock de teste, ou client desatualizado num
+  // ambiente que ainda não rodou a migration), o que lançaria de forma
+  // síncrona antes de qualquer .catch conseguir prender o erro.
+  try {
+    await prisma.cronHeartbeat.upsert({
+      where: { jobName },
+      update: ok
+        ? { lastOkAt: new Date() }
+        : { lastErrorAt: new Date(), lastErrorMessage: errorMessage?.slice(0, 500) ?? null },
+      create: {
+        jobName,
+        lastOkAt: ok ? new Date() : null,
+        lastErrorAt: ok ? null : new Date(),
+        lastErrorMessage: ok ? null : (errorMessage?.slice(0, 500) ?? null),
+      },
+    });
+  } catch {
+    /* heartbeat nunca pode derrubar o cron que ele está monitorando */
+  }
+}
+
 async function runCopilotoGroupDigests() {
   const nowHour = groupDigestLocalHour();
   const date = groupDigestDateLabel();
@@ -465,19 +611,35 @@ async function runCopilotoGroupDigests() {
     });
 
     for (const { numberId } of numbersWithGroups) {
-      const already = await prisma.copilotoGroupDigest.findUnique({ where: { numberId_date: { numberId, date } } });
+      const config = await prisma.copilotoConfig.findUnique({
+        where: { numberId },
+        select: { groupDigestHour: true, groupDigestFrequency: true },
+      });
+      const digestHour = config?.groupDigestHour ?? GROUP_DIGEST_HOUR_DEFAULT;
+      const frequency = config?.groupDigestFrequency === 'weekly' ? 'weekly' : 'daily';
+
+      // Semanal: só dispara na segunda-feira, e olha pra semana inteira (não só
+      // o dia) — pra grupo mais devagar que não precisa de resumo todo dia.
+      const isMonday = new Date().toLocaleDateString('en-US', { timeZone: GROUP_TZ, weekday: 'short' }) === 'Mon';
+      if (frequency === 'weekly' && !isMonday) continue;
+
+      const periodStart = frequency === 'weekly'
+        ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA', { timeZone: GROUP_TZ })
+        : date;
+
+      const already = await prisma.copilotoGroupDigest.findFirst({
+        where: { numberId, date: { gte: periodStart } },
+      });
       if (already) {
-        logger.info(`[Copiloto] Digest de grupo: número ${numberId} já processado hoje (${date})`);
+        logger.info(`[Copiloto] Digest de grupo: número ${numberId} já processado neste período (${frequency})`);
         continue;
       }
 
-      const config = await prisma.copilotoConfig.findUnique({ where: { numberId }, select: { groupDigestHour: true } });
-      const digestHour = config?.groupDigestHour ?? GROUP_DIGEST_HOUR_DEFAULT;
-      if (nowHour < digestHour) continue; // esse número ainda não chegou no horário configurado — tenta de novo no próximo poll (log seria ruído: acontece em toda rodada antes do horário)
+      if (frequency === 'daily' && nowHour < digestHour) continue; // esse número ainda não chegou no horário configurado — tenta de novo no próximo poll (log seria ruído: acontece em toda rodada antes do horário)
 
       const number = await prisma.whatsappNumber.findUnique({
         where:  { id: numberId },
-        select: { userId: true, zapiInstanceId: true, phoneNumber: true, status: true },
+        select: { userId: true, zapiInstanceId: true, phoneNumber: true, status: true, user: { select: { name: true } } },
       });
       if (!number || number.status !== 'connected' || !number.zapiInstanceId || !number.phoneNumber) {
         logger.info(`[Copiloto] Digest de grupo: número ${numberId} não conectado — tenta de novo no próximo poll`);
@@ -497,7 +659,7 @@ async function runCopilotoGroupDigests() {
         where: { numberId, active: true },
         include: {
           messages: {
-            where:   { createdAt: { gte: new Date(`${date}T00:00:00-03:00`) } },
+            where:   { createdAt: { gte: new Date(`${periodStart}T00:00:00-03:00`) } },
             orderBy: { createdAt: 'asc' },
             take:    MAX_MESSAGES_PER_GROUP,
           },
@@ -507,12 +669,12 @@ async function runCopilotoGroupDigests() {
 
       const groupsWithActivity = groups.filter((g) => g.messages.length > 0);
       if (groupsWithActivity.length === 0) {
-        // Marca o dia como processado mesmo sem envio — silêncio total não gera
-        // mensagem nenhuma, mas evita reprocessar o mesmo número o dia todo.
+        // Marca o período como processado mesmo sem envio — silêncio total não
+        // gera mensagem nenhuma, mas evita reprocessar o mesmo número à toa.
         await prisma.copilotoGroupDigest.create({
           data: { userId: number.userId, numberId, date, groupsIncluded: 0, summaryMd: '' },
         }).catch(() => null);
-        logger.info(`[Copiloto] Digest de grupo: número ${numberId} sem mensagem hoje em nenhum dos ${groups.length} grupo(s) ativo(s)`);
+        logger.info(`[Copiloto] Digest de grupo: número ${numberId} sem mensagem no período em nenhum dos ${groups.length} grupo(s) ativo(s)`);
         continue;
       }
 
@@ -520,6 +682,7 @@ async function runCopilotoGroupDigests() {
       try {
         const result = await buildGroupDigest({
           userId: number.userId,
+          ownerName: number.user?.name ?? null,
           groups: groupsWithActivity.map((g) => ({
             name:     g.name,
             messages: g.messages.map((m) => `${m.senderName || m.senderJid}: ${m.content}`),
@@ -528,6 +691,9 @@ async function runCopilotoGroupDigests() {
         blocos = result.blocos;
       } catch (err: any) {
         logger.error(`[Copiloto] ❌ Agente (digest de grupo) falhou — número ${numberId}: ${err.message}`);
+        await prisma.systemError.create({
+          data: { service: 'copiloto-ai', message: `buildGroupDigest falhou: ${err.message}`, context: { numberId, feature: 'copiloto_grupo_digest' } },
+        }).catch(() => null);
         continue; // tenta de novo no próximo poll do mesmo dia
       }
 
@@ -539,31 +705,48 @@ async function runCopilotoGroupDigests() {
       // da IA pelo nome do grupo; se ela não devolveu bloco pra algum, ainda
       // assim mostra que teve conversa (ver ESCOPO_COPILOTO.md §4.2).
       const blocoByName = new Map<string, GroupDigestBlock>(blocos.map((b) => [b.grupo, b]));
-      const summaryMd = groupsWithActivity.map((g) => {
+      // blocksJson estruturado — alimenta a tendência de grupo no site (contagem
+      // de mensagens e streak de "sem novidade") sem precisar parsear o markdown.
+      const blocksJson = groupsWithActivity.map((g) => {
         const b = blocoByName.get(g.name);
-        const lines = [`👥 *${g.name}*`];
-        if (b?.decidido) lines.push(`• Decidido: ${b.decidido}`);
-        if (b?.pendente) lines.push(`• Pendente com você: ${b.pendente} ❗`);
-        if (!b?.decidido && !b?.pendente) {
-          lines.push(`• Nada exige você hoje (${g.messages.length} msg${g.messages.length === 1 ? '' : 's'})`);
-        } else if (b?.ruido) {
+        return {
+          grupo: g.name,
+          decidido: b?.decidido ?? null,
+          pendente: b?.pendente ?? null,
+          ruido: b?.ruido ?? 0,
+          messageCount: g.messages.length,
+        };
+      });
+      const summaryMd = blocksJson.map((b) => {
+        const lines = [`👥 *${b.grupo}*`];
+        if (b.decidido) lines.push(`• Decidido: ${b.decidido}`);
+        if (b.pendente) lines.push(`• Pendente com você: ${b.pendente} ❗`);
+        if (!b.decidido && !b.pendente) {
+          lines.push(`• Nada exige você hoje (${b.messageCount} msg${b.messageCount === 1 ? '' : 's'})`);
+        } else if (b.ruido > 0) {
           lines.push(`• Ruído: ${b.ruido} msgs`);
         }
         return lines.join('\n');
       }).join('\n\n');
-      const msg = [`📋 *Resumo dos grupos — hoje*`, '', summaryMd].join('\n');
+      const msg = [
+        frequency === 'weekly' ? '📋 *Resumo dos grupos — esta semana*' : '📋 *Resumo dos grupos — hoje*',
+        '',
+        summaryMd,
+      ].join('\n');
 
       await sendMessageViaEvolution(number.zapiInstanceId, number.phoneNumber, msg).catch((err: any) =>
         logger.error(`[Copiloto] ❌ Falha ao entregar digest de grupo (número ${numberId}): ${err.message}`));
 
       await prisma.copilotoGroupDigest.create({
-        data: { userId: number.userId, numberId, date, groupsIncluded: groupsWithActivity.length, summaryMd },
+        data: { userId: number.userId, numberId, date, groupsIncluded: groupsWithActivity.length, summaryMd, blocksJson },
       }).catch(() => null);
 
       logger.info(`[Copiloto] ✅ Digest de grupo enviado — número ${numberId} (${groupsWithActivity.length}/${groups.length} grupos com atividade)`);
     }
+    await recordHeartbeat('copiloto_group_digest', true);
   } catch (err: any) {
     logger.error(`[Copiloto] Erro no digest diário de grupo: ${err.message}`);
+    await recordHeartbeat('copiloto_group_digest', false, err.message);
   }
 }
 
@@ -592,7 +775,6 @@ async function runCopilotoPendingSweep() {
       select: { userId: true, numberId: true, contactPhone: true, lastMessageAt: true, lastBriefedAt: true },
     });
     const pending = candidates.filter((c) => !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt);
-    if (pending.length === 0) return;
 
     const hourKey = new Date().toISOString().slice(0, 13); // 1 tentativa de reenfileirar por conversa por rodada do sweep
     let enqueued = 0;
@@ -609,12 +791,141 @@ async function runCopilotoPendingSweep() {
     if (enqueued > 0) {
       logger.info(`[Copiloto] Sweep de pendências: ${enqueued}/${pending.length} conversa(s) reenfileirada(s)`);
     }
+
+    // Briefing pronto mas nunca entregue (deliveredAt continua null) — o caso
+    // raro em que o job 'deliver' falha e ninguém mais reenfileira pra aquele
+    // número (markBriefed() já rodou, então o bloco acima não pega). 2 min de
+    // fôlego antes de considerar "preso" — dá tempo do retry normal do próprio
+    // job 'deliver' (attempts:3) resolver sozinho primeiro.
+    const stuckSince = new Date(Date.now() - 2 * 60 * 1000);
+    const stuck = await prisma.copilotoBriefing.findMany({
+      where: { deliveredAt: null, selfChatBody: { not: null }, createdAt: { lt: stuckSince } },
+      select: { numberId: true },
+      distinct: ['numberId'],
+    });
+    let redelivered = 0;
+    for (const { numberId } of stuck) {
+      await copilotoQueue.add(
+        'deliver',
+        { numberId },
+        { jobId: `copiloto-deliver-sweep-${numberId}-${hourKey}`, attempts: 3, backoff: { type: 'exponential', delay: 10_000 } },
+      ).catch(() => null);
+      redelivered++;
+    }
+    if (redelivered > 0) {
+      logger.info(`[Copiloto] Sweep de pendências: ${redelivered} número(s) com entrega presa, reenfileirado(s)`);
+    }
+    await recordHeartbeat('copiloto_pending_sweep', true);
   } catch (err: any) {
     logger.error(`[Copiloto] Erro no sweep de pendências: ${err.message}`);
+    await recordHeartbeat('copiloto_pending_sweep', false, err.message);
   }
 }
 
 runCopilotoPendingSweep();
 setInterval(runCopilotoPendingSweep, PENDING_SWEEP_POLL_MS);
 
-export { copilotoWorker, runCopilotoGroupDigests, runCopilotoPendingSweep };
+// ─────────────────────────────────────────────────────────────────────────
+// Recap semanal de técnica (Função 1) — toda segunda-feira, quantas sugestões
+// de cada técnica foram enviadas e que fração o cliente respondeu depois.
+// O dado (CopilotoSuggestion.technique/outcome) já era gravado; só nunca
+// virava nada de volta pro dono — a promessa de "em 30 dias você aprende a
+// técnica" (ESCOPO_COPILOTO.md §2.3) ficava incompleta sem esse feedback.
+// ─────────────────────────────────────────────────────────────────────────
+
+const TECHNIQUE_RECAP_POLL_MS = 60 * 60 * 1000; // checa a cada hora; só age de fato às segundas
+const RECAP_TZ = 'America/Sao_Paulo';
+const RECAP_MIN_SENT = 5; // amostra mínima — abaixo disso, % de resposta é ruído, não sinal
+
+const TECHNIQUE_LABEL: Record<string, string> = {
+  'fechamento-assumido': 'Fechar a venda',
+  'qualificacao':        'Perguntar antes de propor',
+  'loop-objecao':        'Contornar objeção',
+  'ancoragem':           'Ancorar valor',
+  'prova-social':        'Prova social',
+  'saida-digna':         'Dar saída sem perder a venda',
+  'reciprocidade':       'Reciprocidade',
+  'escuta-ativa':        'Confirmar antes de responder',
+  'proximo-passo':       'Propor próximo passo',
+};
+
+function isRecapDay(): boolean {
+  return new Date().toLocaleDateString('en-US', { timeZone: RECAP_TZ, weekday: 'short' }) === 'Mon';
+}
+
+async function runCopilotoTechniqueRecap() {
+  if (!isRecapDay()) return; // log seria ruído: essa função "acerta" 1 dia por semana, os outros 6 é esperado não fazer nada
+  try {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const configs = await prisma.copilotoConfig.findMany({
+      where: { enabled: true },
+      select: { numberId: true, aggressiveness: true, lastTechniqueRecapAt: true },
+    });
+
+    let sent = 0;
+    for (const config of configs) {
+      if (config.lastTechniqueRecapAt && config.lastTechniqueRecapAt >= weekAgo) continue; // já mandou nos últimos 7 dias
+
+      const number = await prisma.whatsappNumber.findUnique({
+        where: { id: config.numberId },
+        select: { zapiInstanceId: true, phoneNumber: true, status: true },
+      });
+      if (!number?.zapiInstanceId || !number.phoneNumber || number.status !== 'connected') continue;
+
+      const suggestions = await prisma.copilotoSuggestion.findMany({
+        where: { status: { in: ['sent', 'edited'] }, sentAt: { gte: weekAgo }, briefing: { numberId: config.numberId } },
+        select: { technique: true, outcome: true },
+      });
+      if (suggestions.length === 0) continue; // nada enviado essa semana — não há o que recapitular
+
+      const byTechnique = new Map<string, { sent: number; replied: number }>();
+      for (const s of suggestions) {
+        const cur = byTechnique.get(s.technique) ?? { sent: 0, replied: 0 };
+        cur.sent += 1;
+        if (s.outcome === 'replied') cur.replied += 1;
+        byTechnique.set(s.technique, cur);
+      }
+
+      const rows = [...byTechnique.entries()]
+        .map(([technique, v]) => ({
+          technique, sent: v.sent, replied: v.replied,
+          rate: v.sent > 0 ? Math.round((v.replied / v.sent) * 100) : 0,
+        }))
+        .sort((a, b) => b.rate - a.rate);
+
+      const lines = ['📊 *Seu recap da semana*', ''];
+      for (const r of rows) {
+        lines.push(`• ${TECHNIQUE_LABEL[r.technique] ?? r.technique}: ${r.sent} enviada${r.sent === 1 ? '' : 's'}, ${r.rate}% respondeu`);
+      }
+
+      // #11 — nunca troca sozinho (o dono decide tudo que muda o tom do negócio
+      // dele), só sugere quando a amostra é grande o bastante pra significar
+      // algo e a taxa geral está baixa.
+      const totalSent = suggestions.length;
+      const totalReplied = suggestions.filter((s) => s.outcome === 'replied').length;
+      const overallRate = totalSent > 0 ? Math.round((totalReplied / totalSent) * 100) : 0;
+      if (totalSent >= RECAP_MIN_SENT && overallRate < 20) {
+        const gentler = config.aggressiveness === 'direto' ? 'equilibrado' : config.aggressiveness === 'equilibrado' ? 'consultivo' : null;
+        if (gentler) {
+          lines.push('', `💡 Só ${overallRate}% respondeu essa semana. Quer tentar o tom *${gentler}*? Manda *copiloto agressividade ${gentler}*.`);
+        }
+      }
+
+      await sendMessageViaEvolution(number.zapiInstanceId, number.phoneNumber, lines.join('\n')).catch((err: any) =>
+        logger.error(`[Copiloto] ❌ Falha ao entregar recap semanal (número ${config.numberId}): ${err.message}`));
+
+      await prisma.copilotoConfig.update({ where: { numberId: config.numberId }, data: { lastTechniqueRecapAt: new Date() } }).catch(() => null);
+      sent++;
+    }
+    if (sent > 0) logger.info(`[Copiloto] Recap semanal de técnica enviado para ${sent} número(s)`);
+    await recordHeartbeat('copiloto_technique_recap', true);
+  } catch (err: any) {
+    logger.error(`[Copiloto] Erro no recap semanal de técnica: ${err.message}`);
+    await recordHeartbeat('copiloto_technique_recap', false, err.message);
+  }
+}
+
+runCopilotoTechniqueRecap();
+setInterval(runCopilotoTechniqueRecap, TECHNIQUE_RECAP_POLL_MS);
+
+export { copilotoWorker, runCopilotoGroupDigests, runCopilotoPendingSweep, runCopilotoTechniqueRecap };

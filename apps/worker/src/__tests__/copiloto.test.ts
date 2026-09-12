@@ -15,7 +15,7 @@ jest.mock('../lib/prisma', () => ({ prisma: {} }));
 jest.mock('../services/evolution', () => ({ sendMessageViaEvolution: jest.fn() }));
 jest.mock('../services/copiloto-agent', () => ({ triageConversation: jest.fn(), buildBriefing: jest.fn() }));
 
-import { isQuietNow, renderBriefingMessage } from '../copiloto';
+import { isQuietNow, renderBriefingMessage, renderReplyFooter } from '../copiloto';
 
 describe('isQuietNow', () => {
   const TZ = 'America/Sao_Paulo';
@@ -106,5 +106,25 @@ describe('renderBriefingMessage', () => {
       sensitive: false,
     });
     expect(msg).toContain('retorna segunda');
+  });
+
+  it('inclui a citação verbatim do cliente, truncada', () => {
+    const longQuote = 'a'.repeat(200);
+    const msg = renderBriefingMessage({ contactLabel: 'Maria', lastQuote: longQuote, briefing, offered, sensitive: false });
+    expect(msg).toContain('a'.repeat(139) + '…');
+    expect(msg).not.toContain('a'.repeat(141));
+  });
+
+  it('omite o rodapé de resposta quando footer:false (compilação de rajada)', () => {
+    const msg = renderBriefingMessage({ contactLabel: 'Maria', briefing, offered, sensitive: false, footer: false });
+    expect(msg).not.toContain('envia');
+    expect(msg).not.toContain('*1*, *2*');
+  });
+});
+
+describe('renderReplyFooter', () => {
+  it('lista os números oferecidos e as instruções de editar/ignorar', () => {
+    const footer = renderReplyFooter([1, 2, 3]);
+    expect(footer).toBe('*1*, *2*, *3* envia · *1e* edita · *0* ignora');
   });
 });

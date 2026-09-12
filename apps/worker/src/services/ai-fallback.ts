@@ -131,7 +131,12 @@ export async function callAiWithFallback(params: {
         const res = await claude.messages.create({
           model: spec.model,
           max_tokens: params.maxTokens,
-          system: params.system,
+          // Bloco de cache no prompt de sistema — ele é o mesmo texto grande e
+          // estável em toda chamada da mesma feature (o que muda é só o "user").
+          // ~90% de desconto no prefixo cacheado a partir do 2º hit dentro do
+          // TTL (5min por padrão). SDK 0.24.x (antiga) não suportava isso nem
+          // no namespace beta; upgrade pra 0.125.x destravou o campo estável.
+          system: [{ type: 'text', text: params.system, cache_control: { type: 'ephemeral' } }],
           messages: [{ role: 'user', content: params.user }],
         });
         text = textOfAnthropic(res);

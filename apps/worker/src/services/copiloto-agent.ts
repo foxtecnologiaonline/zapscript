@@ -25,10 +25,10 @@ import { logger } from '../lib/logger';
  */
 
 // Triagem roda em toda rajada de mensagem: precisa ser barata. O briefing roda
-// só no que passou pela triagem: pode ser mais caro.
-// (Prompt caching daria ~90% de desconto no prefixo estável, mas o SDK fixado
-//  aqui — @anthropic-ai/sdk 0.24.x — só expõe cache pelo namespace beta. Migrar
-//  o SDK e ligar cache é o próximo ganho óbvio de custo.)
+// só no que passou pela triagem: pode ser mais caro. Prompt caching (~90% de
+// desconto no prefixo estável — o system prompt, que não muda entre chamadas
+// da mesma feature) já está ligado em ai-fallback.ts desde o upgrade do SDK
+// pra 0.125.x (a 0.24.x fixada antes não tinha cache_control estável).
 const TRIAGE_MODELS: ModelSpec[] = buildModelChain({
   anthropic: [process.env.COPILOTO_TRIAGE_MODEL || 'claude-haiku-4-5', 'claude-sonnet-4-6'],
   openaiModel: process.env.COPILOTO_TRIAGE_MODEL_OPENAI || 'gpt-4o-mini',
@@ -242,11 +242,18 @@ export interface GroupDigestBlock {
 
 export async function buildGroupDigest(params: {
   userId: string;
+  ownerName?: string | null;
   groups: GroupDigestInput[];
 }): Promise<{ blocos: GroupDigestBlock[] }> {
-  const user = params.groups
-    .map((g) => `### Grupo: ${g.name}\n${g.messages.length ? g.messages.join('\n') : '(sem mensagens hoje)'}`)
-    .join('\n\n');
+  const user = [
+    // O próprio GROUP_DIGEST_SYSTEM_PROMPT pede "menções diretas ao dono" como
+    // critério de relevância — sem o nome dele aqui, a IA não tinha como saber
+    // quem procurar. Gap real, sem isso a regra nunca tinha efeito prático.
+    params.ownerName ? `Nome do dono do negócio (procure menções diretas a ele nas mensagens): ${params.ownerName}` : null,
+    params.groups
+      .map((g) => `### Grupo: ${g.name}\n${g.messages.length ? g.messages.join('\n') : '(sem mensagens hoje)'}`)
+      .join('\n\n'),
+  ].filter(Boolean).join('\n\n');
 
   const parsed = await callAiWithFallback({
     models: GROUP_DIGEST_MODELS,

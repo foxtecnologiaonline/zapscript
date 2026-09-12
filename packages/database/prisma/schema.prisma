@@ -1206,6 +1206,8 @@ model CopilotoConfig {
   aggressiveness  String         @default("equilibrado") // 'consultivo' | 'equilibrado' | 'direto'
   businessContext String? // o que o negócio faz — usado no prompt do briefing
   groupDigestHour Int            @default(20) // hora local (0-23) a partir da qual o resumo diário de grupos pode sair
+  groupDigestFrequency String    @default("daily") // 'daily' | 'weekly' — Função 2
+  lastTechniqueRecapAt DateTime? // último recap semanal de técnica enviado (Função 1)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   number          WhatsappNumber @relation(fields: [numberId], references: [id], onDelete: Cascade)
@@ -1259,6 +1261,13 @@ model CopilotoBriefing {
   awaitingSince  DateTime? // quando o dono pediu para editar — a janela é curta de propósito (ver copiloto-commands.ts)
   deliveredVia   String? // 'whatsapp'
   actedAt        DateTime?
+  // Compilação de rajadas (Função 1): o texto já sai pronto SEM o rodapé de
+  // resposta (renderBriefingMessage com footer:false) e só é mandado quando o
+  // job 'deliver' (apps/worker/src/copiloto.ts) roda, alguns segundos depois —
+  // tempo de juntar outro contato do mesmo número que tenha ficado pronto na
+  // mesma janela num só envio, em vez de um self-chat por contato.
+  selfChatBody   String?
+  deliveredAt    DateTime? // null = ainda no buffer de compilação, aguardando o job 'deliver'
   createdAt      DateTime             @default(now())
   user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversation   CopilotoConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -1281,6 +1290,8 @@ model CopilotoSuggestion {
   confidence      Float            @default(0)
   status          String           @default("offered") // 'offered' | 'sent' | 'edited' | 'discarded'
   sentText        String? // texto REALMENTE enviado — o diff com draft é o sinal de aprendizado
+  sentMessageId   String? // id da mensagem no WhatsApp (Evolution) — usado pelo "copiloto desfazer"
+  sentAt          DateTime? // quando foi enviada de verdade — abre a janela de 2min do "copiloto desfazer"
   outcome         String? // 'replied' | 'no_reply'
   outcomeAt       DateTime?
   // Compromisso opcional embutido no rascunho (ex.: "te confirmo até as 17h",
@@ -1340,11 +1351,27 @@ model CopilotoGroupDigest {
   date           String
   groupsIncluded Int      @default(0)
   summaryMd      String
+  // Mesmo conteúdo de summaryMd, estruturado por grupo — dá pra agregar
+  // tendência (grupo mais ativo, grupo parado há N dias) sem parsear markdown.
+  // Formato: Array<{ grupo, decidido, pendente, ruido, messageCount }>.
+  blocksJson     Json?
   createdAt      DateTime @default(now())
   user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([numberId, date])
   @@index([userId, createdAt])
+}
+
+// Heartbeat genérico de crons em polling (não-BullMQ) — hoje só o Copiloto usa,
+// mas o nome é neutro de propósito pra outros pollers reaproveitarem depois.
+// Lido pelo health-monitor.ts (api) pra alertar se um cron do worker parou de
+// rodar, já que api e worker são processos separados e só compartilham o banco.
+model CronHeartbeat {
+  jobName          String    @id
+  lastOkAt         DateTime?
+  lastErrorAt      DateTime?
+  lastErrorMessage String?
+  updatedAt        DateTime  @updatedAt
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

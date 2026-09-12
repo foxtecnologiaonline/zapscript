@@ -33,6 +33,7 @@ export interface HealthReport {
     queue:     CheckResult & QueueCounts;
     whatsapp:  CheckResult & { connected: number; mismatches: any[] };
     worker:    CheckResult & { recentProcessed: number; note: string };
+    copiloto:  CheckResult & { aiOutagesLastHour: number; staleCrons: string[] };
   };
   alerts:      string[];
   suggestions: string[];
@@ -273,6 +274,58 @@ async function checkWorker(queue: QueueCounts): Promise<
   }
 }
 
+// ── Check individual: Copiloto (IA + crons do worker) ─────────────────────────
+// api e worker são processos/imagens Docker separados — só o banco liga os
+// dois. "Todos os provedores de IA caíram juntos" (SystemError com
+// service='copiloto-ai', gravado por apps/worker/src/copiloto.ts) e "um cron
+// do worker parou de rodar" (CronHeartbeat, escrito a cada rodada de
+// runCopilotoGroupDigests/runCopilotoPendingSweep/runCopilotoTechniqueRecap)
+// eram invisíveis até agora — só apareciam no docker logs do worker.
+const COPILOTO_CRON_STALE_HOURS: Record<string, number> = {
+  copiloto_group_digest:    3,      // poll a cada 30min
+  copiloto_pending_sweep:   4,      // poll a cada 1h
+  copiloto_technique_recap: 24 * 9, // só roda às segundas — 9 dias cobre 1 semana perdida sem falso positivo
+};
+
+async function checkCopiloto(): Promise<
+  CheckResult & { aiOutagesLastHour: number; staleCrons: string[]; alertMsgs: string[]; suggestions: string[] }
+> {
+  const alertMsgs: string[] = [];
+  const suggestions: string[] = [];
+  try {
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const aiOutagesLastHour = await prisma.systemError.count({
+      where: { service: 'copiloto-ai', createdAt: { gte: hourAgo } },
+    });
+    if (aiOutagesLastHour >= 3) {
+      alertMsgs.push(`🔴 Copiloto: ${aiOutagesLastHour} falha(s) de IA (todos os provedores) na última hora`);
+      suggestions.push('Checar chaves de API (Anthropic/OpenAI/Groq/Gemini) e a env var AI_SKIP_PROVIDERS — provável apagão de todos os provedores ao mesmo tempo');
+    }
+
+    const heartbeats = await (prisma as any).cronHeartbeat.findMany({
+      where: { jobName: { in: Object.keys(COPILOTO_CRON_STALE_HOURS) } },
+    });
+    const byName = new Map(heartbeats.map((h: any) => [h.jobName, h]));
+    const staleCrons: string[] = [];
+    for (const [jobName, staleHours] of Object.entries(COPILOTO_CRON_STALE_HOURS)) {
+      const hb: any = byName.get(jobName);
+      const staleSince = new Date(Date.now() - staleHours * 60 * 60 * 1000);
+      if (!hb?.lastOkAt || hb.lastOkAt < staleSince) {
+        staleCrons.push(jobName);
+        alertMsgs.push(
+          `🔴 Copiloto: cron "${jobName}" sem rodar com sucesso há mais de ${staleHours}h` +
+          (hb?.lastErrorMessage ? ` — último erro: ${hb.lastErrorMessage.slice(0, 150)}` : ' — nunca rodou com sucesso'),
+        );
+        suggestions.push(`Verificar logs do worker pra "${jobName}" — pode estar travado ou o processo reiniciando em loop`);
+      }
+    }
+
+    return { ok: aiOutagesLastHour < 3 && staleCrons.length === 0, aiOutagesLastHour, staleCrons, alertMsgs, suggestions };
+  } catch (e: any) {
+    return { ok: false, aiOutagesLastHour: 0, staleCrons: [], error: e.message, alertMsgs: [`⚠️ Erro ao verificar Copiloto: ${e.message}`], suggestions };
+  }
+}
+
 // ── Sugestões gerais de performance ──────────────────────────────────────────
 function generalSuggestions(report: Omit<HealthReport, 'suggestions'>): string[] {
   const s: string[] = [];
@@ -353,9 +406,10 @@ export async function runHealthCheck(log: any): Promise<HealthReport> {
     checkQueue(),
   ]);
 
-  const [waRes, workerRes] = await Promise.all([
+  const [waRes, workerRes, copilotoRes] = await Promise.all([
     checkWhatsApp(),
     checkWorker(queueRes),
+    checkCopiloto(),
   ]);
 
   const alerts: string[] = [
@@ -364,6 +418,7 @@ export async function runHealthCheck(log: any): Promise<HealthReport> {
     ...queueRes.alertMsgs,
     ...waRes.alertMsgs,
     ...workerRes.alertMsgs,
+    ...copilotoRes.alertMsgs,
   ];
 
   const rawSuggestions: string[] = [
@@ -372,6 +427,7 @@ export async function runHealthCheck(log: any): Promise<HealthReport> {
     ...queueRes.suggestions,
     ...waRes.suggestions,
     ...workerRes.suggestions,
+    ...copilotoRes.suggestions,
   ];
 
   const { alertMsgs: _qa, suggestions: _qs, ...queueCounts } = queueRes;
@@ -386,6 +442,7 @@ export async function runHealthCheck(log: any): Promise<HealthReport> {
       queue:    queueCounts,
       whatsapp: { ok: waRes.ok,    connected: waRes.connected,    mismatches: waRes.mismatches, error: waRes.error },
       worker:   { ok: workerRes.ok, recentProcessed: workerRes.recentProcessed, note: workerRes.note },
+      copiloto: { ok: copilotoRes.ok, aiOutagesLastHour: copilotoRes.aiOutagesLastHour, staleCrons: copilotoRes.staleCrons, error: copilotoRes.error },
     },
     alerts,
   };

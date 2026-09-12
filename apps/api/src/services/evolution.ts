@@ -357,6 +357,35 @@ export async function sendText(instanceNameStr: string, phone: string, message: 
 }
 
 /**
+ * Apaga "para todos" uma mensagem que o próprio número mandou — usado pelo
+ * comando "copiloto desfazer" (janela curta de 2min após enviar uma sugestão).
+ *
+ * NÃO verificado contra uma instância Evolution ao vivo — o sandbox não
+ * alcança doc.evolution-api.com (rede bloqueada) pra confirmar o payload
+ * exato. Rota e shape (`DELETE /chat/deleteMessageForEveryone/:instance`,
+ * body `{ id, remoteJid, fromMe }`) inferidos do controller open-source do
+ * Evolution API. Best-effort: o chamador trata falha sem quebrar o fluxo —
+ * se a versão da instância usar outro shape, o "desfazer" só não funciona,
+ * não derruba nada.
+ */
+export async function deleteMessageForEveryone(
+  instanceNameStr: string, messageId: string, phone: string,
+): Promise<void> {
+  const base  = evolutionBaseUrl();
+  const clean = phone.replace(/\D/g, '');
+  const res = await fetch(`${base}/chat/deleteMessageForEveryone/${instanceNameStr}`, {
+    method:  'DELETE',
+    headers: evolutionHeaders(),
+    body: JSON.stringify({ id: messageId, remoteJid: `${clean}@s.whatsapp.net`, fromMe: true }),
+    signal:  AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Evolution deleteMessageForEveryone falhou (${res.status}): ${text}`);
+  }
+}
+
+/**
  * Envia mensagem de áudio (PTT/nota de voz) via Evolution API.
  * O áudio é enviado como base64 inline — sem depender de URL pública.
  */
