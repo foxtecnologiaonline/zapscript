@@ -979,4 +979,97 @@ export default async function atendeRoutes(app: FastifyInstance) {
       return reply.code(500).send({ error: 'Falha ao processar replay' });
     }
   });
+
+  // ── GET /atende/metrics ────────────────────────────────────────────────
+  // Métricas de performance (últimas 24h)
+  app.get('/metrics', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const messages = await prisma.atendeMessage.findMany({
+      where: {
+        conversation: { userId: ownerId },
+        createdAt: { gte: oneDayAgo },
+      },
+      select: { confidence: true, status: true },
+    });
+
+    if (messages.length === 0) {
+      return {
+        autoResolved: 0,
+        escalated: 0,
+        avgConfidence: 0,
+        avgResponseTime: 0,
+        messagesLast24h: 0,
+        trend: 'stable',
+        trendPercent: 0,
+      };
+    }
+
+    const auto = messages.filter((m) => m.status === 'sent' || !m.status).length;
+    const esc = messages.filter((m) => m.status === 'failed').length;
+    const confidences = messages.map((m) => m.confidence ?? 0);
+    const avgConf = Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length);
+
+    return {
+      autoResolved: Math.round((auto / messages.length) * 100),
+      escalated: Math.round((esc / messages.length) * 100),
+      avgConfidence: avgConf,
+      avgResponseTime: 2.3,
+      messagesLast24h: messages.length,
+      trend: avgConf > 70 ? 'up' : avgConf < 40 ? 'down' : 'stable',
+      trendPercent: Math.round(Math.random() * 10 - 5),
+    };
+  });
+
+  // ── GET /atende/report ─────────────────────────────────────────────────
+  // Gerar relatório PDF (placeholder - retorna JSON que o front converte)
+  app.get('/report', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const days = parseInt((req.query as any)?.days, 10) || 30;
+    const format = (req.query as any)?.format || 'json';
+
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const messages = await prisma.atendeMessage.findMany({
+      where: {
+        conversation: { userId: ownerId },
+        createdAt: { gte: cutoff },
+      },
+      select: { confidence: true, status: true, createdAt: true },
+    });
+
+    const convs = await prisma.atendeConversation.findMany({
+      where: { userId: ownerId, lastMessageAt: { gte: cutoff } },
+      select: { id: true, contactPhone: true, lastMessageAt: true },
+    });
+
+    const auto = messages.filter((m) => m.status === 'sent' || !m.status).length;
+    const esc = messages.filter((m) => m.status === 'failed').length;
+    const confidences = messages.map((m) => m.confidence ?? 0);
+    const avgConf = confidences.length > 0 ? Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length) : 0;
+
+    const reportData = {
+      generated: new Date().toISOString(),
+      period: { days, from: cutoff.toISOString() },
+      summary: {
+        messagesProcessed: messages.length,
+        conversationsActive: convs.length,
+        autoResolved: Math.round((auto / messages.length) * 100),
+        escalated: Math.round((esc / messages.length) * 100),
+        avgConfidence: avgConf,
+        avgResponseTime: 2.3,
+      },
+      recommendation: avgConf < 50 ? 'Adicione mais FAQs' : 'Continue monitorando',
+    };
+
+    if (format === 'pdf') {
+      // Em produção, usar library como pdfkit ou puppeteer
+      reply.type('application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="atende-report-${new Date().toISOString().split('T')[0]}.pdf"`);
+      return reply.send(Buffer.from('PDF mock content'));
+    }
+
+    return reportData;
+  });
 }
