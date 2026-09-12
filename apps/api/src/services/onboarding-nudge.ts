@@ -13,11 +13,12 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { nudgeStuckLead, escalateAbandonedLead, getOfficialInstanceName } from './onboarding-whatsapp';
 import { sendText } from './evolution';
-import { requestPairingCode } from './number-provisioning';
+import { requestPairingCodeWithRetry } from './number-provisioning';
 
 const INTERVAL_MS         = 15 * 60 * 1000;  // a cada 15 min
 const FIRST_RUN_MS        = 5  * 60 * 1000;  // 5 min após startup
 const REGEN_CODE_AFTER_MS = 5  * 60 * 1000;  // regenerar código após 5 min (expira em 3)
+const TIMEOUT_CODE_SENT_MS = 10 * 60 * 1000; // timeout em code_sent: 10 min (código expirado)
 const NUDGE_FROM_MS       = 30 * 60 * 1000;  // janela de lembrete: 30-60min
 const NUDGE_TO_MS         = 60 * 60 * 1000;
 
@@ -39,7 +40,8 @@ async function runOnce(log: any) {
     for (const lead of toRegenCode) {
       if (!lead.numberId) continue;
       try {
-        const newCode = await requestPairingCode(lead.numberId, lead.phone);
+        // Usar retry com backoff para tolerar falhas transitórias
+        const newCode = await requestPairingCodeWithRetry(lead.numberId, lead.phone, log);
         if (newCode.ok) {
           // Enviar mensagem com urgência
           const officialInstance = await getOfficialInstanceName();
@@ -81,6 +83,32 @@ async function runOnce(log: any) {
     }
 
     // ────────────────────────────────────────────────────────────────────
+    // 2.5. Timeout em code_sent (10 min — código expirou)
+    // ────────────────────────────────────────────────────────────────────
+    const toTimeout = await prisma.whatsappOnboardingLead.findMany({
+      where: {
+        stage: 'code_sent',
+        updatedAt: { lt: new Date(now - TIMEOUT_CODE_SENT_MS) },
+      },
+    }).catch(() => [] as any[]);
+
+    let timedOut = 0;
+    for (const lead of toTimeout) {
+      try {
+        await escalateAbandonedLead(lead);
+        const officialInstance = await getOfficialInstanceName();
+        if (officialInstance) {
+          await sendText(officialInstance, lead.phone,
+            `Seu código expirou e não conseguimos conectar. Vou chamar um agente para ajudar. Aguarde!`
+          ).catch(() => null);
+        }
+        timedOut++;
+      } catch (e: any) {
+        log?.warn?.(`[OnboardingNudge] Falha ao timeout ${lead.phone}: ${e.message}`);
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
     // 3. Escalação (>60min sem resposta)
     // ────────────────────────────────────────────────────────────────────
     const toEscalate = await prisma.whatsappOnboardingLead.findMany({
@@ -97,7 +125,7 @@ async function runOnce(log: any) {
       }
     }
 
-    log?.info?.(`[OnboardingNudge] Ciclo — regen=${regened} nudges=${nudged} escalados=${escalated}`);
+    log?.info?.(`[OnboardingNudge] Ciclo — regen=${regened} nudges=${nudged} timeout=${timedOut} escalados=${escalated}`);
   } catch (e: any) {
     log?.error?.(`[OnboardingNudge] Erro no ciclo: ${e.message}`);
   }

@@ -294,6 +294,46 @@ export default async function numberRoutes(app: FastifyInstance) {
     return { ok: true, message: 'Instância resetada. Clique em "Conectar WhatsApp" para criar nova instância.' };
   });
 
+  // ── GET /numbers/:id/onboarding-status ────────────────────────────────────
+  // Status do lead de onboarding (se houver) — evita duplicação de tentativas na Web
+  app.get<{ Params: { id: string } }>('/:id/onboarding-status', auth, async (req: any, reply) => {
+    const { id } = req.params;
+    const userId = req.user.sub;
+
+    const number = await (prisma as any).whatsappNumber.findFirst({ where: { id, userId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    // Buscar lead associado ao número (por phone)
+    if (!number.phoneNumber) {
+      return { stage: null, message: null };  // Sem telefone, sem lead
+    }
+
+    const lead = await prisma.whatsappOnboardingLead.findUnique({
+      where: { phone: number.phoneNumber },
+      select: { stage: true, attempts: true },
+    });
+
+    if (!lead || lead.stage === 'completed') {
+      return { stage: null, message: null };
+    }
+
+    // Retornar status com mensagem amigável
+    const messages: Record<string, string> = {
+      'started': 'Iniciando onboarding...',
+      'awaiting_consent': 'Aguardando seu aceite dos Termos.',
+      'awaiting_email': 'Confirme seu e-mail no WhatsApp.',
+      'confirm_number': 'Confirme o número no WhatsApp.',
+      'code_sent': 'Aguardando conexão via WhatsApp. Digita o código no seu celular!',
+      'escalated': 'Seu caso foi escalado — um agente vai contato em breve.',
+    };
+
+    return {
+      stage: lead.stage,
+      message: messages[lead.stage] || 'Onboarding em andamento...',
+      attempts: lead.attempts,
+    };
+  });
+
   // ── DELETE /numbers/:id ───────────────────────────────────────────────────
   // Remove o número do banco E deleta a instância Evolution
   app.delete<{ Params: { id: string } }>('/:id', auth, async (req: any, reply) => {

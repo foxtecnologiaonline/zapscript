@@ -29,7 +29,7 @@
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { sendText, instanceName as evoInstanceName } from './evolution';
-import { provisionInstance, requestPairingCode } from './number-provisioning';
+import { provisionInstance, requestPairingCode, requestPairingCodeWithRetry } from './number-provisioning';
 import { createPasswordlessAccount } from './account-provisioning';
 import { intakeMessage } from './support-intake';
 import {
@@ -396,7 +396,8 @@ export async function handleReply(
         await escalate(lead, 'provisionInstance falhou em confirm_number', text, messageId);
         return;
       }
-      const pairing = await requestPairingCode(number.id, targetPhone, logger);
+      // Usar retry com backoff para tolerar falhas transitórias da Evolution API
+      const pairing = await requestPairingCodeWithRetry(number.id, targetPhone, logger);
       if (!pairing.ok) {
         await sendOfficial(phone, 'Deu um erro gerando o código agora — vou chamar alguém pra te ajudar. 🙏', instanceNameStr);
         await escalate(lead, 'pairing code falhou em confirm_number', text, messageId);
@@ -512,9 +513,10 @@ export async function nudgeStuckLead(lead: LeadRow): Promise<void> {
       break;
     case 'code_sent': {
       if (!lead.numberId) break;
-      const pairing = await requestPairingCode(lead.numberId, lead.phone, logger);
+      // Usar retry com backoff para tolerar falhas transitórias
+      const pairing = await requestPairingCodeWithRetry(lead.numberId, lead.phone);
       if (pairing.ok) {
-        await sendOfficial(lead.phone, `O código anterior deve ter expirado — aqui vai um novo:\n\n*${pairing.code}*\n\nNo WhatsApp: Aparelhos conectados → Conectar um aparelho.`, instanceNameStr);
+        await sendOfficial(lead.phone, `O código anterior expirou — aqui vai um novo:\n\n*${pairing.code}*\n\n⚠️ *Válido por 3 minutos* — no WhatsApp: Aparelhos conectados → Conectar um aparelho.`, instanceNameStr);
         sent = true;
       }
       // pairing falhou (Evolution indisponível etc.): não manda nada e NÃO bumpa
