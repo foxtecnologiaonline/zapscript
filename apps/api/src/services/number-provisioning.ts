@@ -152,3 +152,43 @@ export async function requestPairingCode(numberId: string, phone: string, log?: 
     return { ok: false, error: `Erro ao solicitar código: ${err.message}`, fallbackToQr: true };
   }
 }
+
+/**
+ * requestPairingCodeWithRetry — retry automático com backoff exponencial.
+ * Se requestPairingCode falhar (erro de rede/API transitório), tenta 3x
+ * com delay 1s, 2s, 4s. Só escala se TODAS as tentativas falharem.
+ */
+export async function requestPairingCodeWithRetry(
+  numberId: string,
+  phone: string,
+  log?: any,
+  maxRetries: number = 3,
+): Promise<PairingCodeResult> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await requestPairingCode(numberId, phone, log);
+      if (result.ok) {
+        return result;
+      }
+      // Se fallback to QR, retorna logo (não é erro transitório)
+      if (result.fallbackToQr) {
+        return result;
+      }
+      // Erro sem fallback — pode ser transitório, tenta novamente
+      if (attempt < maxRetries - 1) {
+        const delayMs = Math.pow(2, attempt) * 1000;
+        log?.warn?.(`[Evolution] Pairing code falhou, retry em ${delayMs}ms (tentativa ${attempt + 1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    } catch (err: any) {
+      log?.error?.(`[Evolution] Erro na tentativa ${attempt + 1}: ${err.message}`);
+      if (attempt === maxRetries - 1) {
+        return { ok: false, error: err.message, fallbackToQr: true };
+      }
+      const delayMs = Math.pow(2, attempt) * 1000;
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+
+  return { ok: false, error: 'Máximo de tentativas atingido', fallbackToQr: true };
+}

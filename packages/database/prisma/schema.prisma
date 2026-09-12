@@ -211,6 +211,7 @@ model WhatsappOnboardingLead {
   source      String // 'site' | 'oficial'
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  completedAt DateTime? // quando o lead completou o onboarding
 
   @@index([stage])
 }
