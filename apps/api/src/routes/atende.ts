@@ -15,6 +15,8 @@ import {
   AiInputError,
 } from '../services/ai-input';
 import { sendText } from '../services/evolution';
+import { sendTextWithRetry } from '../services/send-with-retry';
+import { exportAtendeCsvStream, csvToString } from '../services/atende-csv-export';
 
 const DEFAULT_FALLBACK = 'Recebemos sua mensagem! Já já alguém te responde por aqui.';
 
@@ -109,20 +111,27 @@ export default async function atendeRoutes(app: FastifyInstance) {
     const number = await prisma.whatsappNumber.findFirst({ where: { id: numberId, userId: ownerId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    const config = await prisma.atendeConfig.findUnique({ where: { numberId } });
-    // Sem config ainda é estado normal (número nunca configurou o Atende) — devolve
-    // o shape default em vez de 404, pra UI renderizar o form sem tratamento especial.
-    return config ?? {
-      numberId,
-      userId: ownerId,
-      enabled: false,
-      businessContext: null,
-      tone: 'profissional-amigavel',
-      fallbackMessage: DEFAULT_FALLBACK,
-      escalationPhone: null,
-      confidenceLevel: 'equilibrado',
-      digestFrequency: 'off',
-    };
+    // Garante que config existe no BD (cria com defaults se necessário)
+    // Isso evita retornar objetos parciais e garante integridade do schema
+    let config = await prisma.atendeConfig.findUnique({ where: { numberId } });
+
+    if (!config) {
+      config = await prisma.atendeConfig.create({
+        data: {
+          numberId,
+          userId: ownerId,
+          enabled: false,
+          businessContext: null,
+          tone: 'profissional-amigavel',
+          fallbackMessage: DEFAULT_FALLBACK,
+          escalationPhone: null,
+          confidenceLevel: 'equilibrado',
+          digestFrequency: 'off',
+        },
+      });
+    }
+
+    return config;
   });
 
   // ── PUT /atende/config/:numberId ─────────────────────────────────────────
@@ -146,6 +155,10 @@ export default async function atendeRoutes(app: FastifyInstance) {
         escalationPhone = null;
       } else {
         const digits = data.escalationPhone.replace(/\D/g, '');
+        // Validar que telefone tem mínimo de dígitos (10-15)
+        if (digits.length < 10 || digits.length > 15) {
+          return reply.code(400).send({ error: 'Telefone de escalação deve ter 10-15 dígitos.' });
+        }
         escalationPhone = digits.startsWith('55') ? digits : `55${digits}`;
       }
     }
@@ -367,7 +380,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // ── GET /atende/conversations ─────────────────────────────────────────────
   app.get('/conversations', auth, async (req: any) => {
     const conversations = await prisma.atendeConversation.findMany({
-      where:   { userId: req.teamScope.ownerId },
+      where:   { userId: req.teamScope.ownerId, archived: false }, // Filtra apenas conversas ativas
       orderBy: { lastMessageAt: 'desc' },
       take:    100,
       include: {
@@ -422,11 +435,14 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // WhatsApp), enquanto a conversa está sob takeover — reaproveita sendText()
   // (mesmo helper de convites/campanhas/health-monitor) e grava a mensagem
   // como humanAuthored=true, alimentando também a Feature 5.
-  app.post<{ Params: { id: string }; Body: { message?: string } }>('/conversations/:id/reply', auth, async (req: any, reply) => {
+  app.post<{ Params: { id: string }; Body: { message?: string } }>('/conversations/:id/reply', auth, {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (req: any, reply) => {
     const { ownerId } = req.teamScope;
     const { id } = req.params;
     const message = (req.body?.message || '').trim();
     if (!message) return reply.code(400).send({ error: 'Mensagem vazia.' });
+    if (message.length > 1000) return reply.code(400).send({ error: 'Mensagem muito longa (máximo 1000 caracteres).' });
 
     const conversation = await prisma.atendeConversation.findFirst({
       where: { id, userId: ownerId },
@@ -440,17 +456,20 @@ export default async function atendeRoutes(app: FastifyInstance) {
       return reply.code(422).send({ error: 'Número não está conectado.' });
     }
 
-    try {
-      await sendText(conversation.number.zapiInstanceId, conversation.contactPhone, message);
-    } catch (err: any) {
-      req.log.error({ err: err.message }, '[Atende] Falha ao enviar resposta manual');
-      return reply.code(502).send({ error: 'Falha ao enviar a mensagem pelo WhatsApp.' });
-    }
-
+    // Gravar mensagem no BD ANTES de tentar enviar (garante persistência)
+    // Inicial: status 'pending' até que sendTextWithRetry confirme envio
     const saved = await prisma.atendeMessage.create({
-      data: { conversationId: id, direction: 'out', content: message, humanAuthored: true },
+      data: { conversationId: id, direction: 'out', content: message, humanAuthored: true, status: 'pending' },
     });
     await prisma.atendeConversation.update({ where: { id }, data: { lastMessageAt: new Date() } });
+
+    // Envio com retry automático (3 tentativas, exponential backoff)
+    // Fire-and-forget: não bloqueia resposta ao cliente
+    // Retry loop atualiza status automaticamente (pending → sent/failed)
+    sendTextWithRetry(conversation.number.zapiInstanceId, conversation.contactPhone, message, saved.id)
+      .catch((err: any) => {
+        req.log.error({ err: err.message, messageId: saved.id }, '[Atende] Erro crítico no retry loop (já registrada no BD)');
+      });
 
     return saved;
   });
@@ -490,13 +509,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
     if (!number.zapiInstanceId) return reply.code(422).send({ error: 'Número não está conectado.' });
 
-    try {
-      await sendText(number.zapiInstanceId, v.data.contactPhone, v.data.message);
-    } catch (err: any) {
-      req.log.error({ err: err.message }, '[Atende] Falha ao enviar aviso');
-      return reply.code(502).send({ error: 'Falha ao enviar a mensagem pelo WhatsApp.' });
-    }
-
+    // Criar aviso no BD ANTES de tentar enviar (garante persistência no histórico)
     const aviso = await prisma.aviso.create({
       data: {
         userId:       ownerId,
@@ -507,6 +520,15 @@ export default async function atendeRoutes(app: FastifyInstance) {
         message:      v.data.message,
       },
     });
+
+    // Envio com retry automático (3 tentativas, exponential backoff)
+    // Fire-and-forget: não bloqueia resposta ao cliente
+    // Aviso já está salvo no BD, retry logic tenta novamente em caso de transient failure
+    sendTextWithRetry(number.zapiInstanceId, v.data.contactPhone, v.data.message)
+      .catch((err: any) => {
+        req.log.error({ err: err.message, avisoId: aviso.id }, '[Atende] Erro crítico no retry loop aviso (já registrado no BD)');
+      });
+
     return reply.code(201).send(aviso);
   });
 
@@ -550,5 +572,88 @@ export default async function atendeRoutes(app: FastifyInstance) {
       mensagensEnviadas,
       mensagensRecebidas,
     };
+  });
+
+  // ── GET /atende/dashboard/confidence ───────────────────────────────────
+  // Métricas de confiança do agente (para gráficos do dashboard)
+  app.get('/dashboard/confidence', auth, async (req: any) => {
+    const { ownerId } = req.teamScope;
+    const days  = Math.min(365, Math.max(1, parseInt((req.query as any)?.days, 10) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // Buscar todas as mensagens de IA com confidence no período
+    const messages = await prisma.atendeMessage.findMany({
+      where: {
+        createdAt: { gte: since },
+        confidence: { not: null }, // Apenas mensagens com confidence
+        aiGenerated: true,
+        conversation: { userId: ownerId },
+      },
+      select: { confidence: true, direction: true, status: true },
+    });
+
+    if (messages.length === 0) {
+      return {
+        avgConfidence: 0,
+        minConfidence: 0,
+        maxConfidence: 0,
+        confidenceDistribution: { high: 0, medium: 0, low: 0 },
+        sentPercentage: 0,
+        failedPercentage: 0,
+        messageCount: 0,
+      };
+    }
+
+    // Calcular estatísticas
+    const confidences = messages.map((m) => m.confidence ?? 0);
+    const sum = confidences.reduce((a, b) => a + b, 0);
+    const avg = sum / messages.length;
+    const sorted = confidences.sort((a, b) => a - b);
+    const min = sorted[0];
+    const max = sorted[sorted.length - 1];
+
+    // Distribuição
+    const high = messages.filter((m) => (m.confidence ?? 0) >= 70).length;
+    const medium = messages.filter((m) => (m.confidence ?? 0) >= 40 && (m.confidence ?? 0) < 70).length;
+    const low = messages.filter((m) => (m.confidence ?? 0) < 40).length;
+
+    // Taxa de envio bem-sucedido
+    const sent = messages.filter((m) => m.status === 'sent').length;
+    const failed = messages.filter((m) => m.status === 'failed').length;
+
+    return {
+      avgConfidence: Math.round(avg * 100) / 100,
+      minConfidence: min,
+      maxConfidence: max,
+      confidenceDistribution: {
+        high: Math.round((high / messages.length) * 100),
+        medium: Math.round((medium / messages.length) * 100),
+        low: Math.round((low / messages.length) * 100),
+      },
+      sentPercentage: Math.round((sent / messages.length) * 100),
+      failedPercentage: Math.round((failed / messages.length) * 100),
+      messageCount: messages.length,
+    };
+  });
+
+  // ── GET /atende/export/conversations ───────────────────────────────────
+  // Exportar conversas + mensagens em CSV para backup/análise
+  app.get('/export/conversations', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const days = parseInt((req.query as any)?.days, 10) || 30;
+    const archived = (req.query as any)?.archived === 'true';
+
+    try {
+      const csv = await exportAtendeCsvStream({ userId: ownerId, days, archived });
+      const csvString = csvToString(csv.headers, csv.rows);
+
+      // Retornar como arquivo para download
+      reply.type('text/csv; charset=utf-8');
+      reply.header('Content-Disposition', `attachment; filename="atende-export-${ownerId}-${new Date().toISOString().split('T')[0]}.csv"`);
+      return reply.send(csvString);
+    } catch (err: any) {
+      req.log.error({ err: err.message, userId: ownerId }, '[Atende] Erro ao exportar CSV');
+      return reply.code(500).send({ error: 'Falha ao gerar export' });
+    }
   });
 }

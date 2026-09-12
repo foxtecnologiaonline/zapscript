@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma';
+import { logger } from '../lib/logger';
 import { buildModelChain, callAiWithFallback, type ModelSpec } from './ai-fallback';
+import { detectLanguage, getLanguageLabel } from '../lib/language-detect';
 
 /**
  * Agente do ZapScript Atende — responde clientes finais de um tenant no WhatsApp.
@@ -37,22 +39,36 @@ const TONE_LABELS: Record<string, string> = {
   'descontraido': 'descontraído: leve, pode usar emoji com moderação',
 };
 
-const SYSTEM_PROMPT = `Você é o atendente virtual de um negócio real, respondendo mensagens de clientes no WhatsApp em nome dele.
+function getSystemPrompt(language: string): string {
+  const intro = language === 'pt'
+    ? 'Você é o atendente virtual de um negócio real, respondendo mensagens de clientes no WhatsApp em nome dele.'
+    : language === 'en'
+      ? 'You are a virtual customer service assistant for a real business, responding to customer messages on WhatsApp on its behalf.'
+      : language === 'es'
+        ? 'Eres un asistente de servicio al cliente virtual para un negocio real, respondiendo a mensajes de clientes en WhatsApp en su nombre.'
+        : language === 'fr'
+          ? 'Vous êtes un assistant de service client virtuel pour une entreprise réelle, répondant aux messages des clients sur WhatsApp en son nom.'
+          : 'You are a virtual customer service assistant.';
 
-Regras inegociáveis:
-- Responda SOMENTE com base no contexto do negócio e na base de conhecimento fornecidos pelo usuário abaixo. NUNCA invente preço, prazo, política, endereço ou qualquer dado que não esteja lá.
-- Se a pergunta não estiver coberta pelo contexto/base, defina "precisa_humano": true e escreva uma resposta curta reconhecendo a dúvida, sem inventar a informação que falta.
-- RESPOSTAS CURTAS: 1 a 3 frases, estilo mensagem real de WhatsApp. Sem introduções longas, sem assinatura, sem "Att,".
-- Nunca mencione que você é uma IA, um robô ou um "agente automático" — responda como se fosse a própria equipe do negócio.
-- Idioma: português brasileiro.
+  return `${intro}
 
-Você recebe o contexto do negócio, o tom de voz desejado, a base de conhecimento (perguntas frequentes cadastradas pelo dono do negócio) e a mensagem do cliente.
-Responda SOMENTE com um objeto JSON válido, sem markdown, no formato:
+Rules:
+- Respond ONLY based on the business context and knowledge base provided below. NEVER invent price, deadline, policy, address or any data not there.
+- If the question is not covered by context/base, set "precisa_humano": true and write a short response acknowledging the doubt, without inventing missing information.
+- SHORT RESPONSES: 1-3 sentences, real WhatsApp message style. No long intros, no signature, no "Regards,".
+- Never mention that you are an AI, robot or "automatic agent" — respond as if you were the business team itself.
+- Language: ${language}.
+
+You receive the business context, desired tone of voice, knowledge base (frequently asked questions registered by the business owner) and the customer's message.
+Respond ONLY with a valid JSON object, no markdown, in the format:
 {
-  "resposta": "texto pronto para enviar ao cliente",
-  "confianca": number (0-100, sua confiança de que a resposta está correta e completa),
-  "precisa_humano": boolean (true se a dúvida foge do que você sabe ou exige julgamento humano)
+  "resposta": "text ready to send to the customer",
+  "confianca": number (0-100, your confidence that the response is correct and complete),
+  "precisa_humano": boolean (true if the doubt goes beyond what you know or requires human judgment)
 }`;
+}
+
+const SYSTEM_PROMPT_PT = getSystemPrompt('pt'); // Default/fallback
 
 const STOPWORDS = new Set([
   'a','o','as','os','de','do','da','dos','das','um','uma','uns','umas','e','ou','que','pra','para',
@@ -115,6 +131,8 @@ export async function runAtendeAgent(params: {
   contactName?: string | null;
   history?: string | null;
 }): Promise<AtendeAgentResult> {
+  const startTime = Date.now();
+
   const allKb = await prisma.atendeKnowledgeBase.findMany({
     where: { userId: params.userId, active: true },
     orderBy: { createdAt: 'asc' },
@@ -127,6 +145,11 @@ export async function runAtendeAgent(params: {
     ? kb.map((k, i) => `[${i + 1}] P: ${k.question}\nR: ${k.answer}`).join('\n\n')
     : '(negócio ainda não cadastrou perguntas frequentes)';
 
+  // Detectar idioma da mensagem do cliente
+  const detectedLang = detectLanguage(params.message);
+  const langLabel = getLanguageLabel(detectedLang);
+  const systemPrompt = getSystemPrompt(detectedLang);
+
   const toneLabel = TONE_LABELS[params.config.tone] ?? params.config.tone;
 
   const userBlock = [
@@ -138,19 +161,32 @@ export async function runAtendeAgent(params: {
     `Mensagem do cliente agora:\n"""${params.message}"""`,
   ].filter(Boolean).join('\n\n');
 
+  const aiStartTime = Date.now();
   const parsed = await callAiWithFallback({
     models: AGENT_MODELS,
-    system: SYSTEM_PROMPT,
+    system: systemPrompt, // Idioma dinâmico
     user: userBlock,
     maxTokens: 512,
     userId: params.userId,
     feature: 'atende_reply',
     label: '[Atende]',
   });
+  const aiElapsed = Date.now() - aiStartTime;
 
   const confidence = typeof parsed.confianca === 'number' ? parsed.confianca : 0;
+  if (typeof parsed.confianca !== 'number') {
+    logger.warn(`[Atende] Confiança inválida retornada pela IA: ${JSON.stringify(parsed.confianca)} (esperado number)`);
+  }
   const reply = typeof parsed.resposta === 'string' ? parsed.resposta.trim() : '';
+  if (typeof parsed.resposta !== 'string' || !reply) {
+    logger.warn(`[Atende] Resposta vazia/inválida retornada pela IA: ${JSON.stringify(parsed.resposta)}`);
+  }
   const threshold = CONFIDENCE_THRESHOLDS[params.config.confidenceLevel ?? ''] ?? DEFAULT_CONFIDENCE_THRESHOLD;
+
+  const totalElapsed = Date.now() - startTime;
+  if (totalElapsed > 5000) {
+    logger.warn(`[Atende] Agente lento: ${totalElapsed}ms total (AI: ${aiElapsed}ms, confidence=${confidence})`);
+  }
 
   return {
     reply,
