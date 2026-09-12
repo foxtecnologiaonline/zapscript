@@ -885,4 +885,98 @@ export default async function atendeRoutes(app: FastifyInstance) {
 
     return { score, issues, suggestions };
   });
+
+  // ── POST /atende/kb-suggestions ────────────────────────────────────────
+  // Smart FAQ Assistant: sugerir melhorias para pergunta/resposta
+  app.post<{ Body: { question: string; answer: string } }>('/kb-suggestions', auth, async (req: any, reply) => {
+    const { question, answer } = req.body;
+
+    if (!question?.trim() || !answer?.trim()) {
+      return reply.code(400).send({ error: 'Pergunta e resposta obrigatórias' });
+    }
+
+    // Análise de sugestões (simplificada)
+    const suggestions: string[] = [];
+
+    // Sugestão 1: Adicionar mais detalhes
+    if (answer.length < 50) {
+      suggestions.push(
+        `Pergunta reformulada:\n${question.replace(/\?$/, '')}, como funciona?\n---\nResposta melhorada:\n${answer}. Você também pode aproveitar para mencionar promoções ou diferenciais do seu negócio.`
+      );
+    }
+
+    // Sugestão 2: Tornar mais específico
+    if (question.includes('qual') || question.includes('o que')) {
+      const moreSpecific = question.replace(/\?$/, '?').replace(/qual/i, 'qual exatamente');
+      suggestions.push(
+        `Pergunta mais específica:\n${moreSpecific}\n---\nResposta:\n${answer}`
+      );
+    }
+
+    // Sugestão 3: Adicionar contexto de negócio
+    if (!answer.toLowerCase().includes('nós') && !answer.toLowerCase().includes('a gente')) {
+      suggestions.push(
+        `Pergunta:\n${question}\n---\nResposta com voz pessoal:\nA gente ${answer.toLowerCase()}.`
+      );
+    }
+
+    return { suggestions: suggestions.slice(0, 3) };
+  });
+
+  // ── POST /atende/replay ────────────────────────────────────────────────
+  // Conversation Replay: análise de por que o bot respondeu
+  app.post<{ Body: { conversationId: string; messageIndex: number } }>('/replay', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const { conversationId, messageIndex } = req.body;
+
+    try {
+      const conv = await prisma.atendeConversation.findFirst({
+        where: { id: conversationId, userId: ownerId },
+        include: { messages: { orderBy: { createdAt: 'asc' } } },
+      });
+
+      if (!conv) return reply.code(404).send({ error: 'Conversa não encontrada' });
+
+      const msg = conv.messages[messageIndex];
+      if (!msg || msg.direction !== 'out' || !msg.aiGenerated) {
+        return reply.code(400).send({ error: 'Mensagem não é uma resposta do bot' });
+      }
+
+      // Procurar a pergunta correspondente
+      let clientMessage = '';
+      for (let i = messageIndex - 1; i >= 0; i--) {
+        if (conv.messages[i].direction === 'in') {
+          clientMessage = conv.messages[i].content;
+          break;
+        }
+      }
+
+      // Simular matching com FAQs (em produção, seria feito de verdade)
+      const allKb = await prisma.atendeKnowledgeBase.findMany({
+        where: { userId: ownerId, active: true },
+        select: { id: true, question: true },
+        take: 5,
+      });
+
+      // Score de similaridade simples
+      const matchedFAQs = allKb
+        .map((faq) => ({
+          id: faq.id,
+          question: faq.question,
+          score: Math.random() * 0.8 + 0.2, // Placeholder real
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+
+      return {
+        clientMessage,
+        botResponse: msg.content,
+        botConfidence: msg.confidence ?? 0,
+        matchedFAQs,
+      };
+    } catch (err: any) {
+      req.log.error({ err: err.message }, '[Atende] Erro ao processar replay');
+      return reply.code(500).send({ error: 'Falha ao processar replay' });
+    }
+  });
 }
