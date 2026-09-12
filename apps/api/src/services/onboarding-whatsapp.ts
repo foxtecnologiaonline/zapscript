@@ -27,6 +27,7 @@
  * setada, ainda funciona como override para separar os dois números).
  */
 import { prisma } from '../lib/prisma';
+import { logger } from '../lib/logger';
 import { sendText, instanceName as evoInstanceName } from './evolution';
 import { provisionInstance, requestPairingCodeWithRetry } from './number-provisioning';
 import { createPasswordlessAccount } from './account-provisioning';
