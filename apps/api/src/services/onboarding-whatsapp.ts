@@ -37,21 +37,36 @@ import {
 } from './campanhas-chat-commands';
 
 const APP_URL = process.env.APP_URL || 'https://zapscript.me';
-const MAX_ATTEMPTS_BEFORE_ESCALATE = 2;
+const MAX_ATTEMPTS_BEFORE_ESCALATE = 4;  // ERA: 2 → NOVO: 4 (tolera mais typos/acentos)
 
 function cleanPhone(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   return digits.startsWith('55') ? digits : `55${digits}`;
 }
 
+/** Normaliza entrada: trim, lowercase, remove acentos e pontuação */
+function normalizeResponse(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')  // Remove acentos (Unicode combining marks)
+    .replace(/[^\w]/g, '')
+    .slice(0, 10);
+}
+
 function isAffirmative(text: string): boolean {
-  const t = text.trim().toLowerCase();
-  return ['sim', 's', 'ok', 'okay', '1', 'claro', 'isso', 'confirmo', 'pode', 'quero'].includes(t);
+  const t = normalizeResponse(text);
+  return ['sim', 'yes', 'yep', 'siiim', 's', 'ok', 'okay', '1', 'claro', 'isso', 'confirmo', 'pode', 'quero'].some(
+    word => t.startsWith(word.slice(0, 3))
+  );
 }
 
 function isNegative(text: string): boolean {
-  const t = text.trim().toLowerCase();
-  return ['não', 'nao', 'n', '2'].includes(t);
+  const t = normalizeResponse(text);
+  return ['nao', 'não', 'no', 'nunca', 'n', '2'].some(
+    word => t.startsWith(word.slice(0, 2))
+  );
 }
 
 function extractEmail(text: string): string | null {
@@ -400,6 +415,8 @@ export async function handleReply(
         '',
         `*${pairing.code}*`,
         '',
+        '⚠️ *Este código expira em 3 minutos* — digita agora mesmo!',
+        '',
         'Assim que conectar, eu confirmo por aqui. 🎉',
       ].join('\n');
       await sendOfficial(phone, msg, instanceNameStr);
@@ -416,13 +433,32 @@ export async function handleReply(
   }
 }
 
-/** Chamado pelo webhook (connection.update, state='open') para fechar o lead correspondente. */
+/** Chamado pelo webhook (connection.update, state='open') para fechar o lead correspondente.
+ *  IDEMPOTENTE: Se webhook duplicar, só executa side-effects uma vez (busca lead em NOT completed). */
 export async function closeLeadOnConnected(numberId: string): Promise<void> {
-  const lead = await prisma.whatsappOnboardingLead.findFirst({ where: { numberId, stage: { not: 'completed' } } });
-  if (!lead) return;
+  // 1. Buscar lead que ainda NÃO foi marcado como completed
+  const lead = await prisma.whatsappOnboardingLead.findFirst({
+    where: { numberId, stage: { not: 'completed' } },
+  });
 
-  await prisma.whatsappOnboardingLead.update({ where: { phone: lead.phone }, data: { stage: 'completed' } });
+  if (!lead) {
+    // Já foi processado, ignora webhook duplicado
+    logger.info(`[OnboardingWA] Lead para ${numberId} já foi processado — webhook duplicado ignorado`);
+    return;
+  }
 
+  // 2. Marcar como COMPLETED ATOMICAMENTE antes de side-effects
+  const updated = await prisma.whatsappOnboardingLead.update({
+    where: { phone: lead.phone },
+    data: { stage: 'completed', completedAt: new Date() },
+  }).catch((err: any) => {
+    logger.error(`[OnboardingWA] Falha crítica ao marcar lead como completed: ${err.message}`);
+    return null;
+  });
+
+  if (!updated) return;  // Falha na atualização = não faz side-effects
+
+  // 3. AGORA que marcou como completed, enviar mensagens
   const nome = firstNameOf(lead.name || lead.pushName);
   const isCampanhas = lead.source === 'campanhas';
   const msg = isCampanhas

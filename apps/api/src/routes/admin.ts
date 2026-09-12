@@ -3403,6 +3403,105 @@ export default async function adminRoutes(app: FastifyInstance) {
       };
     }
   );
+
+  // ── ONBOARDING METRICS (MVP — dados para diagnóstico) ──────────────────
+  app.get(
+    '/admin/onboarding-metrics',
+    { onRequest: adminAuth },
+    async (req: any, reply: any) => {
+      try {
+        const now = new Date();
+        const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+        // Leads agrupados por stage
+        const byStage = await prisma.whatsappOnboardingLead.groupBy({
+          by: ['stage'],
+          _count: { phone: true },
+        });
+
+        const stageMap: Record<string, number> = {};
+        for (const row of byStage) {
+          stageMap[row.stage] = row._count.phone;
+        }
+
+        // Total de leads nos últimas 24h
+        const totalLast24h = await prisma.whatsappOnboardingLead.count({
+          where: { createdAt: { gte: last24h } },
+        });
+
+        // Leads completados nas últimas 24h
+        const completedLast24h = await prisma.whatsappOnboardingLead.count({
+          where: {
+            createdAt: { gte: last24h },
+            stage: 'completed',
+          },
+        });
+
+        // Taxa de conclusão
+        const completionRate = totalLast24h > 0
+          ? Math.round((completedLast24h / totalLast24h) * 100)
+          : 0;
+
+        // Escalações nas últimas 24h
+        const escalatedLast24h = await prisma.whatsappOnboardingLead.count({
+          where: {
+            createdAt: { gte: last24h },
+            stage: 'escalated',
+          },
+        });
+
+        // Tempo médio até conclusão (últimos 30 dias)
+        const last30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const completed = await prisma.whatsappOnboardingLead.findMany({
+          where: {
+            stage: 'completed',
+            createdAt: { gte: last30d },
+            completedAt: { not: null },
+          },
+          select: { createdAt: true, completedAt: true },
+          take: 100,
+        });
+
+        let avgTimeMs = 0;
+        if (completed.length > 0) {
+          const times = completed.map(c =>
+            (new Date(c.completedAt!).getTime() - new Date(c.createdAt).getTime())
+          );
+          avgTimeMs = Math.round(times.reduce((a, b) => a + b, 0) / times.length);
+        }
+
+        const avgTimeMin = Math.round(avgTimeMs / 60 / 1000);
+
+        // Distribuição por source
+        const bySource = await prisma.whatsappOnboardingLead.groupBy({
+          by: ['source'],
+          _count: { phone: true },
+          where: { createdAt: { gte: last24h } },
+        });
+
+        const sourceMap: Record<string, number> = {};
+        for (const row of bySource) {
+          sourceMap[row.source || 'unknown'] = row._count.phone;
+        }
+
+        return {
+          timestamp: now.toISOString(),
+          summary: {
+            total_leads_last_24h: totalLast24h,
+            completed_last_24h: completedLast24h,
+            escalated_last_24h: escalatedLast24h,
+            completion_rate_percent: completionRate,
+            avg_time_to_complete_minutes: avgTimeMin,
+          },
+          by_stage: stageMap,
+          by_source: sourceMap,
+        };
+      } catch (err: any) {
+        req.log.error(err, '[OnboardingMetrics] Erro ao buscar métricas');
+        return reply.code(500).send({ error: 'Falha ao buscar métricas' });
+      }
+    }
+  );
 }
 
 /** Escapa HTML em templates de e-mail do admin. */
