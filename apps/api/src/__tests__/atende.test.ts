@@ -30,8 +30,6 @@ describe('Atende API Endpoints', () => {
 
   describe('POST /atende/conversations/:id/reply', () => {
     it('should reject empty message', async () => {
-      const testConversation = { id: 'conv-123', userId: 'user-123' };
-
       // Since we're testing validation logic, we don't need a full app setup
       // Just verify the validation would work
       const message = '';
@@ -210,6 +208,7 @@ describe('Atende API Endpoints', () => {
       const avisoData = {
         numberId: 'num-123',
         contactPhone: '5511999999999',
+        category: 'Outro',
         message: 'Aviso importante',
       };
 
@@ -339,8 +338,8 @@ describe('Atende API Endpoints', () => {
       });
 
       expect(config).toBeDefined();
-      expect(config.id).toBe('config-123');
-      expect(config.businessContext).toBe('Loja de roupas');
+      expect(config!.id).toBe('config-123');
+      expect(config!.businessContext).toBe('Loja de roupas');
     });
 
     it('should auto-create config with defaults if not found', async () => {
@@ -478,7 +477,7 @@ describe('Atende API Endpoints', () => {
         where: { numberId },
       });
 
-      expect(config2.id).toBe(config1?.id ?? newConfig.id);
+      expect(config2!.id).toBe(config1?.id ?? newConfig.id);
     });
   });
 
@@ -512,6 +511,7 @@ describe('Atende API Endpoints', () => {
         userId: 'user-aviso-race',
         numberId: 'num-aviso-race',
         contactPhone: '5511999999999',
+        category: 'Outro',
         message: 'Important notice',
       };
 
