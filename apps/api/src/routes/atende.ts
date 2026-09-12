@@ -16,6 +16,7 @@ import {
 } from '../services/ai-input';
 import { sendText } from '../services/evolution';
 import { sendTextWithRetry } from '../services/send-with-retry';
+import { exportAtendeCsvStream, csvToString } from '../services/atende-csv-export';
 
 const DEFAULT_FALLBACK = 'Recebemos sua mensagem! Já já alguém te responde por aqui.';
 
@@ -571,5 +572,88 @@ export default async function atendeRoutes(app: FastifyInstance) {
       mensagensEnviadas,
       mensagensRecebidas,
     };
+  });
+
+  // ── GET /atende/dashboard/confidence ───────────────────────────────────
+  // Métricas de confiança do agente (para gráficos do dashboard)
+  app.get('/dashboard/confidence', auth, async (req: any) => {
+    const { ownerId } = req.teamScope;
+    const days  = Math.min(365, Math.max(1, parseInt((req.query as any)?.days, 10) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // Buscar todas as mensagens de IA com confidence no período
+    const messages = await prisma.atendeMessage.findMany({
+      where: {
+        createdAt: { gte: since },
+        confidence: { not: null }, // Apenas mensagens com confidence
+        aiGenerated: true,
+        conversation: { userId: ownerId },
+      },
+      select: { confidence: true, direction: true, status: true },
+    });
+
+    if (messages.length === 0) {
+      return {
+        avgConfidence: 0,
+        minConfidence: 0,
+        maxConfidence: 0,
+        confidenceDistribution: { high: 0, medium: 0, low: 0 },
+        sentPercentage: 0,
+        failedPercentage: 0,
+        messageCount: 0,
+      };
+    }
+
+    // Calcular estatísticas
+    const confidences = messages.map((m) => m.confidence ?? 0);
+    const sum = confidences.reduce((a, b) => a + b, 0);
+    const avg = sum / messages.length;
+    const sorted = confidences.sort((a, b) => a - b);
+    const min = sorted[0];
+    const max = sorted[sorted.length - 1];
+
+    // Distribuição
+    const high = messages.filter((m) => (m.confidence ?? 0) >= 70).length;
+    const medium = messages.filter((m) => (m.confidence ?? 0) >= 40 && (m.confidence ?? 0) < 70).length;
+    const low = messages.filter((m) => (m.confidence ?? 0) < 40).length;
+
+    // Taxa de envio bem-sucedido
+    const sent = messages.filter((m) => m.status === 'sent').length;
+    const failed = messages.filter((m) => m.status === 'failed').length;
+
+    return {
+      avgConfidence: Math.round(avg * 100) / 100,
+      minConfidence: min,
+      maxConfidence: max,
+      confidenceDistribution: {
+        high: Math.round((high / messages.length) * 100),
+        medium: Math.round((medium / messages.length) * 100),
+        low: Math.round((low / messages.length) * 100),
+      },
+      sentPercentage: Math.round((sent / messages.length) * 100),
+      failedPercentage: Math.round((failed / messages.length) * 100),
+      messageCount: messages.length,
+    };
+  });
+
+  // ── GET /atende/export/conversations ───────────────────────────────────
+  // Exportar conversas + mensagens em CSV para backup/análise
+  app.get('/export/conversations', auth, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const days = parseInt((req.query as any)?.days, 10) || 30;
+    const archived = (req.query as any)?.archived === 'true';
+
+    try {
+      const csv = await exportAtendeCsvStream({ userId: ownerId, days, archived });
+      const csvString = csvToString(csv.headers, csv.rows);
+
+      // Retornar como arquivo para download
+      reply.type('text/csv; charset=utf-8');
+      reply.header('Content-Disposition', `attachment; filename="atende-export-${ownerId}-${new Date().toISOString().split('T')[0]}.csv"`);
+      return reply.send(csvString);
+    } catch (err: any) {
+      req.log.error({ err: err.message, userId: ownerId }, '[Atende] Erro ao exportar CSV');
+      return reply.code(500).send({ error: 'Falha ao gerar export' });
+    }
   });
 }
