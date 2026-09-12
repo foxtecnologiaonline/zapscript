@@ -10,7 +10,6 @@
  *   3. Se parado >60min → escala pro Agente de Suporte
  */
 import { prisma } from '../lib/prisma';
-import { logger } from '../lib/logger';
 import { nudgeStuckLead, escalateAbandonedLead, getOfficialInstanceName } from './onboarding-whatsapp';
 import { sendText } from './evolution';
 import { requestPairingCodeWithRetry } from './number-provisioning';
