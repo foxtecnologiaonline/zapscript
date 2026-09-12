@@ -15,6 +15,7 @@ import {
   AiInputError,
 } from '../services/ai-input';
 import { sendText } from '../services/evolution';
+import { sendTextWithRetry } from '../services/send-with-retry';
 
 const DEFAULT_FALLBACK = 'Recebemos sua mensagem! Já já alguém te responde por aqui.';
 
@@ -378,7 +379,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // ── GET /atende/conversations ─────────────────────────────────────────────
   app.get('/conversations', auth, async (req: any) => {
     const conversations = await prisma.atendeConversation.findMany({
-      where:   { userId: req.teamScope.ownerId },
+      where:   { userId: req.teamScope.ownerId, archived: false }, // Filtra apenas conversas ativas
       orderBy: { lastMessageAt: 'desc' },
       take:    100,
       include: {
@@ -455,20 +456,19 @@ export default async function atendeRoutes(app: FastifyInstance) {
     }
 
     // Gravar mensagem no BD ANTES de tentar enviar (garante persistência)
-    // Se envio falhar, a mensagem fica registrada com status 'pending'
+    // Inicial: status 'pending' até que sendTextWithRetry confirme envio
     const saved = await prisma.atendeMessage.create({
-      data: { conversationId: id, direction: 'out', content: message, humanAuthored: true },
+      data: { conversationId: id, direction: 'out', content: message, humanAuthored: true, status: 'pending' },
     });
     await prisma.atendeConversation.update({ where: { id }, data: { lastMessageAt: new Date() } });
 
-    // Envio é fire-and-forget: não bloqueia resposta ao cliente
-    // Se falhar, apenas log (mensagem já está salva no BD)
-    try {
-      await sendText(conversation.number.zapiInstanceId, conversation.contactPhone, message);
-    } catch (err: any) {
-      req.log.error({ err: err.message, messageId: saved.id }, '[Atende] Falha ao enviar resposta manual (já registrada no BD)');
-      // Mensagem foi salva mesmo com falha de envio — histórico íntegro
-    }
+    // Envio com retry automático (3 tentativas, exponential backoff)
+    // Fire-and-forget: não bloqueia resposta ao cliente
+    // Retry loop atualiza status automaticamente (pending → sent/failed)
+    sendTextWithRetry(conversation.number.zapiInstanceId, conversation.contactPhone, message, saved.id)
+      .catch((err: any) => {
+        req.log.error({ err: err.message, messageId: saved.id }, '[Atende] Erro crítico no retry loop (já registrada no BD)');
+      });
 
     return saved;
   });
@@ -520,14 +520,13 @@ export default async function atendeRoutes(app: FastifyInstance) {
       },
     });
 
-    // Envio é fire-and-forget: não bloqueia resposta ao cliente
-    // Se falhar, apenas log (aviso já está salvo no BD)
-    try {
-      await sendText(number.zapiInstanceId, v.data.contactPhone, v.data.message);
-    } catch (err: any) {
-      req.log.error({ err: err.message, avisoId: aviso.id }, '[Atende] Falha ao enviar aviso (já registrado no BD)');
-      // Aviso foi salvo mesmo com falha de envio — histórico íntegro
-    }
+    // Envio com retry automático (3 tentativas, exponential backoff)
+    // Fire-and-forget: não bloqueia resposta ao cliente
+    // Aviso já está salvo no BD, retry logic tenta novamente em caso de transient failure
+    sendTextWithRetry(number.zapiInstanceId, v.data.contactPhone, v.data.message)
+      .catch((err: any) => {
+        req.log.error({ err: err.message, avisoId: aviso.id }, '[Atende] Erro crítico no retry loop aviso (já registrado no BD)');
+      });
 
     return reply.code(201).send(aviso);
   });
