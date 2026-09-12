@@ -74,9 +74,10 @@ export default async function copilotoRoutes(app: FastifyInstance) {
             status:      b.status,
             createdAt:   b.createdAt,
             suggestions: b.suggestions.map((s) => ({
-              rank: s.rank, axis: s.axis, title: s.title, draft: s.draft, technique: s.technique,
+              id: s.id, rank: s.rank, axis: s.axis, title: s.title, draft: s.draft, technique: s.technique,
               status: s.status, sentText: s.sentText, outcome: s.outcome,
               commitmentTitle: s.commitmentTitle, commitmentDueAt: s.commitmentDueAt,
+              userFeedback: s.userFeedback,
             })),
           } : null,
         };
@@ -109,6 +110,30 @@ export default async function copilotoRoutes(app: FastifyInstance) {
     if (!conversation) return reply.code(404).send({ error: 'Conversa não encontrada' });
     return { conversation };
   });
+
+  // ── PUT /copiloto/suggestions/:id/feedback ───────────────────────────────
+  // Único jeito de dar "userFeedback" — só no site, de propósito (ver decisão
+  // do usuário). Alimenta o PRÓXIMO briefing da mesma conversa — ver
+  // processBrief em apps/worker/src/copiloto.ts.
+  app.put<{ Params: { id: string }; Body: { feedback?: string } }>(
+    '/suggestions/:id/feedback',
+    async (req: any, reply) => {
+      const userId = req.user.sub;
+      const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.trim().slice(0, 500) : '';
+
+      const suggestion = await prisma.copilotoSuggestion.findFirst({
+        where: { id: req.params.id, briefing: { userId } },
+      });
+      if (!suggestion) return reply.code(404).send({ error: 'Sugestão não encontrada' });
+
+      await prisma.copilotoSuggestion.update({
+        where: { id: suggestion.id },
+        data: { userFeedback: feedback || null },
+      });
+
+      return { ok: true, userFeedback: feedback || null };
+    },
+  );
 
   // ── GET /copiloto/numbers/:numberId/groups ──────────────────────────────
   app.get<{ Params: { numberId: string } }>('/numbers/:numberId/groups', async (req: any, reply) => {

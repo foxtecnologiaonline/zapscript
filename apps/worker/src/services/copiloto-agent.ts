@@ -157,6 +157,10 @@ export async function buildBriefing(params: {
   aggressiveness?: string | null;
   knowledgeBase?: Array<{ question: string; answer: string }>;
   history: CopilotoMessageLike[];
+  // Anotação do dono sobre sugestões anteriores DESSA MESMA conversa ("cliente
+  // não fala assim", "preço tá errado") — só existe se ele editou no site
+  // (/dashboard/copiloto). Mais recente primeiro.
+  pastFeedback?: string[];
 }): Promise<BriefingResult> {
   const kbBlock = params.knowledgeBase?.length
     ? params.knowledgeBase.map((k, i) => `[${i + 1}] P: ${k.question}\nR: ${k.answer}`).join('\n\n')
@@ -172,6 +176,9 @@ export async function buildBriefing(params: {
     aggressivenessGuide(params.aggressiveness),
     params.contactName ? `Nome do cliente: ${params.contactName}` : null,
     `Fatos do negócio que você PODE usar (única fonte de preço, prazo e política):\n${kbBlock}`,
+    params.pastFeedback?.length
+      ? `O dono já corrigiu sugestões anteriores DESTA conversa — leve em conta, não repita o mesmo erro:\n${params.pastFeedback.map((f) => `- ${f}`).join('\n')}`
+      : null,
     `Conversa (mais antiga primeiro):\n${formatHistory(params.history)}`,
   ].filter(Boolean).join('\n\n');
 

@@ -1195,6 +1195,7 @@ async function runAutoMigrations() {
     `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "deliveredAt" TIMESTAMP(3)`,
     `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "sentMessageId" TEXT`,
     `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "sentAt" TIMESTAMP(3)`,
+    `ALTER TABLE "CopilotoSuggestion" ADD COLUMN IF NOT EXISTS "userFeedback" TEXT`,
     `ALTER TABLE "CopilotoGroupDigest" ADD COLUMN IF NOT EXISTS "blocksJson" JSONB`,
     `CREATE TABLE IF NOT EXISTS "CronHeartbeat" (
       "jobName"          TEXT NOT NULL,

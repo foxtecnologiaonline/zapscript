@@ -263,6 +263,16 @@ async function processBrief(job: Job<BriefJobData>) {
     select: { question: true, answer: true },
   }).catch(() => [] as Array<{ question: string; answer: string }>);
 
+  // Feedback que o dono deixou no site sobre sugestões anteriores DESTA
+  // conversa — só existe se ele editou em /dashboard/copiloto. Entra no
+  // próximo briefing pra IA não repetir o mesmo erro pro mesmo contato.
+  const pastFeedback = await prisma.copilotoSuggestion.findMany({
+    where: { userFeedback: { not: null }, briefing: { conversationId: conversation.id } },
+    orderBy: { createdAt: 'desc' },
+    take: 5,
+    select: { userFeedback: true },
+  }).then((rows) => rows.map((r) => r.userFeedback as string)).catch(() => [] as string[]);
+
   let briefing;
   try {
     briefing = await buildBriefing({
@@ -272,6 +282,7 @@ async function processBrief(job: Job<BriefJobData>) {
       aggressiveness: config.aggressiveness,
       knowledgeBase: kb,
       history,
+      pastFeedback,
     });
   } catch (err: any) {
     // Antes disso, uma falha aqui (todos os provedores de IA fora) derrubava o

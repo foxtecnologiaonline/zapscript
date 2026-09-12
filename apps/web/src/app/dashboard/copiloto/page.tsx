@@ -26,6 +26,7 @@ interface WNumber {
 // ── Conversas ────────────────────────────────────────────────────────────────
 
 interface SuggestionRow {
+  id: string;
   rank: number;
   axis: string;
   title: string;
@@ -36,6 +37,7 @@ interface SuggestionRow {
   outcome: string | null; // replied | no_reply | null
   commitmentTitle: string | null;
   commitmentDueAt: string | null;
+  userFeedback: string | null; // anotação do dono — só editável aqui no site
 }
 
 interface BriefingRow {
@@ -140,6 +142,25 @@ function timeAgo(iso: string): string {
 
 function SuggestionCard({ s }: { s: SuggestionRow }) {
   const blocked = s.status === 'discarded';
+  const [editing, setEditing] = useState(false);
+  const [feedback, setFeedback] = useState(s.userFeedback ?? '');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function saveFeedback() {
+    setSaving(true);
+    try {
+      await api.put(`/copiloto/suggestions/${s.id}/feedback`, { feedback });
+      setSaved(true);
+      setEditing(false);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // silencioso — não é crítico, o dono pode tentar de novo
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className={`rounded-lg border p-3 text-sm ${blocked ? 'border-red-900/60 bg-red-950/20 opacity-70' : 'border-neutral-800 bg-neutral-950'}`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -162,6 +183,45 @@ function SuggestionCard({ s }: { s: SuggestionRow }) {
           </span>
         )}
       </div>
+
+      {/* Feedback do dono — só editável aqui, entra no próximo briefing dessa
+          conversa (ver processBrief em apps/worker/src/copiloto.ts). */}
+      {editing ? (
+        <div className="mt-2 space-y-1.5">
+          <textarea
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder="Ex.: cliente não fala assim, preço tá errado…"
+            maxLength={500}
+            rows={2}
+            className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-xs text-neutral-200 focus:outline-none focus:border-emerald-600 resize-none"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={saveFeedback}
+              disabled={saving}
+              className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-emerald-700/80 text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+            <button
+              onClick={() => { setEditing(false); setFeedback(s.userFeedback ?? ''); }}
+              className="text-[11px] text-neutral-500 hover:text-neutral-300"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : s.userFeedback ? (
+        <button onClick={() => setEditing(true)} className="mt-2 flex items-start gap-1.5 text-left w-full">
+          <span className="text-[11px] text-amber-300/90">📝 {s.userFeedback}</span>
+        </button>
+      ) : (
+        <button onClick={() => setEditing(true)} className="mt-2 text-[11px] text-neutral-600 hover:text-neutral-400">
+          + Anotar feedback
+        </button>
+      )}
+      {saved && <span className="block mt-1 text-[10px] text-emerald-400">✓ Salvo — vale a partir da próxima sugestão pra esse contato</span>}
     </div>
   );
 }

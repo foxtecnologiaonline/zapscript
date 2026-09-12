@@ -1295,6 +1295,12 @@ model CopilotoSuggestion {
   sentAt          DateTime? // quando foi enviada de verdade — abre a janela de 2min do "copiloto desfazer"
   outcome         String? // 'replied' | 'no_reply'
   outcomeAt       DateTime?
+  // Anotação livre do dono sobre ESSA sugestão específica ("cliente não fala
+  // assim", "preço tá errado") — só editável no site (/dashboard/copiloto).
+  // Alimenta o próximo briefing da MESMA conversa (ver processBrief em
+  // apps/worker/src/copiloto.ts): a IA lê o que já não funcionou antes de
+  // gerar a próxima rodada de opções pro mesmo contato.
+  userFeedback    String?
   // Compromisso opcional embutido no rascunho (ex.: "te confirmo até as 17h",
   // "combinado pra quinta 10h") — inferido pelo agente na geração. Quando o
   // dono confirma ESSA opção, vira Task automaticamente (ver copiloto-commands.ts).
