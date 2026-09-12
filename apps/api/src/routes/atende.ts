@@ -109,20 +109,27 @@ export default async function atendeRoutes(app: FastifyInstance) {
     const number = await prisma.whatsappNumber.findFirst({ where: { id: numberId, userId: ownerId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
 
-    const config = await prisma.atendeConfig.findUnique({ where: { numberId } });
-    // Sem config ainda é estado normal (número nunca configurou o Atende) — devolve
-    // o shape default em vez de 404, pra UI renderizar o form sem tratamento especial.
-    return config ?? {
-      numberId,
-      userId: ownerId,
-      enabled: false,
-      businessContext: null,
-      tone: 'profissional-amigavel',
-      fallbackMessage: DEFAULT_FALLBACK,
-      escalationPhone: null,
-      confidenceLevel: 'equilibrado',
-      digestFrequency: 'off',
-    };
+    // Garante que config existe no BD (cria com defaults se necessário)
+    // Isso evita retornar objetos parciais e garante integridade do schema
+    let config = await prisma.atendeConfig.findUnique({ where: { numberId } });
+
+    if (!config) {
+      config = await prisma.atendeConfig.create({
+        data: {
+          numberId,
+          userId: ownerId,
+          enabled: false,
+          businessContext: null,
+          tone: 'profissional-amigavel',
+          fallbackMessage: DEFAULT_FALLBACK,
+          escalationPhone: null,
+          confidenceLevel: 'equilibrado',
+          digestFrequency: 'off',
+        },
+      });
+    }
+
+    return config;
   });
 
   // ── PUT /atende/config/:numberId ─────────────────────────────────────────
@@ -146,6 +153,10 @@ export default async function atendeRoutes(app: FastifyInstance) {
         escalationPhone = null;
       } else {
         const digits = data.escalationPhone.replace(/\D/g, '');
+        // Validar que telefone tem mínimo de dígitos (10-15)
+        if (digits.length < 10 || digits.length > 15) {
+          return reply.code(400).send({ error: 'Telefone de escalação deve ter 10-15 dígitos.' });
+        }
         escalationPhone = digits.startsWith('55') ? digits : `55${digits}`;
       }
     }
@@ -422,11 +433,14 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // WhatsApp), enquanto a conversa está sob takeover — reaproveita sendText()
   // (mesmo helper de convites/campanhas/health-monitor) e grava a mensagem
   // como humanAuthored=true, alimentando também a Feature 5.
-  app.post<{ Params: { id: string }; Body: { message?: string } }>('/conversations/:id/reply', auth, async (req: any, reply) => {
+  app.post<{ Params: { id: string }; Body: { message?: string } }>('/conversations/:id/reply', auth, {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (req: any, reply) => {
     const { ownerId } = req.teamScope;
     const { id } = req.params;
     const message = (req.body?.message || '').trim();
     if (!message) return reply.code(400).send({ error: 'Mensagem vazia.' });
+    if (message.length > 1000) return reply.code(400).send({ error: 'Mensagem muito longa (máximo 1000 caracteres).' });
 
     const conversation = await prisma.atendeConversation.findFirst({
       where: { id, userId: ownerId },
@@ -440,17 +454,21 @@ export default async function atendeRoutes(app: FastifyInstance) {
       return reply.code(422).send({ error: 'Número não está conectado.' });
     }
 
-    try {
-      await sendText(conversation.number.zapiInstanceId, conversation.contactPhone, message);
-    } catch (err: any) {
-      req.log.error({ err: err.message }, '[Atende] Falha ao enviar resposta manual');
-      return reply.code(502).send({ error: 'Falha ao enviar a mensagem pelo WhatsApp.' });
-    }
-
+    // Gravar mensagem no BD ANTES de tentar enviar (garante persistência)
+    // Se envio falhar, a mensagem fica registrada com status 'pending'
     const saved = await prisma.atendeMessage.create({
       data: { conversationId: id, direction: 'out', content: message, humanAuthored: true },
     });
     await prisma.atendeConversation.update({ where: { id }, data: { lastMessageAt: new Date() } });
+
+    // Envio é fire-and-forget: não bloqueia resposta ao cliente
+    // Se falhar, apenas log (mensagem já está salva no BD)
+    try {
+      await sendText(conversation.number.zapiInstanceId, conversation.contactPhone, message);
+    } catch (err: any) {
+      req.log.error({ err: err.message, messageId: saved.id }, '[Atende] Falha ao enviar resposta manual (já registrada no BD)');
+      // Mensagem foi salva mesmo com falha de envio — histórico íntegro
+    }
 
     return saved;
   });
@@ -490,13 +508,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
     if (!number.zapiInstanceId) return reply.code(422).send({ error: 'Número não está conectado.' });
 
-    try {
-      await sendText(number.zapiInstanceId, v.data.contactPhone, v.data.message);
-    } catch (err: any) {
-      req.log.error({ err: err.message }, '[Atende] Falha ao enviar aviso');
-      return reply.code(502).send({ error: 'Falha ao enviar a mensagem pelo WhatsApp.' });
-    }
-
+    // Criar aviso no BD ANTES de tentar enviar (garante persistência no histórico)
     const aviso = await prisma.aviso.create({
       data: {
         userId:       ownerId,
@@ -507,6 +519,16 @@ export default async function atendeRoutes(app: FastifyInstance) {
         message:      v.data.message,
       },
     });
+
+    // Envio é fire-and-forget: não bloqueia resposta ao cliente
+    // Se falhar, apenas log (aviso já está salvo no BD)
+    try {
+      await sendText(number.zapiInstanceId, v.data.contactPhone, v.data.message);
+    } catch (err: any) {
+      req.log.error({ err: err.message, avisoId: aviso.id }, '[Atende] Falha ao enviar aviso (já registrado no BD)');
+      // Aviso foi salvo mesmo com falha de envio — histórico íntegro
+    }
+
     return reply.code(201).send(aviso);
   });
 

@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { logger } from '../lib/logger';
 import { buildModelChain, callAiWithFallback, type ModelSpec } from './ai-fallback';
 
 /**
@@ -115,6 +116,8 @@ export async function runAtendeAgent(params: {
   contactName?: string | null;
   history?: string | null;
 }): Promise<AtendeAgentResult> {
+  const startTime = Date.now();
+
   const allKb = await prisma.atendeKnowledgeBase.findMany({
     where: { userId: params.userId, active: true },
     orderBy: { createdAt: 'asc' },
@@ -138,6 +141,7 @@ export async function runAtendeAgent(params: {
     `Mensagem do cliente agora:\n"""${params.message}"""`,
   ].filter(Boolean).join('\n\n');
 
+  const aiStartTime = Date.now();
   const parsed = await callAiWithFallback({
     models: AGENT_MODELS,
     system: SYSTEM_PROMPT,
@@ -147,10 +151,22 @@ export async function runAtendeAgent(params: {
     feature: 'atende_reply',
     label: '[Atende]',
   });
+  const aiElapsed = Date.now() - aiStartTime;
 
   const confidence = typeof parsed.confianca === 'number' ? parsed.confianca : 0;
+  if (typeof parsed.confianca !== 'number') {
+    logger.warn(`[Atende] Confiança inválida retornada pela IA: ${JSON.stringify(parsed.confianca)} (esperado number)`);
+  }
   const reply = typeof parsed.resposta === 'string' ? parsed.resposta.trim() : '';
+  if (typeof parsed.resposta !== 'string' || !reply) {
+    logger.warn(`[Atende] Resposta vazia/inválida retornada pela IA: ${JSON.stringify(parsed.resposta)}`);
+  }
   const threshold = CONFIDENCE_THRESHOLDS[params.config.confidenceLevel ?? ''] ?? DEFAULT_CONFIDENCE_THRESHOLD;
+
+  const totalElapsed = Date.now() - startTime;
+  if (totalElapsed > 5000) {
+    logger.warn(`[Atende] Agente lento: ${totalElapsed}ms total (AI: ${aiElapsed}ms, confidence=${confidence})`);
+  }
 
   return {
     reply,
