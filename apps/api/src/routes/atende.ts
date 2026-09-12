@@ -659,7 +659,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
 
   // ── GET /atende/status ─────────────────────────────────────────────────
   // Status simples do Atende (para o toggle e métricas rápidas)
-  app.get('/status', auth, async (req: any, reply) => {
+  app.get('/status', auth, async (req: any, _reply) => {
     const { ownerId } = req.teamScope;
 
     // Pega primeiro número com Atende ativo (ou qualquer um)
@@ -704,7 +704,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
 
   // ── GET /atende/status-detailed ────────────────────────────────────────
   // Status detalhado para o visual indicator
-  app.get('/status-detailed', auth, async (req: any, reply) => {
+  app.get('/status-detailed', auth, async (req: any, _reply) => {
     const { ownerId } = req.teamScope;
 
     const number = await prisma.whatsappNumber.findFirst({
@@ -790,7 +790,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
 
   // ── GET /atende/setup-status ──────────────────────────────────────────
   // Checklist de setup (Quick Start)
-  app.get('/setup-status', auth, async (req: any, reply) => {
+  app.get('/setup-status', auth, async (req: any, _reply) => {
     const { ownerId } = req.teamScope;
 
     const number = await prisma.whatsappNumber.findFirst({
@@ -862,7 +862,6 @@ export default async function atendeRoutes(app: FastifyInstance) {
     // Análise simples de qualidade
     const qLen = question.trim().length;
     const aLen = answer.trim().length;
-    const qWords = question.trim().split(/\s+/).length;
     const aWords = answer.trim().split(/\s+/).length;
 
     const issues: string[] = [];
@@ -982,7 +981,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
 
   // ── GET /atende/metrics ────────────────────────────────────────────────
   // Métricas de performance (últimas 24h)
-  app.get('/metrics', auth, async (req: any, reply) => {
+  app.get('/metrics', auth, async (req: any, _reply) => {
     const { ownerId } = req.teamScope;
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
