@@ -299,7 +299,7 @@ async function processBrief(job: Job<BriefJobData>) {
   // vezes o modelo tentou inventar preço/urgência é o que diz se o prompt precisa
   // de ajuste. Nunca são oferecidas ao dono.
   let rank = 0;
-  const offered: Array<{ rank: number; title: string; draft: string; rationale: string; technique: string }> = [];
+  const offered: Array<{ rank: number; axis: string; title: string; draft: string; rationale: string; technique: string }> = [];
   for (const opt of briefing.options) {
     const check = validateDraft(opt.draft, { allowedText });
     rank += 1;
@@ -322,7 +322,7 @@ async function processBrief(job: Job<BriefJobData>) {
       },
     });
     if (check.ok) {
-      offered.push({ rank, title: opt.title, draft: opt.draft, rationale: opt.rationale, technique: opt.technique });
+      offered.push({ rank, axis: opt.axis, title: opt.title, draft: opt.draft, rationale: opt.rationale, technique: opt.technique });
     } else {
       logger.warn(`[Copiloto] 🚫 Opção ${rank} bloqueada (${contactLabel}): ${check.violations.join('; ')}`);
     }
@@ -351,38 +351,36 @@ async function processBrief(job: Job<BriefJobData>) {
 
 // ── Formatação da mensagem no WhatsApp ───────────────────────────────────────
 
-const TEMP_ICON: Record<string, string> = { quente: '🔥 Quente', morno: '🌤️ Morno', frio: '❄️ Frio' };
-const RISK_ICON: Record<string, string> = { baixo: 'baixo', medio: '⚠️ médio', alto: '🚨 alto' };
-const BLOCKER_LABEL: Record<string, string> = {
-  preco: 'preço', prazo: 'prazo', confianca: 'confiança',
-  autoridade: 'quem decide', urgencia: 'falta de urgência',
+// Rótulo fixo por eixo — sempre os mesmos 3, em vez do título livre que a IA
+// gerava por briefing ("Fechar com data", "Descobrir a real"...). O dono passa
+// a reconhecer a estrutura de cara em qualquer conversa: opção 1 é sempre
+// "empurrar", 2 é sempre "perguntar", 3 é sempre "segurar posição". O título
+// livre continua gravado (CopilotoSuggestion.title) e visível no site.
+const AXIS_LABEL: Record<string, string> = {
+  avancar: 'Avançar', qualificar: 'Qualificar', posicionar: 'Posicionar',
 };
 
-// Compacta de propósito — a versão anterior (intent em linha própria, técnica
-// entre ⟨⟩, cada opção em 2 linhas + branco, separador "─────") virava uma
-// mensagem de 15-20 linhas pra 3 opções. O dono lê isso no celular entre uma
-// tarefa e outra; cada linha a mais é atrito. Ver ESCOPO_COPILOTO.md §4.1.
+// Estrutura fixa e mínima: nome · resumo+intenção · 3 opções (eixo + rascunho)
+// · rodapé de resposta. Temperatura/risco/trava continuam gravados no banco e
+// visíveis em /dashboard/copiloto — tirados daqui pra sobrar só o que muda a
+// decisão do dono na hora. Ver ESCOPO_COPILOTO.md §4.1.
 export function renderBriefingMessage(params: {
   contactLabel: string;
   briefing: { summary: string; intent: string; temperature: string; riskLevel: string; blocker: string | null; note: string | null };
-  offered: Array<{ rank: number; title: string; draft: string; technique: string }>;
+  offered: Array<{ rank: number; axis: string; title: string; draft: string; technique: string }>;
   sensitive: boolean;
 }): string {
   const { contactLabel, briefing, offered, sensitive } = params;
   const lines: string[] = [];
 
-  const status = [
-    TEMP_ICON[briefing.temperature] ?? briefing.temperature,
-    `risco ${RISK_ICON[briefing.riskLevel] ?? briefing.riskLevel}`,
-    briefing.blocker ? `trava: ${BLOCKER_LABEL[briefing.blocker] ?? briefing.blocker}` : null,
-  ].filter(Boolean).join(' · ');
-  lines.push(`🎯 *${contactLabel}* — ${status}`);
+  lines.push(`🎯 *${contactLabel}*`);
 
-  const summaryLine = [briefing.summary, briefing.intent ? `(quer: ${briefing.intent})` : null]
-    .filter(Boolean).join(' ');
+  const summaryLine = [
+    sensitive ? '🕊️' : null,
+    [briefing.summary, briefing.intent ? `(quer: ${briefing.intent})` : null].filter(Boolean).join(' '),
+  ].filter(Boolean).join(' ');
   if (summaryLine) lines.push(summaryLine);
 
-  if (sensitive) lines.push('🕊️ _Sinal delicado — acolha antes de propor._');
   if (briefing.note) lines.push(`💭 ${briefing.note}`);
 
   if (offered.length === 0) {
@@ -393,7 +391,8 @@ export function renderBriefingMessage(params: {
 
   lines.push('');
   for (const o of offered) {
-    lines.push(`*${o.rank} · ${o.title}* "${o.draft}"`);
+    const axisLabel = AXIS_LABEL[o.axis] ?? o.title;
+    lines.push(`*${o.rank} · ${axisLabel}* "${o.draft}"`);
   }
 
   const nums = offered.map((o) => o.rank);

@@ -66,8 +66,8 @@ describe('renderBriefingMessage', () => {
   };
 
   const offered = [
-    { rank: 1, title: 'Fechar com data', draft: 'Maria, entrego sábado 14h. Fecho?', technique: 'fechamento-assumido' },
-    { rank: 2, title: 'Descobrir a real', draft: 'Maria, é pra quantas pessoas?', technique: 'qualificacao' },
+    { rank: 1, axis: 'avancar', title: 'Fechar com data', draft: 'Maria, entrego sábado 14h. Fecho?', technique: 'fechamento-assumido' },
+    { rank: 2, axis: 'qualificar', title: 'Descobrir a real', draft: 'Maria, é pra quantas pessoas?', technique: 'qualificacao' },
   ];
 
   it('monta o briefing com opções e instruções de resposta', () => {
@@ -75,10 +75,13 @@ describe('renderBriefingMessage', () => {
 
     expect(msg).toContain('*Maria Souza*');
     expect(msg).toContain('Perguntou preço pela 2ª vez');
-    expect(msg).toContain('*1 · Fechar com data*');
-    // Compacta de propósito: sem tag de técnica (⟨...⟩) na mensagem do dono.
+    // Rótulo é o eixo fixo, não o título livre da IA nem a técnica.
+    expect(msg).toContain('*1 · Avançar*');
+    expect(msg).toContain('*2 · Qualificar*');
+    expect(msg).not.toContain('Fechar com data');
     expect(msg).not.toContain('⟨fechamento-assumido⟩');
-    expect(msg).toContain('trava: preço');
+    // Temperatura/risco/trava saíram da mensagem — ficam só no banco/site.
+    expect(msg).not.toContain('trava: preço');
     // Só oferece os números que sobreviveram aos guardrails.
     expect(msg).toContain('*1*, *2*');
     expect(msg).not.toContain('*3*');
@@ -86,7 +89,7 @@ describe('renderBriefingMessage', () => {
 
   it('avisa sobre sinal delicado', () => {
     const msg = renderBriefingMessage({ contactLabel: 'João', briefing, offered, sensitive: true });
-    expect(msg).toContain('Sinal delicado');
+    expect(msg).toContain('🕊️');
   });
 
   it('sem nenhuma opção aprovada, explica em vez de mandar lista vazia', () => {

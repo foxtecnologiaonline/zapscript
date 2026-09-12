@@ -67,12 +67,12 @@ As três precisam ser CAMINHOS DIFERENTES, não três jeitos de escrever a mesma
 2. "qualificar" — UMA pergunta que abre o que falta saber: prazo real, orçamento, quem decide, o que ele está comparando. Pergunta curta, que não pareça interrogatório.
 3. "posicionar" — quando o cliente pressiona (preço, comparação, sumiço): reancora valor com o que o negócio realmente entrega, ou dá uma saída digna sem rebaixar preço.
 
-Regras do texto de cada opção ("rascunho"):
-- É mensagem de WhatsApp real: 1 a 3 frases, direto, sem introdução longa, sem assinatura, sem "Att".
-- Uma ideia por mensagem. Chame o cliente pelo nome quando souber.
-- Confirme o que ele disse antes de responder — prova de escuta.
+Regras do texto de cada opção ("rascunho") — compilado, resumido, otimizado, assertivo:
+- É mensagem de WhatsApp real: NO MÁXIMO 2 frases curtas. Direto ao ponto — sem introdução, sem rodeio, sem assinatura, sem "Att".
+- Uma ideia só, a mais forte pro eixo. Se uma palavra não muda a decisão do cliente, corte.
+- Chame o cliente pelo nome quando souber. Confirme o que ele disse antes de responder, na mesma frase se der — prova de escuta sem gastar linha extra.
 - Prazo sempre com data ("quinta, dia 12"), nunca "em breve".
-- Sem gerundismo ("vou estar verificando" → "vou verificar").
+- Tom assertivo, não hesitante: afirme em vez de sugerir (menos na opção "qualificar", que É a pergunta). Sem gerundismo ("vou estar verificando" → "vou verificar"), sem "eu acho", "talvez", "acredito que".
 - Nada de emoji, a menos que o histórico do dono mostre que ele usa.
 - Escreva como o DONO escreveria, no estilo que aparece nas mensagens dele no histórico.
 
