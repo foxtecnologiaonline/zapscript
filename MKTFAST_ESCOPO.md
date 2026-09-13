@@ -7,8 +7,17 @@
 > Primeira missão real: divulgar o **ZapScript.me**. Construído de forma **genérica** desde o
 > início para caber qualquer missão futura (lançamento de módulo, campanha sazonal, pedir review).
 
-Status: **proposta de arquitetura (planejamento)**. Data: 2026-09-13. Branch:
+Status: **Fase 0 implementada** (nesta branch). Data: 2026-09-13. Branch:
 `claude/laughing-turing-bjtdyu`.
+
+> **Nota de implementação (Fase 0):** o canal ficou com a chave única `whatsapp`
+> (em vez de `whatsapp_groups`/`whatsapp_broadcast` separados) — só broadcast
+> para telefones (lista explícita em `content.targets`), porque o helper de
+> envio do Evolution (`sendMessageViaEvolution`) limpa tudo que não é dígito e
+> corromperia um JID de grupo (`...@g.us`); enviar pra grupo fica pra depois de
+> ajustar esse helper. `MissionExecution` já é materializada na criação da
+> missão (`POST /missions`), não no disparo — `/start` e o scheduler só
+> enfileiram o que já está `pending`, mesmo idioma do módulo Campanhas.
 
 Decisões já fechadas com o usuário (não reabrir sem motivo novo):
 
@@ -188,29 +197,43 @@ decisão sobre afiliados.
 
 ---
 
-## 6. Esboço de rotas (Fase 0)
+## 6. Rotas (Fase 0 — implementadas)
+
+Mesmo padrão de auth de `routes/admin.ts`/`routes/admin-master.ts`: header `x-admin-token`
+(= `ADMIN_TOKEN`) + `x-admin-totp` quando 2FA está configurado.
 
 ```
-apps/api/src/routes/admin/mktfast.ts   (preHandler: app.authenticate, requireAdmin)
+apps/api/src/routes/mktfast-admin.ts   (prefix registrado: /sys/g5r8t2/mktfast)
 
-POST   /admin/mktfast/missions                      cria (draft)
-GET    /admin/mktfast/missions                       lista + progresso agregado (reach/meta)
-GET    /admin/mktfast/missions/:id                   detalhe + execuções
-POST   /admin/mktfast/missions/:id/schedule          define scheduledAt
-POST   /admin/mktfast/missions/:id/start             dispara agora (canais bot)
-POST   /admin/mktfast/missions/:id/cancel
-POST   /admin/mktfast/executions/:execId/proof       humano envia prova (Fase 1)
-POST   /admin/mktfast/executions/:execId/approve     admin aprova prova (Fase 1)
-POST   /admin/mktfast/executions/:execId/reject
+POST   /sys/g5r8t2/mktfast/missions                cria a missão + materializa MissionExecution
+                                                    (pending) a partir de content.targets
+GET    /sys/g5r8t2/mktfast/missions                lista + progresso agregado (reach/status)
+GET    /sys/g5r8t2/mktfast/missions/:id            detalhe + execuções
+POST   /sys/g5r8t2/mktfast/missions/:id/schedule   define scheduledAt (só a partir de 'draft')
+POST   /sys/g5r8t2/mktfast/missions/:id/start      dispara agora (enfileira as execuções pending)
+POST   /sys/g5r8t2/mktfast/missions/:id/cancel
+
+Body de POST /missions (exemplo):
+{
+  "title": "Divulgar ZapScript.me",
+  "objective": "Lançamento — trazer testers via WhatsApp",
+  "createdBy": "growth@zapscript.me",
+  "whatsappNumberId": "<id de um WhatsappNumber status=connected>",
+  "content": { "text": "mensagem da missão...", "targets": ["5534..."] }
+}
 ```
 
 ```
-apps/worker/src/queues/mktfast.ts       Worker('mktfast', concurrency=...)
-apps/worker/src/mktfast-scheduler.ts    tick 60s: scheduled → running (updateMany atômico, igual campanhas-scheduler.ts)
+apps/worker/src/modules/mktfast.ts       processMissionJob (fila 'mktfast') + markMissionJobExhausted
+apps/worker/src/mktfast-scheduler.ts     tick 60s: scheduled → running (updateMany atômico, igual campanhas-scheduler.ts)
+apps/worker/src/index.ts                 Worker('mktfast', concurrency=MKTFAST_WORKER_CONCURRENCY)
 ```
 
-Web: tela nova em `/admin/mktfast` (fora do app shell de módulos — é ferramenta interna, não
-aparece no launcher `/app`).
+Migração: `packages/database/prisma/migrations/20260913_mktfast_missions/`.
+
+**Pendente (não faz parte da Fase 0):** tela web — hoje a missão é operada só via API
+(curl/Postman com `x-admin-token`); endpoints de `human_share` (proof/approve, Fase 1);
+canais Instagram/Facebook (Fase 2, bloqueados por credenciais — ver §2.1/§7).
 
 ---
 

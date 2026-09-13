@@ -66,3 +66,16 @@ export const campanhasQueue = new Queue('campanhas', {
     removeOnFail:     { count: 5_000, age: 7 * 24 * 60 * 60 },
   },
 });
+
+// Fila do MKT-Fast (missões de divulgação) — worker consome (processMissionJob,
+// modules/mktfast.ts) e também produz (mktfast-scheduler.ts, missão agendada).
+// Ver apps/api/src/services/queue.ts (mesmo nome de fila, mesmo Redis).
+export const mktfastQueue = new Queue('mktfast', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff:  { type: 'exponential', delay: 10_000 },
+    removeOnComplete: { count: 1_000, age: 48 * 60 * 60 },
+    removeOnFail:     { count: 2_000, age: 7 * 24 * 60 * 60 },
+  },
+});

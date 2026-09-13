@@ -64,6 +64,19 @@ export const campanhasQueue = new Queue('campanhas', {
   },
 });
 
+// ── Fila do MKT-Fast (missões de divulgação, ferramenta interna) ─────────────
+// Um job por MissionExecution — mesmo idioma de `campanhas`, volume bem menor
+// (ferramenta interna, não por-tenant). Ver MKTFAST_ESCOPO.md.
+export const mktfastQueue = new Queue('mktfast', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff:  { type: 'exponential', delay: 10_000 },
+    removeOnComplete: { count: 1_000, age: 48 * 60 * 60 },
+    removeOnFail:     { count: 2_000, age: 7 * 24 * 60 * 60 },
+  },
+});
+
 // ── Fila de respostas automáticas (ZapScript Atende) ──────────────────────────
 export const atendeQueue = new Queue('atende-replies', {
   connection: redis as any,
