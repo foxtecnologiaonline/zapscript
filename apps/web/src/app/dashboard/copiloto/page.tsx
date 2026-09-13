@@ -105,6 +105,20 @@ interface CopilotoGroupDigestRow {
   createdAt: string;
 }
 
+// ── Métricas ─────────────────────────────────────────────────────────────────
+
+interface CopilotoMetrics {
+  since: string;
+  days: number;
+  snapshot: { totalContacts: number; unreadConversations: number; readConversations: number };
+  activity: {
+    messagesIn: number; messagesOut: number;
+    briefingsGenerated: number; briefingsDismissed: number;
+    suggestionsSent: number; customerReplies: number; tasksCreated: number;
+    byTipo: Array<{ tipo: string; count: number }>;
+  };
+}
+
 const TEMP_LABEL: Record<string, string> = { quente: '🔥 Quente', morno: '🌤️ Morno', frio: '❄️ Frio' };
 const RISK_LABEL: Record<string, string> = { baixo: 'risco baixo', medio: '⚠️ risco médio', alto: '🚨 risco alto' };
 const BLOCKER_LABEL: Record<string, string> = {
@@ -701,6 +715,112 @@ function GruposTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitle
   );
 }
 
+function StatCard({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <p className="text-2xl font-bold text-neutral-100">{value}</p>
+      <p className="text-xs text-neutral-500 mt-0.5">{label}</p>
+      {hint && <p className="text-[11px] text-neutral-600 mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+function MetricasTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitled: () => void }) {
+  const [days, setDays] = useState(30);
+  const [metrics, setMetrics] = useState<CopilotoMetrics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    const params = new URLSearchParams();
+    if (numberId) params.set('numberId', numberId);
+    params.set('days', String(days));
+    setLoading(true);
+    api.get<CopilotoMetrics>(`/copiloto/metrics?${params.toString()}`)
+      .then((res) => { setMetrics(res); setError(null); })
+      .catch((e: any) => {
+        if (e?.moduleRequired) onNotEntitled();
+        else setError(e?.message || 'Não foi possível carregar as métricas.');
+      })
+      .finally(() => setLoading(false));
+  }, [numberId, days, onNotEntitled]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading && !metrics) {
+    return <div className="text-sm text-neutral-600 text-center py-10 rounded-xl border border-neutral-800">Carregando métricas…</div>;
+  }
+  if (error) {
+    return <div className="rounded-lg border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-300">{error}</div>;
+  }
+  if (!metrics) return null;
+
+  const { snapshot, activity } = metrics;
+  const totalTipo = activity.byTipo.reduce((s, t) => s + t.count, 0);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs text-neutral-500">
+          Atividade dos últimos <strong className="text-neutral-300">{days} dias</strong> — o estado das conversas (não lidas/lidas/contatos) é sempre o de agora.
+        </p>
+        <select
+          value={days} onChange={(e) => setDays(Number(e.target.value))}
+          className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-xs"
+        >
+          <option value={7}>7 dias</option>
+          <option value={30}>30 dias</option>
+          <option value={90}>90 dias</option>
+        </select>
+      </div>
+
+      <p className="text-xs font-medium text-neutral-400 mb-2">Conversas agora</p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+        <StatCard label="Contatos" value={snapshot.totalContacts} hint="conversas que já trocaram mensagem" />
+        <StatCard label="Não lidas" value={snapshot.unreadConversations} hint="ainda não viraram briefing" />
+        <StatCard label="Lidas" value={snapshot.readConversations} hint="em dia com o Copiloto" />
+      </div>
+
+      <p className="text-xs font-medium text-neutral-400 mb-2">Atividade no período</p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+        <StatCard label="Mensagens recebidas" value={activity.messagesIn} />
+        <StatCard label="Mensagens enviadas" value={activity.messagesOut} hint="por você, via Copiloto ou não" />
+        <StatCard label="Briefings gerados" value={activity.briefingsGenerated} />
+        <StatCard label="Sugestões enviadas" value={activity.suggestionsSent} hint="você escolheu 1, 2 ou 3" />
+        <StatCard label="Clientes que responderam" value={activity.customerReplies} hint="depois de uma sugestão sua" />
+        <StatCard label="Tarefas criadas" value={activity.tasksCreated} hint="compromisso assumido numa sugestão" />
+      </div>
+
+      {activity.byTipo.length > 0 && (
+        <>
+          <p className="text-xs font-medium text-neutral-400 mb-2">Briefings por tipo</p>
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 space-y-2">
+            {activity.byTipo.map((t) => (
+              <div key={t.tipo} className="flex items-center gap-2">
+                <span className="text-xs w-28 flex-shrink-0 text-neutral-300">{TIPO_LABEL[t.tipo] || t.tipo}</span>
+                <div className="flex-1 h-2 rounded-full bg-neutral-800 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-600"
+                    style={{ width: `${totalTipo > 0 ? Math.round((t.count / totalTipo) * 100) : 0}%` }}
+                  />
+                </div>
+                <span className="text-xs text-neutral-500 w-8 text-right flex-shrink-0">{t.count}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {activity.briefingsDismissed > 0 && (
+        <p className="text-[11px] text-neutral-600 mt-4">
+          {activity.briefingsDismissed} briefing{activity.briefingsDismissed !== 1 ? 's' : ''} ignorado{activity.briefingsDismissed !== 1 ? 's' : ''} no período —
+          se esse número estiver alto, considere ajustar a triagem com <code className="px-1 py-0.5 rounded bg-neutral-800">copiloto confianca &lt;tipo&gt; &lt;valor&gt;</code> no self-chat.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Página ───────────────────────────────────────────────────────────────────
 
 export default function CopilotoPage() {
@@ -708,7 +828,7 @@ export default function CopilotoPage() {
   const [numberId, setNumberId] = useState('');
   const [loadingNumbers, setLoadingNumbers] = useState(true);
   const [notEntitled, setNotEntitled] = useState(false);
-  const [tab, setTab] = useState<'conversas' | 'grupos'>('conversas');
+  const [tab, setTab] = useState<'conversas' | 'grupos' | 'metricas'>('conversas');
   const [usage, setUsage] = useState<{ calls: number } | null>(null);
 
   useEffect(() => {
@@ -778,7 +898,7 @@ export default function CopilotoPage() {
       )}
 
       <div className="flex gap-1 mb-5 border-b border-neutral-800">
-        {(['conversas', 'grupos'] as const).map((t) => (
+        {(['conversas', 'metricas', 'grupos'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -786,13 +906,15 @@ export default function CopilotoPage() {
               tab === t ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-neutral-500 hover:text-neutral-300'
             }`}
           >
-            {t === 'conversas' ? 'Conversas' : 'Grupos'}
+            {t === 'conversas' ? 'Conversas' : t === 'metricas' ? 'Métricas' : 'Grupos'}
           </button>
         ))}
       </div>
 
       {tab === 'conversas'
         ? <ConversasTab numbers={numbers} numberId={numberId} onNotEntitled={onNotEntitled} />
+        : tab === 'metricas'
+        ? <MetricasTab numberId={numberId} onNotEntitled={onNotEntitled} />
         : <GruposTab numberId={numberId} onNotEntitled={onNotEntitled} />}
     </div>
   );
