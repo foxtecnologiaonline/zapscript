@@ -1265,6 +1265,11 @@ model CopilotoBriefing {
   temperature    String // 'quente' | 'morno' | 'frio'
   blocker        String? // 'preco' | 'prazo' | 'confianca' | 'autoridade' | 'urgencia'
   riskLevel      String // 'baixo' | 'medio' | 'alto'
+  // v2.0 — classificação da triagem, opcional/nullable de propósito: briefing
+  // v1.0 (anterior a esta coluna) fica com tipo=null e continua funcionando
+  // em tudo (renderização, guardrails, comandos) sem tratamento especial.
+  tipo           String? // 'comercial' | 'pessoal' | 'admin' | 'crise' | 'oportunidade'
+  remetente      String? // 'cliente_novo' | 'ativo' | 'fornecedor' | 'parceiro' | 'equipe' | 'outro'
   status         String               @default("pending") // 'pending' | 'awaiting_edit' | 'acted' | 'dismissed' | 'expired'
   awaitingRank   Int? // opção escolhida aguardando o texto editado do dono
   awaitingSince  DateTime? // quando o dono pediu para editar — a janela é curta de propósito (ver copiloto-commands.ts)
@@ -1284,6 +1289,7 @@ model CopilotoBriefing {
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([numberId, status, createdAt(sort: Desc)])
+  @@index([tipo])
 }
 
 model CopilotoSuggestion {

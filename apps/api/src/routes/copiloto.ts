@@ -26,11 +26,11 @@ export default async function copilotoRoutes(app: FastifyInstance) {
   // ── GET /copiloto/conversations ──────────────────────────────────────────
   // Painel web (leitura). A ação de verdade (1/2/3, editar, ignorar) continua
   // só no self-chat — ver ESCOPO_COPILOTO.md §1. Esta rota é só "mostrar".
-  app.get<{ Querystring: { numberId?: string; temperature?: string; status?: string; q?: string } }>(
+  app.get<{ Querystring: { numberId?: string; temperature?: string; status?: string; tipo?: string; q?: string } }>(
     '/conversations',
     async (req: any) => {
       const userId = req.user.sub;
-      const { numberId, temperature, status, q } = req.query || {};
+      const { numberId, temperature, status, tipo, q } = req.query || {};
 
       const conversations = await prisma.copilotoConversation.findMany({
         where: {
@@ -71,6 +71,10 @@ export default async function copilotoRoutes(app: FastifyInstance) {
             temperature: b.temperature,
             riskLevel:   b.riskLevel,
             blocker:     b.blocker,
+            // v2.0 — null em briefing anterior à expansão de escopo; o
+            // frontend trata null como "comercial" (ver ESCOPO_COPILOTO.md).
+            tipo:        b.tipo,
+            remetente:   b.remetente,
             status:      b.status,
             createdAt:   b.createdAt,
             suggestions: b.suggestions.map((s) => ({
@@ -88,6 +92,9 @@ export default async function copilotoRoutes(app: FastifyInstance) {
       // depende do briefing MAIS RECENTE de cada conversa (subquery correlata).
       if (temperature) list = list.filter((c) => c.latestBriefing?.temperature === temperature);
       if (status)      list = list.filter((c) => c.latestBriefing?.status === status);
+      // Briefing v1.0 (tipo=null) é tratado como "comercial" no filtro — era o
+      // único tipo que existia antes da v2.0, não deve sumir da listagem.
+      if (tipo)        list = list.filter((c) => (c.latestBriefing?.tipo ?? 'comercial') === tipo);
 
       return { conversations: list };
     },

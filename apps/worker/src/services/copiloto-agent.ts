@@ -57,8 +57,22 @@ function formatHistory(messages: CopilotoMessageLike[]): string {
 
 // ── Triagem ──────────────────────────────────────────────────────────────────
 
+/** v2.0 — os 5 tipos de conversa que o Copiloto cobre (ver TRIAGE_SYSTEM_PROMPT). */
+export const TIPOS = ['comercial', 'pessoal', 'admin', 'crise', 'oportunidade'] as const;
+export type Tipo = (typeof TIPOS)[number];
+
+export const REMETENTES = ['cliente_novo', 'ativo', 'fornecedor', 'parceiro', 'equipe', 'outro'] as const;
+export type Remetente = (typeof REMETENTES)[number];
+
+const TIPOS_SET = new Set<string>(TIPOS);
+const REMETENTES_SET = new Set<string>(REMETENTES);
+
 export interface TriageResult {
   shouldBrief: boolean;
+  /** null quando shouldBrief=false — v1.0 (sem classificação) também cai aqui. */
+  tipo: Tipo | null;
+  /** 'outro' como fallback quando shouldBrief=true mas a IA não classificou. */
+  remetente: Remetente | null;
   reason: string;
   confidence: number;
 }
@@ -92,8 +106,13 @@ export async function triageConversation(params: {
       feature: 'copiloto_triage',
       label: '[Copiloto]',
     });
+    const shouldBrief = parsed?.decisao === 'briefing';
     return {
-      shouldBrief: parsed?.decisao === 'briefing',
+      shouldBrief,
+      tipo: shouldBrief && typeof parsed?.tipo === 'string' && TIPOS_SET.has(parsed.tipo) ? (parsed.tipo as Tipo) : null,
+      remetente: shouldBrief
+        ? (typeof parsed?.remetente === 'string' && REMETENTES_SET.has(parsed.remetente) ? (parsed.remetente as Remetente) : 'outro')
+        : null,
       reason: typeof parsed?.motivo === 'string' ? parsed.motivo : '',
       confidence: typeof parsed?.confianca === 'number' ? parsed.confianca : 0,
     };
@@ -101,7 +120,7 @@ export async function triageConversation(params: {
     // Triagem indisponível não pode virar enxurrada de briefing caro nem
     // silêncio permanente: falha fechada (não interrompe o dono) e loga.
     logger.error(`[Copiloto] Triagem falhou: ${err.message}`);
-    return { shouldBrief: false, reason: 'triagem indisponível', confidence: 0 };
+    return { shouldBrief: false, tipo: null, remetente: null, reason: 'triagem indisponível', confidence: 0 };
   }
 }
 
@@ -150,6 +169,14 @@ function parseCommitment(raw: any): { title: string; dueAt: string } | null {
  * Produz o briefing e as 3 opções. Não valida conteúdo (isso é dos guardrails)
  * nem envia nada — só devolve o material para quem chamou decidir.
  */
+const TIPO_LABEL: Record<Tipo, string> = {
+  comercial: 'comercial (venda, orçamento, negociação)',
+  pessoal: 'pessoal (sem pedido comercial — elogio, papo, pergunta pessoal)',
+  admin: 'admin (operação do que já foi comprado — pagamento, entrega, suporte)',
+  crise: 'crise (reclamação, insatisfação, ameaça de cancelamento)',
+  oportunidade: 'oportunidade (alguém de fora oferecendo algo ao negócio)',
+};
+
 export async function buildBriefing(params: {
   userId: string;
   contactName?: string | null;
@@ -161,6 +188,10 @@ export async function buildBriefing(params: {
   // não fala assim", "preço tá errado") — só existe se ele editou no site
   // (/dashboard/copiloto). Mais recente primeiro.
   pastFeedback?: string[];
+  // v2.0 — vem da triagem (triageConversation). Ausente/undefined = trata como
+  // "comercial" (compatível com chamadas antigas, e é o caso mais comum).
+  tipo?: Tipo | null;
+  remetente?: Remetente | null;
 }): Promise<BriefingResult> {
   const kbBlock = params.knowledgeBase?.length
     ? params.knowledgeBase.map((k, i) => `[${i + 1}] P: ${k.question}\nR: ${k.answer}`).join('\n\n')
@@ -170,8 +201,12 @@ export async function buildBriefing(params: {
     timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short',
   });
 
+  const tipo = params.tipo ?? 'comercial';
+
   const user = [
     `Agora é: ${nowLabel} (timezone America/Sao_Paulo, UTC-3) — use isso pra inferir o prazo de "compromisso".`,
+    `Tipo de conversa: ${TIPO_LABEL[tipo]}`,
+    params.remetente ? `Remetente: ${params.remetente}` : null,
     `Sobre o negócio: ${params.businessContext?.trim() || '(não informado)'}`,
     aggressivenessGuide(params.aggressiveness),
     params.contactName ? `Nome do cliente: ${params.contactName}` : null,

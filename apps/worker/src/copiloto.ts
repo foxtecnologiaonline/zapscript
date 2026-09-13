@@ -256,6 +256,8 @@ async function processBrief(job: Job<BriefJobData>) {
     return { skipped: true, reason: `triagem: ${triage.reason}` };
   }
 
+  logger.info(`[Copiloto] ✓ ${contactLabel}: triagem OK (tipo=${triage.tipo ?? 'comercial'}, remetente=${triage.remetente ?? 'n/d'}, confianca=${triage.confidence})`);
+
   const kb = await prisma.atendeKnowledgeBase.findMany({
     where: { userId, active: true },
     orderBy: { createdAt: 'asc' },
@@ -283,6 +285,8 @@ async function processBrief(job: Job<BriefJobData>) {
       knowledgeBase: kb,
       history,
       pastFeedback,
+      tipo: triage.tipo,
+      remetente: triage.remetente,
     });
   } catch (err: any) {
     // Antes disso, uma falha aqui (todos os provedores de IA fora) derrubava o
@@ -322,6 +326,8 @@ async function processBrief(job: Job<BriefJobData>) {
       temperature: briefing.temperature,
       blocker: briefing.blocker,
       riskLevel: briefing.riskLevel,
+      tipo: triage.tipo,
+      remetente: triage.remetente,
       deliveredVia: 'whatsapp',
     },
   });
@@ -395,7 +401,7 @@ async function processBrief(job: Job<BriefJobData>) {
   ).catch((err: any) => logger.error(`[Copiloto] ❌ Falha ao enfileirar entrega — ${contactLabel}: ${err.message}`));
 
   await markBriefed();
-  logger.info(`[Copiloto] ✅ Briefing pronto — ${contactLabel} (${offered.length} opção(ões)) — entrega em até ${DELIVER_WINDOW_MS / 1000}s`);
+  logger.info(`[Copiloto] ✅ Briefing pronto — ${contactLabel} [${triage.tipo ?? 'comercial'}] (${offered.length} opção(ões)) — entrega em até ${DELIVER_WINDOW_MS / 1000}s`);
   return { briefingId: created.id, offered: offered.length };
 }
 
@@ -849,6 +855,7 @@ const RECAP_TZ = 'America/Sao_Paulo';
 const RECAP_MIN_SENT = 5; // amostra mínima — abaixo disso, % de resposta é ruído, não sinal
 
 const TECHNIQUE_LABEL: Record<string, string> = {
+  // comercial (v1.0)
   'fechamento-assumido': 'Fechar a venda',
   'qualificacao':        'Perguntar antes de propor',
   'loop-objecao':        'Contornar objeção',
@@ -858,6 +865,22 @@ const TECHNIQUE_LABEL: Record<string, string> = {
   'reciprocidade':       'Reciprocidade',
   'escuta-ativa':        'Confirmar antes de responder',
   'proximo-passo':       'Propor próximo passo',
+  // pessoal (v2.0)
+  'conexao-pessoal':     'Aprofundar conexão',
+  'curiosidade-genuina': 'Curiosidade genuína',
+  'reconhecimento':      'Reconhecer o ponto sem se justificar',
+  // admin (v2.0)
+  'resolucao-direta':    'Resolver direto',
+  'prazo-real':          'Dar prazo real',
+  'encaminhamento-claro': 'Encaminhar com clareza',
+  // crise (v2.0)
+  'responsabilidade-imediata': 'Assumir responsabilidade rápido',
+  'escuta-de-crise':     'Entender o problema antes de prometer',
+  'validacao-sem-culpa': 'Validar sem admitir culpa indevida',
+  // oportunidade (v2.0)
+  'interesse-qualificado': 'Mostrar interesse qualificado',
+  'filtro-estrategico':  'Filtrar se vale a pena',
+  'porta-aberta':        'Pedir tempo sem fechar a porta',
 };
 
 function isRecapDay(): boolean {
