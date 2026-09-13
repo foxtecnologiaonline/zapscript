@@ -1249,10 +1249,17 @@ model CopilotoMessage {
   direction      String // 'in' (cliente) | 'out' (dono)
   content        String
   fromCopiloto   Boolean              @default(false) // saída que o Copiloto enviou por ordem do dono
+  // messageId do WhatsApp (Evolution) — idempotência. Nullable/best-effort (não
+  // é unique constraint, mesmo padrão de AtendeReview.canalExternoId): dá pra
+  // reprocessar com segurança o backfill/sweep de não lidas (ver
+  // copiloto-backfill.ts) sem duplicar mensagem quando o mesmo chat continua
+  // não lido entre uma rodada e outra.
+  externalId     String?
   createdAt      DateTime             @default(now())
   conversation   CopilotoConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+  @@index([conversationId, externalId])
 }
 
 model CopilotoBriefing {

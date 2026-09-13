@@ -46,6 +46,11 @@ interface IngestJobData {
   contactName?: string | null;
   direction: 'in' | 'out';
   content: string;
+  // messageId do WhatsApp — presente em mensagens vindas do webhook e do
+  // backfill/sweep de não lidas (copiloto-backfill.ts). Ausente só em código
+  // antigo/caminho que não tenha sido atualizado — nesse caso cai no
+  // comportamento anterior (sem dedup por id, só o echo-guard abaixo).
+  externalId?: string | null;
 }
 
 interface BriefJobData {
@@ -94,7 +99,7 @@ export function isQuietNow(start: string, end: string, timezone: string): boolea
 // ── ingest ───────────────────────────────────────────────────────────────────
 
 async function processIngest(job: Job<IngestJobData>) {
-  const { userId, numberId, contactPhone, contactName, direction, content } = job.data;
+  const { userId, numberId, contactPhone, contactName, direction, content, externalId } = job.data;
   if (!content?.trim()) return { skipped: true, reason: 'empty' };
 
   const conversation = await prisma.copilotoConversation.upsert({
@@ -102,6 +107,20 @@ async function processIngest(job: Job<IngestJobData>) {
     update: { lastMessageAt: new Date(), ...(contactName ? { contactName } : {}) },
     create: { userId, numberId, contactPhone, contactName: contactName ?? null },
   });
+
+  // Dedup por messageId real do WhatsApp — cobre o backfill/sweep de não lidas
+  // (copiloto-backfill.ts) reprocessando o mesmo chat em rodadas diferentes.
+  // O jobId da fila ('copiloto-in-<messageId>') já dedupa enquanto o job ainda
+  // existir no Redis, mas removeOnComplete apaga esse registro depois de
+  // 24h/500 jobs (ver apps/api/src/services/queue.ts) — sem este check, uma
+  // mensagem antiga que continua não lida vira duplicata a cada nova rodada.
+  if (externalId) {
+    const dup = await prisma.copilotoMessage.findFirst({
+      where: { conversationId: conversation.id, externalId },
+      select: { id: true },
+    });
+    if (dup) return { skipped: true, reason: 'duplicado' };
+  }
 
   // Eco do próprio envio do Copiloto: quando o dono escolhe uma opção, a API já
   // grava a mensagem como 'out'; o WhatsApp devolve o mesmo texto como fromMe
@@ -121,7 +140,7 @@ async function processIngest(job: Job<IngestJobData>) {
   }
 
   await prisma.copilotoMessage.create({
-    data: { conversationId: conversation.id, direction, content },
+    data: { conversationId: conversation.id, direction, content, externalId: externalId ?? null },
   });
 
   // Resultado da sugestão: o cliente respondeu depois do que o dono mandou?
@@ -768,7 +787,10 @@ async function runCopilotoGroupDigests() {
 }
 
 runCopilotoGroupDigests();
-setInterval(runCopilotoGroupDigests, GROUP_DIGEST_POLL_MS);
+// unref(): timer de poll não pode ser motivo pra o processo não encerrar num
+// shutdown normal (SIGTERM do orquestrador/deploy) nem travar um `jest
+// --runInBand` que importa este módulo em teste.
+setInterval(runCopilotoGroupDigests, GROUP_DIGEST_POLL_MS).unref();
 
 // ─────────────────────────────────────────────────────────────────────────
 // Sweep de pendências — conversas com mensagem ainda não briefada (nem por
@@ -840,7 +862,7 @@ async function runCopilotoPendingSweep() {
 }
 
 runCopilotoPendingSweep();
-setInterval(runCopilotoPendingSweep, PENDING_SWEEP_POLL_MS);
+setInterval(runCopilotoPendingSweep, PENDING_SWEEP_POLL_MS).unref();
 
 // ─────────────────────────────────────────────────────────────────────────
 // Recap semanal de técnica (Função 1) — toda segunda-feira, quantas sugestões
@@ -960,6 +982,6 @@ async function runCopilotoTechniqueRecap() {
 }
 
 runCopilotoTechniqueRecap();
-setInterval(runCopilotoTechniqueRecap, TECHNIQUE_RECAP_POLL_MS);
+setInterval(runCopilotoTechniqueRecap, TECHNIQUE_RECAP_POLL_MS).unref();
 
 export { copilotoWorker, runCopilotoGroupDigests, runCopilotoPendingSweep, runCopilotoTechniqueRecap };

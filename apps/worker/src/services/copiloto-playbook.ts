@@ -173,17 +173,23 @@ Responda SOMENTE com um objeto JSON válido, sem markdown, exatamente neste form
 
 /**
  * Prompt de triagem. Roda em modelo barato, antes do briefing caro — é o que
- * segura custo E ruído. Enviesado para "ignorar": falso negativo custa uma
- * oportunidade adiada; falso positivo custa a confiança no produto inteiro.
+ * segura custo E ruído.
  *
- * v2.0 — cobre 5 tipos (não só comercial). O viés pró-"ignorar" continua igual
- * ou mais forte: mais tipos elegíveis pede MAIS rigor em cada um, não menos —
- * ver ESCOPO_COPILOTO.md. "tipo" e "remetente" alimentam o briefing (só rodam
- * quando decisao="briefing") e são gravados em CopilotoBriefing pra análise.
+ * v2.0 — cobre 5 tipos (não só comercial) e o viés muda de propósito, por
+ * decisão explícita: de "na dúvida, ignora" (v1.0, otimizado pra nunca
+ * incomodar à toa) para "na dúvida, briefa" (fase de observação — precisamos
+ * ver o volume e o tipo real de conversa que cada categoria nova traz antes
+ * de decidir onde apertar). O filtro que continua absoluto é o de RUÍDO
+ * objetivo (linha "Responda 'ignorar' para" abaixo) — isso nunca vira
+ * briefing, dúvida ou não. "tipo"/"remetente"/"confianca" ficam gravados em
+ * CopilotoBriefing justamente pra essa análise: depois de rodar em produção,
+ * o próximo passo é olhar taxa de ignoro do dono por tipo e, tipo a tipo,
+ * decidir se aperta o critério aqui. Até lá, este prompt fica assim de
+ * propósito — não é o estado final.
  */
 export const TRIAGE_SYSTEM_PROMPT = `Você decide se uma conversa de WhatsApp merece interromper o dono de um pequeno negócio com um resumo e sugestões de resposta.
 
-A MAIORIA das mensagens NÃO merece. Interromper à toa é o pior erro possível deste produto — o dono desliga e não volta. Na dúvida, responda "ignorar".
+Fase de observação: quando a mensagem não é ruído óbvio (ver lista de "ignorar" abaixo) e pode razoavelmente pedir alguma reação do dono, prefira "briefing" mesmo na dúvida — é assim que aprendemos o que realmente vale a pena, tipo por tipo. Isso é diferente de "briefar qualquer coisa": ruído continua sendo ruído.
 
 O Copiloto cobre 5 tipos de conversa — qualquer um pode virar briefing, não só venda:
 
@@ -193,9 +199,9 @@ O Copiloto cobre 5 tipos de conversa — qualquer um pode virar briefing, não s
 - "crise": reclamação, insatisfação clara, ameaça de cancelamento ou de expor o negócio, tom agressivo, cobrança de um erro do negócio.
 - "oportunidade": alguém de fora oferecendo algo AO negócio — fornecedor, parceria, mídia, indicação, proposta de colaboração.
 
-Responda "briefing" só quando a conversa se encaixa claramente em um desses 5 tipos E pede alguma decisão, resposta ou ação do dono — não pelo simples fato de ter uma pergunta.
+Responda "briefing" quando a conversa se encaixa em um desses 5 tipos e há QUALQUER chance de o dono querer reagir — não exija certeza absoluta.
 
-Responda "ignorar" para: bom dia solto, figurinha, agradecimento, confirmação simples ("ok", "beleza", "👍", "❤️"), spam, corrente, cobrança que o dono já respondeu, mensagem do próprio dono, ou qualquer coisa que não peça nada dele agora.
+Responda "ignorar" SÓ para ruído objetivo, sem ambiguidade: bom dia solto sem mais nada, figurinha, agradecimento puro ("obrigado", "vlw"), confirmação simples sem conteúdo novo ("ok", "beleza", "👍", "❤️"), spam, corrente, cobrança que o dono já respondeu (sem novidade), mensagem do próprio dono, ou o cliente já tendo dito que retorna numa data futura que ainda não chegou.
 
 Também classifique "remetente", com base no histórico e no tom da mensagem:
 - "cliente_novo": primeiro contato, sem sinal de compra anterior;
@@ -208,7 +214,7 @@ Também classifique "remetente", com base no histórico e no tom da mensagem:
 Responda SOMENTE com JSON válido, sem markdown:
 { "decisao": "briefing" | "ignorar", "tipo": "comercial" | "pessoal" | "admin" | "crise" | "oportunidade" | null, "remetente": "cliente_novo" | "ativo" | "fornecedor" | "parceiro" | "equipe" | "outro", "motivo": "no máximo 8 palavras", "confianca": number (0-100) }
 
-Se "decisao" for "ignorar", "tipo" é sempre null.`;
+Se "decisao" for "ignorar", "tipo" é sempre null. "confianca" reflete sua certeza na classificação, não uma licença pra baixar o rigor do filtro de ruído.`;
 
 /**
  * Prompt do resumo diário de grupos (Função 2). Sem eixos, sem técnica, sem

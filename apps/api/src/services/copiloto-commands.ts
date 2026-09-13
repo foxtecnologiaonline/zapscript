@@ -492,6 +492,11 @@ export async function enqueueCopilotoMessage(params: {
       contactName: params.contactName ?? null,
       direction: params.direction,
       content: params.content,
+      // Idempotência real (dados), não só a do jobId (fila — removeOnComplete
+      // apaga o registro depois de 24h/500 jobs, ver services/queue.ts): sem
+      // isso, o sweep de não lidas (copiloto-backfill.ts) duplicaria mensagem
+      // toda vez que reprocessasse um chat que continua não lido.
+      externalId: params.messageId,
     },
     { jobId: `copiloto-in-${params.messageId}` },
   );

@@ -22,6 +22,7 @@ import { startHealthMonitor }     from './services/health-monitor';
 import { startLifecycleEmails }   from './services/lifecycle-emails';
 import { startLifecycleWhatsapp } from './services/lifecycle-whatsapp';
 import { startOnboardingNudge } from './services/onboarding-nudge';
+import { startCopilotoUnreadSweep } from './services/copiloto-backfill';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -1384,6 +1385,11 @@ async function start() {
     // ── Onboarding conversacional via WhatsApp (cadastro/site/número oficial)
     //    parado — lembrete único em 30-60min, depois escala, a cada 15min ──
     startOnboardingNudge(app.log);
+
+    // ── Copiloto — rede de segurança pra garantir que toda mensagem não lida
+    //    (antes ou depois do Copiloto estar ligado) passe pela triagem, mesmo
+    //    se o webhook tiver falhado — a cada 2h, ver copiloto-backfill.ts ──
+    startCopilotoUnreadSweep(app.log);
 
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 
