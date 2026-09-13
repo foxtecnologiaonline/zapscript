@@ -22,6 +22,7 @@ import { startHealthMonitor }     from './services/health-monitor';
 import { startLifecycleEmails }   from './services/lifecycle-emails';
 import { startLifecycleWhatsapp } from './services/lifecycle-whatsapp';
 import { startOnboardingNudge } from './services/onboarding-nudge';
+import { startCopilotoUnreadSweep } from './services/copiloto-backfill';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -1206,6 +1207,22 @@ async function runAutoMigrations() {
       "updatedAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "CronHeartbeat_pkey" PRIMARY KEY ("jobName")
     )`,
+    // Copiloto v2.0 (migração 20260913_copiloto_v2_tipo_remetente): auto-cura o
+    // schema no boot mesmo se o startCommand de produção não rodar `prisma
+    // migrate deploy` — mesmo princípio de toda entrada acima.
+    `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "tipo" TEXT`,
+    `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "remetente" TEXT`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoBriefing_tipo_idx" ON "CopilotoBriefing"("tipo")`,
+    // Idempotência de ingestão (migração 20260913_copiloto_message_external_id).
+    `ALTER TABLE "CopilotoMessage" ADD COLUMN IF NOT EXISTS "externalId" TEXT`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoMessage_conversationId_externalId_idx" ON "CopilotoMessage"("conversationId", "externalId")`,
+    // Copiloto v2.1 — insights e controles (migração 20260913_copiloto_v2_1_insights).
+    `ALTER TABLE "CopilotoConfig" ADD COLUMN IF NOT EXISTS "minConfidenceByTipo" JSONB`,
+    `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "sensitive" BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "dismissReason" TEXT`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoBriefing_sensitive_tipo_idx" ON "CopilotoBriefing"("sensitive", "tipo")`,
+    // Suporte ao cooldown de "pessoal" (migração 20260913_copiloto_pessoal_cooldown_idx).
+    `CREATE INDEX IF NOT EXISTS "CopilotoBriefing_conversationId_tipo_createdAt_idx" ON "CopilotoBriefing"("conversationId", "tipo", "createdAt")`,
   ];
   // Loga índice + prefixo do SQL antes de cada await: se travar (ex.: lock de
   // uma conexão órfã do container anterior ainda não coletada pelo Postgres),
@@ -1385,6 +1402,11 @@ async function start() {
     // ── Onboarding conversacional via WhatsApp (cadastro/site/número oficial)
     //    parado — lembrete único em 30-60min, depois escala, a cada 15min ──
     startOnboardingNudge(app.log);
+
+    // ── Copiloto — rede de segurança pra garantir que toda mensagem não lida
+    //    (antes ou depois do Copiloto estar ligado) passe pela triagem, mesmo
+    //    se o webhook tiver falhado — a cada 2h, ver copiloto-backfill.ts ──
+    startCopilotoUnreadSweep(app.log);
 
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 

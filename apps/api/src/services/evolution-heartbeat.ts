@@ -18,6 +18,8 @@
 
 import { prisma } from '../lib/prisma';
 import { getConnectionState, setWebhook } from './evolution';
+import { getUserModules } from '../lib/moduleGate';
+import { backfillUnreadConversations } from './copiloto-backfill';
 
 const STATUS_INTERVAL_MS  =  5 * 60 * 1000;
 const WEBHOOK_INTERVAL_MS = 60 * 60 * 1000;
@@ -39,7 +41,7 @@ export async function runStatusSync(log: any): Promise<void> {
 
   const numbers = await (prisma as any).whatsappNumber.findMany({
     where:  { zapiInstanceId: { not: null } },
-    select: { id: true, userId: true, zapiInstanceId: true, status: true },
+    select: { id: true, userId: true, zapiInstanceId: true, status: true, phoneNumber: true },
   }).catch(() => []);
 
   if (numbers.length === 0) return;
@@ -59,6 +61,24 @@ export async function runStatusSync(log: any): Promise<void> {
       }).catch(() => null);
       log.info(`[Heartbeat] ✅ Auto-reconectado: ${n.id} (user ${n.userId}) era '${n.status}'`);
       reconnected++;
+
+      // Copiloto: quem ficou desconectado pode ter recebido mensagem enquanto
+      // isso — sem isso, essas mensagens só apareceriam se o Evolution
+      // reenviar o webhook (nem sempre acontece) e nunca virariam briefing.
+      // Fire-and-forget: reconexão não pode esperar nem falhar por causa disto.
+      if (n.phoneNumber && n.phoneNumber !== 'pending') {
+        getUserModules(n.userId)
+          .then((mods) => {
+            if (!mods.includes('copiloto')) return;
+            return backfillUnreadConversations({
+              userId: n.userId,
+              numberId: n.id,
+              instanceId: instName,
+              ownPhoneDigits: String(n.phoneNumber).replace(/\D/g, ''),
+            });
+          })
+          .catch((err: any) => log.warn(`[Heartbeat] Backfill de Copiloto falhou (número ${n.id}): ${err.message}`));
+      }
     }
 
     // state === 'close' → NÃO desconectar aqui.

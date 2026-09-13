@@ -35,6 +35,11 @@ const UNDO_WINDOW_MS = 2 * 60 * 1000; // 2 min
 
 const AGGRESSIVENESS_LEVELS = ['consultivo', 'equilibrado', 'direto'] as const;
 
+// Mesmos 5 tipos de apps/worker/src/services/copiloto-agent.ts (TIPOS) —
+// duplicado aqui de propósito: pacotes (api/worker) separados, sem import
+// cross-package no projeto, e é só uma lista de 5 strings de validação.
+const COPILOTO_TIPOS = ['comercial', 'pessoal', 'admin', 'crise', 'oportunidade'] as const;
+
 export function isCopilotoOwnerCommand(text: string): boolean {
   return COMMAND_PREFIX.test(text ?? '');
 }
@@ -47,10 +52,11 @@ const HELP_TEXT = [
   '• copiloto silencio 21:00 07:00 — janela em que ele não te incomoda',
   '• copiloto negocio <texto> — o que seu negócio faz (melhora as sugestões)',
   '• copiloto agressividade consultivo|equilibrado|direto — o tom das sugestões',
+  '• copiloto confianca <tipo> <0-100|off> — só avisa desse tipo acima dessa confiança (ex.: copiloto confianca oportunidade 70)',
   '• copiloto desfazer — apaga a última mensagem enviada, até 2min depois',
   '• copiloto testar — checa se a IA está respondendo agora',
   '',
-  'Quando chegar um briefing: responda *1*, *2* ou *3* pra enviar, *1e* pra editar antes, *0* pra ignorar.',
+  'Quando chegar um briefing: responda *1*, *2* ou *3* pra enviar, *1e* pra editar antes, *0* pra ignorar, *0!* pra ignorar E avisar que isso não devia ter me avisado.',
 ].join('\n');
 
 /** Aceita "21:00" ou "21h" e devolve "HH:mm"; null se não for hora válida. */
@@ -209,6 +215,42 @@ export async function handleCopilotoOwnerCommand(params: {
     await ensureConfig(userId, numberId);
     await prisma.copilotoConfig.update({ where: { numberId }, data: { aggressiveness: level } });
     await reply(`✅ Agressividade ajustada pra *${level}*. Vale a partir do próximo briefing.`);
+    return true;
+  }
+
+  // "copiloto confianca <tipo> <valor|off>" — piso de confiança da triagem
+  // por tipo. Fase de observação (ver TRIAGE_SYSTEM_PROMPT): a triagem vem
+  // aberta por padrão, sem piso nenhum. Isso dá ao dono uma forma de apertar
+  // um tipo específico sem esperar redeploy, depois que os dados mostrarem
+  // que aquele tipo em particular gera muito ruído pra ele.
+  const confianca = lower.match(/^confian[çc]a\s+(\w+)\s+(\w+)$/);
+  if (confianca) {
+    const tipo = confianca[1];
+    const valorRaw = confianca[2];
+    if (!COPILOTO_TIPOS.includes(tipo as any)) {
+      await reply(`Tipo inválido. Use um destes: ${COPILOTO_TIPOS.join(', ')}.`);
+      return true;
+    }
+    const config = await ensureConfig(userId, numberId);
+    const current = (config.minConfidenceByTipo && typeof config.minConfidenceByTipo === 'object')
+      ? { ...(config.minConfidenceByTipo as Record<string, number>) }
+      : {};
+
+    if (/^(off|desligar|remover)$/.test(valorRaw)) {
+      delete current[tipo];
+      await prisma.copilotoConfig.update({ where: { numberId }, data: { minConfidenceByTipo: current } });
+      await reply(`✅ Piso de confiança removido pra *${tipo}* — volta a usar o critério padrão da triagem.`);
+      return true;
+    }
+
+    const valor = parseInt(valorRaw, 10);
+    if (!Number.isFinite(valor) || valor < 0 || valor > 100) {
+      await reply('Formato: copiloto confianca <tipo> <0-100 ou "off">. Ex.: copiloto confianca oportunidade 70');
+      return true;
+    }
+    current[tipo] = valor;
+    await prisma.copilotoConfig.update({ where: { numberId }, data: { minConfidenceByTipo: current } });
+    await reply(`✅ A partir de agora, só te aviso de *${tipo}* quando a triagem tiver pelo menos ${valor}% de confiança.`);
     return true;
   }
 
@@ -407,10 +449,16 @@ export async function handleCopilotoChoice(params: {
   }
 
   if (briefing.status === 'awaiting_edit' && briefing.awaitingRank) {
-    if (raw === '0') {
+    // Mesma variante "0!"/"0x" do fluxo normal (ver mais abaixo) — tem que
+    // ser reconhecida AQUI também. Sem isso, "0!" não batia com `raw === '0'`
+    // e caía direto em dispatch(chosen, raw, true) — ou seja, "0!" seria
+    // enviado como TEXTO LITERAL pro cliente. Bug real, corrigido antes do
+    // primeiro deploy desta feature.
+    if (/^0(!|x)?$/i.test(raw)) {
+      const isNoise = /[!x]$/i.test(raw);
       await prisma.copilotoBriefing.update({
         where: { id: briefing.id },
-        data: { status: 'dismissed', awaitingRank: null, awaitingSince: null },
+        data: { status: 'dismissed', awaitingRank: null, awaitingSince: null, dismissReason: isNoise ? 'ruido' : null },
       });
       await reply('Beleza, cancelei. Nada foi enviado.');
       return true;
@@ -425,13 +473,18 @@ export async function handleCopilotoChoice(params: {
     return true;
   }
 
-  // "0" — ignorar. Também é sinal de aprendizado: as 3 opções não serviram.
-  if (/^0$/.test(raw)) {
+  // "0" — ignorar (sem dizer por quê: pode ser falta de tempo, não é sinal de
+  // que a triagem errou). "0!" — ignorar E dizer explicitamente que isso foi
+  // ruído: não devia ter virado briefing. Esse segundo sinal é o que alimenta
+  // a decisão de apertar o piso de confiança por tipo (ver "copiloto
+  // confianca" e ESCOPO_COPILOTO.md — fase de observação).
+  if (/^0(!|x)?$/i.test(raw)) {
+    const isNoise = /[!x]$/i.test(raw);
     await prisma.copilotoBriefing.update({
       where: { id: briefing.id },
-      data: { status: 'dismissed' },
+      data: { status: 'dismissed', dismissReason: isNoise ? 'ruido' : null },
     });
-    await reply('Ok, ignorado.');
+    await reply(isNoise ? 'Ok, ignorado — anotei que isso não devia ter me avisado.' : 'Ok, ignorado.');
     return true;
   }
 
@@ -492,6 +545,11 @@ export async function enqueueCopilotoMessage(params: {
       contactName: params.contactName ?? null,
       direction: params.direction,
       content: params.content,
+      // Idempotência real (dados), não só a do jobId (fila — removeOnComplete
+      // apaga o registro depois de 24h/500 jobs, ver services/queue.ts): sem
+      // isso, o sweep de não lidas (copiloto-backfill.ts) duplicaria mensagem
+      // toda vez que reprocessasse um chat que continua não lido.
+      externalId: params.messageId,
     },
     { jobId: `copiloto-in-${params.messageId}` },
   );

@@ -302,6 +302,35 @@ async function checkCopiloto(): Promise<
       suggestions.push('Checar chaves de API (Anthropic/OpenAI/Groq/Gemini) e a env var AI_SKIP_PROVIDERS — provável apagão de todos os provedores ao mesmo tempo');
     }
 
+    // Outlier de custo — v2.1 (10 melhorias pós-lançamento do escopo ampliado).
+    // Com 5 tipos + triagem aberta, o risco real de custo não é "a média subiu",
+    // é UM usuário virar outlier (loop de mensagens, grupo mal configurado,
+    // conta testando limites) — isso não aparece numa média agregada, só
+    // olhando por usuário. Amostra pequena (< COST_OUTLIER_MIN_USERS contas
+    // ativas no dia) não é comparável a uma "média" que faz sentido — pula.
+    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+    const usage = await prisma.aiUsageLog.groupBy({
+      by: ['userId'],
+      where: { feature: { startsWith: 'copiloto_' }, createdAt: { gte: dayStart } },
+      _sum: { inputTokens: true, outputTokens: true },
+    }).catch(() => [] as any[]);
+
+    const totals = usage.map((u: any) => ({
+      userId: u.userId as string,
+      tokens: (u._sum.inputTokens ?? 0) + (u._sum.outputTokens ?? 0),
+    }));
+    const COST_OUTLIER_MIN_USERS = 5;
+    const COST_OUTLIER_MULTIPLIER = 5; // 5x a média do dia
+    const COST_OUTLIER_FLOOR_TOKENS = 300_000; // piso absoluto — ignora ruído em conta pequena
+    if (totals.length >= COST_OUTLIER_MIN_USERS) {
+      const avg = totals.reduce((s, t) => s + t.tokens, 0) / totals.length;
+      const outliers = totals.filter((t) => t.tokens > COST_OUTLIER_FLOOR_TOKENS && t.tokens > avg * COST_OUTLIER_MULTIPLIER);
+      for (const o of outliers.slice(0, 5)) { // no máximo 5 no alerta — o resto fica pra investigação manual, não precisa de mensagem gigante
+        alertMsgs.push(`⚠️ Copiloto: usuário ${o.userId} consumiu ${o.tokens.toLocaleString('pt-BR')} tokens hoje (${(o.tokens / avg).toFixed(1)}x a média de ${Math.round(avg).toLocaleString('pt-BR')})`);
+        suggestions.push(`Investigar uso do Copiloto do usuário ${o.userId} — possível loop de mensagens, grupo mal configurado, ou uso legítimo em alta escala`);
+      }
+    }
+
     const heartbeats = await (prisma as any).cronHeartbeat.findMany({
       where: { jobName: { in: Object.keys(COPILOTO_CRON_STALE_HOURS) } },
     });

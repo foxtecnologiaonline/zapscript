@@ -15,7 +15,7 @@ jest.mock('../lib/prisma', () => ({ prisma: {} }));
 jest.mock('../services/evolution', () => ({ sendMessageViaEvolution: jest.fn() }));
 jest.mock('../services/copiloto-agent', () => ({ triageConversation: jest.fn(), buildBriefing: jest.fn() }));
 
-import { isQuietNow, renderBriefingMessage, renderReplyFooter } from '../copiloto';
+import { isQuietNow, renderBriefingMessage, renderReplyFooter, readMinConfidence } from '../copiloto';
 
 describe('isQuietNow', () => {
   const TZ = 'America/Sao_Paulo';
@@ -126,5 +126,29 @@ describe('renderReplyFooter', () => {
   it('lista os números oferecidos e as instruções de editar/ignorar', () => {
     const footer = renderReplyFooter([1, 2, 3]);
     expect(footer).toBe('*1*, *2*, *3* envia · *1e* edita · *0* ignora');
+  });
+});
+
+describe('readMinConfidence — piso de confiança por tipo (v2.1)', () => {
+  it('lê o valor do tipo quando configurado', () => {
+    expect(readMinConfidence({ oportunidade: 70 }, 'oportunidade')).toBe(70);
+  });
+
+  it('retorna null quando o tipo não está no mapa', () => {
+    expect(readMinConfidence({ oportunidade: 70 }, 'pessoal')).toBeNull();
+  });
+
+  it('retorna null sem config nenhuma', () => {
+    expect(readMinConfidence(null, 'comercial')).toBeNull();
+    expect(readMinConfidence(undefined, 'comercial')).toBeNull();
+  });
+
+  it('retorna null sem tipo (triagem não classificou)', () => {
+    expect(readMinConfidence({ comercial: 50 }, null)).toBeNull();
+  });
+
+  it('ignora valor não numérico (config corrompida não trava tudo)', () => {
+    expect(readMinConfidence({ comercial: 'alto' }, 'comercial')).toBeNull();
+    expect(readMinConfidence('nao-e-objeto', 'comercial')).toBeNull();
   });
 });

@@ -39,6 +39,21 @@ const copilotoQueue = new Queue('copiloto', { connection: redis as any });
 const HISTORY_LIMIT = 12;
 const NEW_MESSAGES_LIMIT = 20;
 
+/** Cooldown de briefing "pessoal" por contato — ver uso em processBrief(). */
+const PESSOAL_COOLDOWN_MS = parseInt(process.env.COPILOTO_PESSOAL_COOLDOWN_MS || String(24 * 60 * 60 * 1000), 10);
+
+/**
+ * Lê o piso de confiança configurado pro tipo, a partir do JSON solto que o
+ * Prisma devolve pra coluna Json (CopilotoConfig.minConfidenceByTipo). Nunca
+ * lança — config mal formada (não deveria acontecer, só é setada por
+ * copiloto-commands.ts) equivale a "sem piso", não a bloquear tudo.
+ */
+export function readMinConfidence(raw: unknown, tipo: string | null): number | null {
+  if (!tipo || !raw || typeof raw !== 'object') return null;
+  const value = (raw as Record<string, unknown>)[tipo];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 interface IngestJobData {
   userId: string;
   numberId: string;
@@ -46,6 +61,11 @@ interface IngestJobData {
   contactName?: string | null;
   direction: 'in' | 'out';
   content: string;
+  // messageId do WhatsApp — presente em mensagens vindas do webhook e do
+  // backfill/sweep de não lidas (copiloto-backfill.ts). Ausente só em código
+  // antigo/caminho que não tenha sido atualizado — nesse caso cai no
+  // comportamento anterior (sem dedup por id, só o echo-guard abaixo).
+  externalId?: string | null;
 }
 
 interface BriefJobData {
@@ -94,7 +114,7 @@ export function isQuietNow(start: string, end: string, timezone: string): boolea
 // ── ingest ───────────────────────────────────────────────────────────────────
 
 async function processIngest(job: Job<IngestJobData>) {
-  const { userId, numberId, contactPhone, contactName, direction, content } = job.data;
+  const { userId, numberId, contactPhone, contactName, direction, content, externalId } = job.data;
   if (!content?.trim()) return { skipped: true, reason: 'empty' };
 
   const conversation = await prisma.copilotoConversation.upsert({
@@ -102,6 +122,20 @@ async function processIngest(job: Job<IngestJobData>) {
     update: { lastMessageAt: new Date(), ...(contactName ? { contactName } : {}) },
     create: { userId, numberId, contactPhone, contactName: contactName ?? null },
   });
+
+  // Dedup por messageId real do WhatsApp — cobre o backfill/sweep de não lidas
+  // (copiloto-backfill.ts) reprocessando o mesmo chat em rodadas diferentes.
+  // O jobId da fila ('copiloto-in-<messageId>') já dedupa enquanto o job ainda
+  // existir no Redis, mas removeOnComplete apaga esse registro depois de
+  // 24h/500 jobs (ver apps/api/src/services/queue.ts) — sem este check, uma
+  // mensagem antiga que continua não lida vira duplicata a cada nova rodada.
+  if (externalId) {
+    const dup = await prisma.copilotoMessage.findFirst({
+      where: { conversationId: conversation.id, externalId },
+      select: { id: true },
+    });
+    if (dup) return { skipped: true, reason: 'duplicado' };
+  }
 
   // Eco do próprio envio do Copiloto: quando o dono escolhe uma opção, a API já
   // grava a mensagem como 'out'; o WhatsApp devolve o mesmo texto como fromMe
@@ -121,7 +155,7 @@ async function processIngest(job: Job<IngestJobData>) {
   }
 
   await prisma.copilotoMessage.create({
-    data: { conversationId: conversation.id, direction, content },
+    data: { conversationId: conversation.id, direction, content, externalId: externalId ?? null },
   });
 
   // Resultado da sugestão: o cliente respondeu depois do que o dono mandou?
@@ -256,6 +290,37 @@ async function processBrief(job: Job<BriefJobData>) {
     return { skipped: true, reason: `triagem: ${triage.reason}` };
   }
 
+  logger.info(`[Copiloto] ✓ ${contactLabel}: triagem OK (tipo=${triage.tipo ?? 'comercial'}, remetente=${triage.remetente ?? 'n/d'}, confianca=${triage.confidence})`);
+
+  // Piso de confiança por tipo — opcional, setado via "copiloto confianca
+  // <tipo> <valor>" (copiloto-commands.ts). Ausente por padrão (fase aberta):
+  // só existe pra quem o dono explicitamente decidiu apertar depois de ver
+  // dado real. Nunca bloqueia tipo sem entrada no mapa.
+  const minConfidence = readMinConfidence(config.minConfidenceByTipo, triage.tipo);
+  if (minConfidence !== null && triage.confidence < minConfidence) {
+    await markBriefed();
+    logger.info(`[Copiloto] ⏭️ ${contactLabel}: pulado (confiança ${triage.confidence} abaixo do piso ${minConfidence} pra tipo=${triage.tipo})`);
+    return { skipped: true, reason: 'confianca_abaixo_do_piso' };
+  }
+
+  // Cooldown de "pessoal" por contato — a triagem aberta pode gerar um
+  // briefing a cada mensagem de um contato batendo papo; sem isso, um único
+  // contato tagarela vira ruído repetido antes mesmo de juntar dado
+  // suficiente pros outros tipos. Não se aplica a comercial/admin/crise/
+  // oportunidade — ali cada mensagem nova pode ser uma decisão diferente.
+  if (triage.tipo === 'pessoal') {
+    const cooldownSince = new Date(Date.now() - PESSOAL_COOLDOWN_MS);
+    const recentPersonal = await prisma.copilotoBriefing.findFirst({
+      where: { conversationId: conversation.id, tipo: 'pessoal', createdAt: { gte: cooldownSince } },
+      select: { id: true },
+    });
+    if (recentPersonal) {
+      await markBriefed();
+      logger.info(`[Copiloto] ⏭️ ${contactLabel}: pulado (cooldown de conversa pessoal, já briefado nas últimas ${PESSOAL_COOLDOWN_MS / 3600000}h)`);
+      return { skipped: true, reason: 'cooldown_pessoal' };
+    }
+  }
+
   const kb = await prisma.atendeKnowledgeBase.findMany({
     where: { userId, active: true },
     orderBy: { createdAt: 'asc' },
@@ -283,6 +348,8 @@ async function processBrief(job: Job<BriefJobData>) {
       knowledgeBase: kb,
       history,
       pastFeedback,
+      tipo: triage.tipo,
+      remetente: triage.remetente,
     });
   } catch (err: any) {
     // Antes disso, uma falha aqui (todos os provedores de IA fora) derrubava o
@@ -312,6 +379,11 @@ async function processBrief(job: Job<BriefJobData>) {
     history.map((m) => m.content).join('\n'),
   ].join('\n');
 
+  // Calculado aqui (antes do create) pra poder persistir — antes só existia
+  // em memória e afetava só a mensagem renderizada, sem deixar rastro pra
+  // auditoria (ver ESCOPO_COPILOTO.md — cruzamento sensível×crise).
+  const sensitive = briefing.sensitive || hasVulnerabilitySignal(lastText);
+
   const created = await prisma.copilotoBriefing.create({
     data: {
       userId,
@@ -322,6 +394,9 @@ async function processBrief(job: Job<BriefJobData>) {
       temperature: briefing.temperature,
       blocker: briefing.blocker,
       riskLevel: briefing.riskLevel,
+      tipo: triage.tipo,
+      remetente: triage.remetente,
+      sensitive,
       deliveredVia: 'whatsapp',
     },
   });
@@ -359,7 +434,6 @@ async function processBrief(job: Job<BriefJobData>) {
     }
   }
 
-  const sensitive = briefing.sensitive || hasVulnerabilitySignal(lastText);
   // Sem rodapé aqui de propósito: o job 'deliver' (compilação de rajadas, ver
   // abaixo) é quem manda de verdade, alguns segundos depois, e anexa o rodapé
   // só no envio final — combinando com outro contato do mesmo número que
@@ -395,7 +469,7 @@ async function processBrief(job: Job<BriefJobData>) {
   ).catch((err: any) => logger.error(`[Copiloto] ❌ Falha ao enfileirar entrega — ${contactLabel}: ${err.message}`));
 
   await markBriefed();
-  logger.info(`[Copiloto] ✅ Briefing pronto — ${contactLabel} (${offered.length} opção(ões)) — entrega em até ${DELIVER_WINDOW_MS / 1000}s`);
+  logger.info(`[Copiloto] ✅ Briefing pronto — ${contactLabel} [${triage.tipo ?? 'comercial'}] (${offered.length} opção(ões)) — entrega em até ${DELIVER_WINDOW_MS / 1000}s`);
   return { briefingId: created.id, offered: offered.length };
 }
 
@@ -762,7 +836,10 @@ async function runCopilotoGroupDigests() {
 }
 
 runCopilotoGroupDigests();
-setInterval(runCopilotoGroupDigests, GROUP_DIGEST_POLL_MS);
+// unref(): timer de poll não pode ser motivo pra o processo não encerrar num
+// shutdown normal (SIGTERM do orquestrador/deploy) nem travar um `jest
+// --runInBand` que importa este módulo em teste.
+setInterval(runCopilotoGroupDigests, GROUP_DIGEST_POLL_MS).unref();
 
 // ─────────────────────────────────────────────────────────────────────────
 // Sweep de pendências — conversas com mensagem ainda não briefada (nem por
@@ -834,7 +911,7 @@ async function runCopilotoPendingSweep() {
 }
 
 runCopilotoPendingSweep();
-setInterval(runCopilotoPendingSweep, PENDING_SWEEP_POLL_MS);
+setInterval(runCopilotoPendingSweep, PENDING_SWEEP_POLL_MS).unref();
 
 // ─────────────────────────────────────────────────────────────────────────
 // Recap semanal de técnica (Função 1) — toda segunda-feira, quantas sugestões
@@ -849,6 +926,7 @@ const RECAP_TZ = 'America/Sao_Paulo';
 const RECAP_MIN_SENT = 5; // amostra mínima — abaixo disso, % de resposta é ruído, não sinal
 
 const TECHNIQUE_LABEL: Record<string, string> = {
+  // comercial (v1.0)
   'fechamento-assumido': 'Fechar a venda',
   'qualificacao':        'Perguntar antes de propor',
   'loop-objecao':        'Contornar objeção',
@@ -858,6 +936,22 @@ const TECHNIQUE_LABEL: Record<string, string> = {
   'reciprocidade':       'Reciprocidade',
   'escuta-ativa':        'Confirmar antes de responder',
   'proximo-passo':       'Propor próximo passo',
+  // pessoal (v2.0)
+  'conexao-pessoal':     'Aprofundar conexão',
+  'curiosidade-genuina': 'Curiosidade genuína',
+  'reconhecimento':      'Reconhecer o ponto sem se justificar',
+  // admin (v2.0)
+  'resolucao-direta':    'Resolver direto',
+  'prazo-real':          'Dar prazo real',
+  'encaminhamento-claro': 'Encaminhar com clareza',
+  // crise (v2.0)
+  'responsabilidade-imediata': 'Assumir responsabilidade rápido',
+  'escuta-de-crise':     'Entender o problema antes de prometer',
+  'validacao-sem-culpa': 'Validar sem admitir culpa indevida',
+  // oportunidade (v2.0)
+  'interesse-qualificado': 'Mostrar interesse qualificado',
+  'filtro-estrategico':  'Filtrar se vale a pena',
+  'porta-aberta':        'Pedir tempo sem fechar a porta',
 };
 
 function isRecapDay(): boolean {
@@ -937,6 +1031,6 @@ async function runCopilotoTechniqueRecap() {
 }
 
 runCopilotoTechniqueRecap();
-setInterval(runCopilotoTechniqueRecap, TECHNIQUE_RECAP_POLL_MS);
+setInterval(runCopilotoTechniqueRecap, TECHNIQUE_RECAP_POLL_MS).unref();
 
 export { copilotoWorker, runCopilotoGroupDigests, runCopilotoPendingSweep, runCopilotoTechniqueRecap };

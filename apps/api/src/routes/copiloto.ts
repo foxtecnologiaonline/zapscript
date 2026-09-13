@@ -26,11 +26,11 @@ export default async function copilotoRoutes(app: FastifyInstance) {
   // ── GET /copiloto/conversations ──────────────────────────────────────────
   // Painel web (leitura). A ação de verdade (1/2/3, editar, ignorar) continua
   // só no self-chat — ver ESCOPO_COPILOTO.md §1. Esta rota é só "mostrar".
-  app.get<{ Querystring: { numberId?: string; temperature?: string; status?: string; q?: string } }>(
+  app.get<{ Querystring: { numberId?: string; temperature?: string; status?: string; tipo?: string; q?: string } }>(
     '/conversations',
     async (req: any) => {
       const userId = req.user.sub;
-      const { numberId, temperature, status, q } = req.query || {};
+      const { numberId, temperature, status, tipo, q } = req.query || {};
 
       const conversations = await prisma.copilotoConversation.findMany({
         where: {
@@ -71,6 +71,10 @@ export default async function copilotoRoutes(app: FastifyInstance) {
             temperature: b.temperature,
             riskLevel:   b.riskLevel,
             blocker:     b.blocker,
+            // v2.0 — null em briefing anterior à expansão de escopo; o
+            // frontend trata null como "comercial" (ver ESCOPO_COPILOTO.md).
+            tipo:        b.tipo,
+            remetente:   b.remetente,
             status:      b.status,
             createdAt:   b.createdAt,
             suggestions: b.suggestions.map((s) => ({
@@ -88,6 +92,9 @@ export default async function copilotoRoutes(app: FastifyInstance) {
       // depende do briefing MAIS RECENTE de cada conversa (subquery correlata).
       if (temperature) list = list.filter((c) => c.latestBriefing?.temperature === temperature);
       if (status)      list = list.filter((c) => c.latestBriefing?.status === status);
+      // Briefing v1.0 (tipo=null) é tratado como "comercial" no filtro — era o
+      // único tipo que existia antes da v2.0, não deve sumir da listagem.
+      if (tipo)        list = list.filter((c) => (c.latestBriefing?.tipo ?? 'comercial') === tipo);
 
       return { conversations: list };
     },
@@ -288,5 +295,69 @@ export default async function copilotoRoutes(app: FastifyInstance) {
     const outputTokens = logs.reduce((s, l) => s + l.outputTokens, 0);
 
     return { calls, inputTokens, outputTokens, since: startOfMonth };
+  });
+
+  // ── GET /copiloto/metrics ─────────────────────────────────────────────────
+  // Dashboard do PRÓPRIO dono — diferente de /admin/copiloto/insights (que é
+  // cross-usuário, só pro time interno decidir onde apertar a triagem). Aqui
+  // é "o Copiloto está fazendo alguma coisa por mim?": quantas conversas
+  // ainda não viraram briefing, quantos contatos, quanta atividade no
+  // período. Só leitura — mesma filosofia de /conversations.
+  app.get<{ Querystring: { numberId?: string; days?: string } }>('/metrics', async (req: any) => {
+    const userId = req.user.sub;
+    const { numberId } = req.query || {};
+    const days = Math.min(90, Math.max(1, parseInt(req.query?.days as any, 10) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const convWhere = { userId, ...(numberId ? { numberId } : {}) };
+    const briefingWhere = { userId, ...(numberId ? { numberId } : {}) };
+
+    const [totalContacts, conversationsForUnread] = await Promise.all([
+      prisma.copilotoConversation.count({ where: convWhere }),
+      // "Não lida" = mesma definição do sweep de pendências (worker):
+      // lastBriefedAt nulo ou mais velho que a última mensagem. Comparação
+      // entre duas colunas da mesma linha não dá pra expressar num `where`
+      // do Prisma — traz os dois campos e filtra em memória, igual
+      // runCopilotoPendingSweep já faz (volume por usuário é baixo, não é
+      // a tabela inteira da plataforma).
+      prisma.copilotoConversation.findMany({
+        where: convWhere,
+        select: { lastMessageAt: true, lastBriefedAt: true },
+      }),
+    ]);
+    const unreadConversations = conversationsForUnread.filter(
+      (c) => !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt,
+    ).length;
+    const readConversations = totalContacts - unreadConversations;
+
+    const [
+      messagesIn, messagesOut, briefingsGenerated, briefingsDismissed,
+      suggestionsSent, customerReplies, tasksCreated, byTipoRaw,
+    ] = await Promise.all([
+      prisma.copilotoMessage.count({ where: { direction: 'in', createdAt: { gte: since }, conversation: convWhere } }),
+      prisma.copilotoMessage.count({ where: { direction: 'out', createdAt: { gte: since }, conversation: convWhere } }),
+      prisma.copilotoBriefing.count({ where: { ...briefingWhere, createdAt: { gte: since } } }),
+      prisma.copilotoBriefing.count({ where: { ...briefingWhere, status: 'dismissed', createdAt: { gte: since } } }),
+      prisma.copilotoSuggestion.count({ where: { status: { in: ['sent', 'edited'] }, createdAt: { gte: since }, briefing: briefingWhere } }),
+      prisma.copilotoSuggestion.count({ where: { outcome: 'replied', createdAt: { gte: since }, briefing: briefingWhere } }),
+      prisma.copilotoSuggestion.count({ where: { taskId: { not: null }, createdAt: { gte: since }, briefing: briefingWhere } }),
+      prisma.copilotoBriefing.groupBy({ by: ['tipo'], where: { ...briefingWhere, createdAt: { gte: since } }, _count: { _all: true } }),
+    ]);
+
+    const byTipo = byTipoRaw
+      .map((r) => ({ tipo: r.tipo ?? 'comercial', count: r._count._all }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      since: since.toISOString(),
+      days,
+      snapshot: { totalContacts, unreadConversations, readConversations },
+      activity: {
+        messagesIn, messagesOut,
+        briefingsGenerated, briefingsDismissed,
+        suggestionsSent, customerReplies, tasksCreated,
+        byTipo,
+      },
+    };
   });
 }
