@@ -7,8 +7,8 @@
 > Primeira missão real: divulgar o **ZapScript.me**. Construído de forma **genérica** desde o
 > início para caber qualquer missão futura (lançamento de módulo, campanha sazonal, pedir review).
 
-Status: **Fase 0 implementada** (nesta branch). Data: 2026-09-13. Branch:
-`claude/laughing-turing-bjtdyu`.
+Status: **Fase 0 + Fase 1 implementadas** (nesta branch, ainda não em produção). Data:
+2026-09-13. Branch: `claude/laughing-turing-bjtdyu`.
 
 > **Nota de implementação (Fase 0):** o canal ficou com a chave única `whatsapp`
 > (em vez de `whatsapp_groups`/`whatsapp_broadcast` separados) — só broadcast
@@ -18,6 +18,17 @@ Status: **Fase 0 implementada** (nesta branch). Data: 2026-09-13. Branch:
 > ajustar esse helper. `MissionExecution` já é materializada na criação da
 > missão (`POST /missions`), não no disparo — `/start` e o scheduler só
 > enfileiram o que já está `pending`, mesmo idioma do módulo Campanhas.
+>
+> **Nota de implementação (Fase 1):** `human_share` convoca telefones da
+> equipe interna (`content.humanTargets`) via WhatsApp, com uma mensagem de
+> briefing (`content.humanBriefing`, cai pra `content.text` se ausente). A
+> execução fica `awaiting_proof` até o humano avisar quem o convocou e essa
+> pessoa registrar a prova (`POST .../executions/:id/proof`) — aí vira
+> `proof_submitted`, e um admin aprova (`.../approve`, seta `reachCount`,
+> default 1) ou rejeita (`.../reject`). **Não há verificação automática de
+> prova nem integração com a base de afiliados nesta fase** — é aprovação
+> manual por design (ver §3.1: afiliados/recompensa em crédito ficam pra
+> Fase 3, propositalmente fora daqui).
 
 Decisões já fechadas com o usuário (não reabrir sem motivo novo):
 
@@ -167,12 +178,16 @@ opcional, com o próprio Consultor de Marketing validando o incentivo antes de e
 
 ## 4. Fases de entrega
 
-| Fase | Entrega | Depende de | Risco |
-|---|---|---|---|
-| **0 — Fundação + WhatsApp** | Schema `Mission`/`MissionExecution`, fila `mktfast`, rotas admin CRUD, adapter `whatsapp_groups`/`whatsapp_broadcast` (reusa Campanhas), tela admin simples de criar/acompanhar missão | nada — infra 100% existente | Baixo |
-| **1 — `human_share` (equipe)** | Convocação via WhatsApp, submissão de prova, aprovação manual, contagem de alcance | Fase 0 | Baixo |
-| **2 — Instagram/Facebook** | Adapter Graph API (Content Publishing), setup de app/token/permissões Meta | Confirmação em §2.1 (pode ter fila de App Review da Meta) | **Médio-alto** (depende de terceiro) |
-| **3 — opcional/futuro** | `human_share` para afiliados com recompensa em crédito; verificação automática de prova (IA lê print); virar módulo vendável no catálogo (`packages/modules/catalog.ts`, entitlement, self-service) | Fases 0-2 validadas | — |
+| Fase | Entrega | Depende de | Risco | Status |
+|---|---|---|---|---|
+| **0 — Fundação + WhatsApp** | Schema `Mission`/`MissionExecution`, fila `mktfast`, rotas admin CRUD, canal `whatsapp` (bot, reusa Evolution do Campanhas) | nada — infra 100% existente | Baixo | ✅ **Implementado** (código) |
+| **1 — `human_share` (equipe)** | Convocação via WhatsApp, submissão de prova (`.../executions/:id/proof`), aprovação manual (`.../approve`\|`.../reject`), contagem de alcance | Fase 0 | Baixo | ✅ **Implementado** (código) |
+| **2 — Instagram/Facebook** | Adapter Graph API (Content Publishing), setup de app/token/permissões Meta | Confirmação em §2.1 (pode ter fila de App Review da Meta) | **Médio-alto** (depende de terceiro) | ⏳ Bloqueado — falta confirmar credenciais |
+| **3 — opcional/futuro** | `human_share` para afiliados com recompensa em crédito; verificação automática de prova (IA lê print); virar módulo vendável no catálogo (`packages/modules/catalog.ts`, entitlement, self-service) | Fases 0-2 validadas | — | ⏳ Não iniciado |
+
+**"Implementado (código)" ≠ em produção**: falta rodar a migration no banco real, dar merge
+em `master` e disparar `ops.yml` (`action=deploy`) — nenhuma dessas ações foi feita ainda,
+ver checklist no final deste documento.
 
 **Recomendação:** entregar a Fase 0 primeiro — já cumpre literalmente o pedido ("postar 1
 missão, bot cumprir a missão") usando só WhatsApp, sem esperar aprovação de app da Meta nem
@@ -213,27 +228,51 @@ POST   /sys/g5r8t2/mktfast/missions/:id/schedule   define scheduledAt (só a par
 POST   /sys/g5r8t2/mktfast/missions/:id/start      dispara agora (enfileira as execuções pending)
 POST   /sys/g5r8t2/mktfast/missions/:id/cancel
 
-Body de POST /missions (exemplo):
+# Fase 1 — human_share
+POST   /sys/g5r8t2/mktfast/missions/:id/executions/:execId/proof     humano registra a prova (proofUrl)
+POST   /sys/g5r8t2/mktfast/missions/:id/executions/:execId/approve   admin aprova (reachCount, default 1)
+POST   /sys/g5r8t2/mktfast/missions/:id/executions/:execId/reject    admin rejeita (reason)
+
+Body de POST /missions (exemplo com os dois canais):
 {
   "title": "Divulgar ZapScript.me",
   "objective": "Lançamento — trazer testers via WhatsApp",
   "createdBy": "growth@zapscript.me",
+  "channels": ["whatsapp", "human_share"],
   "whatsappNumberId": "<id de um WhatsappNumber status=connected>",
-  "content": { "text": "mensagem da missão...", "targets": ["5534..."] }
+  "content": {
+    "text": "mensagem que vai direto pros contatos (canal whatsapp)...",
+    "targets": ["5534..."],
+    "humanBriefing": "Poste isso no seu story e manda o print pra mim depois.",
+    "humanTargets": ["5534..." /* telefones da equipe convocada */]
+  }
 }
 ```
 
 ```
 apps/worker/src/modules/mktfast.ts       processMissionJob (fila 'mktfast') + markMissionJobExhausted
+                                          — case 'whatsapp' (bot) e case 'human_share' (convocação)
 apps/worker/src/mktfast-scheduler.ts     tick 60s: scheduled → running (updateMany atômico, igual campanhas-scheduler.ts)
 apps/worker/src/index.ts                 Worker('mktfast', concurrency=MKTFAST_WORKER_CONCURRENCY)
 ```
 
-Migração: `packages/database/prisma/migrations/20260913_mktfast_missions/`.
+Migração: `packages/database/prisma/migrations/20260913_mktfast_missions/` (schema já cobre
+Fase 0 e 1 — `status`/`executor`/`proofUrl` são genéricos, nenhuma migration nova pra Fase 1).
 
-**Pendente (não faz parte da Fase 0):** tela web — hoje a missão é operada só via API
-(curl/Postman com `x-admin-token`); endpoints de `human_share` (proof/approve, Fase 1);
-canais Instagram/Facebook (Fase 2, bloqueados por credenciais — ver §2.1/§7).
+**Pendente:** tela web — hoje a missão é operada só via API (curl/Postman com
+`x-admin-token`); canais Instagram/Facebook (Fase 2, bloqueados por credenciais — ver
+§2.1/§7); recompensa em crédito e verificação automática de prova (Fase 3).
+
+## 8. Checklist antes de rodar a 1ª missão real em produção
+
+- [ ] Merge desta branch em `master` (dispara deploy automático do Web na Vercel — não afeta
+      API/Worker).
+- [ ] Disparar `ops.yml` (`action=deploy`) — builda e sobe API/Worker no Vultr, e é nesse start
+      que a migration `20260913_mktfast_missions` roda de verdade (`prisma migrate deploy`).
+- [ ] Confirmar `whatsappNumberId` de um número já conectado (Evolution) pra ser o remetente.
+- [ ] Definir a lista de telefones-alvo (`content.targets`) e, se for usar Fase 1, a lista da
+      equipe convocada (`content.humanTargets`).
+- [ ] Criar a missão via `POST /sys/g5r8t2/mktfast/missions` e chamar `/start`.
 
 ---
 
@@ -243,7 +282,10 @@ canais Instagram/Facebook (Fase 2, bloqueados por credenciais — ver §2.1/§7)
    (credenciais)?
 2. O app Meta do WhatsApp Cloud API serve para pedir os escopos de publicação, ou precisa de um
    app separado?
-3. `human_share`: equipe interna (Fase 1) ou já abrir para afiliados com recompensa (Fase 3)?
+
+~~3. `human_share`: equipe interna (Fase 1) ou já abrir para afiliados com recompensa (Fase 3)?~~
+   **Respondida:** equipe interna primeiro (Fase 1, implementada) — afiliados/crédito fica
+   para a Fase 3, só depois de validar o incentivo.
 
 ## 8. Próximo passo recomendado
 

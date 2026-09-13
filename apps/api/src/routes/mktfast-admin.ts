@@ -7,15 +7,22 @@ import { normalizePhone } from './modules/campanhas';
 
 /**
  * MKT-Fast — motor genérico de "missão de divulgação" (ferramenta interna).
- * Ver MKTFAST_ESCOPO.md. Fase 0: canal 'whatsapp' apenas, alvo = lista
- * explícita de telefones informada na criação da missão — a conformidade da
- * lista (opt-in, consentimento) é responsabilidade de quem cria a missão.
+ * Ver MKTFAST_ESCOPO.md.
+ *
+ * Fase 0: canal 'whatsapp' (bot) — alvo = lista explícita de telefones
+ * informada na criação da missão; a conformidade da lista (opt-in,
+ * consentimento) é responsabilidade de quem cria a missão.
+ *
+ * Fase 1: canal 'human_share' — convoca telefones da equipe interna via
+ * WhatsApp (content.humanTargets); a execução some do "pendente" só quando
+ * o humano manda prova (POST .../proof) e um admin aprova/rejeita (POST
+ * .../approve|reject) — não há verificação automática ainda.
  *
  * Sem entitlement/billing: acesso é só o mesmo adminAuth (ADMIN_TOKEN + TOTP)
  * usado em routes/admin.ts e routes/admin-master.ts.
  */
 
-const SUPPORTED_CHANNELS = new Set(['whatsapp']);
+const SUPPORTED_CHANNELS = new Set(['whatsapp', 'human_share']);
 
 function safeCompare(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
@@ -43,7 +50,24 @@ interface MissionContent {
   text?: string;
   mediaUrl?: string;
   linkUrl?: string;
-  targets?: string[];
+  targets?: string[];      // canal 'whatsapp' — telefones que recebem o conteúdo direto
+  humanTargets?: string[]; // canal 'human_share' — telefones convocados (equipe interna)
+  humanBriefing?: string;  // mensagem de convocação; cai pra `text` se ausente
+}
+
+/** Mesma checagem de conclusão do worker (modules/mktfast.ts) — duplicada de
+ *  propósito porque api e worker não compartilham código neste monorepo.
+ *  Precisa existir aqui também porque /approve e /reject (ações de admin,
+ *  fora da fila) podem ser o que fecha a última execução pendente. */
+async function maybeCompleteMission(missionId: string): Promise<void> {
+  const pending = await prisma.missionExecution.count({
+    where: { missionId, status: { in: ['pending', 'awaiting_proof', 'proof_submitted'] } },
+  });
+  if (pending > 0) return;
+  await prisma.mission.updateMany({
+    where: { id: missionId, status: 'running' },
+    data: { status: 'completed', completedAt: new Date() },
+  });
 }
 
 /** Enfileira as execuções pendentes de uma missão já em 'running'. Chamado só
@@ -92,14 +116,20 @@ export default async function mktfastAdminRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: `Canal(is) ainda sem adapter: ${unsupported.join(', ')}. Suportados hoje: ${[...SUPPORTED_CHANNELS].join(', ')}.` });
     }
 
-    const rawTargets = content?.targets || [];
-    const targets = [...new Set(rawTargets.map(normalizePhone).filter((p) => p.length >= 12))];
-    if (channels.includes('whatsapp')) {
+    const normalizeList = (list?: string[]) => [...new Set((list || []).map(normalizePhone).filter((p) => p.length >= 12))];
+    const targets      = normalizeList(content?.targets);
+    const humanTargets = normalizeList(content?.humanTargets);
+
+    if (channels.includes('whatsapp') && targets.length === 0) {
+      return reply.code(400).send({ error: 'content.targets deve ter ao menos 1 telefone válido quando o canal "whatsapp" está incluído.' });
+    }
+    if (channels.includes('human_share') && humanTargets.length === 0) {
+      return reply.code(400).send({ error: 'content.humanTargets deve ter ao menos 1 telefone válido quando o canal "human_share" está incluído.' });
+    }
+    // Os dois canais da Fase 0/1 enviam via WhatsApp (conteúdo direto ou convocação).
+    if (channels.includes('whatsapp') || channels.includes('human_share')) {
       if (!whatsappNumberId) {
-        return reply.code(400).send({ error: 'whatsappNumberId é obrigatório quando o canal "whatsapp" está incluído.' });
-      }
-      if (targets.length === 0) {
-        return reply.code(400).send({ error: 'content.targets deve ter ao menos 1 telefone válido.' });
+        return reply.code(400).send({ error: 'whatsappNumberId é obrigatório quando "whatsapp" ou "human_share" está incluído.' });
       }
       const numero = await prisma.whatsappNumber.findUnique({ where: { id: whatsappNumberId } });
       if (!numero) return reply.code(404).send({ error: 'whatsappNumberId não encontrado.' });
@@ -127,14 +157,15 @@ export default async function mktfastAdminRoutes(app: FastifyInstance) {
       },
     });
 
-    if (channels.includes('whatsapp') && targets.length > 0) {
-      await prisma.missionExecution.createMany({
-        data: targets.map((phone) => ({ missionId: mission.id, channel: 'whatsapp', executor: 'bot', targetRef: phone })),
-        skipDuplicates: true,
-      });
+    const executionsToCreate = [
+      ...targets.map((phone) => ({ missionId: mission.id, channel: 'whatsapp', executor: 'bot', targetRef: phone })),
+      ...humanTargets.map((phone) => ({ missionId: mission.id, channel: 'human_share', executor: 'human', targetRef: phone })),
+    ];
+    if (executionsToCreate.length > 0) {
+      await prisma.missionExecution.createMany({ data: executionsToCreate, skipDuplicates: true });
     }
 
-    return reply.code(201).send({ mission, targetsCreated: targets.length });
+    return reply.code(201).send({ mission, targetsCreated: targets.length, humanTargetsCreated: humanTargets.length });
   });
 
   // GET /missions — lista com alcance agregado (soma de reachCount das execuções)
@@ -211,7 +242,7 @@ export default async function mktfastAdminRoutes(app: FastifyInstance) {
     if (!['draft', 'scheduled'].includes(mission.status)) {
       return reply.code(409).send({ error: `Missão em status "${mission.status}" não pode ser iniciada.` });
     }
-    if (mission.channels.includes('whatsapp')) {
+    if (mission.channels.includes('whatsapp') || mission.channels.includes('human_share')) {
       if (!mission.whatsappNumber || mission.whatsappNumber.status !== 'connected' || !mission.whatsappNumber.zapiInstanceId) {
         return reply.code(409).send({ error: 'Número WhatsApp da missão não está conectado.' });
       }
@@ -239,4 +270,60 @@ export default async function mktfastAdminRoutes(app: FastifyInstance) {
     if (updated.count === 0) return reply.code(409).send({ error: 'Missão não encontrada ou já finalizada.' });
     return { canceled: true };
   });
+
+  // ── Fase 1 (human_share): prova + aprovação manual ──────────────────────
+  // Sem verificação automática ainda — quem cumpriu a missão manda o
+  // link/print pra quem convocou, e o admin registra/aprova por aqui.
+
+  // POST /missions/:id/executions/:execId/proof — humano (ou quem o convocou,
+  // por ele) registra a prova de que cumpriu a missão.
+  app.post<{ Params: { id: string; execId: string }; Body: { proofUrl?: string } }>(
+    '/missions/:id/executions/:execId/proof',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const { proofUrl } = req.body || {};
+      if (!proofUrl?.trim()) return reply.code(400).send({ error: 'Informe proofUrl.' });
+
+      const updated = await prisma.missionExecution.updateMany({
+        where: { id: req.params.execId, missionId: req.params.id, executor: 'human', status: { in: ['pending', 'awaiting_proof'] } },
+        data: { status: 'proof_submitted', proofUrl: proofUrl.trim() },
+      });
+      if (updated.count === 0) {
+        return reply.code(409).send({ error: 'Execução não encontrada, não é de um humano, ou já tem prova registrada.' });
+      }
+      return { proofSubmitted: true };
+    },
+  );
+
+  // POST /missions/:id/executions/:execId/approve — admin aprova a prova;
+  // reachCount default 1 (alcance simples), ajustável se a missão pedir mais.
+  app.post<{ Params: { id: string; execId: string }; Body: { reachCount?: number } }>(
+    '/missions/:id/executions/:execId/approve',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const reachCount = Number.isFinite(req.body?.reachCount) ? Number(req.body!.reachCount) : 1;
+      const updated = await prisma.missionExecution.updateMany({
+        where: { id: req.params.execId, missionId: req.params.id, status: 'proof_submitted' },
+        data: { status: 'approved', reachCount, errorReason: null },
+      });
+      if (updated.count === 0) return reply.code(409).send({ error: 'Execução não encontrada ou sem prova pendente de aprovação.' });
+      await maybeCompleteMission(req.params.id);
+      return { approved: true, reachCount };
+    },
+  );
+
+  // POST /missions/:id/executions/:execId/reject
+  app.post<{ Params: { id: string; execId: string }; Body: { reason?: string } }>(
+    '/missions/:id/executions/:execId/reject',
+    { preHandler: [adminAuth] },
+    async (req, reply) => {
+      const updated = await prisma.missionExecution.updateMany({
+        where: { id: req.params.execId, missionId: req.params.id, status: 'proof_submitted' },
+        data: { status: 'rejected', errorReason: (req.body?.reason || 'Prova rejeitada pelo admin.').slice(0, 500) },
+      });
+      if (updated.count === 0) return reply.code(409).send({ error: 'Execução não encontrada ou sem prova pendente de aprovação.' });
+      await maybeCompleteMission(req.params.id);
+      return { rejected: true };
+    },
+  );
 }

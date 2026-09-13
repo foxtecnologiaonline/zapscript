@@ -12,7 +12,10 @@ import { logger } from '../lib/logger';
  * execução não estiver 'pending', o job é ignorado sem alterar dados.
  *
  * Canal novo = adicionar um `case` aqui (schema não muda — ver Mission no
- * schema.prisma). Fase 0 cobre só `channel==='whatsapp'`.
+ * schema.prisma). Fase 0 cobre `channel==='whatsapp'` (bot); Fase 1 adiciona
+ * `channel==='human_share'` (convocação — a execução ainda não termina aqui,
+ * fica 'awaiting_proof' até o humano enviar prova via
+ * POST /missions/:id/executions/:execId/proof e um admin aprovar/rejeitar).
  */
 export async function processMissionJob(job: Job): Promise<{ skipped?: boolean; reason?: string }> {
   const { missionId, executionId } = job.data as { missionId: string; executionId: string };
@@ -32,6 +35,9 @@ export async function processMissionJob(job: Job): Promise<{ skipped?: boolean; 
   switch (execution.channel) {
     case 'whatsapp':
       await runWhatsappExecution(mission, execution);
+      break;
+    case 'human_share':
+      await runHumanShareConvocation(mission, execution);
       break;
     default:
       await markExecutionFailed(executionId, `Canal "${execution.channel}" sem adapter implementado`);
@@ -66,6 +72,42 @@ async function runWhatsappExecution(
   logger.info(`[MKT-Fast] ✅ Enviado ${execution.targetRef} (missão ${mission.id}) — id ${wamid}`);
 }
 
+/**
+ * Convoca um humano (equipe interna, Fase 1) via WhatsApp: envia o briefing
+ * da missão e instruções pra cumprir e depois avisar o admin com a prova
+ * (link/print). NÃO marca a execução como concluída — só a convocação foi
+ * entregue; fica 'awaiting_proof' até a prova ser registrada e aprovada
+ * (rotas /executions/:id/proof e /approve, api). reachCount só é setado na
+ * aprovação, não aqui.
+ */
+async function runHumanShareConvocation(
+  mission: { id: string; title: string; objective: string; content: unknown; whatsappNumber: { status: string; zapiInstanceId: string | null } | null },
+  execution: { id: string; targetRef: string | null },
+): Promise<void> {
+  const numero = mission.whatsappNumber;
+  if (!numero || numero.status !== 'connected' || !numero.zapiInstanceId) {
+    await markExecutionFailed(execution.id, 'Número WhatsApp da missão desconectado ou não configurado.');
+    return;
+  }
+  if (!execution.targetRef) {
+    await markExecutionFailed(execution.id, 'Execução sem telefone-alvo (targetRef).');
+    return;
+  }
+
+  const content = mission.content as { humanBriefing?: string; text?: string; linkUrl?: string } | null;
+  const briefing = content?.humanBriefing || content?.text || mission.objective;
+  const link = content?.linkUrl ? `\n\n🔗 ${content.linkUrl}` : '';
+  const message = `📣 Nova missão: *${mission.title}*\n\n${briefing}${link}\n\nDepois de cumprir, manda o link/print como prova pra quem te chamou pra essa missão.`;
+
+  await sendMessageViaEvolution(numero.zapiInstanceId, execution.targetRef, message);
+
+  await prisma.missionExecution.update({
+    where: { id: execution.id },
+    data: { status: 'awaiting_proof', errorReason: null },
+  });
+  logger.info(`[MKT-Fast] 📨 Convocação enviada a ${execution.targetRef} (missão ${mission.id})`);
+}
+
 async function markExecutionFailed(executionId: string, errorReason: string): Promise<void> {
   await prisma.missionExecution.update({
     where: { id: executionId },
@@ -94,7 +136,7 @@ export async function markMissionJobExhausted(job: Job, err: Error): Promise<voi
  */
 async function maybeCompleteMission(missionId: string): Promise<void> {
   const pending = await prisma.missionExecution.count({
-    where: { missionId, status: { in: ['pending', 'proof_submitted'] } },
+    where: { missionId, status: { in: ['pending', 'awaiting_proof', 'proof_submitted'] } },
   });
   if (pending > 0) return;
 

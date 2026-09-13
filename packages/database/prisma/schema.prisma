@@ -1625,7 +1625,7 @@ model MissionExecution {
   channel     String // um dos values de Mission.channels
   executor    String   @default("bot") // 'bot' | 'human'
   targetRef   String? // telefone (channel='whatsapp'), ou userId do humano convocado (executor='human')
-  status      String   @default("pending") // pending|sent|posted|failed|proof_submitted|approved|rejected
+  status      String   @default("pending") // pending|sent|posted|failed|awaiting_proof|proof_submitted|approved|rejected
   proofUrl    String? // link/print de prova — só quando executor='human'
   reachCount  Int? // alcance simples desta execução (1 por envio bem-sucedido, na Fase 0)
   errorReason String?
