@@ -39,6 +39,21 @@ const copilotoQueue = new Queue('copiloto', { connection: redis as any });
 const HISTORY_LIMIT = 12;
 const NEW_MESSAGES_LIMIT = 20;
 
+/** Cooldown de briefing "pessoal" por contato — ver uso em processBrief(). */
+const PESSOAL_COOLDOWN_MS = parseInt(process.env.COPILOTO_PESSOAL_COOLDOWN_MS || String(24 * 60 * 60 * 1000), 10);
+
+/**
+ * Lê o piso de confiança configurado pro tipo, a partir do JSON solto que o
+ * Prisma devolve pra coluna Json (CopilotoConfig.minConfidenceByTipo). Nunca
+ * lança — config mal formada (não deveria acontecer, só é setada por
+ * copiloto-commands.ts) equivale a "sem piso", não a bloquear tudo.
+ */
+export function readMinConfidence(raw: unknown, tipo: string | null): number | null {
+  if (!tipo || !raw || typeof raw !== 'object') return null;
+  const value = (raw as Record<string, unknown>)[tipo];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 interface IngestJobData {
   userId: string;
   numberId: string;
@@ -277,6 +292,35 @@ async function processBrief(job: Job<BriefJobData>) {
 
   logger.info(`[Copiloto] ✓ ${contactLabel}: triagem OK (tipo=${triage.tipo ?? 'comercial'}, remetente=${triage.remetente ?? 'n/d'}, confianca=${triage.confidence})`);
 
+  // Piso de confiança por tipo — opcional, setado via "copiloto confianca
+  // <tipo> <valor>" (copiloto-commands.ts). Ausente por padrão (fase aberta):
+  // só existe pra quem o dono explicitamente decidiu apertar depois de ver
+  // dado real. Nunca bloqueia tipo sem entrada no mapa.
+  const minConfidence = readMinConfidence(config.minConfidenceByTipo, triage.tipo);
+  if (minConfidence !== null && triage.confidence < minConfidence) {
+    await markBriefed();
+    logger.info(`[Copiloto] ⏭️ ${contactLabel}: pulado (confiança ${triage.confidence} abaixo do piso ${minConfidence} pra tipo=${triage.tipo})`);
+    return { skipped: true, reason: 'confianca_abaixo_do_piso' };
+  }
+
+  // Cooldown de "pessoal" por contato — a triagem aberta pode gerar um
+  // briefing a cada mensagem de um contato batendo papo; sem isso, um único
+  // contato tagarela vira ruído repetido antes mesmo de juntar dado
+  // suficiente pros outros tipos. Não se aplica a comercial/admin/crise/
+  // oportunidade — ali cada mensagem nova pode ser uma decisão diferente.
+  if (triage.tipo === 'pessoal') {
+    const cooldownSince = new Date(Date.now() - PESSOAL_COOLDOWN_MS);
+    const recentPersonal = await prisma.copilotoBriefing.findFirst({
+      where: { conversationId: conversation.id, tipo: 'pessoal', createdAt: { gte: cooldownSince } },
+      select: { id: true },
+    });
+    if (recentPersonal) {
+      await markBriefed();
+      logger.info(`[Copiloto] ⏭️ ${contactLabel}: pulado (cooldown de conversa pessoal, já briefado nas últimas ${PESSOAL_COOLDOWN_MS / 3600000}h)`);
+      return { skipped: true, reason: 'cooldown_pessoal' };
+    }
+  }
+
   const kb = await prisma.atendeKnowledgeBase.findMany({
     where: { userId, active: true },
     orderBy: { createdAt: 'asc' },
@@ -335,6 +379,11 @@ async function processBrief(job: Job<BriefJobData>) {
     history.map((m) => m.content).join('\n'),
   ].join('\n');
 
+  // Calculado aqui (antes do create) pra poder persistir — antes só existia
+  // em memória e afetava só a mensagem renderizada, sem deixar rastro pra
+  // auditoria (ver ESCOPO_COPILOTO.md — cruzamento sensível×crise).
+  const sensitive = briefing.sensitive || hasVulnerabilitySignal(lastText);
+
   const created = await prisma.copilotoBriefing.create({
     data: {
       userId,
@@ -347,6 +396,7 @@ async function processBrief(job: Job<BriefJobData>) {
       riskLevel: briefing.riskLevel,
       tipo: triage.tipo,
       remetente: triage.remetente,
+      sensitive,
       deliveredVia: 'whatsapp',
     },
   });
@@ -384,7 +434,6 @@ async function processBrief(job: Job<BriefJobData>) {
     }
   }
 
-  const sensitive = briefing.sensitive || hasVulnerabilitySignal(lastText);
   // Sem rodapé aqui de propósito: o job 'deliver' (compilação de rajadas, ver
   // abaixo) é quem manda de verdade, alguns segundos depois, e anexa o rodapé
   // só no envio final — combinando com outro contato do mesmo número que

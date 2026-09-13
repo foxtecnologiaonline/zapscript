@@ -648,5 +648,114 @@ O resto do escopo pode ser executado sem bloqueio.
 
 ---
 
+## 13. v2.0 / v2.1 — Escopo ampliado (execução real, 2026-09-13)
+
+A Fase 1 (§9) rodou em produção só com conversas **comerciais** por um tempo.
+Esta seção documenta a expansão de escopo que foi de fato implementada e
+deployada — decisões tomadas durante a execução, não só planejadas.
+
+### 13.1 O que mudou
+
+O Copiloto passou a cobrir **5 tipos de conversa**, não só venda:
+
+| Tipo | O que cobre |
+|---|---|
+| `comercial` | venda, orçamento, negociação (era o único tipo até aqui) |
+| `pessoal` | elogio, papo sem pedido comercial, pergunta pessoal ao dono |
+| `admin` | operação do que já foi comprado — pagamento, entrega, suporte |
+| `crise` | reclamação, insatisfação, ameaça de cancelamento |
+| `oportunidade` | fornecedor, parceria, proposta externa ao negócio |
+
+A triagem (`TRIAGE_SYSTEM_PROMPT`) classifica `tipo` + `remetente`
+(cliente_novo/ativo/fornecedor/parceiro/equipe/outro) além da decisão
+briefing/ignorar de sempre. Ambos ficam gravados em `CopilotoBriefing` — são
+o dado que sustenta §13.3.
+
+### 13.2 Decisão de design: reaproveitar os 3 eixos, não criar novos
+
+Os eixos das 3 opções continuam sendo exatamente os mesmos três
+(`avancar`/`qualificar`/`posicionar`) — **o que muda é o sentido de cada
+eixo conforme o tipo**, só via prompt (`BRIEFING_SYSTEM_PROMPT` §2), não via
+schema ou código novo. Isso foi decisão deliberada em vez do desenho
+original de eixos-por-tipo (ex.: "Avanço/Abertura/Relacionamento"):
+
+- Zero mudança em `AXIS_LABEL` (apps/worker/src/copiloto.ts) — o dono
+  continua reconhecendo a estrutura ("1 é sempre avançar") em qualquer tipo.
+- Zero mudança em `CopilotoSuggestion.axis` (schema) e nos testes de
+  `renderBriefingMessage`.
+- Todo o custo da expansão de escopo virou custo de PROMPT, não de
+  código/schema — superfície de mudança muito menor, muito menos risco.
+
+### 13.3 Triagem deliberadamente aberta (fase de observação)
+
+Ao contrário do princípio original da Fase 1 ("na dúvida, ignora" — §10,
+risco "Ruído"), a triagem v2.0 inverteu o viés pra **"na dúvida, briefa"**
+— só ruído objetivo (figurinha, bom-dia solto, confirmação simples, spam)
+continua sendo filtrado sem exceção. Isso é intencional e temporário: com 5
+tipos novos, não dava pra saber de antemão onde a triagem deveria ser mais
+rígida — a única forma de descobrir é observar dado real primeiro.
+
+**Isto não é o estado final.** O ciclo de calibração é:
+
+1. Observar `GET /admin/copiloto/insights` (taxa de ignoro e de "ruído
+   confirmado" por tipo — ver §13.4).
+2. Onde a taxa de ignoro for alta e consistente, configurar
+   `copiloto confianca <tipo> <valor>` (piso de confiança da triagem só
+   pra aquele tipo — `CopilotoConfig.minConfidenceByTipo`, sem redeploy).
+3. Se um tipo inteiro se mostrar sem valor, o ajuste final é no
+   `TRIAGE_SYSTEM_PROMPT` mesmo (esse sim precisa redeploy).
+
+Cooldown de 24h por contato pra `pessoal` (`COPILOTO_PESSOAL_COOLDOWN_MS`)
+protege a experiência do dono enquanto os dados de outros tipos não chegam,
+sem fechar a observação: um contato tagarela não vira ruído repetido, mas
+comercial/admin/crise/oportunidade continuam abertos por mensagem.
+
+### 13.4 Instrumentação de decisão
+
+- **`GET /admin/copiloto/insights?days=N`** — por tipo: total de briefings,
+  taxa de ignoro, taxa de "ruído confirmado" (dono respondeu `0!`, não só
+  `0` — ver abaixo), taxa de ação, contagem de sensíveis. É o dado de §13.3.
+- **`GET /admin/copiloto/sensitive-crisis-audit?days=N`** — lista briefings
+  marcados `sensitive=true` (sinal de vulnerabilidade — idoso/luto/
+  emergência médica) cruzados com `tipo=crise`, o overlap onde um erro de
+  tom pesa mais. `sensitive` era só efêmero (afetava a mensagem renderizada,
+  nunca persistia) até esta versão — agora fica no banco pra auditoria.
+- **Alerta de outlier de custo** — `health-monitor.ts` (`checkCopiloto`)
+  passou a detectar usuário cujo consumo de tokens do dia estoura 5x a
+  média (com piso de 300k tokens pra não alarmar conta pequena), reusando o
+  canal de notificação WhatsApp do admin já existente.
+- **`0!` (ou `0x`)** no self-chat — variante do "0 ignora" de sempre que
+  também grava `dismissReason='ruido'`: sinal explícito de "isso não devia
+  ter virado briefing", mais forte que só não responder.
+
+### 13.5 Riscos do §10 fechados nesta expansão
+
+A tabela de riscos original já previa "Loop de mensagens — jobId idempotente
+por messageId (padrão já usado no Atende)" como mitigação — não estava
+implementado de fato até esta versão. Fechado: `CopilotoMessage.externalId`
++ dedup em `processIngest` (worker), necessário porque o sweep periódico de
+não lidas (§13.6) reprocessa o mesmo chat em rodadas diferentes.
+
+### 13.6 Toda mensagem não lida passa pelo Copiloto
+
+Backfill (`copiloto-backfill.ts`) antes só rodava em 2 momentos ("copiloto
+ligar" e liberação do módulo). Agora também dispara:
+
+- Na reconexão de um número (`evolution-heartbeat.ts` — cobre mensagem
+  recebida durante a desconexão).
+- Num sweep periódico a cada 2h (`runCopilotoUnreadSweep`) contra todo
+  número conectado com Copiloto ligado — rede de segurança contra webhook
+  perdido. Seguro pra rodar em loop graças à idempotência do §13.5.
+
+### 13.7 Compatibilidade
+
+Tudo em §13 é aditivo: `tipo`/`remetente`/`sensitive`/`dismissReason`/
+`minConfidenceByTipo` são nullable/opcionais/`false` por padrão.
+`CopilotoBriefing` anterior à v2.0 (`tipo=null`) é tratado como `comercial`
+em todo o produto (worker, API, frontend) — nenhuma migração de dados
+retroativa foi necessária.
+
+---
+
 *Escopo produzido com as lentes `/dev` (arquitetura, dados, custo de execução),
 `/adm` (LGPD, margem, operação) e `/mkt` (posicionamento, pricing, lançamento).*

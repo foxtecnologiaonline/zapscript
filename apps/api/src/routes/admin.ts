@@ -3502,6 +3502,92 @@ export default async function adminRoutes(app: FastifyInstance) {
       }
     }
   );
+
+  // ── Copiloto v2.1 — insights pra decidir onde apertar a triagem ──────────
+  // A triagem (v2.0) roda deliberadamente aberta ("na dúvida, briefa") — ver
+  // TRIAGE_SYSTEM_PROMPT em copiloto-playbook.ts. Esta rota agrega, por tipo
+  // (comercial/pessoal/admin/crise/oportunidade), quanto disso vira ruído de
+  // verdade: taxa de ignoro, quantos foram marcados "0!" (ruído explícito,
+  // ver copiloto-commands.ts) e confiança média da triagem. É o dado que
+  // decide se/onde vale configurar "copiloto confianca <tipo> <valor>".
+  app.get<{ Querystring: { days?: string } }>('/copiloto/insights', { preHandler: [adminAuth] }, async (req: any) => {
+    const days = Math.min(90, Math.max(1, parseInt(req.query?.days, 10) || 14));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const briefings = await prisma.copilotoBriefing.findMany({
+      where: { createdAt: { gte: since } },
+      select: { tipo: true, status: true, dismissReason: true, sensitive: true },
+    });
+
+    const byTipo: Record<string, {
+      total: number; dismissed: number; noiseExplicit: number; acted: number; sensitiveCount: number;
+    }> = {};
+    for (const b of briefings) {
+      const tipo = b.tipo ?? 'comercial'; // v1.0 sem classificação — mesmo fallback usado no resto do produto
+      const acc = byTipo[tipo] ??= { total: 0, dismissed: 0, noiseExplicit: 0, acted: 0, sensitiveCount: 0 };
+      acc.total += 1;
+      if (b.status === 'dismissed') acc.dismissed += 1;
+      if (b.dismissReason === 'ruido') acc.noiseExplicit += 1;
+      if (b.status === 'acted') acc.acted += 1;
+      if (b.sensitive) acc.sensitiveCount += 1;
+    }
+
+    const result = Object.entries(byTipo).map(([tipo, v]) => ({
+      tipo,
+      total: v.total,
+      dismissRatePercent: v.total > 0 ? Math.round((v.dismissed / v.total) * 100) : 0,
+      // "ruído confirmado" é o sinal mais forte — dono disse explicitamente
+      // "0!", não só deixou de responder (que pode ser só falta de tempo).
+      confirmedNoisePercent: v.total > 0 ? Math.round((v.noiseExplicit / v.total) * 100) : 0,
+      actedRatePercent: v.total > 0 ? Math.round((v.acted / v.total) * 100) : 0,
+      sensitiveCount: v.sensitiveCount,
+    })).sort((a, b) => b.total - a.total);
+
+    return { since: since.toISOString(), days, byTipo: result };
+  });
+
+  // ── Copiloto v2.1 — auditoria sensível × crise ────────────────────────────
+  // Overlap crítico de compliance: vulnerabilidade (idoso/luto/emergência
+  // médica — ver hasVulnerabilitySignal em copiloto-guardrails.ts) cruzado
+  // com tipo="crise" é onde um erro de tom pesa mais. Antes desta rota o
+  // sinal "sensivel" só existia em memória (afetava a mensagem renderizada e
+  // nada mais) — agora fica persistido e auditável. Retorna resumo por
+  // usuário, sem o texto completo da conversa (só o necessário pra decidir
+  // se vale investigar um caso específico via /admin/copiloto ou pelo dono).
+  app.get<{ Querystring: { days?: string } }>('/copiloto/sensitive-crisis-audit', { preHandler: [adminAuth] }, async (req: any) => {
+    const days = Math.min(90, Math.max(1, parseInt(req.query?.days, 10) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const rows = await prisma.copilotoBriefing.findMany({
+      where: { sensitive: true, createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      select: {
+        id: true, tipo: true, temperature: true, riskLevel: true, status: true, createdAt: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    const crisisOverlap = rows.filter((r) => r.tipo === 'crise');
+
+    return {
+      since: since.toISOString(),
+      days,
+      totalSensitive: rows.length,
+      crisisOverlapCount: crisisOverlap.length,
+      cases: rows.map((r) => ({
+        briefingId: r.id,
+        tipo: r.tipo ?? 'comercial',
+        temperature: r.temperature,
+        riskLevel: r.riskLevel,
+        status: r.status,
+        createdAt: r.createdAt,
+        userId: r.user.id,
+        userName: r.user.name,
+        userEmail: r.user.email,
+      })),
+    };
+  });
 }
 
 /** Escapa HTML em templates de e-mail do admin. */

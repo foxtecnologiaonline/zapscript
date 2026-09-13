@@ -1217,6 +1217,12 @@ model CopilotoConfig {
   groupDigestHour Int            @default(20) // hora local (0-23) a partir da qual o resumo diário de grupos pode sair
   groupDigestFrequency String    @default("daily") // 'daily' | 'weekly' — Função 2
   lastTechniqueRecapAt DateTime? // último recap semanal de técnica enviado (Função 1)
+  // v2.0 — piso de confiança da triagem por tipo, opcional. Formato:
+  // {"oportunidade": 70, "pessoal": 60} — tipo ausente do mapa usa o critério
+  // padrão da triagem (fase aberta, sem piso). Setado via "copiloto confianca
+  // <tipo> <valor>" (copiloto-commands.ts), lido em processBrief (worker) pra
+  // permitir apertar o critério por tipo sem mexer em prompt/redeploy.
+  minConfidenceByTipo Json?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   number          WhatsappNumber @relation(fields: [numberId], references: [id], onDelete: Cascade)
@@ -1277,6 +1283,18 @@ model CopilotoBriefing {
   // em tudo (renderização, guardrails, comandos) sem tratamento especial.
   tipo           String? // 'comercial' | 'pessoal' | 'admin' | 'crise' | 'oportunidade'
   remetente      String? // 'cliente_novo' | 'ativo' | 'fornecedor' | 'parceiro' | 'equipe' | 'outro'
+  // Sinal de vulnerabilidade (idoso/luto/emergência médica/etc — ver
+  // copiloto-guardrails.ts hasVulnerabilitySignal). Antes só existia em
+  // memória (afetava a mensagem renderizada e nada mais); persistido agora
+  // pra dar auditoria — sobretudo cruzado com tipo='crise', onde o risco de
+  // tom errado é maior. Default false: nunca marca sensível por omissão.
+  sensitive      Boolean              @default(false)
+  // Sinal explícito do dono de que o briefing foi ruído de verdade (responder
+  // "0!" em vez de só "0" — ver copiloto-commands.ts). null = ignorado sem
+  // dizer por quê (timeout, sweep, ou simplesmente "0" simples); 'ruido' =
+  // dono confirmou que não devia ter sido gerado. Alimenta a decisão de
+  // apertar a triagem por tipo (fase de observação).
+  dismissReason  String?
   status         String               @default("pending") // 'pending' | 'awaiting_edit' | 'acted' | 'dismissed' | 'expired'
   awaitingRank   Int? // opção escolhida aguardando o texto editado do dono
   awaitingSince  DateTime? // quando o dono pediu para editar — a janela é curta de propósito (ver copiloto-commands.ts)
@@ -1297,6 +1315,7 @@ model CopilotoBriefing {
   @@index([userId, createdAt(sort: Desc)])
   @@index([numberId, status, createdAt(sort: Desc)])
   @@index([tipo])
+  @@index([sensitive, tipo])
 }
 
 model CopilotoSuggestion {

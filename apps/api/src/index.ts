@@ -1215,6 +1215,11 @@ async function runAutoMigrations() {
     // Idempotência de ingestão (migração 20260913_copiloto_message_external_id).
     `ALTER TABLE "CopilotoMessage" ADD COLUMN IF NOT EXISTS "externalId" TEXT`,
     `CREATE INDEX IF NOT EXISTS "CopilotoMessage_conversationId_externalId_idx" ON "CopilotoMessage"("conversationId", "externalId")`,
+    // Copiloto v2.1 — insights e controles (migração 20260913_copiloto_v2_1_insights).
+    `ALTER TABLE "CopilotoConfig" ADD COLUMN IF NOT EXISTS "minConfidenceByTipo" JSONB`,
+    `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "sensitive" BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "dismissReason" TEXT`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoBriefing_sensitive_tipo_idx" ON "CopilotoBriefing"("sensitive", "tipo")`,
   ];
   // Loga índice + prefixo do SQL antes de cada await: se travar (ex.: lock de
   // uma conexão órfã do container anterior ainda não coletada pelo Postgres),

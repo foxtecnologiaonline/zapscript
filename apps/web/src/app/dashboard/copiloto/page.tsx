@@ -47,6 +47,10 @@ interface BriefingRow {
   temperature: string; // quente | morno | frio
   riskLevel: string;   // baixo | medio | alto
   blocker: string | null;
+  // v2.0 — null em briefing anterior à expansão de escopo (tratado como
+  // "comercial" em todo o produto, ver ESCOPO_COPILOTO.md).
+  tipo: string | null;      // comercial | pessoal | admin | crise | oportunidade | null
+  remetente: string | null; // cliente_novo | ativo | fornecedor | parceiro | equipe | outro | null
   status: string;      // pending | awaiting_edit | acted | dismissed | expired
   createdAt: string;
   suggestions: SuggestionRow[];
@@ -107,6 +111,12 @@ const BLOCKER_LABEL: Record<string, string> = {
   preco: 'trava: preço', prazo: 'trava: prazo', confianca: 'trava: confiança',
   autoridade: 'trava: quem decide', urgencia: 'trava: falta de urgência',
 };
+// v2.0 — escopo ampliado de "só comercial" pra 5 tipos de conversa. null
+// (briefing anterior à v2.0) usa o mesmo rótulo de "comercial".
+const TIPO_LABEL: Record<string, string> = {
+  comercial: '💼 Comercial', pessoal: '👋 Pessoal', admin: '🧾 Admin',
+  crise: '🆘 Crise', oportunidade: '🌱 Oportunidade',
+};
 const BRIEFING_STATUS_LABEL: Record<string, string> = {
   pending: 'Aguardando você', awaiting_edit: 'Editando no self-chat',
   acted: 'Resolvido', dismissed: 'Ignorado', expired: 'Expirado',
@@ -118,6 +128,7 @@ const OUTCOME_LABEL: Record<string, string> = { replied: 'Cliente respondeu depo
 // Português de loja em vez do jargão de técnica de vendas — nem todo dono de
 // pequeno negócio reconhece "fechamento-assumido" ou "ancoragem" de cara.
 const TECHNIQUE_LABEL: Record<string, string> = {
+  // comercial (v1.0)
   'fechamento-assumido': 'Fechar a venda',
   'qualificacao':        'Perguntar antes de propor',
   'loop-objecao':        'Contornar objeção',
@@ -127,6 +138,22 @@ const TECHNIQUE_LABEL: Record<string, string> = {
   'reciprocidade':       'Reciprocidade',
   'escuta-ativa':        'Confirmar antes de responder',
   'proximo-passo':       'Propor próximo passo',
+  // pessoal (v2.0)
+  'conexao-pessoal':     'Aprofundar conexão',
+  'curiosidade-genuina': 'Curiosidade genuína',
+  'reconhecimento':      'Reconhecer o ponto sem se justificar',
+  // admin (v2.0)
+  'resolucao-direta':    'Resolver direto',
+  'prazo-real':          'Dar prazo real',
+  'encaminhamento-claro': 'Encaminhar com clareza',
+  // crise (v2.0)
+  'responsabilidade-imediata': 'Assumir responsabilidade rápido',
+  'escuta-de-crise':     'Entender o problema antes de prometer',
+  'validacao-sem-culpa': 'Validar sem admitir culpa indevida',
+  // oportunidade (v2.0)
+  'interesse-qualificado': 'Mostrar interesse qualificado',
+  'filtro-estrategico':  'Filtrar se vale a pena',
+  'porta-aberta':        'Pedir tempo sem fechar a porta',
 };
 
 function timeAgo(iso: string): string {
@@ -231,9 +258,14 @@ function BriefingCard({ b }: { b: BriefingRow }) {
     <div className="rounded-xl border border-neutral-700 bg-neutral-900 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <span className="text-[11px] text-neutral-500">{new Date(b.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
-        <span className="text-[11px] rounded-full bg-neutral-800 px-2 py-0.5 text-neutral-300">
-          {BRIEFING_STATUS_LABEL[b.status] || b.status}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] rounded-full bg-neutral-800 px-2 py-0.5 text-emerald-400">
+            {TIPO_LABEL[b.tipo ?? 'comercial'] || b.tipo}
+          </span>
+          <span className="text-[11px] rounded-full bg-neutral-800 px-2 py-0.5 text-neutral-300">
+            {BRIEFING_STATUS_LABEL[b.status] || b.status}
+          </span>
+        </div>
       </div>
       {b.summary && <p className="text-sm text-neutral-200">{b.summary}</p>}
       {b.intent && <p className="text-xs text-neutral-500">O que ele quer: {b.intent}</p>}
@@ -264,6 +296,7 @@ function ConversasTab({ numbers, numberId, onNotEntitled }: {
 
   const [temperature, setTemperature] = useState('');
   const [status, setStatus] = useState('');
+  const [tipo, setTipo] = useState('');
   const [q, setQ] = useState('');
 
   const load = useCallback(() => {
@@ -271,6 +304,7 @@ function ConversasTab({ numbers, numberId, onNotEntitled }: {
     if (numberId)     params.set('numberId', numberId);
     if (temperature)  params.set('temperature', temperature);
     if (status)       params.set('status', status);
+    if (tipo)         params.set('tipo', tipo);
     if (q.trim())     params.set('q', q.trim());
     setLoading(true);
     api.get<{ conversations: ConversationListItem[] }>(`/copiloto/conversations?${params.toString()}`)
@@ -280,7 +314,7 @@ function ConversasTab({ numbers, numberId, onNotEntitled }: {
         else setError(e?.message || 'Não foi possível carregar as conversas.');
       })
       .finally(() => setLoading(false));
-  }, [numberId, temperature, status, q, onNotEntitled]);
+  }, [numberId, temperature, status, tipo, q, onNotEntitled]);
 
   useEffect(() => {
     load();
@@ -339,6 +373,17 @@ function ConversasTab({ numbers, numberId, onNotEntitled }: {
           <option value="dismissed">Ignorado</option>
           <option value="expired">Expirado</option>
         </select>
+        <select
+          value={tipo} onChange={(e) => setTipo(e.target.value)}
+          className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+        >
+          <option value="">Todo tipo</option>
+          <option value="comercial">💼 Comercial</option>
+          <option value="pessoal">👋 Pessoal</option>
+          <option value="admin">🧾 Admin</option>
+          <option value="crise">🆘 Crise</option>
+          <option value="oportunidade">🌱 Oportunidade</option>
+        </select>
       </div>
 
       {error && (
@@ -349,7 +394,7 @@ function ConversasTab({ numbers, numberId, onNotEntitled }: {
         <div className="text-sm text-neutral-600 text-center py-10 rounded-xl border border-neutral-800">Carregando conversas…</div>
       ) : conversations.length === 0 ? (
         <div className="text-sm text-neutral-600 text-center py-10 rounded-xl border border-neutral-800">
-          Nenhuma conversa {temperature || status || q ? 'bate com esse filtro' : 'ainda — assim que o Copiloto avaliar uma conversa, ela aparece aqui'}.
+          Nenhuma conversa {temperature || status || tipo || q ? 'bate com esse filtro' : 'ainda — assim que o Copiloto avaliar uma conversa, ela aparece aqui'}.
         </div>
       ) : (
         <div className="flex gap-0 md:gap-4 rounded-xl border border-neutral-800 bg-neutral-900 overflow-hidden" style={{ minHeight: 480 }}>
@@ -367,7 +412,10 @@ function ConversasTab({ numbers, numberId, onNotEntitled }: {
                 </div>
                 {c.latestBriefing ? (
                   <>
-                    <div className="flex items-center gap-1.5 mt-1 text-[10px]">
+                    <div className="flex items-center gap-1.5 mt-1 text-[10px] flex-wrap">
+                      <span className="rounded-full bg-neutral-800 px-1.5 py-0.5 text-emerald-400">
+                        {TIPO_LABEL[c.latestBriefing.tipo ?? 'comercial'] || c.latestBriefing.tipo}
+                      </span>
                       <span className="rounded-full bg-neutral-800 px-1.5 py-0.5 text-neutral-300">
                         {TEMP_LABEL[c.latestBriefing.temperature] || c.latestBriefing.temperature}
                       </span>

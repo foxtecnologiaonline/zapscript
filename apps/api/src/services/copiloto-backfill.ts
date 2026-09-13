@@ -24,8 +24,12 @@ import { getUserModules } from '../lib/moduleGate';
  * nos dias seguintes até esvaziar.
  */
 
-const MAX_UNREAD_CHATS = 30;       // teto de segurança por rodada — não varre a vida inteira do WhatsApp de uma vez
-const MAX_MESSAGES_PER_CHAT = 20;  // últimas N mensagens por conversa — contexto suficiente sem virar prompt gigante
+// Configuráveis via env var (sem redeploy de código) — o sweep periódico
+// (runCopilotoUnreadSweep, abaixo) roda a cada 2h contra todo número
+// conectado, então o teto certo depende de volume real observado em
+// produção, não de um chute fixo no código.
+const MAX_UNREAD_CHATS = parseInt(process.env.COPILOTO_BACKFILL_MAX_CHATS || '30', 10);       // teto de segurança por rodada — não varre a vida inteira do WhatsApp de uma vez
+const MAX_MESSAGES_PER_CHAT = parseInt(process.env.COPILOTO_BACKFILL_MAX_MESSAGES || '20', 10);  // últimas N mensagens por conversa — contexto suficiente sem virar prompt gigante
 
 export interface BackfillResult {
   chatsProcessed: number;
