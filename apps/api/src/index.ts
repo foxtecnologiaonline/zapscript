@@ -1206,6 +1206,15 @@ async function runAutoMigrations() {
       "updatedAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "CronHeartbeat_pkey" PRIMARY KEY ("jobName")
     )`,
+    // Copiloto v2.0 (migração 20260913_copiloto_v2_tipo_remetente): auto-cura o
+    // schema no boot mesmo se o startCommand de produção não rodar `prisma
+    // migrate deploy` — mesmo princípio de toda entrada acima.
+    `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "tipo" TEXT`,
+    `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "remetente" TEXT`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoBriefing_tipo_idx" ON "CopilotoBriefing"("tipo")`,
+    // Idempotência de ingestão (migração 20260913_copiloto_message_external_id).
+    `ALTER TABLE "CopilotoMessage" ADD COLUMN IF NOT EXISTS "externalId" TEXT`,
+    `CREATE INDEX IF NOT EXISTS "CopilotoMessage_conversationId_externalId_idx" ON "CopilotoMessage"("conversationId", "externalId")`,
   ];
   // Loga índice + prefixo do SQL antes de cada await: se travar (ex.: lock de
   // uma conexão órfã do container anterior ainda não coletada pelo Postgres),
