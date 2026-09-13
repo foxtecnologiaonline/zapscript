@@ -1316,6 +1316,9 @@ model CopilotoBriefing {
   @@index([numberId, status, createdAt(sort: Desc)])
   @@index([tipo])
   @@index([sensitive, tipo])
+  // Suporte ao cooldown de "pessoal" por contato (processBrief, v2.1) — sem
+  // isso, a query roda sem índice a cada mensagem "pessoal" classificada.
+  @@index([conversationId, tipo, createdAt])
 }
 
 model CopilotoSuggestion {

@@ -449,10 +449,16 @@ export async function handleCopilotoChoice(params: {
   }
 
   if (briefing.status === 'awaiting_edit' && briefing.awaitingRank) {
-    if (raw === '0') {
+    // Mesma variante "0!"/"0x" do fluxo normal (ver mais abaixo) — tem que
+    // ser reconhecida AQUI também. Sem isso, "0!" não batia com `raw === '0'`
+    // e caía direto em dispatch(chosen, raw, true) — ou seja, "0!" seria
+    // enviado como TEXTO LITERAL pro cliente. Bug real, corrigido antes do
+    // primeiro deploy desta feature.
+    if (/^0(!|x)?$/i.test(raw)) {
+      const isNoise = /[!x]$/i.test(raw);
       await prisma.copilotoBriefing.update({
         where: { id: briefing.id },
-        data: { status: 'dismissed', awaitingRank: null, awaitingSince: null },
+        data: { status: 'dismissed', awaitingRank: null, awaitingSince: null, dismissReason: isNoise ? 'ruido' : null },
       });
       await reply('Beleza, cancelei. Nada foi enviado.');
       return true;

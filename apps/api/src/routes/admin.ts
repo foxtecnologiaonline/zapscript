@@ -3514,9 +3514,14 @@ export default async function adminRoutes(app: FastifyInstance) {
     const days = Math.min(90, Math.max(1, parseInt(req.query?.days, 10) || 14));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
+    // Teto defensivo: hoje o volume real não chega perto disso, mas é uma rota
+    // de admin que agrega TODOS os usuários — sem teto, crescimento da base
+    // vira, um dia, um findMany sem paginação carregando a tabela inteira em
+    // memória. 200k é generoso pra 90 dias mesmo numa base grande.
     const briefings = await prisma.copilotoBriefing.findMany({
       where: { createdAt: { gte: since } },
       select: { tipo: true, status: true, dismissReason: true, sensitive: true },
+      take: 200_000,
     });
 
     const byTipo: Record<string, {

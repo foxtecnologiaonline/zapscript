@@ -1220,6 +1220,8 @@ async function runAutoMigrations() {
     `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "sensitive" BOOLEAN NOT NULL DEFAULT false`,
     `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "dismissReason" TEXT`,
     `CREATE INDEX IF NOT EXISTS "CopilotoBriefing_sensitive_tipo_idx" ON "CopilotoBriefing"("sensitive", "tipo")`,
+    // Suporte ao cooldown de "pessoal" (migração 20260913_copiloto_pessoal_cooldown_idx).
+    `CREATE INDEX IF NOT EXISTS "CopilotoBriefing_conversationId_tipo_createdAt_idx" ON "CopilotoBriefing"("conversationId", "tipo", "createdAt")`,
   ];
   // Loga índice + prefixo do SQL antes de cada await: se travar (ex.: lock de
   // uma conexão órfã do container anterior ainda não coletada pelo Postgres),
