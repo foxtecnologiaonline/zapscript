@@ -1,4 +1,3 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { prisma } from '../lib/prisma';
 import {
   handleOptinResponse,
@@ -25,11 +24,15 @@ describe('Sistema de Opt-In (Campanhas)', () => {
   });
 
   afterEach(async () => {
-    // Cleanup
+    // Cleanup (ordem importa: Campanha referencia WhatsappNumber por FK, e
+    // WhatsappNumber/Campanha referenciam User — apagar de dentro pra fora).
     await prisma.campanhaContato.deleteMany({
       where: { campanha: { userId: testUserId } },
     }).catch(() => null);
     await prisma.campanha.deleteMany({
+      where: { userId: testUserId },
+    }).catch(() => null);
+    await prisma.whatsappNumber.deleteMany({
       where: { userId: testUserId },
     }).catch(() => null);
     await prisma.campanhaOptOut.deleteMany({
@@ -45,13 +48,18 @@ describe('Sistema de Opt-In (Campanhas)', () => {
     let contatoId: string;
 
     beforeEach(async () => {
-      // Setup: criar campanha e contato de teste
+      // Setup: criar número WhatsApp, campanha e contato de teste. Campanha.whatsappNumberId
+      // é FK real (ver schema.prisma) — precisa apontar para uma linha existente.
+      const whatsappNumber = await prisma.whatsappNumber.create({
+        data: { userId: testUserId, phoneNumber: '5511900000000', status: 'connected' },
+      });
+
       const campanha = await prisma.campanha.create({
         data: {
           userId: testUserId,
           name: 'Test Campaign',
           channel: 'evolution',
-          whatsappNumberId: 'test-num-' + Date.now(),
+          whatsappNumberId: whatsappNumber.id,
           messageBody: 'Test message',
           audienceCount: 1,
           status: 'running',
@@ -90,7 +98,10 @@ describe('Sistema de Opt-In (Campanhas)', () => {
         });
 
         const result = await handleOptinResponse(testUserId, testPhone, text);
-        expect(result).toBe('confirmed', `falhou com "${text}"`);
+        // Jest não tem 2º argumento de mensagem em `toBe` (isso era sintaxe do
+        // Vitest/Jasmine) — o texto testado precisa aparecer no assert em si
+        // pra identificar qual variação falhou.
+        expect({ text, result }).toEqual({ text, result: 'confirmed' });
       }
     });
 
