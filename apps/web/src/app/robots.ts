@@ -8,6 +8,12 @@ export default function robots(): MetadataRoute.Robots {
         allow: '/',
         disallow: ['/dashboard/', '/admin/', '/api/', '/login', '/register', '/payment/'],
       },
+      // ── Buscadores principais (liberados de propósito) ──
+      {
+        userAgent: ['Googlebot', 'Bingbot', 'Slurp', 'DuckDuckBot'],
+        allow: '/',
+        disallow: ['/dashboard/', '/admin/', '/api/', '/login', '/register', '/payment/'],
+      },
       // ── Bots de IA que geram citação (liberados de propósito) ──
       {
         userAgent: ['GPTBot', 'OAI-SearchBot', 'ChatGPT-User', 'ClaudeBot', 'anthropic-ai', 'Claude-Web', 'Claude-User', 'PerplexityBot', 'Perplexity-User', 'Google-Extended', 'CCBot', 'Applebot-Extended'],
