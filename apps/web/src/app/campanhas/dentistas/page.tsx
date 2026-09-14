@@ -13,6 +13,13 @@ export const metadata: Metadata = {
     description: 'Confirmação de consultas, lembrança automática e redução de faltas no WhatsApp.',
     url: 'https://www.zapscript.me/campanhas/dentistas',
     type: 'website',
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'ZapScript Campanhas Dentistas' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Campanhas WhatsApp para Dentistas',
+    description: 'Confirmação automática, redução de faltas 30-50%.',
+    images: ['/opengraph-image'],
   },
 };
 

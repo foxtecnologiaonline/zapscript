@@ -13,6 +13,13 @@ export const metadata: Metadata = {
     description: 'Dispare campanhas na lista de transmissão do WhatsApp com segurança oficial. Ofertas, agendamentos, follow-up.',
     url: 'https://www.zapscript.me/campanhas/imobiliarias',
     type: 'website',
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'ZapScript Campanhas Imobiliárias' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Campanhas WhatsApp para Imobiliárias',
+    description: 'Dispare ofertas, agendamentos e follow-up direto no WhatsApp.',
+    images: ['/opengraph-image'],
   },
 };
 

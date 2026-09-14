@@ -265,14 +265,20 @@ Fase 0 e 1 — `status`/`executor`/`proofUrl` são genéricos, nenhuma migration
 
 ## 8. Checklist antes de rodar a 1ª missão real em produção
 
-- [ ] Merge desta branch em `master` (dispara deploy automático do Web na Vercel — não afeta
-      API/Worker).
-- [ ] Disparar `ops.yml` (`action=deploy`) — builda e sobe API/Worker no Vultr, e é nesse start
-      que a migration `20260913_mktfast_missions` roda de verdade (`prisma migrate deploy`).
+- [x] Merge desta branch em `master` (dispara deploy automático do Web na Vercel — não afeta
+      API/Worker). Feito em 2026-09-13 (commit `61a4f51`, depois `8104b1e`).
+- [x] Disparar `ops.yml` (`action=deploy`) — builda e sobe API/Worker no Vultr. Run #120,
+      `conclusion: success` (2026-09-13T19:31Z). A migration `20260913_mktfast_missions` está
+      também espelhada em `runAutoMigrations()` (apps/api/src/index.ts) como rede de segurança,
+      mesmo padrão já usado pro Copiloto — auto-cura o schema mesmo se o passo de `prisma
+      migrate deploy` do ops.yml falhar por qualquer motivo.
 - [ ] Confirmar `whatsappNumberId` de um número já conectado (Evolution) pra ser o remetente.
 - [ ] Definir a lista de telefones-alvo (`content.targets`) e, se for usar Fase 1, a lista da
       equipe convocada (`content.humanTargets`).
 - [ ] Criar a missão via `POST /sys/g5r8t2/mktfast/missions` e chamar `/start`.
+
+**Status:** motor em produção, pronto pra receber a 1ª missão. Os 3 itens restantes dependem
+de dados que só o usuário tem (número remetente + listas de telefones).
 
 ---
 

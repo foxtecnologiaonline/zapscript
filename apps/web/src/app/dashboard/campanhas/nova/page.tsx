@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import AudienceImporter from '../_components/AudienceImporter';
+import WhatsAppPreview from '../_components/WhatsAppPreview';
 
 interface EvolutionNumero {
   id: string;
@@ -143,8 +144,8 @@ function NovaCampanhaInner() {
     && (!!campanha.consentConfirmedAt || consentAcknowledged);
 
   return (
-    <div className="min-h-screen px-5 py-10">
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen px-5 py-10 overflow-x-hidden">
+      <div className="max-w-3xl mx-auto">
         <Link href="/dashboard/campanhas" className="text-sm text-brand-muted hover:text-brand-text">← Campanhas</Link>
         <h1 className="text-2xl font-bold mt-2 text-brand-text">
           {resumeId ? 'Continuar campanha' : 'Nova campanha'}
@@ -184,21 +185,24 @@ function NovaCampanhaInner() {
               </div>
             ) : null}
 
-            <div>
-              <label className="block text-sm font-medium text-brand-text-secondary mb-1">Mensagem</label>
-              <textarea
-                required
-                value={messageBody}
-                onChange={(e) => setMessageBody(e.target.value)}
-                rows={4}
-                maxLength={4096}
-                placeholder="Oi {{nome}}, tudo bem? ..."
-                className="input"
-              />
-              <p className="mt-1 text-xs text-brand-muted">
-                Use <code className="text-brand-text-secondary">{'{{nome}}'}</code> pra personalizar com o nome de cada contato
-                (quando conhecido — senão usamos o telefone).
-              </p>
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-4 items-start">
+              <div className="min-w-0">
+                <label className="block text-sm font-medium text-brand-text-secondary mb-1">Mensagem</label>
+                <textarea
+                  required
+                  value={messageBody}
+                  onChange={(e) => setMessageBody(e.target.value)}
+                  rows={4}
+                  maxLength={4096}
+                  placeholder="Oi {{nome}}, tudo bem? ..."
+                  className="input"
+                />
+                <p className="mt-1 text-xs text-brand-muted">
+                  Use <code className="text-brand-text-secondary">{'{{nome}}'}</code> pra personalizar com o nome de cada contato
+                  (quando conhecido — senão usamos o telefone).
+                </p>
+              </div>
+              <WhatsAppPreview text={messageBody} />
             </div>
 
             <div className="inner-block">
@@ -207,15 +211,18 @@ function NovaCampanhaInner() {
                 <span>Testar 2 versões (A/B) — divide a audiência 50/50</span>
               </label>
               {abTestEnabled && (
-                <textarea
-                  required={abTestEnabled}
-                  value={variantBMessageBody}
-                  onChange={(e) => setVariantBMessageBody(e.target.value)}
-                  rows={3}
-                  maxLength={4096}
-                  placeholder="Mensagem da variante B…"
-                  className="input mt-3"
-                />
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-4 items-start mt-3">
+                  <textarea
+                    required={abTestEnabled}
+                    value={variantBMessageBody}
+                    onChange={(e) => setVariantBMessageBody(e.target.value)}
+                    rows={3}
+                    maxLength={4096}
+                    placeholder="Mensagem da variante B…"
+                    className="input min-w-0"
+                  />
+                  <WhatsAppPreview text={variantBMessageBody} />
+                </div>
               )}
             </div>
 

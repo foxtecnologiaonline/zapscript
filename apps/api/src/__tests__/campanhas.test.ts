@@ -61,12 +61,13 @@ jest.mock('../lib/campanha-credit', () => {
   const actual = jest.requireActual('../lib/campanha-credit');
   return {
     InsufficientCampanhaBalanceError: actual.InsufficientCampanhaBalanceError,
-    debitCampanhaMessages: jest.fn().mockResolvedValue({ balanceAfter: 999999 }),
+    debitCampanhaMessages:  jest.fn().mockResolvedValue({ balanceAfter: 999999 }),
+    refundCampanhaMessages: jest.fn().mockResolvedValue({ balanceAfter: 999999 }),
   };
 });
 
 import { prisma } from '../lib/prisma';
-import { debitCampanhaMessages, InsufficientCampanhaBalanceError } from '../lib/campanha-credit';
+import { debitCampanhaMessages, refundCampanhaMessages, InsufficientCampanhaBalanceError } from '../lib/campanha-credit';
 import { redis, campanhasQueue } from '../services/queue';
 import { sendEmail } from '../lib/mailer';
 import { listTemplates, getPhoneNumberLimits, tierToNumericCap } from '../services/whatsapp-campaigns';
@@ -600,6 +601,26 @@ describe('Ciclo start/pause/cancel', () => {
       });
       expect(res.statusCode).toBe(402);
       expect(prisma.campanha.update).not.toHaveBeenCalled();
+      expect(campanhasQueue.addBulk).not.toHaveBeenCalled();
+    });
+
+    it('estorna o saldo já debitado se falhar depois — antes de a campanha realmente entrar na fila', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 2, whatsappNumberId: NUM_ID, startedAt: null, consentConfirmedAt: new Date(), poolNumberIds: [] });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
+      (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }, { id: 'ct2' }]);
+      // Debita normalmente, mas o passo seguinte (marcar 'running') falha — simula um
+      // erro transitório de banco depois que o saldo já saiu.
+      (prisma.campanha.update as jest.Mock).mockRejectedValueOnce(new Error('DB indisponível'));
+
+      const token = makeToken(app);
+      const res = await app.inject({
+        method: 'POST', url: '/modules/campanhas/c1/start',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(500);
+      expect(debitCampanhaMessages).toHaveBeenCalledWith('u1', 2, expect.objectContaining({ referenceType: 'campanha', referenceId: 'c1' }));
+      expect(refundCampanhaMessages).toHaveBeenCalledWith('u1', 2, expect.objectContaining({ referenceType: 'campanha_start_failed', referenceId: 'c1' }));
       expect(campanhasQueue.addBulk).not.toHaveBeenCalled();
     });
   });

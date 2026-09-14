@@ -136,7 +136,7 @@ export async function requestPairingCode(numberId: string, phone: string, log?: 
 
     if (res.ok) {
       const code = data?.pairingCode ?? data?.code;
-      if (code && data?.pairingCode) {
+      if (code) {
         log?.info?.(`[Evolution] Pairing code gerado: ${code}`);
         return { ok: true, code };
       }

@@ -51,13 +51,20 @@ jest.mock('../lib/prisma', () => ({
         if (row && (!where.status || row.status === where.status)) campanhas.delete(where.id);
         return { count: row ? 1 : 0 };
       }),
+      updateMany: jest.fn(async ({ where, data }: any) => {
+        const row = campanhas.get(where.id);
+        if (!row || (where.status && row.status !== where.status)) return { count: 0 };
+        campanhas.set(where.id, { ...row, ...data });
+        return { count: 1 };
+      }),
     },
     campanhaContato: {
       createMany: jest.fn(async () => ({ count: 0 })),
       findMany:   jest.fn(async () => [{ id: 'ct1' }, { id: 'ct2' }]),
+      count:      jest.fn(async () => 2),
     },
     campanhaOptOut:  { findMany: jest.fn(async () => []) },
-    whatsappNumber:  { findUnique: jest.fn(async () => ({ id: 'num1', connectedAt: new Date() })) },
+    whatsappNumber:  { findUnique: jest.fn(async () => ({ id: 'num1', connectedAt: new Date(), status: 'connected', zapiInstanceId: 'zs-num1', metaAccessTokenEnc: null })) },
   },
 }));
 
@@ -70,6 +77,10 @@ jest.mock('../routes/modules/campanhas', () => ({
   warmContactsForNumber: jest.fn(async () => new Map([['5511999990001', 'Fulano'], ['5511999990002', null]])),
   enqueueCampanhaSend:    jest.fn(async () => 2),
   resolveSendNumbers:     jest.fn(async () => [{ id: 'num1', connectedAt: new Date() }]),
+  numberReadyToSend:      jest.fn((n: any, channel: string) => {
+    if (!n || n.status !== 'connected') return false;
+    return channel === 'evolution' ? !!n.zapiInstanceId : !!n.metaAccessTokenEnc;
+  }),
 }));
 jest.mock('../lib/campanha-credit', () => {
   const actual = jest.requireActual('../lib/campanha-credit');
@@ -152,6 +163,46 @@ describe('campanhas-chat-commands', () => {
     expect(campanhas.get(session.campanhaId).status).toBe('running');
     expect(sessions.get('5511900000000').stage).toBe('idle');
     expect(lastReply()).toMatch(/Disparo iniciado/);
+  });
+
+  it('confirma cobrando pelos pendentes reais, não pelo audienceCount congelado (opt-out entre criação e confirmação)', async () => {
+    const { prisma } = jest.requireMock('../lib/prisma') as any;
+    await handleCampanhaChatCommand(ctx('campanha nova'));
+    await handleCampanhaChatReply(ctx('promo')); // audienceCount fica 2 (warmContactsForNumber mockado com 2 contatos)
+
+    // Simula 1 opt-out entre a criação do rascunho e a confirmação: só 1 dos 2 continua pending.
+    (prisma.campanhaContato.count as jest.Mock).mockResolvedValueOnce(1);
+    (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }]);
+
+    await handleCampanhaChatReply(ctx('👍'));
+    expect(debitCampanhaMessages).toHaveBeenCalledWith('u1', 1, expect.objectContaining({ referenceType: 'campanha' }));
+  });
+
+  it('WhatsApp desconectado no momento da confirmação bloqueia o disparo sem cobrar', async () => {
+    const { prisma } = jest.requireMock('../lib/prisma') as any;
+    await handleCampanhaChatCommand(ctx('campanha nova'));
+    await handleCampanhaChatReply(ctx('promo'));
+
+    (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'num1', status: 'disconnected', zapiInstanceId: 'zs-num1', metaAccessTokenEnc: null });
+    await handleCampanhaChatReply(ctx('👍'));
+
+    expect(debitCampanhaMessages).not.toHaveBeenCalled();
+    expect(lastReply()).toMatch(/desconectado/i);
+    expect(sessions.get('5511900000000').stage).toBe('idle');
+  });
+
+  it('todos os contatos opt-out antes da confirmação cancela o rascunho sem cobrar', async () => {
+    const { prisma } = jest.requireMock('../lib/prisma') as any;
+    await handleCampanhaChatCommand(ctx('campanha nova'));
+    await handleCampanhaChatReply(ctx('promo'));
+    const campanhaId = sessions.get('5511900000000').campanhaId;
+
+    (prisma.campanhaContato.count as jest.Mock).mockResolvedValueOnce(0);
+    await handleCampanhaChatReply(ctx('👍'));
+
+    expect(debitCampanhaMessages).not.toHaveBeenCalled();
+    expect(campanhas.get(campanhaId).status).toBe('canceled');
+    expect(lastReply()).toMatch(/opt-out/i);
   });
 
   it('preview: ❌ cancela e apaga o rascunho', async () => {

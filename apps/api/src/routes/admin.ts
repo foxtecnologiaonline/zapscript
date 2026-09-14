@@ -455,8 +455,10 @@ export default async function adminRoutes(app: FastifyInstance) {
         // MinuteBalance) — sincroniza também os módulos do bundle do tier (Entitlement
         // source='bundle', ex.: Atende/Tarefas no Profissional), que o código manual antigo
         // aqui nunca fazia: um admin setando "profissional" na mão deixava o usuário sem os
-        // módulos que o tier deveria incluir.
-        await activatePlan(id, planName, {});
+        // módulos que o tier deveria incluir. comboDiscountPct explícito em null: um plano
+        // setado manualmente pelo admin é sempre o valor cheio do tier, nunca herda desconto
+        // de Combo de uma contratação anterior.
+        await activatePlan(id, planName, { comboDiscountPct: null });
       } else if (planName === 'free') {
         const plan = await prisma.plan.findUnique({ where: { name: 'free' } });
         if (!plan) return reply.code(400).send({ error: `Plano "free" não encontrado.` });
@@ -781,18 +783,34 @@ export default async function adminRoutes(app: FastifyInstance) {
       const user = await prisma.user.findUnique({ where: { id }, select: { id: true } });
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
+      // Números soltos por engano (string vazia, NaN de um bug no cliente) caem sem erro
+      // no branch "count<=0 → no-op" de creditCampanhaMessages/lá na frente — validado aqui
+      // pra devolver 400 em vez de um "ok:true" silencioso que não concedeu nada. Teto
+      // (1M msgs / 10 anos) é só rede de segurança contra erro de digitação — esta rota
+      // não passa por Pix/Asaas, então não tem o limite natural de "quanto cabe no cartão".
+      const isPositiveInt = (v: unknown, max: number) =>
+        typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= max;
+
       if (type === 'messages') {
-        if (!messages || messages <= 0) return reply.code(400).send({ error: 'Informe "messages" (> 0).' });
-        const { balanceAfter } = await creditCampanhaMessages(id, Math.floor(messages), {
+        if (!isPositiveInt(messages, 1_000_000)) {
+          return reply.code(400).send({ error: 'Informe "messages" (número entre 1 e 1.000.000).' });
+        }
+        if (validityDays !== undefined && !isPositiveInt(validityDays, 3650)) {
+          return reply.code(400).send({ error: '"validityDays", quando informado, deve ser um número entre 1 e 3650.' });
+        }
+        const { balanceAfter } = await creditCampanhaMessages(id, Math.floor(messages as number), {
           referenceType: 'admin_grant',
-          validityDays:  validityDays && validityDays > 0 ? Math.floor(validityDays) : undefined,
+          validityDays:  validityDays !== undefined ? Math.floor(validityDays as number) : undefined,
         });
         app.log.info({ adminAction: 'campanha-grant-messages', userId: id, messages }, '[Admin] Cortesia de mensagens de campanha concedida');
         return { ok: true, balanceAfter };
       }
 
       if (type === 'unlimited') {
-        const renewalDate = new Date(Date.now() + (days && days > 0 ? Math.floor(days) : 30) * 24 * 60 * 60 * 1000);
+        if (days !== undefined && !isPositiveInt(days, 3650)) {
+          return reply.code(400).send({ error: '"days", quando informado, deve ser um número entre 1 e 3650.' });
+        }
+        const renewalDate = new Date(Date.now() + (days !== undefined ? Math.floor(days as number) : 30) * 24 * 60 * 60 * 1000);
         await prisma.campanhaBalance.upsert({
           where:  { userId: id },
           create: { userId: id, plan: 'monthly', renewalDate },
@@ -1953,7 +1971,7 @@ export default async function adminRoutes(app: FastifyInstance) {
               if (!plan) throw new Error(`Plano "${planName}" não existe`);
               // Mesma ativação de pagamento real — sincroniza os módulos do bundle do tier
               // (ver comentário equivalente em PATCH /users/:id).
-              await activatePlan(userId, planName, {});
+              await activatePlan(userId, planName, { comboDiscountPct: null });
             }
 
           } else if (action === 'ban') {
@@ -3508,8 +3526,9 @@ export default async function adminRoutes(app: FastifyInstance) {
   // TRIAGE_SYSTEM_PROMPT em copiloto-playbook.ts. Esta rota agrega, por tipo
   // (comercial/pessoal/admin/crise/oportunidade), quanto disso vira ruído de
   // verdade: taxa de ignoro, quantos foram marcados "0!" (ruído explícito,
-  // ver copiloto-commands.ts) e confiança média da triagem. É o dado que
-  // decide se/onde vale configurar "copiloto confianca <tipo> <valor>".
+  // ver copiloto-commands.ts) e confiança média da triagem (triageConfidence
+  // — sem isso, "onde configurar copiloto confianca" seria chute). É o dado
+  // que decide se/onde vale configurar "copiloto confianca <tipo> <valor>".
   app.get<{ Querystring: { days?: string } }>('/copiloto/insights', { preHandler: [adminAuth] }, async (req: any) => {
     const days = Math.min(90, Math.max(1, parseInt(req.query?.days, 10) || 14));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -3520,21 +3539,28 @@ export default async function adminRoutes(app: FastifyInstance) {
     // memória. 200k é generoso pra 90 dias mesmo numa base grande.
     const briefings = await prisma.copilotoBriefing.findMany({
       where: { createdAt: { gte: since } },
-      select: { tipo: true, status: true, dismissReason: true, sensitive: true },
+      select: { tipo: true, status: true, dismissReason: true, sensitive: true, triageConfidence: true },
       take: 200_000,
     });
 
     const byTipo: Record<string, {
       total: number; dismissed: number; noiseExplicit: number; acted: number; sensitiveCount: number;
+      confidenceSum: number; confidenceCount: number;
     }> = {};
     for (const b of briefings) {
       const tipo = b.tipo ?? 'comercial'; // v1.0 sem classificação — mesmo fallback usado no resto do produto
-      const acc = byTipo[tipo] ??= { total: 0, dismissed: 0, noiseExplicit: 0, acted: 0, sensitiveCount: 0 };
+      const acc = byTipo[tipo] ??= { total: 0, dismissed: 0, noiseExplicit: 0, acted: 0, sensitiveCount: 0, confidenceSum: 0, confidenceCount: 0 };
       acc.total += 1;
       if (b.status === 'dismissed') acc.dismissed += 1;
       if (b.dismissReason === 'ruido') acc.noiseExplicit += 1;
       if (b.status === 'acted') acc.acted += 1;
       if (b.sensitive) acc.sensitiveCount += 1;
+      // triageConfidence é null em briefing anterior a esta coluna — não entra
+      // na média (não é "confiança zero", é "não medido").
+      if (typeof b.triageConfidence === 'number') {
+        acc.confidenceSum += b.triageConfidence;
+        acc.confidenceCount += 1;
+      }
     }
 
     const result = Object.entries(byTipo).map(([tipo, v]) => ({
@@ -3545,6 +3571,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       // "0!", não só deixou de responder (que pode ser só falta de tempo).
       confirmedNoisePercent: v.total > 0 ? Math.round((v.noiseExplicit / v.total) * 100) : 0,
       actedRatePercent: v.total > 0 ? Math.round((v.acted / v.total) * 100) : 0,
+      avgTriageConfidence: v.confidenceCount > 0 ? Math.round(v.confidenceSum / v.confidenceCount) : null,
       sensitiveCount: v.sensitiveCount,
     })).sort((a, b) => b.total - a.total);
 

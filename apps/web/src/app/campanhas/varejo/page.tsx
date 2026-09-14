@@ -13,6 +13,13 @@ export const metadata: Metadata = {
     description: 'Dispare promoções, cupons e notificações direto no WhatsApp com segurança oficial.',
     url: 'https://www.zapscript.me/campanhas/varejo',
     type: 'website',
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'ZapScript Campanhas Varejo' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Campanhas WhatsApp para Varejo',
+    description: 'Promoções, cupons e notificações no WhatsApp com segurança oficial.',
+    images: ['/opengraph-image'],
   },
 };
 

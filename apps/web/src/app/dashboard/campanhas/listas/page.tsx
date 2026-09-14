@@ -135,7 +135,7 @@ export default function ListasPage() {
   }
 
   return (
-    <div className="min-h-screen px-5 py-10">
+    <div className="min-h-screen px-5 py-10 overflow-x-hidden">
       <div className="max-w-3xl mx-auto">
         <Link href="/dashboard/campanhas" className="text-sm text-brand-muted hover:text-brand-text">← Campanhas</Link>
 
@@ -282,14 +282,14 @@ export default function ListasPage() {
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-4">
-                            <Link href={`/dashboard/campanhas/listas/${l.id}`} className="font-medium text-brand-text hover:underline">
+                            <Link href={`/dashboard/campanhas/listas/${l.id}`} className="font-medium text-brand-text hover:underline truncate min-w-0">
                               {l.name}
                             </Link>
-                            <span className="text-xs rounded-full border border-brand-border px-2.5 py-1 text-brand-text-secondary whitespace-nowrap">
+                            <span className="text-xs rounded-full border border-brand-border px-2.5 py-1 text-brand-text-secondary whitespace-nowrap shrink-0">
                               {l.contatosCount} número{l.contatosCount === 1 ? '' : 's'}
                             </span>
                           </div>
-                          {l.description && <div className="text-sm text-brand-muted mt-0.5">{l.description}</div>}
+                          {l.description && <div className="text-sm text-brand-muted mt-0.5 truncate">{l.description}</div>}
                           {l.consentConfirmedAt && (
                             <div className="text-xs text-emerald-600 mt-1">✓ Consentimento confirmado</div>
                           )}

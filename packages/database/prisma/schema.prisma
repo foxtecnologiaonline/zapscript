@@ -1284,6 +1284,15 @@ model CopilotoBriefing {
   // em tudo (renderização, guardrails, comandos) sem tratamento especial.
   tipo           String? // 'comercial' | 'pessoal' | 'admin' | 'crise' | 'oportunidade'
   remetente      String? // 'cliente_novo' | 'ativo' | 'fornecedor' | 'parceiro' | 'equipe' | 'outro'
+  // Confiança (0-100) que a TRIAGEM teve na classificação acima — não confundir
+  // com CopilotoSuggestion.confidence (confiança de cada OPÇÃO gerada). Faltava
+  // desde a v2.0: só existia em memória em processBrief (log + gate de piso),
+  // nunca persistida — sem isso, /admin/copiloto/insights não tinha como
+  // calcular a média real que decide onde vale configurar "copiloto confianca
+  // <tipo> <valor>". Nullable: null em briefing anterior a esta coluna.
+  // Float, não Int — mesmo tipo de CopilotoSuggestion.confidence: o valor vem
+  // direto do JSON que a IA devolve, sem garantia de ser um inteiro exato.
+  triageConfidence Float?
   // Sinal de vulnerabilidade (idoso/luto/emergência médica/etc — ver
   // copiloto-guardrails.ts hasVulnerabilitySignal). Antes só existia em
   // memória (afetava a mensagem renderizada e nada mais); persistido agora
@@ -1638,7 +1647,7 @@ model Mission {
   title            String
   objective        String // texto livre — o "porquê" (contexto/log, não usado no envio)
   content          Json // payload cru por canal: { text, mediaUrl?, linkUrl?, targets?: string[] }
-  channels         String[] // ['whatsapp'] na Fase 0 — outros valores previstos: instagram_feed, human_share...
+  channels         String[] // 'whatsapp' (Fase 0) e 'human_share' (Fase 1) implementados — instagram_feed/facebook_page previstos (Fase 2, bloqueada por credenciais Meta)
   whatsappNumberId String? // qual WhatsappNumber (Evolution, status='connected') envia, quando 'whatsapp' ∈ channels
   targetReach      Int? // meta de alcance total (null = "o quanto der")
   status           String             @default("draft") // draft|scheduled|running|completed|canceled
@@ -1659,7 +1668,7 @@ model MissionExecution {
   missionId   String
   channel     String // um dos values de Mission.channels
   executor    String   @default("bot") // 'bot' | 'human'
-  targetRef   String? // telefone (channel='whatsapp'), ou userId do humano convocado (executor='human')
+  targetRef   String? // telefone normalizado (E.164 sem '+') — do destinatário (channel='whatsapp') ou de quem foi convocado (channel='human_share')
   status      String   @default("pending") // pending|sent|posted|failed|awaiting_proof|proof_submitted|approved|rejected
   proofUrl    String? // link/print de prova — só quando executor='human'
   reachCount  Int? // alcance simples desta execução (1 por envio bem-sucedido, na Fase 0)

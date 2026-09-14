@@ -299,6 +299,23 @@ describe('POST /sys/g5r8t2/users/:id/campanha-grant', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('type=messages com valor não-numérico retorna 400 (não silencia como no-op)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/sys/g5r8t2/users/u1/campanha-grant',
+      headers: H, payload: { type: 'messages', messages: 'muitas' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(campBalances.has('u1')).toBe(false); // nada foi concedido
+  });
+
+  it('type=messages acima do teto de segurança (1M) retorna 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/sys/g5r8t2/users/u1/campanha-grant',
+      headers: H, payload: { type: 'messages', messages: 2_000_000 },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('usuário inexistente retorna 404', async () => {
     const res = await app.inject({
       method: 'POST', url: '/sys/g5r8t2/users/nope/campanha-grant',
