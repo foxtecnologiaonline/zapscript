@@ -355,18 +355,26 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
           // principal abaixo. Número público fica de fora (ali quem escreve é
           // estranho fazendo demo, não é a caixa de entrada de ninguém).
           if (messageText && number && !number.isPublic) {
-            io.to(`user:${number.userId}`).emit('wa:message', {
-              numberId: number.id,
-              jid:      remoteJid,
-              message: {
-                id:        messageId,
-                fromMe:    !!fromMe,
-                type:      'text',
-                text:      messageText,
-                timestamp: typeof msg?.messageTimestamp === 'number' ? msg.messageTimestamp : Math.floor(Date.now() / 1000),
-                senderName,
-              },
-            });
+            // try/catch isolado: isso é só um "nice to have" de UI (tela aberta
+            // atualiza sozinha) — nunca pode derrubar o processamento de Atende/
+            // Campanhas/Copiloto/Cobrança que roda logo abaixo, nesta mesma
+            // mensagem, mesmo que io.emit() falhe de um jeito inesperado.
+            try {
+              io.to(`user:${number.userId}`).emit('wa:message', {
+                numberId: number.id,
+                jid:      remoteJid,
+                message: {
+                  id:        messageId,
+                  fromMe:    !!fromMe,
+                  type:      'text',
+                  text:      messageText,
+                  timestamp: typeof msg?.messageTimestamp === 'number' ? msg.messageTimestamp : Math.floor(Date.now() / 1000),
+                  senderName,
+                },
+              });
+            } catch (err: any) {
+              log.warn({ err: err?.message }, '[WhatsAppWeb] Falha ao emitir wa:message — ignorado');
+            }
           }
 
           // Consulta admin de saques pendentes (texto, restrito ao telefone cadastrado
