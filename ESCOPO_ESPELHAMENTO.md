@@ -178,6 +178,71 @@ chama a API existente (Vultr) só para checar entitlement/licença. Tudo o resto
 descritos no `CLAUDE.md` — não há o que "deployar" no servidor para este
 produto além desse endpoint de licença.
 
+### 6.1 Checklist de desenvolvimento — o que está pronto vs. o que falta para o MVP
+
+**Verificado no repo nesta revisão:** não existe nenhum código deste produto —
+sem workspace Electron, sem integração ADB, sem pipeline de vídeo, sem
+instalador. `package.json`/`pnpm-workspace.yaml` só declaram `apps/api`,
+`apps/worker`, `apps/web`, `apps/monitor`; nenhum deles tem Electron nem
+qualquer dependência relacionada a ADB/scrcpy. **Ponto de partida é zero.**
+
+**Pronto (reaproveitável, já existe no repo):**
+
+| Item | Onde | O que dá pra reaproveitar |
+|---|---|---|
+| Padrão de autenticação/JWT | `apps/api/src/lib` | O app Electron pode validar a sessão do usuário do mesmo jeito que o `apps/web` |
+| Gate de módulo/entitlement | `apps/api/src/lib/moduleGate.ts` (confirmado no repo) | Endpoint de licença do app é `requireModule('espelhamento')`, igual a qualquer outro módulo — não precisa de sistema de licenciamento novo |
+| Modelo de billing/Entitlement | `packages/database/prisma/schema.prisma` | Mesma tabela `Entitlement`, sem schema novo pra "quem pode usar o app" |
+
+Isso é **tudo** o que já existe — e nenhum item acima é específico do produto;
+é infraestrutura de conta que qualquer módulo novo do ZapScript reaproveita.
+
+**Falta — nesta ordem de dependência técnica (cada camada bloqueia a próxima):**
+
+1. **Scaffold do app** — novo workspace (ex. `apps/mirror-desktop`), Electron +
+   TypeScript + `electron-builder`, processo principal + renderer, janela
+   básica. Nada disso existe.
+2. **Integração ADB** — embarcar `adb.exe` (Android Platform Tools) no app,
+   detectar dispositivo via `adb devices` (com listener de plugar/desplugar
+   USB), tratar o fluxo de autorização ("Permitir depuração USB?" que aparece
+   *no celular*, fora do controle do app).
+3. **Captura e streaming de vídeo** — portar/embarcar o `scrcpy-server` (roda
+   no Android via `adb push` + `app_process`), abrir socket local via
+   `adb forward`, decodificar H.264 no renderer (WebCodecs API do Chromium
+   embutido no Electron, ou binding nativo) e desenhar no `<canvas>`/`<video>`.
+   **Esta é a camada de maior risco técnico** — é onde vive toda a
+   complexidade de latência baixa que o documento original citava no §7.
+4. **Injeção de input** — traduzir clique/tecla do Electron para o protocolo
+   de input do scrcpy, no mesmo socket.
+5. **MVP funcional mínimo** (recorte já reduzido no §2 desta revisão): 1
+   celular, 1 janela, USB, controle ativo, print. Wi-Fi, múltiplos aparelhos e
+   gravação ficam para depois de validar que alguém prefere isso ao scrcpy.
+6. **Empacotamento e distribuição** — instalador `.exe`/`.msi`, certificado de
+   code signing (§6, ~US$ 130-390/ano), auto-update. Sem isso o produto nem
+   chega a ser instalável de forma confiável (SmartScreen).
+7. **Integração com o ZapScript** (o que dá sentido ao produto, §5) — endpoint
+   novo em `apps/api` pra checar entitlement do app desktop, login do app com
+   a conta já existente, e a ação "abrir WhatsApp espelhado" que é o
+   diferencial real proposto no §5. Sem isso, o app é um scrcpy reimplementado
+   e nada mais.
+8. **Operação nova, sem equivalente hoje** — onboarding explicando "Depuração
+   USB", e possivelmente driver USB OEM pra alguns aparelhos (alguns
+   fabricantes Android exigem driver próprio no Windows pra ADB funcionar).
+
+**Limitação deste ambiente:** este sandbox (Claude Code on the web) roda em
+Linux, sem tela, sem porta USB e sem um Android físico conectado — dá pra
+escrever o scaffold Electron/TypeScript e os wrappers de comando ADB aqui,
+mas **validar de verdade os itens 2 a 4 (detecção de aparelho, autorização USB,
+vídeo, input) exige rodar no Windows do usuário com um celular Android
+conectado**, do mesmo jeito que o `CLAUDE.md` já registra para o servidor
+Vultr (porta 22 bloqueada) — aqui o bloqueio é físico (sem USB/tela), não de
+rede.
+
+**Recomendação de sequência:** validar os itens 1-4 como *spike* técnico
+isolado (fora do módulo do ZapScript, sem integração ainda) antes de investir
+em 6-8 — é a única forma de confirmar que o pipeline de vídeo/input funciona
+com latência aceitável antes de comprometer o resto do esforço.
+
 ---
 
 ## 7. Riscos — revisão do §7 original
