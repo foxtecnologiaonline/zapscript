@@ -1,3 +1,8 @@
+export const metadata = {
+  title: 'ZapScript Campanhas — Guia Rápido Interativo',
+  description: 'Crie campanhas em 3 passos: escreva, adicione números, envie. Preview em tempo real, compliant com Meta API.',
+};
+
 'use client';
 
 import { useState } from 'react';
@@ -10,6 +15,8 @@ export default function WappCampanhas() {
     { phone: '11912345678', name: 'João Santos' },
     { phone: '11998765432', name: 'Ana Costa' }
   ]);
+  const [copiedToast, setCopiedToast] = useState(false);
+  const [validationError, setValidationError] = useState('');
 
   const previewMessage = messageText.replace(/\{\{\s*nome\s*\}\}/gi, 'Maria');
 
@@ -47,6 +54,25 @@ export default function WappCampanhas() {
   const copyContacts = () => {
     const text = contacts.map(c => c.name ? `${c.phone}, ${c.name}` : c.phone).join('\n');
     navigator.clipboard.writeText(text);
+    setCopiedToast(true);
+    setTimeout(() => setCopiedToast(false), 2000);
+  };
+
+  const validateAndSend = () => {
+    if (messageText.trim().length < 10) {
+      setValidationError('Mensagem muito curta (mínimo 10 caracteres)');
+      return;
+    }
+    if (contacts.length === 0) {
+      setValidationError('Adicione pelo menos 1 contato');
+      return;
+    }
+    if (contacts.length > 10000) {
+      setValidationError('Máximo 10.000 contatos por campanha');
+      return;
+    }
+    setValidationError('');
+    alert(`Enviaria para ${contacts.length} contatos (funcionalidade em breve)`);
   };
 
   return (
@@ -61,6 +87,16 @@ export default function WappCampanhas() {
           --border: #e2e8f0;
           --bg: #f8fafc;
           --card: #ffffff;
+        }
+
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --text: #f1f5f9;
+            --text-light: #cbd5e1;
+            --border: #334155;
+            --bg: #0f172a;
+            --card: #1e293b;
+          }
         }
 
         body {
@@ -408,6 +444,37 @@ export default function WappCampanhas() {
           border-top: 1px solid var(--border);
           margin-top: 50px;
         }
+
+        .toast {
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          background: #059669;
+          color: white;
+          padding: 12px 20px;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 600;
+          opacity: 0;
+          transition: opacity 0.3s;
+          pointer-events: none;
+          z-index: 1000;
+        }
+
+        .toast.show {
+          opacity: 1;
+          pointer-events: auto;
+        }
+
+        .error-msg {
+          padding: 12px;
+          background: #fee2e2;
+          color: #991b1b;
+          border-left: 4px solid #dc2626;
+          border-radius: 4px;
+          font-size: 12px;
+          margin-bottom: 12px;
+        }
       `}</style>
 
       <header>
@@ -415,6 +482,8 @@ export default function WappCampanhas() {
           <div className="logo">🚀 ZapScript Campanhas</div>
         </div>
       </header>
+
+      <div className={`toast ${copiedToast ? 'show' : ''}`}>✓ Contatos copiados!</div>
 
       <main className="container">
         <section className="hero">
@@ -473,6 +542,7 @@ export default function WappCampanhas() {
           <div className="mockup">
             <div className="mockup-header">📝 Mensagem</div>
             <div className="mockup-body">
+              {validationError && <div className="error-msg">{validationError}</div>}
               <div className="form-group">
                 <label className="form-label">Nome da campanha</label>
                 <input type="text" value="Black Friday 2026" readOnly />
@@ -607,11 +677,14 @@ export default function WappCampanhas() {
               </div>
 
               <div className="form-group">
-                <button style={{ width: '100%', padding: '12px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', marginBottom: '8px' }}>
+                <button
+                  onClick={validateAndSend}
+                  disabled={messageText.trim().length < 10 || contacts.length === 0}
+                  style={{ width: '100%', padding: '12px', background: messageText.trim().length < 10 || contacts.length === 0 ? 'var(--border)' : 'var(--primary)', color: messageText.trim().length < 10 || contacts.length === 0 ? 'var(--text-light)' : 'white', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: messageText.trim().length < 10 || contacts.length === 0 ? 'not-allowed' : 'pointer', opacity: messageText.trim().length < 10 || contacts.length === 0 ? 0.5 : 1 }}>
                   ▶ Enviar agora
                 </button>
-                <button style={{ width: '100%', padding: '12px', background: 'var(--border)', color: 'var(--text)', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}>
-                  🗓️ Agendar
+                <button style={{ width: '100%', padding: '12px', background: 'var(--border)', color: 'var(--text)', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'not-allowed', marginTop: '8px', opacity: 0.5 }}>
+                  🗓️ Agendar (em breve)
                 </button>
               </div>
             </div>
@@ -619,9 +692,9 @@ export default function WappCampanhas() {
         </div>
 
         <section className="cta">
-          <h2>Pronto para começar?</h2>
-          <p>Crie sua primeira campanha e veja como é fácil</p>
-          <a href="https://zapscript.me" className="btn">Acessar ZapScript →</a>
+          <h2>Começou a criar!</h2>
+          <p>Use as 3 abas acima para escrever a mensagem, adicionar números e enviar. Tudo em um só lugar, sem sair da página.</p>
+          <a href="https://zapscript.me/campanhas?utm_source=wappcampanhas&utm_medium=internal&utm_campaign=cta" className="btn">Aprenda mais técnicas de venda →</a>
         </section>
       </main>
 
