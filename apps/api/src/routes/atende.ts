@@ -140,7 +140,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
     const { numberId } = req.params;
 
     const v = validateRequest(atendeConfigSchema)(req.body);
-    if (!v.valid) return reply.code(400).send({ error: v.error });
+    if (!v.valid) return reply.code(400).send({ error: (v as any).error });
 
     const number = await prisma.whatsappNumber.findFirst({ where: { id: numberId, userId: ownerId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
@@ -331,7 +331,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // ── POST /atende/kb ───────────────────────────────────────────────────────
   app.post<{ Body: { question: string; answer: string } }>('/kb', authManage, async (req: any, reply) => {
     const v = validateRequest(atendeKbCreateSchema)(req.body);
-    if (!v.valid) return reply.code(400).send({ error: v.error });
+    if (!v.valid) return reply.code(400).send({ error: (v as any).error });
 
     const entry = await prisma.atendeKnowledgeBase.create({
       data: {
@@ -352,7 +352,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
     if (!existing) return reply.code(404).send({ error: 'Item não encontrado' });
 
     const v = validateRequest(atendeKbUpdateSchema)(req.body);
-    if (!v.valid) return reply.code(400).send({ error: v.error });
+    if (!v.valid) return reply.code(400).send({ error: (v as any).error });
 
     if (Object.keys(v.data).length === 0) {
       return reply.code(400).send({ error: 'Nenhum campo para atualizar.' });
@@ -435,7 +435,8 @@ export default async function atendeRoutes(app: FastifyInstance) {
   // WhatsApp), enquanto a conversa está sob takeover — reaproveita sendText()
   // (mesmo helper de convites/campanhas/health-monitor) e grava a mensagem
   // como humanAuthored=true, alimentando também a Feature 5.
-  app.post<{ Params: { id: string }; Body: { message?: string } }>('/conversations/:id/reply', auth, {
+  app.post<{ Params: { id: string }; Body: { message?: string } }>('/conversations/:id/reply', {
+    ...auth,
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
   }, async (req: any, reply) => {
     const { ownerId } = req.teamScope;
@@ -503,7 +504,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
   app.post<{ Body: any }>('/avisos', auth, async (req: any, reply) => {
     const { ownerId } = req.teamScope;
     const v = validateRequest(avisoCreateSchema)(req.body);
-    if (!v.valid) return reply.code(400).send({ error: v.error });
+    if (!v.valid) return reply.code(400).send({ error: (v as any).error });
 
     const number = await prisma.whatsappNumber.findFirst({ where: { id: v.data.numberId, userId: ownerId } });
     if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
