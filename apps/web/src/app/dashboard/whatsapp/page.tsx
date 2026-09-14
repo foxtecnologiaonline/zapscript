@@ -220,10 +220,12 @@ export default function WhatsAppWebPage() {
       id: tempId, fromMe: true, type: 'text', text,
       timestamp: Math.floor(Date.now() / 1000), pending: true,
     };
-    // Guarda o estado anterior do chat na lista pra poder reverter (lastMessageAt/
-    // unreadCount) se o envio falhar — sem isso a conversa ficaria marcada como
-    // "mais recente" com uma mensagem que nunca foi enviada de verdade.
-    const prevChatEntry = chats.find(c => c.jid === selectedChat.jid) ?? null;
+    // Guarda a lista inteira (conteúdo E ordem) de antes do envio otimista —
+    // se o envio falhar, restaura tudo de volta. Reverter só o conteúdo do
+    // chat tocado (sem a posição) deixava a conversa presa no topo da lista
+    // mesmo depois de reverter lastMessageAt/unreadCount, como se ainda fosse
+    // "a mais recente" — confirmado num teste manual do envio falhando.
+    const prevChatsSnapshot = chats;
 
     setMessages(ms => [...ms, optimistic]);
     setChats(cs => applyIncomingMessage(cs, selectedChat.jid, optimistic, true));
@@ -235,14 +237,7 @@ export default function WhatsAppWebPage() {
       setMessages(ms => ms.map(m => (m.id === tempId ? { ...m, id: res.id || tempId, pending: false } : m)));
     } catch (err: any) {
       setMessages(ms => ms.filter(m => m.id !== tempId));
-      setChats(cs => {
-        const idx = cs.findIndex(c => c.jid === selectedChat.jid);
-        if (idx === -1) return cs;
-        if (!prevChatEntry) return cs.filter(c => c.jid !== selectedChat.jid); // chat era novo, só existia por causa do envio
-        const next = [...cs];
-        next[idx] = prevChatEntry;
-        return next;
-      });
+      setChats(prevChatsSnapshot);
       setSendError(err.message || 'Não foi possível enviar a mensagem.');
     } finally {
       setSending(false);
