@@ -57,7 +57,12 @@ export async function createInstance(
       qrcode:              false,          // QR gerado on-demand via /instance/connect
       integration:         'WHATSAPP-BAILEYS',
       rejectCall:          false,
-      groupsIgnore:        true,           // ignorar grupos — só mensagens diretas
+      // Grupos ligados desde a criação — decisão de produto (WhatsApp Web
+      // simplificado mostra e envia em grupos, não só conversas individuais).
+      // Instâncias antigas (criadas quando isto era `true`) são corrigidas à
+      // parte: syncAllEvolutionConfigs (boot) e connection.update (runtime)
+      // chamam setGroupsIgnore(instance, false) pra toda instância conectada.
+      groupsIgnore:        false,
       alwaysOnline:        false,
       readMessages:        false,          // não marcar como lido automaticamente
       readStatus:          false,
@@ -192,10 +197,15 @@ export async function setWebhook(name: string, webhookUrl: string): Promise<bool
 
 /**
  * Liga/desliga a leitura de mensagens de grupo numa instância já conectada,
- * sem recriar nada — usado pelo módulo Copiloto (Função 2): toda instância
- * nasce com groupsIgnore=true (ver createInstance acima); isso é ligado
- * (groupsIgnore=false) só quando o usuário tem ao menos 1 grupo com opt-in
- * ativo, e desligado de volta quando ele desativa o último grupo.
+ * sem recriar nada. Toda instância nova já nasce com groupsIgnore=false (ver
+ * createInstance acima) — grupos ligados globalmente é decisão de produto
+ * desde o WhatsApp Web simplificado (fase 3). Esta função hoje só é chamada
+ * com `ignore=false`, pra corrigir instâncias antigas (criadas quando o
+ * padrão era `true`): evolution-sync.ts (boot, toda instância conectada) e
+ * evolution-webhook.ts (connection.update, em tempo real). NÃO existe mais
+ * nenhum caminho que desliga de volta (`ignore=true`) — o Copiloto (Função
+ * 2) usava fazer isso ao desativar o último grupo opt-in, mas isso quebraria
+ * o WhatsApp Web pro usuário; ver comentário em copiloto.ts.
  */
 export async function setGroupsIgnore(instanceNameStr: string, ignore: boolean): Promise<void> {
   const base = evolutionBaseUrl();
@@ -239,20 +249,22 @@ export async function fetchGroups(instanceNameStr: string): Promise<EvolutionGro
 }
 
 export interface EvolutionUnreadChat {
-  jid: string;                  // remoteJid completo ('5511999999999@s.whatsapp.net')
-  phone: string;                 // só dígitos, sem sufixo
+  jid: string;                  // remoteJid completo ('5511999999999@s.whatsapp.net' ou 'xxx@g.us')
+  phone: string;                 // só dígitos (pra grupo: o ID numérico do grupo, não um telefone de verdade)
   name: string | null;
+  type: 'individual' | 'group';
   unreadCount: number;
   lastMessageAt: number | null; // epoch ms, quando a Evolution devolve updatedAt
 }
 
 /**
- * Busca e normaliza os chats individuais (exclui grupos) de uma instância —
- * base compartilhada por fetchUnreadChats (backfill do Copiloto) e
- * fetchAllChats (lista de conversas do WhatsApp Web simplificado).
- * `unreadMessages` é o nome do campo na Evolution API a partir da v2.3.1;
- * como o self-host pode rodar um fork/versão levemente diferente, aceita
- * `unreadCount` também e trata ausência como 0.
+ * Busca e normaliza TODOS os chats (individuais + grupos) de uma instância —
+ * base compartilhada por fetchUnreadChats (backfill do Copiloto, só
+ * individuais) e fetchAllChats (lista de conversas do WhatsApp Web
+ * simplificado, individuais + grupos). `unreadMessages` é o nome do campo na
+ * Evolution API a partir da v2.3.1; como o self-host pode rodar um
+ * fork/versão levemente diferente, aceita `unreadCount` também e trata
+ * ausência como 0.
  */
 async function fetchChatsRaw(instanceNameStr: string): Promise<EvolutionUnreadChat[]> {
   const base = evolutionBaseUrl();
@@ -270,30 +282,35 @@ async function fetchChatsRaw(instanceNameStr: string): Promise<EvolutionUnreadCh
   const data: any[] = Array.isArray(raw) ? raw : (raw?.chats ?? raw?.records ?? []);
   return data
     .map((c) => {
-      const jid = c?.remoteJid ?? c?.id ?? '';
+      const jid     = c?.remoteJid ?? c?.id ?? '';
+      const isGroup = String(jid).endsWith('@g.us');
       return {
         jid,
-        phone:         String(jid).replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, ''),
-        name:          c?.pushName ?? c?.name ?? null,
+        phone:         String(jid).replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@c.us', '').replace(/\D/g, ''),
+        name:          c?.subject ?? c?.pushName ?? c?.name ?? null,
+        type:          (isGroup ? 'group' : 'individual') as 'individual' | 'group',
         unreadCount:   c?.unreadMessages ?? c?.unreadCount ?? 0,
         lastMessageAt: c?.updatedAt ? new Date(c.updatedAt).getTime() : null,
       };
     })
-    .filter((c) => c.phone && c.jid.endsWith('@s.whatsapp.net'));
+    .filter((c) => c.phone && (c.jid.endsWith('@s.whatsapp.net') || c.jid.endsWith('@g.us')));
 }
 
 /**
- * Lista chats individuais com mensagens não lidas — usado só pelo backfill
- * do Copiloto (ver copiloto-backfill.ts).
+ * Lista chats individuais (nunca grupos) com mensagens não lidas — usado só
+ * pelo backfill do Copiloto (ver copiloto-backfill.ts), que tem seu próprio
+ * pipeline de grupo à parte (opt-in por grupo, CopilotoGroup). O filtro por
+ * `type` aqui é o que preserva esse comportamento mesmo agora que
+ * fetchChatsRaw devolve grupos também.
  */
 export async function fetchUnreadChats(instanceNameStr: string): Promise<EvolutionUnreadChat[]> {
   const chats = await fetchChatsRaw(instanceNameStr);
-  return chats.filter((c) => c.unreadCount > 0);
+  return chats.filter((c) => c.type === 'individual' && c.unreadCount > 0);
 }
 
 /**
- * Lista TODOS os chats individuais (lidos e não lidos), mais recente
- * primeiro — base da tela de WhatsApp Web simplificado (lista de conversas).
+ * Lista TODOS os chats (individuais + grupos), mais recente primeiro — base
+ * da tela de WhatsApp Web simplificado (lista de conversas).
  */
 export async function fetchAllChats(instanceNameStr: string, limit = 50): Promise<EvolutionUnreadChat[]> {
   const chats = await fetchChatsRaw(instanceNameStr);
@@ -307,13 +324,21 @@ export interface EvolutionChatMessage {
   fromMe: boolean;
   text: string;
   timestamp: number; // epoch seconds (Baileys messageTimestamp)
+  // Só preenchido em mensagens de GRUPO — quem mandou dentro do grupo. Em
+  // chat individual o remetente já é óbvio pelo `fromMe`/dono da conversa,
+  // por isso fica undefined ali (evita ruído no tipo pro caso comum).
+  senderJid?: string;
+  senderName?: string;
 }
 
 /**
- * Últimas mensagens de um chat individual, mais antiga primeiro. Só extrai
- * texto puro (conversation/extendedTextMessage) — mesmo filtro que o webhook
- * de mensagens em tempo real já aplica pro Copiloto (evolution-webhook.ts);
- * mídia/áudio não vira contexto do Copiloto aqui também.
+ * Últimas mensagens de um chat (individual ou grupo), mais antiga primeiro.
+ * Só extrai texto puro (conversation/extendedTextMessage) — mesmo filtro que
+ * o webhook de mensagens em tempo real já aplica pro Copiloto
+ * (evolution-webhook.ts); mídia/áudio não vira contexto do Copiloto aqui
+ * também. Em mensagens de grupo, captura remetente via `key.participant`
+ * (Baileys: JID de quem mandou dentro do grupo — `key.remoteJid` é sempre o
+ * JID do grupo em si, não ajuda a saber quem falou).
  */
 export async function fetchChatMessages(
   instanceNameStr: string, remoteJid: string, limit = 20,
@@ -333,6 +358,7 @@ export async function fetchChatMessages(
   // A Evolution pagina algumas respostas em { messages: { records: [...] } };
   // outras devolvem o array direto. Aceita as duas formas.
   const list: any[] = Array.isArray(raw) ? raw : (raw?.messages?.records ?? raw?.records ?? []);
+  const isGroup = remoteJid.endsWith('@g.us');
 
   const out: EvolutionChatMessage[] = [];
   for (const m of list) {
@@ -342,11 +368,16 @@ export async function fetchChatMessages(
       messageType === 'extendedTextMessage' ? m?.message?.extendedTextMessage?.text :
       undefined;
     if (!text) continue; // só texto — mesmo filtro do webhook em tempo real
+    const fromMe = !!m?.key?.fromMe;
     out.push({
       id:        m?.key?.id ?? `evo_backfill_${m?.messageTimestamp ?? Date.now()}`,
-      fromMe:    !!m?.key?.fromMe,
+      fromMe,
       text,
       timestamp: typeof m?.messageTimestamp === 'number' ? m.messageTimestamp : 0,
+      ...(isGroup && !fromMe ? {
+        senderJid:  m?.key?.participant ?? undefined,
+        senderName: m?.pushName ?? undefined,
+      } : {}),
     });
   }
   out.sort((a, b) => a.timestamp - b.timestamp); // mais antiga primeiro
@@ -372,6 +403,30 @@ export async function sendText(instanceNameStr: string, phone: string, message: 
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`Evolution sendText falhou (${res.status}): ${text}`);
+  }
+  const data = await res.json().catch(() => null) as any;
+  return { id: data?.key?.id ?? null };
+}
+
+/**
+ * Envia mensagem de texto pra um JID completo — obrigatório pra GRUPO
+ * (`xxx@g.us`): diferente de sendText, que limpa pra só dígitos (funciona
+ * pra número individual, mas manda um grupo pro limbo — a Evolution
+ * interpretaria os dígitos como um número de telefone qualquer, não como o
+ * ID do grupo). Usado pelo WhatsApp Web simplificado, que já lida com jid
+ * completo (grupo ou individual) desde a listagem de conversas.
+ */
+export async function sendTextToJid(instanceNameStr: string, jid: string, message: string): Promise<{ id: string | null }> {
+  const base = evolutionBaseUrl();
+  const res = await fetch(`${base}/message/sendText/${instanceNameStr}`, {
+    method:  'POST',
+    headers: evolutionHeaders(),
+    body: JSON.stringify({ number: jid, text: message }),
+    signal:  AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Evolution sendText (jid) falhou (${res.status}): ${text}`);
   }
   const data = await res.json().catch(() => null) as any;
   return { id: data?.key?.id ?? null };

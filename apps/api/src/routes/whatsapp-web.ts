@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { fetchAllChats, fetchChatMessages, sendText } from '../services/evolution';
+import { fetchAllChats, fetchChatMessages, sendTextToJid } from '../services/evolution';
 
 type ResolvedNumber =
   | { ok: true; number: any }
@@ -9,8 +9,13 @@ type ResolvedNumber =
 /**
  * WhatsApp Web simplificado — lê e envia mensagens de texto usando a mesma
  * instância Evolution já conectada pelo número (nenhuma sessão nova, nenhum
- * QR Code novo). Fase 1: só conversas individuais, só texto — sem grupos e
- * sem mídia (ver estudo da conversa).
+ * QR Code novo). Conversas individuais e grupos (fase 3) — mídia ainda fora
+ * de escopo (ver estudo da conversa).
+ *
+ * Rotas de mensagem usam o JID completo (`:jid`, URL-encoded — ex:
+ * `5511999999999%40s.whatsapp.net` ou `120363...%40g.us`) em vez de só o
+ * telefone: é o único identificador que funciona igual pros dois tipos de
+ * conversa (um grupo não tem "telefone" pra reconstruir a partir de dígitos).
  */
 export default async function whatsappWebRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
@@ -33,6 +38,15 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
     return { ok: true, number };
   }
 
+  // Só aceita JID de conversa individual ou de grupo — nunca repassa outra
+  // coisa (ex: `@c.us`, ou lixo qualquer) direto pro campo `number` da
+  // Evolution API.
+  function parseJid(raw: string): string | null {
+    const jid = String(raw ?? '').trim();
+    if (jid.endsWith('@s.whatsapp.net') || jid.endsWith('@g.us')) return jid;
+    return null;
+  }
+
   // ── GET /numbers/:id/chats ────────────────────────────────────────────────
   app.get<{ Params: { id: string } }>('/:id/chats', auth, async (req: any, reply) => {
     const { id } = req.params;
@@ -50,23 +64,22 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
     }
   });
 
-  // ── GET /numbers/:id/chats/:phone/messages ────────────────────────────────
-  app.get<{ Params: { id: string; phone: string }; Querystring: { limit?: string } }>(
-    '/:id/chats/:phone/messages', auth, async (req: any, reply) => {
-      const { id, phone } = req.params;
+  // ── GET /numbers/:id/chats/:jid/messages ──────────────────────────────────
+  app.get<{ Params: { id: string; jid: string }; Querystring: { limit?: string } }>(
+    '/:id/chats/:jid/messages', auth, async (req: any, reply) => {
+      const { id } = req.params;
       const userId = req.user.sub;
 
       const resolved = await resolveConnectedNumber(id, userId);
       if (!resolved.ok) return reply.code(resolved.status).send({ error: resolved.error });
 
-      const cleanPhone = String(phone).replace(/\D/g, '');
-      if (!cleanPhone) return reply.code(400).send({ error: 'Telefone inválido.' });
+      const jid = parseJid(req.params.jid);
+      if (!jid) return reply.code(400).send({ error: 'Conversa inválida.' });
 
       const limit = Math.min(Math.max(parseInt(req.query?.limit ?? '50', 10) || 50, 1), 100);
-      const remoteJid = `${cleanPhone}@s.whatsapp.net`;
 
       try {
-        const messages = await fetchChatMessages(resolved.number.zapiInstanceId, remoteJid, limit);
+        const messages = await fetchChatMessages(resolved.number.zapiInstanceId, jid, limit);
         return { messages };
       } catch (err: any) {
         app.log.error({ err: err.message }, '[WhatsAppWeb] Erro ao listar mensagens');
@@ -75,10 +88,10 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
     }
   );
 
-  // ── POST /numbers/:id/chats/:phone/messages ───────────────────────────────
-  app.post<{ Params: { id: string; phone: string }; Body: { text?: string } }>(
-    '/:id/chats/:phone/messages', auth, async (req: any, reply) => {
-      const { id, phone } = req.params;
+  // ── POST /numbers/:id/chats/:jid/messages ─────────────────────────────────
+  app.post<{ Params: { id: string; jid: string }; Body: { text?: string } }>(
+    '/:id/chats/:jid/messages', auth, async (req: any, reply) => {
+      const { id } = req.params;
       const userId = req.user.sub;
 
       const text = req.body?.text?.trim();
@@ -88,11 +101,11 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
       const resolved = await resolveConnectedNumber(id, userId);
       if (!resolved.ok) return reply.code(resolved.status).send({ error: resolved.error });
 
-      const cleanPhone = String(phone).replace(/\D/g, '');
-      if (!cleanPhone) return reply.code(400).send({ error: 'Telefone inválido.' });
+      const jid = parseJid(req.params.jid);
+      if (!jid) return reply.code(400).send({ error: 'Conversa inválida.' });
 
       try {
-        const result = await sendText(resolved.number.zapiInstanceId, cleanPhone, text);
+        const result = await sendTextToJid(resolved.number.zapiInstanceId, jid, text);
         return { ok: true, id: result.id };
       } catch (err: any) {
         app.log.error({ err: err.message }, '[WhatsAppWeb] Erro ao enviar mensagem');

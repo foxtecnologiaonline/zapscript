@@ -11,10 +11,13 @@ interface WNumberLite {
   status: string;
 }
 
+type ChatKind = 'individual' | 'group';
+
 interface ChatSummary {
   jid: string;
   phone: string;
   name: string | null;
+  type: ChatKind;
   unreadCount: number;
   lastMessageAt: number | null; // epoch ms
 }
@@ -22,11 +25,16 @@ interface ChatSummary {
 interface WaMessage {
   id: string;
   fromMe: boolean;
-  type: string;         // 'text' — fase 1 só suporta texto
+  type: string;         // 'text' — mídia ainda fora de escopo
   text: string;
   timestamp: number;    // epoch seconds
-  senderName?: string;
+  senderJid?: string;   // só em mensagem de grupo, !fromMe — quem mandou dentro do grupo
+  senderName?: string;  // idem
   pending?: boolean;    // marcação local (envio otimista), nunca vem da API
+}
+
+function chatKindFromJid(jid: string): ChatKind {
+  return jid.endsWith('@g.us') ? 'group' : 'individual';
 }
 
 // ── UI helpers ───────────────────────────────────────────────────────────────
@@ -50,21 +58,26 @@ function formatChatTime(epochMs: number | null): string {
 }
 
 function chatDisplayName(chat: ChatSummary): string {
-  return chat.name?.trim() || `+${chat.phone}`;
+  if (chat.name?.trim()) return chat.name.trim();
+  return chat.type === 'group' ? 'Grupo' : `+${chat.phone}`;
 }
 
 // Insere/atualiza um chat na lista a partir de uma mensagem (otimista ou vinda
 // do Socket.IO), sempre reordenando o chat tocado pro topo — mesma UX do
 // WhatsApp de verdade (conversa mais recente sobe).
 function applyIncomingMessage(chats: ChatSummary[], jid: string, msg: WaMessage, isOpenChat: boolean): ChatSummary[] {
-  const phone   = jid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+  const phone   = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/\D/g, '');
   const idx     = chats.findIndex(c => c.jid === jid);
   const readNow = msg.fromMe || isOpenChat;
 
   if (idx === -1) {
+    const type = chatKindFromJid(jid);
     const created: ChatSummary = {
-      jid, phone,
-      name:         msg.fromMe ? null : (msg.senderName || null),
+      jid, phone, type,
+      // Em grupo, msg.senderName é quem falou (não o nome do grupo) — não dá
+      // pra usar como nome do chat aqui. Fica "Grupo" (chatDisplayName) até
+      // o próximo GET /chats trazer o subject de verdade da Evolution.
+      name:         type === 'group' ? null : (msg.fromMe ? null : (msg.senderName || null)),
       unreadCount:  readNow ? 0 : 1,
       lastMessageAt: msg.timestamp * 1000,
     };
@@ -171,7 +184,7 @@ export default function WhatsAppWebPage() {
     if (!selectedNumberId || !selectedChat) { setMessages([]); return; }
     const requestId = ++messagesRequestRef.current;
     setLoadingMessages(true); setMessagesError('');
-    api.get<{ messages: WaMessage[] }>(`/numbers/${selectedNumberId}/chats/${selectedChat.phone}/messages`)
+    api.get<{ messages: WaMessage[] }>(`/numbers/${selectedNumberId}/chats/${encodeURIComponent(selectedChat.jid)}/messages`)
       .then(res => {
         if (messagesRequestRef.current !== requestId) return; // resposta obsoleta — conversa já trocou
         setMessages(res.messages ?? []);
@@ -232,7 +245,7 @@ export default function WhatsAppWebPage() {
 
     try {
       const res = await api.post<{ ok: boolean; id: string | null }>(
-        `/numbers/${selectedNumberId}/chats/${selectedChat.phone}/messages`, { text }
+        `/numbers/${selectedNumberId}/chats/${encodeURIComponent(selectedChat.jid)}/messages`, { text }
       );
       setMessages(ms => ms.map(m => (m.id === tempId ? { ...m, id: res.id || tempId, pending: false } : m)));
     } catch (err: any) {
@@ -343,7 +356,10 @@ export default function WhatsAppWebPage() {
                       }`}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold text-brand-text truncate">{chatDisplayName(chat)}</div>
+                        <div className="text-sm font-semibold text-brand-text truncate">
+                          {chat.type === 'group' && <span className="mr-1">👥</span>}
+                          {chatDisplayName(chat)}
+                        </div>
                         <div className="text-[10px] text-brand-muted mt-0.5">{formatChatTime(chat.lastMessageAt)}</div>
                       </div>
                       {chat.unreadCount > 0 && (
@@ -368,7 +384,9 @@ export default function WhatsAppWebPage() {
                   ←
                 </button>
                 <div className="font-bold text-sm text-brand-text truncate">
-                  {selectedChat ? chatDisplayName(selectedChat) : 'Selecione uma conversa'}
+                  {selectedChat
+                    ? <>{selectedChat.type === 'group' && <span className="mr-1">👥</span>}{chatDisplayName(selectedChat)}</>
+                    : 'Selecione uma conversa'}
                 </div>
               </div>
 
@@ -391,6 +409,11 @@ export default function WhatsAppWebPage() {
                           ? 'bg-brand-primary text-white rounded-br-sm'
                           : 'bg-brand-elevated text-brand-text rounded-bl-sm'
                       } ${m.pending ? 'opacity-60' : ''}`}>
+                        {/* Nome de quem falou — só em grupo, e só em mensagem que não é minha
+                            (numa conversa individual já é óbvio quem está falando) */}
+                        {selectedChat?.type === 'group' && !m.fromMe && m.senderName && (
+                          <div className="text-[11px] font-semibold text-brand-primary mb-0.5">{m.senderName}</div>
+                        )}
                         <div className="whitespace-pre-wrap break-words">{m.text}</div>
                         <div className={`text-[10px] mt-1 ${m.fromMe ? 'text-white/70' : 'text-brand-muted'}`}>
                           {m.pending ? 'enviando…' : formatChatTime(m.timestamp * 1000)}

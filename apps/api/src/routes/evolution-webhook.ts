@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected, notifyCobrancaPossiblePayment } from '../services/whatsapp-notify';
 import { handleOfficialNumberText, closeLeadOnConnected } from '../services/onboarding-whatsapp';
 import { storeQr } from '../lib/qrStore';
-import { sendText } from '../services/evolution';
+import { sendText, setGroupsIgnore } from '../services/evolution';
 import { getUserModules } from '../lib/moduleGate';
 import { isAtendeOwnerCommand, handleAtendeOwnerCommand } from '../services/atende-commands';
 import {
@@ -202,6 +202,12 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
           // Notificar frontend via Socket.IO → fecha modal de conexão automaticamente
           io.to(`user:${number.userId}`).emit('number:connected', { numberId: number.id });
 
+          // Grupos ligados pra toda instância (decisão de produto: WhatsApp
+          // Web mostra e envia em grupos) — cobre aqui número novo/reconexão
+          // em tempo real; syncAllEvolutionConfigs cobre o resto no boot.
+          setGroupsIgnore(instName, false).catch((err: any) =>
+            log.warn(`[Evolution] ⚠️ Falha ao ligar grupos (${instName}): ${err.message}`));
+
           // Notificações: apenas quando muda de estado real
           // 'connected' → 'connected': evento redundante (keepalive/restart) — sem notificação
           // qualquer outro → 'connected': número novo, readicionado ou reconectado — sempre
@@ -284,18 +290,22 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       const messageType = msg?.messageType;       // 'audioMessage', 'pttMessage', 'documentMessage', 'textMessage'
       const messageId   = key?.id ?? `evo_${Date.now()}`;
 
-      // Grupos: só entram no fluxo com opt-in do Copiloto (Função 2 — resumo
-      // diário). Fora isso, ZapScript continua sem processar grupo nenhum
-      // (áudio, Atende, Cobrança etc. seguem "ignorar grupo" como sempre foi).
-      // Só texto conta — resumo diário não transcreve áudio de grupo no MVP.
+      // Grupos: fluxo à parte de conversa individual — nunca entram em
+      // áudio/Atende/Cobrança (isso continua "ignorar grupo" como sempre
+      // foi). Só texto conta aqui. Dois consumidores independentes do mesmo
+      // texto de grupo: o resumo diário do Copiloto (Função 2, só opt-in,
+      // só !fromMe) e o broadcast em tempo real do WhatsApp Web simplificado
+      // (fase 3 — qualquer grupo da instância, os dois lados da conversa).
       if (remoteJid.includes('@g.us')) {
-        if (!fromMe && (messageType === 'conversation' || messageType === 'extendedTextMessage')) {
+        if (messageType === 'conversation' || messageType === 'extendedTextMessage') {
           const groupText = messageType === 'conversation'
             ? msg?.message?.conversation
             : msg?.message?.extendedTextMessage?.text;
+
           if (groupText) {
             const groupNumber = await findNumber(false);
-            if (groupNumber) {
+
+            if (!fromMe && groupNumber) {
               ingestCopilotoGroupMessage({
                 numberId:   groupNumber.id,
                 groupJid:   remoteJid,
@@ -303,6 +313,30 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
                 senderName: msg?.pushName ?? null,
                 content:    groupText,
               }).catch(() => null);
+            }
+
+            // ── WhatsApp Web simplificado — grupo ───────────────────────────
+            // Mesmo try/catch isolado do broadcast individual (ver abaixo):
+            // nunca pode derrubar a ingestão do Copiloto acima, mesmo que
+            // io.emit() falhe de um jeito inesperado.
+            if (groupNumber && !groupNumber.isPublic) {
+              try {
+                io.to(`user:${groupNumber.userId}`).emit('wa:message', {
+                  numberId: groupNumber.id,
+                  jid:      remoteJid,
+                  message: {
+                    id:        messageId,
+                    fromMe:    !!fromMe,
+                    type:      'text',
+                    text:      groupText,
+                    timestamp: typeof msg?.messageTimestamp === 'number' ? msg.messageTimestamp : Math.floor(Date.now() / 1000),
+                    senderJid:  fromMe ? undefined : (key?.participant ?? undefined),
+                    senderName: fromMe ? undefined : (msg?.pushName ?? undefined),
+                  },
+                });
+              } catch (err: any) {
+                log.warn({ err: err?.message }, '[WhatsAppWeb] Falha ao emitir wa:message (grupo) — ignorado');
+              }
             }
           }
         }

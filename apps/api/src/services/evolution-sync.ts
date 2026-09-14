@@ -13,7 +13,7 @@
  */
 
 import { prisma } from '../lib/prisma';
-import { getConnectionState, setWebhook } from './evolution';
+import { getConnectionState, setWebhook, setGroupsIgnore } from './evolution';
 
 function getWebhookUrl(): string | null {
   const base = process.env.API_URL || process.env.APP_URL;
@@ -87,6 +87,13 @@ export async function syncAllEvolutionConfigs(log: any): Promise<SyncResult> {
           result.errors++;
           log.warn(`[Evolution Sync] ⚠️ Falha ao sincronizar webhook: ${instName}`);
         }
+
+        // Grupos ligados pra toda instância (decisão de produto: WhatsApp Web
+        // mostra e envia em grupos) — corrige aqui as instâncias antigas,
+        // criadas quando groupsIgnore nascia `true`. Idempotente: roda em
+        // todo boot, sem custo real quando já está `false`.
+        setGroupsIgnore(instName, false).catch((err: any) =>
+          log.warn(`[Evolution Sync] ⚠️ Falha ao ligar grupos: ${instName} — ${err.message}`));
 
         // Auto-reconectar no banco se status estiver desatualizado
         if (number.status !== 'connected') {

@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { requireModule } from '../lib/moduleGate';
-import { fetchGroups, setGroupsIgnore } from '../services/evolution';
+import { fetchGroups } from '../services/evolution';
 
 /**
  * Módulo Copiloto — Função 2 (resumo diário de grupos).
@@ -190,11 +190,12 @@ export default async function copilotoRoutes(app: FastifyInstance) {
         create: { userId, numberId: number.id, groupJid, name: name || groupJid, active: !!active },
       });
 
-      if (number.zapiInstanceId) {
-        const anyActive = await prisma.copilotoGroup.count({ where: { numberId: number.id, active: true } });
-        setGroupsIgnore(number.zapiInstanceId, anyActive === 0).catch((err: any) =>
-          app.log.warn({ err: err?.message }, '[Copiloto] Falha ao ajustar groupsIgnore'));
-      }
+      // Nota: groupsIgnore da instância NÃO é mais ligado/desligado aqui —
+      // desde o WhatsApp Web simplificado (fase 3), grupos ficam sempre
+      // ligados pra toda instância (decisão de produto), gerenciado em
+      // evolution-sync.ts (boot) e evolution-webhook.ts (connection.update).
+      // Antes, desativar o último grupo do Copiloto desligava groupsIgnore de
+      // volta — o que agora quebraria o WhatsApp Web pra esse número.
 
       return reply.code(200).send({ ok: true });
     },
