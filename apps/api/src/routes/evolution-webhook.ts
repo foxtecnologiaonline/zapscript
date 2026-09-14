@@ -343,28 +343,30 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
               ? msg?.message?.conversation
               : msg?.message?.extendedTextMessage?.text;
 
+          // Resolvido uma única vez e reaproveitado abaixo (broadcast do WhatsApp
+          // Web + fluxos de Atende/Campanhas/Copiloto/Cobrança) — evita repetir a
+          // mesma consulta ao banco neste hot path.
+          const number = messageText ? await findNumber(false) : null;
+
           // ── WhatsApp Web simplificado ────────────────────────────────────────
           // Replica a mensagem em tempo real para a aba aberta no site, indepen-
           // dente de módulo (Atende/Copiloto) e de qual lado mandou (fromMe ou
           // não) — best-effort via Socket.IO, nunca atrasa nem quebra o fluxo
           // principal abaixo. Número público fica de fora (ali quem escreve é
           // estranho fazendo demo, não é a caixa de entrada de ninguém).
-          if (messageText) {
-            findNumber(false).then((n: any) => {
-              if (!n || n.isPublic) return;
-              io.to(`user:${n.userId}`).emit('wa:message', {
-                numberId: n.id,
-                jid:      remoteJid,
-                message: {
-                  id:        messageId,
-                  fromMe:    !!fromMe,
-                  type:      'text',
-                  text:      messageText,
-                  timestamp: typeof msg?.messageTimestamp === 'number' ? msg.messageTimestamp : Math.floor(Date.now() / 1000),
-                  senderName,
-                },
-              });
-            }).catch(() => null);
+          if (messageText && number && !number.isPublic) {
+            io.to(`user:${number.userId}`).emit('wa:message', {
+              numberId: number.id,
+              jid:      remoteJid,
+              message: {
+                id:        messageId,
+                fromMe:    !!fromMe,
+                type:      'text',
+                text:      messageText,
+                timestamp: typeof msg?.messageTimestamp === 'number' ? msg.messageTimestamp : Math.floor(Date.now() / 1000),
+                senderName,
+              },
+            });
           }
 
           // Consulta admin de saques pendentes (texto, restrito ao telefone cadastrado
@@ -380,8 +382,6 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
           }
 
           if (!fromMe) {
-            const number = messageText ? await findNumber(false) : null;
-
             // Número oficial (isPublic) + texto de alguém que não é o dono: cadastro
             // e onboarding conversacional via WhatsApp (site simultâneo ou início
             // direto por aqui). Tem prioridade sobre o fluxo padrão do Atende —
@@ -503,8 +503,6 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
                 .catch(() => null);
             }
           } else if (messageText) {
-            const number = await findNumber(false);
-
             // Feature 8: comando do dono via self-chat ("atende status/ligar/desligar/...").
             // Mesma detecção de self-chat do áudio (Feature 1) — aqui em texto, e só
             // dispara com o prefixo "atende" pra nunca sequestrar uma nota pessoal comum.

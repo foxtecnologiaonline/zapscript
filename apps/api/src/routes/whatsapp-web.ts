@@ -2,6 +2,10 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { fetchAllChats, fetchChatMessages, sendText } from '../services/evolution';
 
+type ResolvedNumber =
+  | { ok: true; number: any }
+  | { ok: false; status: number; error: string };
+
 /**
  * WhatsApp Web simplificado — lê e envia mensagens de texto usando a mesma
  * instância Evolution já conectada pelo número (nenhuma sessão nova, nenhum
@@ -11,8 +15,22 @@ import { fetchAllChats, fetchChatMessages, sendText } from '../services/evolutio
 export default async function whatsappWebRoutes(app: FastifyInstance) {
   const auth = { preHandler: [(app as any).authenticate] };
 
-  async function findOwnedConnectedNumber(id: string, userId: string) {
-    return (prisma as any).whatsappNumber.findFirst({ where: { id, userId, isPublic: false } });
+  // Resolve o número (dono confere), e valida que é um número Evolution já
+  // conectado — números via API oficial da Meta (provider='meta', ver
+  // schema.prisma) não têm instância Evolution e não são suportados aqui.
+  async function resolveConnectedNumber(id: string, userId: string): Promise<ResolvedNumber> {
+    const number = await (prisma as any).whatsappNumber.findFirst({ where: { id, userId, isPublic: false } });
+    if (!number) return { ok: false, status: 404, error: 'Número não encontrado' };
+    if (number.provider === 'meta') {
+      return {
+        ok: false, status: 400,
+        error: 'Este recurso é exclusivo de números conectados via QR Code (Evolution) — números via API oficial da Meta não são suportados aqui.',
+      };
+    }
+    if (!number.zapiInstanceId) {
+      return { ok: false, status: 400, error: 'WhatsApp ainda não conectado.' };
+    }
+    return { ok: true, number };
   }
 
   // ── GET /numbers/:id/chats ────────────────────────────────────────────────
@@ -20,12 +38,11 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
     const { id } = req.params;
     const userId = req.user.sub;
 
-    const number = await findOwnedConnectedNumber(id, userId);
-    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
-    if (!number.zapiInstanceId) return reply.code(400).send({ error: 'WhatsApp ainda não conectado.' });
+    const resolved = await resolveConnectedNumber(id, userId);
+    if (!resolved.ok) return reply.code(resolved.status).send({ error: resolved.error });
 
     try {
-      const chats = await fetchAllChats(number.zapiInstanceId);
+      const chats = await fetchAllChats(resolved.number.zapiInstanceId);
       return { chats };
     } catch (err: any) {
       app.log.error({ err: err.message }, '[WhatsAppWeb] Erro ao listar chats');
@@ -39,9 +56,8 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
       const { id, phone } = req.params;
       const userId = req.user.sub;
 
-      const number = await findOwnedConnectedNumber(id, userId);
-      if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
-      if (!number.zapiInstanceId) return reply.code(400).send({ error: 'WhatsApp ainda não conectado.' });
+      const resolved = await resolveConnectedNumber(id, userId);
+      if (!resolved.ok) return reply.code(resolved.status).send({ error: resolved.error });
 
       const cleanPhone = String(phone).replace(/\D/g, '');
       if (!cleanPhone) return reply.code(400).send({ error: 'Telefone inválido.' });
@@ -50,7 +66,7 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
       const remoteJid = `${cleanPhone}@s.whatsapp.net`;
 
       try {
-        const messages = await fetchChatMessages(number.zapiInstanceId, remoteJid, limit);
+        const messages = await fetchChatMessages(resolved.number.zapiInstanceId, remoteJid, limit);
         return { messages };
       } catch (err: any) {
         app.log.error({ err: err.message }, '[WhatsAppWeb] Erro ao listar mensagens');
@@ -69,15 +85,14 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
       if (!text) return reply.code(400).send({ error: 'Mensagem vazia.' });
       if (text.length > 4096) return reply.code(400).send({ error: 'Mensagem muito longa.' });
 
-      const number = await findOwnedConnectedNumber(id, userId);
-      if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
-      if (!number.zapiInstanceId) return reply.code(400).send({ error: 'WhatsApp ainda não conectado.' });
+      const resolved = await resolveConnectedNumber(id, userId);
+      if (!resolved.ok) return reply.code(resolved.status).send({ error: resolved.error });
 
       const cleanPhone = String(phone).replace(/\D/g, '');
       if (!cleanPhone) return reply.code(400).send({ error: 'Telefone inválido.' });
 
       try {
-        const result = await sendText(number.zapiInstanceId, cleanPhone, text);
+        const result = await sendText(resolved.number.zapiInstanceId, cleanPhone, text);
         return { ok: true, id: result.id };
       } catch (err: any) {
         app.log.error({ err: err.message }, '[WhatsAppWeb] Erro ao enviar mensagem');
