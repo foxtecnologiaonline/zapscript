@@ -19,7 +19,8 @@
     "appId": "me.zapscript.desktop",
     "productName": "ZapScript",
     "files": [
-      "dist/**/*"
+      "dist/**/*",
+      "build/icon.png"
     ],
     "directories": {
       "buildResources": "build",

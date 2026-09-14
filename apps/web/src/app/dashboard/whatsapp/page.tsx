@@ -150,6 +150,11 @@ export default function WhatsAppWebPage() {
   // troca de número/conversa rápido e uma busca antiga responde depois da nova.
   const chatsRequestRef    = useRef(0);
   const messagesRequestRef = useRef(0);
+  // Conversa a abrir assim que o número-alvo terminar de virar o selecionado
+  // (clique em notificação de OUTRO número) — sem isso, o efeito abaixo que
+  // limpa `selectedChat` ao trocar de número apagava a conversa escolhida
+  // antes dela aparecer na tela.
+  const pendingOpenRef = useRef<{ numberId: string; chat: ChatSummary } | null>(null);
 
   const connectedNumbers = useMemo(() => numbers.filter(n => n.status === 'connected'), [numbers]);
 
@@ -197,9 +202,16 @@ export default function WhatsAppWebPage() {
   }, []);
 
   useEffect(() => {
-    setSelectedChat(null);
+    const pending = pendingOpenRef.current;
+    if (pending && pending.numberId === selectedNumberId) {
+      setSelectedChat(pending.chat);
+      setMobileView('thread');
+    } else {
+      setSelectedChat(null);
+      setMobileView('list');
+    }
+    pendingOpenRef.current = null;
     setMessages([]);
-    setMobileView('list');
     if (!selectedNumberId) { setChats([]); return; }
     loadChats(selectedNumberId);
   }, [selectedNumberId, loadChats]);
@@ -255,14 +267,24 @@ export default function WhatsAppWebPage() {
         const senderLabel = d.message.senderName?.trim() || `+${phone}`;
         const number = numbers.find(n => n.id === d.numberId);
         notifyIncomingMessage(numberDisplayName(number), senderLabel, d.message.text, () => {
-          setSelectedNumberId(d.numberId);
-          setSelectedChat({
+          const chatStub: ChatSummary = {
             jid: d.jid, phone,
             name: d.message.senderName ?? null,
             unreadCount: 0,
             lastMessageAt: d.message.timestamp * 1000,
-          });
-          setMobileView('thread');
+          };
+          if (d.numberId === selectedNumberId) {
+            // Já é o número aberto — troca a conversa direto, sem passar
+            // pelo efeito de troca de número (que não vai disparar aqui).
+            setSelectedChat(chatStub);
+            setMobileView('thread');
+          } else {
+            // Muda de número: guarda a conversa-alvo pro efeito de troca de
+            // número abrir assim que os chats desse número carregarem — ver
+            // pendingOpenRef acima.
+            pendingOpenRef.current = { numberId: d.numberId, chat: chatStub };
+            setSelectedNumberId(d.numberId);
+          }
         });
       }
     },
