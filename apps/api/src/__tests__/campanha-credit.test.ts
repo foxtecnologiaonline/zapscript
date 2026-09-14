@@ -46,6 +46,18 @@ function applyUpdate(b: Balance, data: any) {
   }
 }
 
+/** Aplica os filtros suportados de `where` (id exato + campos numéricos `{gte}`) contra um Balance. */
+function matchesWhere(b: Balance, where: any): boolean {
+  for (const key of Object.keys(where)) {
+    if (key === 'id') { if (b.id !== where.id) return false; continue; }
+    const cond = where[key];
+    if (cond && typeof cond === 'object' && 'gte' in cond) {
+      if ((b as any)[key] < cond.gte) return false;
+    }
+  }
+  return true;
+}
+
 jest.mock('../lib/prisma', () => ({
   prisma: {
     campanhaBalance: {
@@ -55,7 +67,20 @@ jest.mock('../lib/prisma', () => ({
         applyUpdate(b, data);
         return b;
       }),
+      // Espelha o UPDATE guardado real (WHERE id = ? AND col >= N): só aplica e conta
+      // como sucesso (count:1) se o saldo atual satisfizer o `where`.
+      updateMany: jest.fn(async ({ where, data }: any) => {
+        const b = [...balanceStore.values()].find(x => x.id === where.id);
+        if (!b || !matchesWhere(b, where)) return { count: 0 };
+        applyUpdate(b, data);
+        return { count: 1 };
+      }),
       findUnique: jest.fn(async ({ where }: any) => balanceStore.get(where.userId) ?? null),
+      findUniqueOrThrow: jest.fn(async ({ where }: any) => {
+        const b = [...balanceStore.values()].find(x => x.id === where.id);
+        if (!b) throw new Error('not found');
+        return b;
+      }),
     },
     campanhaBalanceTransaction: {
       create: jest.fn(async ({ data }: any) => data),
@@ -166,5 +191,40 @@ describe('campanha-credit', () => {
     await creditCampanhaMessages('u2', 50, { validityDays: 90 });
     expect(balanceFor('u1').paidMessages).toBe(1000);
     expect(balanceFor('u2').paidMessages).toBe(50);
+  });
+
+  it('débito concorrente (outra transação consome saldo entre a leitura e a escrita) nunca fica negativo', async () => {
+    // Simula a corrida de verdade: duas requisições concorrentes (ex.: duplo-clique em
+    // "Iniciar") leem o MESMO saldo (30 pagas) antes de qualquer uma escrever. Sem o
+    // decremento guardado (WHERE ... >= N, ver debitCampanhaMessages), a 2ª escrita usaria
+    // {decrement} sobre o valor JÁ debitado pela 1ª e produziria saldo negativo sem erro
+    // nenhum — é exatamente isso que este teste prova que não acontece.
+    const { prisma } = jest.requireMock('../lib/prisma') as any;
+    const future = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+    balanceStore.set('u1', {
+      id: 'bal_race', userId: 'u1', availableMessages: 30,
+      freeMessages: 0, freeResetAt: future, // cota grátis já concedida este mês — não interfere
+      paidMessages: 30, paidExpiresAt: future,
+      plan: null,
+    });
+
+    // upsert é o 1º read de cada chamada — na primeira vez que rodar, simula a "outra
+    // transação" comitando um débito concorrente de 30 mensagens ANTES desta continuar.
+    let firstCall = true;
+    (prisma.campanhaBalance.upsert as jest.Mock).mockImplementationOnce(async ({ where }: any) => {
+      const snapshot = { ...balanceFor(where.userId) };
+      if (firstCall) {
+        firstCall = false;
+        const real = balanceFor(where.userId);
+        real.paidMessages -= 30;
+        real.availableMessages -= 30; // saldo real já foi pra 0 por uma transação concorrente
+      }
+      return snapshot; // esta chamada só sabe do saldo de ANTES da corrida (30)
+    });
+
+    await expect(debitCampanhaMessages('u1', 30)).rejects.toBeInstanceOf(InsufficientCampanhaBalanceError);
+    // Saldo real (pós corrida) permanece o que a "outra transação" deixou — nunca vai a -30.
+    expect(balanceFor('u1').availableMessages).toBe(0);
+    expect(balanceFor('u1').availableMessages).toBeGreaterThanOrEqual(0);
   });
 });

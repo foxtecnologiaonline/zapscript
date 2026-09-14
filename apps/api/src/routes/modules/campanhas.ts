@@ -11,7 +11,7 @@ import { sendText } from '../../services/evolution';
 import { campanhasQueue } from '../../services/queue';
 import { sendEmail } from '../../lib/mailer';
 import { logger } from '../../lib/logger';
-import { debitCampanhaMessages, InsufficientCampanhaBalanceError } from '../../lib/campanha-credit';
+import { debitCampanhaMessages, refundCampanhaMessages, InsufficientCampanhaBalanceError } from '../../lib/campanha-credit';
 
 /**
  * ZapScript Campanhas — disparo em massa via WhatsApp API oficial (Meta Cloud API).
@@ -1644,48 +1644,59 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       throw err;
     }
 
-    const startedCampanha = await prisma.campanha.update({
-      where: { id },
-      data: {
-        // pausedReason/consecutiveFailures zerados ao (re)iniciar: se a pausa foi
-        // automática (circuit breaker), retomar é uma intervenção do usuário —
-        // merece um novo "crédito" de tentativas, e a mensagem de pausa antiga não
-        // deve ressurgir enganosamente numa pausa manual futura (ver §11/item 1).
-        status: 'running', startedAt: campanha.startedAt ?? new Date(),
-        pausedReason: null, consecutiveFailures: 0,
-        ...(!campanha.consentConfirmedAt
-          ? { consentConfirmedAt: new Date(), consentConfirmedIp: req.ip }
-          : {}),
-      },
-    });
-
-    // Sequência/drip (§15.2): se esta campanha tem passos-filhos ainda em
-    // rascunho, agenda cada um pra scheduledAt = startedAt + delayDays — a
-    // partir daqui é o campanhas-scheduler.ts existente que dispara, sem
-    // nenhuma lógica nova. Consentimento copiado do pai: o usuário já
-    // consentiu pra esta mesma audiência ao iniciar o primeiro passo.
-    if (!campanha.sequenceParentId) {
-      const steps = await prisma.campanha.findMany({
-        where: { sequenceParentId: id, status: 'draft' },
-      });
-      await Promise.all(steps.map((step: any) => prisma.campanha.update({
-        where: { id: step.id },
+    // A partir daqui o saldo já foi debitado — qualquer falha até o enfileiramento
+    // precisa estornar, senão o usuário paga por uma campanha que nunca chegou a
+    // rodar (e um retry dele re-debitaria em cima, cobrando duas vezes pelos mesmos
+    // contatos). Não dá pra colocar tudo numa única transação Prisma (enqueueCampanhaSend
+    // fala com o BullMQ, fora do banco), então o estorno é o cinto de segurança.
+    try {
+      const startedCampanha = await prisma.campanha.update({
+        where: { id },
         data: {
-          status: 'scheduled',
-          scheduledAt: new Date(startedCampanha.startedAt!.getTime() + step.sequenceDelayDays * 24 * 60 * 60 * 1000),
-          consentConfirmedAt: startedCampanha.consentConfirmedAt,
-          consentConfirmedIp: startedCampanha.consentConfirmedIp,
+          // pausedReason/consecutiveFailures zerados ao (re)iniciar: se a pausa foi
+          // automática (circuit breaker), retomar é uma intervenção do usuário —
+          // merece um novo "crédito" de tentativas, e a mensagem de pausa antiga não
+          // deve ressurgir enganosamente numa pausa manual futura (ver §11/item 1).
+          status: 'running', startedAt: campanha.startedAt ?? new Date(),
+          pausedReason: null, consecutiveFailures: 0,
+          ...(!campanha.consentConfirmedAt
+            ? { consentConfirmedAt: new Date(), consentConfirmedIp: req.ip }
+            : {}),
         },
-      })));
+      });
+
+      // Sequência/drip (§15.2): se esta campanha tem passos-filhos ainda em
+      // rascunho, agenda cada um pra scheduledAt = startedAt + delayDays — a
+      // partir daqui é o campanhas-scheduler.ts existente que dispara, sem
+      // nenhuma lógica nova. Consentimento copiado do pai: o usuário já
+      // consentiu pra esta mesma audiência ao iniciar o primeiro passo.
+      if (!campanha.sequenceParentId) {
+        const steps = await prisma.campanha.findMany({
+          where: { sequenceParentId: id, status: 'draft' },
+        });
+        await Promise.all(steps.map((step: any) => prisma.campanha.update({
+          where: { id: step.id },
+          data: {
+            status: 'scheduled',
+            scheduledAt: new Date(startedCampanha.startedAt!.getTime() + step.sequenceDelayDays * 24 * 60 * 60 * 1000),
+            consentConfirmedAt: startedCampanha.consentConfirmedAt,
+            consentConfirmedIp: startedCampanha.consentConfirmedIp,
+          },
+        })));
+      }
+
+      // Round-robin (assignedNumberId), aquecimento progressivo e janela de silêncio
+      // já ficam dentro de enqueueCampanhaSend (mesma função reaproveitada pelo
+      // Chatbot Campanhas) — não duplica aqui o que já foi resolvido acima
+      // (sendNumbers/pendentes) só pra decidir se a campanha tem o que enviar.
+      const enqueued = await enqueueCampanhaSend(id, campanha.channel, sendNumbers, pendentes);
+
+      return reply.send({ ok: true, enqueued });
+    } catch (err) {
+      await refundCampanhaMessages(userId, pendentes.length, { referenceType: 'campanha_start_failed', referenceId: id })
+        .catch((refundErr) => logger.error(`[Campanhas] Falha ao estornar ${pendentes.length} msgs da campanha ${id} após erro no /start: ${(refundErr as Error).message}`));
+      throw err;
     }
-
-    // Round-robin (assignedNumberId), aquecimento progressivo e janela de silêncio
-    // já ficam dentro de enqueueCampanhaSend (mesma função reaproveitada pelo
-    // Chatbot Campanhas) — não duplica aqui o que já foi resolvido acima
-    // (sendNumbers/pendentes) só pra decidir se a campanha tem o que enviar.
-    const enqueued = await enqueueCampanhaSend(id, campanha.channel, sendNumbers, pendentes);
-
-    return reply.send({ ok: true, enqueued });
   });
 
   // ── POST /:id/pause — pausa campanha em execução ─────────────────────────

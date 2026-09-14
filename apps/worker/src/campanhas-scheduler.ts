@@ -121,15 +121,46 @@ async function debitCampanhaMessagesOrFail(userId: string, count: number, campan
 
     const fromFree = Math.min(balance.freeMessages, count);
     const fromPaid = count - fromFree;
-    const updated = await tx.campanhaBalance.update({
-      where: { id: balance.id },
-      data: { freeMessages: { decrement: fromFree }, paidMessages: { decrement: fromPaid }, availableMessages: { decrement: count } },
+    // Decremento guardado — mesma correção de apps/api/src/lib/campanha-credit.ts: a
+    // condição de saldo suficiente entra no próprio WHERE do UPDATE (atômico no Postgres),
+    // não só no `if` acima, que sozinho permitiria duas transações concorrentes lerem o
+    // mesmo saldo e o levarem a negativo.
+    const guarded = await tx.campanhaBalance.updateMany({
+      where: { id: balance.id, freeMessages: { gte: fromFree }, paidMessages: { gte: fromPaid } },
+      data:  { freeMessages: { decrement: fromFree }, paidMessages: { decrement: fromPaid }, availableMessages: { decrement: count } },
     });
+    if (guarded.count === 0) return false;
+    const updated = await tx.campanhaBalance.findUniqueOrThrow({ where: { id: balance.id } });
     await tx.campanhaBalanceTransaction.create({
       data: { balanceId: balance.id, type: 'debit', amount: -count, balanceAfter: updated.availableMessages, referenceType: 'campanha', referenceId: campanhaId },
     });
     return true;
   });
+}
+
+/**
+ * Estorno pro pool pago — duplicada de refundCampanhaMessages em
+ * apps/api/src/lib/campanha-credit.ts (mesma ressalva de sempre: api/worker não
+ * compartilham código neste monorepo). Usada quando o débito já rodou mas o disparo
+ * falhou antes de chegar a enfileirar de verdade (ver catch em fireCampanha) — nunca
+ * deixa o usuário pagar por uma campanha que não saiu.
+ */
+async function refundCampanhaMessagesOrFail(userId: string, count: number, campanhaId: string): Promise<void> {
+  if (!count || count <= 0) return;
+  await prisma.$transaction(async (tx) => {
+    const balance = await tx.campanhaBalance.upsert({ where: { userId }, update: {}, create: { userId } });
+    const now = new Date();
+    const currentExpiry = balance.paidExpiresAt && balance.paidExpiresAt > now ? balance.paidExpiresAt : null;
+    const paidExpiresAt = currentExpiry ?? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const updated = await tx.campanhaBalance.update({
+      where: { id: balance.id },
+      data:  { paidMessages: { increment: count }, paidExpiresAt, availableMessages: { increment: count } },
+    });
+    await tx.campanhaBalanceTransaction.create({
+      data: { balanceId: balance.id, type: 'refund', amount: count, balanceAfter: updated.availableMessages, referenceType: 'campanha_start_failed', referenceId: campanhaId },
+    });
+  });
+  logger.warn(`[Campanhas][Scheduler] Estornadas ${count} msgs da campanha ${campanhaId} (falha após débito, antes do enfileiramento).`);
 }
 
 async function notifyCampanhaInsufficientBalance(campanhaId: string): Promise<void> {
@@ -253,70 +284,85 @@ async function fireCampanha(campanhaId: string): Promise<void> {
     return;
   }
 
-  // Sequência/drip (§15.2) — espelha o mesmo hook de POST /:id/start (api):
-  // uma campanha agendada (em vez de iniciada manualmente) também pode ser mãe
-  // de uma sequência; sem isso os passos-filhos nunca seriam agendados quando
-  // o pai dispara pelo relógio em vez de clique do usuário.
-  if (!campanha.sequenceParentId) {
-    const steps = await prisma.campanha.findMany({ where: { sequenceParentId: campanhaId, status: 'draft' } });
-    await Promise.all(steps.map((step) => prisma.campanha.update({
-      where: { id: step.id },
-      data: {
-        status: 'scheduled',
-        scheduledAt: new Date(startedAt.getTime() + step.sequenceDelayDays! * 24 * 60 * 60 * 1000),
-        consentConfirmedAt: campanha.consentConfirmedAt,
-        consentConfirmedIp: campanha.consentConfirmedIp,
-      },
-    })));
-  }
-
-  // Teto de tier conhecido (§11.13, gap do §9.3): diferente de /:id/start e
-  // /:id/schedule, aqui não há usuário pra confirmar acima do tier — fail-open,
-  // dispara mesmo assim (não vale travar um disparo já agendado às 3h da manhã),
-  // mas avisa por e-mail. Usa o tier em CACHE, sem bater na Graph API aqui.
-  if (campanha.channel !== 'evolution') {
-    let combinedCap: number | null = 0;
-    for (const n of sendNumbers) {
-      const cap = tierToNumericCap((n as any).metaMessagingLimitTier);
-      if (cap === null) continue;
-      if (!Number.isFinite(cap)) { combinedCap = Infinity; continue; }
-      if (combinedCap !== null && Number.isFinite(combinedCap)) combinedCap += cap;
+  // A partir daqui o saldo já foi debitado — se algo falhar antes do enfileiramento
+  // (ex.: Redis fora do ar no addBulk), sem este try/catch a campanha ficaria travada
+  // em 'running' pra sempre (nada mais a resgata) e o usuário teria pago por um disparo
+  // que nunca saiu. Devolve pra 'scheduled' (o próximo tick tenta de novo) + estorna.
+  try {
+    // Sequência/drip (§15.2) — espelha o mesmo hook de POST /:id/start (api):
+    // uma campanha agendada (em vez de iniciada manualmente) também pode ser mãe
+    // de uma sequência; sem isso os passos-filhos nunca seriam agendados quando
+    // o pai dispara pelo relógio em vez de clique do usuário.
+    if (!campanha.sequenceParentId) {
+      const steps = await prisma.campanha.findMany({ where: { sequenceParentId: campanhaId, status: 'draft' } });
+      await Promise.all(steps.map((step) => prisma.campanha.update({
+        where: { id: step.id },
+        data: {
+          status: 'scheduled',
+          scheduledAt: new Date(startedAt.getTime() + step.sequenceDelayDays! * 24 * 60 * 60 * 1000),
+          consentConfirmedAt: campanha.consentConfirmedAt,
+          consentConfirmedIp: campanha.consentConfirmedIp,
+        },
+      })));
     }
-    if (combinedCap !== null && Number.isFinite(combinedCap) && pendentes.length > combinedCap) {
-      logger.warn(`[Campanhas][Scheduler] Campanha ${campanhaId} dispara acima do tier conhecido (${pendentes.length} > ${combinedCap}) — prosseguindo mesmo assim (fail-open).`);
-      notifyCampanhaExceedsTierAtFire(campanhaId, combinedCap, pendentes.length).catch((e: any) =>
-        logger.warn(`[Campanhas][Scheduler] Falha ao notificar excesso de tier da campanha ${campanhaId}: ${e.message}`));
-    }
-  }
 
-  if (sendNumbers.length > 1) {
-    const grupos = new Map<string, string[]>();
-    pendentes.forEach((p: { id: string }, i: number) => {
-      const numberId = sendNumbers[i % sendNumbers.length].id;
-      const arr = grupos.get(numberId);
-      if (arr) arr.push(p.id); else grupos.set(numberId, [p.id]);
-    });
-    await Promise.all(
-      Array.from(grupos.entries()).map(([numberId, ids]) =>
-        prisma.campanhaContato.updateMany({ where: { id: { in: ids } }, data: { assignedNumberId: numberId } }),
-      ),
+    // Teto de tier conhecido (§11.13, gap do §9.3): diferente de /:id/start e
+    // /:id/schedule, aqui não há usuário pra confirmar acima do tier — fail-open,
+    // dispara mesmo assim (não vale travar um disparo já agendado às 3h da manhã),
+    // mas avisa por e-mail. Usa o tier em CACHE, sem bater na Graph API aqui.
+    if (campanha.channel !== 'evolution') {
+      let combinedCap: number | null = 0;
+      for (const n of sendNumbers) {
+        const cap = tierToNumericCap((n as any).metaMessagingLimitTier);
+        if (cap === null) continue;
+        if (!Number.isFinite(cap)) { combinedCap = Infinity; continue; }
+        if (combinedCap !== null && Number.isFinite(combinedCap)) combinedCap += cap;
+      }
+      if (combinedCap !== null && Number.isFinite(combinedCap) && pendentes.length > combinedCap) {
+        logger.warn(`[Campanhas][Scheduler] Campanha ${campanhaId} dispara acima do tier conhecido (${pendentes.length} > ${combinedCap}) — prosseguindo mesmo assim (fail-open).`);
+        notifyCampanhaExceedsTierAtFire(campanhaId, combinedCap, pendentes.length).catch((e: any) =>
+          logger.warn(`[Campanhas][Scheduler] Falha ao notificar excesso de tier da campanha ${campanhaId}: ${e.message}`));
+      }
+    }
+
+    if (sendNumbers.length > 1) {
+      const grupos = new Map<string, string[]>();
+      pendentes.forEach((p: { id: string }, i: number) => {
+        const numberId = sendNumbers[i % sendNumbers.length].id;
+        const arr = grupos.get(numberId);
+        if (arr) arr.push(p.id); else grupos.set(numberId, [p.id]);
+      });
+      await Promise.all(
+        Array.from(grupos.entries()).map(([numberId, ids]) =>
+          prisma.campanhaContato.updateMany({ where: { id: { in: ids } }, data: { assignedNumberId: numberId } }),
+        ),
+      );
+    }
+
+    const dailyLimit = campanha.channel === 'evolution'
+      ? Math.min(...sendNumbers.map((n) => effectiveEvolutionDailyLimit(n.connectedAt)))
+      : EVOLUTION_DAILY_LIMIT;
+    await campanhasQueue.addBulk(
+      pendentes.map((p: { id: string }, i: number) => ({
+        name: 'send',
+        data: { campanhaId, contatoId: p.id },
+        opts: {
+          jobId: `${campanhaId}:${p.id}`,
+          delay: applySendWindow(campanha.channel === 'evolution' ? evolutionSendDelayMs(i, dailyLimit) : 0),
+        },
+      })),
     );
+    logger.info(`[Campanhas][Scheduler] ▶ Campanha ${campanhaId} iniciada automaticamente (${pendentes.length} contato(s)).`);
+  } catch (err) {
+    await refundCampanhaMessagesOrFail(campanha.userId, pendentes.length, campanhaId).catch((refundErr: any) =>
+      logger.error(`[Campanhas][Scheduler] Falha ao estornar ${pendentes.length} msgs da campanha ${campanhaId}: ${refundErr.message}`));
+    await prisma.campanha.updateMany({
+      where: { id: campanhaId, status: 'running' },
+      data: { status: 'scheduled', scheduledAt: new Date() }, // tenta de novo no próximo tick
+    }).catch((revertErr: any) =>
+      logger.error(`[Campanhas][Scheduler] Falha ao reverter status da campanha ${campanhaId} pra 'scheduled': ${revertErr.message}`));
+    throw err;
   }
-
-  const dailyLimit = campanha.channel === 'evolution'
-    ? Math.min(...sendNumbers.map((n) => effectiveEvolutionDailyLimit(n.connectedAt)))
-    : EVOLUTION_DAILY_LIMIT;
-  await campanhasQueue.addBulk(
-    pendentes.map((p: { id: string }, i: number) => ({
-      name: 'send',
-      data: { campanhaId, contatoId: p.id },
-      opts: {
-        jobId: `${campanhaId}:${p.id}`,
-        delay: applySendWindow(campanha.channel === 'evolution' ? evolutionSendDelayMs(i, dailyLimit) : 0),
-      },
-    })),
-  );
-  logger.info(`[Campanhas][Scheduler] ▶ Campanha ${campanhaId} iniciada automaticamente (${pendentes.length} contato(s)).`);
 }
 
 async function runCampanhaSchedulerTick(): Promise<void> {

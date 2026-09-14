@@ -188,14 +188,26 @@ export async function debitCampanhaMessages(
     const fromFree = Math.min(balance.freeMessages, count);
     const fromPaid = count - fromFree;
 
-    const updated = await tx.campanhaBalance.update({
-      where: { id: balance.id },
+    // Decremento guardado (mesmo padrão de MinuteBalance/updateMany+gte no worker): a
+    // condição de saldo suficiente é revalidada como parte ATÔMICA do próprio UPDATE
+    // (WHERE ... freeMessages >= fromFree AND paidMessages >= fromPaid), não só no `if`
+    // acima — que lê o saldo antes da escrita e, sozinho, permitiria duas requisições
+    // concorrentes (ex.: duplo-clique em "Iniciar") passarem no mesmo saldo e o levarem
+    // a negativo. count===0 aqui significa que outra transação debitou primeiro.
+    const guarded = await tx.campanhaBalance.updateMany({
+      where: {
+        id:           balance.id,
+        freeMessages: { gte: fromFree },
+        paidMessages: { gte: fromPaid },
+      },
       data: {
         freeMessages:      { decrement: fromFree },
         paidMessages:      { decrement: fromPaid },
         availableMessages: { decrement: count },
       },
     });
+    if (guarded.count === 0) throw new InsufficientCampanhaBalanceError();
+    const updated = await tx.campanhaBalance.findUniqueOrThrow({ where: { id: balance.id } });
     await tx.campanhaBalanceTransaction.create({
       data: {
         balanceId:     balance.id,

@@ -455,8 +455,10 @@ export default async function adminRoutes(app: FastifyInstance) {
         // MinuteBalance) — sincroniza também os módulos do bundle do tier (Entitlement
         // source='bundle', ex.: Atende/Tarefas no Profissional), que o código manual antigo
         // aqui nunca fazia: um admin setando "profissional" na mão deixava o usuário sem os
-        // módulos que o tier deveria incluir.
-        await activatePlan(id, planName, {});
+        // módulos que o tier deveria incluir. comboDiscountPct explícito em null: um plano
+        // setado manualmente pelo admin é sempre o valor cheio do tier, nunca herda desconto
+        // de Combo de uma contratação anterior.
+        await activatePlan(id, planName, { comboDiscountPct: null });
       } else if (planName === 'free') {
         const plan = await prisma.plan.findUnique({ where: { name: 'free' } });
         if (!plan) return reply.code(400).send({ error: `Plano "free" não encontrado.` });
@@ -781,18 +783,34 @@ export default async function adminRoutes(app: FastifyInstance) {
       const user = await prisma.user.findUnique({ where: { id }, select: { id: true } });
       if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
+      // Números soltos por engano (string vazia, NaN de um bug no cliente) caem sem erro
+      // no branch "count<=0 → no-op" de creditCampanhaMessages/lá na frente — validado aqui
+      // pra devolver 400 em vez de um "ok:true" silencioso que não concedeu nada. Teto
+      // (1M msgs / 10 anos) é só rede de segurança contra erro de digitação — esta rota
+      // não passa por Pix/Asaas, então não tem o limite natural de "quanto cabe no cartão".
+      const isPositiveInt = (v: unknown, max: number) =>
+        typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= max;
+
       if (type === 'messages') {
-        if (!messages || messages <= 0) return reply.code(400).send({ error: 'Informe "messages" (> 0).' });
-        const { balanceAfter } = await creditCampanhaMessages(id, Math.floor(messages), {
+        if (!isPositiveInt(messages, 1_000_000)) {
+          return reply.code(400).send({ error: 'Informe "messages" (número entre 1 e 1.000.000).' });
+        }
+        if (validityDays !== undefined && !isPositiveInt(validityDays, 3650)) {
+          return reply.code(400).send({ error: '"validityDays", quando informado, deve ser um número entre 1 e 3650.' });
+        }
+        const { balanceAfter } = await creditCampanhaMessages(id, Math.floor(messages as number), {
           referenceType: 'admin_grant',
-          validityDays:  validityDays && validityDays > 0 ? Math.floor(validityDays) : undefined,
+          validityDays:  validityDays !== undefined ? Math.floor(validityDays as number) : undefined,
         });
         app.log.info({ adminAction: 'campanha-grant-messages', userId: id, messages }, '[Admin] Cortesia de mensagens de campanha concedida');
         return { ok: true, balanceAfter };
       }
 
       if (type === 'unlimited') {
-        const renewalDate = new Date(Date.now() + (days && days > 0 ? Math.floor(days) : 30) * 24 * 60 * 60 * 1000);
+        if (days !== undefined && !isPositiveInt(days, 3650)) {
+          return reply.code(400).send({ error: '"days", quando informado, deve ser um número entre 1 e 3650.' });
+        }
+        const renewalDate = new Date(Date.now() + (days !== undefined ? Math.floor(days as number) : 30) * 24 * 60 * 60 * 1000);
         await prisma.campanhaBalance.upsert({
           where:  { userId: id },
           create: { userId: id, plan: 'monthly', renewalDate },
@@ -1953,7 +1971,7 @@ export default async function adminRoutes(app: FastifyInstance) {
               if (!plan) throw new Error(`Plano "${planName}" não existe`);
               // Mesma ativação de pagamento real — sincroniza os módulos do bundle do tier
               // (ver comentário equivalente em PATCH /users/:id).
-              await activatePlan(userId, planName, {});
+              await activatePlan(userId, planName, { comboDiscountPct: null });
             }
 
           } else if (action === 'ban') {
