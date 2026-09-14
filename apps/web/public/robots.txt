@@ -12,6 +12,19 @@ Disallow: /login
 Disallow: /register
 Disallow: /payment/
 
+# ── Buscadores principais (liberados explicitamente) ──
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: Slurp
+User-agent: DuckDuckBot
+Allow: /
+Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /api/
+Disallow: /login
+Disallow: /register
+Disallow: /payment/
+
 # ── Bots de IA que geram CITAÇÃO em respostas (liberados de propósito) ──
 # OpenAI (ChatGPT / search), Anthropic (Claude), Perplexity, Google (Gemini),
 # Common Crawl (treinamento amplo), Apple Intelligence.
