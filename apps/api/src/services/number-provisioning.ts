@@ -17,6 +17,7 @@ import {
   deleteInstance,
   getConnectionState,
   setWebhook,
+  setGroupsIgnore,
 } from './evolution';
 
 function getApiBase(): string {
@@ -56,6 +57,11 @@ export async function provisionInstance(numberId: string, log?: any): Promise<Pr
     if (existingState === 'open') {
       log?.info?.(`[Evolution] Instância ${instName} já está conectada (open)`);
       await setWebhook(instName, webhookUrl);
+      // Grupos ligados pra toda instância conectada (WhatsApp Web
+      // simplificado) — corrige aqui instâncias antigas nesse caminho
+      // ("Conectar" clicado numa instância que já estava open).
+      setGroupsIgnore(instName, false).catch((err: any) =>
+        log?.warn?.(`[Evolution] ⚠️ Falha ao ligar grupos: ${instName} — ${err.message}`));
       await prisma.whatsappNumber.update({
         where: { id: numberId },
         data: { zapiInstanceId: instName, zapiToken: null, status: 'connected', connectedAt: new Date() },

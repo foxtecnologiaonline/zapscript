@@ -8,6 +8,7 @@ import {
   instanceName as evoInstanceName,
   getConnectionState,
   deleteInstance,
+  setGroupsIgnore,
 } from '../services/evolution';
 import { provisionInstance, requestPairingCode } from '../services/number-provisioning';
 import { getQr } from '../lib/qrStore';
@@ -227,6 +228,11 @@ export default async function numberRoutes(app: FastifyInstance) {
         where: { id },
         data:  { status: 'connected', connectedAt: new Date() },
       }).catch(() => null);
+      // Grupos ligados pra toda instância conectada (WhatsApp Web
+      // simplificado) — corrige aqui instâncias antigas observadas "open"
+      // por este polling (usado pelo modal de conexão a cada 2s).
+      setGroupsIgnore(instName, false).catch((err: any) =>
+        app.log.warn({ err: err?.message }, '[Evolution] Falha ao ligar grupos (zapi-status)'));
     }
 
     return {

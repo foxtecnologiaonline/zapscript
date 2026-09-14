@@ -17,7 +17,7 @@
  */
 
 import { prisma } from '../lib/prisma';
-import { getConnectionState, setWebhook } from './evolution';
+import { getConnectionState, setWebhook, setGroupsIgnore } from './evolution';
 import { getUserModules } from '../lib/moduleGate';
 import { backfillUnreadConversations } from './copiloto-backfill';
 
@@ -61,6 +61,12 @@ export async function runStatusSync(log: any): Promise<void> {
       }).catch(() => null);
       log.info(`[Heartbeat] ✅ Auto-reconectado: ${n.id} (user ${n.userId}) era '${n.status}'`);
       reconnected++;
+
+      // Grupos ligados pra toda instância conectada (WhatsApp Web
+      // simplificado) — corrige aqui instâncias antigas que reconectam por
+      // este caminho (sem passar pelo connection.update do webhook).
+      setGroupsIgnore(instName, false).catch((err: any) =>
+        log.warn(`[Heartbeat] ⚠️ Falha ao ligar grupos: ${instName} — ${err.message}`));
 
       // Copiloto: quem ficou desconectado pode ter recebido mensagem enquanto
       // isso — sem isso, essas mensagens só apareceriam se o Evolution

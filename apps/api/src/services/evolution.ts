@@ -201,11 +201,24 @@ export async function setWebhook(name: string, webhookUrl: string): Promise<bool
  * createInstance acima) — grupos ligados globalmente é decisão de produto
  * desde o WhatsApp Web simplificado (fase 3). Esta função hoje só é chamada
  * com `ignore=false`, pra corrigir instâncias antigas (criadas quando o
- * padrão era `true`): evolution-sync.ts (boot, toda instância conectada) e
- * evolution-webhook.ts (connection.update, em tempo real). NÃO existe mais
- * nenhum caminho que desliga de volta (`ignore=true`) — o Copiloto (Função
- * 2) usava fazer isso ao desativar o último grupo opt-in, mas isso quebraria
- * o WhatsApp Web pro usuário; ver comentário em copiloto.ts.
+ * padrão era `true`).
+ *
+ * IMPORTANTE pra quem mexer em fluxo de conexão: todo lugar que marca um
+ * WhatsappNumber como status='connected' precisa chamar
+ * `setGroupsIgnore(instName, false).catch(...)` (fire-and-forget) logo
+ * depois — não é só o connection.update do webhook. Hoje são 5 lugares
+ * (não deixe esta lista ficar desatualizada de novo — foi assim que 3 deles
+ * ficaram de fora na primeira versão desta função, achado só na revisão):
+ * evolution-sync.ts (boot), evolution-webhook.ts (connection.update),
+ * evolution-heartbeat.ts (runStatusSync), number-provisioning.ts
+ * (provisionInstance, instância já open) e routes/numbers.ts (zapi-status).
+ * Esquecer um deles deixa grupo faltando silenciosamente pro usuário daquele
+ * número — sem erro, sem log óbvio, só "não aparece".
+ *
+ * NÃO existe mais nenhum caminho que desliga de volta (`ignore=true`) — o
+ * Copiloto (Função 2) usava fazer isso ao desativar o último grupo opt-in,
+ * mas isso quebraria o WhatsApp Web pro usuário; ver comentário em
+ * copiloto.ts.
  */
 export async function setGroupsIgnore(instanceNameStr: string, ignore: boolean): Promise<void> {
   const base = evolutionBaseUrl();
@@ -385,36 +398,12 @@ export async function fetchChatMessages(
 }
 
 /**
- * Envia mensagem de texto via Evolution API.
- * Retorna o id da mensagem enviada (quando a Evolution devolve) — usado pelo
- * Copiloto para correlacionar um reply/citação do usuário (stanzaId) de volta
- * ao card específico que o gerou. Chamadores que não precisam disso seguem
- * só dando `await sendText(...)` normalmente, sem usar o retorno.
- */
-export async function sendText(instanceNameStr: string, phone: string, message: string): Promise<{ id: string | null }> {
-  const base  = evolutionBaseUrl();
-  const clean = phone.replace(/\D/g, '');
-  const res = await fetch(`${base}/message/sendText/${instanceNameStr}`, {
-    method:  'POST',
-    headers: evolutionHeaders(),
-    body: JSON.stringify({ number: clean, text: message }),
-    signal:  AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`Evolution sendText falhou (${res.status}): ${text}`);
-  }
-  const data = await res.json().catch(() => null) as any;
-  return { id: data?.key?.id ?? null };
-}
-
-/**
  * Envia mensagem de texto pra um JID completo — obrigatório pra GRUPO
- * (`xxx@g.us`): diferente de sendText, que limpa pra só dígitos (funciona
- * pra número individual, mas manda um grupo pro limbo — a Evolution
- * interpretaria os dígitos como um número de telefone qualquer, não como o
- * ID do grupo). Usado pelo WhatsApp Web simplificado, que já lida com jid
- * completo (grupo ou individual) desde a listagem de conversas.
+ * (`xxx@g.us`): passar só dígitos (como sendText faz) manda um grupo pro
+ * limbo, porque a Evolution interpretaria os dígitos como um número de
+ * telefone qualquer, não como o ID do grupo. Implementação única — sendText
+ * abaixo é uma casca fina em cima desta, pra número individual não precisar
+ * montar o JID na mão.
  */
 export async function sendTextToJid(instanceNameStr: string, jid: string, message: string): Promise<{ id: string | null }> {
   const base = evolutionBaseUrl();
@@ -426,10 +415,22 @@ export async function sendTextToJid(instanceNameStr: string, jid: string, messag
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new Error(`Evolution sendText (jid) falhou (${res.status}): ${text}`);
+    throw new Error(`Evolution sendText falhou (${res.status}): ${text}`);
   }
   const data = await res.json().catch(() => null) as any;
   return { id: data?.key?.id ?? null };
+}
+
+/**
+ * Envia mensagem de texto pra um número individual via Evolution API — versão
+ * digits-only de sendTextToJid, NÃO funciona pra grupo (ver doc acima).
+ * Retorna o id da mensagem enviada (quando a Evolution devolve) — usado pelo
+ * Copiloto para correlacionar um reply/citação do usuário (stanzaId) de volta
+ * ao card específico que o gerou. Chamadores que não precisam disso seguem
+ * só dando `await sendText(...)` normalmente, sem usar o retorno.
+ */
+export async function sendText(instanceNameStr: string, phone: string, message: string): Promise<{ id: string | null }> {
+  return sendTextToJid(instanceNameStr, phone.replace(/\D/g, ''), message);
 }
 
 /**
