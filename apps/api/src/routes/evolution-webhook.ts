@@ -343,6 +343,30 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
               ? msg?.message?.conversation
               : msg?.message?.extendedTextMessage?.text;
 
+          // ── WhatsApp Web simplificado ────────────────────────────────────────
+          // Replica a mensagem em tempo real para a aba aberta no site, indepen-
+          // dente de módulo (Atende/Copiloto) e de qual lado mandou (fromMe ou
+          // não) — best-effort via Socket.IO, nunca atrasa nem quebra o fluxo
+          // principal abaixo. Número público fica de fora (ali quem escreve é
+          // estranho fazendo demo, não é a caixa de entrada de ninguém).
+          if (messageText) {
+            findNumber(false).then((n: any) => {
+              if (!n || n.isPublic) return;
+              io.to(`user:${n.userId}`).emit('wa:message', {
+                numberId: n.id,
+                jid:      remoteJid,
+                message: {
+                  id:        messageId,
+                  fromMe:    !!fromMe,
+                  type:      'text',
+                  text:      messageText,
+                  timestamp: typeof msg?.messageTimestamp === 'number' ? msg.messageTimestamp : Math.floor(Date.now() / 1000),
+                  senderName,
+                },
+              });
+            }).catch(() => null);
+          }
+
           // Consulta admin de saques pendentes (texto, restrito ao telefone cadastrado
           // em AdminAlertConfig) — fora do contexto de número/cliente específico, então
           // roda antes do fluxo normal do Atende/self-chat abaixo.

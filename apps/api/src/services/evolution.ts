@@ -247,13 +247,14 @@ export interface EvolutionUnreadChat {
 }
 
 /**
- * Lista chats individuais (exclui grupos) com mensagens não lidas — usado só
- * pelo backfill do Copiloto (ver copiloto-backfill.ts). `unreadMessages` é o
- * nome do campo na Evolution API a partir da v2.3.1; como o self-host pode
- * rodar um fork/versão levemente diferente, aceita `unreadCount` também e
- * trata ausência como 0 (chat sem não-lida é descartado, nunca quebra).
+ * Busca e normaliza os chats individuais (exclui grupos) de uma instância —
+ * base compartilhada por fetchUnreadChats (backfill do Copiloto) e
+ * fetchAllChats (lista de conversas do WhatsApp Web simplificado).
+ * `unreadMessages` é o nome do campo na Evolution API a partir da v2.3.1;
+ * como o self-host pode rodar um fork/versão levemente diferente, aceita
+ * `unreadCount` também e trata ausência como 0.
  */
-export async function fetchUnreadChats(instanceNameStr: string): Promise<EvolutionUnreadChat[]> {
+async function fetchChatsRaw(instanceNameStr: string): Promise<EvolutionUnreadChat[]> {
   const base = evolutionBaseUrl();
   const res = await fetch(`${base}/chat/findChats/${instanceNameStr}`, {
     method:  'POST',
@@ -278,7 +279,27 @@ export async function fetchUnreadChats(instanceNameStr: string): Promise<Evoluti
         lastMessageAt: c?.updatedAt ? new Date(c.updatedAt).getTime() : null,
       };
     })
-    .filter((c) => c.unreadCount > 0 && c.phone && c.jid.endsWith('@s.whatsapp.net'));
+    .filter((c) => c.phone && c.jid.endsWith('@s.whatsapp.net'));
+}
+
+/**
+ * Lista chats individuais com mensagens não lidas — usado só pelo backfill
+ * do Copiloto (ver copiloto-backfill.ts).
+ */
+export async function fetchUnreadChats(instanceNameStr: string): Promise<EvolutionUnreadChat[]> {
+  const chats = await fetchChatsRaw(instanceNameStr);
+  return chats.filter((c) => c.unreadCount > 0);
+}
+
+/**
+ * Lista TODOS os chats individuais (lidos e não lidos), mais recente
+ * primeiro — base da tela de WhatsApp Web simplificado (lista de conversas).
+ */
+export async function fetchAllChats(instanceNameStr: string, limit = 50): Promise<EvolutionUnreadChat[]> {
+  const chats = await fetchChatsRaw(instanceNameStr);
+  return chats
+    .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0))
+    .slice(0, limit);
 }
 
 export interface EvolutionChatMessage {

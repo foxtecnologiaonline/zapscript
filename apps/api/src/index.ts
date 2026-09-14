@@ -303,6 +303,7 @@ app.decorate('authenticate', async function (req: any, reply: any) {
 // ── Routes ────────────────────────────────────────────────────
 app.register(import('./routes/auth'),           { prefix: '/auth' });
 app.register(import('./routes/numbers'),        { prefix: '/numbers' });
+app.register(import('./routes/whatsapp-web'),   { prefix: '/numbers' });
 app.register(import('./routes/transcriptions'), { prefix: '/transcriptions' });
 app.register(import('./routes/billing'),        { prefix: '/billing' });
 app.register(import('./routes/dashboard'),      { prefix: '/dashboard' });
