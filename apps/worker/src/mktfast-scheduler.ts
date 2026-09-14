@@ -17,7 +17,9 @@ async function fireMission(missionId: string): Promise<void> {
   const mission = await prisma.mission.findUnique({ where: { id: missionId }, include: { whatsappNumber: true } });
   if (!mission || mission.status !== 'scheduled') return; // já processada em outro tick/réplica
 
-  if (mission.channels.includes('whatsapp')) {
+  // 'human_share' também depende do mesmo número (convocação por WhatsApp) —
+  // mesma checagem de POST /:id/start (api/routes/mktfast-admin.ts).
+  if (mission.channels.includes('whatsapp') || mission.channels.includes('human_share')) {
     const numero = mission.whatsappNumber;
     if (!numero || numero.status !== 'connected' || !numero.zapiInstanceId) {
       const claimed = await prisma.mission.updateMany({

@@ -1638,7 +1638,7 @@ model Mission {
   title            String
   objective        String // texto livre — o "porquê" (contexto/log, não usado no envio)
   content          Json // payload cru por canal: { text, mediaUrl?, linkUrl?, targets?: string[] }
-  channels         String[] // ['whatsapp'] na Fase 0 — outros valores previstos: instagram_feed, human_share...
+  channels         String[] // 'whatsapp' (Fase 0) e 'human_share' (Fase 1) implementados — instagram_feed/facebook_page previstos (Fase 2, bloqueada por credenciais Meta)
   whatsappNumberId String? // qual WhatsappNumber (Evolution, status='connected') envia, quando 'whatsapp' ∈ channels
   targetReach      Int? // meta de alcance total (null = "o quanto der")
   status           String             @default("draft") // draft|scheduled|running|completed|canceled
@@ -1659,7 +1659,7 @@ model MissionExecution {
   missionId   String
   channel     String // um dos values de Mission.channels
   executor    String   @default("bot") // 'bot' | 'human'
-  targetRef   String? // telefone (channel='whatsapp'), ou userId do humano convocado (executor='human')
+  targetRef   String? // telefone normalizado (E.164 sem '+') — do destinatário (channel='whatsapp') ou de quem foi convocado (channel='human_share')
   status      String   @default("pending") // pending|sent|posted|failed|awaiting_proof|proof_submitted|approved|rejected
   proofUrl    String? // link/print de prova — só quando executor='human'
   reachCount  Int? // alcance simples desta execução (1 por envio bem-sucedido, na Fase 0)

@@ -113,6 +113,30 @@ describe('POST /mktfast/missions', () => {
     });
   });
 
+  it('NÃO cria execução whatsapp se o canal "whatsapp" não foi declarado (mesmo com content.targets preenchido)', async () => {
+    (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce(numeroConectado);
+    (prisma.mission.create as jest.Mock).mockResolvedValueOnce({ id: 'm2', status: 'draft' });
+
+    const res = await app.inject({
+      method: 'POST', url: '/mktfast/missions', headers: auth(),
+      payload: {
+        title: 'Só convocação', objective: 'Testar isolamento de canal', createdBy: 'growth@zapscript.me',
+        channels: ['human_share'], whatsappNumberId: 'wn1',
+        // targets deixado por engano (ex.: copiado de outra missão) — não deve gerar envio direto
+        content: { humanBriefing: 'poste no story', humanTargets: ['34999997777'], targets: ['34999998888'] },
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.targetsCreated).toBe(0);
+    expect(body.humanTargetsCreated).toBe(1);
+    expect(prisma.missionExecution.createMany).toHaveBeenCalledWith({
+      data: [{ missionId: 'm2', channel: 'human_share', executor: 'human', targetRef: '5534999997777' }],
+      skipDuplicates: true,
+    });
+  });
+
   it('retorna 400 pra canal sem adapter', async () => {
     const res = await app.inject({
       method: 'POST', url: '/mktfast/missions', headers: auth(),

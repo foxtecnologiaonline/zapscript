@@ -157,15 +157,27 @@ export default async function mktfastAdminRoutes(app: FastifyInstance) {
       },
     });
 
+    // Filtrado por `channels` — content.targets/humanTargets só viram execução
+    // se o canal correspondente foi de fato declarado na missão. Sem isso, um
+    // content.targets deixado por engano (ex.: copiado de outra missão) faria
+    // o worker enviar mensagem pra gente fora do que a missão pediu.
     const executionsToCreate = [
-      ...targets.map((phone) => ({ missionId: mission.id, channel: 'whatsapp', executor: 'bot', targetRef: phone })),
-      ...humanTargets.map((phone) => ({ missionId: mission.id, channel: 'human_share', executor: 'human', targetRef: phone })),
+      ...(channels.includes('whatsapp')
+        ? targets.map((phone) => ({ missionId: mission.id, channel: 'whatsapp', executor: 'bot', targetRef: phone }))
+        : []),
+      ...(channels.includes('human_share')
+        ? humanTargets.map((phone) => ({ missionId: mission.id, channel: 'human_share', executor: 'human', targetRef: phone }))
+        : []),
     ];
     if (executionsToCreate.length > 0) {
       await prisma.missionExecution.createMany({ data: executionsToCreate, skipDuplicates: true });
     }
 
-    return reply.code(201).send({ mission, targetsCreated: targets.length, humanTargetsCreated: humanTargets.length });
+    return reply.code(201).send({
+      mission,
+      targetsCreated: channels.includes('whatsapp') ? targets.length : 0,
+      humanTargetsCreated: channels.includes('human_share') ? humanTargets.length : 0,
+    });
   });
 
   // GET /missions — lista com alcance agregado (soma de reachCount das execuções)
