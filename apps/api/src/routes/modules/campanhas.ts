@@ -1557,6 +1557,24 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       });
     }
 
+    // Validação de expiração de token Meta: impede campanha falhar silenciosamente
+    // por token expirado. Se expirado ou expirando < 24h, pede reconexão. Ver §11/item 4.
+    if (campanha.channel === 'meta' && whatsappNumber?.metaTokenExpiresAt) {
+      const hoursUntilExpiry = (whatsappNumber.metaTokenExpiresAt.getTime() - Date.now()) / (1000 * 60 * 60);
+      if (hoursUntilExpiry < 0) {
+        return reply.code(400).send({
+          error: 'Token Meta expirado.',
+          message: 'A autenticação do número Meta expirou. Reconecte em /dashboard/numeros.',
+        });
+      }
+      if (hoursUntilExpiry < 24) {
+        return reply.code(400).send({
+          error: 'Token Meta expirando em breve.',
+          message: `A autenticação expira em ${Math.ceil(hoursUntilExpiry)}h. Reconecte em /dashboard/numeros para evitar falhas.`,
+        });
+      }
+    }
+
     // Pool de números (§11/item 2): números extras do mesmo canal pra dividir o
     // disparo — só entram na rotação os que estiverem prontos pra enviar agora;
     // um número do pool que caiu não trava a campanha, só sai da rotação desta vez.
