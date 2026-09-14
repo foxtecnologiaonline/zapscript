@@ -1,1 +1,0 @@
-﻿ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "testerRenewalsUsed" INTEGER NOT NULL DEFAULT 0;
