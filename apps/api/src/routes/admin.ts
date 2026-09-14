@@ -3508,8 +3508,9 @@ export default async function adminRoutes(app: FastifyInstance) {
   // TRIAGE_SYSTEM_PROMPT em copiloto-playbook.ts. Esta rota agrega, por tipo
   // (comercial/pessoal/admin/crise/oportunidade), quanto disso vira ruído de
   // verdade: taxa de ignoro, quantos foram marcados "0!" (ruído explícito,
-  // ver copiloto-commands.ts) e confiança média da triagem. É o dado que
-  // decide se/onde vale configurar "copiloto confianca <tipo> <valor>".
+  // ver copiloto-commands.ts) e confiança média da triagem (triageConfidence
+  // — sem isso, "onde configurar copiloto confianca" seria chute). É o dado
+  // que decide se/onde vale configurar "copiloto confianca <tipo> <valor>".
   app.get<{ Querystring: { days?: string } }>('/copiloto/insights', { preHandler: [adminAuth] }, async (req: any) => {
     const days = Math.min(90, Math.max(1, parseInt(req.query?.days, 10) || 14));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -3520,21 +3521,28 @@ export default async function adminRoutes(app: FastifyInstance) {
     // memória. 200k é generoso pra 90 dias mesmo numa base grande.
     const briefings = await prisma.copilotoBriefing.findMany({
       where: { createdAt: { gte: since } },
-      select: { tipo: true, status: true, dismissReason: true, sensitive: true },
+      select: { tipo: true, status: true, dismissReason: true, sensitive: true, triageConfidence: true },
       take: 200_000,
     });
 
     const byTipo: Record<string, {
       total: number; dismissed: number; noiseExplicit: number; acted: number; sensitiveCount: number;
+      confidenceSum: number; confidenceCount: number;
     }> = {};
     for (const b of briefings) {
       const tipo = b.tipo ?? 'comercial'; // v1.0 sem classificação — mesmo fallback usado no resto do produto
-      const acc = byTipo[tipo] ??= { total: 0, dismissed: 0, noiseExplicit: 0, acted: 0, sensitiveCount: 0 };
+      const acc = byTipo[tipo] ??= { total: 0, dismissed: 0, noiseExplicit: 0, acted: 0, sensitiveCount: 0, confidenceSum: 0, confidenceCount: 0 };
       acc.total += 1;
       if (b.status === 'dismissed') acc.dismissed += 1;
       if (b.dismissReason === 'ruido') acc.noiseExplicit += 1;
       if (b.status === 'acted') acc.acted += 1;
       if (b.sensitive) acc.sensitiveCount += 1;
+      // triageConfidence é null em briefing anterior a esta coluna — não entra
+      // na média (não é "confiança zero", é "não medido").
+      if (typeof b.triageConfidence === 'number') {
+        acc.confidenceSum += b.triageConfidence;
+        acc.confidenceCount += 1;
+      }
     }
 
     const result = Object.entries(byTipo).map(([tipo, v]) => ({
@@ -3545,6 +3553,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       // "0!", não só deixou de responder (que pode ser só falta de tempo).
       confirmedNoisePercent: v.total > 0 ? Math.round((v.noiseExplicit / v.total) * 100) : 0,
       actedRatePercent: v.total > 0 ? Math.round((v.acted / v.total) * 100) : 0,
+      avgTriageConfidence: v.confidenceCount > 0 ? Math.round(v.confidenceSum / v.confidenceCount) : null,
       sensitiveCount: v.sensitiveCount,
     })).sort((a, b) => b.total - a.total);
 

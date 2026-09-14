@@ -1283,6 +1283,15 @@ model CopilotoBriefing {
   // em tudo (renderização, guardrails, comandos) sem tratamento especial.
   tipo           String? // 'comercial' | 'pessoal' | 'admin' | 'crise' | 'oportunidade'
   remetente      String? // 'cliente_novo' | 'ativo' | 'fornecedor' | 'parceiro' | 'equipe' | 'outro'
+  // Confiança (0-100) que a TRIAGEM teve na classificação acima — não confundir
+  // com CopilotoSuggestion.confidence (confiança de cada OPÇÃO gerada). Faltava
+  // desde a v2.0: só existia em memória em processBrief (log + gate de piso),
+  // nunca persistida — sem isso, /admin/copiloto/insights não tinha como
+  // calcular a média real que decide onde vale configurar "copiloto confianca
+  // <tipo> <valor>". Nullable: null em briefing anterior a esta coluna.
+  // Float, não Int — mesmo tipo de CopilotoSuggestion.confidence: o valor vem
+  // direto do JSON que a IA devolve, sem garantia de ser um inteiro exato.
+  triageConfidence Float?
   // Sinal de vulnerabilidade (idoso/luto/emergência médica/etc — ver
   // copiloto-guardrails.ts hasVulnerabilitySignal). Antes só existia em
   // memória (afetava a mensagem renderizada e nada mais); persistido agora

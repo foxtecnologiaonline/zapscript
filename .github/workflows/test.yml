@@ -57,12 +57,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # schema.prisma declara datasource com url + directUrl (env("DIRECT_URL")
+      # — ver packages/database/prisma/schema.prisma). Prisma resolve os dois
+      # env() ao carregar o schema, pra QUALQUER comando — falta um dos dois e
+      # já erra "Environment variable not found", mesmo em `generate`. Em
+      # produção (ops.yml) os dois valores diferem (DATABASE_URL é o pooler
+      # Supabase, DIRECT_URL a conexão direta); aqui é um Postgres local sem
+      # pooler nenhum, então os dois apontam pro mesmo lugar.
       - name: Generate Prisma Client
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/zapscript_test
+          DIRECT_URL: postgresql://postgres:password@localhost:5432/zapscript_test
         run: pnpm --filter database exec prisma generate
 
       - name: Apply migrations (schema de teste)
         env:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/zapscript_test
+          DIRECT_URL: postgresql://postgres:password@localhost:5432/zapscript_test
         run: pnpm --filter database exec prisma migrate deploy
 
       - name: Lint

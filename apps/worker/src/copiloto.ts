@@ -396,6 +396,7 @@ async function processBrief(job: Job<BriefJobData>) {
       riskLevel: briefing.riskLevel,
       tipo: triage.tipo,
       remetente: triage.remetente,
+      triageConfidence: triage.confidence,
       sensitive,
       deliveredVia: 'whatsapp',
     },
