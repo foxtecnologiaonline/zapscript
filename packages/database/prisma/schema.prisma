@@ -872,6 +872,7 @@ model Campanha {
   messagesCost       Int? // mensagens debitadas do CampanhaBalance ao disparar (null = criada pelo painel, não metrificada)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
+  deletedAt          DateTime? // soft delete (LGPD) — campanhas deletadas pelo usuário
   user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   whatsappNumber     WhatsappNumber    @relation(fields: [whatsappNumberId], references: [id], onDelete: Cascade)
   contatos           CampanhaContato[]
@@ -880,6 +881,7 @@ model Campanha {
   @@index([whatsappNumberId])
   @@index([status])
   @@index([sequenceParentId])
+  @@index([userId, deletedAt])
 }
 
 model CampanhaContato {

@@ -56,7 +56,10 @@ export async function sendTemplateMessage(
     return wamid as string;
   } catch (error) {
     const msg = formatError(error);
-    logger.error(`[Campanhas] sendTemplateMessage falhou: ${msg}`);
-    throw new Error(msg);
+    const code = axios.isAxiosError(error) ? (error.response?.data as any)?.error?.code : null;
+    logger.error(`[Campanhas] sendTemplateMessage falhou: ${msg} (code: ${code})`);
+    const err = new Error(msg);
+    (err as any).metaErrorCode = code;
+    throw err;
   }
 }

@@ -258,7 +258,7 @@ async function fireCampanha(campanhaId: string): Promise<void> {
   // de uma sequência; sem isso os passos-filhos nunca seriam agendados quando
   // o pai dispara pelo relógio em vez de clique do usuário.
   if (!campanha.sequenceParentId) {
-    const steps = await prisma.campanha.findMany({ where: { sequenceParentId: campanhaId, status: 'draft' } });
+    const steps = await prisma.campanha.findMany({ where: { sequenceParentId: campanhaId, status: 'draft', deletedAt: null } });
     await Promise.all(steps.map((step) => prisma.campanha.update({
       where: { id: step.id },
       data: {

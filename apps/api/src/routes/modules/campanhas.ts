@@ -214,7 +214,7 @@ function parseCsv(text: string, delimiter: string): string[][] {
 }
 
 async function ownedCampanha(userId: string, id: string) {
-  return prisma.campanha.findFirst({ where: { id, userId } });
+  return prisma.campanha.findFirst({ where: { id, userId, deletedAt: null } });
 }
 
 async function ownedLista(userId: string, id: string) {
@@ -471,7 +471,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
   app.get('/', auth, async (req: any) => {
     const userId = req.user.sub;
     const campanhas = await prisma.campanha.findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true, name: true, status: true, channel: true, templateName: true,
@@ -549,7 +549,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
   app.get('/performance', auth, async (req: any) => {
     const userId = req.user.sub;
     const campanhas = await prisma.campanha.findMany({
-      where: { userId, channel: 'meta', templateName: { not: null } },
+      where: { userId, channel: 'meta', templateName: { not: null }, deletedAt: null },
       select: { id: true, templateName: true, audienceCount: true },
     });
     if (campanhas.length === 0) return { templates: [] };
@@ -943,7 +943,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     let sequenceParent: { id: string; name: string } | undefined;
     if (!campanha.sequenceParentId) {
       const steps = await prisma.campanha.findMany({
-        where: { sequenceParentId: id },
+        where: { sequenceParentId: id, deletedAt: null },
         orderBy: { sequenceIndex: 'asc' },
         select: { id: true, name: true, status: true, sequenceIndex: true, sequenceDelayDays: true, scheduledAt: true },
       });
@@ -953,7 +953,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
         where: { id: campanha.sequenceParentId },
         select: { id: true, name: true },
       });
-      if (parent) sequenceParent = parent;
+      if (parent && !parent.deletedAt) sequenceParent = parent as any;
     }
 
     // A/B test (§15.3): stats por variante — só reporta, sem promover vencedor.
@@ -1003,7 +1003,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     if (!['draft', 'scheduled'].includes(campanha.status)) {
       return reply.code(400).send({ error: 'Só é possível excluir campanhas em rascunho ou agendadas.' });
     }
-    await prisma.campanha.delete({ where: { id } });
+    await prisma.campanha.update({ where: { id }, data: { deletedAt: new Date() } });
     return reply.send({ ok: true });
   });
 
@@ -1579,6 +1579,28 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       if (combinedCap !== null && Number.isFinite(combinedCap) && pendentes.length > combinedCap && req.body?.confirmExceedsTier !== true) {
         return reply.code(400).send(tierExceededResponse(combinedCap, tierDetails, pendentes.length, sendNumbers.length > 1));
       }
+    }
+
+    // Proteção anti-spam: números novos (< 7 dias) têm limite de 500 contatos
+    // (política WhatsApp contra burst em números recém-conectados). Ver §11/item 3.
+    const ageDays = (Date.now() - whatsappNumber!.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+    if (ageDays < 7 && pendentes.length > 500) {
+      return reply.code(400).send({
+        error: 'Números novos: máximo 500 contatos em 7 dias (política anti-spam do WhatsApp).',
+        help: `Este número foi conectado há ${Math.floor(ageDays * 24)} horas. Aguarde ${Math.ceil(7 - ageDays)} dias ou reduza a audiência para 500.`,
+      });
+    }
+
+    // Rate limit per-tenant (Redis token bucket): máx 50 msgs/min por usuário.
+    // Impede rajadas que causariam throttle no WhatsApp. Ver §11/item 5.
+    const { checkCampanhaRateLimit } = await import('../lib/rate-limiter');
+    const rateLimitCheck = await checkCampanhaRateLimit(userId, pendentes.length);
+    if (!rateLimitCheck.ok) {
+      return reply.code(429).send({
+        error: 'Limite de taxa atingido.',
+        message: `Máximo 50 mensagens/minuto por conta. Tente novamente em 1 minuto.`,
+        retryAfter: 60,
+      });
     }
 
     // Cobra ANTES de iniciar o disparo (nunca depois) — mesmo princípio do

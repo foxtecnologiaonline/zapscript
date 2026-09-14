@@ -72,34 +72,51 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
   const isVariantB = campanha.abTestEnabled && contato.variant === 'B';
 
   let messageId: string | null;
-  if (campanha.channel === 'evolution') {
-    if (!numero || numero.status !== 'connected' || !numero.zapiInstanceId) {
-      await markContatoFailed(contatoId, 'Número Evolution desconectado.');
-      await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: false });
-      return { skipped: true, reason: 'número desconectado' };
+  try {
+    if (campanha.channel === 'evolution') {
+      if (!numero || numero.status !== 'connected' || !numero.zapiInstanceId) {
+        await markContatoFailed(contatoId, 'Número Evolution desconectado.');
+        await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: false });
+        return { skipped: true, reason: 'número desconectado' };
+      }
+      const body  = (isVariantB ? campanha.variantBMessageBody : campanha.messageBody) || '';
+      const texto = renderEvolutionMessage(body, contato);
+      const res = await sendMessageViaEvolution(numero.zapiInstanceId, contato.phone, texto);
+      messageId = res.id;
+    } else {
+      if (!numero || numero.status !== 'connected' || !numero.metaAccessTokenEnc || !numero.metaPhoneNumberId) {
+        await markContatoFailed(contatoId, 'Número Meta desconectado ou sem credenciais.');
+        await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: false });
+        return { skipped: true, reason: 'número desconectado' };
+      }
+      const token = decryptStr(numero.metaAccessTokenEnc);
+      const templateName     = (isVariantB ? campanha.variantBTemplateName : campanha.templateName)!;
+      const templateLanguage = (isVariantB ? campanha.variantBTemplateLanguage : campanha.templateLanguage)!;
+      const staticComponents = ((isVariantB ? campanha.variantBTemplateComponents : campanha.templateComponents) as Array<Record<string, any>> | null) || [];
+      const bodyVars = (contato.variables as string[] | null) || [];
+      const components = bodyVars.length
+        ? [...staticComponents, { type: 'body', parameters: bodyVars.map((v) => ({ type: 'text', text: String(v) })) }]
+        : staticComponents;
+      messageId = await sendTemplateMessage(
+        token, numero.metaPhoneNumberId, contato.phone,
+        templateName, templateLanguage, components,
+      );
     }
-    const body  = (isVariantB ? campanha.variantBMessageBody : campanha.messageBody) || '';
-    const texto = renderEvolutionMessage(body, contato);
-    const res = await sendMessageViaEvolution(numero.zapiInstanceId, contato.phone, texto);
-    messageId = res.id;
-  } else {
-    if (!numero || numero.status !== 'connected' || !numero.metaAccessTokenEnc || !numero.metaPhoneNumberId) {
-      await markContatoFailed(contatoId, 'Número Meta desconectado ou sem credenciais.');
-      await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: false });
-      return { skipped: true, reason: 'número desconectado' };
+  } catch (error) {
+    const metaErrorCode = (error as any)?.metaErrorCode;
+    // Código 80047 = Meta rate limit (message send failure rate too high)
+    if (metaErrorCode === 80047) {
+      await prisma.campanha.update({
+        where: { id: campanhaId },
+        data: {
+          status: 'paused',
+          pausedReason: 'Meta: taxa de envio excedida (80047) — aguarde 24-48h antes de retomar.',
+        },
+      });
+      logger.warn(`[Campanhas] 🚫 Campanha ${campanhaId} pausada — Meta throttle (80047)`);
+      throw error;
     }
-    const token = decryptStr(numero.metaAccessTokenEnc);
-    const templateName     = (isVariantB ? campanha.variantBTemplateName : campanha.templateName)!;
-    const templateLanguage = (isVariantB ? campanha.variantBTemplateLanguage : campanha.templateLanguage)!;
-    const staticComponents = ((isVariantB ? campanha.variantBTemplateComponents : campanha.templateComponents) as Array<Record<string, any>> | null) || [];
-    const bodyVars = (contato.variables as string[] | null) || [];
-    const components = bodyVars.length
-      ? [...staticComponents, { type: 'body', parameters: bodyVars.map((v) => ({ type: 'text', text: String(v) })) }]
-      : staticComponents;
-    messageId = await sendTemplateMessage(
-      token, numero.metaPhoneNumberId, contato.phone,
-      templateName, templateLanguage, components,
-    );
+    throw error;
   }
 
   await prisma.campanhaContato.update({
