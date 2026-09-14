@@ -184,6 +184,7 @@ model WhatsappNumber {
   crmContacts         CrmContact[]
   campanhas           Campanha[]
   avisos              Aviso[]
+  missions            Mission[] // MKT-Fast — número usado para enviar as execuções do canal 'whatsapp'
 
   @@index([userId]) // A2: listagem de números por usuário
   @@index([zapiInstanceId]) // A2: busca de instância em webhook (hot path)
@@ -1624,4 +1625,58 @@ model TaskComment {
 
   @@index([taskId, createdAt])
   @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MKT-Fast — motor genérico de "missão de divulgação" (ferramenta interna,
+// sem entitlement/billing — acesso via o mesmo adminAuth de routes/admin.ts).
+// Ver MKTFAST_ESCOPO.md para a arquitetura completa.
+//
+// Mission = o quê divulgar, em quais canais, até quando, qual meta de alcance.
+// MissionExecution = 1 linha por (missão × canal × alvo): o que rodou de fato.
+// Canal novo = tratar um novo valor de `channel` no worker (modules/mktfast.ts)
+// — o schema não muda. Fase 0 cobre só `channel='whatsapp'` (bot, via Evolution,
+// alvo = lista explícita de telefones fornecida em Mission.content.targets;
+// a conformidade da lista é responsabilidade de quem cria a missão — não há
+// aqui checagem de opt-in de cliente, ao contrário do módulo Campanhas, porque
+// não há origem de dados de cliente envolvida).
+// ─────────────────────────────────────────────────────────────────────────────
+model Mission {
+  id               String             @id @default(cuid())
+  key              String?            @unique // slug opcional, ex: 'lanca-zapscript-set26'
+  title            String
+  objective        String // texto livre — o "porquê" (contexto/log, não usado no envio)
+  content          Json // payload cru por canal: { text, mediaUrl?, linkUrl?, targets?: string[] }
+  channels         String[] // 'whatsapp' (Fase 0) e 'human_share' (Fase 1) implementados — instagram_feed/facebook_page previstos (Fase 2, bloqueada por credenciais Meta)
+  whatsappNumberId String? // qual WhatsappNumber (Evolution, status='connected') envia, quando 'whatsapp' ∈ channels
+  targetReach      Int? // meta de alcance total (null = "o quanto der")
+  status           String             @default("draft") // draft|scheduled|running|completed|canceled
+  scheduledAt      DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdBy        String // e-mail/label do admin que criou (auth é por ADMIN_TOKEN compartilhado, não por User logado)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  whatsappNumber   WhatsappNumber?    @relation(fields: [whatsappNumberId], references: [id])
+  executions       MissionExecution[]
+
+  @@index([status])
+}
+
+model MissionExecution {
+  id          String   @id @default(cuid())
+  missionId   String
+  channel     String // um dos values de Mission.channels
+  executor    String   @default("bot") // 'bot' | 'human'
+  targetRef   String? // telefone normalizado (E.164 sem '+') — do destinatário (channel='whatsapp') ou de quem foi convocado (channel='human_share')
+  status      String   @default("pending") // pending|sent|posted|failed|awaiting_proof|proof_submitted|approved|rejected
+  proofUrl    String? // link/print de prova — só quando executor='human'
+  reachCount  Int? // alcance simples desta execução (1 por envio bem-sucedido, na Fase 0)
+  errorReason String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  mission     Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@unique([missionId, channel, targetRef])
+  @@index([missionId, status])
 }

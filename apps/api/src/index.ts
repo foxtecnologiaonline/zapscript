@@ -312,6 +312,7 @@ app.register(import('./routes/support'),        { prefix: '/support' });
 app.register(import('./routes/admin'),          { prefix: '/sys/g5r8t2' });
 app.register(import('./routes/admin-master'),   { prefix: '/sys/g5r8t2/master' });
 app.register(import('./routes/suporte-admin'),  { prefix: '/sys/g5r8t2/suporte' });
+app.register(import('./routes/mktfast-admin'),  { prefix: '/sys/g5r8t2/mktfast' });
 app.register(import('./routes/invites'),         { prefix: '/invites' });
 app.register(import('./routes/privacy'),         { prefix: '/privacy' });
 app.register(import('./routes/webhook-config'),  { prefix: '/webhook-config' });
@@ -1224,6 +1225,58 @@ async function runAutoMigrations() {
     `CREATE INDEX IF NOT EXISTS "CopilotoBriefing_conversationId_tipo_createdAt_idx" ON "CopilotoBriefing"("conversationId", "tipo", "createdAt")`,
     // Confiança da triagem (migração 20260914_copiloto_triage_confidence).
     `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "triageConfidence" DOUBLE PRECISION`,
+    // MKT-Fast (migração 20260913_mktfast_missions) — mesmo princípio de auto-cura
+    // de toda entrada acima, ver MKTFAST_ESCOPO.md.
+    `CREATE TABLE IF NOT EXISTS "Mission" (
+      "id"               TEXT NOT NULL,
+      "key"              TEXT,
+      "title"            TEXT NOT NULL,
+      "objective"        TEXT NOT NULL,
+      "content"          JSONB NOT NULL,
+      "channels"         TEXT[] NOT NULL,
+      "whatsappNumberId" TEXT,
+      "targetReach"      INTEGER,
+      "status"           TEXT NOT NULL DEFAULT 'draft',
+      "scheduledAt"      TIMESTAMP(3),
+      "startedAt"        TIMESTAMP(3),
+      "completedAt"      TIMESTAMP(3),
+      "createdBy"        TEXT NOT NULL,
+      "createdAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"        TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "Mission_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Mission_key_key" ON "Mission"("key")`,
+    `CREATE INDEX IF NOT EXISTS "Mission_status_idx" ON "Mission"("status")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Mission_whatsappNumberId_fkey') THEN
+        ALTER TABLE "Mission"
+          ADD CONSTRAINT "Mission_whatsappNumberId_fkey"
+          FOREIGN KEY ("whatsappNumberId") REFERENCES "WhatsappNumber"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+      END IF;
+    END $$`,
+    `CREATE TABLE IF NOT EXISTS "MissionExecution" (
+      "id"          TEXT NOT NULL,
+      "missionId"   TEXT NOT NULL,
+      "channel"     TEXT NOT NULL,
+      "executor"    TEXT NOT NULL DEFAULT 'bot',
+      "targetRef"   TEXT,
+      "status"      TEXT NOT NULL DEFAULT 'pending',
+      "proofUrl"    TEXT,
+      "reachCount"  INTEGER,
+      "errorReason" TEXT,
+      "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt"   TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "MissionExecution_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "MissionExecution_missionId_channel_targetRef_key" ON "MissionExecution"("missionId", "channel", "targetRef")`,
+    `CREATE INDEX IF NOT EXISTS "MissionExecution_missionId_status_idx" ON "MissionExecution"("missionId", "status")`,
+    `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'MissionExecution_missionId_fkey') THEN
+        ALTER TABLE "MissionExecution"
+          ADD CONSTRAINT "MissionExecution_missionId_fkey"
+          FOREIGN KEY ("missionId") REFERENCES "Mission"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$`,
   ];
   // Loga índice + prefixo do SQL antes de cada await: se travar (ex.: lock de
   // uma conexão órfã do container anterior ainda não coletada pelo Postgres),

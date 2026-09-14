@@ -17,6 +17,7 @@ import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
 import { logAiUsage } from './lib/aiUsage';
 import { processCampanhaJob, markCampanhaJobExhausted } from './modules/campanhas';
+import { processMissionJob, markMissionJobExhausted } from './modules/mktfast';
 import {
   planEfetivo, audioQuotaFor, pickFooterVariant, formatSavedTime,
   MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
@@ -27,6 +28,7 @@ import './crm'; // registra o cron de notificação de lembretes vencidos (ZapSc
 import './tarefas'; // registra o cron de tarefas atrasadas (ZapScript Tarefas)
 import './copiloto'; // registra o worker da fila 'copiloto' (ZapScript Copiloto — briefings ao dono)
 import './campanhas-scheduler'; // registra o agendador de disparo automático (ZapScript Campanhas)
+import './mktfast-scheduler'; // registra o agendador de disparo automático (MKT-Fast)
 import './modules/campanhas-chat-notifier'; // updates de progresso a cada 30s no chat (Chatbot Campanhas)
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
@@ -1859,6 +1861,43 @@ campanhasWorker.on('error', (err) => {
 });
 
 logger.info('Worker de campanhas iniciado (Meta Cloud API)');
+
+// ─────────────────────────────────────────────────────────────────
+//  WORKER — MKT-Fast (missões de divulgação, ferramenta interna)
+// ─────────────────────────────────────────────────────────────────
+// Fila e worker separados: volume baixo (ferramenta interna, não por-tenant),
+// mas isolado das demais filas por domínio — ver MKTFAST_ESCOPO.md.
+const MKTFAST_CONCURRENCY = parseInt(process.env.MKTFAST_WORKER_CONCURRENCY || '3', 10);
+
+const mktfastWorker = new Worker('mktfast', processMissionJob, {
+  connection:  redis as any,
+  concurrency: MKTFAST_CONCURRENCY,
+  limiter:     { max: 10, duration: 1_000 }, // mesmo teto de segurança do Campanhas
+});
+
+mktfastWorker.on('completed', (job, result) => {
+  if (result?.skipped) {
+    logger.warn(`[MKT-Fast] Job ${job.id} ignorado — motivo: ${result.reason}`);
+  } else {
+    logger.info(`[MKT-Fast] ✅ Job ${job.id} concluído`);
+  }
+});
+
+mktfastWorker.on('failed', (job, err) => {
+  const attempts    = job?.attemptsMade ?? 0;
+  const maxAttempts = job?.opts?.attempts ?? 3;
+  logger.error(`[MKT-Fast] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
+  if (job && attempts >= maxAttempts) {
+    markMissionJobExhausted(job, err).catch((e) =>
+      logger.error(`[MKT-Fast] Falha ao marcar execução como failed: ${e.message}`));
+  }
+});
+
+mktfastWorker.on('error', (err) => {
+  logger.error('[MKT-Fast] Erro interno', { err: err.message });
+});
+
+logger.info('Worker do MKT-Fast iniciado');
 
 // ─────────────────────────────────────────────────────────────────
 //  CRON — Reset automático de minutos mensais
