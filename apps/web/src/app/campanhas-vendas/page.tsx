@@ -325,7 +325,7 @@ SOLUÇÃO:
 Seus concorrentes já estão lá. Você tá esperando o quê?
 
 Entra aqui e dispara tua primeira campanha AGORA:
-zapscript.me/wappcampanhas
+zapscript.me/wappcampanhas?utm_source=b2b&utm_medium=direct&utm_campaign=campanhas
 
 [seu nome]`}</div>
         </section>
@@ -335,27 +335,27 @@ zapscript.me/wappcampanhas
 
           <div className="technique">
             <h3>1️⃣ Comentário em blog sobre banimento</h3>
-            <div className="example">Meta apertou demais desde jan — 5M+ banidos. Testei ZapScript Campanhas, dispara pela API oficial aprovada, 30 msgs grátis/mês. Resolveu. Entra e começa: zapscript.me/wappcampanhas</div>
+            <div className="example">Meta apertou demais desde jan — 5M+ banidos. Testei ZapScript Campanhas, dispara pela API oficial aprovada, 30 msgs grátis/mês. Resolveu. Entra e começa: zapscript.me/wappcampanhas?utm_source=guerrilha&utm_medium=blog&utm_campaign=campanhas</div>
           </div>
 
           <div className="technique">
             <h3>2️⃣ Resposta em Reclame Aqui / Fórum / Grupo</h3>
-            <div className="example">Passei por isso. Solução: migrar pra API oficial da Meta JÁ — ou é oficial ou o risco volta. ZapScript Campanhas: conecta em 10 min via QR. Entra agora: zapscript.me/wappcampanhas</div>
+            <div className="example">Passei por isso. Solução: migrar pra API oficial da Meta JÁ — ou é oficial ou o risco volta. ZapScript Campanhas: conecta em 10 min via QR. Entra agora: zapscript.me/wappcampanhas?utm_source=guerrilha&utm_medium=forum&utm_campaign=campanhas</div>
           </div>
 
           <div className="technique">
             <h3>3️⃣ YouTube — Comentário em vídeo</h3>
-            <div className="example">ZapScript Campanhas dispara direto pela API oficial aprovada — sem esperar, sem risco, sem taxa. 30 msgs grátis pra testar. Começa agora: zapscript.me/wappcampanhas</div>
+            <div className="example">ZapScript Campanhas dispara direto pela API oficial aprovada — sem esperar, sem risco, sem taxa. 30 msgs grátis pra testar. Começa agora: zapscript.me/wappcampanhas?utm_source=guerrilha&utm_medium=youtube&utm_campaign=campanhas</div>
           </div>
 
           <div className="technique">
             <h3>4️⃣ Live chat — Curtíssimo</h3>
-            <div className="example">bot banido? ZapScript Campanhas dispara pela API oficial, 30 msgs grátis. Entra já: zapscript.me/wappcampanhas</div>
+            <div className="example">bot banido? ZapScript Campanhas dispara pela API oficial, 30 msgs grátis. Entra já: zapscript.me/wappcampanhas?utm_source=guerrilha&utm_medium=chat&utm_campaign=campanhas</div>
           </div>
 
           <div className="technique">
             <h3>5️⃣ Grupo Telegram / Facebook — Tom de par</h3>
-            <div className="example">Tava igual vcs com bot banido. Migrei pro canal oficial pelo ZapScript Campanhas — conecta via QR, dispara em 10 min. Entra agora: zapscript.me/wappcampanhas</div>
+            <div className="example">Tava igual vcs com bot banido. Migrei pro canal oficial pelo ZapScript Campanhas — conecta via QR, dispara em 10 min. Entra agora: zapscript.me/wappcampanhas?utm_source=guerrilha&utm_medium=group&utm_campaign=campanhas</div>
           </div>
         </section>
 
@@ -377,7 +377,7 @@ ZapScript Campanhas resolve isso:
 Seus concorrentes já estão lá.
 
 Entra e dispara tua primeira campanha:
-zapscript.me/wappcampanhas`}</div>
+zapscript.me/wappcampanhas?utm_source=b2b&utm_medium=direct&utm_campaign=campanhas`}</div>
 
           <p style={{ marginTop: '20px' }}><strong>DIA 3 — Follow-up (ainda não respondeu)</strong></p>
           <div className="pitch-box">{`[Nome],
@@ -387,7 +387,7 @@ Rápido: ainda tá esperando? Seus concorrentes JÁ migraram pro canal oficial.
 Meta está banindo HOJE. Enquanto você pensa, seu número pode levar bloqueio.
 
 Entra e começa AGORA:
-zapscript.me/wappcampanhas`}</div>
+zapscript.me/wappcampanhas?utm_source=b2b&utm_medium=direct&utm_campaign=followup`}</div>
 
           <p style={{ marginTop: '20px' }}><strong>DIA 7 — Último toque (com prova social)</strong></p>
           <div className="pitch-box">{`[Nome],
@@ -397,7 +397,7 @@ zapscript.me/wappcampanhas`}</div>
 Corretoras, clínicas e agências já estão lá disparando. Você ficando pra trás.
 
 Entra AGORA e começa grátis:
-zapscript.me/wappcampanhas`}</div>
+zapscript.me/wappcampanhas?utm_source=b2b&utm_medium=direct&utm_campaign=lasttouch`}</div>
 
           <p style={{ marginTop: '20px' }}><strong>QUANDO OUVE: "Já usamos bot, tá tudo certo"</strong></p>
           <div className="example">
@@ -408,7 +408,7 @@ zapscript.me/wappcampanhas`}</div>
             Meta não avisa. Um dia tá funcionando, próximo dia seu número some. Sem volta.
 
             Migra pro canal que Meta APROVA. Entra agora e dispara grátis:
-            zapscript.me/wappcampanhas
+            zapscript.me/wappcampanhas?utm_source=b2b&utm_medium=direct&utm_campaign=objection
           </div>
         </section>
 
@@ -429,7 +429,7 @@ zapscript.me/wappcampanhas`}</div>
         <section className="cta">
           <h3>ENTRA AGORA E DISPARA</h3>
           <p>Seus concorrentes já estão lá. Não fica pra trás.</p>
-          <a href="https://zapscript.me/wappcampanhas" className="btn">→ Disparar Primeira Campanha AGORA</a>
+          <a href="https://zapscript.me/wappcampanhas?utm_source=guerrilha&utm_medium=content&utm_campaign=campanhas" className="btn">→ Disparar Primeira Campanha AGORA</a>
         </section>
       </div>
 

@@ -13,11 +13,13 @@ export const metadata: Metadata = {
     description: 'Notificações de receita, agendamentos e acompanhamento via WhatsApp.',
     url: 'https://www.zapscript.me/campanhas/saude',
     type: 'website',
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'ZapScript Campanhas Saúde' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Campanhas WhatsApp para Saúde e Farmácias',
-    description: 'Notificações de receita, agendamentos e acompanhamento via WhatsApp.',
+    title: 'Campanhas WhatsApp para Saúde',
+    description: 'Notificações de receita, agendamentos e acompanhamento automático.',
+    images: ['/opengraph-image'],
   },
 };
 
