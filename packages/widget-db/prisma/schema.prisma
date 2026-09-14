@@ -1,0 +1,110 @@
+// ZapWidget — banco de dados INDEPENDENTE do ZapScript.me.
+// Produto separado: widget de chat embutível (plug-and-play) + inbox web,
+// que conecta ao WhatsApp do cliente via Evolution API. Não compartilha
+// tenancy, auth nem billing com o ZapScript.me — só reaproveita o motor
+// de mensageria (Evolution API), possivelmente a mesma instância Vultr,
+// via instâncias com prefixo `wl-` (ver src/lib/messaging/evolution-engine.ts).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("WIDGET_DATABASE_URL")
+}
+
+/// Um "Client" = um site/empresa que assina o ZapWidget e embute o script.
+model Client {
+  id                   String    @id @default(cuid())
+  name                 String
+  email                String    @unique
+  passwordHash         String
+  publicKey            String    @unique @default(cuid()) // chave pública usada no <script data-key="...">
+  allowedOrigin        String?   // domínio autorizado a embutir o widget (null = qualquer origem, MVP)
+  disclaimerAcceptedAt DateTime? // aceite obrigatório do aviso de risco (Fase 1 / motor não-oficial)
+  createdAt            DateTime  @default(now())
+
+  connections    WhatsappConnection[]
+  agents         Agent[]
+  conversations  Conversation[]
+  widgetSettings WidgetSettings?
+}
+
+/// Atendente que faz login no inbox web para responder pelo WhatsApp do Client.
+model Agent {
+  id           String   @id @default(cuid())
+  clientId     String
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  email        String
+  passwordHash String
+  role         String   @default("owner") // owner | agent
+  createdAt    DateTime @default(now())
+
+  @@unique([clientId, email])
+}
+
+/// Um número de WhatsApp conectado. Um Client pode ter mais de um (seção 3 do escopo).
+model WhatsappConnection {
+  id           String    @id @default(cuid())
+  clientId     String
+  client       Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  label        String    @default("Principal")
+  provider     String    @default("evolution") // evolution (Fase 1) | meta (Fase 2 — ver meta-engine.ts)
+  instanceName String    @unique
+  phoneNumber  String?
+  status       String    @default("disconnected") // disconnected | connecting | connected
+  connectedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  conversations Conversation[]
+
+  @@index([clientId])
+}
+
+/// Uma conversa = um visitante do site que abriu o widget e informou seu
+/// WhatsApp. A partir daí, toda mensagem (do widget OU do WhatsApp do
+/// visitante) cai na mesma thread — ver README para o desenho da ponte.
+model Conversation {
+  id            String    @id @default(cuid())
+  clientId      String
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  connectionId  String?
+  connection    WhatsappConnection? @relation(fields: [connectionId], references: [id])
+  visitorId     String    // token anônimo gerado pelo widget.js (guardado em localStorage)
+  customerPhone String?   // só dígitos, com DDI — preenchido no pré-chat
+  customerName  String?
+  status        String    @default("open") // open | closed
+  createdAt     DateTime  @default(now())
+  lastMessageAt DateTime  @default(now())
+
+  messages Message[]
+
+  @@unique([clientId, visitorId])
+  @@index([clientId, status])
+}
+
+model Message {
+  id                String       @id @default(cuid())
+  conversationId    String
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction         String       // in (visitante/cliente final -> agente) | out (agente -> cliente final)
+  channel           String       // widget | whatsapp — canal de ORIGEM da mensagem
+  senderType         String      // visitor | agent | system
+  body              String
+  whatsappMessageId String?      // id retornado pela Evolution, quando enviada/recebida via WhatsApp
+  createdAt         DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+/// Aparência e textos do widget embutível — uma linha por Client.
+model WidgetSettings {
+  clientId     String   @id
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  primaryColor String   @default("#25D366")
+  greeting     String   @default("Olá! Como podemos ajudar você hoje?")
+  position     String   @default("right") // right | left
+  updatedAt    DateTime @updatedAt
+}

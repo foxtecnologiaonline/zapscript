@@ -12,6 +12,12 @@
     "db:generate": "cd packages/database && npx prisma generate",
     "monitor:now": "cd apps/monitor && ts-node src/index.ts --now",
     "monitor:alerts": "cd apps/monitor && ts-node src/index.ts --alerts",
+    "widget:dev": "pnpm --filter widget dev",
+    "widget:build": "pnpm --filter widget build",
+    "widget:db:migrate": "cd packages/widget-db && npx prisma migrate dev",
+    "widget:db:migrate:prod": "cd packages/widget-db && npx prisma migrate deploy",
+    "widget:db:generate": "cd packages/widget-db && npx prisma generate",
+    "widget:db:studio": "cd packages/widget-db && npx prisma studio",
     "setup": "bash setup.sh",
     "secrets": "node infra/gen-secrets.js",
     "webhook:test": "echo \"Asaas: configure webhook em app.asaas.com > Configuracoes > Notificacoes\""

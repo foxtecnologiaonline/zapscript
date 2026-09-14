@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .next/
+packages/widget-db/prisma/generated/
+*.tsbuildinfo
 .env
 .env.local
 .sessions/
