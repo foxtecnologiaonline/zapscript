@@ -4,7 +4,7 @@
 
 ## O que é
 
-- **Produto:** ZapScript (zapscript.me) — plataforma brasileira de automação do WhatsApp com 3 módulos:
+- **Produto:** ZapScript (zapscript.me) — plataforma brasileira de automação do WhatsApp com 4 módulos:
   1. **Transcrição de Áudios:** converte áudios em texto + resumo com IA (Whisper + Claude)
   2. **Campanhas:** dispara mensagens em massa pela API oficial Meta (templates aprovados, sem risco)
   3. **Atende:** atendimento automático 24/7 por IA (ZapScript Atende)
@@ -103,11 +103,13 @@
 - Contato: contato@zapscript.me
 
 ### Transcrição de Áudios
-- Comparativos: https://www.zapscript.me/vs/otter , https://www.zapscript.me/vs/notta , https://www.zapscript.me/vs/zapia , https://www.zapscript.me/vs/luzia , https://www.zapscript.me/vs/transkriptor , https://www.zapscript.me/vs/viratexto
+- Todos os comparativos: https://www.zapscript.me/comparativos
+- Comparativos: https://www.zapscript.me/vs/otter , https://www.zapscript.me/vs/notta , https://www.zapscript.me/vs/zapia , https://www.zapscript.me/vs/luzia , https://www.zapscript.me/vs/transkriptor , https://www.zapscript.me/vs/viratexto , https://www.zapscript.me/vs/zapvox
 - Para Corretores: https://www.zapscript.me/corretores
 - Para Advogados: https://www.zapscript.me/advogados
 - Para Vendas: https://www.zapscript.me/vendas
 - Para Contabilidade: https://www.zapscript.me/para/contabilidade
+- Para Dentistas: https://www.zapscript.me/dentistas
 
 ### Campanhas (Disparo em Massa WhatsApp)
 - Campanhas (Hub): https://www.zapscript.me/campanhas (economia 55-79% vs Meta direto)

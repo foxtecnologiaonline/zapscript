@@ -269,7 +269,7 @@ async function ownedLista(userId: string, id: string) {
 }
 
 /** Conexão válida pra disparar, nos dois canais (Meta exige token; Evolution exige instância). */
-function numberReadyToSend(whatsappNumber: { status: string; metaAccessTokenEnc: string | null; zapiInstanceId: string | null } | null, channel: string): boolean {
+export function numberReadyToSend(whatsappNumber: { status: string; metaAccessTokenEnc: string | null; zapiInstanceId: string | null } | null, channel: string): boolean {
   if (!whatsappNumber || whatsappNumber.status !== 'connected') return false;
   // 'meta' é o default histórico (linhas antigas da migration não têm channel setado
   // explicitamente) — só trata como evolution quando for exatamente isso.
@@ -1772,9 +1772,13 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     }
 
     // Parse CSV com melhor tratamento de erros
+    const MAX_CSV_SIZE = 10 * 1024 * 1024; // 10 MB limit
     let csv: string;
     try {
       const buffer = await data.file.toBuffer();
+      if (buffer.length > MAX_CSV_SIZE) {
+        return reply.code(413).send({ error: 'Arquivo muito grande (máximo 10 MB).' });
+      }
       csv = buffer.toString('utf-8');
       if (!csv || csv.length === 0) {
         return reply.code(400).send({ error: 'Arquivo vazio.' });

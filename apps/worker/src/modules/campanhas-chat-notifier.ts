@@ -26,25 +26,26 @@ function snapshotSignature(stats: Stats): string {
   return JSON.stringify(stats);
 }
 
+// Canal evolution não tem confirmação de entrega/leitura ligada a
+// CampanhaContato.status (worker só grava 'sent'/'failed'/'pending_optin' —
+// ver apps/worker/src/modules/campanhas.ts) — só reporta o que de fato é
+// rastreado, pra não exibir uma "taxa de leitura" sempre em 0% como se fosse
+// dado real.
 function formatProgress(stats: Stats, audienceCount: number): string {
-  const sent    = (stats.sent ?? 0) + (stats.delivered ?? 0) + (stats.read ?? 0);
-  const read    = stats.read ?? 0;
+  const sent    = stats.sent ?? 0;
   const failed  = stats.failed ?? 0;
   const pending = stats.pending ?? 0;
   return [
-    `📊 Progresso: ${sent} ✅ | ${failed} ❌ | ${read} 👀 (${pending} na fila, de ${audienceCount})`,
+    `📊 Progresso: ${sent} ✅ | ${failed} ❌ (${pending} na fila, de ${audienceCount})`,
   ].join('\n');
 }
 
 function formatFinalReport(stats: Stats, audienceCount: number): string {
-  const sent   = (stats.sent ?? 0) + (stats.delivered ?? 0) + (stats.read ?? 0);
-  const read   = stats.read ?? 0;
+  const sent   = stats.sent ?? 0;
   const failed = stats.failed ?? 0;
   const rate   = audienceCount > 0 ? Math.round((sent / audienceCount) * 100) : 0;
-  const readRate = sent > 0 ? Math.round((read / sent) * 100) : 0;
   return [
     `🎉 Campanha concluída! ${sent}/${audienceCount} enviados (${rate}%)${failed > 0 ? `, ${failed} falharam` : ''}.`,
-    `👀 Taxa de leitura: ${readRate}%`,
   ].join('\n');
 }
 

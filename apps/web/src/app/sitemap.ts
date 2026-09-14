@@ -22,6 +22,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/campanhas/varejo`, lastModified: now, priority: 0.95, changeFrequency: 'monthly' },
     { url: `${base}/campanhas/dentistas`, lastModified: now, priority: 0.95, changeFrequency: 'monthly' },
     { url: `${base}/campanhas/saude`, lastModified: now, priority: 0.95, changeFrequency: 'monthly' },
+    { url: `${base}/wappcampanhas`, lastModified: now, priority: 0.8, changeFrequency: 'monthly' },
+    { url: `${base}/campanhas-vendas`, lastModified: now, priority: 0.6, changeFrequency: 'monthly' },
     { url: `${base}/para/contabilidade`, lastModified: d('2026-06-23'), priority: 0.9, changeFrequency: 'monthly' },
     { url: `${base}/cobranca`,     lastModified: d('2026-07-16'), priority: 0.9,  changeFrequency: 'monthly' },
     { url: `${base}/crm`,          lastModified: now,             priority: 0.9,  changeFrequency: 'monthly' },
