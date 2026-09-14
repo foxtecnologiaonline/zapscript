@@ -50,7 +50,7 @@ function normalizeResponse(text: string): string {
     .trim()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')  // Remove acentos (Unicode combining marks)
+    .replace(/[̀-ͯ]/g, '')  // Remove acentos (Unicode combining marks U+0300–U+036F)
     .replace(/[^\w]/g, '')
     .slice(0, 10);
 }
