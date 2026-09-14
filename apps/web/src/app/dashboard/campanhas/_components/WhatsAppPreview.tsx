@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo } from 'react';
+
 /**
  * Prévia visual da mensagem como bolha do WhatsApp — mesma cor, tipografia,
  * largura máxima e quebra de linha do app real, pra o usuário ver como o
@@ -8,10 +10,10 @@
  */
 export default function WhatsAppPreview({ text }: { text: string }) {
   const rendered = text.replace(/\{\{\s*nome\s*\}\}/gi, 'Maria');
-  const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const now = useMemo(() => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), []);
 
   return (
-    <div className="rounded-xl overflow-hidden border border-black/10 shadow-sm w-full max-w-[280px] mx-auto lg:mx-0">
+    <div className="rounded-xl overflow-hidden border border-black/10 shadow-sm w-full max-w-[240px] sm:max-w-[280px] mx-auto lg:mx-0">
       <div className="flex items-center gap-2 px-3 py-2" style={{ background: '#075e54' }}>
         <div className="h-7 w-7 shrink-0 rounded-full bg-white/25 flex items-center justify-center text-white text-xs">👤</div>
         <div className="text-white text-sm font-medium truncate">Seu cliente</div>
