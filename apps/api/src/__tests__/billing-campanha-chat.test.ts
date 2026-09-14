@@ -197,6 +197,19 @@ describe('Chatbot Campanhas — billing', () => {
     expect(prisma.subscription.findUnique).not.toHaveBeenCalled(); // não tocou o fluxo do plano core
   });
 
+  it('webhook PAYMENT_OVERDUE de add-on de campanha (mensal ou pacote avulso) não marca o plano core como past_due', async () => {
+    for (const ref of ['u1|campanha_monthly', 'u1|pkg_campanha_msgs|1000']) {
+      (prisma.subscription.update as jest.Mock).mockClear();
+      const res = await app.inject({
+        method: 'POST', url: '/billing/webhook',
+        headers: { 'asaas-access-token': 'test-webhook-token' },
+        payload: { event: 'PAYMENT_OVERDUE', payment: { id: `pay_overdue_${ref}`, externalReference: ref } },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(prisma.subscription.update).not.toHaveBeenCalled();
+    }
+  });
+
   it('POST /billing/buy-campanha-messages retorna Pix (copia-e-cola + QR) para um pacote válido', async () => {
     const token = app.jwt.sign({ sub: 'u1', email: 'x@x.com' });
     const res = await app.inject({

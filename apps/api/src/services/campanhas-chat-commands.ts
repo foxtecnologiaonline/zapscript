@@ -25,7 +25,7 @@
 import { prisma } from '../lib/prisma';
 import { sendText, sendImage } from './evolution';
 import { getUserModules } from '../lib/moduleGate';
-import { warmContactsForNumber, enqueueCampanhaSend, resolveSendNumbers } from '../routes/modules/campanhas';
+import { warmContactsForNumber, enqueueCampanhaSend, resolveSendNumbers, numberReadyToSend } from '../routes/modules/campanhas';
 import { getOrCreateCampanhaBalance, debitCampanhaMessages, InsufficientCampanhaBalanceError } from '../lib/campanha-credit';
 import {
   CAMPANHA_MSG_PACKAGES, CAMPANHA_MONTHLY_PRICE_BRL,
@@ -362,37 +362,61 @@ async function handlePreviewing(ctx: Ctx, session: { campanhaId: string | null }
 /** Debita o saldo e dispara — ou, sem saldo, oferece compra e deixa a campanha em draft para "campanha continuar". */
 async function startCampanha(ctx: Ctx, campanha: { id: string; userId: string; audienceCount: number; channel: string; whatsappNumberId: string; poolNumberIds: string[] }): Promise<void> {
   const { instanceName, selfPhone } = ctx;
-  const balance = await getOrCreateCampanhaBalance(campanha.userId);
 
-  if (balance.plan !== 'monthly' && balance.availableMessages < campanha.audienceCount) {
-    const faltam = campanha.audienceCount - balance.availableMessages;
+  // Conta os pendentes de verdade em vez de usar audienceCount (congelado na
+  // criação do rascunho): opt-outs que chegam entre "campanha nova" e o 👍 de
+  // confirmação (POST /webhook → registerCampanhaOptOut, mesmo mecanismo do
+  // painel web) já tiraram esses contatos de 'pending' — cobrar pelo
+  // audienceCount original cobraria por mensagens que nunca serão enviadas.
+  // Mesmo princípio de routes/modules/campanhas.ts POST /:id/start.
+  const pendentesAntes = await prisma.campanhaContato.count({ where: { campanhaId: campanha.id, status: 'pending' } });
+  if (pendentesAntes === 0) {
+    await prisma.campanha.updateMany({ where: { id: campanha.id, status: 'draft' }, data: { status: 'canceled', completedAt: new Date() } });
+    await resetToIdle(selfPhone);
+    await reply(instanceName, selfPhone, 'Todos os contatos dessa campanha saíram da lista (opt-out) antes da confirmação — nada foi cobrado nem enviado.');
+    return;
+  }
+
+  const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
+  if (!numberReadyToSend(whatsappNumber, campanha.channel)) {
+    await resetToIdle(selfPhone);
+    await reply(instanceName, selfPhone, 'Seu WhatsApp está desconectado — reconecte em zapscript.me/dashboard/numeros e crie a campanha de novo. Nada foi cobrado.');
+    return;
+  }
+
+  const balance = await getOrCreateCampanhaBalance(campanha.userId);
+  if (balance.plan !== 'monthly' && balance.availableMessages < pendentesAntes) {
+    const faltam = pendentesAntes - balance.availableMessages;
     await prisma.campanhaChatSession.update({ where: { phone: selfPhone }, data: { stage: 'awaiting_purchase' } });
     await reply(instanceName, selfPhone, [
-      `Saldo insuficiente: você tem ${balance.availableMessages} e essa campanha precisa de ${campanha.audienceCount} (faltam ${faltam}).`,
+      `Saldo insuficiente: você tem ${balance.availableMessages} e essa campanha precisa de ${pendentesAntes} (faltam ${faltam}).`,
       '', packagesText(),
       '', 'Depois de pagar, mande "campanha continuar" para disparar.',
     ].join('\n'));
     return;
   }
 
+  // Reserva atômica antes de cobrar — protege contra dois "👍" processados em
+  // paralelo (retry de webhook) debitando a mesma campanha duas vezes (mesmo
+  // princípio do claim em routes/modules/campanhas.ts POST /:id/start).
+  const claim = await prisma.campanha.updateMany({
+    where: { id: campanha.id, status: 'draft' },
+    data: { status: 'running', startedAt: new Date(), consentConfirmedAt: new Date() },
+  });
+  if (claim.count === 0) return; // outro 👍 concorrente já assumiu essa campanha
+
   try {
-    await debitCampanhaMessages(campanha.userId, campanha.audienceCount, { referenceType: 'campanha', referenceId: campanha.id });
+    await debitCampanhaMessages(campanha.userId, pendentesAntes, { referenceType: 'campanha', referenceId: campanha.id });
   } catch (err) {
     if (err instanceof InsufficientCampanhaBalanceError) {
+      await prisma.campanha.update({ where: { id: campanha.id }, data: { status: 'draft' } }).catch(() => null);
       await reply(instanceName, selfPhone, 'Saldo insuficiente no momento do envio — tente "campanha continuar" depois de comprar mais mensagens.');
       return;
     }
     throw err;
   }
+  await prisma.campanha.update({ where: { id: campanha.id }, data: { messagesCost: pendentesAntes } });
 
-  await prisma.campanha.update({
-    where: { id: campanha.id },
-    data: {
-      status: 'running', startedAt: new Date(), messagesCost: campanha.audienceCount,
-      consentConfirmedAt: new Date(),
-    },
-  });
-  const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { id: campanha.whatsappNumberId } });
   const sendNumbers = await resolveSendNumbers(campanha, campanha.userId, whatsappNumber!);
   const pendentes = await prisma.campanhaContato.findMany({ where: { campanhaId: campanha.id, status: 'pending' }, select: { id: true } });
   const enqueued = await enqueueCampanhaSend(campanha.id, campanha.channel, sendNumbers, pendentes);

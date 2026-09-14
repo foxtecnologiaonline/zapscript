@@ -269,7 +269,7 @@ async function ownedLista(userId: string, id: string) {
 }
 
 /** Conexão válida pra disparar, nos dois canais (Meta exige token; Evolution exige instância). */
-function numberReadyToSend(whatsappNumber: { status: string; metaAccessTokenEnc: string | null; zapiInstanceId: string | null } | null, channel: string): boolean {
+export function numberReadyToSend(whatsappNumber: { status: string; metaAccessTokenEnc: string | null; zapiInstanceId: string | null } | null, channel: string): boolean {
   if (!whatsappNumber || whatsappNumber.status !== 'connected') return false;
   // 'meta' é o default histórico (linhas antigas da migration não têm channel setado
   // explicitamente) — só trata como evolution quando for exatamente isso.

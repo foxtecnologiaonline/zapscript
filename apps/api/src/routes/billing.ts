@@ -1920,6 +1920,21 @@ export default async function billingRoutes(app: FastifyInstance) {
       const payment = body?.payment;
       const decoded = decodeRef(payment?.externalReference);
       const userId  = decoded?.userId;
+
+      // Add-ons do Chatbot Campanhas (assinatura mensal ou pacote avulso) não
+      // são o plano core — nunca marcar a Subscription core como past_due nem
+      // mandar o e-mail de "regularize seu plano" por causa de uma cobrança
+      // de campanha atrasada (mesmo cuidado já tomado em SUBSCRIPTION_DELETED
+      // logo abaixo). Sem tratamento especial de cobrança aqui: a assinatura
+      // de campanha simplesmente não renova (sem PAYMENT_CONFIRMED, o
+      // CampanhaBalance.plan nunca vira 'monthly') e Asaas segue as próprias
+      // tentativas de retry; o cancelamento definitivo chega via
+      // SUBSCRIPTION_DELETED.
+      if (userId && (decoded?.planName === 'campanha_monthly' || decoded?.planName === 'pkg_campanha_msgs')) {
+        app.log.info(`Pagamento de add-on de campanha atrasado (sem impacto no plano core): userId=${userId} ref=${decoded.planName}`);
+        return reply.send({ received: true });
+      }
+
       if (userId) {
         await prisma.subscription.update({
           where: { userId },
