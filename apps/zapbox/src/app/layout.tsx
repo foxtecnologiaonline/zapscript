@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'ZapWidget',
+  title: 'ZapBox',
   description: 'Widget de chat via WhatsApp, embutível em qualquer site.',
 };
 

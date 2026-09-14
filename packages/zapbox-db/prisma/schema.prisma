@@ -1,9 +1,9 @@
-// ZapWidget — banco de dados INDEPENDENTE do ZapScript.me.
+// ZapBox — banco de dados INDEPENDENTE do ZapScript.me.
 // Produto separado: widget de chat embutível (plug-and-play) + inbox web,
 // que conecta ao WhatsApp do cliente via Evolution API. Não compartilha
 // tenancy, auth nem billing com o ZapScript.me — só reaproveita o motor
 // de mensageria (Evolution API), possivelmente a mesma instância Vultr,
-// via instâncias com prefixo `wl-` (ver src/lib/messaging/evolution-engine.ts).
+// via instâncias com prefixo `zb-` (ver src/lib/messaging/evolution-engine.ts).
 
 generator client {
   provider = "prisma-client-js"
@@ -12,10 +12,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("WIDGET_DATABASE_URL")
+  url      = env("ZAPBOX_DATABASE_URL")
 }
 
-/// Um "Client" = um site/empresa que assina o ZapWidget e embute o script.
+/// Um "Client" = um site/empresa que assina o ZapBox e embute o script.
 model Client {
   id                   String    @id @default(cuid())
   name                 String

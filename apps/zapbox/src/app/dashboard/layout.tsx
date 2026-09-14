@@ -17,7 +17,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen flex">
       <aside className="w-56 bg-white border-r flex flex-col">
-        <div className="p-4 font-bold text-lg border-b">ZapWidget</div>
+        <div className="p-4 font-bold text-lg border-b">ZapBox</div>
         <nav className="flex-1 p-2 flex flex-col gap-1">
           {NAV.map((item) => (
             <Link

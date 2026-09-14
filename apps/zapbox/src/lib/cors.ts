@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 // Endpoints /api/widget/* são chamados a partir do domínio do CLIENTE (site
-// de terceiro que embutiu o widget.js), não do próprio domínio do ZapWidget
+// de terceiro que embutiu o widget.js), não do próprio domínio do ZapBox
 // — por isso precisam de CORS aberto. `allowedOrigin` no Client permite
 // restringir por domínio quando o cliente quiser travar (opcional, MVP libera geral).
 export function corsHeaders(allowedOrigin?: string | null): Record<string, string> {

@@ -3,8 +3,8 @@ import jwt from 'jsonwebtoken';
 import { NextRequest } from 'next/server';
 
 function jwtSecret(): string {
-  const secret = process.env.WIDGET_JWT_SECRET;
-  if (!secret) throw new Error('WIDGET_JWT_SECRET não configurado');
+  const secret = process.env.ZAPBOX_JWT_SECRET;
+  if (!secret) throw new Error('ZAPBOX_JWT_SECRET não configurado');
   return secret;
 }
 

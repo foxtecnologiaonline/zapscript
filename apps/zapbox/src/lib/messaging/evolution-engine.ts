@@ -2,24 +2,24 @@
 // Pode apontar pro MESMO servidor Evolution que já roda no Vultr do
 // ZapScript.me (uma instância Evolution serve N instâncias de WhatsApp,
 // cada uma isolada por nome) ou para um Evolution separado — configurável
-// via env. Instâncias deste produto usam prefixo `wl-` para nunca colidir
+// via env. Instâncias deste produto usam prefixo `zb-` para nunca colidir
 // com as `zs-` do ZapScript.me caso dividam o mesmo servidor Evolution.
 //
 // Env vars:
-//   WIDGET_EVOLUTION_API_URL — base URL do servidor Evolution
-//   WIDGET_EVOLUTION_API_KEY — apikey global da Evolution
+//   ZAPBOX_EVOLUTION_API_URL — base URL do servidor Evolution
+//   ZAPBOX_EVOLUTION_API_KEY — apikey global da Evolution
 
 import type { MessagingEngine, QrResult, ConnectionStatus } from './engine';
 
 function baseUrl(): string {
-  const url = process.env.WIDGET_EVOLUTION_API_URL;
-  if (!url) throw new Error('WIDGET_EVOLUTION_API_URL não configurado');
+  const url = process.env.ZAPBOX_EVOLUTION_API_URL;
+  if (!url) throw new Error('ZAPBOX_EVOLUTION_API_URL não configurado');
   return url.replace(/\/$/, '');
 }
 
 function headers(): Record<string, string> {
-  const key = process.env.WIDGET_EVOLUTION_API_KEY;
-  if (!key) throw new Error('WIDGET_EVOLUTION_API_KEY não configurado');
+  const key = process.env.ZAPBOX_EVOLUTION_API_KEY;
+  if (!key) throw new Error('ZAPBOX_EVOLUTION_API_KEY não configurado');
   return { apikey: key, 'Content-Type': 'application/json' };
 }
 
@@ -123,7 +123,7 @@ export const evolutionEngine: MessagingEngine = {
   sendText,
 };
 
-/** Nome de instância Evolution para uma conexão deste produto — prefixo `wl-` (white-label). */
+/** Nome de instância Evolution para uma conexão deste produto — prefixo `zb-` (white-label). */
 export function widgetInstanceName(connectionId: string): string {
-  return `wl-${connectionId}`;
+  return `zb-${connectionId}`;
 }

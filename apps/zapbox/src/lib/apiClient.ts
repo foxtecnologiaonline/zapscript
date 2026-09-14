@@ -1,6 +1,6 @@
 'use client';
 
-const TOKEN_KEY = 'zw_token';
+const TOKEN_KEY = 'zb_token';
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;

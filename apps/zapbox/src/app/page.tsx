@@ -3,7 +3,7 @@ import Link from 'next/link';
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center gap-6 px-6 text-center">
-      <h1 className="text-3xl font-bold">ZapWidget</h1>
+      <h1 className="text-3xl font-bold">ZapBox</h1>
       <p className="max-w-md text-gray-600">
         Widget de chat via WhatsApp, plug-and-play, para embutir no site de qualquer cliente.
       </p>

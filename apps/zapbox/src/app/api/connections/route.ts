@@ -36,9 +36,9 @@ export async function POST(req: NextRequest) {
   const connectionId = crypto.randomUUID();
   const instanceName = widgetInstanceName(connectionId);
 
-  const publicUrl = process.env.WIDGET_PUBLIC_URL;
+  const publicUrl = process.env.ZAPBOX_PUBLIC_URL;
   if (!publicUrl) {
-    return NextResponse.json({ error: 'WIDGET_PUBLIC_URL não configurado no servidor' }, { status: 500 });
+    return NextResponse.json({ error: 'ZAPBOX_PUBLIC_URL não configurado no servidor' }, { status: 500 });
   }
   const webhookUrl = `${publicUrl.replace(/\/$/, '')}/api/webhook/evolution/${connectionId}`;
 

@@ -1,4 +1,4 @@
-# ZapWidget
+# ZapBox
 
 Produto **separado do ZapScript.me** (app/banco/auth/billing próprios), criado
 a partir do escopo "ZapScript WhatsApp White Label": um widget de chat
@@ -8,7 +8,7 @@ uma interface própria (Inbox).
 
 Reaproveita só o **motor de mensageria** (Evolution API) — pode inclusive
 apontar para o mesmo servidor Evolution que já roda no Vultr do ZapScript.me,
-usando o prefixo `wl-` nas instâncias para nunca colidir com as `zs-` do
+usando o prefixo `zb-` nas instâncias para nunca colidir com as `zs-` do
 produto principal. Tudo o mais (banco, auth, billing, tenancy) é independente.
 
 ## Por que existe
@@ -40,7 +40,7 @@ apps/widget/                  # Next.js 14 (App Router) — API + dashboard + wi
     settings                  # cor/saudação/posição do widget + snippet de embed
   src/app/dashboard/          # painel do dono do site (Next/React, autenticado)
 
-packages/widget-db/           # schema Prisma INDEPENDENTE (não é o mesmo banco do ZapScript.me)
+packages/zapbox-db/           # schema Prisma INDEPENDENTE (não é o mesmo banco do ZapScript.me)
 ```
 
 ### Como a ponte Widget ⇄ WhatsApp funciona
@@ -101,7 +101,7 @@ para motor não-oficial, ou exigência de compliance do cliente.
 - **Deploy/infra de produção** — este app roda localmente
   (`pnpm widget:dev`, porta 3010) mas não foi conectado a nenhum pipeline de
   deploy (Vultr/Vercel). Isso é uma decisão de infra (onde hospedar o
-  Postgres do `WIDGET_DATABASE_URL`, onde rodar o Next.js) que fica para
+  Postgres do `ZAPBOX_DATABASE_URL`, onde rodar o Next.js) que fica para
   quando o MVP for validado.
 - **Envio de mídia** (imagem/áudio) no widget — só texto por enquanto, tanto
   no webhook de entrada quanto no envio.
@@ -113,10 +113,10 @@ para motor não-oficial, ou exigência de compliance do cliente.
 
 ```bash
 cp apps/widget/.env.example apps/widget/.env
-# preencher WIDGET_DATABASE_URL, WIDGET_JWT_SECRET, WIDGET_EVOLUTION_API_URL, WIDGET_EVOLUTION_API_KEY, WIDGET_PUBLIC_URL
+# preencher ZAPBOX_DATABASE_URL, ZAPBOX_JWT_SECRET, ZAPBOX_EVOLUTION_API_URL, ZAPBOX_EVOLUTION_API_KEY, ZAPBOX_PUBLIC_URL
 
 pnpm install
-pnpm widget:db:migrate   # cria as tabelas no WIDGET_DATABASE_URL
+pnpm widget:db:migrate   # cria as tabelas no ZAPBOX_DATABASE_URL
 pnpm widget:dev          # http://localhost:3010
 ```
 
