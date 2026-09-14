@@ -95,19 +95,20 @@ gratuito):
 | Concorrente | Preço aproximado | Onde ganha do scrcpy (motivo de existir apesar de scrcpy ser grátis) |
 |---|---|---|
 | **scrcpy** | Grátis, open source | Performance e estabilidade — é o benchmark, não um concorrente comercial |
-| **Vysor** | Grátis (limitado) / ~US$ 39,99/ano Pro | UI amigável, sem linha de comando — mas taxa de conversão free→pago é notoriamente baixa nesse nicho |
-| **ApowerMirror** | ~US$ 39,95/ano | Cross-device (Android+iOS espelhamento passivo), gravação, foco em criadores de conteúdo |
-| **AirDroid** | Freemium / planos Business por dispositivo | Foco em **gestão de frota de dispositivos** (MDM leve) — é o único que monetiza sério, e é porque vende para empresa, não para usuário final |
+| **Vysor** | Grátis (limitado) / US$ 2,50 mês ou **US$ 10/ano** Pro (ou US$ 40 vitalício) | UI amigável, sem linha de comando — mas o preço baixo já mostra a taxa de conversão free→pago nesse nicho: dá pra cobrar pouquíssimo e ainda assim é a maior parte da receita |
+| **ApowerMirror** | US$ 39,95–119,90/ano, variando por promoção/tier (site oficial oscila bastante) | Cross-device (Android+iOS espelhamento passivo), gravação, foco em criadores de conteúdo |
+| **AirDroid Business** | US$ 12–33 por dispositivo/**ano** (≈ US$ 1–3/dispositivo/mês) | Foco em **gestão de frota de dispositivos** (MDM leve) — o preço unitário é baixo, mas escala com o nº de dispositivos da empresa; é o único dos quatro com modelo B2B recorrente sério |
 
-**Leitura de mercado:** o único segmento deste mercado com disposição real de
-pagar preço relevante é **gestão de frota de dispositivos para empresa**
-(AirDroid Business, Scalefusion, etc. — dezenas a centenas de dólares/mês por
-organização). O usuário final individual não paga por espelhamento porque o
-scrcpy resolve de graça e bem. Isso é uma correção importante ao tom do
-documento original: a "pressão de preço" do §7 não é o único risco — o risco
-maior é que **o segmento que paga não é o ICP natural do ZapScript** (donos de
-pequenos negócios que vendem por WhatsApp), e o segmento que é o ICP do
-ZapScript não paga por isto.
+**Leitura de mercado, corrigida:** nenhum concorrente cobra preço unitário alto
+— nem o líder B2B (AirDroid Business fica na casa de US$ 1–3/dispositivo/mês).
+O que sustenta receita nesse mercado é **volume** (nº de dispositivos por
+organização), não ticket alto por usuário. Isso é ainda mais desfavorável ao
+recorte "produto vendido a dono de pequeno negócio com 1 celular" do documento
+original do que a versão anterior desta revisão dizia: não é só que "o segmento
+que paga não é o ICP do ZapScript" — é que **nenhum segmento deste mercado
+paga ticket alto por usuário único**, então mesmo um produto bem executado tem
+teto de receita por conta baixo, a menos que venda para empresas com frota
+(o que também não é o ICP do ZapScript).
 
 ---
 
@@ -121,7 +122,7 @@ ZapScript não paga por isto.
   qualquer um desses nichos isolados (QA, criadores de conteúdo) não tem
   relação com o resto do portfólio do ZapScript — seria abrir um produto do
   zero para um público que a empresa não atende hoje.
-- **"Integração com a conta WhatsApp já conectada"** (§5.3 do original) — **este
+- **"Integração com a conta WhatsApp já conectada"** (terceiro ponto do §5 do original) — **este
   é o único diferencial que sobrevive à análise**, porque é o único que usa algo
   que o ZapScript já tem e o scrcpy/Vysor/AirDroid não têm: a conta WhatsApp do
   usuário já conectada via Evolution API (Copiloto, Atende). Ver proposta
@@ -168,7 +169,7 @@ um produto de plataforma diferente:
 | App Windows | **Electron** (não Tauri, apesar do binário menor) | Time já trabalha em TypeScript/Node (`apps/web`, `apps/worker`); Tauri exigiria Rust do zero. Reaproveita conhecimento, não reaproveita código. |
 | Captura/stream | `scrcpy-server` (Apache-2.0) via ADB, embarcado no instalador | Evita reimplementar protocolo de vídeo; ver §1 |
 | ADB | `adb.exe` (Android Platform Tools, Apache-2.0) embarcado | Padrão de mercado, sem alternativa madura |
-| Distribuição | Instalador assinado (certificado de code signing Windows — custo recorrente à parte, ~US$ 200-400/ano) + auto-update próprio | Sem isso, SmartScreen do Windows bloqueia o instalador na primeira execução — mata a conversão |
+| Distribuição | Instalador assinado (certificado de code signing Windows OV, ~US$ 130-390/ano dependendo da CA) + auto-update próprio | Sem isso, SmartScreen do Windows bloqueia o instalador na primeira execução — mata a conversão. Desde 2024 nem certificado EV (mais caro, ~US$ 300-580/ano) dá reputação instantânea — todo certificado novo passa pelo mesmo período de "reputação" do SmartScreen antes de parar de assustar o usuário, o que pesa nas primeiras semanas de qualquer lançamento |
 | Integração com ZapScript | Só se autentica com o `Entitlement` do número já conectado (reaproveita `lib/moduleGate.ts` via chamada de API do app Electron para `apps/api`) | É o que torna a proposta do §5 possível — sem isso é produto solto |
 
 Este é **o único ponto de contato real com o resto da stack**: o app Electron
