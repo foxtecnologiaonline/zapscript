@@ -14,9 +14,15 @@ jest.mock('../lib/prisma', () => ({
     plan:         { findUnique: jest.fn() },
     auditLog:     { create: jest.fn() },
     $transaction: jest.fn(async (fn: any) => fn({
-      user:         { create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', createdAt: new Date() }) },
-      subscription: { create: jest.fn() },
-      minuteBalance:{ create: jest.fn() },
+      user:            { create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', createdAt: new Date() }) },
+      subscription:    { create: jest.fn() },
+      minuteBalance:   { create: jest.fn(), update: jest.fn() },
+      testerInvite:    { update: jest.fn() },
+      affiliateReferral: { create: jest.fn() },
+      // POST /auth/register cria o número WhatsApp do próprio usuário dentro da
+      // mesma transação (ver routes/auth.ts) — sem esse mock, `numberId` nunca é
+      // setado e o teste de cadastro bem-sucedido cai no catch de rollback.
+      whatsappNumber:  { create: jest.fn().mockResolvedValue({ id: 'num-1' }) },
     })),
   },
 }));
@@ -28,6 +34,10 @@ const mockSupabaseClient = {
       createUser:     jest.fn(),
       generateLink:   jest.fn().mockResolvedValue({ data: {} }),
       updateUserById: jest.fn().mockResolvedValue({ error: null }),
+      // Rollback de conta órfã se a transação Prisma falhar (ver routes/auth.ts) —
+      // sem mock, uma falha de transação vira TypeError não tratado em vez do 500
+      // esperado.
+      deleteUser:     jest.fn().mockResolvedValue({ error: null }),
     },
     signInWithPassword: jest.fn(),
     getUser:           jest.fn(),
@@ -40,6 +50,19 @@ jest.mock('@supabase/supabase-js', () => ({
 
 jest.mock('nodemailer', () => ({
   createTransport: () => ({ sendMail: jest.fn().mockResolvedValue({}) }),
+}));
+
+// Onboarding pós-cadastro (provisionamento de número + pairing code) faz
+// chamadas HTTP reais à Evolution API — mockar pra manter o teste hermético
+// e determinístico (sem depender de rede).
+jest.mock('../services/number-provisioning', () => ({
+  provisionInstance:  jest.fn().mockResolvedValue({ ok: true }),
+  requestPairingCode: jest.fn().mockResolvedValue({ ok: true, code: '123-456' }),
+  requestPairingCodeWithRetry: jest.fn().mockResolvedValue({ ok: true, code: '123-456' }),
+  buildWebhookUrl:    jest.fn().mockReturnValue('https://api.zapscript.me/webhook'),
+}));
+jest.mock('../services/onboarding-whatsapp', () => ({
+  startFromSiteSignup: jest.fn().mockResolvedValue(undefined),
 }));
 
 // ── Setup ──────────────────────────────────────────────────────────
@@ -78,11 +101,13 @@ describe('POST /auth/register', () => {
   });
 
   const CONSENTS = { cbTos: true, cbContrato: true, cbLgpd: true };
+  // registerSchema exige phone (DDD + número, 10-11 dígitos) — ver lib/validation.ts.
+  const VALID_PHONE = '11987654321';
 
   it('retorna 400 se consentimentos LGPD não forem aceitos', async () => {
     const res = await app.inject({
       method: 'POST', url: '/auth/register',
-      payload: { email: 'x@x.com', password: '12345678' },
+      payload: { email: 'x@x.com', password: '12345678', phone: VALID_PHONE },
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/aceite/i);
@@ -92,7 +117,7 @@ describe('POST /auth/register', () => {
     (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'existing' });
     const res = await app.inject({
       method: 'POST', url: '/auth/register',
-      payload: { email: 'dup@dup.com', password: '12345678', ...CONSENTS },
+      payload: { email: 'dup@dup.com', password: '12345678', phone: VALID_PHONE, ...CONSENTS },
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/cadastrado/i);
@@ -108,7 +133,7 @@ describe('POST /auth/register', () => {
 
     const res = await app.inject({
       method: 'POST', url: '/auth/register',
-      payload: { email: 'new@new.com', password: 'strongpass', ...CONSENTS },
+      payload: { email: 'new@new.com', password: 'strongpass', phone: VALID_PHONE, ...CONSENTS },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().emailVerified).toBe(false);

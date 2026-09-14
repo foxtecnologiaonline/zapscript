@@ -1501,4 +1501,10 @@ process.on('SIGTERM', async () => {
   }
 });
 
-start();
+// Guard contra circular import: várias rotas/serviços importam `{ io }` deste
+// arquivo (ver support-send.ts, evolution-webhook.ts, etc.) — sem o guard,
+// carregar qualquer um deles como dependência transitiva (ex.: sob Jest, que
+// não executa este arquivo como entrypoint) re-executava start() inteiro.
+if (require.main === module) {
+  start();
+}
