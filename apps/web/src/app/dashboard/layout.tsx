@@ -15,6 +15,7 @@ const NAV_BASE = [
   { href: '/dashboard',               icon: '🏠', label: 'Dashboard' },
   { href: '/dashboard/transcricoes',  icon: '📝', label: 'Conversões' },
   { href: '/dashboard/numeros',       icon: '📱', label: 'Números' },
+  { href: '/dashboard/whatsapp',      icon: '💬', label: 'WhatsApp Web' },
   { href: '/dashboard/campanhas',     icon: '📣', label: 'Campanhas' },
   { href: '/dashboard/plano',         icon: '💳', label: 'Plano' },
   { href: '/dashboard/afiliado',      icon: '💰', label: 'Carteira' },
