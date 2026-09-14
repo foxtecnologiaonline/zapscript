@@ -12,6 +12,8 @@
     "db:generate": "cd packages/database && npx prisma generate",
     "monitor:now": "cd apps/monitor && ts-node src/index.ts --now",
     "monitor:alerts": "cd apps/monitor && ts-node src/index.ts --alerts",
+    "desktop:dev": "pnpm --filter @zapscript/desktop dev",
+    "desktop:build:win": "pnpm --filter @zapscript/desktop dist:win",
     "setup": "bash setup.sh",
     "secrets": "node infra/gen-secrets.js",
     "webhook:test": "echo \"Asaas: configure webhook em app.asaas.com > Configuracoes > Notificacoes\""

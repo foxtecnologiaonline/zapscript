@@ -53,6 +53,34 @@ function chatDisplayName(chat: ChatSummary): string {
   return chat.name?.trim() || `+${chat.phone}`;
 }
 
+function numberDisplayName(number: WNumberLite | undefined): string {
+  if (!number) return 'WhatsApp';
+  return number.displayName?.trim() || `+${number.phoneNumber}`;
+}
+
+// Dispara uma notificação nativa (Notification API do navegador — no app
+// desktop Electron, o preload intercepta `window.Notification` e mostra um
+// toast nativo do Windows; no navegador comum, é a notificação do próprio
+// SO/navegador). Funciona para qualquer número conectado, não só o
+// selecionado no momento — é assim que o usuário sabe de mensagem em conta
+// que não está com a aba aberta.
+function notifyIncomingMessage(numberLabel: string, senderLabel: string, text: string, onClick: () => void) {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  try {
+    const notif = new Notification(`${senderLabel} · ${numberLabel}`, {
+      body: text || 'Nova mensagem',
+      tag: `${numberLabel}:${senderLabel}`,
+    });
+    notif.onclick = () => {
+      window.focus();
+      onClick();
+    };
+  } catch {
+    // Alguns ambientes (ex.: sem permissão de SO) lançam ao instanciar — ignora silenciosamente.
+  }
+}
+
 // Insere/atualiza um chat na lista a partir de uma mensagem (otimista ou vinda
 // do Socket.IO), sempre reordenando o chat tocado pro topo — mesma UX do
 // WhatsApp de verdade (conversa mais recente sobe).
@@ -141,6 +169,16 @@ export default function WhatsAppWebPage() {
     setSelectedNumberId(connectedNumbers[0].id);
   }, [connectedNumbers, selectedNumberId]);
 
+  // Pede permissão de notificação nativa uma vez (usada tanto no navegador
+  // quanto no app desktop, onde o preload troca a implementação pela API
+  // nativa do Windows — ver apps/desktop/src/preload.ts).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => null);
+    }
+  }, []);
+
   // ── Conversas do número selecionado ──────────────────────────────────────
   const loadChats = useCallback(async (numberId: string) => {
     const requestId = ++chatsRequestRef.current;
@@ -199,11 +237,33 @@ export default function WhatsAppWebPage() {
   // ── Tempo real ────────────────────────────────────────────────────────────
   const { connected: socketOk } = useSocket(userId, {
     'wa:message': (d: { numberId: string; jid: string; message: WaMessage }) => {
-      if (d.numberId !== selectedNumberId) return;
-      const isOpenChat = selectedChat?.jid === d.jid;
-      setChats(cs => applyIncomingMessage(cs, d.jid, d.message, isOpenChat));
-      if (isOpenChat) {
-        setMessages(ms => mergeIncomingMessage(ms, d.message));
+      const isSelectedNumber = d.numberId === selectedNumberId;
+      const isOpenChat = isSelectedNumber && selectedChat?.jid === d.jid;
+
+      if (isSelectedNumber) {
+        setChats(cs => applyIncomingMessage(cs, d.jid, d.message, isOpenChat));
+        if (isOpenChat) {
+          setMessages(ms => mergeIncomingMessage(ms, d.message));
+        }
+      }
+
+      // Notifica sempre que a mensagem não estiver visível agora — de outro
+      // número (aba não focada) ou da janela sem foco — não só quando é o
+      // número selecionado no momento.
+      if (!d.message.fromMe && (!isSelectedNumber || document.hidden || !isOpenChat)) {
+        const phone = d.jid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+        const senderLabel = d.message.senderName?.trim() || `+${phone}`;
+        const number = numbers.find(n => n.id === d.numberId);
+        notifyIncomingMessage(numberDisplayName(number), senderLabel, d.message.text, () => {
+          setSelectedNumberId(d.numberId);
+          setSelectedChat({
+            jid: d.jid, phone,
+            name: d.message.senderName ?? null,
+            unreadCount: 0,
+            lastMessageAt: d.message.timestamp * 1000,
+          });
+          setMobileView('thread');
+        });
       }
     },
   });
@@ -282,20 +342,25 @@ export default function WhatsAppWebPage() {
         </div>
       ) : (
         <>
-          {/* Seletor de número — só aparece com mais de 1 conectado */}
+          {/* Abas de número — só aparece com mais de 1 conectado. Cada conta
+              conectada vira sua própria aba (em vez de um dropdown), pra bater
+              com a experiência de "múltiplas contas, cada uma em aba própria"
+              tanto aqui na web quanto no app desktop. */}
           {connectedNumbers.length > 1 && (
-            <div className="mb-3">
-              <select
-                value={selectedNumberId ?? ''}
-                onChange={e => setSelectedNumberId(e.target.value)}
-                className="bg-brand-elevated border border-brand-border rounded-xl text-sm text-brand-text px-3 py-2 outline-none focus:border-brand-primary transition-colors"
-              >
-                {connectedNumbers.map(n => (
-                  <option key={n.id} value={n.id}>
-                    {n.displayName || 'Dispositivo'} · +{n.phoneNumber}
-                  </option>
-                ))}
-              </select>
+            <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
+              {connectedNumbers.map(n => (
+                <button
+                  key={n.id}
+                  onClick={() => setSelectedNumberId(n.id)}
+                  className={`flex-shrink-0 text-sm px-3.5 py-2 rounded-xl border transition-colors whitespace-nowrap ${
+                    selectedNumberId === n.id
+                      ? 'bg-brand-primary/10 border-brand-primary text-brand-primary font-semibold'
+                      : 'bg-brand-elevated border-brand-border text-brand-text-secondary hover:text-brand-text'
+                  }`}
+                >
+                  {n.displayName || 'Dispositivo'} · +{n.phoneNumber}
+                </button>
+              ))}
             </div>
           )}
 
