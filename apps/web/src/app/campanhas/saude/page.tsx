@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     url: 'https://www.zapscript.me/campanhas/saude',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Campanhas WhatsApp para Saúde e Farmácias',
+    description: 'Notificações de receita, agendamentos e acompanhamento via WhatsApp.',
+  },
 };
 
 const softwareSchema = {

@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     url: 'https://www.zapscript.me/campanhas/varejo',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Campanhas WhatsApp para Varejo e E-commerce',
+    description: 'Dispare promoções, cupons e notificações direto no WhatsApp com segurança oficial.',
+  },
 };
 
 const softwareSchema = {

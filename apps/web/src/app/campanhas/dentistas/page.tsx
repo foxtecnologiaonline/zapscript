@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     url: 'https://www.zapscript.me/campanhas/dentistas',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Campanhas WhatsApp para Consultórios Dentários',
+    description: 'Confirmação de consultas, lembrança automática e redução de faltas no WhatsApp.',
+  },
 };
 
 const softwareSchema = {

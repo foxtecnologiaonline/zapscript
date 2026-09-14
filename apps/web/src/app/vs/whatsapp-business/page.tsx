@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     url: 'https://www.zapscript.me/vs/whatsapp-business',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ZapScript vs WhatsApp Business Platform',
+    description: 'Qual a diferença? Quando usar a API direto? Quando usar ZapScript?',
+  },
 };
 
 const faqSchema = {

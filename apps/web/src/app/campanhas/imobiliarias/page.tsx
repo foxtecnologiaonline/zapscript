@@ -14,6 +14,11 @@ export const metadata: Metadata = {
     url: 'https://www.zapscript.me/campanhas/imobiliarias',
     type: 'website',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Campanhas WhatsApp para Imobiliárias',
+    description: 'Dispare campanhas na lista de transmissão do WhatsApp com segurança oficial. Ofertas, agendamentos, follow-up.',
+  },
 };
 
 const softwareSchema = {

@@ -1,6 +1,23 @@
-export const metadata = {
-  title: 'ZapScript Campanhas — Playbook de Vendas',
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title:       'Playbook de Vendas — ZapScript Campanhas',
   description: 'Pitch destruidor + 5 variações de guerrilha + roteiro B2B. Técnicas de venda que funcionam. Copie e comece hoje.',
+  keywords:    'playbook de vendas whatsapp, script de vendas whatsapp, pitch de vendas, guerrilha de vendas, vender campanhas whatsapp',
+  alternates:  { canonical: 'https://www.zapscript.me/campanhas-vendas' },
+  openGraph: {
+    title:       'Playbook de Vendas — ZapScript Campanhas',
+    description: 'Pitch destruidor + 5 variações de guerrilha + roteiro B2B. Técnicas de venda que funcionam. Copie e comece hoje.',
+    url:         'https://www.zapscript.me/campanhas-vendas',
+    siteName:    'ZapScript',
+    locale:      'pt_BR',
+    type:        'website',
+  },
+  twitter: {
+    card:        'summary_large_image',
+    title:       'Playbook de Vendas — ZapScript Campanhas',
+    description: 'Pitch destruidor + 5 variações de guerrilha + roteiro B2B. Técnicas de venda que funcionam. Copie e comece hoje.',
+  },
 };
 
 export default function CampanhasVendas() {
