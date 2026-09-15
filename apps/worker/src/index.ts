@@ -27,6 +27,7 @@ import './voice-command'; // registra o worker da fila 'voice-commands' (Comando
 import './crm'; // registra o cron de notificação de lembretes vencidos (ZapScript CRM)
 import './tarefas'; // registra o cron de tarefas atrasadas (ZapScript Tarefas)
 import './copiloto'; // registra o worker da fila 'copiloto' (ZapScript Copiloto — briefings ao dono)
+import { enqueueCopilotoIngest, hasCopiloto } from './copiloto'; // áudio de cliente transcrito → Copiloto
 import './campanhas-scheduler'; // registra o agendador de disparo automático (ZapScript Campanhas)
 import './mktfast-scheduler'; // registra o agendador de disparo automático (MKT-Fast)
 import './modules/campanhas-chat-notifier'; // updates de progresso a cada 30s no chat (Chatbot Campanhas)
@@ -1471,6 +1472,31 @@ async function processEvolutionJob(job: Job) {
         await markChatAsUnread(instName, senderPhone).catch(() => null);
         return { skipped: true, reason: 'cobranca_voice_command' };
       }
+    }
+
+    // Copiloto: só áudio de CLIENTE de verdade (não self-note, não demo
+    // pública) — reaproveita o texto já transcrito acima, sem repetir Whisper.
+    // Sem isto, uma conversa cuja última mensagem não lida é um áudio nunca
+    // gera briefing (o webhook em tempo real e o backfill só extraem texto
+    // puro/placeholder de mídia — ver mediaPlaceholderText em
+    // apps/api/src/services/evolution.ts). Fire-and-forget: nunca pode
+    // atrasar nem quebrar a resposta de transcrição ao cliente, que segue
+    // abaixo independente disto.
+    if (!isSelfNote && !isPublicDemo) {
+      hasCopiloto(userId)
+        .then((enabled) => {
+          if (!enabled) return;
+          return enqueueCopilotoIngest({
+            userId,
+            numberId:     whatsappNumber.id,
+            contactPhone: senderPhone,
+            contactName:  senderName,
+            direction:    'in',
+            content:      originalText,
+            messageId:    job.data.messageId,
+          });
+        })
+        .catch((err: any) => log(job, `⚠️  Copiloto: falha ao enfileirar transcrição: ${err.message}`));
     }
 
     // PASSO 5: Resumo com Claude (densidade por duração + tradução se não PT-BR)

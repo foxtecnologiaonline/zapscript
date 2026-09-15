@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected, notifyCobrancaPossiblePayment } from '../services/whatsapp-notify';
 import { handleOfficialNumberText, closeLeadOnConnected } from '../services/onboarding-whatsapp';
 import { storeQr } from '../lib/qrStore';
-import { sendText, setGroupsIgnore } from '../services/evolution';
+import { sendText, setGroupsIgnore, mediaPlaceholderText } from '../services/evolution';
 import { getUserModules } from '../lib/moduleGate';
 import { isAtendeOwnerCommand, handleAtendeOwnerCommand } from '../services/atende-commands';
 import {
@@ -671,6 +671,40 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
                 data: { lastMessageAt: new Date() },
               });
               log.info(`[Evolution] 📝 Resposta humana capturada (Atende, conversa ${conversation.id})`);
+            }
+          }
+        } else {
+          // ── Copiloto: mídia sem áudio nem texto (foto, figurinha, documento,
+          // localização, contato) ────────────────────────────────────────────
+          // Sem isto, essas mensagens são invisíveis pro Copiloto — nem a
+          // triagem chega a rodar, então uma conversa cuja última mensagem é
+          // uma foto fica pra sempre sem briefing. Placeholder mínimo (ver
+          // mediaPlaceholderText), só pro Copiloto — Atende/Campanhas/WhatsApp
+          // Web/Cobrança continuam sem tratar mídia aqui, fora do escopo desta
+          // correção. Áudio fica de fora (pipeline própria de transcrição,
+          // ver processEvolutionJob em apps/worker/src/index.ts).
+          const placeholder = mediaPlaceholderText(messageType, msg?.message);
+          if (placeholder) {
+            const number = await findNumber(false);
+            if (number && !number.isPublic) {
+              const selfRef    = ownerDigits || String(number.phoneNumber ?? '').replace(/\D/g, '');
+              const isSelfChat = !!selfRef && selfRef !== 'pending' && samePhone(senderPhone, selfRef);
+              if (!isSelfChat) {
+                getUserModules(number.userId)
+                  .then((mods) => {
+                    if (!mods.includes('copiloto')) return;
+                    return enqueueCopilotoMessage({
+                      userId:       number.userId,
+                      numberId:     number.id,
+                      contactPhone: senderPhone,
+                      contactName:  fromMe ? undefined : senderName,
+                      direction:    fromMe ? 'out' : 'in',
+                      content:      placeholder,
+                      messageId,
+                    });
+                  })
+                  .catch((err: any) => log.error({ err: err?.message }, '[Copiloto] Falha ao enfileirar mídia'));
+              }
             }
           }
         }

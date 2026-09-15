@@ -35,6 +35,50 @@ export const DEBOUNCE_MS = parseInt(process.env.COPILOTO_DEBOUNCE_MS || '180000'
 // API produz normalmente, só que aqui é o próprio worker que se re-agenda.
 const copilotoQueue = new Queue('copiloto', { connection: redis as any });
 
+/**
+ * Mesmo par de jobs de enqueueCopilotoMessage (apps/api/src/services/
+ * copiloto-commands.ts) — jobId/bucket idênticos, pra dedupe e debounce
+ * funcionarem igual não importa quem enfileirou. Existe uma cópia aqui (em
+ * vez de importar da API) porque quem chama isto é processEvolutionJob
+ * (apps/worker/src/index.ts) depois de transcrever um áudio — o texto só
+ * fica pronto DEPOIS que o job de transcrição roda aqui no worker, então não
+ * dá pra passar pela rota normal do webhook (síncrona, sem IA).
+ */
+export async function enqueueCopilotoIngest(params: {
+  userId: string;
+  numberId: string;
+  contactPhone: string;
+  contactName?: string | null;
+  direction: 'in' | 'out';
+  content: string;
+  messageId: string;
+}): Promise<void> {
+  const debounceMs = parseInt(process.env.COPILOTO_DEBOUNCE_MS || '180000');
+
+  await copilotoQueue.add(
+    'ingest',
+    {
+      userId: params.userId,
+      numberId: params.numberId,
+      contactPhone: params.contactPhone,
+      contactName: params.contactName ?? null,
+      direction: params.direction,
+      content: params.content,
+      externalId: params.messageId,
+    },
+    { jobId: `copiloto-in-${params.messageId}` },
+  );
+
+  if (params.direction !== 'in') return;
+
+  const bucket = Math.floor(Date.now() / debounceMs);
+  await copilotoQueue.add(
+    'brief',
+    { userId: params.userId, numberId: params.numberId, contactPhone: params.contactPhone },
+    { jobId: `copiloto-brief-${params.numberId}-${params.contactPhone}-${bucket}`, delay: debounceMs },
+  );
+}
+
 /** Teto de mensagens levadas ao prompt — conversa longa não pode virar prompt gigante. */
 const HISTORY_LIMIT = 12;
 const NEW_MESSAGES_LIMIT = 20;
@@ -129,7 +173,7 @@ interface BriefJobData {
  * Fastify/Redis cache), então consulta o Entitlement direto — mesma fonte da
  * verdade, sem cache. Volume baixo: roda uma vez por briefing, não por mensagem.
  */
-async function hasCopiloto(userId: string): Promise<boolean> {
+export async function hasCopiloto(userId: string): Promise<boolean> {
   const ent = await prisma.entitlement.findFirst({
     where: { userId, productKey: 'copiloto', status: { in: ['active', 'trialing'] } },
     select: { id: true },
