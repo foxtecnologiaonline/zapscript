@@ -1305,6 +1305,14 @@ model CopilotoBriefing {
   // dono confirmou que não devia ter sido gerado. Alimenta a decisão de
   // apertar a triagem por tipo (fase de observação).
   dismissReason  String?
+  // Letra (A/B/C...) pra desambiguar quando há MAIS DE UM briefing pendente
+  // ao mesmo tempo pro mesmo número (contatos diferentes) — sem isso, "1/2/3"
+  // sempre agia no mais recente, silenciosamente, mesmo se o dono quisesse
+  // responder a um mais antigo ainda pendente (ver ESCOPO_COPILOTO.md).
+  // null enquanto for o único pendente (comportamento de sempre, sem letra);
+  // atribuída (e nunca realocada depois) no momento em que um SEGUNDO
+  // briefing fica pendente pro mesmo número — ver processBrief no worker.
+  pendingLabel   String?
   status         String               @default("pending") // 'pending' | 'awaiting_edit' | 'acted' | 'dismissed' | 'expired'
   awaitingRank   Int? // opção escolhida aguardando o texto editado do dono
   awaitingSince  DateTime? // quando o dono pediu para editar — a janela é curta de propósito (ver copiloto-commands.ts)

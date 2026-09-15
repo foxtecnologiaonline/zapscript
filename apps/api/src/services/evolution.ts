@@ -344,14 +344,46 @@ export interface EvolutionChatMessage {
   senderName?: string;
 }
 
+// Mídia sem áudio nem texto (foto, figurinha, documento, localização, contato)
+// que, sem isto, vira ausência total pro Copiloto — nem a triagem chega a ver
+// que a mensagem existiu. Placeholder mínimo (com legenda, quando houver) é
+// melhor que silêncio: não tenta "entender" a mídia, só avisa que ela existe.
+// Áudio fica de fora daqui de propósito — tem pipeline própria de transcrição
+// (ver processEvolutionJob em apps/worker/src/index.ts); aqui geraria um
+// placeholder cego ("[áudio]") onde o conteúdo real já está disponível.
+const MEDIA_PLACEHOLDER_LABEL: Record<string, string> = {
+  imageMessage: '[foto]',
+  videoMessage: '[vídeo]',
+  stickerMessage: '[figurinha]',
+  documentMessage: '[documento]',
+  documentWithCaptionMessage: '[documento]',
+  locationMessage: '[localização]',
+  liveLocationMessage: '[localização]',
+  contactMessage: '[contato]',
+  contactsArrayMessage: '[contato]',
+};
+
+export function mediaPlaceholderText(messageType: string | undefined, message: any): string | null {
+  const label = messageType ? MEDIA_PLACEHOLDER_LABEL[messageType] : undefined;
+  if (!label) return null;
+  const caption =
+    message?.imageMessage?.caption ??
+    message?.videoMessage?.caption ??
+    message?.documentMessage?.caption ??
+    message?.documentWithCaptionMessage?.message?.documentMessage?.caption;
+  return caption ? `${label} ${caption}` : label;
+}
+
 /**
  * Últimas mensagens de um chat (individual ou grupo), mais antiga primeiro.
- * Só extrai texto puro (conversation/extendedTextMessage) — mesmo filtro que
- * o webhook de mensagens em tempo real já aplica pro Copiloto
- * (evolution-webhook.ts); mídia/áudio não vira contexto do Copiloto aqui
- * também. Em mensagens de grupo, captura remetente via `key.participant`
- * (Baileys: JID de quem mandou dentro do grupo — `key.remoteJid` é sempre o
- * JID do grupo em si, não ajuda a saber quem falou).
+ * Extrai texto puro (conversation/extendedTextMessage) e, quando não há texto,
+ * um placeholder mínimo pra mídia reconhecida (ver mediaPlaceholderText) — o
+ * mesmo par de filtros que o webhook de mensagens em tempo real aplica pro
+ * Copiloto (evolution-webhook.ts). Áudio não entra aqui (pipeline própria de
+ * transcrição, não reprocessada no backfill). Em mensagens de grupo, captura
+ * remetente via `key.participant` (Baileys: JID de quem mandou dentro do
+ * grupo — `key.remoteJid` é sempre o JID do grupo em si, não ajuda a saber
+ * quem falou).
  *
  * `beforeTimestamp` pagina pra trás — passa o `timestamp` da mensagem mais
  * antiga já carregada na tela pra buscar o lote anterior a ela ("carregar
@@ -394,8 +426,8 @@ export async function fetchChatMessages(
     const text: string | undefined =
       messageType === 'conversation'      ? m?.message?.conversation :
       messageType === 'extendedTextMessage' ? m?.message?.extendedTextMessage?.text :
-      undefined;
-    if (!text) continue; // só texto — mesmo filtro do webhook em tempo real
+      mediaPlaceholderText(messageType, m?.message) ?? undefined;
+    if (!text) continue; // texto ou placeholder de mídia reconhecida — ver mediaPlaceholderText
     const fromMe = !!m?.key?.fromMe;
     out.push({
       id:        m?.key?.id ?? `evo_backfill_${m?.messageTimestamp ?? Date.now()}`,

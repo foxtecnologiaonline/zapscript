@@ -1226,6 +1226,8 @@ async function runAutoMigrations() {
     `CREATE INDEX IF NOT EXISTS "CopilotoBriefing_conversationId_tipo_createdAt_idx" ON "CopilotoBriefing"("conversationId", "tipo", "createdAt")`,
     // Confiança da triagem (migração 20260914_copiloto_triage_confidence).
     `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "triageConfidence" DOUBLE PRECISION`,
+    // Letra pra desambiguar pendências simultâneas (migração 20260914_copiloto_pending_label).
+    `ALTER TABLE "CopilotoBriefing" ADD COLUMN IF NOT EXISTS "pendingLabel" TEXT`,
     // MKT-Fast (migração 20260913_mktfast_missions) — mesmo princípio de auto-cura
     // de toda entrada acima, ver MKTFAST_ESCOPO.md.
     `CREATE TABLE IF NOT EXISTS "Mission" (

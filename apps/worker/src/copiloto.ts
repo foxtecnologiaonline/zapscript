@@ -35,12 +35,106 @@ export const DEBOUNCE_MS = parseInt(process.env.COPILOTO_DEBOUNCE_MS || '180000'
 // API produz normalmente, só que aqui é o próprio worker que se re-agenda.
 const copilotoQueue = new Queue('copiloto', { connection: redis as any });
 
+/**
+ * Mesmo par de jobs de enqueueCopilotoMessage (apps/api/src/services/
+ * copiloto-commands.ts) — jobId/bucket idênticos, pra dedupe e debounce
+ * funcionarem igual não importa quem enfileirou. Existe uma cópia aqui (em
+ * vez de importar da API) porque quem chama isto é processEvolutionJob
+ * (apps/worker/src/index.ts) depois de transcrever um áudio — o texto só
+ * fica pronto DEPOIS que o job de transcrição roda aqui no worker, então não
+ * dá pra passar pela rota normal do webhook (síncrona, sem IA).
+ */
+export async function enqueueCopilotoIngest(params: {
+  userId: string;
+  numberId: string;
+  contactPhone: string;
+  contactName?: string | null;
+  direction: 'in' | 'out';
+  content: string;
+  messageId: string;
+}): Promise<void> {
+  const debounceMs = parseInt(process.env.COPILOTO_DEBOUNCE_MS || '180000');
+
+  await copilotoQueue.add(
+    'ingest',
+    {
+      userId: params.userId,
+      numberId: params.numberId,
+      contactPhone: params.contactPhone,
+      contactName: params.contactName ?? null,
+      direction: params.direction,
+      content: params.content,
+      externalId: params.messageId,
+    },
+    { jobId: `copiloto-in-${params.messageId}` },
+  );
+
+  if (params.direction !== 'in') return;
+
+  const bucket = Math.floor(Date.now() / debounceMs);
+  await copilotoQueue.add(
+    'brief',
+    { userId: params.userId, numberId: params.numberId, contactPhone: params.contactPhone },
+    { jobId: `copiloto-brief-${params.numberId}-${params.contactPhone}-${bucket}`, delay: debounceMs },
+  );
+}
+
 /** Teto de mensagens levadas ao prompt — conversa longa não pode virar prompt gigante. */
 const HISTORY_LIMIT = 12;
 const NEW_MESSAGES_LIMIT = 20;
 
 /** Cooldown de briefing "pessoal" por contato — ver uso em processBrief(). */
 const PESSOAL_COOLDOWN_MS = parseInt(process.env.COPILOTO_PESSOAL_COOLDOWN_MS || String(24 * 60 * 60 * 1000), 10);
+
+/** Letras usadas pra desambiguar pendências simultâneas — ver assignPendingLabel(). */
+const PENDING_LABEL_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+/**
+ * Calcula a letra do NOVO briefing (null se for o único pendente pro número) e
+ * faz o backfill de qualquer pendência existente que ainda não tinha letra —
+ * uma letra, uma vez atribuída, NUNCA é realocada (a mensagem já mandada pro
+ * dono não pode "mudar de significado" depois). Ver pendingLabel no schema e
+ * ESCOPO_COPILOTO.md — resolve "1/2/3 sempre agia no briefing mais recente,
+ * mesmo com outro mais antigo ainda pendente".
+ */
+export async function assignPendingLabel(numberId: string): Promise<{
+  label: string | null;
+  otherPending: Array<{ label: string; contactLabel: string }>;
+}> {
+  const existing = await prisma.copilotoBriefing.findMany({
+    where: { numberId, status: { in: ['pending', 'awaiting_edit'] } },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true, pendingLabel: true,
+      conversation: { select: { contactName: true, contactPhone: true } },
+    },
+  });
+  if (existing.length === 0) return { label: null, otherPending: [] };
+
+  const used = new Set(existing.map((e) => e.pendingLabel).filter((l): l is string => !!l));
+  const nextLetter = (): string => {
+    for (const l of PENDING_LABEL_LETTERS) {
+      if (!used.has(l)) { used.add(l); return l; }
+    }
+    // 26+ pendências simultâneas pro mesmo número — não deveria acontecer na
+    // prática; fallback só pra nunca travar o fluxo por causa disso.
+    const fallback = `Z${used.size}`;
+    used.add(fallback);
+    return fallback;
+  };
+
+  const otherPending: Array<{ label: string; contactLabel: string }> = [];
+  for (const e of existing) {
+    let label = e.pendingLabel;
+    if (!label) {
+      label = nextLetter();
+      await prisma.copilotoBriefing.update({ where: { id: e.id }, data: { pendingLabel: label } }).catch(() => null);
+    }
+    otherPending.push({ label, contactLabel: e.conversation.contactName || e.conversation.contactPhone });
+  }
+
+  return { label: nextLetter(), otherPending };
+}
 
 /**
  * Lê o piso de confiança configurado pro tipo, a partir do JSON solto que o
@@ -79,7 +173,7 @@ interface BriefJobData {
  * Fastify/Redis cache), então consulta o Entitlement direto — mesma fonte da
  * verdade, sem cache. Volume baixo: roda uma vez por briefing, não por mensagem.
  */
-async function hasCopiloto(userId: string): Promise<boolean> {
+export async function hasCopiloto(userId: string): Promise<boolean> {
   const ent = await prisma.entitlement.findFirst({
     where: { userId, productKey: 'copiloto', status: { in: ['active', 'trialing'] } },
     select: { id: true },
@@ -384,6 +478,11 @@ async function processBrief(job: Job<BriefJobData>) {
   // auditoria (ver ESCOPO_COPILOTO.md — cruzamento sensível×crise).
   const sensitive = briefing.sensitive || hasVulnerabilitySignal(lastText);
 
+  // Desambiguação de pendências simultâneas (v2.1) — se já existe outra
+  // conversa deste número esperando resposta, este briefing (e qualquer outro
+  // ainda sem letra) ganha uma. null = único pendente, comportamento de sempre.
+  const { label: pendingLabel, otherPending } = await assignPendingLabel(numberId);
+
   const created = await prisma.copilotoBriefing.create({
     data: {
       userId,
@@ -398,6 +497,7 @@ async function processBrief(job: Job<BriefJobData>) {
       remetente: triage.remetente,
       triageConfidence: triage.confidence,
       sensitive,
+      pendingLabel,
       deliveredVia: 'whatsapp',
     },
   });
@@ -446,6 +546,8 @@ async function processBrief(job: Job<BriefJobData>) {
     offered,
     sensitive,
     footer: false,
+    pendingLabel,
+    otherPending,
   });
 
   await prisma.copilotoBriefing.update({
@@ -501,21 +603,28 @@ async function processDeliver(job: Job<{ numberId: string }>) {
     return { skipped: true, reason: 'numero_desconectado' };
   }
 
-  const last = pending[pending.length - 1];
-  const lastSuggestions = await prisma.copilotoSuggestion.findMany({
-    where: { briefingId: last.id, status: 'offered' },
-    orderBy: { rank: 'asc' },
-    select: { rank: true },
-  });
-  const footer = lastSuggestions.length > 0 ? renderReplyFooter(lastSuggestions.map((s) => s.rank)) : null;
+  // Rodapé POR ITEM, não só do mais recente — cada briefing responde pela
+  // própria letra (pendingLabel), lida agora (pode ter sido atribuída por um
+  // briefing mais novo depois deste ter sido renderizado, ver
+  // assignPendingLabel em processBrief; por isso o rodapé nunca é baked no
+  // selfChatBody — sempre calculado aqui, na hora de entregar, com o valor
+  // mais atual). v1.0/único pendente: pendingLabel null, comportamento igual
+  // a antes (rodapé sem letra).
+  const footers = new Map<string, string | null>();
+  for (const p of pending) {
+    const suggestions = await prisma.copilotoSuggestion.findMany({
+      where: { briefingId: p.id, status: 'offered' },
+      orderBy: { rank: 'asc' },
+      select: { rank: true },
+    });
+    footers.set(p.id, suggestions.length > 0 ? renderReplyFooter(suggestions.map((s) => s.rank), p.pendingLabel) : null);
+  }
 
   const text = pending.length === 1
-    ? [pending[0].selfChatBody, footer].filter(Boolean).join('\n\n')
+    ? [pending[0].selfChatBody, footers.get(pending[0].id)].filter(Boolean).join('\n\n')
     : [
         `📥 *${pending.length} conversas novas*`,
-        pending.map((p) => p.selfChatBody as string).join('\n\n───\n\n'),
-        '_Só a mais recente (a última acima) responde a 1/2/3 por enquanto._',
-        footer,
+        pending.map((p) => [p.selfChatBody, footers.get(p.id)].filter(Boolean).join('\n\n')).join('\n\n───\n\n'),
       ].filter(Boolean).join('\n\n');
 
   await sendMessageViaEvolution(number.zapiInstanceId, number.phoneNumber, text).catch((err: any) => {
@@ -549,9 +658,15 @@ function truncateQuote(text: string, max = 140): string {
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 }
 
-/** Rodapé de resposta — extraído pra ser reaproveitado pelo job 'deliver' (rajadas compiladas). */
-export function renderReplyFooter(nums: number[]): string {
-  return `*${nums.join('*, *')}* envia · *${nums[0]}e* edita · *0* ignora`;
+/**
+ * Rodapé de resposta — extraído pra ser reaproveitado pelo job 'deliver' (rajadas
+ * compiladas). `label` (A/B/C...) só é passado quando existe mais de um briefing
+ * pendente pro mesmo número ao mesmo tempo — ver pendingLabel no schema e
+ * ESCOPO_COPILOTO.md. Sem label, comportamento idêntico a antes ("1", "2"...).
+ */
+export function renderReplyFooter(nums: number[], label?: string | null): string {
+  const tag = (n: number | string) => `${label ?? ''}${n}`;
+  return `*${nums.map(tag).join('*, *')}* envia · *${tag(nums[0])}e* edita · *${tag(0)}* ignora`;
 }
 
 // Estrutura fixa e mínima: nome · citação do cliente · resumo+intenção · 3
@@ -569,8 +684,16 @@ export function renderBriefingMessage(params: {
   // false = compilação de rajada (ver runCopilotoBriefDelivery): manda sem
   // rodapé, o job 'deliver' anexa um só rodapé no final do lote combinado.
   footer?: boolean;
+  // v2.1 — letra (A/B/C...) quando este briefing NÃO é o único pendente pro
+  // número. null/undefined = comportamento de sempre (sem letra).
+  pendingLabel?: string | null;
+  // Outras conversas pendentes no momento (excluindo esta) — só relevante
+  // quando pendingLabel foi atribuído agora (2ª+ pendência do número). Avisa
+  // o dono que uma conversa mais antiga (cuja mensagem já foi mandada SEM
+  // letra) agora também precisa de letra pra ser respondida.
+  otherPending?: Array<{ label: string; contactLabel: string }>;
 }): string {
-  const { contactLabel, briefing, offered, sensitive, lastQuote } = params;
+  const { contactLabel, briefing, offered, sensitive, lastQuote, pendingLabel, otherPending } = params;
   const footer = params.footer ?? true;
   const lines: string[] = [];
 
@@ -594,12 +717,19 @@ export function renderBriefingMessage(params: {
   lines.push('');
   for (const o of offered) {
     const axisLabel = AXIS_LABEL[o.axis] ?? o.title;
-    lines.push(`*${o.rank} · ${axisLabel}* "${o.draft}"`);
+    const tag = pendingLabel ? `${pendingLabel}${o.rank}` : `${o.rank}`;
+    lines.push(`*${tag} · ${axisLabel}* "${o.draft}"`);
   }
 
   if (footer) {
     lines.push('');
-    lines.push(renderReplyFooter(offered.map((o) => o.rank)));
+    lines.push(renderReplyFooter(offered.map((o) => o.rank), pendingLabel));
+  }
+
+  if (otherPending?.length) {
+    lines.push('');
+    const list = otherPending.map((o) => `${o.label} — ${o.contactLabel}`).join(', ');
+    lines.push(`_Você também tem pendente: ${list}. Responda com a letra (ex.: ${otherPending[0].label}1) — sem letra eu não vou adivinhar qual conversa._`);
   }
 
   return lines.join('\n');
