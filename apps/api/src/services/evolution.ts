@@ -278,6 +278,13 @@ export interface EvolutionUnreadChat {
  * chamada separada. Best-effort: se a instância/versão não tiver esse
  * endpoint, ou a chamada falhar, devolve mapa vazio e a lista de chats cai de
  * volta pro `+telefone` (fetchChatsRaw) — nunca quebra a tela por causa disto.
+ *
+ * Timeout bem mais curto que o de findChats (5s vs 15s) de propósito: as duas
+ * chamadas rodam em paralelo via Promise.all em fetchChatsRaw, então o tempo
+ * total da rota fica preso na mais lenta das duas. Esta é só enriquecimento
+ * opcional (o nome do contato) — se o self-host não suportar o endpoint e ele
+ * ficar pendurado em vez de devolver 404 rápido, o pior caso não pode ser a
+ * lista inteira de conversas (que sem isto já respondia rápido) travar 15s.
  */
 async function fetchContactNames(instanceNameStr: string): Promise<Map<string, string>> {
   const map = new Map<string, string>();
@@ -287,7 +294,7 @@ async function fetchContactNames(instanceNameStr: string): Promise<Map<string, s
       method:  'POST',
       headers: evolutionHeaders(),
       body:    JSON.stringify({}),
-      signal:  AbortSignal.timeout(15_000),
+      signal:  AbortSignal.timeout(5_000),
     });
     if (!res.ok) return map;
     const raw = await res.json().catch(() => []);
