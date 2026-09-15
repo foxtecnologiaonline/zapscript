@@ -18,6 +18,22 @@ function chatsCacheKey(instanceNameStr: string): string {
   return `wa-web:chats:${instanceNameStr}`;
 }
 
+// O client `redis` compartilhado (services/queue.ts) é configurado com
+// maxRetriesPerRequest:null — obrigatório pro BullMQ, mas isso também
+// significa que um comando emitido com o Redis fora do ar fica preso na fila
+// offline do ioredis esperando reconectar (com backoff de até 30s), em vez
+// de rejeitar rápido. Sem um teto aqui, `.catch(() => null)` sozinho não
+// protege — só pega promise rejeitada, não uma que nunca resolve. Esta rota
+// é caminho crítico (sem ela, a tela de conversas nem carrega), então um
+// timeout curto garante: Redis lento/fora do ar → cache é ignorado e segue
+// pro fetch ao vivo da Evolution, nunca trava a requisição do usuário.
+function withRedisTimeout<T>(promise: Promise<T>, ms = 500): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), ms)),
+  ]);
+}
+
 /**
  * WhatsApp Web simplificado — lê e envia mensagens de texto usando a mesma
  * instância Evolution já conectada pelo número (nenhuma sessão nova, nenhum
@@ -72,7 +88,7 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
     const bypassCache = req.query?.fresh === '1';
 
     if (!bypassCache) {
-      const cached = await redis.get(cacheKey).catch(() => null);
+      const cached = await withRedisTimeout(redis.get(cacheKey)).catch(() => null);
       if (cached) {
         try { return { chats: JSON.parse(cached) }; } catch { /* cache corrompido — segue pro fetch normal */ }
       }
@@ -83,8 +99,8 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
       // Aguarda a escrita (é local, sub-milissegundo) — sem isso, duas
       // requisições em sequência rápida (ex: React reexecutando o efeito)
       // podiam nem ver o cache ainda gravado, justamente o caso que ele
-      // deveria otimizar. Falha ao gravar não derruba a resposta.
-      await redis.set(cacheKey, JSON.stringify(chats), 'EX', CHATS_CACHE_TTL_S).catch(() => null);
+      // deveria otimizar. Falha (ou Redis fora do ar) não derruba a resposta.
+      await withRedisTimeout(redis.set(cacheKey, JSON.stringify(chats), 'EX', CHATS_CACHE_TTL_S)).catch(() => null);
       return { chats };
     } catch (err: any) {
       app.log.error({ err: err.message }, '[WhatsAppWeb] Erro ao listar chats');
@@ -106,8 +122,13 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
       const jid = parseJid(req.params.jid);
       if (!jid) return reply.code(400).send({ error: 'Conversa inválida.' });
 
-      const limit  = Math.min(Math.max(parseInt(req.query?.limit ?? '50', 10) || 50, 1), 100);
-      const before = req.query?.before ? parseInt(req.query.before, 10) : undefined;
+      const limit = Math.min(Math.max(parseInt(req.query?.limit ?? '50', 10) || 50, 1), 100);
+      // undefined explícito (não "sem before" via falsy) — "0" é um cursor
+      // válido em teoria (timestamp 0 é o fallback de mensagem sem
+      // messageTimestamp em fetchChatMessages) e um `? :` simples trataria
+      // isso como "não veio before", voltando pra 1ª página sem avisar.
+      const before = req.query?.before !== undefined ? parseInt(req.query.before, 10) : undefined;
+      const isFirstPage = before === undefined;
 
       try {
         const messages = await fetchChatMessages(resolved.number.zapiInstanceId, jid, limit, before);
@@ -115,14 +136,18 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
         // Confirmação de leitura: só na primeira página (abrir a conversa),
         // não ao "carregar mais antigas" — isso já foi lido há muito tempo,
         // marcar de novo é trabalho à toa. Fire-and-forget: nunca atrasa nem
-        // quebra o carregamento da conversa por causa disto.
-        if (!before) {
+        // quebra o carregamento da conversa por causa disto. Também invalida
+        // o cache curto de /chats — sem isso, reabrir a lista de conversas
+        // (mesmo depois de ler) podia mostrar o badge de não-lida antigo até
+        // o cache expirar (15s).
+        if (isFirstPage) {
           const unread = messages.filter(m => !m.fromMe);
           if (unread.length > 0) {
             markChatAsRead(resolved.number.zapiInstanceId, unread.map(m => ({
               id: m.id, fromMe: false, remoteJid: jid, participant: m.senderJid,
             }))).catch((err: any) =>
               app.log.warn({ err: err.message }, '[WhatsAppWeb] Falha ao marcar como lida — ignorado'));
+            withRedisTimeout(redis.del(chatsCacheKey(resolved.number.zapiInstanceId))).catch(() => null);
           }
         }
 

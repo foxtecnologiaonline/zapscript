@@ -367,7 +367,11 @@ export async function fetchChatMessages(
 ): Promise<EvolutionChatMessage[]> {
   const base  = evolutionBaseUrl();
   const where: any = { key: { remoteJid } };
-  if (beforeTimestamp) where.messageTimestamp = { lt: beforeTimestamp };
+  // !== undefined (não truthy simples) — 0 é um timestamp legítimo (é o
+  // fallback de mensagem sem messageTimestamp válido, logo abaixo), e um
+  // `if (beforeTimestamp)` trataria isso como "sem cursor" e devolveria a
+  // primeira página nas costas de quem pediu histórico mais antigo.
+  if (beforeTimestamp !== undefined) where.messageTimestamp = { lt: beforeTimestamp };
   const res = await fetch(`${base}/chat/findMessages/${instanceNameStr}`, {
     method:  'POST',
     headers: evolutionHeaders(),

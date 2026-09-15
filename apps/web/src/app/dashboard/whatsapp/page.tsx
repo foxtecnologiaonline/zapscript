@@ -130,6 +130,7 @@ export default function WhatsAppWebPage() {
   const [messagesError, setMessagesError]     = useState('');
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingOlder, setLoadingOlder]       = useState(false);
+  const [olderMessagesError, setOlderMessagesError] = useState('');
 
   const [messageInput, setMessageInput] = useState('');
   const [sending, setSending]           = useState(false);
@@ -202,7 +203,7 @@ export default function WhatsAppWebPage() {
   useEffect(() => {
     if (!selectedNumberId || !selectedChat) { setMessages([]); setHasMoreMessages(false); return; }
     const requestId = ++messagesRequestRef.current;
-    setLoadingMessages(true); setMessagesError(''); setHasMoreMessages(false);
+    setLoadingMessages(true); setMessagesError(''); setHasMoreMessages(false); setOlderMessagesError('');
     api.get<{ messages: WaMessage[] }>(
       `/numbers/${selectedNumberId}/chats/${encodeURIComponent(selectedChat.jid)}/messages?limit=${MESSAGES_PAGE_SIZE}`
     )
@@ -231,34 +232,44 @@ export default function WhatsAppWebPage() {
   async function loadOlderMessages() {
     if (!selectedNumberId || !selectedChat || messages.length === 0 || loadingOlder) return;
     // Mesmo contador de requisição da 1ª página: se o usuário trocar de
-    // conversa antes desta resposta chegar, descarta — sem isso, mensagens
-    // da conversa ANTIGA seriam inseridas na conversa NOVA já aberta.
+    // conversa antes desta resposta chegar, descarta os DADOS — sem isso,
+    // mensagens da conversa ANTIGA seriam inseridas na conversa NOVA já
+    // aberta. `loadingOlder` (abaixo) é só um flag de UI local e é resetado
+    // sempre, mesmo numa resposta obsoleta — senão ficaria travado em true
+    // pro resto da sessão se o usuário trocasse de conversa no meio do
+    // carregamento.
     const requestId  = messagesRequestRef.current;
     const oldest     = messages[0];
     const pane       = messagesPaneRef.current;
     const prevHeight = pane?.scrollHeight ?? 0;
 
-    setLoadingOlder(true);
+    setLoadingOlder(true); setOlderMessagesError('');
     try {
       const res = await api.get<{ messages: WaMessage[] }>(
         `/numbers/${selectedNumberId}/chats/${encodeURIComponent(selectedChat.jid)}/messages?limit=${MESSAGES_PAGE_SIZE}&before=${oldest.timestamp}`
       );
       if (messagesRequestRef.current !== requestId) return; // resposta obsoleta — conversa já trocou
       const older = res.messages ?? [];
-      setHasMoreMessages(older.length >= MESSAGES_PAGE_SIZE);
       suppressAutoScrollRef.current = true;
       setMessages(ms => {
         const existingIds = new Set(ms.map(m => m.id));
-        return [...older.filter(m => !existingIds.has(m.id)), ...ms];
+        const newOnes = older.filter(m => !existingIds.has(m.id));
+        // Baseado no que REALMENTE é novo, não no tamanho bruto da resposta:
+        // se a Evolution não filtrar por `before` (não verificado ao vivo —
+        // ver evolution.ts) e devolver sempre a mesma última página, tudo
+        // aqui vira duplicata (newOnes vazio) e o botão se desliga sozinho
+        // em vez de ficar clicável pra sempre sem fazer nada.
+        setHasMoreMessages(newOnes.length >= MESSAGES_PAGE_SIZE);
+        return [...newOnes, ...ms];
       });
       requestAnimationFrame(() => {
         if (pane) pane.scrollTop = pane.scrollHeight - prevHeight;
       });
     } catch (err: any) {
       if (messagesRequestRef.current !== requestId) return;
-      setMessagesError(err.message || 'Não foi possível carregar mensagens mais antigas.');
+      setOlderMessagesError(err.message || 'Não foi possível carregar mensagens mais antigas.');
     } finally {
-      if (messagesRequestRef.current === requestId) setLoadingOlder(false);
+      setLoadingOlder(false);
     }
   }
 
@@ -484,7 +495,7 @@ export default function WhatsAppWebPage() {
                 ) : (
                   <>
                     {hasMoreMessages && (
-                      <div className="flex justify-center pb-1">
+                      <div className="flex flex-col items-center gap-1.5 pb-1">
                         <button
                           onClick={loadOlderMessages}
                           disabled={loadingOlder}
@@ -492,6 +503,7 @@ export default function WhatsAppWebPage() {
                         >
                           {loadingOlder ? <><Spinner size={3} /> Carregando…</> : 'Carregar mensagens mais antigas'}
                         </button>
+                        {olderMessagesError && <p className="text-red-400 text-[11px]">{olderMessagesError}</p>}
                       </div>
                     )}
                     {messages.map(m => (
