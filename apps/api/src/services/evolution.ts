@@ -271,6 +271,37 @@ export interface EvolutionUnreadChat {
 }
 
 /**
+ * Busca o nome de perfil (pushName) que cada contato individual definiu no
+ * próprio WhatsApp — é o nome "de verdade" da conversa, não o número. O
+ * objeto de chat devolvido por `chat/findChats` normalmente NÃO carrega esse
+ * campo (só sincroniza no store de contatos do Baileys); por isso é uma
+ * chamada separada. Best-effort: se a instância/versão não tiver esse
+ * endpoint, ou a chamada falhar, devolve mapa vazio e a lista de chats cai de
+ * volta pro `+telefone` (fetchChatsRaw) — nunca quebra a tela por causa disto.
+ */
+async function fetchContactNames(instanceNameStr: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  try {
+    const base = evolutionBaseUrl();
+    const res = await fetch(`${base}/chat/findContacts/${instanceNameStr}`, {
+      method:  'POST',
+      headers: evolutionHeaders(),
+      body:    JSON.stringify({}),
+      signal:  AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return map;
+    const raw = await res.json().catch(() => []);
+    const data: any[] = Array.isArray(raw) ? raw : (raw?.contacts ?? raw?.records ?? []);
+    for (const c of data) {
+      const jid  = c?.remoteJid ?? c?.id ?? '';
+      const name = c?.pushName ?? c?.name ?? null;
+      if (jid && name) map.set(jid, name);
+    }
+  } catch { /* best-effort — ver docstring */ }
+  return map;
+}
+
+/**
  * Busca e normaliza TODOS os chats (individuais + grupos) de uma instância —
  * base compartilhada por fetchUnreadChats (backfill do Copiloto, só
  * individuais) e fetchAllChats (lista de conversas do WhatsApp Web
@@ -281,12 +312,15 @@ export interface EvolutionUnreadChat {
  */
 async function fetchChatsRaw(instanceNameStr: string): Promise<EvolutionUnreadChat[]> {
   const base = evolutionBaseUrl();
-  const res = await fetch(`${base}/chat/findChats/${instanceNameStr}`, {
-    method:  'POST',
-    headers: evolutionHeaders(),
-    body:    JSON.stringify({}),
-    signal:  AbortSignal.timeout(15_000),
-  });
+  const [res, contactNames] = await Promise.all([
+    fetch(`${base}/chat/findChats/${instanceNameStr}`, {
+      method:  'POST',
+      headers: evolutionHeaders(),
+      body:    JSON.stringify({}),
+      signal:  AbortSignal.timeout(15_000),
+    }),
+    fetchContactNames(instanceNameStr),
+  ]);
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`Evolution findChats falhou (${res.status}): ${text}`);
@@ -299,8 +333,13 @@ async function fetchChatsRaw(instanceNameStr: string): Promise<EvolutionUnreadCh
       const isGroup = String(jid).endsWith('@g.us');
       return {
         jid,
-        phone:         String(jid).replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@c.us', '').replace(/\D/g, ''),
-        name:          c?.subject ?? c?.pushName ?? c?.name ?? null,
+        phone: String(jid).replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@c.us', '').replace(/\D/g, ''),
+        // Grupo: nome do grupo (subject). Individual: nome de perfil que o
+        // contato definiu no próprio WhatsApp — findContacts primeiro (mais
+        // confiável), campos do próprio chat como fallback.
+        name: isGroup
+          ? (c?.subject ?? c?.name ?? null)
+          : (contactNames.get(jid) ?? c?.pushName ?? c?.name ?? null),
         type:          (isGroup ? 'group' : 'individual') as 'individual' | 'group',
         unreadCount:   c?.unreadMessages ?? c?.unreadCount ?? 0,
         lastMessageAt: c?.updatedAt ? new Date(c.updatedAt).getTime() : null,
