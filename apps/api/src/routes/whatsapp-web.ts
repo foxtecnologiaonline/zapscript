@@ -1,10 +1,22 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { fetchAllChats, fetchChatMessages, sendTextToJid } from '../services/evolution';
+import { redis } from '../services/queue';
+import { fetchAllChats, fetchChatMessages, sendTextToJid, markChatAsRead } from '../services/evolution';
 
 type ResolvedNumber =
   | { ok: true; number: any }
   | { ok: false; status: number; error: string };
+
+// Cache curto da lista de conversas — evita bater na Evolution toda vez que o
+// usuário reabre a aba ou troca de número e volta (o real-time via Socket.IO
+// já cobre "mensagem nova apareceu"; isto só evita refetch redundante de
+// GET /chats em sequência rápida). TTL curto o bastante pra nunca ficar
+// visivelmente desatualizado, e o botão "Atualizar" (?fresh=1) sempre pula o
+// cache quando o usuário pede explicitamente.
+const CHATS_CACHE_TTL_S = 15;
+function chatsCacheKey(instanceNameStr: string): string {
+  return `wa-web:chats:${instanceNameStr}`;
+}
 
 /**
  * WhatsApp Web simplificado — lê e envia mensagens de texto usando a mesma
@@ -48,15 +60,31 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
   }
 
   // ── GET /numbers/:id/chats ────────────────────────────────────────────────
-  app.get<{ Params: { id: string } }>('/:id/chats', auth, async (req: any, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { fresh?: string } }>('/:id/chats', auth, async (req: any, reply) => {
     const { id } = req.params;
     const userId = req.user.sub;
 
     const resolved = await resolveConnectedNumber(id, userId);
     if (!resolved.ok) return reply.code(resolved.status).send({ error: resolved.error });
 
+    const instanceId = resolved.number.zapiInstanceId;
+    const cacheKey    = chatsCacheKey(instanceId);
+    const bypassCache = req.query?.fresh === '1';
+
+    if (!bypassCache) {
+      const cached = await redis.get(cacheKey).catch(() => null);
+      if (cached) {
+        try { return { chats: JSON.parse(cached) }; } catch { /* cache corrompido — segue pro fetch normal */ }
+      }
+    }
+
     try {
-      const chats = await fetchAllChats(resolved.number.zapiInstanceId);
+      const chats = await fetchAllChats(instanceId);
+      // Aguarda a escrita (é local, sub-milissegundo) — sem isso, duas
+      // requisições em sequência rápida (ex: React reexecutando o efeito)
+      // podiam nem ver o cache ainda gravado, justamente o caso que ele
+      // deveria otimizar. Falha ao gravar não derruba a resposta.
+      await redis.set(cacheKey, JSON.stringify(chats), 'EX', CHATS_CACHE_TTL_S).catch(() => null);
       return { chats };
     } catch (err: any) {
       app.log.error({ err: err.message }, '[WhatsAppWeb] Erro ao listar chats');
@@ -65,7 +93,9 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
   });
 
   // ── GET /numbers/:id/chats/:jid/messages ──────────────────────────────────
-  app.get<{ Params: { id: string; jid: string }; Querystring: { limit?: string } }>(
+  // `before` (epoch seconds) pagina pra trás — passa o timestamp da mensagem
+  // mais antiga já carregada na tela pra buscar o lote anterior a ela.
+  app.get<{ Params: { id: string; jid: string }; Querystring: { limit?: string; before?: string } }>(
     '/:id/chats/:jid/messages', auth, async (req: any, reply) => {
       const { id } = req.params;
       const userId = req.user.sub;
@@ -76,10 +106,26 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
       const jid = parseJid(req.params.jid);
       if (!jid) return reply.code(400).send({ error: 'Conversa inválida.' });
 
-      const limit = Math.min(Math.max(parseInt(req.query?.limit ?? '50', 10) || 50, 1), 100);
+      const limit  = Math.min(Math.max(parseInt(req.query?.limit ?? '50', 10) || 50, 1), 100);
+      const before = req.query?.before ? parseInt(req.query.before, 10) : undefined;
 
       try {
-        const messages = await fetchChatMessages(resolved.number.zapiInstanceId, jid, limit);
+        const messages = await fetchChatMessages(resolved.number.zapiInstanceId, jid, limit, before);
+
+        // Confirmação de leitura: só na primeira página (abrir a conversa),
+        // não ao "carregar mais antigas" — isso já foi lido há muito tempo,
+        // marcar de novo é trabalho à toa. Fire-and-forget: nunca atrasa nem
+        // quebra o carregamento da conversa por causa disto.
+        if (!before) {
+          const unread = messages.filter(m => !m.fromMe);
+          if (unread.length > 0) {
+            markChatAsRead(resolved.number.zapiInstanceId, unread.map(m => ({
+              id: m.id, fromMe: false, remoteJid: jid, participant: m.senderJid,
+            }))).catch((err: any) =>
+              app.log.warn({ err: err.message }, '[WhatsAppWeb] Falha ao marcar como lida — ignorado'));
+          }
+        }
+
         return { messages };
       } catch (err: any) {
         app.log.error({ err: err.message }, '[WhatsAppWeb] Erro ao listar mensagens');

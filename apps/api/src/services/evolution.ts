@@ -352,15 +352,26 @@ export interface EvolutionChatMessage {
  * também. Em mensagens de grupo, captura remetente via `key.participant`
  * (Baileys: JID de quem mandou dentro do grupo — `key.remoteJid` é sempre o
  * JID do grupo em si, não ajuda a saber quem falou).
+ *
+ * `beforeTimestamp` pagina pra trás — passa o `timestamp` da mensagem mais
+ * antiga já carregada na tela pra buscar o lote anterior a ela ("carregar
+ * mensagens mais antigas"). Sem verificação contra uma Evolution ao vivo
+ * (mesma ressalva de sempre neste arquivo) — o filtro `where.messageTimestamp`
+ * segue o mesmo formato passthrough Prisma-like que `where.key.remoteJid` já
+ * usa; se a versão em produção não aceitar, o pior caso é a Evolution ignorar
+ * o filtro extra e devolver as mesmas mensagens de sempre (não quebra nada,
+ * só não pagina).
  */
 export async function fetchChatMessages(
-  instanceNameStr: string, remoteJid: string, limit = 20,
+  instanceNameStr: string, remoteJid: string, limit = 20, beforeTimestamp?: number,
 ): Promise<EvolutionChatMessage[]> {
-  const base = evolutionBaseUrl();
+  const base  = evolutionBaseUrl();
+  const where: any = { key: { remoteJid } };
+  if (beforeTimestamp) where.messageTimestamp = { lt: beforeTimestamp };
   const res = await fetch(`${base}/chat/findMessages/${instanceNameStr}`, {
     method:  'POST',
     headers: evolutionHeaders(),
-    body:    JSON.stringify({ where: { key: { remoteJid } }, limit }),
+    body:    JSON.stringify({ where, limit }),
     signal:  AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
@@ -395,6 +406,49 @@ export async function fetchChatMessages(
   }
   out.sort((a, b) => a.timestamp - b.timestamp); // mais antiga primeiro
   return out.slice(-limit);
+}
+
+export interface MessageKeyRef {
+  id: string;
+  fromMe: boolean;
+  remoteJid: string;
+  participant?: string; // grupo: quem mandou (key.participant)
+}
+
+/**
+ * Marca mensagens como lidas de verdade no WhatsApp (envia o recibo de
+ * leitura) — usado quando o dono abre uma conversa no WhatsApp Web
+ * simplificado, pra não ficar só um badge que zera na tela sem avisar o
+ * WhatsApp de fato.
+ *
+ * NÃO verificado contra uma instância Evolution ao vivo (mesma ressalva de
+ * deleteMessageForEveryone acima) — rota e shape (`PUT
+ * /chat/markMessageAsRead/:instance`, body `{ readMessages: [...] }`)
+ * inferidos da documentação pública da Evolution API. Best-effort: o
+ * chamador trata falha sem quebrar o carregamento da conversa — se a versão
+ * da instância usar outro shape, só a confirmação de leitura não funciona,
+ * não derruba nada.
+ */
+export async function markChatAsRead(instanceNameStr: string, keys: MessageKeyRef[]): Promise<void> {
+  if (keys.length === 0) return;
+  const base = evolutionBaseUrl();
+  const res = await fetch(`${base}/chat/markMessageAsRead/${instanceNameStr}`, {
+    method:  'PUT',
+    headers: evolutionHeaders(),
+    body: JSON.stringify({
+      readMessages: keys.map(k => ({
+        remoteJid: k.remoteJid,
+        id:        k.id,
+        fromMe:    k.fromMe,
+        ...(k.participant ? { participant: k.participant } : {}),
+      })),
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Evolution markMessageAsRead falhou (${res.status}): ${text}`);
+  }
 }
 
 /**

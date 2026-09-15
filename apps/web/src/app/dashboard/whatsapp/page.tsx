@@ -37,6 +37,10 @@ function chatKindFromJid(jid: string): ChatKind {
   return jid.endsWith('@g.us') ? 'group' : 'individual';
 }
 
+// Mesmo tamanho de página do default no backend (whatsapp-web.ts) — se a
+// última busca trouxe exatamente esse tanto, pode ter mais mensagens antigas.
+const MESSAGES_PAGE_SIZE = 50;
+
 // ── UI helpers ───────────────────────────────────────────────────────────────
 function Spinner({ size = 4 }: { size?: number }) {
   return (
@@ -118,11 +122,14 @@ export default function WhatsAppWebPage() {
   const [chats, setChats]               = useState<ChatSummary[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
   const [chatsError, setChatsError]     = useState('');
+  const [chatSearch, setChatSearch]     = useState('');
 
   const [selectedChat, setSelectedChat]       = useState<ChatSummary | null>(null);
   const [messages, setMessages]               = useState<WaMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [messagesError, setMessagesError]     = useState('');
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder]       = useState(false);
 
   const [messageInput, setMessageInput] = useState('');
   const [sending, setSending]           = useState(false);
@@ -130,13 +137,22 @@ export default function WhatsAppWebPage() {
 
   const [mobileView, setMobileView] = useState<'list' | 'thread'>('list');
 
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomRef       = useRef<HTMLDivElement>(null);
+  const messagesPaneRef = useRef<HTMLDivElement>(null);
   // Contadores de requisição — descartam respostas obsoletas quando o usuário
   // troca de número/conversa rápido e uma busca antiga responde depois da nova.
   const chatsRequestRef    = useRef(0);
   const messagesRequestRef = useRef(0);
 
   const connectedNumbers = useMemo(() => numbers.filter(n => n.status === 'connected'), [numbers]);
+
+  // Filtro local — a lista inteira já está em memória, sem custo de ida ao
+  // backend/Evolution pra buscar por nome/telefone.
+  const filteredChats = useMemo(() => {
+    const q = chatSearch.trim().toLowerCase();
+    if (!q) return chats;
+    return chats.filter(c => chatDisplayName(c).toLowerCase().includes(q) || c.phone.includes(q));
+  }, [chats, chatSearch]);
 
   // ── Carrega usuário + números ──────────────────────────────────────────────
   useEffect(() => {
@@ -155,11 +171,13 @@ export default function WhatsAppWebPage() {
   }, [connectedNumbers, selectedNumberId]);
 
   // ── Conversas do número selecionado ──────────────────────────────────────
-  const loadChats = useCallback(async (numberId: string) => {
+  // `fresh` pula o cache curto do backend — usado só no clique manual em
+  // "Atualizar" (o resto da tela já se mantém em dia via Socket.IO).
+  const loadChats = useCallback(async (numberId: string, fresh = false) => {
     const requestId = ++chatsRequestRef.current;
     setLoadingChats(true); setChatsError('');
     try {
-      const res = await api.get<{ chats: ChatSummary[] }>(`/numbers/${numberId}/chats`);
+      const res = await api.get<{ chats: ChatSummary[] }>(`/numbers/${numberId}/chats${fresh ? '?fresh=1' : ''}`);
       if (chatsRequestRef.current !== requestId) return; // resposta obsoleta — número já trocou
       setChats(res.chats ?? []);
     } catch (err: any) {
@@ -175,19 +193,24 @@ export default function WhatsAppWebPage() {
     setSelectedChat(null);
     setMessages([]);
     setMobileView('list');
+    setChatSearch('');
     if (!selectedNumberId) { setChats([]); return; }
     loadChats(selectedNumberId);
   }, [selectedNumberId, loadChats]);
 
-  // ── Mensagens da conversa selecionada ────────────────────────────────────
+  // ── Mensagens da conversa selecionada (primeira página) ──────────────────
   useEffect(() => {
-    if (!selectedNumberId || !selectedChat) { setMessages([]); return; }
+    if (!selectedNumberId || !selectedChat) { setMessages([]); setHasMoreMessages(false); return; }
     const requestId = ++messagesRequestRef.current;
-    setLoadingMessages(true); setMessagesError('');
-    api.get<{ messages: WaMessage[] }>(`/numbers/${selectedNumberId}/chats/${encodeURIComponent(selectedChat.jid)}/messages`)
+    setLoadingMessages(true); setMessagesError(''); setHasMoreMessages(false);
+    api.get<{ messages: WaMessage[] }>(
+      `/numbers/${selectedNumberId}/chats/${encodeURIComponent(selectedChat.jid)}/messages?limit=${MESSAGES_PAGE_SIZE}`
+    )
       .then(res => {
         if (messagesRequestRef.current !== requestId) return; // resposta obsoleta — conversa já trocou
-        setMessages(res.messages ?? []);
+        const msgs = res.messages ?? [];
+        setMessages(msgs);
+        setHasMoreMessages(msgs.length >= MESSAGES_PAGE_SIZE);
       })
       .catch(err => {
         if (messagesRequestRef.current !== requestId) return;
@@ -198,8 +221,52 @@ export default function WhatsAppWebPage() {
       });
   }, [selectedNumberId, selectedChat]);
 
-  // Rola pro fim da thread sempre que chegar mensagem nova ou trocar de conversa
+  // ── Carregar mensagens mais antigas (histórico) ───────────────────────────
+  // Preserva a posição visual do scroll: sem isso, prepender mensagens no
+  // topo empurra tudo pra baixo e a tela "pula" pro topo, perdendo o lugar.
+  // suppressAutoScrollRef avisa o efeito de auto-scroll (abaixo) pra não brigar
+  // com essa restauração manual nesta atualização específica de `messages`.
+  const suppressAutoScrollRef = useRef(false);
+
+  async function loadOlderMessages() {
+    if (!selectedNumberId || !selectedChat || messages.length === 0 || loadingOlder) return;
+    // Mesmo contador de requisição da 1ª página: se o usuário trocar de
+    // conversa antes desta resposta chegar, descarta — sem isso, mensagens
+    // da conversa ANTIGA seriam inseridas na conversa NOVA já aberta.
+    const requestId  = messagesRequestRef.current;
+    const oldest     = messages[0];
+    const pane       = messagesPaneRef.current;
+    const prevHeight = pane?.scrollHeight ?? 0;
+
+    setLoadingOlder(true);
+    try {
+      const res = await api.get<{ messages: WaMessage[] }>(
+        `/numbers/${selectedNumberId}/chats/${encodeURIComponent(selectedChat.jid)}/messages?limit=${MESSAGES_PAGE_SIZE}&before=${oldest.timestamp}`
+      );
+      if (messagesRequestRef.current !== requestId) return; // resposta obsoleta — conversa já trocou
+      const older = res.messages ?? [];
+      setHasMoreMessages(older.length >= MESSAGES_PAGE_SIZE);
+      suppressAutoScrollRef.current = true;
+      setMessages(ms => {
+        const existingIds = new Set(ms.map(m => m.id));
+        return [...older.filter(m => !existingIds.has(m.id)), ...ms];
+      });
+      requestAnimationFrame(() => {
+        if (pane) pane.scrollTop = pane.scrollHeight - prevHeight;
+      });
+    } catch (err: any) {
+      if (messagesRequestRef.current !== requestId) return;
+      setMessagesError(err.message || 'Não foi possível carregar mensagens mais antigas.');
+    } finally {
+      if (messagesRequestRef.current === requestId) setLoadingOlder(false);
+    }
+  }
+
+  // Rola pro fim da thread ao trocar de conversa, carregar a 1ª página, ou
+  // chegar mensagem nova (própria ou recebida) — exceto quando quem mudou
+  // `messages` foi loadOlderMessages, que já cuida da própria posição.
   useEffect(() => {
+    if (suppressAutoScrollRef.current) { suppressAutoScrollRef.current = false; return; }
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, selectedChat]);
 
@@ -321,13 +388,24 @@ export default function WhatsAppWebPage() {
               <div className="flex items-center justify-between px-3 py-2.5 border-b border-brand-border flex-shrink-0">
                 <p className="text-xs font-bold text-brand-text">Conversas</p>
                 <button
-                  onClick={() => selectedNumberId && loadChats(selectedNumberId)}
+                  onClick={() => selectedNumberId && loadChats(selectedNumberId, true)}
                   disabled={loadingChats}
                   className="text-[11px] text-brand-muted hover:text-brand-text transition-colors disabled:opacity-50"
                 >
                   🔄 Atualizar
                 </button>
               </div>
+
+              {chats.length > 0 && (
+                <div className="px-3 py-2 border-b border-brand-border flex-shrink-0">
+                  <input
+                    value={chatSearch}
+                    onChange={e => setChatSearch(e.target.value)}
+                    placeholder="Buscar conversa…"
+                    className="w-full bg-brand-elevated border border-brand-border rounded-lg px-2.5 py-1.5 text-xs text-brand-text placeholder:text-brand-muted outline-none focus:border-brand-primary transition-colors"
+                  />
+                </div>
+              )}
 
               <div className="flex-1 overflow-y-auto">
                 {loadingChats ? (
@@ -338,7 +416,7 @@ export default function WhatsAppWebPage() {
                   <div className="p-4 text-center">
                     <p className="text-red-400 text-xs mb-2">{chatsError}</p>
                     <button
-                      onClick={() => selectedNumberId && loadChats(selectedNumberId)}
+                      onClick={() => selectedNumberId && loadChats(selectedNumberId, true)}
                       className="text-[11px] text-brand-primary hover:underline"
                     >
                       Tentar novamente
@@ -346,8 +424,10 @@ export default function WhatsAppWebPage() {
                   </div>
                 ) : chats.length === 0 ? (
                   <p className="text-xs text-brand-muted text-center py-8 px-4">Nenhuma conversa ainda.</p>
+                ) : filteredChats.length === 0 ? (
+                  <p className="text-xs text-brand-muted text-center py-8 px-4">Nenhuma conversa encontrada.</p>
                 ) : (
-                  chats.map(chat => (
+                  filteredChats.map(chat => (
                     <button
                       key={chat.jid}
                       onClick={() => openChat(chat)}
@@ -390,7 +470,7 @@ export default function WhatsAppWebPage() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              <div ref={messagesPaneRef} className="flex-1 overflow-y-auto p-3 space-y-2">
                 {!selectedChat ? (
                   <p className="text-xs text-brand-muted text-center py-8">Selecione uma conversa à esquerda.</p>
                 ) : loadingMessages ? (
@@ -402,7 +482,19 @@ export default function WhatsAppWebPage() {
                 ) : messages.length === 0 ? (
                   <p className="text-xs text-brand-muted text-center py-8">Nenhuma mensagem ainda.</p>
                 ) : (
-                  messages.map(m => (
+                  <>
+                    {hasMoreMessages && (
+                      <div className="flex justify-center pb-1">
+                        <button
+                          onClick={loadOlderMessages}
+                          disabled={loadingOlder}
+                          className="text-[11px] px-3 py-1.5 rounded-lg bg-brand-elevated border border-brand-border text-brand-muted hover:text-brand-text transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          {loadingOlder ? <><Spinner size={3} /> Carregando…</> : 'Carregar mensagens mais antigas'}
+                        </button>
+                      </div>
+                    )}
+                    {messages.map(m => (
                     <div key={m.id} className={`flex ${m.fromMe ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
                         m.fromMe
@@ -420,7 +512,8 @@ export default function WhatsAppWebPage() {
                         </div>
                       </div>
                     </div>
-                  ))
+                    ))}
+                  </>
                 )}
                 <div ref={bottomRef} />
               </div>
