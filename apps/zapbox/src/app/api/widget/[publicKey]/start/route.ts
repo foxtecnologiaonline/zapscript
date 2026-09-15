@@ -24,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: { publicKey: 
   const phoneRaw: string | undefined = body?.phone;
   const phone = phoneRaw?.replace(/\D/g, '');
 
-  if (!visitorId || !name || !phone || phone.length < 10) {
+  if (!visitorId || !name || !phone || phone.length < 10 || phone.length > 20 || name.length > 200) {
     return corsJson(
       { error: 'visitorId, name e phone (com DDI, só dígitos) são obrigatórios' },
       { status: 400, allowedOrigin: client.allowedOrigin },
@@ -35,23 +35,37 @@ export async function POST(req: NextRequest, { params }: { params: { publicKey: 
     where: { clientId_visitorId: { clientId: client.id, visitorId } },
   });
 
+  let justCreated = false;
   if (!conversation) {
     const connection = await db.whatsappConnection.findFirst({
       where: { clientId: client.id, status: 'connected' },
       orderBy: { createdAt: 'asc' },
     });
 
-    conversation = await db.conversation.create({
-      data: {
-        clientId: client.id,
-        connectionId: connection?.id ?? null,
-        visitorId,
-        customerPhone: phone,
-        customerName: name,
-      },
-    });
+    try {
+      conversation = await db.conversation.create({
+        data: {
+          clientId: client.id,
+          connectionId: connection?.id ?? null,
+          visitorId,
+          customerPhone: phone,
+          customerName: name,
+        },
+      });
+      justCreated = true;
+    } catch (err: any) {
+      // Corrida rara (duplo-clique/duas abas): outra requisição já criou a
+      // conversa entre o findUnique acima e este create — reaproveita a dela
+      // em vez de estourar erro pro visitante.
+      if (err?.code === 'P2002') {
+        conversation = await db.conversation.findUnique({
+          where: { clientId_visitorId: { clientId: client.id, visitorId } },
+        });
+      }
+      if (!conversation) throw err;
+    }
 
-    if (connection) {
+    if (justCreated && connection) {
       const greeting = client.widgetSettings?.greeting ?? 'Olá! Como podemos ajudar você hoje?';
       try {
         const sent = await evolutionEngine.sendText(connection.instanceName, phone, greeting);

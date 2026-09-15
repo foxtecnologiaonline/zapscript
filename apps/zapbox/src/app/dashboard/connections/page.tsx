@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/apiClient';
 
 interface Connection {
@@ -51,24 +51,68 @@ export default function ConnectionsPage() {
     }
   }
 
-  async function openQr(connectionId: string) {
+  function openQr(connectionId: string) {
     setQrModal({ connectionId, qrCode: null });
-    poll(connectionId);
   }
 
-  function poll(connectionId: string) {
-    const interval = setInterval(async () => {
-      const data = await apiFetch(`/api/connections/${connectionId}/qr`);
-      if (data.status === 'connected') {
-        clearInterval(interval);
-        setQrModal(null);
-        load();
-        return;
+  // Efeito dedicado ao modal de QR: busca o QR e monitora o status enquanto
+  // o modal estiver aberto, e limpa os timers sozinho ao fechar/desmontar —
+  // evita polling "fantasma" continuando em segundo plano depois de fechar
+  // o modal (bug: antes disso não havia cleanup nenhum).
+  //
+  // Duas frequências propositalmente diferentes: reconsultar
+  // /instance/connect na Evolution a cada poucos segundos pode reemitir um
+  // QR NOVO a cada chamada, invalidando o que a pessoa está tentando
+  // escanear. Por isso o status (leve, só lê do nosso banco) é checado a
+  // cada 3s, e o QR em si (pesado, chama a Evolution de verdade) só é
+  // buscado ao abrir e depois a cada 20s — tempo de sobra pra escanear.
+  useEffect(() => {
+    if (!qrModal) return;
+    const { connectionId } = qrModal;
+    let cancelled = false;
+
+    async function fetchQr() {
+      try {
+        const data = await apiFetch(`/api/connections/${connectionId}/qr`);
+        if (cancelled) return;
+        if (data.status === 'connected') {
+          setQrModal(null);
+          load();
+          return;
+        }
+        setQrModal((cur) => (cur && cur.connectionId === connectionId ? { ...cur, qrCode: data.qrCode } : cur));
+      } catch {
+        // rede instável — tenta de novo no próximo ciclo
       }
-      setQrModal((cur) => (cur && cur.connectionId === connectionId ? { ...cur, qrCode: data.qrCode } : cur));
-    }, 3000);
-    setTimeout(() => clearInterval(interval), 3 * 60 * 1000); // desiste depois de 3min
-  }
+    }
+
+    async function checkStatus() {
+      try {
+        const data = await apiFetch('/api/connections');
+        if (cancelled) return;
+        const current = data.connections.find((c: Connection) => c.id === connectionId);
+        if (current?.status === 'connected') {
+          setQrModal(null);
+          load();
+        }
+      } catch {
+        /* idem */
+      }
+    }
+
+    fetchQr();
+    const qrInterval = setInterval(fetchQr, 20_000);
+    const statusInterval = setInterval(checkStatus, 3_000);
+    const giveUpTimeout = setTimeout(() => setQrModal(null), 3 * 60 * 1000); // desiste depois de 3min
+
+    return () => {
+      cancelled = true;
+      clearInterval(qrInterval);
+      clearInterval(statusInterval);
+      clearTimeout(giveUpTimeout);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrModal?.connectionId]);
 
   async function disconnect(id: string) {
     if (!confirm('Desconectar este número?')) return;

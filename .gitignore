@@ -33,6 +33,7 @@ npm-debug.log*
 !.env.example
 !apps/monitor/.env.example
 !apps/zapbox/.env.example
+!packages/zapbox-db/.env.example
 zapscript.env
 zapscriptworker.env
 

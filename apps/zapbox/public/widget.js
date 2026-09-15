@@ -191,10 +191,17 @@
     input.value = '';
     renderMessage({ direction: 'in', senderType: 'visitor', body: text });
     try {
-      await api('/api/widget/' + PUBLIC_KEY + '/message', {
+      var data = await api('/api/widget/' + PUBLIC_KEY + '/message', {
         method: 'POST',
         body: JSON.stringify({ visitorId: getVisitorId(), text: text }),
       });
+      // Usa o createdAt que o servidor devolveu como novo cursor — sem isso,
+      // o próximo poll() buscaria "tudo desde o último cursor conhecido" e
+      // essa mesma mensagem (já mostrada acima, otimisticamente) voltaria
+      // duplicada na tela.
+      if (data && data.createdAt && (!lastSince || data.createdAt > lastSince)) {
+        lastSince = data.createdAt;
+      }
     } catch (e) {
       renderMessage({ direction: 'out', senderType: 'system', body: 'Falha ao enviar. Verifique sua conexão.' });
     }

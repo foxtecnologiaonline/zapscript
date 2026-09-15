@@ -59,7 +59,10 @@ async function getQrCode(instanceName: string): Promise<QrResult> {
   });
   if (!res.ok) return { qrCode: null };
   const data = (await res.json().catch(() => null)) as any;
-  const qrCode = data?.base64 ?? data?.qrcode?.base64 ?? null;
+  // A Evolution às vezes devolve o base64 puro (sem o prefixo data:image/...),
+  // dependendo da versão — sem isso a <img src> quebra silenciosamente.
+  const raw: string | null = data?.base64 ?? data?.qrcode?.base64 ?? data?.qr?.base64 ?? data?.code ?? null;
+  const qrCode = raw ? (raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`) : null;
   const pairingCode = data?.pairingCode ?? null;
   return { qrCode, pairingCode };
 }
@@ -81,20 +84,20 @@ async function getStatus(instanceName: string): Promise<ConnectionStatus> {
   }
 }
 
+// Só faz logout — NÃO deleta a instância. A UI de conexões deixa reconectar
+// (novo QR) numa conexão desconectada usando o mesmo instanceName; se isso
+// deletasse a instância, o próximo "Ver QR" chamaria /instance/connect numa
+// instância que não existe mais na Evolution. Mesma decisão do ZapScript.me
+// (ver apps/api/src/routes/numbers.ts POST /:id/disconnect).
 async function disconnect(instanceName: string): Promise<void> {
   try {
     await fetch(`${baseUrl()}/instance/logout/${instanceName}`, {
       method: 'DELETE',
       headers: headers(),
       signal: AbortSignal.timeout(8_000),
-    }).catch(() => {});
-    await fetch(`${baseUrl()}/instance/delete/${instanceName}`, {
-      method: 'DELETE',
-      headers: headers(),
-      signal: AbortSignal.timeout(8_000),
     });
   } catch {
-    /* ignora — pode já ter sido removida */
+    /* ignora — pode já estar desconectada */
   }
 }
 

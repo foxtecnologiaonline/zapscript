@@ -19,6 +19,9 @@ export async function POST(req: NextRequest, { params }: { params: { publicKey: 
   if (!visitorId || !text?.trim()) {
     return corsJson({ error: 'visitorId e text são obrigatórios' }, { status: 400, allowedOrigin: client.allowedOrigin });
   }
+  if (text.length > 4000) {
+    return corsJson({ error: 'Mensagem muito longa (máx. 4000 caracteres)' }, { status: 400, allowedOrigin: client.allowedOrigin });
+  }
 
   const conversation = await db.conversation.findUnique({
     where: { clientId_visitorId: { clientId: client.id, visitorId } },
@@ -38,5 +41,8 @@ export async function POST(req: NextRequest, { params }: { params: { publicKey: 
   });
   await db.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date(), status: 'open' } });
 
-  return corsJson({ messageId: message.id }, { allowedOrigin: client.allowedOrigin });
+  // O widget usa createdAt como cursor pro próximo poll — devolver aqui evita
+  // que a própria mensagem que ele acabou de mostrar otimisticamente volte
+  // duplicada no primeiro poll seguinte (ver public/widget.js).
+  return corsJson({ messageId: message.id, createdAt: message.createdAt }, { allowedOrigin: client.allowedOrigin });
 }

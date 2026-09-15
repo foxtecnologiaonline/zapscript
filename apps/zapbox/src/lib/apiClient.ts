@@ -25,6 +25,19 @@ export async function apiFetch(path: string, opts: RequestInit = {}): Promise<an
       ...(opts.headers || {}),
     },
   });
+
+  // Sessão expirada/token inválido numa rota autenticada — sem isso, uma
+  // página do dashboard aberta sem login (ou com token vencido) ficava
+  // presa em "Carregando..." pra sempre, com a rejeição só no console.
+  // Não se aplica a /api/auth/* (ali um 401 é "senha errada", não sessão
+  // expirada — a própria tela de login já trata isso inline).
+  if (res.status === 401 && !path.startsWith('/api/auth/')) {
+    clearToken();
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
+  }
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err: any = new Error(data?.error || `Erro ${res.status}`);

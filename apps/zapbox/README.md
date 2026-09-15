@@ -24,7 +24,7 @@ que criou este diretório.
 ## Arquitetura
 
 ```
-apps/widget/                  # Next.js 14 (App Router) — API + dashboard + widget.js
+apps/zapbox/                   # Next.js 14 (App Router) — API + dashboard + widget.js
   public/widget.js            # script embutível (vanilla JS, Shadow DOM, sem build)
   src/lib/messaging/
     engine.ts                 # interface MessagingEngine (Fase 1 ⇄ Fase 2)
@@ -60,6 +60,12 @@ packages/zapbox-db/           # schema Prisma INDEPENDENTE (não é o mesmo banc
 5. O widget faz **polling** (`GET /api/widget/:publicKey/messages`) para
    puxar tanto as respostas do agente quanto as mensagens que o visitante
    mandou pelo WhatsApp de verdade.
+
+**Limitação conhecida:** se o dono do número responder direto pelo próprio
+app do WhatsApp dele (fora da Inbox), essa resposta NÃO aparece no widget —
+o webhook ignora mensagens `fromMe` de propósito (são as que a própria ZapBox
+manda; não dá pra distinguir sem heurística extra). Pro MVP, a expectativa é
+que o agente responda pela Inbox.
 
 ### Fase 1 → Fase 2 (Meta Cloud API)
 
@@ -99,7 +105,7 @@ para motor não-oficial, ou exigência de compliance do cliente.
   (módulo Copiloto) que poderia ser portada/adaptada depois, mas isso não foi
   feito nesta rodada.
 - **Deploy/infra de produção** — este app roda localmente
-  (`pnpm widget:dev`, porta 3010) mas não foi conectado a nenhum pipeline de
+  (`pnpm zapbox:dev`, porta 3010) mas não foi conectado a nenhum pipeline de
   deploy (Vultr/Vercel). Isso é uma decisão de infra (onde hospedar o
   Postgres do `ZAPBOX_DATABASE_URL`, onde rodar o Next.js) que fica para
   quando o MVP for validado.
@@ -108,16 +114,27 @@ para motor não-oficial, ou exigência de compliance do cliente.
 - **Restrição de origem do widget** — `Client.allowedOrigin` existe no schema
   e é usado no CORS quando preenchido, mas nada na UI ainda permite
   configurá-lo (fica liberado para qualquer domínio por padrão).
+- **Mesmo telefone, duas sessões de widget** — se a mesma pessoa abrir o
+  widget em dois navegadores/dispositivos diferentes (sem `localStorage`
+  compartilhado) e informar o mesmo WhatsApp nas duas, isso cria duas
+  `Conversation`s distintas com o mesmo telefone. Uma resposta que chegar
+  pelo WhatsApp de verdade cai na conversa mais recentemente ativa (critério
+  determinístico), mas as duas threads não são unificadas.
 
 ## Rodando localmente
 
 ```bash
-cp apps/widget/.env.example apps/widget/.env
+cp apps/zapbox/.env.example apps/zapbox/.env
 # preencher ZAPBOX_DATABASE_URL, ZAPBOX_JWT_SECRET, ZAPBOX_EVOLUTION_API_URL, ZAPBOX_EVOLUTION_API_KEY, ZAPBOX_PUBLIC_URL
+# (esse .env é lido pelo Next.js em runtime)
+
+cp packages/zapbox-db/.env.example packages/zapbox-db/.env
+# preencher só ZAPBOX_DATABASE_URL de novo — o Prisma CLI (migrate/generate)
+# carrega o .env que estiver do LADO do schema.prisma, não o do Next.js acima
 
 pnpm install
-pnpm widget:db:migrate   # cria as tabelas no ZAPBOX_DATABASE_URL
-pnpm widget:dev          # http://localhost:3010
+pnpm zapbox:db:migrate   # cria as tabelas no ZAPBOX_DATABASE_URL
+pnpm zapbox:dev          # http://localhost:3010
 ```
 
 Para testar o widget embutido num site qualquer:

@@ -22,7 +22,7 @@ model Client {
   email                String    @unique
   passwordHash         String
   publicKey            String    @unique @default(cuid()) // chave pública usada no <script data-key="...">
-  allowedOrigin        String?   // domínio autorizado a embutir o widget (null = qualquer origem, MVP)
+  allowedOrigin        String? // domínio autorizado a embutir o widget (null = qualquer origem, MVP)
   disclaimerAcceptedAt DateTime? // aceite obrigatório do aviso de risco (Fase 1 / motor não-oficial)
   createdAt            DateTime  @default(now())
 
@@ -67,17 +67,17 @@ model WhatsappConnection {
 /// WhatsApp. A partir daí, toda mensagem (do widget OU do WhatsApp do
 /// visitante) cai na mesma thread — ver README para o desenho da ponte.
 model Conversation {
-  id            String    @id @default(cuid())
+  id            String              @id @default(cuid())
   clientId      String
-  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client        Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
   connectionId  String?
   connection    WhatsappConnection? @relation(fields: [connectionId], references: [id])
-  visitorId     String    // token anônimo gerado pelo widget.js (guardado em localStorage)
-  customerPhone String?   // só dígitos, com DDI — preenchido no pré-chat
+  visitorId     String // token anônimo gerado pelo widget.js (guardado em localStorage)
+  customerPhone String? // só dígitos, com DDI — preenchido no pré-chat
   customerName  String?
-  status        String    @default("open") // open | closed
-  createdAt     DateTime  @default(now())
-  lastMessageAt DateTime  @default(now())
+  status        String              @default("open") // open | closed
+  createdAt     DateTime            @default(now())
+  lastMessageAt DateTime            @default(now())
 
   messages Message[]
 
@@ -89,11 +89,11 @@ model Message {
   id                String       @id @default(cuid())
   conversationId    String
   conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  direction         String       // in (visitante/cliente final -> agente) | out (agente -> cliente final)
-  channel           String       // widget | whatsapp — canal de ORIGEM da mensagem
-  senderType         String      // visitor | agent | system
+  direction         String // in (visitante/cliente final -> agente) | out (agente -> cliente final)
+  channel           String // widget | whatsapp — canal de ORIGEM da mensagem
+  senderType        String // visitor | agent | system
   body              String
-  whatsappMessageId String?      // id retornado pela Evolution, quando enviada/recebida via WhatsApp
+  whatsappMessageId String? // id retornado pela Evolution, quando enviada/recebida via WhatsApp
   createdAt         DateTime     @default(now())
 
   @@index([conversationId, createdAt])
