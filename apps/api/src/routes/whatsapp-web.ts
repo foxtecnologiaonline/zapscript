@@ -127,7 +127,12 @@ export default async function whatsappWebRoutes(app: FastifyInstance) {
       // válido em teoria (timestamp 0 é o fallback de mensagem sem
       // messageTimestamp em fetchChatMessages) e um `? :` simples trataria
       // isso como "não veio before", voltando pra 1ª página sem avisar.
-      const before = req.query?.before !== undefined ? parseInt(req.query.before, 10) : undefined;
+      let before: number | undefined;
+      if (req.query?.before !== undefined) {
+        const parsed = parseInt(req.query.before, 10);
+        if (!Number.isFinite(parsed)) return reply.code(400).send({ error: 'Parâmetro "before" inválido.' });
+        before = parsed;
+      }
       const isFirstPage = before === undefined;
 
       try {
