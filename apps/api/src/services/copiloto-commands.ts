@@ -57,6 +57,8 @@ const HELP_TEXT = [
   '• copiloto testar — checa se a IA está respondendo agora',
   '',
   'Quando chegar um briefing: responda *1*, *2* ou *3* pra enviar, *1e* pra editar antes, *0* pra ignorar, *0!* pra ignorar E avisar que isso não devia ter me avisado.',
+  '',
+  '*Harvey* — closer de negociação e fechamento, pra qualquer parada da sua vida (não só cliente do WhatsApp): mande "harvey <situação>" — pessoal, carreira, cliente de banco ou venda da FOX. Ele te devolve o roteiro pronto.',
 ].join('\n');
 
 /** Aceita "21:00" ou "21h" e devolve "HH:mm"; null se não for hora válida. */

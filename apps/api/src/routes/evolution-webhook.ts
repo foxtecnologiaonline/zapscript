@@ -11,6 +11,7 @@ import {
   isCopilotoOwnerCommand, handleCopilotoOwnerCommand, handleCopilotoChoice, enqueueCopilotoMessage,
 } from '../services/copiloto-commands';
 import { ingestCopilotoGroupMessage } from '../services/copiloto-groups';
+import { handleHarveyMessage } from '../services/harvey-commands';
 import { OPT_OUT_KEYWORDS, registerCampanhaOptOut, handleOptinResponse } from './modules/campanhas';
 import { isCampanhaChatCommand, handleCampanhaChatCommand, handleCampanhaChatReply } from '../services/campanhas-chat-commands';
 import { io } from '../index';
@@ -614,6 +615,19 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
                   await handleCopilotoOwnerCommand(ctx).catch((err: any) =>
                     log.error({ err: err?.message }, '[Copiloto] Falha no comando do dono'));
                   log.info(`[Evolution] 🎯 Comando do dono processado (Copiloto, número ${number!.id})`);
+                  return;
+                }
+                // ── Harvey: persona de negociação/fechamento dentro do Copiloto ──
+                // Checado ANTES da interpretação numérica de briefing (1/2/3/0):
+                // "harvey ..." nunca é ambíguo com isso. A função devolve false
+                // sem custo de IA quando a mensagem não é um pedido pro Harvey
+                // nem confirmação de memória dele (aí cai no fluxo normal abaixo).
+                const harveyHandled = await handleHarveyMessage(ctx).catch((err: any) => {
+                  log.error({ err: err?.message }, '[Harvey] Falha ao processar pedido do dono');
+                  return false;
+                });
+                if (harveyHandled) {
+                  log.info(`[Evolution] 🤝 Pedido do dono processado (Harvey, número ${number!.id})`);
                   return;
                 }
                 const handled = await handleCopilotoChoice(ctx).catch((err: any) => {

@@ -69,6 +69,7 @@ model User {
   copilotoBriefings       CopilotoBriefing[]
   copilotoGroups          CopilotoGroup[]
   copilotoGroupDigests    CopilotoGroupDigest[]
+  harveyConsults          HarveyConsult[]
   voiceCommands           VoiceCommand[]
   salesVisits             SalesVisit[]
   legendaJobs             LegendaJob[]
@@ -1428,6 +1429,35 @@ model CopilotoGroupDigest {
 
   @@unique([numberId, date])
   @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  HARVEY — persona de negociação/fechamento dentro do Copiloto (dispara com
+//  "harvey <situação>" no self-chat, gated pelo mesmo módulo 'copiloto').
+//  Diferente do briefing normal (que reage a mensagem do CLIENTE): Harvey
+//  reage a um PEDIDO do dono sobre qualquer negociação da vida dele — pessoal,
+//  carreira, banco (crédito/retenção PJ) ou venda FOX/SaaS — e devolve
+//  estratégia + roteiro pronto, nunca fala com terceiros sozinho.
+//  Cada consulta vira um registro aqui só se o dono confirmar ("sim" após a
+//  resposta) — status 'draft' até lá, 'saved' depois, 'discarded' se recusar.
+//  Isso é a "memória" descrita na especificação: casos salvos alimentam a
+//  próxima consulta do mesmo contexto ("vi que você já fez algo parecido").
+// ─────────────────────────────────────────────────────────────────────────────
+model HarveyConsult {
+  id        String   @id @default(cuid())
+  userId    String
+  numberId  String? // número que originou a consulta (self-chat) — null se vier de outro canal no futuro
+  contexto  String // 'pessoal' | 'profissional' | 'gerente-banco' | 'empresario-ti'
+  topico    String
+  pergunta  String // o pedido do dono, como veio (truncado)
+  resposta  String // resumo do roteiro entregue (não a mensagem inteira formatada)
+  tags      Json // exatamente 5 tags, eixos A-E da especificação (tipo/domínio/estágio/técnica/resultado)
+  status    String   @default("draft") // 'draft' | 'saved' | 'discarded'
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt(sort: Desc)])
+  @@index([userId, contexto, status])
 }
 
 // Heartbeat genérico de crons em polling (não-BullMQ) — hoje só o Copiloto usa,

@@ -757,5 +757,45 @@ retroativa foi necessária.
 
 ---
 
+## 14. Harvey — persona de negociação/fechamento (2026-09-15)
+
+Adição dentro do Copiloto, não um módulo novo: mesma gate (`copiloto`), mesmo
+canal (self-chat), mesma regra de nunca falar com terceiros sozinho. Cobre uma
+necessidade diferente da Função 1 — Função 1 reage à mensagem do CLIENTE;
+Harvey reage a um PEDIDO do dono sobre qualquer negociação da vida dele, não só
+venda no WhatsApp: pessoal, carreira, cliente de banco (crédito/retenção PJ) ou
+venda dos produtos da FOX (ZapScript e outros).
+
+**Como funciona:** `harvey <situação>` no self-chat (ou detecção automática por
+palavra-chave, conservadora — exige 2+ termos de negociação num texto longo,
+pra não sequestrar nota pessoal comum ou resposta curta de outro fluxo). O
+agente classifica o contexto (pessoal/profissional/gerente-banco/empresario-ti),
+monta diagnóstico + roteiro no template fixo (objetivo de saída, diagnóstico,
+roteiro passo a passo, objeção antecipada, próximo passo, custo real quando a
+jogada é dura/cinzenta) e pergunta se registra em memória. Só vira registro
+permanente (`HarveyConsult`, status `saved`) se o dono responder "sim" — antes
+disso é `draft`, e expira sem confirmação depois de 30 min.
+
+**Arsenal:** Harvard (BATNA/ZOPA/interesses), Cialdini (7 gatilhos), Chris Voss
+(empatia tática), SPIN (descoberta), Belfort (Linha Reta, três dez), Specter
+(enquadramento e leverage honesta) — mesmos limites éticos/legais do resto do
+Copiloto (§3.4): nunca fraude, nunca escassez/urgência inventada, nunca pressão
+sobre vulnerabilidade, sempre marca o custo real de jogada dura ou cinzenta.
+
+**Onde:** `harvey-playbook.ts` (persona + prompt), `harvey-commands.ts`
+(trigger + orquestração + memória), gancho em `evolution-webhook.ts` logo
+depois do comando `copiloto` de prefixo e antes da interpretação numérica de
+briefing (1/2/3/0) — nunca ambíguo com isso, porque "harvey" é prefixo
+explícito. Modelo: mesma rede de fallback (Anthropic → OpenAI → Groq →
+Gemini) usada no resto do Copiloto, `claude-sonnet-5` como principal.
+
+**Fora de escopo nesta versão:** perfil de estilo próprio do Harvey (reaproveita
+o mesmo `businessContext`/tom do Copiloto), painel web dedicado (vive só no
+self-chat, como a Fase 1 original), e uso automático das memórias salvas além
+de contexto de prompt (nenhum ranking/similaridade — são só as 5 mais recentes
+`saved`, filtradas pela própria IA por relevância).
+
+---
+
 *Escopo produzido com as lentes `/dev` (arquitetura, dados, custo de execução),
 `/adm` (LGPD, margem, operação) e `/mkt` (posicionamento, pricing, lançamento).*
