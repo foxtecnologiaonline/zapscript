@@ -124,8 +124,15 @@
   var started = false;
   var lastSince = null;
   var pollTimer = null;
+  // poll() roda a cada 4s independente de send() — se um poll cair bem no
+  // meio de um envio em andamento, ele pode buscar a mensagem que send()
+  // ainda está com a resposta em voo e desenhar de novo. Marcar o id assim
+  // que soubermos dele (nos dois lados) fecha essa corrida.
+  var renderedIds = {};
 
   function renderMessage(m) {
+    if (m.id && renderedIds[m.id]) return;
+    if (m.id) renderedIds[m.id] = true;
     var el = document.createElement('div');
     el.className = 'zb-msg ' + (m.direction === 'in' && m.senderType === 'visitor' ? 'out' : 'in');
     el.textContent = m.body;
@@ -198,7 +205,9 @@
       // Usa o createdAt que o servidor devolveu como novo cursor — sem isso,
       // o próximo poll() buscaria "tudo desde o último cursor conhecido" e
       // essa mesma mensagem (já mostrada acima, otimisticamente) voltaria
-      // duplicada na tela.
+      // duplicada na tela. Marca o id também (ver renderMessage) — cobre um
+      // poll() que já esteja em voo nesse exato instante.
+      if (data && data.messageId) renderedIds[data.messageId] = true;
       if (data && data.createdAt && (!lastSince || data.createdAt > lastSince)) {
         lastSince = data.createdAt;
       }

@@ -26,6 +26,20 @@ export async function PUT(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const { primaryColor, greeting, position } = body ?? {};
 
+  // primaryColor e position acabam interpolados direto num atributo HTML no
+  // snippet de embed mostrado pro cliente copiar (ver widget-settings/page.tsx)
+  // — um valor fora do formato esperado quebraria esse HTML ao ser colado no
+  // site do cliente, então valida em vez de aceitar qualquer string.
+  if (primaryColor !== undefined && !/^#[0-9a-fA-F]{6}$/.test(primaryColor)) {
+    return NextResponse.json({ error: 'primaryColor deve ser um hex válido, ex: #25D366' }, { status: 400 });
+  }
+  if (position !== undefined && position !== 'left' && position !== 'right') {
+    return NextResponse.json({ error: 'position deve ser "left" ou "right"' }, { status: 400 });
+  }
+  if (greeting !== undefined && (typeof greeting !== 'string' || greeting.length > 500)) {
+    return NextResponse.json({ error: 'greeting deve ter até 500 caracteres' }, { status: 400 });
+  }
+
   const settings = await db.widgetSettings.upsert({
     where: { clientId: auth.clientId },
     update: {

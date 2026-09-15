@@ -69,12 +69,15 @@ que o agente responda pela Inbox.
 
 ### Fase 1 → Fase 2 (Meta Cloud API)
 
-Nenhum módulo chama `evolution-engine.ts` diretamente — tudo passa pela
-interface `MessagingEngine` (`src/lib/messaging/engine.ts`). Migrar de fato
-é: implementar `meta-engine.ts` de ponta a ponta (mesmo desenho que
-`apps/api/src/services/whatsapp-official.ts` já usa no ZapScript.me) e trocar
-o provider default — nenhum outro arquivo muda. `WhatsappConnection.provider`
-já existe no schema para isso.
+Nenhum módulo chama `evolution-engine.ts` diretamente — todas as rotas
+resolvem o motor via `getMessagingEngine(connection.provider)`
+(`src/lib/messaging/engine.ts`), lendo o `provider` gravado no banco pra
+cada conexão. Migrar de fato é: implementar `meta-engine.ts` de ponta a
+ponta (mesmo desenho que `apps/api/src/services/whatsapp-official.ts` já
+usa no ZapScript.me) e permitir escolher `provider: 'meta'` ao criar uma
+conexão (hoje `POST /api/connections` fixa `'evolution'`, já que a Fase 2
+ainda não existe de verdade) — nenhuma rota que já lê `connection.provider`
+precisa mudar.
 
 Critério de corte (escopo §2): volume mensal de mensagens acima do seguro
 para motor não-oficial, ou exigência de compliance do cliente.

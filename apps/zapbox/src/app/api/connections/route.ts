@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
-import { evolutionEngine, widgetInstanceName } from '@/lib/messaging/evolution-engine';
+import { widgetInstanceName } from '@/lib/messaging/evolution-engine';
+import { getMessagingEngine } from '@/lib/messaging/engine';
 
 export async function GET(req: NextRequest) {
   const auth = requireAuth(req);
@@ -42,8 +43,14 @@ export async function POST(req: NextRequest) {
   }
   const webhookUrl = `${publicUrl.replace(/\/$/, '')}/api/webhook/evolution/${connectionId}`;
 
+  // Toda conexão nova nasce Fase 1 (Evolution) — não há seletor de provider
+  // na UI ainda porque a Fase 2 (Meta) é só um stub (ver meta-engine.ts).
+  // Passa pelo adapter mesmo assim: quando a Fase 2 existir de verdade, só
+  // este trecho precisa aprender a escolher o provider — o resto das rotas
+  // já lê `connection.provider` do banco (ver getMessagingEngine abaixo).
+  const provider = 'evolution' as const;
   try {
-    await evolutionEngine.createConnection(instanceName, webhookUrl);
+    await getMessagingEngine(provider).createConnection(instanceName, webhookUrl);
   } catch (err: any) {
     return NextResponse.json({ error: `Falha ao provisionar Evolution: ${err.message}` }, { status: 502 });
   }
@@ -53,6 +60,7 @@ export async function POST(req: NextRequest) {
       id: connectionId,
       clientId: auth.clientId,
       label,
+      provider,
       instanceName,
       status: 'connecting',
     },

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { corsJson, corsPreflight } from '@/lib/cors';
-import { evolutionEngine } from '@/lib/messaging/evolution-engine';
+import { getMessagingEngine } from '@/lib/messaging/engine';
 
 export async function OPTIONS() {
   return corsPreflight();
@@ -37,6 +37,33 @@ export async function POST(req: NextRequest, { params }: { params: { publicKey: 
 
   let justCreated = false;
   if (!conversation) {
+    // Se o cliente final já mandou mensagem direto pro WhatsApp antes de
+    // usar o widget, o webhook já criou uma Conversation com
+    // visitorId="wa-<telefone>" (ver route do webhook). "wa-*" só é gerado
+    // por nós — nenhuma sessão de widget legítima usa esse id — então é
+    // seguro adotar essa linha em vez de criar uma segunda thread do zero e
+    // perder o histórico que já existe.
+    const waVisitorId = `wa-${phone}`;
+    const existingByPhone = visitorId !== waVisitorId
+      ? await db.conversation.findUnique({
+          where: { clientId_visitorId: { clientId: client.id, visitorId: waVisitorId } },
+        })
+      : null;
+
+    if (existingByPhone) {
+      conversation = await db.conversation.update({
+        where: { id: existingByPhone.id },
+        data: { visitorId, customerName: name, status: 'open' },
+      });
+    }
+
+    if (conversation) {
+      return corsJson(
+        { conversationId: conversation.id, connected: !!conversation.connectionId },
+        { allowedOrigin: client.allowedOrigin },
+      );
+    }
+
     const connection = await db.whatsappConnection.findFirst({
       where: { clientId: client.id, status: 'connected' },
       orderBy: { createdAt: 'asc' },
@@ -68,7 +95,8 @@ export async function POST(req: NextRequest, { params }: { params: { publicKey: 
     if (justCreated && connection) {
       const greeting = client.widgetSettings?.greeting ?? 'Olá! Como podemos ajudar você hoje?';
       try {
-        const sent = await evolutionEngine.sendText(connection.instanceName, phone, greeting);
+        const engine = getMessagingEngine(connection.provider as 'evolution' | 'meta');
+        const sent = await engine.sendText(connection.instanceName, phone, greeting);
         await db.message.create({
           data: {
             conversationId: conversation.id,

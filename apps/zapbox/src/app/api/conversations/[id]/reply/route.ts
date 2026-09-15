@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
-import { evolutionEngine } from '@/lib/messaging/evolution-engine';
+import { getMessagingEngine } from '@/lib/messaging/engine';
 
 // Resposta do agente — sai de fato por WhatsApp pro telefone do cliente
 // final; o widget aberto (se ainda estiver) recebe no próximo poll de
@@ -23,9 +23,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const text: string | undefined = body?.text;
   if (!text?.trim()) return NextResponse.json({ error: 'text é obrigatório' }, { status: 400 });
 
+  const engine = getMessagingEngine(conversation.connection.provider as 'evolution' | 'meta');
   let sent: { id: string | null };
   try {
-    sent = await evolutionEngine.sendText(conversation.connection.instanceName, conversation.customerPhone, text.trim());
+    sent = await engine.sendText(conversation.connection.instanceName, conversation.customerPhone, text.trim());
   } catch (err: any) {
     return NextResponse.json({ error: `Falha ao enviar via WhatsApp: ${err.message}` }, { status: 502 });
   }

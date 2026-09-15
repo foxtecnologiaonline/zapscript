@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { evolutionEngine } from '@/lib/messaging/evolution-engine';
+import { getMessagingEngine } from '@/lib/messaging/engine';
 import type { WhatsappConnection } from 'zapbox-db';
 
 // Webhook da Evolution API para UMA conexão. `connectionId` no path é o
@@ -56,7 +56,8 @@ async function handleConnectionUpdate(connection: WhatsappConnection, data: any)
     // Espera 8s e reconfere o estado real antes de marcar como desconectado
     // de fato — evita o modal de reconexão piscando por um evento falso-positivo.
     await new Promise((resolve) => setTimeout(resolve, 8_000));
-    const realState = await evolutionEngine.getStatus(connection.instanceName);
+    const engine = getMessagingEngine(connection.provider as 'evolution' | 'meta');
+    const realState = await engine.getStatus(connection.instanceName);
     if (realState === 'connected') return; // falso positivo — já reconectou sozinho
 
     await db.whatsappConnection.update({

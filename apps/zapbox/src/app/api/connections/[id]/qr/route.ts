@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
-import { evolutionEngine } from '@/lib/messaging/evolution-engine';
+import { getMessagingEngine } from '@/lib/messaging/engine';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = requireAuth(req);
@@ -16,6 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ qrCode: null, status: 'connected' });
   }
 
-  const qr = await evolutionEngine.getQrCode(connection.instanceName);
+  const engine = getMessagingEngine(connection.provider as 'evolution' | 'meta');
+  const qr = await engine.getQrCode(connection.instanceName);
   return NextResponse.json({ ...qr, status: connection.status });
 }

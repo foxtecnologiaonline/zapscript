@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
-import { evolutionEngine } from '@/lib/messaging/evolution-engine';
+import { getMessagingEngine } from '@/lib/messaging/engine';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = requireAuth(req);
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   });
   if (!connection) return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
 
-  await evolutionEngine.disconnect(connection.instanceName);
+  await getMessagingEngine(connection.provider as 'evolution' | 'meta').disconnect(connection.instanceName);
 
   const updated = await db.whatsappConnection.update({
     where: { id: connection.id },
