@@ -25,8 +25,18 @@ const NAV_BASE = [
 /** Monta o menu inserindo "Equipe" apenas para quem assina o Plano Empresas. */
 function buildNav(user: any) {
   const nav = [...NAV_BASE];
+  const planName = user?.subscription?.plan?.name;
 
-  if (user?.subscription?.plan?.name === 'empresas') {
+  // Atende é bundled nos planos Profissional e Empresas (ver TIER_MODULE_BUNDLES
+  // em apps/api/src/routes/billing.ts) — a página em si segue em /app/atende,
+  // só o item de menu ganha um atalho aqui no /dashboard.
+  if (planName === 'profissional' || planName === 'empresas') {
+    const idx = nav.findIndex(i => i.href === '/dashboard/plano');
+    const atendeItem = { href: '/app/atende', icon: '🤖', label: 'Atende' };
+    nav.splice(idx < 0 ? nav.length : idx, 0, atendeItem);
+  }
+
+  if (planName === 'empresas') {
     const idx = nav.findIndex(i => i.href === '/dashboard/configuracoes');
     const equipeItem = { href: '/dashboard/empresarial', icon: '🏢', label: 'Equipe' };
     nav.splice(idx < 0 ? nav.length : idx, 0, equipeItem);
