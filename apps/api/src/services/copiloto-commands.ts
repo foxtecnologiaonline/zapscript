@@ -368,20 +368,75 @@ export async function handleCopilotoChoice(params: {
   text: string;
 }): Promise<boolean> {
   const { numberId, instanceName, selfPhone } = params;
-  const raw = (params.text ?? '').trim();
+  let raw = (params.text ?? '').trim();
   if (!raw) return false;
 
   const reply = async (msg: string) => { await sendText(instanceName, selfPhone, msg); };
   const since = new Date(Date.now() - CHOICE_WINDOW_MS);
+  const include = {
+    suggestions: true,
+    conversation: { select: { id: true, contactPhone: true, contactName: true } },
+  } as const;
 
-  const briefing = await prisma.copilotoBriefing.findFirst({
-    where: { numberId, status: { in: ['pending', 'awaiting_edit'] }, createdAt: { gte: since } },
+  // Prioridade absoluta: edição em andamento (ver EDIT_WINDOW_MS) pra ALGUM
+  // briefing deste número. Nunca ambíguo por construção — o dono só entra
+  // nesse estado respondendo "1e"/"2e"/"3e" a UM briefing específico — por
+  // isso ignora qualquer letra: mesmo texto que comece com uma (ex.: "Avisa
+  // que amanhã eu confirmo") tem que virar mensagem editada, não ser
+  // interpretado como comando de outra conversa.
+  let briefing = await prisma.copilotoBriefing.findFirst({
+    where: { numberId, status: 'awaiting_edit', createdAt: { gte: since } },
     orderBy: { createdAt: 'desc' },
-    include: {
-      suggestions: true,
-      conversation: { select: { id: true, contactPhone: true, contactName: true } },
-    },
+    include,
   });
+
+  if (!briefing) {
+    // v2.1 — letra explícita ("A1", "B0!", "a2e"...) desambigua qual conversa,
+    // quando há mais de uma pendente ao mesmo tempo (ver pendingLabel,
+    // atribuído em processBrief). Só reconhece quando a letra é seguida de um
+    // dígito — "Ok vou..." não vira comando por acaso começar com "O".
+    const lettered = raw.match(/^([A-Za-z])([0-9].*)$/);
+    if (lettered) {
+      const label = lettered[1].toUpperCase();
+      briefing = await prisma.copilotoBriefing.findFirst({
+        where: { numberId, status: 'pending', pendingLabel: label, createdAt: { gte: since } },
+        include,
+      });
+      if (!briefing) {
+        await reply(`Não achei uma conversa pendente com a letra "${label}" agora — pode já ter sido resolvida. Mande "copiloto status" pra ver o que está esperando você.`);
+        return true;
+      }
+      raw = lettered[2].trim(); // segue com "1", "2e", "0!" etc., sem a letra
+    } else {
+      // Sem letra explícita: só é seguro agir de olhos fechados quando existe
+      // NO MÁXIMO 1 pendência. Com 2+, "1/2/3/0" bare adivinhava a mais
+      // recente silenciosamente antes desta correção — preferimos perguntar a
+      // arriscar agir na conversa errada. Só pergunta quando o texto de fato
+      // TEM CARA de comando — uma nota pessoal qualquer não pode disparar isso.
+      const looksLikeBareChoice = /^0(!|x)?$/i.test(raw) || /^([123])\s*(e|editar)?$/i.test(raw);
+      if (!looksLikeBareChoice) return false;
+
+      const pendingList = await prisma.copilotoBriefing.findMany({
+        where: { numberId, status: 'pending', createdAt: { gte: since } },
+        orderBy: { createdAt: 'asc' },
+        include,
+      });
+      if (pendingList.length === 0) return false;
+      if (pendingList.length === 1) {
+        briefing = pendingList[0];
+      } else {
+        const list = pendingList
+          .map((b) => `${b.pendingLabel ?? '?'} — ${b.conversation.contactName || b.conversation.contactPhone}`)
+          .join('\n');
+        await reply(
+          `Você tem ${pendingList.length} conversas pendentes agora:\n${list}\n\n` +
+          `Responda com a letra + número (ex.: *${pendingList[0].pendingLabel ?? 'A'}1*) — sem letra eu não sei qual delas.`,
+        );
+        return true;
+      }
+    }
+  }
+
   if (!briefing) return false;
 
   const who = briefing.conversation.contactName || briefing.conversation.contactPhone;
