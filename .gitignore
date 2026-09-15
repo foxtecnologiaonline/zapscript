@@ -1,7 +1,6 @@
 node_modules/
 dist/
 .next/
-packages/zapbox-db/prisma/generated/
 *.tsbuildinfo
 .env
 .env.local
@@ -32,8 +31,6 @@ npm-debug.log*
 .env.*
 !.env.example
 !apps/monitor/.env.example
-!apps/zapbox/.env.example
-!packages/zapbox-db/.env.example
 zapscript.env
 zapscriptworker.env
 
