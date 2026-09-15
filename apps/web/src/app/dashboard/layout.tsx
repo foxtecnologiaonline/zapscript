@@ -28,9 +28,12 @@ function buildNav(user: any) {
   const planName = user?.subscription?.plan?.name;
 
   // Atende é bundled nos planos Profissional e Empresas (ver TIER_MODULE_BUNDLES
-  // em apps/api/src/routes/billing.ts) — a página em si segue em /app/atende,
-  // só o item de menu ganha um atalho aqui no /dashboard.
-  if (planName === 'profissional' || planName === 'empresas') {
+  // em apps/api/src/routes/billing.ts), que concedem o Entitlement automaticamente.
+  // Checa o Entitlement real (user.modules, vindo de /auth/me via getUserModules —
+  // a mesma fonte de verdade do gate do backend) em vez do nome do plano, pra não
+  // duplicar a regra de bundling aqui. A página em si segue em /app/atende, só o
+  // item de menu ganha um atalho aqui no /dashboard.
+  if (user?.modules?.includes('atende')) {
     const idx = nav.findIndex(i => i.href === '/dashboard/plano');
     const atendeItem = { href: '/app/atende', icon: '🤖', label: 'Atende' };
     nav.splice(idx < 0 ? nav.length : idx, 0, atendeItem);
