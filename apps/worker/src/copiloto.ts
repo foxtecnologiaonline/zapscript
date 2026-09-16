@@ -112,20 +112,16 @@ async function processIngest(job: Job<IngestJobData>) {
   const { userId, numberId, contactPhone, contactName, direction, content, externalId } = job.data;
   if (!content?.trim()) return { skipped: true, reason: 'empty' };
 
-  const now = new Date();
+  // Upsert só pra garantir que a conversa existe (sem tocar nos timestamps
+  // ainda) — eles só avançam DEPOIS de confirmar que a mensagem é nova de
+  // verdade (ver checks de dedup/eco abaixo). Bumpar antes fazia o sweep
+  // periódico de não lidas (copiloto-backfill.ts) reprocessando um chat já
+  // ingerido "reabrir" a conversa como não lida a cada rodada, mesmo sem
+  // mensagem nova nenhuma.
   const conversation = await prisma.copilotoConversation.upsert({
     where: { numberId_contactPhone: { numberId, contactPhone } },
-    update: {
-      lastMessageAt: now,
-      // Só mensagem do CLIENTE conta como "não lida" — ver comentário no
-      // schema (CopilotoConversation.lastCustomerMessageAt).
-      ...(direction === 'in' ? { lastCustomerMessageAt: now } : {}),
-      ...(contactName ? { contactName } : {}),
-    },
-    create: {
-      userId, numberId, contactPhone, contactName: contactName ?? null,
-      lastCustomerMessageAt: direction === 'in' ? now : null,
-    },
+    update: { ...(contactName ? { contactName } : {}) },
+    create: { userId, numberId, contactPhone, contactName: contactName ?? null },
   });
 
   // Dedup por messageId real do WhatsApp — cobre o backfill/sweep de não lidas
@@ -159,8 +155,18 @@ async function processIngest(job: Job<IngestJobData>) {
     if (echo) return { skipped: true, reason: 'echo' };
   }
 
+  const now = new Date();
   await prisma.copilotoMessage.create({
     data: { conversationId: conversation.id, direction, content, externalId: externalId ?? null },
+  });
+  await prisma.copilotoConversation.update({
+    where: { id: conversation.id },
+    data: {
+      lastMessageAt: now,
+      // "Não lida" (lastCustomerMessageAt) e "o dono já respondeu esse
+      // contato" (lastOwnerMessageAt) — ver comentários no schema.
+      ...(direction === 'in' ? { lastCustomerMessageAt: now } : { lastOwnerMessageAt: now }),
+    },
   });
 
   // Resultado da sugestão: o cliente respondeu depois do que o dono mandou?

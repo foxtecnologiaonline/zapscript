@@ -1248,6 +1248,13 @@ model CopilotoConversation {
   // processBrief nunca achava mensagem 'in' nova pra brifar (ver
   // ESCOPO_COPILOTO.md §15.6).
   lastCustomerMessageAt DateTime?
+  // v3.2 — só bumpado em mensagem 'out' (do dono, por qualquer via: painel,
+  // self-chat, WhatsApp direto). Decide se um briefing 'pending' ainda é
+  // acionável: se o dono já respondeu esse contato DEPOIS do briefing ser
+  // gerado, ele resolveu por fora do painel — o card não deve continuar
+  // aparecendo no Inbox como se ainda esperasse decisão (ver isBriefingStale
+  // em routes/copiloto.ts e ESCOPO_COPILOTO.md §15.7).
+  lastOwnerMessageAt DateTime?
   lastBriefedAt DateTime? // corte do que já virou briefing — evita rebriefar a mesma mensagem
   createdAt     DateTime           @default(now())
   user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)

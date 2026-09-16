@@ -36,6 +36,23 @@ function isConversationUnread(c: { lastCustomerMessageAt: Date | null; lastBrief
   return !c.lastBriefedAt || c.lastBriefedAt < c.lastCustomerMessageAt;
 }
 
+/**
+ * v3.2 — um briefing 'pending' fica "resolvido na prática" quando o dono já
+ * respondeu esse contato (qualquer via) DEPOIS do briefing ter sido gerado —
+ * ele decidiu por fora do painel/self-chat e só não fechou o card
+ * formalmente. Sem isso, briefing antigo da era do push em self-chat (que só
+ * saía de 'pending' respondendo 1/2/3 lá, fluxo removido na v3.0) fica
+ * cravado no Inbox pra sempre, mesmo já tendo sido tratado há dias. Ver
+ * ESCOPO_COPILOTO.md §15.7 e o comentário no schema (lastOwnerMessageAt).
+ */
+function isBriefingStale(
+  briefing: { status: string; createdAt: Date },
+  conversation: { lastOwnerMessageAt: Date | null },
+): boolean {
+  if (briefing.status !== 'pending') return false;
+  return !!conversation.lastOwnerMessageAt && conversation.lastOwnerMessageAt > briefing.createdAt;
+}
+
 export default async function copilotoRoutes(app: FastifyInstance) {
   app.addHook('preHandler', (app as any).authenticate);
   app.addHook('preHandler', requireModule('copiloto'));
@@ -410,7 +427,7 @@ export default async function copilotoRoutes(app: FastifyInstance) {
       .map((c) => {
         const b = c.briefings[0] ?? null;
         const unread = isConversationUnread(c);
-        const needsAttention = unread || b?.status === 'pending';
+        const needsAttention = unread || (b?.status === 'pending' && !isBriefingStale(b, c));
         return { c, b, unread, needsAttention };
       })
       .filter((row) => row.needsAttention)

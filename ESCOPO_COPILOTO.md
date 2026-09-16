@@ -897,6 +897,39 @@ Efeito colateral corrigido de brinde: o "Atualizar" agora reporta o que
 aconteceu (quantas processou, se não havia nada novo, se ficou algo pra
 trás) em vez de só mostrar "Processando…" e voltar ao normal em silêncio.
 
+### 15.7 v3.2 — Briefing antigo (era do push) travado em "pending" pra sempre (2026-09-17)
+
+Revisão dos dados de produção depois do fix §15.6 achou o segundo pedaço do
+mesmo problema: 36 conversas tinham como último briefing um registro
+`deliveredVia='whatsapp'` (da era do push em self-chat, 2026-09-07 a
+2026-09-15) ainda com `status='pending'` — porque a única forma de tirá-lo
+de 'pending' era responder "1/2/3" no self-chat, fluxo removido na v3.0.
+Resultado: 36 cards antigos inundando o Inbox novo ao lado das poucas
+conversas realmente não lidas, muitos deles de contatos que o dono já tinha
+respondido manualmente há dias.
+
+**Correção:** novo campo `CopilotoConversation.lastOwnerMessageAt` (espelho
+de `lastCustomerMessageAt`, mas pra mensagem `'out'` — do dono, por
+qualquer via). Um briefing `'pending'` some do Inbox quando o dono já
+mandou mensagem pro contato DEPOIS do briefing ter sido gerado — sinal de
+que ele resolveu por fora do painel, só não fechou o card formalmente (ver
+`isBriefingStale`, `routes/copiloto.ts`). Validado contra produção antes de
+subir: das 39 conversas com briefing `'pending'` como mais recente, 17
+tinham resposta do dono depois do briefing (saem do Inbox), 22 continuam
+genuinamente sem resposta (continuam aparecendo — corretamente).
+
+Aproveitado pra corrigir uma causa relacionada: `processIngest` bumpava
+`lastMessageAt`/`lastCustomerMessageAt` ANTES dos checks de dedup/eco —
+o sweep periódico de não lidas (`copiloto-backfill.ts`) reprocessando um
+chat já ingerido reabria a conversa como "não lida" mesmo sem mensagem
+nova. Os timestamps agora só avançam depois de confirmar que a mensagem é
+nova de verdade.
+
+Nenhum dado foi apagado — é um novo campo, populado por migration com
+backfill do histórico real de `CopilotoMessage`, e o filtro de "stale" é
+calculado na leitura (não reescreve `status`), então fica reversível e
+auditável.
+
 ---
 
 *Escopo produzido com as lentes `/dev` (arquitetura, dados, custo de execução),
