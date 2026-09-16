@@ -797,5 +797,79 @@ de contexto de prompt (nenhum ranking/similaridade — são só as 5 mais recent
 
 ---
 
+## 15. v3.0 — Painel sob demanda, fim do push no self-chat (2026-09-16)
+
+A Função 1 rodou em produção como **push proativo no WhatsApp** (triagem →
+briefing → self-chat, responder "1/2/3") desde a Fase 1 original. Essa versão
+ficou muito longe da expectativa real do dono e foi substituída de ponta a
+ponta — não é um ajuste, é outra arquitetura.
+
+### 15.1 A dor que motivou a mudança
+
+O fluxo manual que o Copiloto deveria substituir: abrir a conversa não lida,
+ler, entender, pensar, copiar pra uma IA genérica, explicar o contexto, esperar
+o raciocínio, só então agir. O push no WhatsApp automatizava só um pedaço disso
+(a leitura + sugestão) mas trazia atrito novo (interrupção, triagem decidindo
+o que "vale a pena" o dono ver, resposta por número solto). O que o dono queria
+era: entrar num lugar, ver TODA conversa não lida já analisada com 3 opções
+prontas, revisar e agir — sem re-explicar contexto nem esperar filtro de IA
+decidir por ele o que merece atenção.
+
+### 15.2 O que mudou
+
+| | v2.x (push) | v3.0 (painel sob demanda) |
+|---|---|---|
+| Onde aparece | Self-chat do WhatsApp | `/dashboard/copiloto` → aba **Inbox** |
+| Quando processa | Tempo real, 3min após a última mensagem (debounce) | Sob demanda — o dono clica "Atualizar" |
+| Quais conversas | Só as que a triagem julga que "merecem" interromper | **Todas** as não lidas, sem filtro — sem push não tem custo de interromper à toa |
+| Ação | Responder "1"/"2"/"3"/"0"/"1e" por número, no WhatsApp | Clicar Enviar/Editar/Descartar no painel — 1 clique, com o texto editável antes de confirmar |
+| Envio ao cliente | `copiloto-commands.ts` (`handleCopilotoChoice`) | `copiloto-actions.ts` (`sendCopilotoSuggestion`), chamado por `POST /copiloto/suggestions/:id/send` |
+
+### 15.3 O que saiu (removido, não só desligado)
+
+- **`processDeliver`** e a compilação de rajadas em self-chat — não existe
+  mais "entrega" no sentido de mandar mensagem pro dono.
+- **Sweep de pendências** (`runCopilotoPendingSweep`) — existia pra
+  ressuscitar entrega presa; sem entrega, não tem o que ressuscitar. O painel
+  sempre reflete o estado atual a cada refresh.
+- **Recap semanal de técnica** (`runCopilotoTechniqueRecap`) — era push;
+  os mesmos números (sugestões por técnica, taxa de resposta) já existiam em
+  `GET /copiloto/metrics`, sob demanda.
+- **Horário de silêncio, teto diário de briefings, cooldown de "pessoal",
+  piso de confiança por tipo** (`copiloto confianca <tipo> <valor>`) — todos
+  existiam pra proteger o dono de interrupção excessiva no WhatsApp. Sem
+  interrupção, não sobra "vale a pena filtrar" — cada conversa não lida vira
+  card, o dono decide olhando a lista, não o sistema decidindo por ele.
+- **`handleCopilotoChoice`** e a desambiguação por letra (`pendingLabel`,
+  "A1"/"B0!") — só fazia sentido quando várias conversas podiam ficar
+  pendentes ao mesmo tempo NO MESMO CANAL de texto solto. No painel, cada
+  card já é visualmente distinto — não precisa de letra.
+
+`CopilotoConfig.enabled` continua existindo como o botão mestre
+("copiloto ligar/desligar" no self-chat) — agora significa "o painel
+processa este número quando eu clicar Atualizar", não mais "recebo push".
+
+### 15.4 O que ficou igual (o motor não mudou)
+
+`copiloto-agent.ts` (triagem + `buildBriefing`) e `copiloto-guardrails.ts`
+(validação determinística pós-geração) são os mesmos — só passaram a ser
+chamados por `POST /copiloto/inbox/refresh` em vez de automaticamente depois
+de cada mensagem. A triagem continua rodando, só que agora classifica
+tipo/remetente pra exibição e adaptação dos eixos (ver §13), sem gate de
+"ignorar". Style/aprendizado (§5), guardrails éticos/legais (§3.4) e o modelo
+de dados (`CopilotoBriefing`/`CopilotoSuggestion`) não mudaram.
+
+### 15.5 Fora de escopo nesta versão
+
+- Processamento em tempo real de fundo (cron/BullMQ automático) — decisão
+  explícita do dono foi sob demanda; pode virar opção configurável depois.
+- Notificação (push/e-mail) avisando que há itens novos no Inbox — hoje o
+  dono precisa abrir o painel pra saber.
+- Resumo diário de grupos (Função 2) não mudou de canal nesta versão — segue
+  entregando no self-chat, é opt-in e informativo (nunca sugere resposta),
+  natureza diferente da Função 1.
+
+---
+
 *Escopo produzido com as lentes `/dev` (arquitetura, dados, custo de execução),
 `/adm` (LGPD, margem, operação) e `/mkt` (posicionamento, pricing, lançamento).*
