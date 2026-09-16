@@ -3240,17 +3240,20 @@ export default async function adminRoutes(app: FastifyInstance) {
   const COPILOTO_KEY = 'copiloto';
   const COPILOTO_MVP_DAYS = 90; // acesso de cortesia do MVP; renovável pelo admin
 
+  // v3.0 — Copiloto virou painel sob demanda (ver ESCOPO_COPILOTO.md §15):
+  // não empurra mais briefing no self-chat, então o onboarding aponta pro
+  // /dashboard/copiloto (aba Inbox) em vez de prometer 1/2/3 por aqui.
   const COPILOTO_ONBOARDING = [
     '🎯 *Copiloto ligado.*',
     '',
-    'A partir de agora eu leio suas conversas do WhatsApp e, quando alguma merecer sua atenção, te mando aqui um resumo com *3 opções de resposta* — prontas pra enviar.',
+    'Acesse */dashboard/copiloto* → aba *Inbox*: lá eu leio suas conversas não lidas, resumo cada uma e monto *3 opções de resposta* — você clica "Atualizar" quando quiser processar, revisa e envia direto por lá.',
     '',
-    'Eu *nunca* falo com seu cliente sozinho. Só envio quando você responde 1, 2 ou 3.',
+    'Eu *nunca* falo com seu cliente sozinho — o envio só acontece quando você clica.',
     '',
     'Pra começar direito, me conte o que seu negócio faz:',
     '_copiloto negocio Faço bolos de festa sob encomenda em Uberlândia, entrego em 3 dias_',
     '',
-    'Outros comandos: *copiloto status*, *copiloto desligar*, *copiloto limite 5*.',
+    'Outros comandos aqui no WhatsApp: *copiloto status*, *copiloto desligar*, *copiloto agressividade*.',
   ].join('\n');
 
   // GET /admin/copiloto/users — quem está no MVP, com uso dos últimos 7 dias
@@ -3521,14 +3524,15 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   );
 
-  // ── Copiloto v2.1 — insights pra decidir onde apertar a triagem ──────────
-  // A triagem (v2.0) roda deliberadamente aberta ("na dúvida, briefa") — ver
-  // TRIAGE_SYSTEM_PROMPT em copiloto-playbook.ts. Esta rota agrega, por tipo
-  // (comercial/pessoal/admin/crise/oportunidade), quanto disso vira ruído de
-  // verdade: taxa de ignoro, quantos foram marcados "0!" (ruído explícito,
-  // ver copiloto-commands.ts) e confiança média da triagem (triageConfidence
-  // — sem isso, "onde configurar copiloto confianca" seria chute). É o dado
-  // que decide se/onde vale configurar "copiloto confianca <tipo> <valor>".
+  // ── Copiloto — insights sobre a triagem por tipo ─────────────────────────
+  // v3.0: a triagem não bloqueia mais nada (toda conversa não lida vira card
+  // no painel, ver ESCOPO_COPILOTO.md §15) — não existe mais "copiloto
+  // confianca <tipo> <valor>" pra configurar. Esta rota continua útil como
+  // observabilidade: agrega, por tipo (comercial/pessoal/admin/crise/
+  // oportunidade), taxa de descarte, quantos foram descartados "e avisar"
+  // (ruído explícito — dismissReason='ruido', ver copiloto-actions.ts) e
+  // confiança média da triagem (triageConfidence) — sinal de onde o
+  // TRIAGE_SYSTEM_PROMPT (copiloto-playbook.ts) precisaria de ajuste.
   app.get<{ Querystring: { days?: string } }>('/copiloto/insights', { preHandler: [adminAuth] }, async (req: any) => {
     const days = Math.min(90, Math.max(1, parseInt(req.query?.days, 10) || 14));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -3567,8 +3571,9 @@ export default async function adminRoutes(app: FastifyInstance) {
       tipo,
       total: v.total,
       dismissRatePercent: v.total > 0 ? Math.round((v.dismissed / v.total) * 100) : 0,
-      // "ruído confirmado" é o sinal mais forte — dono disse explicitamente
-      // "0!", não só deixou de responder (que pode ser só falta de tempo).
+      // "ruído confirmado" é o sinal mais forte — dono descartou com "e
+      // avisar" no painel (dismissReason='ruido'), não só ignorou (que pode
+      // ser só falta de tempo).
       confirmedNoisePercent: v.total > 0 ? Math.round((v.noiseExplicit / v.total) * 100) : 0,
       actedRatePercent: v.total > 0 ? Math.round((v.acted / v.total) * 100) : 0,
       avgTriageConfidence: v.confidenceCount > 0 ? Math.round(v.confidenceSum / v.confidenceCount) : null,
