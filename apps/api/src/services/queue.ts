@@ -103,9 +103,11 @@ export const legendaQueue = new Queue('legendas', {
 // ── Fila do ZapScript Copiloto (agente pessoal do dono) ──────────────────────
 // Dois tipos de job:
 //   'ingest' — imediato, só persiste a mensagem (mantém o webhook rápido);
-//   'brief'  — atrasado (janela de debounce), é o que chama a IA.
-// O 'brief' é deduplicado por jobId com bucket de tempo, então uma rajada de
-// mensagens do mesmo contato vira UM briefing só. Ver apps/worker/src/copiloto.ts.
+//   'brief'  — chama a IA (triagem + 3 opções). v3.0: só é enfileirado sob
+//              demanda, quando o dono clica "Atualizar" em /dashboard/copiloto
+//              (POST /copiloto/inbox/refresh, routes/copiloto.ts) — não mais
+//              automaticamente depois de cada mensagem. Ver apps/worker/src/
+//              copiloto.ts e ESCOPO_COPILOTO.md §15.
 export const copilotoQueue = new Queue('copiloto', {
   connection: redis as any,
   defaultJobOptions: {

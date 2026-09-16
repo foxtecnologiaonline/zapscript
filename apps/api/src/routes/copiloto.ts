@@ -2,15 +2,22 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { requireModule } from '../lib/moduleGate';
 import { fetchGroups } from '../services/evolution';
+import { copilotoQueue } from '../services/queue';
+import { sendCopilotoSuggestion, dismissCopilotoBriefing } from '../services/copiloto-actions';
 
 /**
- * Módulo Copiloto — Função 2 (resumo diário de grupos).
+ * Módulo Copiloto.
  *
- * A Função 1 (briefing por conversa individual) não passa por API nenhuma —
- * vive inteira no self-chat via comandos ("copiloto status/ligar/...", ver
- * copiloto-commands.ts) e no worker (copiloto.ts). Grupo é diferente: exige
- * opt-in explícito por grupo, e não dá pra escolher "qual grupo" por comando de
- * texto sem expor uma lista — por isso só essa parte tem rota própria.
+ * v3.0 (ESCOPO_COPILOTO.md §15) — a Função 1 (briefing por conversa
+ * individual) virou SOB DEMANDA e vive neste painel: GET /inbox lista o que
+ * precisa de atenção, POST /inbox/refresh dispara a análise (IA), POST
+ * /suggestions/:id/send envia ao cliente, POST /briefings/:id/dismiss
+ * descarta. O self-chat ("copiloto status/ligar/...", ver copiloto-commands.ts)
+ * ficou só com configuração — não processa nem envia mais nada.
+ *
+ * Função 2 (resumo diário de grupos) continua com rota própria: exige opt-in
+ * explícito por grupo, e não dá pra escolher "qual grupo" por comando de
+ * texto sem expor uma lista.
  *
  * Sem teamScope de propósito: o Copiloto é pessoal do dono, não compartilhado
  * com o time (diferente de Atende/Tarefas). Ver ESCOPO_COPILOTO.md.
@@ -24,8 +31,8 @@ export default async function copilotoRoutes(app: FastifyInstance) {
   }
 
   // ── GET /copiloto/conversations ──────────────────────────────────────────
-  // Painel web (leitura). A ação de verdade (1/2/3, editar, ignorar) continua
-  // só no self-chat — ver ESCOPO_COPILOTO.md §1. Esta rota é só "mostrar".
+  // Navegação livre (busca, filtro por tipo/temperatura/status) — pro dono
+  // revisar histórico. GET /inbox (abaixo) é a fila do dia-a-dia.
   app.get<{ Querystring: { numberId?: string; temperature?: string; status?: string; tipo?: string; q?: string } }>(
     '/conversations',
     async (req: any) => {
@@ -361,4 +368,146 @@ export default async function copilotoRoutes(app: FastifyInstance) {
       },
     };
   });
+
+  // ── GET /copiloto/inbox ───────────────────────────────────────────────────
+  // A fila do dia-a-dia: conversas com algo que precisa da sua atenção —
+  // mensagem ainda não processada (não lida) OU já processada mas com um
+  // briefing 'pending' (você ainda não enviou nem descartou). v3.0 —
+  // ESCOPO_COPILOTO.md §15: sem filtro de "vale a pena" — toda conversa
+  // pendente aparece, você que decide no site.
+  app.get<{ Querystring: { numberId?: string } }>('/inbox', async (req: any) => {
+    const userId = req.user.sub;
+    const { numberId } = req.query || {};
+
+    const conversations = await prisma.copilotoConversation.findMany({
+      where: { userId, ...(numberId ? { numberId } : {}) },
+      orderBy: { lastMessageAt: 'desc' },
+      take: 200,
+      include: {
+        number: { select: { id: true, displayName: true, phoneNumber: true } },
+        briefings: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { suggestions: { orderBy: { rank: 'asc' } } },
+        },
+      },
+    });
+
+    const TEMP_RANK: Record<string, number> = { quente: 0, morno: 1, frio: 2 };
+
+    const inbox = conversations
+      .map((c) => {
+        const b = c.briefings[0] ?? null;
+        const unread = !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt;
+        const needsAttention = unread || b?.status === 'pending';
+        return { c, b, unread, needsAttention };
+      })
+      .filter((row) => row.needsAttention)
+      .sort((a, b) => {
+        const rankA = TEMP_RANK[a.b?.temperature ?? ''] ?? 3;
+        const rankB = TEMP_RANK[b.b?.temperature ?? ''] ?? 3;
+        if (rankA !== rankB) return rankA - rankB;
+        return b.c.lastMessageAt.getTime() - a.c.lastMessageAt.getTime();
+      })
+      .map(({ c, b, unread }) => ({
+        id:            c.id,
+        numberId:      c.numberId,
+        number:        c.number,
+        contactName:   c.contactName,
+        contactPhone:  c.contactPhone,
+        lastMessageAt: c.lastMessageAt,
+        // true = ainda não foi processada nesta rodada (precisa de refresh);
+        // false com briefing 'pending' = já tem análise, só falta você agir.
+        unread,
+        latestBriefing: b ? {
+          id:          b.id,
+          summary:     b.summary,
+          intent:      b.intent,
+          temperature: b.temperature,
+          riskLevel:   b.riskLevel,
+          blocker:     b.blocker,
+          tipo:        b.tipo,
+          remetente:   b.remetente,
+          sensitive:   b.sensitive,
+          status:      b.status,
+          createdAt:   b.createdAt,
+          suggestions: b.suggestions
+            .filter((s) => s.status === 'offered')
+            .map((s) => ({
+              id: s.id, rank: s.rank, axis: s.axis, title: s.title, draft: s.draft,
+              rationale: s.rationale, risk: s.risk, technique: s.technique, confidence: s.confidence,
+              commitmentTitle: s.commitmentTitle, commitmentDueAt: s.commitmentDueAt,
+            })),
+        } : null,
+      }));
+
+    return { inbox, unreadCount: inbox.filter((i) => i.unread).length };
+  });
+
+  // ── POST /copiloto/inbox/refresh ─────────────────────────────────────────
+  // Dispara a IA (triagem + buildBriefing + guardrails, ver processBrief em
+  // apps/worker/src/copiloto.ts) pra cada conversa ainda não processada. Só
+  // enfileira — quem chama deve reconsultar GET /inbox depois (o front faz
+  // polling curto até o `unread` de cada conversa que estava marcada zerar).
+  app.post<{ Body: { numberId?: string } }>('/inbox/refresh', async (req: any, reply) => {
+    const userId = req.user.sub;
+    const { numberId } = req.body || {};
+
+    if (numberId) {
+      const owned = await ownedNumber(userId, numberId);
+      if (!owned) return reply.code(404).send({ error: 'Número não encontrado' });
+    }
+
+    const conversations = await prisma.copilotoConversation.findMany({
+      where: { userId, ...(numberId ? { numberId } : {}) },
+      select: { numberId: true, contactPhone: true, lastMessageAt: true, lastBriefedAt: true },
+    });
+    const pending = conversations.filter((c) => !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt);
+
+    let enqueued = 0;
+    for (const c of pending) {
+      // Sem bucket de tempo (não é mais debounce): jobId estável por conversa
+      // só evita dois cliques em "Atualizar" processarem a mesma conversa em
+      // paralelo — o job existente é reaproveitado, não duplicado.
+      await copilotoQueue.add(
+        'brief',
+        { userId, numberId: c.numberId, contactPhone: c.contactPhone },
+        { jobId: `copiloto-brief-refresh-${c.numberId}-${c.contactPhone}` },
+      ).catch(() => null);
+      enqueued++;
+    }
+
+    return { enqueued, pending: pending.length };
+  });
+
+  // ── POST /copiloto/suggestions/:id/send ──────────────────────────────────
+  // Envia ao cliente — o rascunho original ou o texto que o dono editou no
+  // painel antes de clicar Enviar. Único ponto de envio ao cliente no
+  // Copiloto (ver copiloto-actions.ts).
+  app.post<{ Params: { id: string }; Body: { text?: string } }>(
+    '/suggestions/:id/send',
+    async (req: any, reply) => {
+      const userId = req.user.sub;
+      const result = await sendCopilotoSuggestion({
+        userId, suggestionId: req.params.id, finalText: req.body?.text,
+      });
+      if (!result.ok) return reply.code(result.status).send({ error: result.error });
+      return result;
+    },
+  );
+
+  // ── POST /copiloto/briefings/:id/dismiss ─────────────────────────────────
+  // Equivalente ao antigo "0"/"0!" no self-chat — descarta sem enviar nada.
+  // `noise: true` é o antigo "0!": alimenta ESCOPO_COPILOTO.md §13.3/13.4.
+  app.post<{ Params: { id: string }; Body: { noise?: boolean } }>(
+    '/briefings/:id/dismiss',
+    async (req: any, reply) => {
+      const userId = req.user.sub;
+      const result = await dismissCopilotoBriefing({
+        userId, briefingId: req.params.id, noise: !!req.body?.noise,
+      });
+      if (!result.ok) return reply.code(result.status).send({ error: result.error });
+      return result;
+    },
+  );
 }

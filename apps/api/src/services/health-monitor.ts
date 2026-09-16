@@ -279,12 +279,16 @@ async function checkWorker(queue: QueueCounts): Promise<
 // dois. "Todos os provedores de IA caíram juntos" (SystemError com
 // service='copiloto-ai', gravado por apps/worker/src/copiloto.ts) e "um cron
 // do worker parou de rodar" (CronHeartbeat, escrito a cada rodada de
-// runCopilotoGroupDigests/runCopilotoPendingSweep/runCopilotoTechniqueRecap)
-// eram invisíveis até agora — só apareciam no docker logs do worker.
+// runCopilotoGroupDigests) eram invisíveis até agora — só apareciam no docker
+// logs do worker.
+//
+// v3.0 — o Copiloto deixou de empurrar briefing/recap pro self-chat (virou
+// painel sob demanda em /dashboard/copiloto, ver ESCOPO_COPILOTO.md §15):
+// removidos os heartbeats de copiloto_pending_sweep e copiloto_technique_recap,
+// que só existiam pra sustentar aquela entrega por push. copiloto_group_digest
+// (Função 2, opt-in por grupo) continua — não mudou de canal.
 const COPILOTO_CRON_STALE_HOURS: Record<string, number> = {
-  copiloto_group_digest:    3,      // poll a cada 30min
-  copiloto_pending_sweep:   4,      // poll a cada 1h
-  copiloto_technique_recap: 24 * 9, // só roda às segundas — 9 dias cobre 1 semana perdida sem falso positivo
+  copiloto_group_digest: 3, // poll a cada 30min
 };
 
 async function checkCopiloto(): Promise<

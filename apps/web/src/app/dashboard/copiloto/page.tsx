@@ -3,14 +3,15 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
 
 /**
- * Painel web do Copiloto — SÓ LEITURA. A ação de verdade (escolher 1/2/3,
- * editar antes de enviar, ignorar) continua exclusivamente no self-chat do
- * WhatsApp ("Mensagens para você mesmo") — ver ESCOPO_COPILOTO.md §1. Esta
- * tela existe pra navegar o histórico com filtro, não pra substituir aquele
- * fluxo.
+ * Painel web do Copiloto.
  *
- * Duas abas: Conversas (Função 1 — briefing individual) e Grupos (Função 2 —
- * opt-in pro resumo diário, única parte que sempre teve tela própria).
+ * v3.0 (ESCOPO_COPILOTO.md §15) — Inbox é a aba principal: fila sob demanda,
+ * "Atualizar" dispara a IA pras conversas não lidas, e enviar/editar/descartar
+ * acontece aqui mesmo (não mais respondendo "1/2/3" no self-chat do WhatsApp).
+ *
+ * Quatro abas: Inbox (fila do dia-a-dia), Conversas (navegação/histórico
+ * livre, com filtro), Métricas, e Grupos (Função 2 — opt-in pro resumo
+ * diário, sempre teve tela própria).
  *
  * Vive dentro de /dashboard (layout já traz sidebar/nav) — por isso não tem
  * <main> nem header próprio, diferente de quando morava em /app/copiloto.
@@ -54,6 +55,50 @@ interface BriefingRow {
   status: string;      // pending | awaiting_edit | acted | dismissed | expired
   createdAt: string;
   suggestions: SuggestionRow[];
+}
+
+// v3.0 — a fila sob demanda (ESCOPO_COPILOTO.md §15). `unread` = ainda não
+// processada (precisa de "Atualizar"); false com latestBriefing.status=
+// 'pending' = já tem análise, só falta enviar/descartar. Só vêm as opções
+// 'offered' (o card nunca mostra o que os guardrails bloquearam).
+interface InboxSuggestion {
+  id: string;
+  rank: number;
+  axis: string;
+  title: string;
+  draft: string;
+  rationale: string;
+  risk: string | null;
+  technique: string;
+  confidence: number;
+  commitmentTitle: string | null;
+  commitmentDueAt: string | null;
+}
+
+interface InboxBriefing {
+  id: string;
+  summary: string;
+  intent: string;
+  temperature: string;
+  riskLevel: string;
+  blocker: string | null;
+  tipo: string | null;
+  remetente: string | null;
+  sensitive: boolean;
+  status: string;
+  createdAt: string;
+  suggestions: InboxSuggestion[];
+}
+
+interface InboxRow {
+  id: string;
+  numberId: string;
+  number: { id: string; displayName: string | null; phoneNumber: string | null } | null;
+  contactName: string | null;
+  contactPhone: string;
+  lastMessageAt: string;
+  unread: boolean;
+  latestBriefing: InboxBriefing | null;
 }
 
 interface ConversationListItem {
@@ -292,6 +337,234 @@ function BriefingCard({ b }: { b: BriefingRow }) {
       {b.suggestions.length > 0 && (
         <div className="space-y-2 pt-1">
           {b.suggestions.map((s) => <SuggestionCard key={s.rank} s={s} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Inbox (v3.0 — fila sob demanda, ver ESCOPO_COPILOTO.md §15) ─────────────
+
+function InboxSuggestionCard({ s, onSent }: { s: InboxSuggestion; onSent: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(s.draft);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function send() {
+    setSending(true);
+    setError(null);
+    try {
+      await api.post(`/copiloto/suggestions/${s.id}/send`, { text });
+      onSent();
+    } catch (e: any) {
+      setError(e?.message || 'Não consegui enviar. Tenta de novo.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-sm">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="font-medium text-neutral-200">{s.rank} · {s.title}</span>
+        <span className="text-[10px] text-neutral-500">⟨{TECHNIQUE_LABEL[s.technique] || s.technique}⟩</span>
+      </div>
+
+      {editing ? (
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          className="mt-2 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-emerald-600 resize-none"
+        />
+      ) : (
+        <p className="text-neutral-400 mt-1 whitespace-pre-wrap">&ldquo;{text}&rdquo;</p>
+      )}
+
+      <p className="text-[11px] text-neutral-600 mt-1.5">{s.rationale}</p>
+      {s.risk && <p className="text-[11px] text-amber-400/80 mt-0.5">⚠️ {s.risk}</p>}
+      {s.commitmentTitle && (
+        <span className="inline-block mt-1.5 rounded-full bg-amber-900/30 px-2 py-0.5 text-[11px] text-amber-300">
+          📌 vira tarefa: {s.commitmentTitle}
+        </span>
+      )}
+
+      {error && <p className="text-[11px] text-red-400 mt-1.5">{error}</p>}
+
+      <div className="flex items-center gap-2 mt-2.5">
+        <button
+          onClick={send}
+          disabled={sending || !text.trim()}
+          className="text-[12px] font-medium px-3 py-1.5 rounded-full bg-emerald-700/80 text-white hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {sending ? 'Enviando…' : editing ? 'Enviar editado' : 'Enviar'}
+        </button>
+        {!editing && (
+          <button onClick={() => setEditing(true)} className="text-[12px] text-neutral-400 hover:text-neutral-200">
+            Editar antes
+          </button>
+        )}
+        {editing && (
+          <button
+            onClick={() => { setEditing(false); setText(s.draft); }}
+            className="text-[12px] text-neutral-500 hover:text-neutral-300"
+          >
+            Cancelar edição
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InboxCard({ row, onChanged }: { row: InboxRow; onChanged: () => void }) {
+  const who = row.contactName || row.contactPhone;
+  const b = row.latestBriefing;
+  const [dismissing, setDismissing] = useState(false);
+
+  async function dismiss(noise: boolean) {
+    if (!b) return;
+    setDismissing(true);
+    try {
+      await api.post(`/copiloto/briefings/${b.id}/dismiss`, { noise });
+      onChanged();
+    } catch {
+      setDismissing(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-neutral-700 bg-neutral-900 p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="font-medium text-neutral-100">{who}</span>
+        <span className="text-[11px] text-neutral-500">{timeAgo(row.lastMessageAt)}</span>
+      </div>
+
+      {row.unread || !b ? (
+        <p className="text-sm text-neutral-500">Ainda não processada — clique em &ldquo;Atualizar&rdquo; no topo.</p>
+      ) : (
+        <>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] rounded-full bg-neutral-800 px-2 py-0.5 text-emerald-400">
+              {TIPO_LABEL[b.tipo ?? 'comercial'] || b.tipo}
+            </span>
+            <span className="text-[11px]">{TEMP_LABEL[b.temperature] || b.temperature}</span>
+            <span className="text-[11px] text-neutral-500">·</span>
+            <span className="text-[11px] text-neutral-400">{RISK_LABEL[b.riskLevel] || b.riskLevel}</span>
+            {b.blocker && <span className="text-[11px] text-neutral-400">· {BLOCKER_LABEL[b.blocker] || b.blocker}</span>}
+            {b.sensitive && <span className="text-[11px] text-sky-300">🕊️ sensível</span>}
+          </div>
+          {b.summary && <p className="text-sm text-neutral-200">{b.summary}</p>}
+          {b.intent && <p className="text-xs text-neutral-500">O que ele quer: {b.intent}</p>}
+
+          {b.suggestions.length > 0 ? (
+            <div className="space-y-2 pt-1">
+              {b.suggestions.map((s) => (
+                <InboxSuggestionCard key={s.id} s={s} onSent={onChanged} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-neutral-500">Sem sugestão segura desta vez — responda você mesmo.</p>
+          )}
+
+          <div className="pt-1">
+            <button
+              onClick={() => dismiss(false)}
+              disabled={dismissing}
+              className="text-[12px] text-neutral-500 hover:text-neutral-300 mr-3"
+            >
+              Descartar
+            </button>
+            <button
+              onClick={() => dismiss(true)}
+              disabled={dismissing}
+              className="text-[12px] text-neutral-600 hover:text-neutral-400"
+            >
+              Descartar e avisar que isso não devia ter aparecido
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function InboxTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitled: () => void }) {
+  const [inbox, setInbox] = useState<InboxRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    const params = new URLSearchParams();
+    if (numberId) params.set('numberId', numberId);
+    return api.get<{ inbox: InboxRow[]; unreadCount: number }>(`/copiloto/inbox?${params.toString()}`)
+      .then((res) => { setInbox(res.inbox); setError(null); return res; })
+      .catch((e: any) => {
+        if (e?.moduleRequired) onNotEntitled();
+        else setError(e?.message || 'Não foi possível carregar a fila.');
+        return null;
+      });
+  }, [numberId, onNotEntitled]);
+
+  useEffect(() => { setLoading(true); load().finally(() => setLoading(false)); }, [load]);
+
+  // "Atualizar": dispara o processamento e faz polling curto até as
+  // conversas que estavam `unread` saírem desse estado (ou até um teto de
+  // tempo, pra nunca ficar girando pra sempre se algo travar no worker).
+  async function refresh() {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const res = await api.post<{ enqueued: number; pending: number }>('/copiloto/inbox/refresh', { numberId: numberId || undefined });
+      if (res.pending === 0) { await load(); return; }
+
+      const deadline = Date.now() + 45_000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2500));
+        const result = await load();
+        if (result && result.unreadCount === 0) break;
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Não consegui atualizar agora.');
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  const unreadCount = inbox.filter((i) => i.unread).length;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <p className="text-sm text-neutral-400">
+          {unreadCount > 0
+            ? `${unreadCount} conversa${unreadCount !== 1 ? 's' : ''} ainda não processada${unreadCount !== 1 ? 's' : ''}.`
+            : 'Tudo processado.'}
+        </p>
+        <button
+          onClick={refresh}
+          disabled={refreshing}
+          className="text-sm font-medium px-4 py-2 rounded-full bg-emerald-700/80 text-white hover:bg-emerald-700 disabled:opacity-50 flex-shrink-0"
+        >
+          {refreshing ? 'Processando…' : '🔄 Atualizar'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-300">{error}</div>
+      )}
+
+      {loading ? (
+        <div className="text-sm text-neutral-600 text-center py-10 rounded-xl border border-neutral-800">Carregando…</div>
+      ) : inbox.length === 0 ? (
+        <div className="text-sm text-neutral-600 text-center py-10 rounded-xl border border-neutral-800">
+          Nada pendente agora — inbox zerada. 🎉
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {inbox.map((row) => <InboxCard key={row.id} row={row} onChanged={load} />)}
         </div>
       )}
     </div>
@@ -813,8 +1086,7 @@ function MetricasTab({ numberId, onNotEntitled }: { numberId: string; onNotEntit
 
       {activity.briefingsDismissed > 0 && (
         <p className="text-[11px] text-neutral-600 mt-4">
-          {activity.briefingsDismissed} briefing{activity.briefingsDismissed !== 1 ? 's' : ''} ignorado{activity.briefingsDismissed !== 1 ? 's' : ''} no período —
-          se esse número estiver alto, considere ajustar a triagem com <code className="px-1 py-0.5 rounded bg-neutral-800">copiloto confianca &lt;tipo&gt; &lt;valor&gt;</code> no self-chat.
+          {activity.briefingsDismissed} briefing{activity.briefingsDismissed !== 1 ? 's' : ''} descartado{activity.briefingsDismissed !== 1 ? 's' : ''} no período — descarte com &ldquo;e avisar&rdquo; ajuda a calibrar a triagem.
         </p>
       )}
     </div>
@@ -828,7 +1100,7 @@ export default function CopilotoPage() {
   const [numberId, setNumberId] = useState('');
   const [loadingNumbers, setLoadingNumbers] = useState(true);
   const [notEntitled, setNotEntitled] = useState(false);
-  const [tab, setTab] = useState<'conversas' | 'grupos' | 'metricas'>('conversas');
+  const [tab, setTab] = useState<'inbox' | 'conversas' | 'grupos' | 'metricas'>('inbox');
   const [usage, setUsage] = useState<{ calls: number } | null>(null);
 
   useEffect(() => {
@@ -876,13 +1148,6 @@ export default function CopilotoPage() {
         {usage && usage.calls > 0 ? `${usage.calls} chamada${usage.calls !== 1 ? 's' : ''} de IA este mês` : ' '}
       </p>
 
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 mb-6 text-sm text-neutral-400">
-        Esta tela é só pra acompanhar — pra agir numa sugestão (enviar, editar, ignorar), responda no próprio WhatsApp,
-        no chat <strong className="text-neutral-200">&ldquo;Mensagens para você mesmo&rdquo;</strong>. Mande
-        <code className="mx-1 px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300">copiloto status</code>
-        por lá pra ver o que está pendente ali também.
-      </div>
-
       {numbers.length > 1 && (
         <div className="mb-4">
           <label className="block text-xs text-neutral-500 mb-1">Número</label>
@@ -898,7 +1163,7 @@ export default function CopilotoPage() {
       )}
 
       <div className="flex gap-1 mb-5 border-b border-neutral-800">
-        {(['conversas', 'metricas', 'grupos'] as const).map((t) => (
+        {(['inbox', 'conversas', 'metricas', 'grupos'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -906,12 +1171,14 @@ export default function CopilotoPage() {
               tab === t ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-neutral-500 hover:text-neutral-300'
             }`}
           >
-            {t === 'conversas' ? 'Conversas' : t === 'metricas' ? 'Métricas' : 'Grupos'}
+            {t === 'inbox' ? 'Inbox' : t === 'conversas' ? 'Conversas' : t === 'metricas' ? 'Métricas' : 'Grupos'}
           </button>
         ))}
       </div>
 
-      {tab === 'conversas'
+      {tab === 'inbox'
+        ? <InboxTab numberId={numberId} onNotEntitled={onNotEntitled} />
+        : tab === 'conversas'
         ? <ConversasTab numbers={numbers} numberId={numberId} onNotEntitled={onNotEntitled} />
         : tab === 'metricas'
         ? <MetricasTab numberId={numberId} onNotEntitled={onNotEntitled} />

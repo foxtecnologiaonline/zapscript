@@ -1,13 +1,12 @@
 /**
  * copiloto-commands.ts
  *
- * O lado do DONO no ZapScript Copiloto: tudo que ele responde no self-chat
- * (mensagem que ele manda para o próprio número) cai aqui.
+ * O lado do DONO no ZapScript Copiloto: comandos de configuração que ele
+ * manda no self-chat ("copiloto ligar/negocio/agressividade/...").
  *
- * É também o ÚNICO lugar do Copiloto que envia mensagem para o cliente — e só
- * depois de o dono responder 1, 2 ou 3. O worker (apps/worker/src/copiloto.ts)
- * nunca fala com o cliente. Essa separação é o que sustenta a premissa do
- * produto: o Copiloto sugere, o humano decide. Ver ESCOPO_COPILOTO.md §1.
+ * v3.0 (ESCOPO_COPILOTO.md §15) — o envio ao cliente NÃO é mais respondendo
+ * "1/2/3" aqui: é clicando "Enviar" em /dashboard/copiloto, que chama
+ * copiloto-actions.ts. Este arquivo cuida só de configuração + "desfazer".
  *
  * Reaproveita a mesma detecção de self-chat já usada pelo Atende (Feature 8) em
  * routes/evolution-webhook.ts.
@@ -21,24 +20,10 @@ import { buildModelChain, callAiWithFallback } from './ai-fallback';
 
 const COMMAND_PREFIX = /^\s*copiloto\b/i;
 
-/** Briefing mais velho que isto não é mais acionável por "1/2/3". */
-const CHOICE_WINDOW_MS = 12 * 60 * 60 * 1000; // 12h
-
-/**
- * Janela do "1e" (editar antes de enviar). Curta de propósito: enquanto ela está
- * aberta, TUDO que o dono escreve no self-chat vira mensagem para o cliente.
- */
-const EDIT_WINDOW_MS = 15 * 60 * 1000; // 15 min
-
 /** Janela do "copiloto desfazer" — depois disso o WhatsApp normalmente já não deixa apagar "para todos". */
 const UNDO_WINDOW_MS = 2 * 60 * 1000; // 2 min
 
 const AGGRESSIVENESS_LEVELS = ['consultivo', 'equilibrado', 'direto'] as const;
-
-// Mesmos 5 tipos de apps/worker/src/services/copiloto-agent.ts (TIPOS) —
-// duplicado aqui de propósito: pacotes (api/worker) separados, sem import
-// cross-package no projeto, e é só uma lista de 5 strings de validação.
-const COPILOTO_TIPOS = ['comercial', 'pessoal', 'admin', 'crise', 'oportunidade'] as const;
 
 export function isCopilotoOwnerCommand(text: string): boolean {
   return COMMAND_PREFIX.test(text ?? '');
@@ -46,30 +31,17 @@ export function isCopilotoOwnerCommand(text: string): boolean {
 
 const HELP_TEXT = [
   '*Comandos do Copiloto* (mande aqui, pra você mesmo):',
-  '• copiloto status — o que está pendente',
-  '• copiloto ligar / desligar — liga ou pausa os briefings',
-  '• copiloto limite 5 — quantos briefings por dia no máximo',
-  '• copiloto silencio 21:00 07:00 — janela em que ele não te incomoda',
+  '• copiloto status — resumo rápido (não lidas hoje, ações enviadas)',
+  '• copiloto ligar / desligar — liga ou pausa o processamento pro painel',
   '• copiloto negocio <texto> — o que seu negócio faz (melhora as sugestões)',
   '• copiloto agressividade consultivo|equilibrado|direto — o tom das sugestões',
-  '• copiloto confianca <tipo> <0-100|off> — só avisa desse tipo acima dessa confiança (ex.: copiloto confianca oportunidade 70)',
   '• copiloto desfazer — apaga a última mensagem enviada, até 2min depois',
   '• copiloto testar — checa se a IA está respondendo agora',
   '',
-  'Quando chegar um briefing: responda *1*, *2* ou *3* pra enviar, *1e* pra editar antes, *0* pra ignorar, *0!* pra ignorar E avisar que isso não devia ter me avisado.',
+  'A fila de verdade — resumo, 3 opções e o botão de enviar — vive em */dashboard/copiloto*, não aqui no WhatsApp.',
   '',
   '*Harvey* — closer de negociação e fechamento, pra qualquer parada da sua vida (não só cliente do WhatsApp): mande "harvey <situação>" — pessoal, carreira, cliente de banco ou venda da FOX. Ele te devolve o roteiro pronto.',
 ].join('\n');
-
-/** Aceita "21:00" ou "21h" e devolve "HH:mm"; null se não for hora válida. */
-function parseHhMm(raw: string): string | null {
-  const m = raw.match(/^(\d{1,2})(?::?(\d{2}))?h?$/i);
-  if (!m) return null;
-  const h = parseInt(m[1], 10);
-  const min = m[2] ? parseInt(m[2], 10) : 0;
-  if (h > 23 || min > 59) return null;
-  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-}
 
 /** Config do número, criada na primeira interação (MVP: ligada por padrão). */
 async function ensureConfig(userId: string, numberId: string) {
@@ -80,49 +52,32 @@ async function ensureConfig(userId: string, numberId: string) {
   });
 }
 
+/** v3.0 — status aponta pro painel, que é onde a fila de verdade vive agora. */
 async function buildStatus(numberId: string): Promise<string> {
   const config = await prisma.copilotoConfig.findUnique({ where: { numberId } });
-  const since = new Date(Date.now() - CHOICE_WINDOW_MS);
 
-  const [pending, todayCount, sentToday] = await Promise.all([
-    prisma.copilotoBriefing.findMany({
-      where: { numberId, status: { in: ['pending', 'awaiting_edit'] }, createdAt: { gte: since } },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      include: { conversation: { select: { contactName: true, contactPhone: true } } },
-    }),
-    prisma.copilotoBriefing.count({
-      where: { numberId, createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
-    }),
+  const [unreadConversations, sentToday] = await Promise.all([
+    prisma.copilotoConversation.findMany({
+      where: { numberId },
+      select: { lastMessageAt: true, lastBriefedAt: true },
+    }).then((rows) => rows.filter((c) => !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt).length),
     prisma.copilotoSuggestion.count({
       where: {
-        status: 'sent',
+        status: { in: ['sent', 'edited'] },
         briefing: { numberId },
         createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
       },
     }),
   ]);
 
-  const lines = [
+  return [
     '*Copiloto — status*',
     `Estado: ${config?.enabled === false ? 'pausado ⏸️' : 'ligado ✅'}`,
-    `Briefings hoje: ${todayCount}/${config?.maxBriefsPerDay ?? 8}`,
+    `Conversas não lidas: ${unreadConversations}`,
     `Ações enviadas hoje: ${sentToday}`,
-    `Silêncio: ${config?.quietStart ?? '21:00'} → ${config?.quietEnd ?? '07:00'}`,
-  ];
-
-  if (pending.length === 0) {
-    lines.push('', 'Nada esperando você agora.');
-  } else {
-    lines.push('', `*Esperando você (${pending.length}):*`);
-    for (const b of pending) {
-      const who = b.conversation.contactName || b.conversation.contactPhone;
-      lines.push(`• ${who} — ${b.temperature}${b.status === 'awaiting_edit' ? ' (aguardando seu texto)' : ''}`);
-    }
-    lines.push('', '_Só o briefing mais recente responde a 1/2/3._');
-  }
-
-  return lines.join('\n');
+    '',
+    'Acesse /dashboard/copiloto pra ver o resumo, as 3 opções e enviar direto por lá.',
+  ].join('\n');
 }
 
 /**
@@ -152,12 +107,15 @@ export async function handleCopilotoOwnerCommand(params: {
     return true;
   }
 
+  // v3.0 — "ligar/desligar" não controla mais push nenhum (não existe mais):
+  // é só o botão mestre de "o painel /dashboard/copiloto processa este
+  // número quando eu clicar Atualizar" (ver processBrief, apps/worker/src/
+  // copiloto.ts). Backfill de mensagens não lidas continua no "ligar" —
+  // garante que o painel já enxerga conversa perdida antes do módulo ligar.
   if (/^(ligar|ativar|on)$/.test(lower)) {
     await ensureConfig(userId, numberId);
     await prisma.copilotoConfig.update({ where: { numberId }, data: { enabled: true } });
-    await reply('✅ Copiloto ligado. Vou te avisar quando uma conversa merecer sua atenção.');
-    // Backfill: conversas já com mensagem não lida agora também entram na
-    // fila de briefing, não só o que chegar dali pra frente. Fire-and-forget.
+    await reply('✅ Copiloto ligado. Acesse /dashboard/copiloto e clique em "Atualizar" pra ver as conversas pendentes.');
     backfillUnreadConversations({
       userId, numberId, instanceId: instanceName, ownPhoneDigits: selfPhone.replace(/\D/g, ''),
     }).catch(() => null);
@@ -167,34 +125,7 @@ export async function handleCopilotoOwnerCommand(params: {
   if (/^(desligar|pausar|off)$/.test(lower)) {
     await ensureConfig(userId, numberId);
     await prisma.copilotoConfig.update({ where: { numberId }, data: { enabled: false } });
-    await reply('⏸️ Copiloto pausado. Mande "copiloto ligar" quando quiser de volta.');
-    return true;
-  }
-
-  const limite = lower.match(/^limite\s+(\d{1,2})$/);
-  if (limite) {
-    const n = parseInt(limite[1], 10);
-    if (n < 1 || n > 20) {
-      await reply('O limite precisa ficar entre 1 e 20 briefings por dia.');
-      return true;
-    }
-    await ensureConfig(userId, numberId);
-    await prisma.copilotoConfig.update({ where: { numberId }, data: { maxBriefsPerDay: n } });
-    await reply(`✅ Limite ajustado: no máximo ${n} briefing(s) por dia.`);
-    return true;
-  }
-
-  const silencio = lower.match(/^sil[êe]ncio\s+(\S+)\s+(\S+)$/);
-  if (silencio) {
-    const start = parseHhMm(silencio[1]);
-    const end = parseHhMm(silencio[2]);
-    if (!start || !end) {
-      await reply('Formato: copiloto silencio 21:00 07:00');
-      return true;
-    }
-    await ensureConfig(userId, numberId);
-    await prisma.copilotoConfig.update({ where: { numberId }, data: { quietStart: start, quietEnd: end } });
-    await reply(`✅ Silêncio das ${start} às ${end}. Nesse intervalo não te mando nada.`);
+    await reply('⏸️ Copiloto pausado — o painel não vai mais processar conversas deste número até "copiloto ligar".');
     return true;
   }
 
@@ -220,41 +151,10 @@ export async function handleCopilotoOwnerCommand(params: {
     return true;
   }
 
-  // "copiloto confianca <tipo> <valor|off>" — piso de confiança da triagem
-  // por tipo. Fase de observação (ver TRIAGE_SYSTEM_PROMPT): a triagem vem
-  // aberta por padrão, sem piso nenhum. Isso dá ao dono uma forma de apertar
-  // um tipo específico sem esperar redeploy, depois que os dados mostrarem
-  // que aquele tipo em particular gera muito ruído pra ele.
-  const confianca = lower.match(/^confian[çc]a\s+(\w+)\s+(\w+)$/);
-  if (confianca) {
-    const tipo = confianca[1];
-    const valorRaw = confianca[2];
-    if (!COPILOTO_TIPOS.includes(tipo as any)) {
-      await reply(`Tipo inválido. Use um destes: ${COPILOTO_TIPOS.join(', ')}.`);
-      return true;
-    }
-    const config = await ensureConfig(userId, numberId);
-    const current = (config.minConfidenceByTipo && typeof config.minConfidenceByTipo === 'object')
-      ? { ...(config.minConfidenceByTipo as Record<string, number>) }
-      : {};
-
-    if (/^(off|desligar|remover)$/.test(valorRaw)) {
-      delete current[tipo];
-      await prisma.copilotoConfig.update({ where: { numberId }, data: { minConfidenceByTipo: current } });
-      await reply(`✅ Piso de confiança removido pra *${tipo}* — volta a usar o critério padrão da triagem.`);
-      return true;
-    }
-
-    const valor = parseInt(valorRaw, 10);
-    if (!Number.isFinite(valor) || valor < 0 || valor > 100) {
-      await reply('Formato: copiloto confianca <tipo> <0-100 ou "off">. Ex.: copiloto confianca oportunidade 70');
-      return true;
-    }
-    current[tipo] = valor;
-    await prisma.copilotoConfig.update({ where: { numberId }, data: { minConfidenceByTipo: current } });
-    await reply(`✅ A partir de agora, só te aviso de *${tipo}* quando a triagem tiver pelo menos ${valor}% de confiança.`);
-    return true;
-  }
+  // v3.0 — removido "copiloto confianca <tipo> <valor>": era o piso de
+  // confiança da triagem que decidia se uma conversa merecia te interromper
+  // no WhatsApp. Sem interrupção, não tem mais "vale a pena" pra filtrar —
+  // toda conversa não lida vira card no painel (ESCOPO_COPILOTO.md §15).
 
   // "copiloto testar" — chamada mínima pela mesma rede de fallback do
   // briefing, só pra ver qual provedor responde. Resolve o "como sei que está
@@ -353,234 +253,21 @@ export async function handleCopilotoOwnerCommand(params: {
   return true;
 }
 
-/**
- * Resposta do dono a um briefing: "1", "2", "3", "1e", "0" ou o texto editado.
- * Devolve true se a mensagem era para o Copiloto (o webhook deve parar aqui).
- *
- * Guarda importante: só interpreta um "2" solto como escolha se existir briefing
- * pendente recente para este número. Sem isso, qualquer anotação pessoal que o
- * dono mandasse pra si mesmo viraria envio ao cliente — o pior bug possível
- * neste produto.
- */
-export async function handleCopilotoChoice(params: {
-  userId: string;
-  numberId: string;
-  instanceName: string;
-  selfPhone: string;
-  text: string;
-}): Promise<boolean> {
-  const { numberId, instanceName, selfPhone } = params;
-  let raw = (params.text ?? '').trim();
-  if (!raw) return false;
-
-  const reply = async (msg: string) => { await sendText(instanceName, selfPhone, msg); };
-  const since = new Date(Date.now() - CHOICE_WINDOW_MS);
-  const include = {
-    suggestions: true,
-    conversation: { select: { id: true, contactPhone: true, contactName: true } },
-  } as const;
-
-  // Prioridade absoluta: edição em andamento (ver EDIT_WINDOW_MS) pra ALGUM
-  // briefing deste número. Nunca ambíguo por construção — o dono só entra
-  // nesse estado respondendo "1e"/"2e"/"3e" a UM briefing específico — por
-  // isso ignora qualquer letra: mesmo texto que comece com uma (ex.: "Avisa
-  // que amanhã eu confirmo") tem que virar mensagem editada, não ser
-  // interpretado como comando de outra conversa.
-  let briefing = await prisma.copilotoBriefing.findFirst({
-    where: { numberId, status: 'awaiting_edit', createdAt: { gte: since } },
-    orderBy: { createdAt: 'desc' },
-    include,
-  });
-
-  if (!briefing) {
-    // v2.1 — letra explícita ("A1", "B0!", "a2e"...) desambigua qual conversa,
-    // quando há mais de uma pendente ao mesmo tempo (ver pendingLabel,
-    // atribuído em processBrief). Só reconhece quando a letra é seguida de um
-    // dígito — "Ok vou..." não vira comando por acaso começar com "O".
-    const lettered = raw.match(/^([A-Za-z])([0-9].*)$/);
-    if (lettered) {
-      const label = lettered[1].toUpperCase();
-      briefing = await prisma.copilotoBriefing.findFirst({
-        where: { numberId, status: 'pending', pendingLabel: label, createdAt: { gte: since } },
-        include,
-      });
-      if (!briefing) {
-        await reply(`Não achei uma conversa pendente com a letra "${label}" agora — pode já ter sido resolvida. Mande "copiloto status" pra ver o que está esperando você.`);
-        return true;
-      }
-      raw = lettered[2].trim(); // segue com "1", "2e", "0!" etc., sem a letra
-    } else {
-      // Sem letra explícita: só é seguro agir de olhos fechados quando existe
-      // NO MÁXIMO 1 pendência. Com 2+, "1/2/3/0" bare adivinhava a mais
-      // recente silenciosamente antes desta correção — preferimos perguntar a
-      // arriscar agir na conversa errada. Só pergunta quando o texto de fato
-      // TEM CARA de comando — uma nota pessoal qualquer não pode disparar isso.
-      const looksLikeBareChoice = /^0(!|x)?$/i.test(raw) || /^([123])\s*(e|editar)?$/i.test(raw);
-      if (!looksLikeBareChoice) return false;
-
-      const pendingList = await prisma.copilotoBriefing.findMany({
-        where: { numberId, status: 'pending', createdAt: { gte: since } },
-        orderBy: { createdAt: 'asc' },
-        include,
-      });
-      if (pendingList.length === 0) return false;
-      if (pendingList.length === 1) {
-        briefing = pendingList[0];
-      } else {
-        const list = pendingList
-          .map((b) => `${b.pendingLabel ?? '?'} — ${b.conversation.contactName || b.conversation.contactPhone}`)
-          .join('\n');
-        await reply(
-          `Você tem ${pendingList.length} conversas pendentes agora:\n${list}\n\n` +
-          `Responda com a letra + número (ex.: *${pendingList[0].pendingLabel ?? 'A'}1*) — sem letra eu não sei qual delas.`,
-        );
-        return true;
-      }
-    }
-  }
-
-  if (!briefing) return false;
-
-  const who = briefing.conversation.contactName || briefing.conversation.contactPhone;
-
-  // Envia ao cliente e registra. `finalText` pode ser o rascunho ou a versão que
-  // o dono editou — guardar os dois é o que ensina o estilo dele (o diff entre
-  // draft e sentText é o sinal de aprendizado mais forte que temos).
-  const dispatch = async (suggestion: (typeof briefing.suggestions)[number], finalText: string, edited: boolean) => {
-    const sent = await sendText(instanceName, briefing.conversation.contactPhone, finalText);
-
-    // Compromisso embutido na opção (ex.: "te confirmo até as 17h") vira Task
-    // automaticamente — reaproveita o módulo Tarefas já existente em vez de
-    // inventar uma agenda própria. Best-effort: falha aqui não pode travar o
-    // envio, que já aconteceu.
-    let taskId: string | null = null;
-    if (suggestion.commitmentTitle) {
-      try {
-        const task = await prisma.task.create({
-          data: {
-            userId: params.userId,
-            title:  suggestion.commitmentTitle,
-            dueAt:  suggestion.commitmentDueAt,
-          },
-        });
-        taskId = task.id;
-      } catch (err: any) {
-        // não interrompe o fluxo — o envio já aconteceu, a Task é conveniência
-      }
-    }
-
-    await prisma.copilotoSuggestion.update({
-      where: { id: suggestion.id },
-      data: { status: edited ? 'edited' : 'sent', sentText: finalText, sentMessageId: sent.id, sentAt: new Date(), taskId },
-    });
-    await prisma.copilotoBriefing.update({
-      where: { id: briefing.id },
-      data: { status: 'acted', actedAt: new Date(), awaitingRank: null, awaitingSince: null },
-    });
-    await prisma.copilotoMessage.create({
-      data: { conversationId: briefing.conversation.id, direction: 'out', content: finalText, fromCopiloto: true },
-    });
-
-    await reply(
-      taskId
-        ? `✅ Enviado para *${who}*.\n📌 Compromisso criado: ${suggestion.commitmentTitle}${suggestion.commitmentDueAt ? ` — ${suggestion.commitmentDueAt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}.`
-        : `✅ Enviado para *${who}*.`,
-    );
-  };
-
-  // Estado "aguardando seu texto": qualquer coisa que não seja 0 vira a mensagem
-  // enviada ao cliente — por isso a janela é CURTA. Passou de EDIT_WINDOW_MS, o
-  // briefing volta a 'pending' e a mensagem segue sendo uma anotação pessoal.
-  // Sem esse limite, um "1e" esquecido de manhã transformaria qualquer recado
-  // que o dono mandasse pra si mesmo à tarde em mensagem para o cliente.
-  const editExpired = briefing.status === 'awaiting_edit'
-    && (!briefing.awaitingSince || Date.now() - briefing.awaitingSince.getTime() > EDIT_WINDOW_MS);
-
-  if (editExpired) {
-    await prisma.copilotoBriefing.update({
-      where: { id: briefing.id },
-      data: { status: 'pending', awaitingRank: null, awaitingSince: null },
-    });
-    await reply('⌛ Passou do tempo de editar aquela mensagem, então não enviei nada. Responda 1, 2 ou 3 de novo se ainda fizer sentido.');
-    return true;
-  }
-
-  if (briefing.status === 'awaiting_edit' && briefing.awaitingRank) {
-    // Mesma variante "0!"/"0x" do fluxo normal (ver mais abaixo) — tem que
-    // ser reconhecida AQUI também. Sem isso, "0!" não batia com `raw === '0'`
-    // e caía direto em dispatch(chosen, raw, true) — ou seja, "0!" seria
-    // enviado como TEXTO LITERAL pro cliente. Bug real, corrigido antes do
-    // primeiro deploy desta feature.
-    if (/^0(!|x)?$/i.test(raw)) {
-      const isNoise = /[!x]$/i.test(raw);
-      await prisma.copilotoBriefing.update({
-        where: { id: briefing.id },
-        data: { status: 'dismissed', awaitingRank: null, awaitingSince: null, dismissReason: isNoise ? 'ruido' : null },
-      });
-      await reply('Beleza, cancelei. Nada foi enviado.');
-      return true;
-    }
-    const chosen = briefing.suggestions.find((s) => s.rank === briefing.awaitingRank);
-    if (!chosen) {
-      await prisma.copilotoBriefing.update({ where: { id: briefing.id }, data: { status: 'dismissed', awaitingRank: null, awaitingSince: null } });
-      await reply('Perdi a referência dessa opção. Nada foi enviado.');
-      return true;
-    }
-    await dispatch(chosen, raw, true);
-    return true;
-  }
-
-  // "0" — ignorar (sem dizer por quê: pode ser falta de tempo, não é sinal de
-  // que a triagem errou). "0!" — ignorar E dizer explicitamente que isso foi
-  // ruído: não devia ter virado briefing. Esse segundo sinal é o que alimenta
-  // a decisão de apertar o piso de confiança por tipo (ver "copiloto
-  // confianca" e ESCOPO_COPILOTO.md — fase de observação).
-  if (/^0(!|x)?$/i.test(raw)) {
-    const isNoise = /[!x]$/i.test(raw);
-    await prisma.copilotoBriefing.update({
-      where: { id: briefing.id },
-      data: { status: 'dismissed', dismissReason: isNoise ? 'ruido' : null },
-    });
-    await reply(isNoise ? 'Ok, ignorado — anotei que isso não devia ter me avisado.' : 'Ok, ignorado.');
-    return true;
-  }
-
-  const choice = raw.match(/^([123])\s*(e|editar)?$/i);
-  if (!choice) return false;
-
-  const rank = parseInt(choice[1], 10);
-  const wantsEdit = !!choice[2];
-  const suggestion = briefing.suggestions.find((s) => s.rank === rank && s.status === 'offered');
-
-  if (!suggestion) {
-    await reply(`A opção ${rank} não está disponível nesse briefing.`);
-    return true;
-  }
-
-  if (wantsEdit) {
-    await prisma.copilotoBriefing.update({
-      where: { id: briefing.id },
-      data: { status: 'awaiting_edit', awaitingRank: rank, awaitingSince: new Date() },
-    });
-    await reply(
-      `✏️ Manda o texto final que eu envio pra *${who}*.\n\n` +
-      `Base da opção ${rank}:\n"${suggestion.draft}"\n\n` +
-      `_Você tem 15 minutos. Ou responda 0 pra cancelar._`,
-    );
-    return true;
-  }
-
-  await dispatch(suggestion, suggestion.draft, false);
-  return true;
-}
+// v3.0 — removido handleCopilotoChoice (resposta "1"/"2"/"3"/"1e"/"0" no
+// self-chat): o Copiloto virou painel sob demanda (ver ESCOPO_COPILOTO.md
+// §15). Enviar ao cliente e descartar um briefing agora vivem em
+// copiloto-actions.ts (sendCopilotoSuggestion / dismissCopilotoBriefing),
+// chamados por POST /copiloto/suggestions/:id/send e /copiloto/briefings/:id
+// (routes/copiloto.ts) — não mais por uma resposta de texto no WhatsApp.
 
 /**
  * Enfileira o que chegou pelo WhatsApp. Fica aqui (e não inline no webhook)
  * para o webhook continuar legível: ele só decide "é do Copiloto?" e delega.
  *
- * Dois jobs: 'ingest' imediato (persiste, sem IA) e 'brief' atrasado. O jobId do
- * 'brief' carrega um bucket de tempo, então toda a rajada do mesmo contato dentro
- * da janela colapsa em UM briefing em vez de um por mensagem.
+ * v3.0 — só o job 'ingest' (persiste, sem IA). NÃO enfileira mais 'brief':
+ * o Copiloto virou sob demanda (ver ESCOPO_COPILOTO.md §15) — quem decide
+ * processar uma conversa é o dono, no painel /dashboard/copiloto (POST
+ * /copiloto/inbox/refresh), não uma janela de debounce depois da mensagem.
  */
 export async function enqueueCopilotoMessage(params: {
   userId: string;
@@ -591,8 +278,6 @@ export async function enqueueCopilotoMessage(params: {
   content: string;
   messageId: string;
 }): Promise<void> {
-  const debounceMs = parseInt(process.env.COPILOTO_DEBOUNCE_MS || '180000');
-
   await copilotoQueue.add(
     'ingest',
     {
@@ -609,16 +294,5 @@ export async function enqueueCopilotoMessage(params: {
       externalId: params.messageId,
     },
     { jobId: `copiloto-in-${params.messageId}` },
-  );
-
-  // Só mensagem do cliente abre janela de briefing. O dono respondendo sozinho
-  // não precisa de sugestão — ele já agiu.
-  if (params.direction !== 'in') return;
-
-  const bucket = Math.floor(Date.now() / debounceMs);
-  await copilotoQueue.add(
-    'brief',
-    { userId: params.userId, numberId: params.numberId, contactPhone: params.contactPhone },
-    { jobId: `copiloto-brief-${params.numberId}-${params.contactPhone}-${bucket}`, delay: debounceMs },
   );
 }

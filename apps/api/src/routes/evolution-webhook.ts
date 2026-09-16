@@ -8,7 +8,7 @@ import { sendText, setGroupsIgnore, mediaPlaceholderText } from '../services/evo
 import { getUserModules } from '../lib/moduleGate';
 import { isAtendeOwnerCommand, handleAtendeOwnerCommand } from '../services/atende-commands';
 import {
-  isCopilotoOwnerCommand, handleCopilotoOwnerCommand, handleCopilotoChoice, enqueueCopilotoMessage,
+  isCopilotoOwnerCommand, handleCopilotoOwnerCommand, enqueueCopilotoMessage,
 } from '../services/copiloto-commands';
 import { ingestCopilotoGroupMessage } from '../services/copiloto-groups';
 import { handleHarveyMessage } from '../services/harvey-commands';
@@ -595,12 +595,10 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
               }
             }
 
-            // ── Copiloto: o dono respondendo no self-chat ────────────────────
-            // Duas formas, nesta ordem: comando com prefixo "copiloto", ou a
-            // resposta a um briefing ("1", "2", "3", "1e", "0", ou o texto
-            // editado). A escolha só é interpretada se existir briefing pendente
-            // recente — sem isso, uma anotação pessoal com "2" viraria envio ao
-            // cliente, que é o pior bug possível neste produto.
+            // ── Copiloto: o dono no self-chat ────────────────────────────────
+            // v3.0 — só comando de configuração ("copiloto ligar/negocio/...")
+            // e Harvey ("harvey <situação>"). O envio ao cliente saiu daqui:
+            // agora é clicando "Enviar" em /dashboard/copiloto (ESCOPO_COPILOTO.md §15).
             if (isSelfChat) {
               const hasCopiloto = (await getUserModules(number!.userId)).includes('copiloto');
               if (hasCopiloto) {
@@ -617,25 +615,15 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
                   log.info(`[Evolution] 🎯 Comando do dono processado (Copiloto, número ${number!.id})`);
                   return;
                 }
-                // ── Harvey: persona de negociação/fechamento dentro do Copiloto ──
-                // Checado ANTES da interpretação numérica de briefing (1/2/3/0):
-                // "harvey ..." nunca é ambíguo com isso. A função devolve false
-                // sem custo de IA quando a mensagem não é um pedido pro Harvey
-                // nem confirmação de memória dele (aí cai no fluxo normal abaixo).
+                // Harvey devolve false sem custo de IA quando a mensagem não é
+                // um pedido pro Harvey nem confirmação de memória dele — aí
+                // segue fluxo normal (mensagem pessoal comum no self-chat).
                 const harveyHandled = await handleHarveyMessage(ctx).catch((err: any) => {
                   log.error({ err: err?.message }, '[Harvey] Falha ao processar pedido do dono');
                   return false;
                 });
                 if (harveyHandled) {
                   log.info(`[Evolution] 🤝 Pedido do dono processado (Harvey, número ${number!.id})`);
-                  return;
-                }
-                const handled = await handleCopilotoChoice(ctx).catch((err: any) => {
-                  log.error({ err: err?.message }, '[Copiloto] Falha ao processar escolha do dono');
-                  return false;
-                });
-                if (handled) {
-                  log.info(`[Evolution] 🎯 Escolha do dono processada (Copiloto, número ${number!.id})`);
                   return;
                 }
               }

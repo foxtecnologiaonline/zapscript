@@ -11,17 +11,18 @@ import { getUserModules } from '../lib/moduleGate';
  * frente. Sem isso, quem liga o Copiloto com conversas represadas não recebe
  * briefing nenhum delas — só das mensagens que chegarem depois.
  *
- * Reaproveita 100% do pipeline normal (enqueueCopilotoMessage → fila
- * 'copiloto' → processIngest/processBrief em apps/worker/src/copiloto.ts):
- * cada mensagem histórica vira um job 'ingest' comum, e o 'brief' por
- * conversa já dedupa pelo mesmo bucket de debounce — não gera 1 briefing por
- * mensagem antiga, gera 1 por conversa, como uma rajada normal geraria.
+ * Reaproveita 100% do pipeline de ingestão normal (enqueueCopilotoMessage →
+ * fila 'copiloto' → processIngest em apps/worker/src/copiloto.ts): cada
+ * mensagem histórica vira um job 'ingest' comum, só persiste (sem IA).
  *
- * Volume: processa as conversas não lidas mais recentes primeiro. O teto
- * diário de briefings (CopilotoConfig.maxBriefsPerDay) já filtra o resto
- * naturalmente em processBrief — o que não coube hoje fica com a mensagem
- * ingerida mas sem brief, e runCopilotoPendingSweep() (worker) tenta de novo
- * nos dias seguintes até esvaziar.
+ * v3.0 — não enfileira mais 'brief' (isso virou sob demanda, disparado pelo
+ * painel — ver ESCOPO_COPILOTO.md §15). Depois do backfill, a conversa
+ * aparece como "não lida" em GET /copiloto/inbox normalmente, e vira
+ * briefing quando o dono clicar "Atualizar".
+ *
+ * Volume: processa as conversas não lidas mais recentes primeiro, até
+ * MAX_UNREAD_CHATS por rodada — o sweep periódico abaixo cobre o resto nas
+ * rodadas seguintes.
  */
 
 // Configuráveis via env var (sem redeploy de código) — o sweep periódico

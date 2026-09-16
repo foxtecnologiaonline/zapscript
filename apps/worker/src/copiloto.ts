@@ -10,39 +10,40 @@ import {
 import { validateDraft, isOptOut, hasVulnerabilitySignal } from './services/copiloto-guardrails';
 
 /**
- * Worker do ZapScript Copiloto (MVP) — consome a fila 'copiloto', produzida por
- * apps/api/src/routes/evolution-webhook.ts.
+ * Worker do ZapScript Copiloto — consome a fila 'copiloto'.
  *
- * Dois jobs:
+ * v3.0 (ESCOPO_COPILOTO.md §15) — o Copiloto virou SOB DEMANDA: não empurra
+ * mais nada pro self-chat do dono. Dois jobs:
  *   'ingest' — persiste a mensagem (entrada do cliente ou saída do dono). Barato,
- *              sem IA. Mantém o webhook rápido.
- *   'brief'  — atrasado pela janela de debounce; é onde a IA roda. Deduplicado
- *              por jobId com bucket de tempo, então uma rajada vira UM briefing.
+ *              sem IA. Produzido por apps/api/src/routes/evolution-webhook.ts a
+ *              cada mensagem — mantém o webhook rápido.
+ *   'brief'  — roda a IA (triagem + buildBriefing + guardrails) e persiste
+ *              CopilotoBriefing + CopilotoSuggestion. Só é enfileirado quando o
+ *              dono clica "Atualizar" no painel (POST /copiloto/inbox/refresh,
+ *              apps/api/src/routes/copiloto.ts) — nunca automaticamente depois
+ *              de uma mensagem chegar.
  *
- * O que o Copiloto NUNCA faz aqui: mandar mensagem para o cliente. O único
- * destinatário deste worker é o próprio dono (self-chat). O envio ao cliente só
- * acontece quando o dono responde 1/2/3 — e isso vive na API
- * (apps/api/src/services/copiloto-commands.ts).
+ * O que o Copiloto NUNCA faz aqui: mandar mensagem para o cliente. Isso só
+ * acontece quando o dono clica "Enviar" no painel (POST /copiloto/suggestions/
+ * :id/send), que vive na API (apps/api/src/services/copiloto-actions.ts).
  *
  * Registrado como side-effect: importado por src/index.ts.
  */
-
-/** Janela de agrupamento: mensagens do mesmo contato dentro dela viram um briefing. */
-export const DEBOUNCE_MS = parseInt(process.env.COPILOTO_DEBOUNCE_MS || '180000'); // 3 min
-
-// Produtor local pra reenfileirar 'brief' no sweep de pendências (ver
-// runCopilotoPendingSweep, no fim do arquivo) — mesma fila 'copiloto' que a
-// API produz normalmente, só que aqui é o próprio worker que se re-agenda.
 const copilotoQueue = new Queue('copiloto', { connection: redis as any });
 
 /**
- * Mesmo par de jobs de enqueueCopilotoMessage (apps/api/src/services/
- * copiloto-commands.ts) — jobId/bucket idênticos, pra dedupe e debounce
- * funcionarem igual não importa quem enfileirou. Existe uma cópia aqui (em
- * vez de importar da API) porque quem chama isto é processEvolutionJob
- * (apps/worker/src/index.ts) depois de transcrever um áudio — o texto só
- * fica pronto DEPOIS que o job de transcrição roda aqui no worker, então não
- * dá pra passar pela rota normal do webhook (síncrona, sem IA).
+ * Mesmo job 'ingest' de enqueueCopilotoMessage (apps/api/src/services/
+ * copiloto-commands.ts) — existe uma cópia aqui (em vez de importar da API)
+ * porque quem chama isto é processEvolutionJob (apps/worker/src/index.ts)
+ * depois de transcrever um áudio — o texto só fica pronto DEPOIS que o job de
+ * transcrição roda aqui no worker, então não dá pra passar pela rota normal
+ * do webhook (síncrona, sem IA).
+ *
+ * v3.0 — só persiste ('ingest'). NÃO enfileira mais 'brief' automaticamente:
+ * o Copiloto virou sob demanda (painel /dashboard/copiloto, ver
+ * ESCOPO_COPILOTO.md §15) — quem decide processar uma conversa é o dono,
+ * clicando "Atualizar" no site (POST /copiloto/inbox/refresh, apps/api/src/
+ * routes/copiloto.ts), não uma janela de debounce depois de cada mensagem.
  */
 export async function enqueueCopilotoIngest(params: {
   userId: string;
@@ -53,8 +54,6 @@ export async function enqueueCopilotoIngest(params: {
   content: string;
   messageId: string;
 }): Promise<void> {
-  const debounceMs = parseInt(process.env.COPILOTO_DEBOUNCE_MS || '180000');
-
   await copilotoQueue.add(
     'ingest',
     {
@@ -68,85 +67,11 @@ export async function enqueueCopilotoIngest(params: {
     },
     { jobId: `copiloto-in-${params.messageId}` },
   );
-
-  if (params.direction !== 'in') return;
-
-  const bucket = Math.floor(Date.now() / debounceMs);
-  await copilotoQueue.add(
-    'brief',
-    { userId: params.userId, numberId: params.numberId, contactPhone: params.contactPhone },
-    { jobId: `copiloto-brief-${params.numberId}-${params.contactPhone}-${bucket}`, delay: debounceMs },
-  );
 }
 
 /** Teto de mensagens levadas ao prompt — conversa longa não pode virar prompt gigante. */
 const HISTORY_LIMIT = 12;
 const NEW_MESSAGES_LIMIT = 20;
-
-/** Cooldown de briefing "pessoal" por contato — ver uso em processBrief(). */
-const PESSOAL_COOLDOWN_MS = parseInt(process.env.COPILOTO_PESSOAL_COOLDOWN_MS || String(24 * 60 * 60 * 1000), 10);
-
-/** Letras usadas pra desambiguar pendências simultâneas — ver assignPendingLabel(). */
-const PENDING_LABEL_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-/**
- * Calcula a letra do NOVO briefing (null se for o único pendente pro número) e
- * faz o backfill de qualquer pendência existente que ainda não tinha letra —
- * uma letra, uma vez atribuída, NUNCA é realocada (a mensagem já mandada pro
- * dono não pode "mudar de significado" depois). Ver pendingLabel no schema e
- * ESCOPO_COPILOTO.md — resolve "1/2/3 sempre agia no briefing mais recente,
- * mesmo com outro mais antigo ainda pendente".
- */
-export async function assignPendingLabel(numberId: string): Promise<{
-  label: string | null;
-  otherPending: Array<{ label: string; contactLabel: string }>;
-}> {
-  const existing = await prisma.copilotoBriefing.findMany({
-    where: { numberId, status: { in: ['pending', 'awaiting_edit'] } },
-    orderBy: { createdAt: 'asc' },
-    select: {
-      id: true, pendingLabel: true,
-      conversation: { select: { contactName: true, contactPhone: true } },
-    },
-  });
-  if (existing.length === 0) return { label: null, otherPending: [] };
-
-  const used = new Set(existing.map((e) => e.pendingLabel).filter((l): l is string => !!l));
-  const nextLetter = (): string => {
-    for (const l of PENDING_LABEL_LETTERS) {
-      if (!used.has(l)) { used.add(l); return l; }
-    }
-    // 26+ pendências simultâneas pro mesmo número — não deveria acontecer na
-    // prática; fallback só pra nunca travar o fluxo por causa disso.
-    const fallback = `Z${used.size}`;
-    used.add(fallback);
-    return fallback;
-  };
-
-  const otherPending: Array<{ label: string; contactLabel: string }> = [];
-  for (const e of existing) {
-    let label = e.pendingLabel;
-    if (!label) {
-      label = nextLetter();
-      await prisma.copilotoBriefing.update({ where: { id: e.id }, data: { pendingLabel: label } }).catch(() => null);
-    }
-    otherPending.push({ label, contactLabel: e.conversation.contactName || e.conversation.contactPhone });
-  }
-
-  return { label: nextLetter(), otherPending };
-}
-
-/**
- * Lê o piso de confiança configurado pro tipo, a partir do JSON solto que o
- * Prisma devolve pra coluna Json (CopilotoConfig.minConfidenceByTipo). Nunca
- * lança — config mal formada (não deveria acontecer, só é setada por
- * copiloto-commands.ts) equivale a "sem piso", não a bloquear tudo.
- */
-export function readMinConfidence(raw: unknown, tipo: string | null): number | null {
-  if (!tipo || !raw || typeof raw !== 'object') return null;
-  const value = (raw as Record<string, unknown>)[tipo];
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
 
 interface IngestJobData {
   userId: string;
@@ -179,30 +104,6 @@ export async function hasCopiloto(userId: string): Promise<boolean> {
     select: { id: true },
   }).catch(() => null);
   return !!ent;
-}
-
-/** "HH:mm" no fuso do dono. */
-function localHhMm(timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false,
-    }).format(new Date());
-  } catch {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false,
-    }).format(new Date());
-  }
-}
-
-/**
- * Horário de silêncio. Suporta janela que cruza a meia-noite (21:00 → 07:00),
- * que é justamente o caso padrão.
- */
-export function isQuietNow(start: string, end: string, timezone: string): boolean {
-  const now = localHhMm(timezone);
-  if (start === end) return false;              // janela vazia = sem silêncio
-  if (start < end) return now >= start && now < end;
-  return now >= start || now < end;             // cruza a meia-noite
 }
 
 // ── ingest ───────────────────────────────────────────────────────────────────
@@ -281,7 +182,14 @@ async function processIngest(job: Job<IngestJobData>) {
 }
 
 // ── brief ────────────────────────────────────────────────────────────────────
-
+// v3.0 — reescrito pra "sob demanda, sem filtro" (ESCOPO_COPILOTO.md §15): só
+// roda quando o dono clica "Atualizar" no painel (POST /copiloto/inbox/refresh,
+// que enfileira este job pra cada conversa não lida). Sem gate de "vale a pena
+// te interromper" — não existe mais interrupção, o card só aparece na lista.
+// Por isso saíram: horário de silêncio, teto diário, cooldown de "pessoal",
+// piso de confiança por tipo, e a checagem de número conectado (ler e
+// analisar não depende do número estar online agora — só enviar depende, e
+// isso é checado na hora do envio, não aqui).
 async function processBrief(job: Job<BriefJobData>) {
   const { userId, numberId, contactPhone } = job.data;
 
@@ -290,30 +198,24 @@ async function processBrief(job: Job<BriefJobData>) {
   });
   if (!conversation) return { skipped: true, reason: 'sem_conversa' };
 
-  const config = await prisma.copilotoConfig.findUnique({ where: { numberId } });
-  if (!config?.enabled) {
-    logger.info(`[Copiloto] ⏭️ ${contactPhone}: pulado (Copiloto desligado pro número ${numberId})`);
-    return { skipped: true, reason: 'desligado' };
-  }
-
   // Reconfere a titularidade na hora de gastar: o admin pode ter revogado o
-  // acesso entre a mensagem chegar e o briefing rodar.
+  // acesso entre o dono clicar "Atualizar" e o job rodar.
   if (!(await hasCopiloto(userId))) {
     logger.info(`[Copiloto] ⏭️ ${contactPhone}: pulado (usuário ${userId} sem módulo Copiloto)`);
     return { skipped: true, reason: 'sem_modulo' };
   }
 
-  const number = await prisma.whatsappNumber.findUnique({
-    where: { id: numberId },
-    select: { zapiInstanceId: true, phoneNumber: true, status: true },
-  });
-  if (!number?.zapiInstanceId || !number.phoneNumber || number.status !== 'connected') {
-    logger.info(`[Copiloto] ⏭️ ${contactPhone}: pulado (número ${numberId} não conectado)`);
-    return { skipped: true, reason: 'numero_desconectado' };
+  const config = await prisma.copilotoConfig.findUnique({ where: { numberId } });
+  // "enabled" continua sendo o botão mestre ("copiloto ligar/desligar" no
+  // self-chat, ou pausa administrativa em massa) — mesmo sem push, o dono
+  // ainda pode querer desligar o Copiloto de vez pra um número.
+  if (config?.enabled === false) {
+    logger.info(`[Copiloto] ⏭️ ${contactPhone}: pulado (Copiloto desligado pro número ${numberId})`);
+    return { skipped: true, reason: 'desligado' };
   }
 
   // Só o que ainda não virou briefing. Sem isso, cada job reavaliaria a conversa
-  // inteira e o dono receberia o mesmo resumo várias vezes.
+  // inteira e o painel mostraria o mesmo resumo várias vezes.
   const newMessages = await prisma.copilotoMessage.findMany({
     where: {
       conversationId: conversation.id,
@@ -324,7 +226,7 @@ async function processBrief(job: Job<BriefJobData>) {
     take: NEW_MESSAGES_LIMIT,
     select: { direction: true, content: true },
   });
-  if (newMessages.length === 0) return { skipped: true, reason: 'nada_novo' }; // não loga — acontece toda hora em rajadas normais, seria ruído
+  if (newMessages.length === 0) return { skipped: true, reason: 'nada_novo' }; // não loga — acontece toda hora, seria ruído
 
   const markBriefed = () =>
     prisma.copilotoConversation.update({
@@ -335,31 +237,24 @@ async function processBrief(job: Job<BriefJobData>) {
   const lastText = newMessages[newMessages.length - 1].content;
   const contactLabel = conversation.contactName || contactPhone;
 
-  // Recusa explícita: o Copiloto não sugere nada comercial depois do "não".
-  // Avisa o dono e para — insistir aqui é prática abusiva (CDC art. 39) e queima
-  // o número no WhatsApp.
+  // Recusa explícita do cliente: o Copiloto não sugere nada comercial depois
+  // do "não" — insistir aqui é prática abusiva (CDC art. 39). Ainda cria o
+  // card (o dono precisa saber que isso aconteceu), só sem opções de ação.
   if (isOptOut(lastText)) {
-    await sendMessageViaEvolution(
-      number.zapiInstanceId,
-      number.phoneNumber,
-      `🛑 *${contactLabel}* pediu para não receber mais mensagens.\n\n` +
-      `Não vou sugerir abordagem para este contato. Se precisar responder, responda você mesmo — ` +
-      `e o ideal é só confirmar que parou.`,
-    ).catch(() => null);
+    await prisma.copilotoBriefing.create({
+      data: {
+        userId, numberId, conversationId: conversation.id,
+        summary: `${contactLabel} pediu para não receber mais mensagens.`,
+        intent: 'Parar de receber contato comercial',
+        temperature: 'frio',
+        riskLevel: 'alto',
+        deliveredVia: 'painel',
+      },
+    });
     await markBriefed();
+    logger.info(`[Copiloto] 🛑 ${contactLabel}: opt-out registrado, sem sugestão`);
     return { optOut: true };
   }
-
-  if (isQuietNow(config.quietStart, config.quietEnd, config.timezone)) {
-    // Não marca como briefado: a próxima mensagem depois do silêncio reabre a
-    // janela e o dono recebe o acumulado, em vez de perder a conversa.
-    logger.info(`[Copiloto] ⏭️ ${contactPhone}: pulado (horário de silêncio do número ${numberId})`);
-    return { skipped: true, reason: 'horario_silencio' };
-  }
-
-  // Teto diário removido por pedido explícito — maxBriefsPerDay (e o comando
-  // "copiloto limite") ficam só como contador informativo em buildStatus(),
-  // sem bloquear nada aqui.
 
   const historyDesc = await prisma.copilotoMessage.findMany({
     where: { conversationId: conversation.id },
@@ -369,51 +264,18 @@ async function processBrief(job: Job<BriefJobData>) {
   });
   const history: CopilotoMessageLike[] = historyDesc.reverse();
 
+  // Triagem mantida só pra classificar tipo/remetente (usado no filtro e na
+  // adaptação dos eixos do briefing, ver copiloto-playbook.ts) — o resultado
+  // "ignorar" dela não bloqueia mais nada; "todas as conversas, sem filtro"
+  // foi decisão explícita do dono (a triagem existia pra proteger contra
+  // interrupção desnecessária no WhatsApp, e essa interrupção não existe mais).
   const triage = await triageConversation({
     userId,
     contactName: conversation.contactName,
     newMessages,
     recentHistory: history.slice(0, Math.max(0, history.length - newMessages.length)),
   });
-
-  if (!triage.shouldBrief) {
-    // Marca como avaliado: sem isto, a mesma mensagem "bom dia" seria triada de
-    // novo a cada nova mensagem da conversa, pagando triagem repetida.
-    await markBriefed();
-    logger.info(`[Copiloto] ⏭️ ${contactLabel}: sem briefing (${triage.reason})`);
-    return { skipped: true, reason: `triagem: ${triage.reason}` };
-  }
-
-  logger.info(`[Copiloto] ✓ ${contactLabel}: triagem OK (tipo=${triage.tipo ?? 'comercial'}, remetente=${triage.remetente ?? 'n/d'}, confianca=${triage.confidence})`);
-
-  // Piso de confiança por tipo — opcional, setado via "copiloto confianca
-  // <tipo> <valor>" (copiloto-commands.ts). Ausente por padrão (fase aberta):
-  // só existe pra quem o dono explicitamente decidiu apertar depois de ver
-  // dado real. Nunca bloqueia tipo sem entrada no mapa.
-  const minConfidence = readMinConfidence(config.minConfidenceByTipo, triage.tipo);
-  if (minConfidence !== null && triage.confidence < minConfidence) {
-    await markBriefed();
-    logger.info(`[Copiloto] ⏭️ ${contactLabel}: pulado (confiança ${triage.confidence} abaixo do piso ${minConfidence} pra tipo=${triage.tipo})`);
-    return { skipped: true, reason: 'confianca_abaixo_do_piso' };
-  }
-
-  // Cooldown de "pessoal" por contato — a triagem aberta pode gerar um
-  // briefing a cada mensagem de um contato batendo papo; sem isso, um único
-  // contato tagarela vira ruído repetido antes mesmo de juntar dado
-  // suficiente pros outros tipos. Não se aplica a comercial/admin/crise/
-  // oportunidade — ali cada mensagem nova pode ser uma decisão diferente.
-  if (triage.tipo === 'pessoal') {
-    const cooldownSince = new Date(Date.now() - PESSOAL_COOLDOWN_MS);
-    const recentPersonal = await prisma.copilotoBriefing.findFirst({
-      where: { conversationId: conversation.id, tipo: 'pessoal', createdAt: { gte: cooldownSince } },
-      select: { id: true },
-    });
-    if (recentPersonal) {
-      await markBriefed();
-      logger.info(`[Copiloto] ⏭️ ${contactLabel}: pulado (cooldown de conversa pessoal, já briefado nas últimas ${PESSOAL_COOLDOWN_MS / 3600000}h)`);
-      return { skipped: true, reason: 'cooldown_pessoal' };
-    }
-  }
+  logger.info(`[Copiloto] ✓ ${contactLabel}: tipo=${triage.tipo ?? 'comercial'}, remetente=${triage.remetente ?? 'n/d'}`);
 
   const kb = await prisma.atendeKnowledgeBase.findMany({
     where: { userId, active: true },
@@ -437,8 +299,8 @@ async function processBrief(job: Job<BriefJobData>) {
     briefing = await buildBriefing({
       userId,
       contactName: conversation.contactName,
-      businessContext: config.businessContext,
-      aggressiveness: config.aggressiveness,
+      businessContext: config?.businessContext,
+      aggressiveness: config?.aggressiveness,
       knowledgeBase: kb,
       history,
       pastFeedback,
@@ -446,42 +308,27 @@ async function processBrief(job: Job<BriefJobData>) {
       remetente: triage.remetente,
     });
   } catch (err: any) {
-    // Antes disso, uma falha aqui (todos os provedores de IA fora) derrubava o
-    // job inteiro em silêncio — a triagem já tinha decidido que valia a pena
-    // interromper o dono, o custo já foi "gasto", e ele nunca ficava sabendo
-    // que nada chegou. Agora: avisa no self-chat (o job ainda falha e o BullMQ
-    // reprocessa — se der certo na próxima, o dono recebe o briefing normal
-    // depois desse aviso) e registra pra alertar o admin (health-monitor.ts).
+    // Falha aqui (todos os provedores de IA fora) não pode derrubar o job em
+    // silêncio — registra pra alertar o admin (health-monitor.ts) e deixa o
+    // BullMQ reprocessar; o painel mostra a conversa como "ainda não lida"
+    // até um refresh dar certo.
     logger.error(`[Copiloto] ❌ buildBriefing falhou (todos os provedores) — ${contactLabel}: ${err.message}`);
     await prisma.systemError.create({
       data: { service: 'copiloto-ai', message: `buildBriefing falhou: ${err.message}`, context: { numberId, feature: 'copiloto_brief' } },
     }).catch(() => null);
-    await sendMessageViaEvolution(
-      number.zapiInstanceId,
-      number.phoneNumber,
-      `⚠️ Não consegui montar o briefing de *${contactLabel}* agora — os provedores de IA falharam. Vou tentar de novo em breve.`,
-    ).catch(() => null);
-    throw err; // deixa o BullMQ reprocessar — não marca como briefado
+    throw err; // não marca como briefado — o próximo refresh tenta de novo
   }
 
   // Ancoragem dos guardrails: só é "fato do negócio" o que já existe na conversa,
   // no contexto do negócio ou na base de conhecimento. Qualquer preço fora disso
   // é invenção da IA em nome do negócio do dono.
   const allowedText = [
-    config.businessContext ?? '',
+    config?.businessContext ?? '',
     kb.map((k) => `${k.question} ${k.answer}`).join('\n'),
     history.map((m) => m.content).join('\n'),
   ].join('\n');
 
-  // Calculado aqui (antes do create) pra poder persistir — antes só existia
-  // em memória e afetava só a mensagem renderizada, sem deixar rastro pra
-  // auditoria (ver ESCOPO_COPILOTO.md — cruzamento sensível×crise).
   const sensitive = briefing.sensitive || hasVulnerabilitySignal(lastText);
-
-  // Desambiguação de pendências simultâneas (v2.1) — se já existe outra
-  // conversa deste número esperando resposta, este briefing (e qualquer outro
-  // ainda sem letra) ganha uma. null = único pendente, comportamento de sempre.
-  const { label: pendingLabel, otherPending } = await assignPendingLabel(numberId);
 
   const created = await prisma.copilotoBriefing.create({
     data: {
@@ -497,16 +344,15 @@ async function processBrief(job: Job<BriefJobData>) {
       remetente: triage.remetente,
       triageConfidence: triage.confidence,
       sensitive,
-      pendingLabel,
-      deliveredVia: 'whatsapp',
+      deliveredVia: 'painel',
     },
   });
 
   // As opções reprovadas ficam gravadas como 'discarded' — auditoria de quantas
   // vezes o modelo tentou inventar preço/urgência é o que diz se o prompt precisa
-  // de ajuste. Nunca são oferecidas ao dono.
+  // de ajuste. Nunca aparecem no painel.
   let rank = 0;
-  const offered: Array<{ rank: number; axis: string; title: string; draft: string; rationale: string; technique: string }> = [];
+  let offeredCount = 0;
   for (const opt of briefing.options) {
     const check = validateDraft(opt.draft, { allowedText });
     rank += 1;
@@ -529,218 +375,22 @@ async function processBrief(job: Job<BriefJobData>) {
       },
     });
     if (check.ok) {
-      offered.push({ rank, axis: opt.axis, title: opt.title, draft: opt.draft, rationale: opt.rationale, technique: opt.technique });
+      offeredCount += 1;
     } else {
       logger.warn(`[Copiloto] 🚫 Opção ${rank} bloqueada (${contactLabel}): ${check.violations.join('; ')}`);
     }
   }
 
-  // Sem rodapé aqui de propósito: o job 'deliver' (compilação de rajadas, ver
-  // abaixo) é quem manda de verdade, alguns segundos depois, e anexa o rodapé
-  // só no envio final — combinando com outro contato do mesmo número que
-  // tenha ficado pronto na mesma janela, se for o caso.
-  const body = renderBriefingMessage({
-    contactLabel,
-    lastQuote: lastText,
-    briefing,
-    offered,
-    sensitive,
-    footer: false,
-    pendingLabel,
-    otherPending,
-  });
-
-  await prisma.copilotoBriefing.update({
-    where: { id: created.id },
-    data: { selfChatBody: body },
-  }).catch(() => null);
-
-  const deliverBucket = Math.floor(Date.now() / DELIVER_WINDOW_MS);
-  await copilotoQueue.add(
-    'deliver',
-    { numberId },
-    {
-      jobId: `copiloto-deliver-${numberId}-${deliverBucket}`,
-      delay: DELIVER_WINDOW_MS,
-      // Este Queue (instanciado aqui no worker) não herda o defaultJobOptions
-      // do Queue('copiloto') do lado da API (services/queue.ts) — sem isso,
-      // BullMQ usaria attempts:1 (sem retry) pra um job cujo êxito é a única
-      // forma do dono saber que a conversa mereceu atenção.
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 10_000 },
-    },
-  ).catch((err: any) => logger.error(`[Copiloto] ❌ Falha ao enfileirar entrega — ${contactLabel}: ${err.message}`));
-
   await markBriefed();
-  logger.info(`[Copiloto] ✅ Briefing pronto — ${contactLabel} [${triage.tipo ?? 'comercial'}] (${offered.length} opção(ões)) — entrega em até ${DELIVER_WINDOW_MS / 1000}s`);
-  return { briefingId: created.id, offered: offered.length };
-}
-
-// ── deliver — compila rajadas de contatos diferentes num só envio ──────────
-// Cada processBrief() concluído agenda este job com delay fixo e jobId
-// bucketado por número+janela de tempo — dois briefings do MESMO número
-// prontos dentro da mesma janela colapsam no MESMO job 'deliver' (igual ao
-// padrão de debounce do 'brief'), e um só self-chat sai com os dois.
-const DELIVER_WINDOW_MS = parseInt(process.env.COPILOTO_DELIVER_WINDOW_MS || '8000'); // 8s
-
-async function processDeliver(job: Job<{ numberId: string }>) {
-  const { numberId } = job.data;
-
-  const pending = await prisma.copilotoBriefing.findMany({
-    where: { numberId, deliveredAt: null, selfChatBody: { not: null } },
-    orderBy: { createdAt: 'asc' },
-  });
-  if (pending.length === 0) return { skipped: true, reason: 'nada_pendente' }; // outro job 'deliver' do mesmo bucket já entregou
-
-  const number = await prisma.whatsappNumber.findUnique({
-    where: { id: numberId },
-    select: { zapiInstanceId: true, phoneNumber: true, status: true },
-  });
-  if (!number?.zapiInstanceId || !number.phoneNumber || number.status !== 'connected') {
-    // Número caiu entre o briefing ficar pronto e a entrega — bem raro (janela
-    // de segundos). O sweep de pendências pega isso na próxima rodada horária.
-    logger.info(`[Copiloto] Entrega adiada — número ${numberId} desconectado (${pending.length} briefing(s) no buffer)`);
-    return { skipped: true, reason: 'numero_desconectado' };
-  }
-
-  // Rodapé POR ITEM, não só do mais recente — cada briefing responde pela
-  // própria letra (pendingLabel), lida agora (pode ter sido atribuída por um
-  // briefing mais novo depois deste ter sido renderizado, ver
-  // assignPendingLabel em processBrief; por isso o rodapé nunca é baked no
-  // selfChatBody — sempre calculado aqui, na hora de entregar, com o valor
-  // mais atual). v1.0/único pendente: pendingLabel null, comportamento igual
-  // a antes (rodapé sem letra).
-  const footers = new Map<string, string | null>();
-  for (const p of pending) {
-    const suggestions = await prisma.copilotoSuggestion.findMany({
-      where: { briefingId: p.id, status: 'offered' },
-      orderBy: { rank: 'asc' },
-      select: { rank: true },
-    });
-    footers.set(p.id, suggestions.length > 0 ? renderReplyFooter(suggestions.map((s) => s.rank), p.pendingLabel) : null);
-  }
-
-  const text = pending.length === 1
-    ? [pending[0].selfChatBody, footers.get(pending[0].id)].filter(Boolean).join('\n\n')
-    : [
-        `📥 *${pending.length} conversas novas*`,
-        pending.map((p) => [p.selfChatBody, footers.get(p.id)].filter(Boolean).join('\n\n')).join('\n\n───\n\n'),
-      ].filter(Boolean).join('\n\n');
-
-  await sendMessageViaEvolution(number.zapiInstanceId, number.phoneNumber, text).catch((err: any) => {
-    logger.error(`[Copiloto] ❌ Falha ao entregar ${pending.length} briefing(s) — número ${numberId}: ${err.message}`);
-    throw err; // sem marcar deliveredAt — BullMQ reprocessa e tenta nesse mesmo lote de novo
-  });
-
-  await prisma.copilotoBriefing.updateMany({
-    where: { id: { in: pending.map((p) => p.id) } },
-    data: { deliveredAt: new Date() },
-  });
-
-  logger.info(`[Copiloto] ✅ Entregue — número ${numberId} (${pending.length} conversa(s) compilada(s))`);
-  return { delivered: pending.length };
-}
-
-// ── Formatação da mensagem no WhatsApp ───────────────────────────────────────
-
-// Rótulo fixo por eixo — sempre os mesmos 3, em vez do título livre que a IA
-// gerava por briefing ("Fechar com data", "Descobrir a real"...). O dono passa
-// a reconhecer a estrutura de cara em qualquer conversa: opção 1 é sempre
-// "empurrar", 2 é sempre "perguntar", 3 é sempre "segurar posição". O título
-// livre continua gravado (CopilotoSuggestion.title) e visível no site.
-const AXIS_LABEL: Record<string, string> = {
-  avancar: 'Avançar', qualificar: 'Qualificar', posicionar: 'Posicionar',
-};
-
-/** Corta a citação verbatim do cliente pra não inflar a mensagem com um textão. */
-function truncateQuote(text: string, max = 140): string {
-  const t = text.trim().replace(/\s+/g, ' ');
-  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
-}
-
-/**
- * Rodapé de resposta — extraído pra ser reaproveitado pelo job 'deliver' (rajadas
- * compiladas). `label` (A/B/C...) só é passado quando existe mais de um briefing
- * pendente pro mesmo número ao mesmo tempo — ver pendingLabel no schema e
- * ESCOPO_COPILOTO.md. Sem label, comportamento idêntico a antes ("1", "2"...).
- */
-export function renderReplyFooter(nums: number[], label?: string | null): string {
-  const tag = (n: number | string) => `${label ?? ''}${n}`;
-  return `*${nums.map(tag).join('*, *')}* envia · *${tag(nums[0])}e* edita · *${tag(0)}* ignora`;
-}
-
-// Estrutura fixa e mínima: nome · citação do cliente · resumo+intenção · 3
-// opções (eixo + rascunho) · rodapé de resposta. Temperatura/risco/trava
-// continuam gravados no banco e visíveis em /dashboard/copiloto — tirados
-// daqui pra sobrar só o que muda a decisão do dono na hora. A "observação"
-// (4ª opção implícita: não agir agora) entra na própria linha de resumo em vez
-// de linha própria — mais um corte de compactação. Ver ESCOPO_COPILOTO.md §4.1.
-export function renderBriefingMessage(params: {
-  contactLabel: string;
-  lastQuote?: string | null;
-  briefing: { summary: string; intent: string; temperature: string; riskLevel: string; blocker: string | null; note: string | null };
-  offered: Array<{ rank: number; axis: string; title: string; draft: string; technique: string }>;
-  sensitive: boolean;
-  // false = compilação de rajada (ver runCopilotoBriefDelivery): manda sem
-  // rodapé, o job 'deliver' anexa um só rodapé no final do lote combinado.
-  footer?: boolean;
-  // v2.1 — letra (A/B/C...) quando este briefing NÃO é o único pendente pro
-  // número. null/undefined = comportamento de sempre (sem letra).
-  pendingLabel?: string | null;
-  // Outras conversas pendentes no momento (excluindo esta) — só relevante
-  // quando pendingLabel foi atribuído agora (2ª+ pendência do número). Avisa
-  // o dono que uma conversa mais antiga (cuja mensagem já foi mandada SEM
-  // letra) agora também precisa de letra pra ser respondida.
-  otherPending?: Array<{ label: string; contactLabel: string }>;
-}): string {
-  const { contactLabel, briefing, offered, sensitive, lastQuote, pendingLabel, otherPending } = params;
-  const footer = params.footer ?? true;
-  const lines: string[] = [];
-
-  lines.push(`🎯 *${contactLabel}*`);
-
-  if (lastQuote?.trim()) lines.push(`_"${truncateQuote(lastQuote)}"_`);
-
-  const summaryLine = [
-    sensitive ? '🕊️' : null,
-    [briefing.summary, briefing.intent ? `(quer: ${briefing.intent})` : null].filter(Boolean).join(' '),
-    briefing.note ? `— ${briefing.note}` : null,
-  ].filter(Boolean).join(' ');
-  if (summaryLine) lines.push(summaryLine);
-
-  if (offered.length === 0) {
-    lines.push('');
-    lines.push('Não gerei sugestão segura desta vez (faltou info confiável do seu negócio). Responda você mesmo.');
-    return lines.join('\n');
-  }
-
-  lines.push('');
-  for (const o of offered) {
-    const axisLabel = AXIS_LABEL[o.axis] ?? o.title;
-    const tag = pendingLabel ? `${pendingLabel}${o.rank}` : `${o.rank}`;
-    lines.push(`*${tag} · ${axisLabel}* "${o.draft}"`);
-  }
-
-  if (footer) {
-    lines.push('');
-    lines.push(renderReplyFooter(offered.map((o) => o.rank), pendingLabel));
-  }
-
-  if (otherPending?.length) {
-    lines.push('');
-    const list = otherPending.map((o) => `${o.label} — ${o.contactLabel}`).join(', ');
-    lines.push(`_Você também tem pendente: ${list}. Responda com a letra (ex.: ${otherPending[0].label}1) — sem letra eu não vou adivinhar qual conversa._`);
-  }
-
-  return lines.join('\n');
+  logger.info(`[Copiloto] ✅ Briefing pronto — ${contactLabel} [${triage.tipo ?? 'comercial'}] (${offeredCount} opção(ões)) — disponível no painel`);
+  return { briefingId: created.id, offered: offeredCount };
 }
 
 // ── Worker ───────────────────────────────────────────────────────────────────
 
 async function processCopilotoJob(job: Job<any>) {
-  if (job.name === 'ingest')  return processIngest(job as Job<IngestJobData>);
-  if (job.name === 'brief')   return processBrief(job as Job<BriefJobData>);
-  if (job.name === 'deliver') return processDeliver(job as Job<{ numberId: string }>);
+  if (job.name === 'ingest') return processIngest(job as Job<IngestJobData>);
+  if (job.name === 'brief')  return processBrief(job as Job<BriefJobData>);
   logger.warn(`[Copiloto] Job desconhecido: ${job.name}`);
   return { skipped: true, reason: 'job_desconhecido' };
 }
@@ -972,196 +622,10 @@ runCopilotoGroupDigests();
 // --runInBand` que importa este módulo em teste.
 setInterval(runCopilotoGroupDigests, GROUP_DIGEST_POLL_MS).unref();
 
-// ─────────────────────────────────────────────────────────────────────────
-// Sweep de pendências — conversas com mensagem ainda não briefada (nem por
-// briefing de verdade, nem por triagem: as duas marcam lastBriefedAt). Uma
-// conversa fica "presa" nesse estado quando processBrief() pula por um
-// motivo temporário sem marcar lastBriefedAt — número desconectado na hora,
-// horário de silêncio, módulo revogado e depois liberado de novo, etc. (ver
-// processBrief acima). Esse sweep é o que garante que essas conversas não
-// ficam esquecidas pra sempre: tenta de novo a cada hora até conseguir.
-// Cobre também o backfill de mensagens não lidas
-// (apps/api/src/services/copiloto-backfill.ts).
-// ─────────────────────────────────────────────────────────────────────────
+// v3.0 — removidos runCopilotoPendingSweep (recuperação de entrega presa no
+// self-chat, sem sentido no modelo sob demanda: o painel sempre reflete o
+// estado atual de "não lida" a cada refresh) e runCopilotoTechniqueRecap
+// (recap semanal era push de self-chat; os mesmos números já aparecem em
+// GET /copiloto/metrics, sob demanda, no painel). Ver ESCOPO_COPILOTO.md §15.
 
-const PENDING_SWEEP_POLL_MS = 60 * 60 * 1000; // a cada hora
-const PENDING_SWEEP_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000; // não ressuscita conversa parada há mais de 7 dias
-
-async function runCopilotoPendingSweep() {
-  try {
-    const candidates = await prisma.copilotoConversation.findMany({
-      where: { lastMessageAt: { gte: new Date(Date.now() - PENDING_SWEEP_LOOKBACK_MS) } },
-      select: { userId: true, numberId: true, contactPhone: true, lastMessageAt: true, lastBriefedAt: true },
-    });
-    const pending = candidates.filter((c) => !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt);
-
-    const hourKey = new Date().toISOString().slice(0, 13); // 1 tentativa de reenfileirar por conversa por rodada do sweep
-    let enqueued = 0;
-    for (const c of pending) {
-      const config = await prisma.copilotoConfig.findUnique({ where: { numberId: c.numberId }, select: { enabled: true } });
-      if (!config?.enabled) continue;
-      await copilotoQueue.add(
-        'brief',
-        { userId: c.userId, numberId: c.numberId, contactPhone: c.contactPhone },
-        { jobId: `copiloto-brief-sweep-${c.numberId}-${c.contactPhone}-${hourKey}` },
-      ).catch(() => null);
-      enqueued++;
-    }
-    if (enqueued > 0) {
-      logger.info(`[Copiloto] Sweep de pendências: ${enqueued}/${pending.length} conversa(s) reenfileirada(s)`);
-    }
-
-    // Briefing pronto mas nunca entregue (deliveredAt continua null) — o caso
-    // raro em que o job 'deliver' falha e ninguém mais reenfileira pra aquele
-    // número (markBriefed() já rodou, então o bloco acima não pega). 2 min de
-    // fôlego antes de considerar "preso" — dá tempo do retry normal do próprio
-    // job 'deliver' (attempts:3) resolver sozinho primeiro.
-    const stuckSince = new Date(Date.now() - 2 * 60 * 1000);
-    const stuck = await prisma.copilotoBriefing.findMany({
-      where: { deliveredAt: null, selfChatBody: { not: null }, createdAt: { lt: stuckSince } },
-      select: { numberId: true },
-      distinct: ['numberId'],
-    });
-    let redelivered = 0;
-    for (const { numberId } of stuck) {
-      await copilotoQueue.add(
-        'deliver',
-        { numberId },
-        { jobId: `copiloto-deliver-sweep-${numberId}-${hourKey}`, attempts: 3, backoff: { type: 'exponential', delay: 10_000 } },
-      ).catch(() => null);
-      redelivered++;
-    }
-    if (redelivered > 0) {
-      logger.info(`[Copiloto] Sweep de pendências: ${redelivered} número(s) com entrega presa, reenfileirado(s)`);
-    }
-    await recordHeartbeat('copiloto_pending_sweep', true);
-  } catch (err: any) {
-    logger.error(`[Copiloto] Erro no sweep de pendências: ${err.message}`);
-    await recordHeartbeat('copiloto_pending_sweep', false, err.message);
-  }
-}
-
-runCopilotoPendingSweep();
-setInterval(runCopilotoPendingSweep, PENDING_SWEEP_POLL_MS).unref();
-
-// ─────────────────────────────────────────────────────────────────────────
-// Recap semanal de técnica (Função 1) — toda segunda-feira, quantas sugestões
-// de cada técnica foram enviadas e que fração o cliente respondeu depois.
-// O dado (CopilotoSuggestion.technique/outcome) já era gravado; só nunca
-// virava nada de volta pro dono — a promessa de "em 30 dias você aprende a
-// técnica" (ESCOPO_COPILOTO.md §2.3) ficava incompleta sem esse feedback.
-// ─────────────────────────────────────────────────────────────────────────
-
-const TECHNIQUE_RECAP_POLL_MS = 60 * 60 * 1000; // checa a cada hora; só age de fato às segundas
-const RECAP_TZ = 'America/Sao_Paulo';
-const RECAP_MIN_SENT = 5; // amostra mínima — abaixo disso, % de resposta é ruído, não sinal
-
-const TECHNIQUE_LABEL: Record<string, string> = {
-  // comercial (v1.0)
-  'fechamento-assumido': 'Fechar a venda',
-  'qualificacao':        'Perguntar antes de propor',
-  'loop-objecao':        'Contornar objeção',
-  'ancoragem':           'Ancorar valor',
-  'prova-social':        'Prova social',
-  'saida-digna':         'Dar saída sem perder a venda',
-  'reciprocidade':       'Reciprocidade',
-  'escuta-ativa':        'Confirmar antes de responder',
-  'proximo-passo':       'Propor próximo passo',
-  // pessoal (v2.0)
-  'conexao-pessoal':     'Aprofundar conexão',
-  'curiosidade-genuina': 'Curiosidade genuína',
-  'reconhecimento':      'Reconhecer o ponto sem se justificar',
-  // admin (v2.0)
-  'resolucao-direta':    'Resolver direto',
-  'prazo-real':          'Dar prazo real',
-  'encaminhamento-claro': 'Encaminhar com clareza',
-  // crise (v2.0)
-  'responsabilidade-imediata': 'Assumir responsabilidade rápido',
-  'escuta-de-crise':     'Entender o problema antes de prometer',
-  'validacao-sem-culpa': 'Validar sem admitir culpa indevida',
-  // oportunidade (v2.0)
-  'interesse-qualificado': 'Mostrar interesse qualificado',
-  'filtro-estrategico':  'Filtrar se vale a pena',
-  'porta-aberta':        'Pedir tempo sem fechar a porta',
-};
-
-function isRecapDay(): boolean {
-  return new Date().toLocaleDateString('en-US', { timeZone: RECAP_TZ, weekday: 'short' }) === 'Mon';
-}
-
-async function runCopilotoTechniqueRecap() {
-  if (!isRecapDay()) return; // log seria ruído: essa função "acerta" 1 dia por semana, os outros 6 é esperado não fazer nada
-  try {
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const configs = await prisma.copilotoConfig.findMany({
-      where: { enabled: true },
-      select: { numberId: true, aggressiveness: true, lastTechniqueRecapAt: true },
-    });
-
-    let sent = 0;
-    for (const config of configs) {
-      if (config.lastTechniqueRecapAt && config.lastTechniqueRecapAt >= weekAgo) continue; // já mandou nos últimos 7 dias
-
-      const number = await prisma.whatsappNumber.findUnique({
-        where: { id: config.numberId },
-        select: { zapiInstanceId: true, phoneNumber: true, status: true },
-      });
-      if (!number?.zapiInstanceId || !number.phoneNumber || number.status !== 'connected') continue;
-
-      const suggestions = await prisma.copilotoSuggestion.findMany({
-        where: { status: { in: ['sent', 'edited'] }, sentAt: { gte: weekAgo }, briefing: { numberId: config.numberId } },
-        select: { technique: true, outcome: true },
-      });
-      if (suggestions.length === 0) continue; // nada enviado essa semana — não há o que recapitular
-
-      const byTechnique = new Map<string, { sent: number; replied: number }>();
-      for (const s of suggestions) {
-        const cur = byTechnique.get(s.technique) ?? { sent: 0, replied: 0 };
-        cur.sent += 1;
-        if (s.outcome === 'replied') cur.replied += 1;
-        byTechnique.set(s.technique, cur);
-      }
-
-      const rows = [...byTechnique.entries()]
-        .map(([technique, v]) => ({
-          technique, sent: v.sent, replied: v.replied,
-          rate: v.sent > 0 ? Math.round((v.replied / v.sent) * 100) : 0,
-        }))
-        .sort((a, b) => b.rate - a.rate);
-
-      const lines = ['📊 *Seu recap da semana*', ''];
-      for (const r of rows) {
-        lines.push(`• ${TECHNIQUE_LABEL[r.technique] ?? r.technique}: ${r.sent} enviada${r.sent === 1 ? '' : 's'}, ${r.rate}% respondeu`);
-      }
-
-      // #11 — nunca troca sozinho (o dono decide tudo que muda o tom do negócio
-      // dele), só sugere quando a amostra é grande o bastante pra significar
-      // algo e a taxa geral está baixa.
-      const totalSent = suggestions.length;
-      const totalReplied = suggestions.filter((s) => s.outcome === 'replied').length;
-      const overallRate = totalSent > 0 ? Math.round((totalReplied / totalSent) * 100) : 0;
-      if (totalSent >= RECAP_MIN_SENT && overallRate < 20) {
-        const gentler = config.aggressiveness === 'direto' ? 'equilibrado' : config.aggressiveness === 'equilibrado' ? 'consultivo' : null;
-        if (gentler) {
-          lines.push('', `💡 Só ${overallRate}% respondeu essa semana. Quer tentar o tom *${gentler}*? Manda *copiloto agressividade ${gentler}*.`);
-        }
-      }
-
-      await sendMessageViaEvolution(number.zapiInstanceId, number.phoneNumber, lines.join('\n')).catch((err: any) =>
-        logger.error(`[Copiloto] ❌ Falha ao entregar recap semanal (número ${config.numberId}): ${err.message}`));
-
-      await prisma.copilotoConfig.update({ where: { numberId: config.numberId }, data: { lastTechniqueRecapAt: new Date() } }).catch(() => null);
-      sent++;
-    }
-    if (sent > 0) logger.info(`[Copiloto] Recap semanal de técnica enviado para ${sent} número(s)`);
-    await recordHeartbeat('copiloto_technique_recap', true);
-  } catch (err: any) {
-    logger.error(`[Copiloto] Erro no recap semanal de técnica: ${err.message}`);
-    await recordHeartbeat('copiloto_technique_recap', false, err.message);
-  }
-}
-
-runCopilotoTechniqueRecap();
-setInterval(runCopilotoTechniqueRecap, TECHNIQUE_RECAP_POLL_MS).unref();
-
-export { copilotoWorker, runCopilotoGroupDigests, runCopilotoPendingSweep, runCopilotoTechniqueRecap };
+export { copilotoWorker, runCopilotoGroupDigests };
