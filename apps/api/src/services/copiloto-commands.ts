@@ -57,10 +57,15 @@ async function buildStatus(numberId: string): Promise<string> {
   const config = await prisma.copilotoConfig.findUnique({ where: { numberId } });
 
   const [unreadConversations, sentToday] = await Promise.all([
+    // "Não lida" = mensagem do CLIENTE mais nova que o último briefing — ver
+    // isConversationUnread em routes/copiloto.ts (mesma regra, duplicada
+    // aqui por serem módulos sem import cruzado no projeto).
     prisma.copilotoConversation.findMany({
       where: { numberId },
-      select: { lastMessageAt: true, lastBriefedAt: true },
-    }).then((rows) => rows.filter((c) => !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt).length),
+      select: { lastCustomerMessageAt: true, lastBriefedAt: true },
+    }).then((rows) => rows.filter(
+      (c) => !!c.lastCustomerMessageAt && (!c.lastBriefedAt || c.lastBriefedAt < c.lastCustomerMessageAt),
+    ).length),
     prisma.copilotoSuggestion.count({
       where: {
         status: { in: ['sent', 'edited'] },

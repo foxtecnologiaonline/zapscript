@@ -1239,7 +1239,15 @@ model CopilotoConversation {
   numberId      String
   contactPhone  String
   contactName   String?
-  lastMessageAt DateTime           @default(now())
+  lastMessageAt DateTime           @default(now()) // qualquer mensagem, 'in' ou 'out' — só recência geral (ordenação/exibição)
+  // v3.1 — só bumpado em mensagem 'in' (do cliente). É o que decide "não
+  // lida" no painel (GET /copiloto/inbox): antes disso usava lastMessageAt,
+  // que também sobe quando o DONO manda mensagem direto pelo WhatsApp (sem
+  // passar pelo painel) — fazia a conversa aparecer eternamente "não lida"
+  // mesmo já respondida, e o botão "Atualizar" nunca zerava a fila porque
+  // processBrief nunca achava mensagem 'in' nova pra brifar (ver
+  // ESCOPO_COPILOTO.md §15.6).
+  lastCustomerMessageAt DateTime?
   lastBriefedAt DateTime? // corte do que já virou briefing — evita rebriefar a mesma mensagem
   createdAt     DateTime           @default(now())
   user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)

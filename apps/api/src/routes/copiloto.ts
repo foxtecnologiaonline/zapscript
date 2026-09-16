@@ -22,6 +22,20 @@ import { sendCopilotoSuggestion, dismissCopilotoBriefing } from '../services/cop
  * Sem teamScope de propósito: o Copiloto é pessoal do dono, não compartilhado
  * com o time (diferente de Atende/Tarefas). Ver ESCOPO_COPILOTO.md.
  */
+/**
+ * v3.1 — "não lida" = existe mensagem do CLIENTE (lastCustomerMessageAt) mais
+ * nova que o último briefing (lastBriefedAt). Corrige o bug em que
+ * lastMessageAt (que subia com QUALQUER mensagem, inclusive o dono
+ * respondendo direto no WhatsApp) fazia uma conversa já tratada continuar
+ * aparecendo pra sempre como "não lida" — e o "Atualizar" nunca zerava a
+ * fila, porque processBrief nunca achava mensagem 'in' nova pra brifar. Ver
+ * ESCOPO_COPILOTO.md §15.6 e o comentário no schema.
+ */
+function isConversationUnread(c: { lastCustomerMessageAt: Date | null; lastBriefedAt: Date | null }): boolean {
+  if (!c.lastCustomerMessageAt) return false; // nunca recebeu mensagem do cliente — nada pra ler
+  return !c.lastBriefedAt || c.lastBriefedAt < c.lastCustomerMessageAt;
+}
+
 export default async function copilotoRoutes(app: FastifyInstance) {
   app.addHook('preHandler', (app as any).authenticate);
   app.addHook('preHandler', requireModule('copiloto'));
@@ -322,20 +336,17 @@ export default async function copilotoRoutes(app: FastifyInstance) {
 
     const [totalContacts, conversationsForUnread] = await Promise.all([
       prisma.copilotoConversation.count({ where: convWhere }),
-      // "Não lida" = mesma definição do sweep de pendências (worker):
-      // lastBriefedAt nulo ou mais velho que a última mensagem. Comparação
-      // entre duas colunas da mesma linha não dá pra expressar num `where`
-      // do Prisma — traz os dois campos e filtra em memória, igual
-      // runCopilotoPendingSweep já faz (volume por usuário é baixo, não é
-      // a tabela inteira da plataforma).
+      // "Não lida" = tem mensagem do CLIENTE mais nova que o último briefing
+      // (ver isConversationUnread). Comparação entre duas colunas da mesma
+      // linha não dá pra expressar num `where` do Prisma — traz os campos e
+      // filtra em memória (volume por usuário é baixo, não é a tabela
+      // inteira da plataforma).
       prisma.copilotoConversation.findMany({
         where: convWhere,
-        select: { lastMessageAt: true, lastBriefedAt: true },
+        select: { lastCustomerMessageAt: true, lastBriefedAt: true },
       }),
     ]);
-    const unreadConversations = conversationsForUnread.filter(
-      (c) => !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt,
-    ).length;
+    const unreadConversations = conversationsForUnread.filter(isConversationUnread).length;
     const readConversations = totalContacts - unreadConversations;
 
     const [
@@ -398,7 +409,7 @@ export default async function copilotoRoutes(app: FastifyInstance) {
     const inbox = conversations
       .map((c) => {
         const b = c.briefings[0] ?? null;
-        const unread = !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt;
+        const unread = isConversationUnread(c);
         const needsAttention = unread || b?.status === 'pending';
         return { c, b, unread, needsAttention };
       })
@@ -460,9 +471,9 @@ export default async function copilotoRoutes(app: FastifyInstance) {
 
     const conversations = await prisma.copilotoConversation.findMany({
       where: { userId, ...(numberId ? { numberId } : {}) },
-      select: { numberId: true, contactPhone: true, lastMessageAt: true, lastBriefedAt: true },
+      select: { id: true, numberId: true, contactPhone: true, lastCustomerMessageAt: true, lastBriefedAt: true },
     });
-    const pending = conversations.filter((c) => !c.lastBriefedAt || c.lastBriefedAt < c.lastMessageAt);
+    const pending = conversations.filter(isConversationUnread);
 
     let enqueued = 0;
     for (const c of pending) {
@@ -477,7 +488,10 @@ export default async function copilotoRoutes(app: FastifyInstance) {
       enqueued++;
     }
 
-    return { enqueued, pending: pending.length };
+    // conversationIds volta pro front acompanhar SÓ essas (não o total de não
+    // lidas) — uma mensagem nova chegando durante o polling não pode fazer
+    // parecer que o refresh nunca termina (ver InboxTab.refresh no painel).
+    return { enqueued, pending: pending.length, conversationIds: pending.map((c) => c.id) };
   });
 
   // ── POST /copiloto/suggestions/:id/send ──────────────────────────────────

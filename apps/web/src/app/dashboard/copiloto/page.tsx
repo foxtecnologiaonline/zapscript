@@ -495,6 +495,10 @@ function InboxTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitled
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Feedback do que aconteceu no último clique em "Atualizar" — sem isso, o
+  // botão só mostrava "Processando…" e voltava ao normal sem dizer se
+  // processou algo, o que passava a impressão de não estar funcionando.
+  const [status, setStatus] = useState<string | null>(null);
 
   const load = useCallback(() => {
     const params = new URLSearchParams();
@@ -511,21 +515,41 @@ function InboxTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitled
   useEffect(() => { setLoading(true); load().finally(() => setLoading(false)); }, [load]);
 
   // "Atualizar": dispara o processamento e faz polling curto até as
-  // conversas que estavam `unread` saírem desse estado (ou até um teto de
-  // tempo, pra nunca ficar girando pra sempre se algo travar no worker).
+  // conversas enfileiradas AGORA saírem do estado "não lida" (ou até um teto
+  // de tempo, pra nunca ficar girando pra sempre se algo travar no worker).
+  // Conta pelas conversas desta rodada (`targetIds`), não pelo total de não
+  // lidas — uma mensagem nova chegando durante o polling não pode fazer o
+  // botão parecer que nunca termina.
   async function refresh() {
     setRefreshing(true);
     setError(null);
+    setStatus(null);
     try {
-      const res = await api.post<{ enqueued: number; pending: number }>('/copiloto/inbox/refresh', { numberId: numberId || undefined });
-      if (res.pending === 0) { await load(); return; }
+      const res = await api.post<{ enqueued: number; pending: number; conversationIds: string[] }>(
+        '/copiloto/inbox/refresh', { numberId: numberId || undefined },
+      );
+      if (res.pending === 0) {
+        setStatus('Nada novo pra processar — já está tudo em dia.');
+        await load();
+        return;
+      }
 
+      const targetIds = new Set(res.conversationIds);
       const deadline = Date.now() + 45_000;
+      let stillPending = targetIds.size;
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 2500));
         const result = await load();
-        if (result && result.unreadCount === 0) break;
+        if (!result) continue;
+        stillPending = result.inbox.filter((row) => targetIds.has(row.id) && row.unread).length;
+        if (stillPending === 0) break;
       }
+
+      setStatus(
+        stillPending === 0
+          ? `Pronto — ${res.pending} conversa${res.pending !== 1 ? 's' : ''} processada${res.pending !== 1 ? 's' : ''}.`
+          : `Processou ${res.pending - stillPending} de ${res.pending} — o restante pode levar mais um pouco (tente Atualizar de novo).`,
+      );
     } catch (e: any) {
       setError(e?.message || 'Não consegui atualizar agora.');
     } finally {
@@ -537,7 +561,7 @@ function InboxTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitled
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-2 mb-4">
+      <div className="flex items-center justify-between gap-2 mb-1">
         <p className="text-sm text-neutral-400">
           {unreadCount > 0
             ? `${unreadCount} conversa${unreadCount !== 1 ? 's' : ''} ainda não processada${unreadCount !== 1 ? 's' : ''}.`
@@ -551,6 +575,8 @@ function InboxTab({ numberId, onNotEntitled }: { numberId: string; onNotEntitled
           {refreshing ? 'Processando…' : '🔄 Atualizar'}
         </button>
       </div>
+
+      {status && <p className="text-xs text-emerald-400/90 mb-3">{status}</p>}
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-300">{error}</div>

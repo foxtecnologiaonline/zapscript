@@ -869,6 +869,34 @@ de dados (`CopilotoBriefing`/`CopilotoSuggestion`) não mudaram.
   entregando no self-chat, é opt-in e informativo (nunca sugere resposta),
   natureza diferente da Função 1.
 
+### 15.6 v3.1 — Bug: conversa já respondida ficava "não lida" pra sempre (2026-09-16)
+
+Reportado pelo dono logo depois do lançamento do painel: conversas que ele
+já tinha tratado — respondendo direto no WhatsApp, sem passar pelo Inbox —
+continuavam aparecendo como "não lida", e o botão "Atualizar" parecia não
+fazer nada (ficava processando e a fila nunca zerava).
+
+**Causa raiz:** `CopilotoConversation.lastMessageAt` subia com QUALQUER
+mensagem, `'in'` (cliente) ou `'out'` (dono) — e "não lida" era `lastBriefedAt
+< lastMessageAt`. Se o dono respondia manualmente (fora do painel),
+`lastMessageAt` avançava mas `lastBriefedAt` não, e a conversa ficava
+marcada como pendente pra sempre. Clicar "Atualizar" enfileirava um `brief`
+pra ela, mas `processBrief` não achava mensagem `'in'` nova (porque não
+havia) e retornava `nada_novo` **sem marcar `lastBriefedAt`** — looping
+silencioso: sempre "não lida", nunca resolvida.
+
+**Correção:** novo campo `CopilotoConversation.lastCustomerMessageAt`,
+atualizado só em mensagem `'in'`. "Não lida" virou
+`lastCustomerMessageAt existe E (lastBriefedAt nulo OU mais velho que
+lastCustomerMessageAt)` — `lastMessageAt` continua existindo, mas só pra
+ordenação/exibição geral, não mais pra decidir o que entra na fila.
+Migration com backfill a partir do histórico real de `CopilotoMessage`
+(sem perder o estado das conversas já existentes).
+
+Efeito colateral corrigido de brinde: o "Atualizar" agora reporta o que
+aconteceu (quantas processou, se não havia nada novo, se ficou algo pra
+trás) em vez de só mostrar "Processando…" e voltar ao normal em silêncio.
+
 ---
 
 *Escopo produzido com as lentes `/dev` (arquitetura, dados, custo de execução),

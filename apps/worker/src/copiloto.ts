@@ -112,10 +112,20 @@ async function processIngest(job: Job<IngestJobData>) {
   const { userId, numberId, contactPhone, contactName, direction, content, externalId } = job.data;
   if (!content?.trim()) return { skipped: true, reason: 'empty' };
 
+  const now = new Date();
   const conversation = await prisma.copilotoConversation.upsert({
     where: { numberId_contactPhone: { numberId, contactPhone } },
-    update: { lastMessageAt: new Date(), ...(contactName ? { contactName } : {}) },
-    create: { userId, numberId, contactPhone, contactName: contactName ?? null },
+    update: {
+      lastMessageAt: now,
+      // Só mensagem do CLIENTE conta como "não lida" — ver comentário no
+      // schema (CopilotoConversation.lastCustomerMessageAt).
+      ...(direction === 'in' ? { lastCustomerMessageAt: now } : {}),
+      ...(contactName ? { contactName } : {}),
+    },
+    create: {
+      userId, numberId, contactPhone, contactName: contactName ?? null,
+      lastCustomerMessageAt: direction === 'in' ? now : null,
+    },
   });
 
   // Dedup por messageId real do WhatsApp — cobre o backfill/sweep de não lidas
