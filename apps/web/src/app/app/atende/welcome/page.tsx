@@ -44,7 +44,13 @@ export default function AtendeWelcomePage() {
 
   const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState<'audio' | 'video' | null>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  // Espelha os dois estados acima só para o cleanup de desmontagem abaixo ler
+  // o valor mais recente — um useEffect com deps [] captura closure do
+  // primeiro render (sempre null), então revogar ali direto nunca funcionaria.
+  const previewUrlsRef = useRef<{ audio: string | null; video: string | null }>({ audio: null, video: null });
+  previewUrlsRef.current = { audio: audioPreviewUrl, video: videoPreviewUrl };
 
   useEffect(() => {
     api.get<WNumberLite[]>('/numbers')
@@ -106,26 +112,31 @@ export default function AtendeWelcomePage() {
   }
 
   // Prévia do que já está salvo — <audio>/<video src> não manda o JWT, então
-  // busca o blob autenticado e cria uma URL local só para tocar.
+  // busca o blob autenticado e mostra num player inline (nunca abrir janela
+  // nova/autoplay aqui: depois de um `await`, o navegador já não considera a
+  // ação como gesto do usuário, e bloqueia popup + autoplay silenciosamente).
   async function playSavedMedia(kind: 'audio' | 'video') {
+    setLoadingPreview(kind);
     try {
       const blob = await api.getBlob(`/atende/welcome-config/${numberId}/media/${kind}`);
       const url = URL.createObjectURL(blob);
-      const el = kind === 'audio' ? new Audio(url) : document.createElement('video');
-      if (kind === 'video') {
-        (el as HTMLVideoElement).src = url;
-        (el as HTMLVideoElement).controls = true;
-        (el as HTMLVideoElement).style.cssText = 'max-width:100%;border-radius:8px;';
-        const w = window.open('', '_blank', 'width=420,height=320');
-        w?.document.body.appendChild(el);
-        (el as HTMLVideoElement).play().catch(() => null);
+      if (kind === 'audio') {
+        setAudioPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
       } else {
-        el.play().catch(() => null);
+        setVideoPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
       }
     } catch (e: any) {
       setError(e?.message || 'Não foi possível carregar a prévia.');
+    } finally {
+      setLoadingPreview(null);
     }
   }
+
+  // Revoga as URLs de prévia ao desmontar — evitam vazar memória entre navegações.
+  useEffect(() => () => {
+    if (previewUrlsRef.current.audio) URL.revokeObjectURL(previewUrlsRef.current.audio);
+    if (previewUrlsRef.current.video) URL.revokeObjectURL(previewUrlsRef.current.video);
+  }, []);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -257,9 +268,14 @@ export default function AtendeWelcomePage() {
                           <span className="text-xs text-emerald-400">
                             {newAudioBlob ? 'Novo áudio gravado ✓' : 'Áudio configurado ✓'}
                           </span>
-                          {!newAudioBlob && hasAudio && (
-                            <button type="button" onClick={() => playSavedMedia('audio')} className="text-xs text-neutral-300 underline hover:text-neutral-100">
-                              ouvir
+                          {!newAudioBlob && hasAudio && !audioPreviewUrl && (
+                            <button
+                              type="button"
+                              onClick={() => playSavedMedia('audio')}
+                              disabled={loadingPreview === 'audio'}
+                              className="text-xs text-neutral-300 underline hover:text-neutral-100 disabled:opacity-50"
+                            >
+                              {loadingPreview === 'audio' ? 'carregando…' : 'ouvir'}
                             </button>
                           )}
                           <button
@@ -298,9 +314,14 @@ export default function AtendeWelcomePage() {
                           <span className="text-xs text-emerald-400">
                             {newVideoFile ? 'Novo vídeo escolhido ✓' : 'Vídeo configurado ✓'}
                           </span>
-                          {!newVideoFile && hasVideo && (
-                            <button type="button" onClick={() => playSavedMedia('video')} className="text-xs text-neutral-300 underline hover:text-neutral-100">
-                              ver
+                          {!newVideoFile && hasVideo && !videoPreviewUrl && (
+                            <button
+                              type="button"
+                              onClick={() => playSavedMedia('video')}
+                              disabled={loadingPreview === 'video'}
+                              className="text-xs text-neutral-300 underline hover:text-neutral-100 disabled:opacity-50"
+                            >
+                              {loadingPreview === 'video' ? 'carregando…' : 'ver'}
                             </button>
                           )}
                           <button

@@ -55,6 +55,31 @@ describe('welcome — maybeSendWelcome', () => {
     expect(prisma.atendeConversation.updateMany).not.toHaveBeenCalled();
   });
 
+  it('trata Buffer vazio como "sem mídia" (Buffer é objeto — truthy mesmo com length 0)', async () => {
+    (prisma.welcomeConfig.findUnique as jest.Mock).mockResolvedValueOnce({
+      enabled: true, text: null, audioBytes: Buffer.alloc(0), videoBytes: Buffer.alloc(0),
+    });
+
+    await maybeSendWelcome('conv-1', 'number-1', 'instance-1', '5511999998888');
+
+    expect(prisma.atendeConversation.updateMany).not.toHaveBeenCalled();
+    expect(sendPtt).not.toHaveBeenCalled();
+    expect(sendVideo).not.toHaveBeenCalled();
+  });
+
+  it('envia texto mas pula áudio vazio quando só o vídeo tem bytes de verdade', async () => {
+    (prisma.welcomeConfig.findUnique as jest.Mock).mockResolvedValueOnce({
+      enabled: true, text: 'Oi!', audioBytes: Buffer.alloc(0), videoBytes: Buffer.from('video-bytes'), videoMime: 'video/mp4',
+    });
+    (prisma.atendeConversation.updateMany as jest.Mock).mockResolvedValueOnce({ count: 1 });
+
+    await maybeSendWelcome('conv-1', 'number-1', 'instance-1', '5511999998888');
+
+    expect(sendMessageViaEvolution).toHaveBeenCalled();
+    expect(sendPtt).not.toHaveBeenCalled();
+    expect(sendVideo).toHaveBeenCalled();
+  });
+
   it('envia texto quando o guard atômico afeta 1 linha (venceu a corrida)', async () => {
     (prisma.welcomeConfig.findUnique as jest.Mock).mockResolvedValueOnce({
       enabled: true, text: 'Bem-vindo!', audioBytes: null, videoBytes: null,

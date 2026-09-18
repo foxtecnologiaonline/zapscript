@@ -1159,21 +1159,21 @@ model AtendeKnowledgeBase {
 }
 
 model AtendeConversation {
-  id            String          @id @default(cuid())
-  userId        String
-  numberId      String
-  contactPhone  String
-  contactName   String?
-  status        String          @default("open") // 'open' | 'escalated' | 'closed'
-  humanTakeover Boolean         @default(false) // true = resposta automática desligada nesta conversa
-  archived      Boolean         @default(false) // true = conversas > 90 dias (soft-delete)
-  lastMessageAt DateTime        @default(now())
+  id                String          @id @default(cuid())
+  userId            String
+  numberId          String
+  contactPhone      String
+  contactName       String?
+  status            String          @default("open") // 'open' | 'escalated' | 'closed'
+  humanTakeover     Boolean         @default(false) // true = resposta automática desligada nesta conversa
+  archived          Boolean         @default(false) // true = conversas > 90 dias (soft-delete)
+  lastMessageAt     DateTime        @default(now())
   lastWelcomeSentAt DateTime? // controle da boas-vindas: comparado por dia civil em America/Sao_Paulo, não por horas fixas
-  archivedAt    DateTime? // Quando foi marcada como archived
-  createdAt     DateTime        @default(now())
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  number        WhatsappNumber  @relation(fields: [numberId], references: [id], onDelete: Cascade)
-  messages      AtendeMessage[]
+  archivedAt        DateTime? // Quando foi marcada como archived
+  createdAt         DateTime        @default(now())
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number            WhatsappNumber  @relation(fields: [numberId], references: [id], onDelete: Cascade)
+  messages          AtendeMessage[]
 
   @@unique([numberId, contactPhone])
   @@index([userId, lastMessageAt(sort: Desc)])

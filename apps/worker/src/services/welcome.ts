@@ -19,6 +19,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Buffer é um objeto — truthy mesmo vazio (Buffer.alloc(0)). Checar .length
+// em vez de `!!bytes` evita reportar/enviar uma mídia "configurada" vazia.
+function hasBytes(buf: Buffer | null | undefined): buf is Buffer {
+  return !!buf && buf.length > 0;
+}
+
 /**
  * Início do dia civil em America/Sao_Paulo, como instante UTC.
  * Brasil não tem mais horário de verão desde 2019 — o offset é fixo em
@@ -49,7 +55,7 @@ export async function maybeSendWelcome(
   try {
     const welcomeConfig = await prisma.welcomeConfig.findUnique({ where: { numberId } });
     if (!welcomeConfig?.enabled) return;
-    if (!welcomeConfig.text && !welcomeConfig.audioBytes && !welcomeConfig.videoBytes) return;
+    if (!welcomeConfig.text && !hasBytes(welcomeConfig.audioBytes) && !hasBytes(welcomeConfig.videoBytes)) return;
 
     // Guard atômico: só segue se este UPDATE afetou 1 linha — cobre a corrida
     // entre duas mensagens quase simultâneas do mesmo contato.
@@ -67,13 +73,13 @@ export async function maybeSendWelcome(
         logger.warn(`[Atende→Boas-vindas] Falha ao enviar texto: ${err.message}`));
     }
 
-    if (welcomeConfig.audioBytes) {
+    if (hasBytes(welcomeConfig.audioBytes)) {
       await sleep(SEND_DELAY_MS);
       await sendPtt(instanceName, senderPhone, welcomeConfig.audioBytes.toString('base64')).catch((err: any) =>
         logger.warn(`[Atende→Boas-vindas] Falha ao enviar áudio: ${err.message}`));
     }
 
-    if (welcomeConfig.videoBytes) {
+    if (hasBytes(welcomeConfig.videoBytes)) {
       await sleep(SEND_DELAY_MS);
       await sendVideo(instanceName, senderPhone, welcomeConfig.videoBytes.toString('base64'), welcomeConfig.videoMime || 'video/mp4').catch((err: any) =>
         logger.warn(`[Atende→Boas-vindas] Falha ao enviar vídeo: ${err.message}`));

@@ -196,8 +196,8 @@ export default async function atendeRoutes(app: FastifyInstance) {
     return {
       enabled:   config?.enabled ?? false,
       text:      config?.text ?? null,
-      hasAudio:  !!config?.audioBytes,
-      hasVideo:  !!config?.videoBytes,
+      hasAudio:  (config?.audioBytes?.length ?? 0) > 0,
+      hasVideo:  (config?.videoBytes?.length ?? 0) > 0,
       audioMime: config?.audioMime ?? null,
       videoMime: config?.videoMime ?? null,
     };
@@ -216,9 +216,9 @@ export default async function atendeRoutes(app: FastifyInstance) {
     const config = await prisma.welcomeConfig.findUnique({ where: { numberId } });
     const bytes  = kind === 'audio' ? config?.audioBytes : config?.videoBytes;
     const mime   = kind === 'audio' ? config?.audioMime  : config?.videoMime;
-    if (!bytes) return reply.code(404).send({ error: 'Mídia não configurada' });
+    if (!bytes || bytes.length === 0) return reply.code(404).send({ error: 'Mídia não configurada' });
 
-    reply.header('Content-Type', mime || 'application/octet-stream');
+    reply.type(mime || 'application/octet-stream');
     return reply.send(bytes);
   });
 
@@ -292,8 +292,8 @@ export default async function atendeRoutes(app: FastifyInstance) {
     return {
       enabled:   config.enabled,
       text:      config.text,
-      hasAudio:  !!config.audioBytes,
-      hasVideo:  !!config.videoBytes,
+      hasAudio:  (config.audioBytes?.length ?? 0) > 0,
+      hasVideo:  (config.videoBytes?.length ?? 0) > 0,
       audioMime: config.audioMime,
       videoMime: config.videoMime,
     };
