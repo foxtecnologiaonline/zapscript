@@ -53,11 +53,27 @@ async function request<T>(path: string, opts: RequestInit = {}, isFormData = fal
   return res.json();
 }
 
+/**
+ * Busca um binário (áudio/vídeo) autenticado como Blob — <audio>/<video src>
+ * não manda Authorization, então a prévia de mídia protegida por JWT precisa
+ * passar por fetch manual + URL.createObjectURL no chamador.
+ */
+async function getBlob(path: string): Promise<Blob> {
+  const token = getToken();
+  const res = await fetch(`${API}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error('Não foi possível carregar a mídia.');
+  return res.blob();
+}
+
 export const api = {
   get:           <T>(path: string)                  => request<T>(path),
+  getBlob,
   post:          <T>(path: string, body: any)       => request<T>(path, { method: 'POST',   body: JSON.stringify(body) }),
   postFormData:  <T>(path: string, formData: FormData) => request<T>(path, { method: 'POST',   body: formData }, true),
   put:           <T>(path: string, body: any)       => request<T>(path, { method: 'PUT',    body: JSON.stringify(body) }),
+  putFormData:   <T>(path: string, formData: FormData) => request<T>(path, { method: 'PUT',    body: formData }, true),
   patch:         <T>(path: string, body: any)       => request<T>(path, { method: 'PATCH',  body: JSON.stringify(body) }),
   delete:        <T>(path: string)                  => request<T>(path, { method: 'DELETE' }),
 

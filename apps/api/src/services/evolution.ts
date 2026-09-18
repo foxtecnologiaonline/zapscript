@@ -651,6 +651,33 @@ export async function sendImage(instanceNameStr: string, phone: string, imageBas
 }
 
 /**
+ * Envia um vídeo via Evolution API — base64 inline, mesmo endpoint de
+ * sendImage (sendMedia) trocando mediatype/mimetype. Usado pela boas-vindas
+ * automática do Atende.
+ */
+export async function sendVideo(instanceNameStr: string, phone: string, videoBase64: string, mimetype = 'video/mp4', caption = ''): Promise<void> {
+  const base  = evolutionBaseUrl();
+  const clean = phone.replace(/\D/g, '');
+  const res = await fetch(`${base}/message/sendMedia/${instanceNameStr}`, {
+    method:  'POST',
+    headers: evolutionHeaders(),
+    body: JSON.stringify({
+      number: clean,
+      mediatype: 'video',
+      mimetype,
+      caption,
+      media: videoBase64,
+      fileName: 'boas-vindas.mp4',
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Evolution sendMedia (vídeo) falhou (${res.status}): ${text}`);
+  }
+}
+
+/**
  * Busca áudio de uma mensagem como Buffer (via getBase64FromMediaMessage).
  * messageData = objeto { key, message } extraído do webhook MESSAGES_UPSERT.
  */

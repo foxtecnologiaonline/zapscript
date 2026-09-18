@@ -9,6 +9,7 @@ const ALL_TABS = [
   { href: '/app/atende/avisos',    label: 'Avisos',               minRole: 'agent' },
   { href: '/app/atende/dashboard', label: 'Dashboard',            minRole: 'agent' },
   { href: '/app/atende/config',    label: 'Configuração',         minRole: 'manager' },
+  { href: '/app/atende/welcome',   label: 'Boas-vindas',          minRole: 'manager' },
   { href: '/app/atende/kb',        label: 'Base de conhecimento', minRole: 'manager' },
 ] as const;
 

@@ -89,6 +89,72 @@ export async function sendMessageViaEvolution(
 }
 
 /**
+ * Envia mensagem de áudio (PTT/nota de voz) via Evolution API — base64 inline,
+ * sem depender de URL pública. Usado pela boas-vindas automática do Atende.
+ */
+export async function sendPtt(
+  instanceName: string,
+  phone: string,
+  audioBase64: string,
+): Promise<void> {
+  const base  = evolutionBase();
+  const clean = phone.replace(/\D/g, '');
+
+  await axios.post(
+    `${base}/message/sendPtt/${instanceName}`,
+    { number: clean, ptt: { base64: audioBase64, caption: '' } },
+    { headers: headers(), timeout: 30_000 }
+  );
+
+  logger.info(`[Evolution] Áudio (PTT) enviado para ${clean} (instância ${instanceName})`);
+}
+
+/**
+ * Envia uma imagem via Evolution API — base64 inline (mesmo padrão de sendPtt).
+ */
+export async function sendImage(
+  instanceName: string,
+  phone: string,
+  imageBase64: string,
+  mimetype = 'image/png',
+  caption = '',
+): Promise<void> {
+  const base  = evolutionBase();
+  const clean = phone.replace(/\D/g, '');
+
+  await axios.post(
+    `${base}/message/sendMedia/${instanceName}`,
+    { number: clean, mediatype: 'image', mimetype, caption, media: imageBase64, fileName: 'imagem.png' },
+    { headers: headers(), timeout: 30_000 }
+  );
+
+  logger.info(`[Evolution] Imagem enviada para ${clean} (instância ${instanceName})`);
+}
+
+/**
+ * Envia um vídeo via Evolution API — mesmo endpoint de sendImage (sendMedia)
+ * trocando mediatype/mimetype. Usado pela boas-vindas automática do Atende.
+ */
+export async function sendVideo(
+  instanceName: string,
+  phone: string,
+  videoBase64: string,
+  mimetype = 'video/mp4',
+  caption = '',
+): Promise<void> {
+  const base  = evolutionBase();
+  const clean = phone.replace(/\D/g, '');
+
+  await axios.post(
+    `${base}/message/sendMedia/${instanceName}`,
+    { number: clean, mediatype: 'video', mimetype, caption, media: videoBase64, fileName: 'boas-vindas.mp4' },
+    { headers: headers(), timeout: 30_000 }
+  );
+
+  logger.info(`[Evolution] Vídeo enviado para ${clean} (instância ${instanceName})`);
+}
+
+/**
  * Marca conversa como não lida via Evolution API.
  * Chamado após enviar conversão — preserva notificação no WhatsApp do remetente.
  * Ignora erros — operação não-crítica.

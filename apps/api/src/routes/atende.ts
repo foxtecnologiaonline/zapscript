@@ -16,6 +16,7 @@ import {
 } from '../services/ai-input';
 import { sendTextWithRetry } from '../services/send-with-retry';
 import { exportAtendeCsvStream, csvToString } from '../services/atende-csv-export';
+import { looksLikeAudio, looksLikeVideo, WELCOME_AUDIO_MAX_BYTES, WELCOME_VIDEO_MAX_BYTES } from '../lib/media-validation';
 
 const DEFAULT_FALLBACK = 'Recebemos sua mensagem! Já já alguém te responde por aqui.';
 
@@ -179,6 +180,123 @@ export default async function atendeRoutes(app: FastifyInstance) {
     });
 
     return config;
+  });
+
+  // ── GET /atende/welcome-config/:numberId ─────────────────────────────────
+  // Boas-vindas automática (1ª mensagem do dia): metadados só — os bytes de
+  // áudio/vídeo saem pelo endpoint de mídia abaixo, nunca inline em JSON.
+  app.get<{ Params: { numberId: string } }>('/welcome-config/:numberId', authManage, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const { numberId } = req.params;
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id: numberId, userId: ownerId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    const config = await prisma.welcomeConfig.findUnique({ where: { numberId } });
+    return {
+      enabled:   config?.enabled ?? false,
+      text:      config?.text ?? null,
+      hasAudio:  !!config?.audioBytes,
+      hasVideo:  !!config?.videoBytes,
+      audioMime: config?.audioMime ?? null,
+      videoMime: config?.videoMime ?? null,
+    };
+  });
+
+  // ── GET /atende/welcome-config/:numberId/media/:kind ─────────────────────
+  // Stream do áudio/vídeo já salvo — preview do que está configurado hoje.
+  app.get<{ Params: { numberId: string; kind: string } }>('/welcome-config/:numberId/media/:kind', authManage, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const { numberId, kind } = req.params;
+    if (kind !== 'audio' && kind !== 'video') return reply.code(400).send({ error: 'kind inválido' });
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id: numberId, userId: ownerId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    const config = await prisma.welcomeConfig.findUnique({ where: { numberId } });
+    const bytes  = kind === 'audio' ? config?.audioBytes : config?.videoBytes;
+    const mime   = kind === 'audio' ? config?.audioMime  : config?.videoMime;
+    if (!bytes) return reply.code(404).send({ error: 'Mídia não configurada' });
+
+    reply.header('Content-Type', mime || 'application/octet-stream');
+    return reply.send(bytes);
+  });
+
+  // ── PUT /atende/welcome-config/:numberId ──────────────────────────────────
+  // Multipart: campos 'enabled' ('true'/'false'), 'text', 'removeAudio'/
+  // 'removeVideo' ('true' remove mídia existente sem precisar re-upload) +
+  // arquivos opcionais 'audio'/'video'. Cada mídia é validada por magic bytes
+  // reais (nunca só pelo mimetype/extensão que o client declarou).
+  app.put<{ Params: { numberId: string } }>('/welcome-config/:numberId', authManage, async (req: any, reply) => {
+    const { ownerId } = req.teamScope;
+    const { numberId } = req.params;
+
+    const number = await prisma.whatsappNumber.findFirst({ where: { id: numberId, userId: ownerId } });
+    if (!number) return reply.code(404).send({ error: 'Número não encontrado' });
+
+    const fields: Record<string, string> = {};
+    let audioBytes: Buffer | undefined;
+    let audioMime: string | undefined;
+    let videoBytes: Buffer | undefined;
+    let videoMime: string | undefined;
+
+    for await (const part of req.parts()) {
+      if (part.type === 'field') {
+        if (typeof part.value === 'string') fields[part.fieldname] = part.value;
+      } else if (part.type === 'file') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of part.file) chunks.push(chunk);
+        const buffer = Buffer.concat(chunks);
+
+        if (part.fieldname === 'audio') {
+          if (buffer.length > WELCOME_AUDIO_MAX_BYTES) {
+            return reply.code(400).send({ error: `Áudio muito grande (máx ${(WELCOME_AUDIO_MAX_BYTES / 1024 / 1024).toFixed(0)}MB).` });
+          }
+          if (!looksLikeAudio(buffer)) return reply.code(400).send({ error: 'Arquivo de áudio inválido ou corrompido.' });
+          audioBytes = buffer;
+          audioMime  = part.mimetype;
+        } else if (part.fieldname === 'video') {
+          if (buffer.length > WELCOME_VIDEO_MAX_BYTES) {
+            return reply.code(400).send({ error: `Vídeo muito grande (máx ${(WELCOME_VIDEO_MAX_BYTES / 1024 / 1024).toFixed(0)}MB).` });
+          }
+          if (!looksLikeVideo(buffer)) return reply.code(400).send({ error: 'Arquivo de vídeo inválido ou corrompido.' });
+          videoBytes = buffer;
+          videoMime  = part.mimetype;
+        }
+      }
+    }
+
+    const data: Record<string, any> = {};
+    if (fields.enabled !== undefined) data.enabled = fields.enabled === 'true';
+    if (fields.text !== undefined) data.text = fields.text || null;
+    if (audioBytes) { data.audioBytes = audioBytes; data.audioMime = audioMime; }
+    else if (fields.removeAudio === 'true') { data.audioBytes = null; data.audioMime = null; }
+    if (videoBytes) { data.videoBytes = videoBytes; data.videoMime = videoMime; }
+    else if (fields.removeVideo === 'true') { data.videoBytes = null; data.videoMime = null; }
+
+    const config = await prisma.welcomeConfig.upsert({
+      where: { numberId },
+      update: data,
+      create: {
+        numberId,
+        userId:     ownerId,
+        enabled:    data.enabled ?? false,
+        text:       data.text ?? null,
+        audioBytes: data.audioBytes ?? null,
+        audioMime:  data.audioMime ?? null,
+        videoBytes: data.videoBytes ?? null,
+        videoMime:  data.videoMime ?? null,
+      },
+    });
+
+    return {
+      enabled:   config.enabled,
+      text:      config.text,
+      hasAudio:  !!config.audioBytes,
+      hasVideo:  !!config.videoBytes,
+      audioMime: config.audioMime,
+      videoMime: config.videoMime,
+    };
   });
 
   // ── POST /atende/setup/voice-context ─────────────────────────────────────

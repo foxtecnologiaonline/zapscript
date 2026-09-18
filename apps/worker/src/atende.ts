@@ -7,6 +7,7 @@ import { convertToMp3, estimateMp3DurationSec } from './services/audio';
 import { transcribeAudio } from './services/whisper';
 import { MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS } from './lib/freemium';
 import { runAtendeAgent } from './services/atende-agent';
+import { maybeSendWelcome } from './services/welcome';
 
 /**
  * Worker do ZapScript Atende — consome a fila 'atende-replies' (produzida por
@@ -147,6 +148,11 @@ async function processAtendeJob(job: Job<AtendeJobData>) {
     logger.warn(`[Atende] Config desabilitada durante processamento (numberId=${numberId})`);
     return { skipped: true, reason: 'disabled' };
   }
+
+  // Boas-vindas automática: dispara ANTES da resposta do agente (ordem de
+  // entrega no WhatsApp), best-effort — nunca lança, só adia a resposta
+  // normal pelo tempo dos próprios envios (texto/áudio/vídeo com delay).
+  await maybeSendWelcome(conversation.id, numberId, instanceName, senderPhone);
 
   const history = await prisma.atendeMessage.findMany({
     where: { conversationId: conversation.id },

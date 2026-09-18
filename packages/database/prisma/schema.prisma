@@ -64,6 +64,7 @@ model User {
   atendeConfigs           AtendeConfig[]
   atendeKnowledgeBase     AtendeKnowledgeBase[]
   atendeConversations     AtendeConversation[]
+  welcomeConfigs          WelcomeConfig[]
   copilotoConfigs         CopilotoConfig[]
   copilotoConversations   CopilotoConversation[]
   copilotoBriefings       CopilotoBriefing[]
@@ -179,6 +180,7 @@ model WhatsappNumber {
   transcriptions      Transcription[]
   atendeConfig        AtendeConfig?
   atendeConversations AtendeConversation[]
+  welcomeConfig       WelcomeConfig?
   copilotoConfig        CopilotoConfig?
   copilotoConversations CopilotoConversation[]
   copilotoGroups      CopilotoGroup[]
@@ -1120,6 +1122,29 @@ model AtendeConfig {
   @@index([userId])
 }
 
+// Mensagem de boas-vindas automática do Atende: dispara na 1ª mensagem do
+// contato em cada dia civil (America/Sao_Paulo), antes da resposta normal do
+// agente. 1:1 com WhatsappNumber, mesmo padrão de AtendeConfig. Mídia guardada
+// como binário (bytea) — convertida para base64 só na hora de chamar a
+// Evolution API (sendPtt/sendMedia); nenhum storage externo no MVP.
+model WelcomeConfig {
+  id         String         @id @default(cuid())
+  numberId   String         @unique
+  userId     String
+  enabled    Boolean        @default(false)
+  text       String?
+  audioBytes Bytes?
+  audioMime  String?
+  videoBytes Bytes?
+  videoMime  String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  number     WhatsappNumber @relation(fields: [numberId], references: [id], onDelete: Cascade)
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 model AtendeKnowledgeBase {
   id        String   @id @default(cuid())
   userId    String
@@ -1143,6 +1168,7 @@ model AtendeConversation {
   humanTakeover Boolean         @default(false) // true = resposta automática desligada nesta conversa
   archived      Boolean         @default(false) // true = conversas > 90 dias (soft-delete)
   lastMessageAt DateTime        @default(now())
+  lastWelcomeSentAt DateTime? // controle da boas-vindas: comparado por dia civil em America/Sao_Paulo, não por horas fixas
   archivedAt    DateTime? // Quando foi marcada como archived
   createdAt     DateTime        @default(now())
   user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
