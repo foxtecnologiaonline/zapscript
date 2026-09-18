@@ -150,6 +150,36 @@ describe('Sistema de Opt-In (Campanhas)', () => {
       expect(optout).toBeTruthy();
     });
 
+    it('NÃO ignora "NÃO" quando não há pergunta de opt-in pendente (bug real: "não" numa conversa normal do Atende não pode opt-out o contato)', async () => {
+      await prisma.campanhaContato.update({
+        where: { id: contatoId },
+        data: { status: 'pending' }, // estado normal, não pending_optin
+      });
+
+      const result = await handleOptinResponse(testUserId, testPhone, 'NÃO');
+      expect(result).toBe('none');
+
+      const optout = await prisma.campanhaOptOut.findFirst({
+        where: { userId: testUserId, phone: testPhoneNormalized },
+      });
+      expect(optout).toBeNull();
+    });
+
+    it('NÃO ignora "NAO" (sem acento) quando não há pergunta de opt-in pendente', async () => {
+      await prisma.campanhaContato.update({
+        where: { id: contatoId },
+        data: { status: 'pending' },
+      });
+
+      const result = await handleOptinResponse(testUserId, testPhone, 'NAO');
+      expect(result).toBe('none');
+
+      const optout = await prisma.campanhaOptOut.findFirst({
+        where: { userId: testUserId, phone: testPhoneNormalized },
+      });
+      expect(optout).toBeNull();
+    });
+
     it('deve retornar "none" para texto que não é resposta', async () => {
       const result = await handleOptinResponse(testUserId, testPhone, 'texto aleatório');
       expect(result).toBe('none');

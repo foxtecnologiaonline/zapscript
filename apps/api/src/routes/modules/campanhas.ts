@@ -77,10 +77,30 @@ export async function handleOptinResponse(userId: string, rawPhone: string, mess
     }
   }
 
-  if (OPT_OUT_RESPONSE_KEYWORDS.has(normalized) || OPT_OUT_KEYWORDS.has(normalized)) {
-    // Registra opt-out + marca como optout
+  // OPT_OUT_KEYWORDS (PARAR/SAIR/STOP/CANCELAR/UNSUBSCRIBE) são convenção
+  // universal de opt-out — valem a qualquer momento, mesmo sem pergunta de
+  // opt-in pendente (mesmo comportamento de sempre).
+  if (OPT_OUT_KEYWORDS.has(normalized)) {
     await registerCampanhaOptOut(userId, rawPhone, normalized);
     return 'rejected';
+  }
+
+  // "NÃO"/"NAO" só conta como opt-out quando é de fato resposta a uma pergunta
+  // de opt-in pendente — sozinha, é só a palavra mais comum do português, não
+  // um comando de opt-out por si só (ao contrário de PARAR/SAIR/STOP). Sem
+  // essa checagem, qualquer "não" digitado numa conversa normal (ex: resposta
+  // a um agente do Atende) opta o contato fora de campanhas pra sempre e a
+  // mensagem nunca chega no Atende — o webhook trata 'rejected' como resposta
+  // final e dá return antes de enfileirar. Bug real observado em produção.
+  if (OPT_OUT_RESPONSE_KEYWORDS.has(normalized)) {
+    const hasPendingOptin = await prisma.campanhaContato.findFirst({
+      where: { phone, status: 'pending_optin', campanha: { userId } },
+      select: { id: true },
+    });
+    if (hasPendingOptin) {
+      await registerCampanhaOptOut(userId, rawPhone, normalized);
+      return 'rejected';
+    }
   }
 
   return 'none';
