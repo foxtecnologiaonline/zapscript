@@ -1,4 +1,4 @@
-# ZapScript Ditado — Escopo de Criação
+# ZapScript ZapScreve — Escopo de Criação
 
 > Fala vira mensagem pronta: o dono grava um áudio pensando em alguém, e quem
 > recebe vê **texto** — corrigido, com acentuação certa e, no modo Copiloto, no
@@ -14,34 +14,24 @@
 - **Leia antes:** `ESCOPO_COPILOTO.md` (§5 Perfil de estilo — é a peça que este
   documento reaproveita), `CLAUDE.md` (infra real), `MODULOS_ARQUITETURA.md`.
 
----
+## 0. Decisões alinhadas (2026-09-19)
 
-## 0. Por que isso já é "meio produto"
+Conversa de alinhamento fechou as 4 perguntas em aberto da primeira versão
+deste escopo. O texto abaixo já reflete todas elas — não são mais proposta,
+são a direção:
 
-O ZapScript já vende exatamente a metade oposta disso. A landing principal
-(`apps/web/src/app/page.tsx`) vende: "áudio do cliente chega, você lê a
-transcrição + resumo, sem ouvir" — pipeline em
-`apps/api/src/routes/evolution-webhook.ts` → `transcriptionQueue` →
-`transcribeAudio` (`apps/worker/src/services/whisper.ts`), que já resolve a
-parte difícil (Whisper com fallback Groq→OpenAI, detecção de alucinação,
-chunking de áudio longo, custo logado por tenant). O Ditado usa a **mesma**
-função de transcrição — nada nessa camada precisa ser recriado. Só muda o que
-acontece **depois** do texto sair do Whisper: hoje ele volta para o dono; no
-Ditado, ele é refinado e sai para o contato escolhido.
-
-A segunda peça já existe **no papel, não no código**: `CopilotoStyleProfile`
-(`ESCOPO_COPILOTO.md` §5, listado como "Fase 2 — deliberadamente fora do
-MVP"). É literalmente a spec do "próprio padrão que o ZapScript vai
-aprendendo" que você descreveu. Construir o Ditado é a oportunidade de tirar
-essa peça do papel — depois de construída, ela serve os **dois** produtos: o
-Copiloto sugere resposta ao cliente nesse tom; o Ditado escreve a mensagem do
-próprio dono nesse tom.
+| Decisão | Direção fechada |
+|---|---|
+| Nome | **ZapScreve** (era "Ditado", placeholder) |
+| Onde entra no produto | **Sem módulo/gate próprio.** Vive dentro do Atende e do Copiloto — ver §1 e §10 |
+| Tier de pricing | **Nenhum novo.** Quem já tem Atende (Profissional) ou Copiloto (Empresas) já tem ZapScreve — ver §10 |
+| Faseamento | **Começar já pela Fase 1** (modo rápido), sem esperar o `CopilotoStyleProfile` — ver §13 |
 
 ---
 
 ## 1. O que é (e o que não é)
 
-| | Transcrição (já existe) | Copiloto (já existe) | Ditado (novo) |
+| | Transcrição (já existe) | Copiloto (já existe) | ZapScreve (novo) |
 |---|---|---|---|
 | Direção do áudio | Cliente → dono | (não é áudio; é leitura de texto) | Dono → contato |
 | Quem grava | O cliente, no fluxo normal dele | — | O dono, dentro do ZapScript |
@@ -50,13 +40,18 @@ próprio dono nesse tom.
 | Aprende estilo? | Não | Sim (`CopilotoStyleProfile`, a construir) | Sim — **mesmo** perfil |
 | Risco principal | Alucinação do Whisper | Sugestão ruim/genérica | Soar "não sou eu" ou trocar o sentido do que foi falado |
 
-**Chave de módulo proposta:** `ditado` (ver §10 sobre módulo próprio vs.
-feature dentro de módulo existente).
+**Sem chave de módulo própria.** O ZapScreve não entra em
+`packages/modules/catalog.ts` como um `ModuleSpec` novo — o gate de acesso é
+`requireModule('atende') || requireModule('copiloto')` (ver §10). Ele aparece
+como uma ação nova **dentro** das duas superfícies existentes: um botão
+"Gravar mensagem" em `apps/web/src/app/app/atende/` e uma entrada equivalente
+em `/dashboard/copiloto`, ambas levando para a mesma tela e o mesmo backend —
+não é feature duplicada, é uma única implementação com duas portas de entrada.
 
 **Não é:** transcrição para o próprio dono ler (já existe); geração de
 resposta a partir do que o cliente disse (isso é o Copiloto); um teclado de
-ditado do sistema operacional — o Ditado só atua sobre áudio gravado dentro
-do fluxo do próprio produto.
+ditado do sistema operacional — o ZapScreve só atua sobre áudio gravado
+dentro do fluxo do próprio produto.
 
 ---
 
@@ -67,8 +62,8 @@ API). Quando ele grava um áudio e manda direto pelo app nativo do WhatsApp, o
 áudio **já saiu** como áudio antes de qualquer webhook disparar — não há como
 interceptar e trocar por texto depois de entregue.
 
-Consequência direta: para o Ditado funcionar, quem precisa mandar a mensagem
-final é o **próprio ZapScript** (via `sendMessageViaEvolution`, em
+Consequência direta: para o ZapScreve funcionar, quem precisa mandar a
+mensagem final é o **próprio ZapScript** (via `sendMessageViaEvolution`, em
 `apps/worker/src/services/evolution.ts`), não o app nativo do dono. Ele grava
 **dentro** do ZapScript — não no WhatsApp — e o ZapScript entrega o texto no
 lugar do áudio.
@@ -77,8 +72,8 @@ Duas superfícies possíveis, não mutuamente exclusivas:
 
 | Superfície | Como funciona | Prós | Contras |
 |---|---|---|---|
-| **A — Painel web (recomendado para v1)** | Nova tela (`/app/ditado`), reaproveitando o padrão de `VoiceRecorder.tsx` (já usado em `apps/web/src/app/app/atende/`) — grava no navegador, escolhe o contato de uma lista, revisa o texto, confirma envio | Reaproveita componente existente; superfície natural para editar texto com teclado físico antes de enviar; mesma filosofia de "painel sob demanda" para a qual o Copiloto migrou em v3.0 (`ESCOPO_COPILOTO.md` §15) | Exige abrir o navegador — não é "no fluxo" do WhatsApp |
-| **B — Self-chat (atalho avançado, v1.1+)** | Dono manda áudio para o próprio número com um contato-alvo indicado (ex.: comando `ditado Maria: <áudio>`); ZapScript devolve o rascunho no self-chat para confirmar `1`/`1e`/`0` | Não sai do WhatsApp | Endereçar o destino por nome digitado é ambíguo ("qual Maria?") — é exatamente o padrão de push que o Copiloto **abandonou** em v3.0 por gerar atrito e ambiguidade |
+| **A — Painel web (recomendado para v1)** | Tela nova, aberta a partir do Atende ou do Copiloto (§1), reaproveitando o padrão de `VoiceRecorder.tsx` (já usado em `apps/web/src/app/app/atende/`) — grava no navegador, escolhe o contato de uma lista, revisa o texto, confirma envio | Reaproveita componente existente; superfície natural para editar texto com teclado físico antes de enviar; mesma filosofia de "painel sob demanda" para a qual o Copiloto migrou em v3.0 (`ESCOPO_COPILOTO.md` §15) | Exige abrir o navegador — não é "no fluxo" do WhatsApp |
+| **B — Self-chat (atalho avançado, v1.1+)** | Dono manda áudio para o próprio número com um contato-alvo indicado (ex.: comando `zapscreve Maria: <áudio>`); ZapScript devolve o rascunho no self-chat para confirmar `1`/`1e`/`0` | Não sai do WhatsApp | Endereçar o destino por nome digitado é ambíguo ("qual Maria?") — é exatamente o padrão de push que o Copiloto **abandonou** em v3.0 por gerar atrito e ambiguidade |
 
 **Recomendação:** começar só pela A. B fica para depois se a demanda pedir —
 e mesmo aí, resolver a ambiguidade de destino é o bloqueio técnico real, não
@@ -89,10 +84,10 @@ o refinamento de texto.
 ## 3. Pipeline de processamento
 
 ```
-Dono grava áudio no painel (/app/ditado)
+Dono grava áudio no painel (entrada pelo Atende ou pelo Copiloto)
    └─ upload direto para o Supabase Storage (mesmo padrão de legendas.ts —
       signed upload URL, nunca passa pelo Fastify)
-        └─ ditadoQueue.add('process')
+        └─ zapscreveQueue.add('process')
              ├─ 1. transcribeAudio()  [reaproveita 100% de whisper.ts]
              │      → texto bruto (Whisper transcreve oralidade, não
              │        escreve — sem pontuação/gramática revisada)
@@ -107,7 +102,7 @@ Dono grava áudio no painel (/app/ditado)
              └─ 3. devolve rascunho ao painel: texto rápido + texto copiloto
                     + player do áudio original — dono escolhe, edita se
                     quiser, confirma
-                       └─ POST /ditado/:id/send → sendMessageViaEvolution
+                       └─ POST /zapscreve/:id/send → sendMessageViaEvolution
                           para o contato escolhido em §4
 ```
 
@@ -115,8 +110,9 @@ Dono grava áudio no painel (/app/ditado)
 
 ## 4. Seleção do contato/destino
 
-Não deve depender de módulo pago para funcionar (Ditado precisa funcionar
-mesmo sem CRM/Copiloto ativos). Duas fontes, nessa ordem:
+Não deve depender de módulo pago específico para funcionar — quem chegou
+aqui via Atende ou via Copiloto já passou pelo gate do §10; a lista de
+destino não deve impor uma segunda dependência. Duas fontes, nessa ordem:
 
 1. **Chats recentes da própria conexão Evolution** (endpoint de listagem de
    chats da API Evolution) — lista as conversas recentes do número
@@ -158,10 +154,11 @@ aplica a dado sensível (`ESCOPO_COPILOTO.md` §7.4). Toggle opcional "enviar
 ## 7. Modelo de dados (Prisma) — proposto
 
 ```prisma
-model DitadoDraft {
+model ZapScreveDraft {
   id              String    @id @default(cuid())
   userId          String
   numberId        String
+  sourceModule    String    // 'atende' | 'copiloto' — de onde o dono abriu (métrica de adoção)
   targetPhone     String
   targetName      String?
   audioStorageKey String    // removida após envio ou expiração (retenção curta)
@@ -188,11 +185,14 @@ aprendendo coisas divergentes.
 
 ## 8. Custo
 
-Por mensagem de Ditado: 1 chamada Whisper (mesmo custo por segundo que a
+Por mensagem de ZapScreve: 1 chamada Whisper (mesmo custo por segundo que a
 transcrição de entrada já paga) + 1 chamada curta de refinamento de texto
 (poucas centenas de tokens, Sonnet 5) — ordem de grandeza de **centavos**,
 bem abaixo do custo de um briefing do Copiloto (que processa a conversa
-inteira). Não é o item que pressiona margem na decisão de pricing (§10).
+inteira). Como não é vendido como SKU próprio (§10), esse custo entra na
+conta de margem do Atende e do Copiloto, não numa conta separada — vale
+somar ao `AiUsageLog` de cada tenant e observar o mesmo alerta de outlier já
+usado pelo Copiloto (`health-monitor.ts`, `ESCOPO_COPILOTO.md` §13.4).
 
 ---
 
@@ -212,18 +212,19 @@ inteira). Não é o item que pressiona margem na decisão de pricing (§10).
 
 ## 10. Encaixe comercial
 
-Duas leituras:
+**Sem módulo novo, sem SKU nova, sem decisão de tier.** O acesso é
+`requireModule('atende') || requireModule('copiloto')`:
 
-- **Feature dentro do Atende** — mas o Atende hoje é "não deixar cliente sem
-  resposta"; o Ditado é sobre o dono **escrever** para o cliente, papel meio
-  invertido.
-- **Módulo próprio `ditado`**, com custo de IA muito menor que o Copiloto —
-  bom gancho de entrada no **Profissional** (R$ 49), diferente do Copiloto,
-  que precisou ir para o Empresas por causa do custo dos grupos.
+- Quem tem **Profissional** (Core + Atende) já tem ZapScreve.
+- Quem tem **Empresas** (Core + Atende + CRM + Tarefas) já tem ZapScreve por
+  já incluir Atende — e quem tiver Copiloto liberado (hoje cortesia via
+  `POST /admin/copiloto/access`, `ESCOPO_COPILOTO.md` §0) também.
 
-**Recomendação:** módulo próprio, incluso no Profissional. Reforça o
-posicionamento "ZapScript = áudio vira texto" nas duas direções, e o custo
-baixo permite isso sem apertar margem.
+Isso resolve de saída o problema que o Copiloto teve (custo de grupos
+forçando a subir de tier, `ESCOPO_COPILOTO.md` §8.1): o custo do ZapScreve é
+baixo o bastante (§8) para simplesmente **andar de carona** no que o usuário
+já paga, sem precisar de checkout novo. Reforça o posicionamento "ZapScript =
+áudio vira texto nas duas direções" sem abrir uma nova decisão de pricing.
 
 ---
 
@@ -235,6 +236,7 @@ baixo permite isso sem apertar margem.
 | Modo copiloto muda o sentido do que foi falado | Validador de entidades (§9); modo "rápido" sempre disponível como opção mais conservadora |
 | Ambiguidade de destino (self-chat, opção B do §2) | Adiada para depois da v1; v1 resolve por lista de chats reais da Evolution, não por nome digitado |
 | Confusão com a transcrição de entrada já existente | Nome e ícone claramente distintos; onboarding explica a direção ("isso é para VOCÊ mandar, não para você RECEBER") |
+| Duas portas de entrada (Atende e Copiloto) gerarem UX inconsistente | Uma única tela/rota por trás das duas entradas (§1) — nunca duas implementações |
 
 ---
 
@@ -253,24 +255,13 @@ baixo permite isso sem apertar margem.
 
 | Fase | Entrega |
 |---|---|
-| **0 — Fundação** | Módulo no catálogo, schema + migration, gate, fila, tela vazia |
-| **1 — MVP** | Gravar → transcrever → modo rápido (gramática/pontuação/acentuação) → revisar → enviar. **Sem** modo copiloto ainda — não depende de nada que falta construir |
+| **0 — Fundação** | Schema + migration, gate combinado (`atende` \| `copiloto`), fila, tela vazia acessível pelas duas entradas |
+| **1 — MVP** (começar já) | Gravar → transcrever → modo rápido (gramática/pontuação/acentuação) → revisar → enviar. **Sem** modo copiloto ainda — não depende de nada que falta construir |
 | **2 — Modo Copiloto** | Depende de `CopilotoStyleProfile` existir (é a Fase 2 do `ESCOPO_COPILOTO.md` — vale construir junto ou logo antes) |
 | **3 — Confiança/automação** | Trust ramp (§5), toggle de envio direto |
 
----
-
-## 14. Decisões que precisam do dono do produto
-
-1. **Módulo próprio (`ditado`)** ou feature dentro de um módulo existente
-   (Atende/Copiloto)? *(recomendo módulo próprio — §10)*
-2. **Profissional ou Empresas?** *(recomendo Profissional — custo baixo
-   permite, §10)*
-3. **Nome do produto/feature** — "Ditado" é só um placeholder de trabalho
-   neste documento.
-4. **Vale construir a Fase 1 (modo rápido, sem estilo aprendido) já**, mesmo
-   sem o `CopilotoStyleProfile` pronto? *(recomendo sim — entrega valor
-   sozinha e não fica bloqueada em nada que ainda não existe)*
+Sem decisões pendentes do dono do produto no momento — pronto para começar
+pela Fase 0/1.
 
 ---
 
