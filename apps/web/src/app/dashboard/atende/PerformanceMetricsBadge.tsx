@@ -35,11 +35,11 @@ export default function PerformanceMetricsBadge() {
 
   if (loading || !metrics) {
     return (
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-6 animate-pulse">
-        <div className="h-6 bg-neutral-700 rounded w-1/3 mb-4" />
+      <div className="rounded-xl border border-brand-border bg-brand-surface p-6 animate-pulse">
+        <div className="h-6 bg-brand-border rounded w-1/3 mb-4" />
         <div className="grid grid-cols-2 gap-3">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-12 bg-neutral-700 rounded" />
+            <div key={i} className="h-12 bg-brand-border rounded" />
           ))}
         </div>
       </div>
@@ -47,12 +47,12 @@ export default function PerformanceMetricsBadge() {
   }
 
   const trendIcon = metrics.trend === 'up' ? '📈' : metrics.trend === 'down' ? '📉' : '→';
-  const trendColor = metrics.trend === 'up' ? 'text-emerald-400' : metrics.trend === 'down' ? 'text-red-400' : 'text-neutral-400';
+  const trendColor = metrics.trend === 'up' ? 'text-brand-primary' : metrics.trend === 'down' ? 'text-red-400' : 'text-brand-text-secondary';
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-gradient-to-br from-neutral-900 to-neutral-950 p-6">
+    <div className="rounded-xl border border-brand-border bg-gradient-to-br from-brand-surface to-brand-elevated p-6">
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-semibold text-neutral-100">📈 Performance (24h)</h3>
+        <h3 className="text-lg font-semibold text-brand-text">📈 Performance (24h)</h3>
         <div className={`flex items-center gap-1 text-sm font-medium ${trendColor}`}>
           {trendIcon}
           <span>{metrics.trendPercent > 0 ? '+' : ''}{metrics.trendPercent}%</span>
@@ -62,10 +62,10 @@ export default function PerformanceMetricsBadge() {
       {/* Métricas em grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {/* Auto-resolvidas */}
-        <div className="rounded-lg bg-emerald-950/50 border border-emerald-800/40 p-4">
-          <div className="text-xs text-emerald-600 uppercase tracking-wider mb-1">Automático</div>
-          <div className="text-2xl font-bold text-emerald-400">{metrics.autoResolved}%</div>
-          <div className="text-[10px] text-emerald-600 mt-1">de respostas</div>
+        <div className="rounded-lg bg-brand-primary/50 border border-brand-primary/40 p-4">
+          <div className="text-xs text-brand-primary uppercase tracking-wider mb-1">Automático</div>
+          <div className="text-2xl font-bold text-brand-primary">{metrics.autoResolved}%</div>
+          <div className="text-[10px] text-brand-primary mt-1">de respostas</div>
         </div>
 
         {/* Escaladas */}
@@ -91,15 +91,15 @@ export default function PerformanceMetricsBadge() {
       </div>
 
       {/* Mensagens */}
-      <div className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-3 text-center">
-        <span className="text-sm text-neutral-400">
-          <span className="font-semibold text-neutral-200">{metrics.messagesLast24h}</span> mensagens processadas
+      <div className="rounded-lg border border-brand-border bg-brand-surface/50 p-3 text-center">
+        <span className="text-sm text-brand-text-secondary">
+          <span className="font-semibold text-brand-text">{metrics.messagesLast24h}</span> mensagens processadas
         </span>
       </div>
 
       {/* Footer */}
-      <div className="mt-4 pt-4 border-t border-neutral-800">
-        <p className="text-xs text-neutral-500 text-center">
+      <div className="mt-4 pt-4 border-t border-brand-border">
+        <p className="text-xs text-brand-muted text-center">
           Atualizado há poucos segundos • Dados dos últimos 24 horas
         </p>
       </div>

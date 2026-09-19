@@ -186,13 +186,13 @@ function AtendeKbContent() {
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <div className="max-w-2xl mx-auto">
         <AtendeHeader />
 
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5 mb-6">
+        <div className="rounded-xl border border-brand-border bg-brand-surface p-5 mb-6">
           <h2 className="font-medium mb-1">Adicionar pergunta e resposta</h2>
-          <p className="text-xs text-neutral-500 mb-4">
+          <p className="text-xs text-brand-muted mb-4">
             A IA usa essas respostas como referência antes de responder um cliente.
           </p>
           <form onSubmit={handleAdd} className="space-y-3">
@@ -203,7 +203,7 @@ function AtendeKbContent() {
                 onChange={(e) => setQuestion(e.target.value)}
                 maxLength={300}
                 placeholder="Pergunta (ex: Qual o horário de funcionamento?)"
-                className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary"
               />
             </div>
             <div>
@@ -213,23 +213,23 @@ function AtendeKbContent() {
                 maxLength={2000}
                 rows={3}
                 placeholder="Resposta (ex: Funcionamos de segunda a sábado, das 8h às 18h.)"
-                className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 resize-y"
+                className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary resize-y"
               />
             </div>
             {formError && <p className="text-sm text-red-400">{formError}</p>}
             <button
               type="submit"
               disabled={adding}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+              className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary disabled:opacity-50"
             >
               {adding ? 'Adicionando…' : 'Adicionar'}
             </button>
           </form>
         </div>
 
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5 mb-6">
+        <div className="rounded-xl border border-brand-border bg-brand-surface p-5 mb-6">
           <h2 className="font-medium mb-1">Importar em massa</h2>
-          <p className="text-xs text-neutral-500 mb-4">
+          <p className="text-xs text-brand-muted mb-4">
             Grave um áudio contando as perguntas e respostas mais comuns, ou envie uma foto de um
             cardápio ou tabela de preços — a IA organiza tudo em pares de pergunta e resposta pra
             você revisar antes de salvar.
@@ -255,11 +255,11 @@ function AtendeKbContent() {
               type="button"
               onClick={() => photoInputRef.current?.click()}
               disabled={importBusy}
-              className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:border-neutral-600 disabled:opacity-50"
+              className="rounded-lg border border-brand-border px-4 py-2 text-sm font-medium text-brand-text hover:border-brand-primary/30 disabled:opacity-50"
             >
               Enviar foto
             </button>
-            {importBusy && <span className="text-xs text-neutral-400">Processando…</span>}
+            {importBusy && <span className="text-xs text-brand-text-secondary">Processando…</span>}
           </div>
 
           {importError && <p className="text-xs text-red-400 mt-3">{importError}</p>}
@@ -282,24 +282,24 @@ function AtendeKbContent() {
         </div>
 
         {error && (
-          <div className="mb-5 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-red-200 text-sm">
+          <div className="mb-5 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-400 text-sm">
             {error}
           </div>
         )}
 
         {loading ? (
-          <p className="text-neutral-500 text-sm">Carregando…</p>
+          <p className="text-brand-muted text-sm">Carregando…</p>
         ) : entries.length === 0 ? (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center">
-            <p className="text-neutral-300 font-medium">Nenhum item ainda.</p>
-            <p className="text-neutral-500 text-sm mt-2">
+          <div className="rounded-xl border border-brand-border bg-brand-surface p-8 text-center">
+            <p className="text-brand-text-secondary font-medium">Nenhum item ainda.</p>
+            <p className="text-brand-muted text-sm mt-2">
               Adicione perguntas frequentes acima para deixar a IA mais precisa.
             </p>
           </div>
         ) : (
           <div className="space-y-3">
             {entries.map((entry) => (
-              <div key={entry.id} className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+              <div key={entry.id} className="rounded-xl border border-brand-border bg-brand-surface p-4">
                 {editingId === entry.id ? (
                   <div className="space-y-2.5">
                     <input
@@ -307,26 +307,26 @@ function AtendeKbContent() {
                       value={editQuestion}
                       onChange={(e) => setEditQuestion(e.target.value)}
                       maxLength={300}
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                      className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary"
                     />
                     <textarea
                       value={editAnswer}
                       onChange={(e) => setEditAnswer(e.target.value)}
                       maxLength={2000}
                       rows={3}
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 resize-y"
+                      className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary resize-y"
                     />
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleSaveEdit(entry.id)}
                         disabled={savingEdit}
-                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                        className="rounded-lg bg-brand-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-primary disabled:opacity-50"
                       >
                         {savingEdit ? 'Salvando…' : 'Salvar'}
                       </button>
                       <button
                         onClick={() => setEditingId(null)}
-                        className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-300 hover:border-neutral-600"
+                        className="rounded-lg border border-brand-border px-3 py-1.5 text-xs font-medium text-brand-text-secondary hover:border-brand-primary/30"
                       >
                         Cancelar
                       </button>
@@ -335,13 +335,13 @@ function AtendeKbContent() {
                 ) : (
                   <>
                     <div className="flex items-start justify-between gap-3">
-                      <p className={`font-medium ${!entry.active ? 'text-neutral-500' : ''}`}>{entry.question}</p>
+                      <p className={`font-medium ${!entry.active ? 'text-brand-muted' : ''}`}>{entry.question}</p>
                       <button
                         role="switch"
                         aria-checked={entry.active}
                         onClick={() => handleToggleActive(entry)}
                         className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${
-                          entry.active ? 'bg-emerald-600' : 'bg-neutral-700'
+                          entry.active ? 'bg-brand-primary' : 'bg-brand-border'
                         }`}
                         title={entry.active ? 'Ativo — clique para desativar' : 'Inativo — clique para ativar'}
                       >
@@ -352,19 +352,19 @@ function AtendeKbContent() {
                         />
                       </button>
                     </div>
-                    <p className={`text-sm mt-1 whitespace-pre-wrap ${!entry.active ? 'text-neutral-600' : 'text-neutral-400'}`}>
+                    <p className={`text-sm mt-1 whitespace-pre-wrap ${!entry.active ? 'text-brand-muted' : 'text-brand-text-secondary'}`}>
                       {entry.answer}
                     </p>
                     <div className="flex items-center gap-3 mt-3">
                       <button
                         onClick={() => startEdit(entry)}
-                        className="text-xs text-neutral-400 hover:text-neutral-200"
+                        className="text-xs text-brand-text-secondary hover:text-brand-text"
                       >
                         Editar
                       </button>
                       <button
                         onClick={() => handleDelete(entry.id)}
-                        className="text-xs text-red-400 hover:text-red-300"
+                        className="text-xs text-red-400 hover:text-red-400"
                       >
                         Excluir
                       </button>
@@ -376,13 +376,13 @@ function AtendeKbContent() {
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }
 
 export default function AtendeKbPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-neutral-950" />}>
+    <Suspense fallback={<div className="min-h-screen bg-brand-elevated" />}>
       <AtendeKbContent />
     </Suspense>
   );

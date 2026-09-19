@@ -21,13 +21,13 @@ export default function ConversationReplayCoach({
   return (
     <div className="rounded-xl border border-blue-800/60 bg-blue-950/20 p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-neutral-100 flex items-center gap-2">
+        <h3 className="text-lg font-semibold text-brand-text flex items-center gap-2">
           🎬 Replay: Por quê o bot respondeu assim?
         </h3>
         {onClose && (
           <button
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-200 text-xl"
+            className="text-brand-text-secondary hover:text-brand-text text-xl"
           >
             ✕
           </button>
@@ -35,9 +35,9 @@ export default function ConversationReplayCoach({
       </div>
 
       {/* Cliente mensagem */}
-      <div className="mb-4 p-3 rounded-lg bg-neutral-900 border border-neutral-800">
-        <div className="text-xs text-neutral-500 mb-1">Cliente perguntou:</div>
-        <p className="text-neutral-100">"{clientMessage}"</p>
+      <div className="mb-4 p-3 rounded-lg bg-brand-surface border border-brand-border">
+        <div className="text-xs text-brand-muted mb-1">Cliente perguntou:</div>
+        <p className="text-brand-text">"{clientMessage}"</p>
       </div>
 
       {/* Bot pensou */}
@@ -52,7 +52,7 @@ export default function ConversationReplayCoach({
                 className={`rounded-lg border cursor-pointer transition-colors ${
                   expandedFAQ === faq.id
                     ? 'border-blue-700 bg-blue-950/40'
-                    : 'border-neutral-700 bg-neutral-900/50 hover:bg-neutral-800/50'
+                    : 'border-brand-border bg-brand-surface/50 hover:bg-brand-elevated/50'
                 }`}
               >
                 <button
@@ -61,8 +61,8 @@ export default function ConversationReplayCoach({
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-neutral-300 truncate">FAQ #{faq.id}</p>
-                      <p className="text-xs text-neutral-500 mt-1 truncate">
+                      <p className="text-sm text-brand-text-secondary truncate">FAQ #{faq.id}</p>
+                      <p className="text-xs text-brand-muted mt-1 truncate">
                         "{faq.question}"
                       </p>
                     </div>
@@ -73,8 +73,8 @@ export default function ConversationReplayCoach({
                 </button>
 
                 {expandedFAQ === faq.id && (
-                  <div className="border-t border-neutral-700 p-3 bg-neutral-950/50">
-                    <p className="text-xs text-neutral-400">
+                  <div className="border-t border-brand-border p-3 bg-brand-elevated/50">
+                    <p className="text-xs text-brand-text-secondary">
                       Similaridade: {Math.round(faq.score * 100)}% das palavras coincidem
                     </p>
                   </div>
@@ -83,8 +83,8 @@ export default function ConversationReplayCoach({
             ))}
           </div>
         ) : (
-          <div className="rounded-lg bg-neutral-900 border border-neutral-800 p-3">
-            <p className="text-sm text-neutral-400">
+          <div className="rounded-lg bg-brand-surface border border-brand-border p-3">
+            <p className="text-sm text-brand-text-secondary">
               ❌ Nenhuma pergunta na FAQ coincidia com a pergunta do cliente
             </p>
           </div>
@@ -92,11 +92,11 @@ export default function ConversationReplayCoach({
       </div>
 
       {/* Confiança */}
-      <div className="mb-4 p-3 rounded-lg bg-neutral-900 border border-neutral-800">
+      <div className="mb-4 p-3 rounded-lg bg-brand-surface border border-brand-border">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-neutral-400">Confiança da resposta:</span>
+          <span className="text-sm text-brand-text-secondary">Confiança da resposta:</span>
           <span className={`font-bold ${
-            botConfidence >= 70 ? 'text-emerald-400' :
+            botConfidence >= 70 ? 'text-brand-primary' :
             botConfidence >= 40 ? 'text-amber-400' :
             'text-red-400'
           }`}>
@@ -106,15 +106,15 @@ export default function ConversationReplayCoach({
       </div>
 
       {/* Resposta */}
-      <div className="mb-4 p-3 rounded-lg bg-neutral-900 border border-neutral-800">
-        <div className="text-xs text-neutral-500 mb-2">Bot respondeu:</div>
-        <p className="text-neutral-100 text-sm">"{botResponse}"</p>
+      <div className="mb-4 p-3 rounded-lg bg-brand-surface border border-brand-border">
+        <div className="text-xs text-brand-muted mb-2">Bot respondeu:</div>
+        <p className="text-brand-text text-sm">"{botResponse}"</p>
       </div>
 
       {/* Dica */}
-      <div className="rounded-lg border border-emerald-800/40 bg-emerald-950/30 p-3">
-        <div className="text-sm font-medium text-emerald-300 mb-2">💡 Como melhorar:</div>
-        <p className="text-xs text-emerald-200">
+      <div className="rounded-lg border border-brand-primary/40 bg-brand-primary/30 p-3">
+        <div className="text-sm font-medium text-brand-primary mb-2">💡 Como melhorar:</div>
+        <p className="text-xs text-brand-primary">
           {matchedFAQs.length === 0
             ? 'Adicione uma FAQ com a pergunta do cliente para que o bot saiba como responder no futuro.'
             : botConfidence < 70

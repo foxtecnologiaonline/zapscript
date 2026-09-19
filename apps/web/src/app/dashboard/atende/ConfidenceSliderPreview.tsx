@@ -38,11 +38,11 @@ export default function ConfidenceSliderPreview({
 
   return (
     <div className="rounded-xl border border-blue-800/60 bg-blue-950/20 p-6">
-      <h3 className="text-lg font-semibold text-neutral-100 mb-4">
+      <h3 className="text-lg font-semibold text-brand-text mb-4">
         🎚️ Nível de Confiança
       </h3>
 
-      <p className="text-sm text-neutral-400 mb-6">
+      <p className="text-sm text-brand-text-secondary mb-6">
         Escolha como o bot deve responder. Com {totalFAQs} FAQs na base:
       </p>
 
@@ -54,13 +54,13 @@ export default function ConfidenceSliderPreview({
           max="85"
           value={threshold}
           onChange={handleSliderChange}
-          className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+          className="w-full h-2 bg-brand-border rounded-lg appearance-none cursor-pointer accent-blue-600"
         />
 
         <div className="flex items-center justify-between mt-3">
-          <span className="text-xs text-neutral-500">Autônomo (responde mais)</span>
+          <span className="text-xs text-brand-muted">Autônomo (responde mais)</span>
           <span className="text-sm font-bold text-blue-400">{threshold}%</span>
-          <span className="text-xs text-neutral-500">Conservador (escala mais)</span>
+          <span className="text-xs text-brand-muted">Conservador (escala mais)</span>
         </div>
       </div>
 
@@ -80,7 +80,7 @@ export default function ConfidenceSliderPreview({
             className={`rounded-lg p-2 text-sm font-medium transition-colors ${
               Math.abs(threshold - preset.value) < 5
                 ? 'bg-blue-600 text-white'
-                : 'border border-neutral-700 bg-neutral-900/50 text-neutral-300 hover:border-neutral-600'
+                : 'border border-brand-border bg-brand-surface/50 text-brand-text-secondary hover:border-brand-primary/30'
             }`}
           >
             {preset.emoji} {preset.label}
@@ -89,24 +89,24 @@ export default function ConfidenceSliderPreview({
       </div>
 
       {/* Recomendação */}
-      <div className="rounded-lg border border-emerald-800/40 bg-emerald-950/30 p-3 mb-6">
-        <p className="text-sm text-emerald-300">{getRecommendation(threshold)}</p>
+      <div className="rounded-lg border border-brand-primary/40 bg-brand-primary/30 p-3 mb-6">
+        <p className="text-sm text-brand-primary">{getRecommendation(threshold)}</p>
       </div>
 
       {/* Previsão de comportamento */}
-      <div className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-4">
-        <div className="text-sm font-medium text-neutral-300 mb-3">Com essa configuração:</div>
+      <div className="rounded-lg border border-brand-border bg-brand-surface/50 p-4">
+        <div className="text-sm font-medium text-brand-text-secondary mb-3">Com essa configuração:</div>
 
         <div className="space-y-3">
           {/* Responder automático */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-emerald-400">🟢 Responderá automático</span>
-              <span className="text-xs font-bold text-emerald-400">{autoRespond}%</span>
+              <span className="text-xs text-brand-primary">🟢 Responderá automático</span>
+              <span className="text-xs font-bold text-brand-primary">{autoRespond}%</span>
             </div>
-            <div className="w-full h-2 bg-neutral-800 rounded-full overflow-hidden">
+            <div className="w-full h-2 bg-brand-elevated rounded-full overflow-hidden">
               <div
-                className="h-full bg-emerald-600 transition-all"
+                className="h-full bg-brand-primary transition-all"
                 style={{ width: `${autoRespond}%` }}
               />
             </div>
@@ -118,7 +118,7 @@ export default function ConfidenceSliderPreview({
               <span className="text-xs text-amber-400">🟡 Precisará revisão humana</span>
               <span className="text-xs font-bold text-amber-400">{manual}%</span>
             </div>
-            <div className="w-full h-2 bg-neutral-800 rounded-full overflow-hidden">
+            <div className="w-full h-2 bg-brand-elevated rounded-full overflow-hidden">
               <div
                 className="h-full bg-amber-600 transition-all"
                 style={{ width: `${manual}%` }}
@@ -127,7 +127,7 @@ export default function ConfidenceSliderPreview({
           </div>
         </div>
 
-        <p className="text-xs text-neutral-500 mt-3">
+        <p className="text-xs text-brand-muted mt-3">
           Baseado no histórico de {totalFAQs} perguntas frequentes cadastradas
         </p>
       </div>

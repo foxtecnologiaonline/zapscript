@@ -184,21 +184,21 @@ export default function AtendeConfigPage() {
 
   if (loadingNumbers) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-300">
+      <div className="flex items-center justify-center h-64 text-brand-muted">
         Carregando…
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <div className="max-w-2xl mx-auto">
         <AtendeHeader />
 
         {numbers.length === 0 ? (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center">
-            <p className="text-neutral-300 font-medium">Você ainda não tem um número conectado.</p>
-            <p className="text-neutral-500 text-sm mt-2">
+          <div className="rounded-xl border border-brand-border bg-brand-surface p-8 text-center">
+            <p className="text-brand-text-secondary font-medium">Você ainda não tem um número conectado.</p>
+            <p className="text-brand-muted text-sm mt-2">
               Conecte um número de WhatsApp primeiro para poder configurar o Atende.
             </p>
           </div>
@@ -206,11 +206,11 @@ export default function AtendeConfigPage() {
           <>
             {numbers.length > 1 && (
               <div className="mb-5">
-                <label className="block text-sm font-medium text-neutral-300 mb-1.5">Número de WhatsApp</label>
+                <label className="block text-sm font-medium text-brand-text-secondary mb-1.5">Número de WhatsApp</label>
                 <select
                   value={numberId}
                   onChange={(e) => setNumberId(e.target.value)}
-                  className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                  className="w-full rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-sm focus:outline-none focus:border-brand-primary"
                 >
                   {numbers.map((n) => (
                     <option key={n.id} value={n.id}>
@@ -222,19 +222,19 @@ export default function AtendeConfigPage() {
             )}
 
             {error && (
-              <div className="mb-5 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-red-200 text-sm">
+              <div className="mb-5 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-400 text-sm">
                 {error}
               </div>
             )}
 
             {loadingConfig ? (
-              <p className="text-neutral-500 text-sm">Carregando configuração…</p>
+              <p className="text-brand-muted text-sm">Carregando configuração…</p>
             ) : (
               <form onSubmit={handleSave} className="space-y-6">
-                <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5 flex items-center justify-between">
+                <div className="rounded-xl border border-brand-border bg-brand-surface p-5 flex items-center justify-between">
                   <div>
                     <p className="font-medium">Atende ativo</p>
-                    <p className="text-sm text-neutral-500 mt-0.5">
+                    <p className="text-sm text-brand-muted mt-0.5">
                       Quando ligado, mensagens novas recebem resposta automática por IA.
                     </p>
                   </div>
@@ -244,7 +244,7 @@ export default function AtendeConfigPage() {
                     aria-checked={enabled}
                     onClick={() => setEnabled((v) => !v)}
                     className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-                      enabled ? 'bg-emerald-600' : 'bg-neutral-700'
+                      enabled ? 'bg-brand-primary' : 'bg-brand-border'
                     }`}
                   >
                     <span
@@ -255,19 +255,19 @@ export default function AtendeConfigPage() {
                   </button>
                 </div>
 
-                <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5 space-y-4">
+                <div className="rounded-xl border border-brand-border bg-brand-surface p-5 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">
+                    <label className="block text-sm font-medium text-brand-text-secondary mb-1.5">
                       Sobre o seu negócio
                     </label>
-                    <p className="text-xs text-neutral-500 mb-2">
+                    <p className="text-xs text-brand-muted mb-2">
                       Conte o que a IA precisa saber pra responder bem: o que você vende, horários,
                       formas de pagamento, políticas etc. Prefere não digitar? Grave um áudio ou
                       responda perguntas curtas que a gente organiza o texto pra você.
                     </p>
 
                     <div className="mb-3">
-                      <p className="text-xs text-neutral-500 mb-1.5">Ou comece de um modelo pronto:</p>
+                      <p className="text-xs text-brand-muted mb-1.5">Ou comece de um modelo pronto:</p>
                       <div className="flex flex-wrap gap-1.5">
                         {NICHE_TEMPLATES.map((t) => (
                           <button
@@ -276,8 +276,8 @@ export default function AtendeConfigPage() {
                             onClick={() => applyNicheTemplate(t)}
                             className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                               selectedNiche?.key === t.key
-                                ? 'border-emerald-600 bg-emerald-950/40 text-emerald-300'
-                                : 'border-neutral-700 text-neutral-300 hover:border-neutral-600'
+                                ? 'border-brand-primary bg-brand-primary/40 text-brand-primary'
+                                : 'border-brand-border text-brand-text-secondary hover:border-brand-primary/30'
                             }`}
                           >
                             {t.label}
@@ -302,7 +302,7 @@ export default function AtendeConfigPage() {
                         <button
                           type="button"
                           onClick={() => setWizardOpen(true)}
-                          className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:border-neutral-600"
+                          className="rounded-lg border border-brand-border px-4 py-2 text-sm font-medium text-brand-text hover:border-brand-primary/30"
                         >
                           Responder perguntas curtas
                         </button>
@@ -310,30 +310,30 @@ export default function AtendeConfigPage() {
                           type="button"
                           onClick={handleLearnFromHistory}
                           disabled={historyBusy}
-                          className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 hover:border-neutral-600 disabled:opacity-50"
+                          className="rounded-lg border border-brand-border px-4 py-2 text-sm font-medium text-brand-text hover:border-brand-primary/30 disabled:opacity-50"
                         >
                           {historyBusy ? 'Analisando histórico…' : 'Aprender com o histórico'}
                         </button>
-                        {voiceBusy && <span className="text-xs text-neutral-400">Processando áudio…</span>}
+                        {voiceBusy && <span className="text-xs text-brand-text-secondary">Processando áudio…</span>}
                       </div>
                     )}
                     {voiceError && <p className="text-xs text-red-400 mb-3">{voiceError}</p>}
                     {historyError && <p className="text-xs text-red-400 mb-3">{historyError}</p>}
                     {historyEmpty && (
-                      <p className="text-xs text-neutral-500 mb-3">
+                      <p className="text-xs text-brand-muted mb-3">
                         Ainda não há respostas suas registradas. Assuma uma conversa escalada e responda o
                         cliente pelo WhatsApp normalmente — da próxima vez vai ter o que aprender aqui.
                       </p>
                     )}
                     {historyKbCount !== null && historyKbCount > 0 && (
-                      <div className="mb-3 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
-                        <p className="text-xs text-neutral-400">
+                      <div className="mb-3 rounded-lg border border-brand-border bg-brand-elevated/60 px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
+                        <p className="text-xs text-brand-text-secondary">
                           {historyKbCount} {historyKbCount === 1 ? 'pergunta identificada' : 'perguntas identificadas'} no
                           histórico pra Base de Conhecimento.
                         </p>
                         <Link
-                          href="/app/atende/kb?fromHistory=1"
-                          className="text-xs font-medium text-emerald-400 hover:text-emerald-300"
+                          href="/dashboard/atende/kb?fromHistory=1"
+                          className="text-xs font-medium text-brand-primary hover:opacity-80"
                         >
                           Importar agora →
                         </Link>
@@ -357,13 +357,13 @@ export default function AtendeConfigPage() {
                     )}
 
                     {selectedNiche && selectedNiche.kb.length > 0 && (
-                      <div className="mb-3 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
-                        <p className="text-xs text-neutral-400">
+                      <div className="mb-3 rounded-lg border border-brand-border bg-brand-elevated/60 px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
+                        <p className="text-xs text-brand-text-secondary">
                           {selectedNiche.kb.length} perguntas prontas de &ldquo;{selectedNiche.label}&rdquo; pra Base de Conhecimento.
                         </p>
                         <Link
-                          href={`/app/atende/kb?template=${selectedNiche.key}`}
-                          className="text-xs font-medium text-emerald-400 hover:text-emerald-300"
+                          href={`/dashboard/atende/kb?template=${selectedNiche.key}`}
+                          className="text-xs font-medium text-brand-primary hover:opacity-80"
                         >
                           Importar agora →
                         </Link>
@@ -376,17 +376,17 @@ export default function AtendeConfigPage() {
                       maxLength={4000}
                       rows={6}
                       placeholder="Ex: Somos uma clínica odontológica em São Paulo. Atendemos de segunda a sábado, 8h às 18h. Aceitamos convênios X e Y, além de particular no PIX ou cartão..."
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 resize-y"
+                      className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary resize-y"
                     />
-                    <p className="text-xs text-neutral-600 mt-1 text-right">{businessContext.length}/4000</p>
+                    <p className="text-xs text-brand-muted mt-1 text-right">{businessContext.length}/4000</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Tom de voz</label>
+                    <label className="block text-sm font-medium text-brand-text-secondary mb-1.5">Tom de voz</label>
                     <select
                       value={tone}
                       onChange={(e) => setTone(e.target.value)}
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                      className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary"
                     >
                       {TONE_OPTIONS.map((t) => (
                         <option key={t.value} value={t.value}>{t.label}</option>
@@ -395,14 +395,14 @@ export default function AtendeConfigPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Nível de confiança</label>
-                    <p className="text-xs text-neutral-500 mb-2">
+                    <label className="block text-sm font-medium text-brand-text-secondary mb-1.5">Nível de confiança</label>
+                    <p className="text-xs text-brand-muted mb-2">
                       Define o quanto a IA arrisca responder sozinha antes de escalar pra você.
                     </p>
                     <select
                       value={confidenceLevel}
                       onChange={(e) => setConfidenceLevel(e.target.value)}
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                      className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary"
                     >
                       {CONFIDENCE_OPTIONS.map((c) => (
                         <option key={c.value} value={c.value}>{c.label}</option>
@@ -411,14 +411,14 @@ export default function AtendeConfigPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Resumo periódico</label>
-                    <p className="text-xs text-neutral-500 mb-2">
+                    <label className="block text-sm font-medium text-brand-text-secondary mb-1.5">Resumo periódico</label>
+                    <p className="text-xs text-brand-muted mb-2">
                       Receba um resumo das conversas direto no seu WhatsApp (self-chat), sem precisar abrir o painel.
                     </p>
                     <select
                       value={digestFrequency}
                       onChange={(e) => setDigestFrequency(e.target.value)}
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                      className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary"
                     >
                       {DIGEST_OPTIONS.map((d) => (
                         <option key={d.value} value={d.value}>{d.label}</option>
@@ -427,10 +427,10 @@ export default function AtendeConfigPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">
+                    <label className="block text-sm font-medium text-brand-text-secondary mb-1.5">
                       Mensagem de fallback
                     </label>
-                    <p className="text-xs text-neutral-500 mb-2">
+                    <p className="text-xs text-brand-muted mb-2">
                       Enviada quando a IA não tem confiança suficiente pra responder sozinha.
                     </p>
                     <textarea
@@ -438,15 +438,15 @@ export default function AtendeConfigPage() {
                       onChange={(e) => setFallbackMessage(e.target.value)}
                       maxLength={500}
                       rows={2}
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 resize-y"
+                      className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary resize-y"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">
-                      Telefone para escalonamento <span className="text-neutral-600">(opcional)</span>
+                    <label className="block text-sm font-medium text-brand-text-secondary mb-1.5">
+                      Telefone para escalonamento <span className="text-brand-muted">(opcional)</span>
                     </label>
-                    <p className="text-xs text-neutral-500 mb-2">
+                    <p className="text-xs text-brand-muted mb-2">
                       Recebe um aviso quando uma conversa precisa de atenção humana.
                     </p>
                     <input
@@ -454,7 +454,7 @@ export default function AtendeConfigPage() {
                       value={escalationPhone}
                       onChange={(e) => setEscalationPhone(e.target.value)}
                       placeholder="11999998888"
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                      className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary"
                     />
                   </div>
                 </div>
@@ -463,17 +463,17 @@ export default function AtendeConfigPage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                    className="rounded-lg bg-brand-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-primary disabled:opacity-50"
                   >
                     {saving ? 'Salvando…' : 'Salvar'}
                   </button>
-                  {saved && <span className="text-sm text-emerald-400">Salvo ✓</span>}
+                  {saved && <span className="text-sm text-brand-primary">Salvo ✓</span>}
                 </div>
               </form>
             )}
           </>
         )}
       </div>
-    </main>
+    </div>
   );
 }

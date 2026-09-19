@@ -45,17 +45,17 @@ export default function PDFReportGenerator({ onReportGenerated }: PDFReportGener
 
   return (
     <div className="rounded-xl border border-purple-800/60 bg-purple-950/20 p-6">
-      <h3 className="text-lg font-semibold text-neutral-100 mb-2 flex items-center gap-2">
+      <h3 className="text-lg font-semibold text-brand-text mb-2 flex items-center gap-2">
         📄 Gerar Relatório
       </h3>
 
-      <p className="text-sm text-neutral-400 mb-6">
+      <p className="text-sm text-brand-text-secondary mb-6">
         PDF com análise completa de performance do Atende (dados, gráficos, insights)
       </p>
 
       {/* Seletor de período */}
       <div className="mb-6">
-        <label className="block text-sm font-medium text-neutral-300 mb-2">Período</label>
+        <label className="block text-sm font-medium text-brand-text-secondary mb-2">Período</label>
         <div className="grid grid-cols-4 gap-2">
           {[7, 14, 30, 90].map((d) => (
             <button
@@ -64,7 +64,7 @@ export default function PDFReportGenerator({ onReportGenerated }: PDFReportGener
               className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 days === d
                   ? 'bg-purple-600 text-white'
-                  : 'border border-neutral-700 bg-neutral-900/50 text-neutral-300 hover:border-neutral-600'
+                  : 'border border-brand-border bg-brand-surface/50 text-brand-text-secondary hover:border-brand-primary/30'
               }`}
             >
               {d}d
@@ -74,9 +74,9 @@ export default function PDFReportGenerator({ onReportGenerated }: PDFReportGener
       </div>
 
       {/* O que está incluído */}
-      <div className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-4 mb-6">
-        <div className="text-sm font-medium text-neutral-300 mb-3">Incluído no relatório:</div>
-        <ul className="space-y-2 text-xs text-neutral-400">
+      <div className="rounded-lg border border-brand-border bg-brand-surface/50 p-4 mb-6">
+        <div className="text-sm font-medium text-brand-text-secondary mb-3">Incluído no relatório:</div>
+        <ul className="space-y-2 text-xs text-brand-text-secondary">
           <li>✓ Taxa de respostas automáticas vs escaladas</li>
           <li>✓ Distribuição de confiança</li>
           <li>✓ Tempo médio de resposta</li>
@@ -88,7 +88,7 @@ export default function PDFReportGenerator({ onReportGenerated }: PDFReportGener
 
       {/* Erro */}
       {error && (
-        <div className="rounded-lg border border-red-800/40 bg-red-950/30 p-3 mb-4 text-sm text-red-300">
+        <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-3 mb-4 text-sm text-red-400">
           {error}
         </div>
       )}
@@ -118,13 +118,13 @@ export default function PDFReportGenerator({ onReportGenerated }: PDFReportGener
             // Compartilhar via email (placeholder)
             alert('Email de compartilhamento seria enviado em produção');
           }}
-          className="rounded-lg border border-neutral-700 bg-neutral-900/50 px-4 py-2 text-sm font-medium text-neutral-300 hover:border-neutral-600 transition-colors"
+          className="rounded-lg border border-brand-border bg-brand-surface/50 px-4 py-2 text-sm font-medium text-brand-text-secondary hover:border-brand-primary/30 transition-colors"
         >
           📧 Compartilhar
         </button>
       </div>
 
-      <p className="text-xs text-neutral-500 mt-4 text-center">
+      <p className="text-xs text-brand-muted mt-4 text-center">
         Relatório gerado em tempo real, sempre atualizado
       </p>
     </div>

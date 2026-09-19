@@ -31,12 +31,13 @@ export const MODULE_ICON: Record<string, string> = {
 };
 
 /** Rota interna para "Abrir" um módulo contratado. core reutiliza o dashboard atual.
- *  campanhas e copiloto também vivem sob /dashboard (com sidebar própria) —
+ *  campanhas, copiloto e atende também vivem sob /dashboard (com sidebar própria) —
  *  ver CAMPANHAS_ARQUITETURA.md §10. Os demais módulos seguem em /app/<key>. */
 export function moduleRoute(key: string): string {
   if (key === 'core') return '/dashboard';
   if (key === 'campanhas') return '/dashboard/campanhas';
   if (key === 'copiloto') return '/dashboard/copiloto';
+  if (key === 'atende') return '/dashboard/atende';
   return `/app/${key}`;
 }
 

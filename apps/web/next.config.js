@@ -21,6 +21,12 @@ const nextConfig = {
       // /indique era uma landing separada (bônus de áudio grátis); agora é o
       // mesmo programa único descrito em /afiliados.
       { source: '/indique', destination: '/afiliados', permanent: true },
+      // ── Atende migrou de /app (sem shell/sidebar) para /dashboard (2026-09) ──
+      // Mesmo padrão já usado por Campanhas/Copiloto — mas, diferente deles, o
+      // Atende já tinha uso real em produção (inclusive links enviados por
+      // WhatsApp antes do deploy), então o redirect é obrigatório aqui.
+      { source: '/app/atende',        destination: '/dashboard/atende',        permanent: true },
+      { source: '/app/atende/:path*', destination: '/dashboard/atende/:path*', permanent: true },
     ];
   },
 

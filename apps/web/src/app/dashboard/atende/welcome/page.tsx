@@ -168,9 +168,9 @@ export default function AtendeWelcomePage() {
 
   if (loadingNumbers) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-300">
+      <div className="flex items-center justify-center h-64 text-brand-muted">
         Carregando…
-      </main>
+      </div>
     );
   }
 
@@ -178,14 +178,14 @@ export default function AtendeWelcomePage() {
   const videoConfigured = !!newVideoFile || (hasVideo && !removeVideo);
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <div className="max-w-2xl mx-auto">
         <AtendeHeader />
 
         {numbers.length === 0 ? (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center">
-            <p className="text-neutral-300 font-medium">Você ainda não tem um número conectado.</p>
-            <p className="text-neutral-500 text-sm mt-2">
+          <div className="rounded-xl border border-brand-border bg-brand-surface p-8 text-center">
+            <p className="text-brand-text-secondary font-medium">Você ainda não tem um número conectado.</p>
+            <p className="text-brand-muted text-sm mt-2">
               Conecte um número de WhatsApp primeiro para poder configurar a boas-vindas.
             </p>
           </div>
@@ -193,11 +193,11 @@ export default function AtendeWelcomePage() {
           <>
             {numbers.length > 1 && (
               <div className="mb-5">
-                <label className="block text-sm font-medium text-neutral-300 mb-1.5">Número de WhatsApp</label>
+                <label className="block text-sm font-medium text-brand-text-secondary mb-1.5">Número de WhatsApp</label>
                 <select
                   value={numberId}
                   onChange={(e) => setNumberId(e.target.value)}
-                  className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                  className="w-full rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-sm focus:outline-none focus:border-brand-primary"
                 >
                   {numbers.map((n) => (
                     <option key={n.id} value={n.id}>
@@ -209,19 +209,19 @@ export default function AtendeWelcomePage() {
             )}
 
             {error && (
-              <div className="mb-5 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-red-200 text-sm">
+              <div className="mb-5 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-400 text-sm">
                 {error}
               </div>
             )}
 
             {loadingConfig ? (
-              <p className="text-neutral-500 text-sm">Carregando configuração…</p>
+              <p className="text-brand-muted text-sm">Carregando configuração…</p>
             ) : (
               <form onSubmit={handleSave} className="space-y-6">
-                <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5 flex items-center justify-between">
+                <div className="rounded-xl border border-brand-border bg-brand-surface p-5 flex items-center justify-between">
                   <div>
                     <p className="font-medium">Boas-vindas automática</p>
-                    <p className="text-sm text-neutral-500 mt-0.5">
+                    <p className="text-sm text-brand-muted mt-0.5">
                       Ligado, toda vez que um contato escrever pela primeira vez no dia, ele recebe essa
                       mensagem antes de qualquer resposta do Atende.
                     </p>
@@ -232,7 +232,7 @@ export default function AtendeWelcomePage() {
                     aria-checked={enabled}
                     onClick={() => setEnabled((v) => !v)}
                     className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-                      enabled ? 'bg-emerald-600' : 'bg-neutral-700'
+                      enabled ? 'bg-brand-primary' : 'bg-brand-border'
                     }`}
                   >
                     <span
@@ -243,29 +243,29 @@ export default function AtendeWelcomePage() {
                   </button>
                 </div>
 
-                <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5 space-y-5">
+                <div className="rounded-xl border border-brand-border bg-brand-surface p-5 space-y-5">
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Texto</label>
+                    <label className="block text-sm font-medium text-brand-text-secondary mb-1.5">Texto</label>
                     <textarea
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                       maxLength={1000}
                       rows={4}
                       placeholder="Ex: Oi! Obrigado por chegar até a gente 🙂 Já vamos te atender por aqui."
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 resize-y"
+                      className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary resize-y"
                     />
-                    <p className="text-xs text-neutral-600 mt-1 text-right">{text.length}/1000</p>
+                    <p className="text-xs text-brand-muted mt-1 text-right">{text.length}/1000</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">
-                      Áudio <span className="text-neutral-600">(opcional)</span>
+                    <label className="block text-sm font-medium text-brand-text-secondary mb-1.5">
+                      Áudio <span className="text-brand-muted">(opcional)</span>
                     </label>
                     <div className="flex items-center gap-3 flex-wrap">
                       <VoiceRecorder onRecorded={handleAudioRecorded} />
                       {audioConfigured && (
                         <>
-                          <span className="text-xs text-emerald-400">
+                          <span className="text-xs text-brand-primary">
                             {newAudioBlob ? 'Novo áudio gravado ✓' : 'Áudio configurado ✓'}
                           </span>
                           {!newAudioBlob && hasAudio && !audioPreviewUrl && (
@@ -273,7 +273,7 @@ export default function AtendeWelcomePage() {
                               type="button"
                               onClick={() => playSavedMedia('audio')}
                               disabled={loadingPreview === 'audio'}
-                              className="text-xs text-neutral-300 underline hover:text-neutral-100 disabled:opacity-50"
+                              className="text-xs text-brand-text-secondary underline hover:text-brand-text disabled:opacity-50"
                             >
                               {loadingPreview === 'audio' ? 'carregando…' : 'ouvir'}
                             </button>
@@ -285,7 +285,7 @@ export default function AtendeWelcomePage() {
                               setRemoveAudio(true);
                               setAudioPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
                             }}
-                            className="text-xs text-red-400 hover:text-red-300"
+                            className="text-xs text-red-400 hover:text-red-400"
                           >
                             remover
                           </button>
@@ -298,8 +298,8 @@ export default function AtendeWelcomePage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">
-                      Vídeo <span className="text-neutral-600">(opcional, máx {(VIDEO_MAX_BYTES / 1024 / 1024).toFixed(0)}MB / ~20s)</span>
+                    <label className="block text-sm font-medium text-brand-text-secondary mb-1.5">
+                      Vídeo <span className="text-brand-muted">(opcional, máx {(VIDEO_MAX_BYTES / 1024 / 1024).toFixed(0)}MB / ~20s)</span>
                     </label>
                     <div className="flex items-center gap-3 flex-wrap">
                       <input
@@ -307,11 +307,11 @@ export default function AtendeWelcomePage() {
                         type="file"
                         accept="video/*"
                         onChange={handleVideoChosen}
-                        className="text-sm text-neutral-300"
+                        className="text-sm text-brand-text-secondary"
                       />
                       {videoConfigured && (
                         <>
-                          <span className="text-xs text-emerald-400">
+                          <span className="text-xs text-brand-primary">
                             {newVideoFile ? 'Novo vídeo escolhido ✓' : 'Vídeo configurado ✓'}
                           </span>
                           {!newVideoFile && hasVideo && !videoPreviewUrl && (
@@ -319,7 +319,7 @@ export default function AtendeWelcomePage() {
                               type="button"
                               onClick={() => playSavedMedia('video')}
                               disabled={loadingPreview === 'video'}
-                              className="text-xs text-neutral-300 underline hover:text-neutral-100 disabled:opacity-50"
+                              className="text-xs text-brand-text-secondary underline hover:text-brand-text disabled:opacity-50"
                             >
                               {loadingPreview === 'video' ? 'carregando…' : 'ver'}
                             </button>
@@ -332,7 +332,7 @@ export default function AtendeWelcomePage() {
                               setVideoPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
                               if (videoInputRef.current) videoInputRef.current.value = '';
                             }}
-                            className="text-xs text-red-400 hover:text-red-300"
+                            className="text-xs text-red-400 hover:text-red-400"
                           >
                             remover
                           </button>
@@ -349,17 +349,17 @@ export default function AtendeWelcomePage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                    className="rounded-lg bg-brand-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-primary disabled:opacity-50"
                   >
                     {saving ? 'Salvando…' : 'Salvar'}
                   </button>
-                  {saved && <span className="text-sm text-emerald-400">Salvo ✓</span>}
+                  {saved && <span className="text-sm text-brand-primary">Salvo ✓</span>}
                 </div>
               </form>
             )}
           </>
         )}
       </div>
-    </main>
+    </div>
   );
 }

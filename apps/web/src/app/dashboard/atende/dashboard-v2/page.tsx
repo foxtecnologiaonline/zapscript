@@ -10,12 +10,12 @@ export default function AtendeDashboardV2() {
   const [showFAQBuilder, setShowFAQBuilder] = useState(false);
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <div className="max-w-4xl mx-auto space-y-8">
         {/* Header */}
         <div>
           <h1 className="text-4xl font-bold mb-2">🤖 Atende Dashboard</h1>
-          <p className="text-neutral-400">Controle seu atendente automático por IA</p>
+          <p className="text-brand-text-secondary">Controle seu atendente automático por IA</p>
         </div>
 
         {/* TIER 1 Components */}
@@ -41,14 +41,14 @@ export default function AtendeDashboardV2() {
         ) : (
           <button
             onClick={() => setShowFAQBuilder(true)}
-            className="w-full rounded-xl border border-emerald-800/60 bg-emerald-950/20 p-6 text-left hover:bg-emerald-950/30 transition-colors"
+            className="w-full rounded-xl border border-brand-primary/60 bg-brand-primary/20 p-6 text-left hover:bg-brand-primary/30 transition-colors"
           >
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-neutral-100 flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-brand-text flex items-center gap-2">
                   ⬇️ Criar Pergunta Rápida
                 </h3>
-                <p className="text-sm text-neutral-500 mt-1">Adicione perguntas frequentes sem sair do dashboard</p>
+                <p className="text-sm text-brand-muted mt-1">Adicione perguntas frequentes sem sair do dashboard</p>
               </div>
               <span className="text-3xl">→</span>
             </div>
@@ -56,40 +56,40 @@ export default function AtendeDashboardV2() {
         )}
 
         {/* Quick Links */}
-        <div className="grid md:grid-cols-3 gap-4 pt-4 border-t border-neutral-800">
+        <div className="grid md:grid-cols-3 gap-4 pt-4 border-t border-brand-border">
           <Link
-            href="/app/atende/config"
-            className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-4 hover:bg-neutral-800/50 transition-colors text-center"
+            href="/dashboard/atende/config"
+            className="rounded-lg border border-brand-border bg-brand-surface/50 p-4 hover:bg-brand-elevated/50 transition-colors text-center"
           >
             <div className="text-2xl mb-2">⚙️</div>
-            <div className="font-medium text-neutral-300">Configurações</div>
-            <div className="text-xs text-neutral-500 mt-1">Contexto, tom, confiança</div>
+            <div className="font-medium text-brand-text-secondary">Configurações</div>
+            <div className="text-xs text-brand-muted mt-1">Contexto, tom, confiança</div>
           </Link>
 
           <Link
-            href="/app/atende/kb"
-            className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-4 hover:bg-neutral-800/50 transition-colors text-center"
+            href="/dashboard/atende/kb"
+            className="rounded-lg border border-brand-border bg-brand-surface/50 p-4 hover:bg-brand-elevated/50 transition-colors text-center"
           >
             <div className="text-2xl mb-2">📚</div>
-            <div className="font-medium text-neutral-300">Base de Conhecimento</div>
-            <div className="text-xs text-neutral-500 mt-1">Gerenciar FAQs</div>
+            <div className="font-medium text-brand-text-secondary">Base de Conhecimento</div>
+            <div className="text-xs text-brand-muted mt-1">Gerenciar FAQs</div>
           </Link>
 
           <Link
-            href="/app/atende"
-            className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-4 hover:bg-neutral-800/50 transition-colors text-center"
+            href="/dashboard/atende"
+            className="rounded-lg border border-brand-border bg-brand-surface/50 p-4 hover:bg-brand-elevated/50 transition-colors text-center"
           >
             <div className="text-2xl mb-2">💬</div>
-            <div className="font-medium text-neutral-300">Conversas</div>
-            <div className="text-xs text-neutral-500 mt-1">Ver histórico</div>
+            <div className="font-medium text-brand-text-secondary">Conversas</div>
+            <div className="text-xs text-brand-muted mt-1">Ver histórico</div>
           </Link>
         </div>
 
         {/* Footer Info */}
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4 text-center text-sm text-neutral-500">
+        <div className="rounded-lg border border-brand-border bg-brand-surface/50 p-4 text-center text-sm text-brand-muted">
           <p>Dashboard atualizado em tempo real • Métricas dos últimos 24 horas</p>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

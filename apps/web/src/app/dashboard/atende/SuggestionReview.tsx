@@ -53,27 +53,27 @@ function TextSuggestion(props: Extract<SuggestionReviewProps, { kind: 'text' }>)
   const busy = saving || !!props.busy;
 
   return (
-    <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/20 p-5">
-      <h3 className="font-medium text-emerald-200">{props.title}</h3>
-      {props.description && <p className="text-xs text-neutral-400 mt-1 mb-3">{props.description}</p>}
+    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/20 p-5">
+      <h3 className="font-medium text-brand-primary">{props.title}</h3>
+      {props.description && <p className="text-xs text-brand-text-secondary mt-1 mb-3">{props.description}</p>}
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={6}
-        className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:border-emerald-500 resize-y mt-3"
+        className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm text-brand-text focus:outline-none focus:border-brand-primary resize-y mt-3"
       />
       <div className="flex items-center gap-2 mt-3">
         <button
           onClick={accept}
           disabled={busy || text.trim().length === 0}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary disabled:opacity-50"
         >
           {saving ? 'Salvando…' : 'Usar esta sugestão'}
         </button>
         <button
           onClick={props.onReject}
           disabled={busy}
-          className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-300 hover:border-neutral-600 disabled:opacity-50"
+          className="rounded-lg border border-brand-border px-4 py-2 text-sm font-medium text-brand-text-secondary hover:border-brand-primary/30 disabled:opacity-50"
         >
           Descartar
         </button>
@@ -111,9 +111,9 @@ function QaListSuggestion(props: Extract<SuggestionReviewProps, { kind: 'qa-list
 
   if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5 text-center">
-        <p className="text-neutral-300 text-sm">Nenhuma pergunta e resposta foi identificada.</p>
-        <button onClick={props.onReject} className="text-xs text-neutral-400 hover:text-neutral-200 mt-2">
+      <div className="rounded-xl border border-brand-border bg-brand-surface p-5 text-center">
+        <p className="text-brand-text-secondary text-sm">Nenhuma pergunta e resposta foi identificada.</p>
+        <button onClick={props.onReject} className="text-xs text-brand-text-secondary hover:text-brand-text mt-2">
           Voltar
         </button>
       </div>
@@ -121,16 +121,16 @@ function QaListSuggestion(props: Extract<SuggestionReviewProps, { kind: 'qa-list
   }
 
   return (
-    <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/20 p-5">
-      <h3 className="font-medium text-emerald-200">{props.title}</h3>
-      {props.description && <p className="text-xs text-neutral-400 mt-1 mb-3">{props.description}</p>}
+    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/20 p-5">
+      <h3 className="font-medium text-brand-primary">{props.title}</h3>
+      {props.description && <p className="text-xs text-brand-text-secondary mt-1 mb-3">{props.description}</p>}
 
       <div className="space-y-2.5 mt-3">
         {items.map((it, i) => (
           <div
             key={i}
             className={`rounded-lg border p-3 transition-colors ${
-              it.included ? 'border-neutral-700 bg-neutral-900' : 'border-neutral-800 bg-neutral-950/60 opacity-50'
+              it.included ? 'border-brand-border bg-brand-surface' : 'border-brand-border bg-brand-elevated/60 opacity-50'
             }`}
           >
             <div className="flex items-start gap-2.5">
@@ -148,7 +148,7 @@ function QaListSuggestion(props: Extract<SuggestionReviewProps, { kind: 'qa-list
                   onChange={(e) => update(i, 'question', e.target.value)}
                   disabled={!it.included}
                   maxLength={300}
-                  className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-sm font-medium text-neutral-100 focus:outline-none focus:border-emerald-500 disabled:opacity-60"
+                  className="w-full rounded-lg border border-brand-border bg-brand-elevated px-2.5 py-1.5 text-sm font-medium text-brand-text focus:outline-none focus:border-brand-primary disabled:opacity-60"
                 />
                 <textarea
                   value={it.answer}
@@ -156,7 +156,7 @@ function QaListSuggestion(props: Extract<SuggestionReviewProps, { kind: 'qa-list
                   disabled={!it.included}
                   maxLength={2000}
                   rows={2}
-                  className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-300 focus:outline-none focus:border-emerald-500 resize-y disabled:opacity-60"
+                  className="w-full rounded-lg border border-brand-border bg-brand-elevated px-2.5 py-1.5 text-sm text-brand-text-secondary focus:outline-none focus:border-brand-primary resize-y disabled:opacity-60"
                 />
               </div>
             </div>
@@ -168,14 +168,14 @@ function QaListSuggestion(props: Extract<SuggestionReviewProps, { kind: 'qa-list
         <button
           onClick={accept}
           disabled={busy || selected.length === 0}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary disabled:opacity-50"
         >
           {saving ? 'Salvando…' : `Salvar ${selected.length} ${selected.length === 1 ? 'item' : 'itens'}`}
         </button>
         <button
           onClick={props.onReject}
           disabled={busy}
-          className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-300 hover:border-neutral-600 disabled:opacity-50"
+          className="rounded-lg border border-brand-border px-4 py-2 text-sm font-medium text-brand-text-secondary hover:border-brand-primary/30 disabled:opacity-50"
         >
           Descartar tudo
         </button>

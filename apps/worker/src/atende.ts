@@ -305,7 +305,7 @@ async function runAtendeDigests() {
         `Abertas (bot respondendo): ${openCount}`,
         `Escaladas pra você: ${escalatedCount}`,
         '',
-        `Painel: ${APP_URL}/app/atende`,
+        `Painel: ${APP_URL}/dashboard/atende`,
       ].join('\n');
 
       await sendMessageViaEvolution(cfg.number.zapiInstanceId, cfg.number.phoneNumber, msg).catch(() => null);

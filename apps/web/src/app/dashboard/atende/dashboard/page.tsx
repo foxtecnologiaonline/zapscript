@@ -49,19 +49,19 @@ export default function AtendeDashboardPage() {
   ] : [];
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <div className="max-w-3xl mx-auto">
         <AtendeHeader />
 
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-sm font-bold text-neutral-300">Métricas de atendimento</h2>
-          <div className="inline-flex rounded-lg border border-neutral-800 overflow-hidden">
+          <h2 className="text-sm font-bold text-brand-text-secondary">Métricas de atendimento</h2>
+          <div className="inline-flex rounded-lg border border-brand-border overflow-hidden">
             {PERIODS.map(p => (
               <button
                 key={p.days}
                 onClick={() => setDays(p.days)}
                 className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  days === p.days ? 'bg-emerald-600 text-white' : 'bg-neutral-900 text-neutral-400 hover:text-neutral-200'
+                  days === p.days ? 'bg-brand-primary text-white' : 'bg-brand-surface text-brand-text-secondary hover:text-brand-text'
                 }`}
               >
                 {p.label}
@@ -71,29 +71,29 @@ export default function AtendeDashboardPage() {
         </div>
 
         {error && (
-          <div className="mb-5 rounded-lg border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-300">
+          <div className="mb-5 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-400">
             {error}
           </div>
         )}
 
         {loading ? (
-          <div className="text-neutral-500 text-sm">Carregando...</div>
+          <div className="text-brand-muted text-sm">Carregando...</div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {kpis.map(k => (
-              <div key={k.label} className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4">
+              <div key={k.label} className="rounded-xl border border-brand-border bg-brand-surface/60 p-4">
                 <div className="text-xl mb-1">{k.icon}</div>
                 <div className="text-lg font-black leading-tight">{k.value}</div>
-                <div className="text-[11px] text-neutral-500 mt-0.5">{k.label}</div>
+                <div className="text-[11px] text-brand-muted mt-0.5">{k.label}</div>
               </div>
             ))}
           </div>
         )}
 
-        <p className="text-[11px] text-neutral-600 mt-5">
+        <p className="text-[11px] text-brand-muted mt-5">
           Resolução automática = % de conversas no período que nunca precisaram de takeover manual.
         </p>
       </div>
-    </main>
+    </div>
   );
 }

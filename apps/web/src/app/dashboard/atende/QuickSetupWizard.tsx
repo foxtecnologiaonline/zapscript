@@ -81,17 +81,17 @@ export default function QuickSetupWizard({ onComplete, onCancel }: QuickSetupWiz
   }
 
   return (
-    <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/20 p-5">
+    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/20 p-5">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs text-emerald-300">Pergunta {step + 1} de {STEPS.length}</span>
-        <button onClick={onCancel} className="text-xs text-neutral-400 hover:text-neutral-200">
+        <span className="text-xs text-brand-primary">Pergunta {step + 1} de {STEPS.length}</span>
+        <button onClick={onCancel} className="text-xs text-brand-text-secondary hover:text-brand-text">
           Cancelar
         </button>
       </div>
 
-      <h3 className="font-medium text-neutral-100 mb-2">
+      <h3 className="font-medium text-brand-text mb-2">
         {current.question}
-        {current.optional && <span className="text-neutral-500 font-normal"> (opcional)</span>}
+        {current.optional && <span className="text-brand-muted font-normal"> (opcional)</span>}
       </h3>
 
       <textarea
@@ -102,20 +102,20 @@ export default function QuickSetupWizard({ onComplete, onCancel }: QuickSetupWiz
         rows={3}
         autoFocus
         maxLength={500}
-        className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:border-emerald-500 resize-y"
+        className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm text-brand-text focus:outline-none focus:border-brand-primary resize-y"
       />
 
       <div className="flex items-center gap-2 mt-3">
         <button
           onClick={next}
           disabled={!canAdvance}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary disabled:opacity-50"
         >
           {isLast ? 'Concluir' : 'Próxima'}
         </button>
         <button
           onClick={back}
-          className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-300 hover:border-neutral-600"
+          className="rounded-lg border border-brand-border px-4 py-2 text-sm font-medium text-brand-text-secondary hover:border-brand-primary/30"
         >
           {step === 0 ? 'Cancelar' : 'Voltar'}
         </button>

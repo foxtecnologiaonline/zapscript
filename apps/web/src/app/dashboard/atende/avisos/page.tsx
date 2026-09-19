@@ -83,25 +83,25 @@ export default function AvisosPage() {
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <div className="max-w-2xl mx-auto">
         <AtendeHeader />
 
         {error && (
-          <div className="mb-5 rounded-lg border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-300">
+          <div className="mb-5 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-400">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSend} className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 mb-6 space-y-3">
-          <h2 className="text-sm font-bold text-neutral-300">Enviar aviso ao cliente</h2>
+        <form onSubmit={handleSend} className="rounded-xl border border-brand-border bg-brand-surface/60 p-4 mb-6 space-y-3">
+          <h2 className="text-sm font-bold text-brand-text-secondary">Enviar aviso ao cliente</h2>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-neutral-500 mb-1">Número (de onde envia)</label>
+              <label className="block text-xs text-brand-muted mb-1">Número (de onde envia)</label>
               <select
                 value={numberId} onChange={e => setNumberId(e.target.value)} required
-                className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm"
               >
                 <option value="" disabled>Selecione…</option>
                 {numbers.map(n => (
@@ -110,10 +110,10 @@ export default function AvisosPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-neutral-500 mb-1">Categoria</label>
+              <label className="block text-xs text-brand-muted mb-1">Categoria</label>
               <select
                 value={category} onChange={e => setCategory(e.target.value)}
-                className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm"
               >
                 {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
@@ -122,69 +122,69 @@ export default function AvisosPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-neutral-500 mb-1">Telefone do cliente</label>
+              <label className="block text-xs text-brand-muted mb-1">Telefone do cliente</label>
               <input
                 value={contactPhone} onChange={e => setContactPhone(e.target.value)} required
                 placeholder="11999999999"
-                className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs text-neutral-500 mb-1">Nome (opcional)</label>
+              <label className="block text-xs text-brand-muted mb-1">Nome (opcional)</label>
               <input
                 value={contactName} onChange={e => setContactName(e.target.value)}
                 placeholder="Fulano"
-                className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs text-neutral-500 mb-1">Mensagem</label>
+            <label className="block text-xs text-brand-muted mb-1">Mensagem</label>
             <textarea
               value={message} onChange={e => setMessage(e.target.value)} required maxLength={1000} rows={3}
               placeholder="Ex: Olá! Sua encomenda já está pronta pra retirada."
-              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm resize-none"
+              className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm resize-none"
             />
           </div>
 
           {sendError && (
-            <div className="rounded-lg border border-red-900 bg-red-950/50 px-3 py-2 text-xs text-red-300">
+            <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-400">
               {sendError}
             </div>
           )}
 
           <button
             type="submit" disabled={sending || !numberId}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary disabled:opacity-50"
           >
             {sending ? 'Enviando...' : 'Enviar aviso →'}
           </button>
         </form>
 
-        <h2 className="text-sm font-bold text-neutral-300 mb-3">Histórico</h2>
+        <h2 className="text-sm font-bold text-brand-text-secondary mb-3">Histórico</h2>
         {loading ? (
-          <div className="text-neutral-500 text-sm">Carregando...</div>
+          <div className="text-brand-muted text-sm">Carregando...</div>
         ) : avisos.length === 0 ? (
-          <div className="text-sm text-neutral-600 text-center py-8 rounded-xl border border-neutral-800">Nenhum aviso enviado ainda.</div>
+          <div className="text-sm text-brand-muted text-center py-8 rounded-xl border border-brand-border">Nenhum aviso enviado ainda.</div>
         ) : (
           <div className="space-y-2">
             {avisos.map(a => (
-              <div key={a.id} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+              <div key={a.id} className="rounded-lg border border-brand-border bg-brand-surface p-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-medium">{a.contactName || formatPhone(a.contactPhone)}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-800 text-neutral-400">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand-elevated text-brand-text-secondary">
                     {CATEGORY_LABEL[a.category] || a.category}
                   </span>
                 </div>
-                <div className="text-xs text-neutral-500 mb-1">{formatPhone(a.contactPhone)}</div>
-                <div className="text-sm text-neutral-300">{a.message}</div>
-                <div className="text-[11px] text-neutral-600 mt-1">{new Date(a.createdAt).toLocaleString('pt-BR')}</div>
+                <div className="text-xs text-brand-muted mb-1">{formatPhone(a.contactPhone)}</div>
+                <div className="text-sm text-brand-text-secondary">{a.message}</div>
+                <div className="text-[11px] text-brand-muted mt-1">{new Date(a.createdAt).toLocaleString('pt-BR')}</div>
               </div>
             ))}
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }

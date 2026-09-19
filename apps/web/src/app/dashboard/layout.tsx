@@ -31,11 +31,12 @@ function buildNav(user: any) {
   // em apps/api/src/routes/billing.ts), que concedem o Entitlement automaticamente.
   // Checa o Entitlement real (user.modules, vindo de /auth/me via getUserModules —
   // a mesma fonte de verdade do gate do backend) em vez do nome do plano, pra não
-  // duplicar a regra de bundling aqui. A página em si segue em /app/atende, só o
-  // item de menu ganha um atalho aqui no /dashboard.
+  // duplicar a regra de bundling aqui. Migrado para /dashboard/atende em 2026-09
+  // (mesmo padrão já usado por Campanhas e Copiloto — mora dentro do shell com
+  // sidebar, não mais solto em /app/atende).
   if (user?.modules?.includes('atende')) {
     const idx = nav.findIndex(i => i.href === '/dashboard/plano');
-    const atendeItem = { href: '/app/atende', icon: '🤖', label: 'Atende' };
+    const atendeItem = { href: '/dashboard/atende', icon: '🤖', label: 'Atende' };
     nav.splice(idx < 0 ? nav.length : idx, 0, atendeItem);
   }
 

@@ -59,8 +59,8 @@ export default function SyncVisualizer({ isActive = false, onComplete }: SyncVis
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="rounded-xl border border-emerald-800 bg-neutral-950 p-8 max-w-md w-full">
-        <h3 className="text-lg font-semibold text-neutral-100 mb-6 text-center">
+      <div className="rounded-xl border border-brand-primary bg-brand-elevated p-8 max-w-md w-full">
+        <h3 className="text-lg font-semibold text-brand-text mb-6 text-center">
           🔄 Sincronizando...
         </h3>
 
@@ -72,10 +72,10 @@ export default function SyncVisualizer({ isActive = false, onComplete }: SyncVis
                   <span className="inline-block animate-spin">{step.icon}</span>
                 )}
                 {step.status === 'completed' && (
-                  <span className="text-emerald-400">✅</span>
+                  <span className="text-brand-primary">✅</span>
                 )}
                 {step.status === 'pending' && (
-                  <span className="text-neutral-600">○</span>
+                  <span className="text-brand-muted">○</span>
                 )}
                 {step.status === 'error' && (
                   <span className="text-red-400">❌</span>
@@ -84,10 +84,10 @@ export default function SyncVisualizer({ isActive = false, onComplete }: SyncVis
 
               <div className="flex-1">
                 <p className={`text-sm font-medium ${
-                  step.status === 'in-progress' ? 'text-emerald-400' :
-                  step.status === 'completed' ? 'text-emerald-300' :
-                  step.status === 'error' ? 'text-red-300' :
-                  'text-neutral-500'
+                  step.status === 'in-progress' ? 'text-brand-primary' :
+                  step.status === 'completed' ? 'text-brand-primary' :
+                  step.status === 'error' ? 'text-red-400' :
+                  'text-brand-muted'
                 }`}>
                   {step.label}
                 </p>
@@ -96,8 +96,8 @@ export default function SyncVisualizer({ isActive = false, onComplete }: SyncVis
           ))}
         </div>
 
-        <div className="mt-6 pt-6 border-t border-neutral-800">
-          <p className="text-xs text-neutral-500 text-center">
+        <div className="mt-6 pt-6 border-t border-brand-border">
+          <p className="text-xs text-brand-muted text-center">
             Não feche esta janela...
           </p>
         </div>

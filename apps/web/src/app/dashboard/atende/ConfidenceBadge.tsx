@@ -21,10 +21,10 @@ export default function ConfidenceBadge({
   const isLow = confidence < 40;
 
   const colors = isHigh
-    ? { bg: 'bg-emerald-950/50', border: 'border-emerald-800/60', text: 'text-emerald-400', badge: '🟢' }
+    ? { bg: 'bg-brand-primary/50', border: 'border-brand-primary/60', text: 'text-brand-primary', badge: '🟢' }
     : isMedium
       ? { bg: 'bg-amber-950/50', border: 'border-amber-800/60', text: 'text-amber-400', badge: '🟡' }
-      : { bg: 'bg-red-950/50', border: 'border-red-800/60', text: 'text-red-400', badge: '🔴' };
+      : { bg: 'bg-red-400/10', border: 'border-red-400/30', text: 'text-red-400', badge: '🔴' };
 
   const sizes = {
     sm: 'px-2 py-1 text-xs',
@@ -51,8 +51,8 @@ export default function ConfidenceBadge({
       </div>
 
       {faqQuestion && (
-        <div className="mt-2 text-xs text-neutral-400 pt-2 border-t border-neutral-700">
-          <div className="font-medium text-neutral-300 mb-1">Baseado em:</div>
+        <div className="mt-2 text-xs text-brand-text-secondary pt-2 border-t border-brand-border">
+          <div className="font-medium text-brand-text-secondary mb-1">Baseado em:</div>
           <p className="italic">"{faqQuestion}"</p>
         </div>
       )}

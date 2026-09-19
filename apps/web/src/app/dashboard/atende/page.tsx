@@ -156,52 +156,52 @@ export default function AtendeInboxPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-300">
+      <div className="flex items-center justify-center h-64 text-brand-muted">
         Carregando conversas…
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-10">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <div className="max-w-6xl mx-auto">
         <AtendeHeader />
 
         {error && (
-          <div className="mb-6 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-red-200">
+          <div className="mb-6 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-red-400">
             {error}
           </div>
         )}
 
         {conversations.length === 0 ? (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-8 text-center">
-            <p className="text-neutral-300 font-medium">Nenhuma conversa ainda.</p>
-            <p className="text-neutral-500 text-sm mt-2 max-w-md mx-auto">
+          <div className="rounded-xl border border-brand-border bg-brand-surface p-8 text-center">
+            <p className="text-brand-text-secondary font-medium">Nenhuma conversa ainda.</p>
+            <p className="text-brand-muted text-sm mt-2 max-w-md mx-auto">
               Assim que o Atende estiver habilitado e um cliente escrever pro seu número,
               a conversa aparece aqui automaticamente.
             </p>
             <Link
-              href="/app/atende/config"
-              className="inline-block mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+              href="/dashboard/atende/config"
+              className="inline-block mt-4 rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
             >
               Configurar o Atende →
             </Link>
           </div>
         ) : (
-          <div className="flex gap-0 md:gap-4 rounded-xl border border-neutral-800 bg-neutral-900 overflow-hidden" style={{ minHeight: 480 }}>
+          <div className="flex gap-0 md:gap-4 rounded-xl border border-brand-border bg-brand-surface overflow-hidden" style={{ minHeight: 480 }}>
             {/* Lista de conversas */}
-            <div className={`${selectedId ? 'hidden md:block' : 'block'} w-full md:w-80 md:border-r md:border-neutral-800 overflow-y-auto`} style={{ maxHeight: 640 }}>
+            <div className={`${selectedId ? 'hidden md:block' : 'block'} w-full md:w-80 md:border-r md:border-brand-border overflow-y-auto`} style={{ maxHeight: 640 }}>
               {conversations.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => setSelectedId(c.id)}
-                  className={`w-full text-left px-4 py-3 border-b border-neutral-800/60 hover:bg-neutral-800/50 transition-colors ${
-                    selectedId === c.id ? 'bg-neutral-800/70' : ''
+                  className={`w-full text-left px-4 py-3 border-b border-brand-border/60 hover:bg-brand-elevated/50 transition-colors ${
+                    selectedId === c.id ? 'bg-brand-elevated/70' : ''
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium truncate">{c.contactName || c.contactPhone}</span>
-                    <span className="text-[11px] text-neutral-500 flex-shrink-0">{timeAgo(c.lastMessageAt)}</span>
+                    <span className="text-[11px] text-brand-muted flex-shrink-0">{timeAgo(c.lastMessageAt)}</span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-1">
                     {c.humanTakeover && (
@@ -212,7 +212,7 @@ export default function AtendeInboxPage() {
                     )}
                   </div>
                   {c.lastMessage && (
-                    <p className="text-sm text-neutral-500 truncate mt-1">
+                    <p className="text-sm text-brand-muted truncate mt-1">
                       {c.lastMessage.direction === 'out' ? '↩ ' : ''}
                       {c.lastMessage.content}
                     </p>
@@ -224,22 +224,22 @@ export default function AtendeInboxPage() {
             {/* Thread */}
             <div className={`${selectedId ? 'block' : 'hidden md:block'} flex-1 flex flex-col`} style={{ maxHeight: 640 }}>
               {!selected ? (
-                <div className="flex-1 flex items-center justify-center text-neutral-500 text-sm">
+                <div className="flex-1 flex items-center justify-center text-brand-muted text-sm">
                   Selecione uma conversa
                 </div>
               ) : (
                 <>
-                  <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between gap-2">
+                  <div className="px-4 py-3 border-b border-brand-border flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <button
                         onClick={() => setSelectedId(null)}
-                        className="md:hidden text-neutral-400 hover:text-neutral-200 flex-shrink-0"
+                        className="md:hidden text-brand-text-secondary hover:text-brand-text flex-shrink-0"
                       >
                         ←
                       </button>
                       <div className="min-w-0">
                         <div className="font-medium truncate">{selected.contactName || selected.contactPhone}</div>
-                        <div className="text-xs text-neutral-500 truncate">
+                        <div className="text-xs text-brand-muted truncate">
                           {selected.contactPhone}{selected.number?.displayName ? ` · ${selected.number.displayName}` : ''}
                         </div>
                       </div>
@@ -249,8 +249,8 @@ export default function AtendeInboxPage() {
                       disabled={actionBusy}
                       className={`flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
                         selected.humanTakeover
-                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                          : 'border border-neutral-700 hover:border-neutral-600 text-neutral-300'
+                          ? 'bg-brand-primary hover:opacity-90 text-white'
+                          : 'border border-brand-border hover:border-brand-primary/30 text-brand-text-secondary'
                       }`}
                     >
                       {selected.humanTakeover ? 'Devolver ao robô' : 'Assumir conversa'}
@@ -258,7 +258,7 @@ export default function AtendeInboxPage() {
                   </div>
 
                   {kbPrompt && (
-                    <div className="px-4 py-3 border-b border-neutral-800">
+                    <div className="px-4 py-3 border-b border-brand-border">
                       <SuggestionReview
                         kind="qa-list"
                         title="Salvar como KB"
@@ -272,15 +272,15 @@ export default function AtendeInboxPage() {
 
                   <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
                     {loadingMessages ? (
-                      <p className="text-neutral-500 text-sm">Carregando…</p>
+                      <p className="text-brand-muted text-sm">Carregando…</p>
                     ) : (
                       messages.map((m, i) => (
                         <div key={m.id} className={`flex ${m.direction === 'out' ? 'justify-end' : 'justify-start'}`}>
                           <div
                             className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
                               m.direction === 'out'
-                                ? 'bg-emerald-700/80 text-white rounded-br-sm'
-                                : 'bg-neutral-800 text-neutral-100 rounded-bl-sm'
+                                ? 'bg-brand-primary/80 text-white rounded-br-sm'
+                                : 'bg-brand-elevated text-brand-text rounded-bl-sm'
                             }`}
                           >
                             <p className="whitespace-pre-wrap">{m.content}</p>
@@ -305,18 +305,18 @@ export default function AtendeInboxPage() {
                   </div>
 
                   {selected.humanTakeover && (
-                    <form onSubmit={handleSendReply} className="border-t border-neutral-800 p-3 flex items-center gap-2 flex-shrink-0">
+                    <form onSubmit={handleSendReply} className="border-t border-brand-border p-3 flex items-center gap-2 flex-shrink-0">
                       <input
                         type="text"
                         value={replyText}
                         onChange={(e) => setReplyText(e.target.value)}
                         placeholder="Responder pelo WhatsApp…"
-                        className="flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                        className="flex-1 rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm focus:outline-none focus:border-brand-primary"
                       />
                       <button
                         type="submit"
                         disabled={replyBusy || !replyText.trim()}
-                        className="flex-shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                        className="flex-shrink-0 rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
                       >
                         {replyBusy ? '…' : 'Enviar'}
                       </button>
@@ -328,6 +328,6 @@ export default function AtendeInboxPage() {
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }

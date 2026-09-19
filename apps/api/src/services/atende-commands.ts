@@ -80,7 +80,7 @@ export async function handleAtendeOwnerCommand(params: {
       reply = await buildAtendeStatusSummary(userId, numberId);
     } else if (['ligar', 'ativar', 'on'].includes(cmd)) {
       if (!config) {
-        reply = 'Configure o Atende primeiro pelo painel (zapscript.me/app/atende/config) antes de ligar por aqui.';
+        reply = 'Configure o Atende primeiro pelo painel (zapscript.me/dashboard/atende/config) antes de ligar por aqui.';
       } else {
         await prisma.atendeConfig.update({ where: { numberId }, data: { enabled: true } });
         reply = 'Atende ligado ✅ — vou responder seus clientes automaticamente.';

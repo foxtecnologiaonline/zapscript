@@ -55,23 +55,23 @@ export default function InlineFAQBuilder({ onSuccess, onCancel }: InlineFAQBuild
   }
 
   const qualityColors = {
-    excellent: { bg: 'bg-emerald-950/50', border: 'border-emerald-800', text: 'text-emerald-400', badge: '🟢' },
-    good: { bg: 'bg-emerald-950/30', border: 'border-emerald-800/60', text: 'text-emerald-300', badge: '🟡' },
+    excellent: { bg: 'bg-brand-primary/50', border: 'border-brand-primary', text: 'text-brand-primary', badge: '🟢' },
+    good: { bg: 'bg-brand-primary/30', border: 'border-brand-primary/60', text: 'text-brand-primary', badge: '🟡' },
     fair: { bg: 'bg-amber-950/30', border: 'border-amber-800/60', text: 'text-amber-300', badge: '🟠' },
-    poor: { bg: 'bg-red-950/30', border: 'border-red-800/60', text: 'text-red-300', badge: '🔴' },
+    poor: { bg: 'bg-red-400/10', border: 'border-red-400/30', text: 'text-red-400', badge: '🔴' },
   };
 
   const colors = quality ? qualityColors[quality.score] : qualityColors.excellent;
 
   return (
-    <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/20 p-6">
-      <h3 className="text-lg font-semibold text-neutral-100 mb-4 flex items-center gap-2">
+    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/20 p-6">
+      <h3 className="text-lg font-semibold text-brand-text mb-4 flex items-center gap-2">
         ⬇️ Criar Pergunta Rápida
       </h3>
 
       {/* Pergunta */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-neutral-300 mb-2">Pergunta do cliente</label>
+        <label className="block text-sm font-medium text-brand-text-secondary mb-2">Pergunta do cliente</label>
         <input
           type="text"
           value={question}
@@ -81,14 +81,14 @@ export default function InlineFAQBuilder({ onSuccess, onCancel }: InlineFAQBuild
           }}
           placeholder="Ex: Qual é o horário de funcionamento?"
           maxLength={150}
-          className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-emerald-500"
+          className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm text-brand-text placeholder-neutral-600 focus:outline-none focus:border-brand-primary"
         />
-        <div className="text-xs text-neutral-500 mt-1">{question.length}/150</div>
+        <div className="text-xs text-brand-muted mt-1">{question.length}/150</div>
       </div>
 
       {/* Resposta */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-neutral-300 mb-2">Sua resposta</label>
+        <label className="block text-sm font-medium text-brand-text-secondary mb-2">Sua resposta</label>
         <textarea
           value={answer}
           onChange={(e) => {
@@ -98,9 +98,9 @@ export default function InlineFAQBuilder({ onSuccess, onCancel }: InlineFAQBuild
           placeholder="Ex: Abrimos seg–sex 9h–22h, sábado 10h–21h e domingo fechado."
           maxLength={500}
           rows={3}
-          className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-emerald-500 resize-y"
+          className="w-full rounded-lg border border-brand-border bg-brand-elevated px-3 py-2 text-sm text-brand-text placeholder-neutral-600 focus:outline-none focus:border-brand-primary resize-y"
         />
-        <div className="text-xs text-neutral-500 mt-1">{answer.length}/500</div>
+        <div className="text-xs text-brand-muted mt-1">{answer.length}/500</div>
       </div>
 
       {/* Quality Indicator */}
@@ -115,7 +115,7 @@ export default function InlineFAQBuilder({ onSuccess, onCancel }: InlineFAQBuild
               type="button"
               onClick={testQuality}
               disabled={testing}
-              className="text-xs text-neutral-400 hover:text-neutral-300"
+              className="text-xs text-brand-text-secondary hover:text-brand-text"
             >
               🔄 Testar novamente
             </button>
@@ -123,10 +123,10 @@ export default function InlineFAQBuilder({ onSuccess, onCancel }: InlineFAQBuild
 
           {quality.suggestions.length > 0 && (
             <div className="mb-3">
-              <div className="text-xs font-medium text-neutral-300 mb-2">💡 Sugestões:</div>
+              <div className="text-xs font-medium text-brand-text-secondary mb-2">💡 Sugestões:</div>
               <ul className="space-y-1">
                 {quality.suggestions.map((s, i) => (
-                  <li key={i} className="text-xs text-neutral-300">
+                  <li key={i} className="text-xs text-brand-text-secondary">
                     • {s}
                   </li>
                 ))}
@@ -136,10 +136,10 @@ export default function InlineFAQBuilder({ onSuccess, onCancel }: InlineFAQBuild
 
           {quality.issues.length > 0 && (
             <div>
-              <div className="text-xs font-medium text-neutral-300 mb-2">⚠️ Pontos a melhorar:</div>
+              <div className="text-xs font-medium text-brand-text-secondary mb-2">⚠️ Pontos a melhorar:</div>
               <ul className="space-y-1">
                 {quality.issues.map((issue, i) => (
-                  <li key={i} className="text-xs text-neutral-300">
+                  <li key={i} className="text-xs text-brand-text-secondary">
                     • {issue}
                   </li>
                 ))}
@@ -155,7 +155,7 @@ export default function InlineFAQBuilder({ onSuccess, onCancel }: InlineFAQBuild
           type="button"
           onClick={testQuality}
           disabled={testing || !question.trim() || !answer.trim()}
-          className="flex-1 rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-300 hover:border-neutral-600 hover:text-neutral-200 disabled:opacity-50 transition-colors"
+          className="flex-1 rounded-lg border border-brand-border px-4 py-2 text-sm font-medium text-brand-text-secondary hover:border-brand-primary/30 hover:text-brand-text disabled:opacity-50 transition-colors"
         >
           {testing ? '🔄 Testando...' : '✓ Testar Qualidade'}
         </button>
@@ -164,7 +164,7 @@ export default function InlineFAQBuilder({ onSuccess, onCancel }: InlineFAQBuild
           type="button"
           onClick={handleSubmit}
           disabled={submitting || !question.trim() || !answer.trim()}
-          className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+          className="flex-1 rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary disabled:opacity-50 transition-colors"
         >
           {submitting ? '💾 Salvando...' : '💾 Salvar & Testar'}
         </button>
@@ -173,14 +173,14 @@ export default function InlineFAQBuilder({ onSuccess, onCancel }: InlineFAQBuild
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-300 hover:border-neutral-600 transition-colors"
+            className="rounded-lg border border-brand-border px-3 py-2 text-sm font-medium text-brand-text-secondary hover:border-brand-primary/30 transition-colors"
           >
             ✕
           </button>
         )}
       </div>
 
-      <div className="text-xs text-neutral-500 mt-3 text-center">
+      <div className="text-xs text-brand-muted mt-3 text-center">
         O bot usará isso para responder perguntas parecidas automaticamente
       </div>
     </div>

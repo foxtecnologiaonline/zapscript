@@ -60,7 +60,7 @@ decidido (§8), basta promover o `Product`; nenhuma linha do agente muda.
 | Envia sozinho | **Nunca** sem confirmação | Sim, acima do limiar de confiança |
 | Objetivo | Decidir melhor e mais rápido | Não deixar cliente sem resposta |
 | Falha típica | Sugestão ruim → dono ignora (custo baixo) | Resposta errada em nome do negócio (custo alto) |
-| Onde vive | `apps/worker/src/copiloto.ts` + `/dashboard/copiloto` | `apps/worker/src/atende.ts` + `/app/atende` |
+| Onde vive | `apps/worker/src/copiloto.ts` + `/dashboard/copiloto` | `apps/worker/src/atende.ts` + `/dashboard/atende` |
 
 Essa separação é a decisão de arquitetura mais importante do documento. O Copiloto
 é **assistivo, não autônomo**: ele nunca escreve no chat do cliente por conta própria.
@@ -293,7 +293,7 @@ menor fricção possível entre "ver a sugestão" e "a ação acontecer".
 Inbox de cards com o briefing, as 3 opções, o histórico do contato e os botões
 Enviar / Editar / Descartar. É onde o dono revisa em lote, ajusta configuração,
 vê a taxa de acerto por técnica e gerencia grupos. Reaproveita o padrão visual de
-`apps/web/src/app/app/atende/` (incluindo `SuggestionReview.tsx`, que já
+`apps/web/src/app/dashboard/atende/` (incluindo `SuggestionReview.tsx`, que já
 implementa exatamente o fluxo sugerir → revisar → aceitar).
 
 ### 4.3 Canal do resumo de grupos

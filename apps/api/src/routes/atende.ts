@@ -948,7 +948,7 @@ export default async function atendeRoutes(app: FastifyInstance) {
         label: `3+ perguntas na FAQ (${kbCount} cadastradas)`,
         completed: kbCount >= 3,
         icon: '📚',
-        action: kbCount < 3 ? { label: 'Adicionar FAQ', href: '/app/atende/kb' } : undefined,
+        action: kbCount < 3 ? { label: 'Adicionar FAQ', href: '/dashboard/atende/kb' } : undefined,
       },
       {
         id: 'test',
