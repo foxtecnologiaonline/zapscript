@@ -69,9 +69,17 @@ Se o texto vier vazio, cortado no meio ou sem sentido nenhum, devolva-o exatamen
 
 Responda em JSON, só isto: {"text": "<texto revisado>"}`;
 
-/** Todas as sequências de dígitos do texto (preço, prazo, telefone, quantidade) — o que a Fase 1 nunca pode alterar. */
+/**
+ * Todas as sequências de dígitos do texto, NA ORDEM em que aparecem (preço,
+ * prazo, telefone, quantidade) — o que a Fase 1 nunca pode alterar.
+ *
+ * Sem ordenar: dois números iguais que trocaram de lugar (ex.: "R$100... 5
+ * dias" virar "R$5... 100 dias") são exatamente o tipo de erro que este
+ * guardrail existe pra pegar — comparar como multiset (ordenado) deixaria
+ * passar porque o conjunto {100, 5} é igual nos dois casos.
+ */
 function extractDigitSequences(text: string): string[] {
-  return (text.match(/\d+/g) || []).sort();
+  return text.match(/\d+/g) || [];
 }
 
 /**
@@ -142,17 +150,27 @@ async function processZapScreveJob(job: Job<ZapScreveJobData>) {
 
     const quickText = await refineQuickText(rawText, userId);
 
-    await prisma.zapScreveDraft.update({
-      where: { id: draftId },
+    // updateMany (não update) condicionado a status ainda 'processing': o
+    // dono pode ter descartado ou o rascunho pode ter expirado (24h,
+    // expireStaleDrafts) enquanto este job rodava — sem essa condição, um
+    // `update` incondicional reviveria um rascunho já descartado, voltando
+    // status pra 'ready' com o texto pronto pra enviar (contraria o próprio
+    // descarte e a minimização de dado do §6 do escopo).
+    const { count } = await prisma.zapScreveDraft.updateMany({
+      where: { id: draftId, status: 'processing' },
       data:  { status: 'ready', rawText, quickText, durationSec },
     });
+    if (count === 0) {
+      logger.warn(`[ZapScreve] Job ${draftId} — rascunho não está mais 'processing' (descartado/expirado), resultado descartado`);
+      return { draftId, skipped: true };
+    }
 
     logger.info(`[ZapScreve] Job ${draftId} ✅ concluído (${durationSec}s)`);
     return { draftId };
   } catch (err: any) {
     logger.error(`[ZapScreve] Job ${draftId} ❌ falhou: ${err.message}`);
-    await prisma.zapScreveDraft.update({
-      where: { id: draftId },
+    await prisma.zapScreveDraft.updateMany({
+      where: { id: draftId, status: 'processing' },
       data:  { status: 'error', errorMessage: err.message.slice(0, 500) },
     }).catch(() => null);
     throw err;

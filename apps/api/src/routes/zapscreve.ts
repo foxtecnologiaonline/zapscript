@@ -165,12 +165,22 @@ export default async function zapscreveRoutes(app: FastifyInstance) {
 
     await prisma.zapScreveDraft.update({ where: { id: draft.id }, data: { status: 'processing' } });
 
-    await zapscreveQueue.add('process', {
-      draftId:    draft.id,
-      userId,
-      numberId:   draft.numberId,
-      storageKey: draft.audioStorageKey,
-    });
+    try {
+      await zapscreveQueue.add('process', {
+        draftId:    draft.id,
+        userId,
+        numberId:   draft.numberId,
+        storageKey: draft.audioStorageKey,
+      });
+    } catch (err: any) {
+      // Enfileirar falhou (ex.: Redis fora do ar) — reverte pra 'uploading' em
+      // vez de deixar o rascunho preso em "Transcrevendo…" pra sempre (só o
+      // sweep de 24h ia resolver, sem o dono saber por quê). Reverter permite
+      // tentar de novo imediatamente com um novo POST /:id/confirm.
+      await prisma.zapScreveDraft.update({ where: { id: draft.id }, data: { status: 'uploading' } }).catch(() => null);
+      app.log.error({ err: err.message }, 'zapscreve/confirm: falha ao enfileirar');
+      return reply.code(503).send({ error: 'Não foi possível iniciar o processamento agora. Tente novamente.' });
+    }
 
     return { queued: true, draftId: draft.id };
   });

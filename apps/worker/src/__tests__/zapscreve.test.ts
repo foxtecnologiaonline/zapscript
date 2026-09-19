@@ -44,6 +44,14 @@ describe('passesEntityGuardrail', () => {
     expect(passesEntityGuardrail(raw, refined)).toBe(false);
   });
 
+  it('rejeita quando dois números trocam de lugar (mesmo conjunto, ordem errada)', () => {
+    // Comparar como multiset ordenado deixaria passar — {100, 5} é igual nos
+    // dois lados. O guardrail precisa comparar NA ORDEM em que aparecem.
+    const raw = 'fica R$100, entrego em 5 dias';
+    const refined = 'Fica R$5, entrego em 100 dias.';
+    expect(passesEntityGuardrail(raw, refined)).toBe(false);
+  });
+
   it('rejeita texto refinado vazio', () => {
     expect(passesEntityGuardrail('oi tudo bem', '')).toBe(false);
     expect(passesEntityGuardrail('oi tudo bem', '   ')).toBe(false);
