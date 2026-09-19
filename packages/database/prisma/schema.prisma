@@ -74,6 +74,7 @@ model User {
   voiceCommands           VoiceCommand[]
   salesVisits             SalesVisit[]
   legendaJobs             LegendaJob[]
+  zapScreveDrafts         ZapScreveDraft[]
   ownedTeams              Team[]              @relation("TeamOwner")
   teamMemberships         TeamMember[]
   apiKeys                 ApiKey[]
@@ -1584,6 +1585,36 @@ model LegendaJob {
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
+}
+
+// ZapScript ZapScreve — áudio do DONO vira texto refinado, enviado no lugar
+// do áudio. Direção contrária da transcrição de entrada (LegendaJob/Whisper
+// no webhook): aqui o dono grava para SI, não o cliente. Sem módulo/gate
+// próprio — acesso via requireAnyModule(['atende','copiloto']), ver
+// ESCOPO_ZAPSCREVE.md §1/§10. `sourceModule` só registra por qual porta o
+// dono entrou (métrica de adoção), nunca é usado para autorização.
+model ZapScreveDraft {
+  id              String    @id @default(cuid())
+  userId          String
+  numberId        String
+  sourceModule    String // 'atende' | 'copiloto'
+  targetPhone     String
+  targetName      String?
+  audioStorageKey String? // bucket zapscreve-uploads; null após envio/descarte/expiração (minimização)
+  rawText         String? // saída do Whisper, sem tratamento
+  quickText       String? // modo rápido: só gramática/pontuação/acentuação (Fase 1)
+  copilotoText    String? // modo copiloto: + tom aprendido (Fase 2 — depende de CopilotoStyleProfile)
+  sentText        String? // o que foi realmente enviado (pode ter sido editado à mão)
+  sentVia         String? // 'quick' | 'copiloto' | 'edited'
+  status          String    @default("uploading") // uploading | processing | ready | sent | discarded | expired | error
+  errorMessage    String?
+  durationSec     Int?
+  createdAt       DateTime  @default(now())
+  sentAt          DateTime?
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

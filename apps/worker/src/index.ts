@@ -28,6 +28,7 @@ import './crm'; // registra o cron de notificação de lembretes vencidos (ZapSc
 import './tarefas'; // registra o cron de tarefas atrasadas (ZapScript Tarefas)
 import './copiloto'; // registra o worker da fila 'copiloto' (ZapScript Copiloto — briefings ao dono)
 import { enqueueCopilotoIngest, hasCopiloto } from './copiloto'; // áudio de cliente transcrito → Copiloto
+import './zapscreve'; // registra o worker da fila 'zapscreve' (ZapScript ZapScreve — áudio do dono vira texto)
 import './campanhas-scheduler'; // registra o agendador de disparo automático (ZapScript Campanhas)
 import './mktfast-scheduler'; // registra o agendador de disparo automático (MKT-Fast)
 import './modules/campanhas-chat-notifier'; // updates de progresso a cada 30s no chat (Chatbot Campanhas)

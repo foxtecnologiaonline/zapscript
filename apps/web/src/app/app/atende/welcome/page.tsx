@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import AtendeHeader from '../AtendeHeader';
-import VoiceRecorder from '../VoiceRecorder';
+import VoiceRecorder from '@/components/VoiceRecorder';
 
 interface WNumberLite {
   id: string;

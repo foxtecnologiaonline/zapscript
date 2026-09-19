@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 
 /**
@@ -1188,18 +1189,29 @@ export default function CopilotoPage() {
         </div>
       )}
 
-      <div className="flex gap-1 mb-5 border-b border-neutral-800">
-        {(['inbox', 'conversas', 'metricas', 'grupos'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === t ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            {t === 'inbox' ? 'Inbox' : t === 'conversas' ? 'Conversas' : t === 'metricas' ? 'Métricas' : 'Grupos'}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-2 mb-5 border-b border-neutral-800">
+        <div className="flex gap-1">
+          {(['inbox', 'conversas', 'metricas', 'grupos'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                tab === t ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-neutral-500 hover:text-neutral-300'
+              }`}
+            >
+              {t === 'inbox' ? 'Inbox' : t === 'conversas' ? 'Conversas' : t === 'metricas' ? 'Métricas' : 'Grupos'}
+            </button>
+          ))}
+        </div>
+        {/* ZapScript ZapScreve — feature nova sem módulo próprio, vive dentro do
+            Atende e do Copiloto (ESCOPO_ZAPSCREVE.md §1/§10). Link solto (não é
+            uma aba do `tab` state) porque navega pra fora de /dashboard/copiloto. */}
+        <Link
+          href="/app/zapscreve?from=copiloto"
+          className="mb-2 shrink-0 text-xs font-medium text-emerald-400 hover:text-emerald-300"
+        >
+          🎙️ Gravar mensagem →
+        </Link>
       </div>
 
       {tab === 'inbox'

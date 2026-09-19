@@ -117,3 +117,18 @@ export const copilotoQueue = new Queue('copiloto', {
     removeOnFail:     { count: 1000, age: 7 * 24 * 60 * 60 },
   },
 });
+
+// ── Fila do ZapScript ZapScreve (áudio do dono vira texto refinado) ──────────
+// Só o job 'process' (transcrever + refinar) passa por aqui — o envio em si
+// (POST /zapscreve/:id/send) é síncrono na API, igual ao Copiloto
+// (copiloto-actions.ts): ação do usuário clicando "Enviar", não precisa de
+// fila. Ver ESCOPO_ZAPSCREVE.md §3.
+export const zapscreveQueue = new Queue('zapscreve', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff:  { type: 'exponential', delay: 5_000 },
+    removeOnComplete: { count: 500, age: 24 * 60 * 60 },
+    removeOnFail:     { count: 1000, age: 7 * 24 * 60 * 60 },
+  },
+});

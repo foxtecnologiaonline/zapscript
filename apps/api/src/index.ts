@@ -331,6 +331,7 @@ app.register(import('./routes/voice-commands'),  { prefix: '/voice-commands' });
 app.register(import('./routes/modules/vendas'),  { prefix: '/modules/vendas' });
 app.register(import('./routes/cobranca'),        { prefix: '/cobranca' });
 app.register(import('./routes/legendas'),        { prefix: '/legendas' });
+app.register(import('./routes/zapscreve'),       { prefix: '/zapscreve' });
 // Plano Empresas — multi-seat MVP
 app.register(import('./routes/teams'),           { prefix: '/teams' });
 // API pública ZapScript 2.0 (tier Empresas) — gestão de chaves (sessão) + consumo externo (X-Api-Key)

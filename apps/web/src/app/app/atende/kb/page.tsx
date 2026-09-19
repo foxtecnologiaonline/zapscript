@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import AtendeHeader from '../AtendeHeader';
-import VoiceRecorder from '../VoiceRecorder';
+import VoiceRecorder from '@/components/VoiceRecorder';
 import SuggestionReview, { QaSuggestion } from '../SuggestionReview';
 import { NICHE_TEMPLATES } from '../nicheTemplates';
 
