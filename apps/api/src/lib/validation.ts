@@ -333,6 +333,22 @@ export const legendaUploadUrlSchema = z.object({
   sizeBytes:   z.number().positive().max(500 * 1024 * 1024, 'Arquivo acima do limite de 500MB'),
 });
 
+// ── ZapScript ZapScreve — áudio do dono vira texto refinado (ver ESCOPO_ZAPSCREVE.md) ──
+export const zapscreveUploadUrlSchema = z.object({
+  filename:     z.string().min(1).max(200),
+  contentType:  z.string().min(3).max(100),
+  sizeBytes:    z.number().positive().max(25 * 1024 * 1024, 'Áudio acima do limite de 25MB'),
+  numberId:     z.string().min(1),
+  targetPhone:  z.string().min(8).max(20),
+  targetName:   z.string().max(120).optional(),
+  sourceModule: z.enum(['atende', 'copiloto']),
+});
+
+export const zapscreveSendSchema = z.object({
+  variant: z.enum(['quick', 'copiloto', 'edited']),
+  text:    z.string().min(1).max(4000).optional(), // obrigatório só quando variant === 'edited'
+});
+
 // ── Campanhas Schemas ─────────────────────────────────────
 export const createCampanhaSchema = z.object({
   name:               z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),

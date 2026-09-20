@@ -11,6 +11,9 @@ const ALL_TABS = [
   { href: '/dashboard/atende/config',    label: 'Configuração',         minRole: 'manager' },
   { href: '/dashboard/atende/welcome',   label: 'Boas-vindas',          minRole: 'manager' },
   { href: '/dashboard/atende/kb',        label: 'Base de conhecimento', minRole: 'manager' },
+  // ZapScript ZapScreve não faz parte da migração de Atende para /dashboard
+  // (vive em /app/zapscreve — sem módulo/gate próprio, ver ESCOPO_ZAPSCREVE.md).
+  { href: '/app/zapscreve',              label: '🎙️ ZapScreve',         minRole: 'agent' },
 ] as const;
 
 const ROLE_RANK: Record<string, number> = { agent: 0, manager: 1, admin: 2, owner: 3 };

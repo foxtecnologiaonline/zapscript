@@ -128,3 +128,36 @@ export function requireModule(key: string) {
     // ok — segue para o handler
   };
 }
+
+/**
+ * preHandler factory: exige que o usuário tenha PELO MENOS UM dos módulos em
+ * `keys` ativo (OR, ao contrário de requireModule que é AND com dependsOn).
+ *
+ * Uso real: ZapScript ZapScreve não tem módulo/gate próprio no catálogo —
+ * é uma feature que vive dentro do Atende e do Copiloto (ver
+ * ESCOPO_ZAPSCREVE.md §1/§10). Quem já tem qualquer um dos dois já tem
+ * acesso, sem precisar contratar nada novo.
+ */
+export function requireAnyModule(keys: string[]) {
+  return async (req: any, reply: FastifyReply) => {
+    const userId = req.user?.sub;
+    if (!userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return reply;
+    }
+
+    const owned = await getUserModules(userId);
+    const ownedSet = new Set(owned);
+
+    if (!keys.some((k) => ownedSet.has(k))) {
+      reply.code(402).send({
+        error:          'Módulo não contratado',
+        message:        `Este recurso requer um destes módulos: ${keys.join(' ou ')}.`,
+        moduleRequired: keys[0],
+        upsellUrl:      `/app?upsell=${encodeURIComponent(keys[0])}`,
+      });
+      return reply;
+    }
+    // ok — segue para o handler
+  };
+}
