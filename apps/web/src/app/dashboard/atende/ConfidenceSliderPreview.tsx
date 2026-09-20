@@ -89,7 +89,7 @@ export default function ConfidenceSliderPreview({
       </div>
 
       {/* Recomendação */}
-      <div className="rounded-lg border border-brand-primary/40 bg-brand-primary/30 p-3 mb-6">
+      <div className="rounded-lg border border-brand-primary/40 bg-brand-primary/10 p-3 mb-6">
         <p className="text-sm text-brand-primary">{getRecommendation(threshold)}</p>
       </div>
 

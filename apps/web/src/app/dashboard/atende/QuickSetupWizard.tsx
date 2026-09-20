@@ -81,7 +81,7 @@ export default function QuickSetupWizard({ onComplete, onCancel }: QuickSetupWiz
   }
 
   return (
-    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/20 p-5">
+    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/10 p-5">
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs text-brand-primary">Pergunta {step + 1} de {STEPS.length}</span>
         <button onClick={onCancel} className="text-xs text-brand-text-secondary hover:text-brand-text">

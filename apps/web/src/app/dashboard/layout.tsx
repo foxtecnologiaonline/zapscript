@@ -8,9 +8,10 @@ import { api } from '@/lib/api';
 // "Carteira" (Regulamento v4) e "Campanhas" (decisão de produto, 2026-09-09 —
 // deixou de ser perk pago, ver CAMPANHAS_ARQUITETURA.md §16) são automáticas
 // pra todo mundo — sem aprovação, sem módulo/Entitlement — por isso entram
-// direto no menu base, sem condição nenhuma. Único módulo com página nativa
-// em /dashboard (os demais seguem em /app/<key>, sem sidebar própria ainda)
-// — ver apps/web/src/lib/modules.ts (moduleRoute) e CAMPANHAS_ARQUITETURA.md §10.
+// direto no menu base, sem condição nenhuma. Campanhas, Copiloto e Atende
+// vivem nativamente em /dashboard (os demais seguem em /app/<key>, sem
+// sidebar própria ainda) — ver apps/web/src/lib/modules.ts (moduleRoute)
+// e CAMPANHAS_ARQUITETURA.md §10.
 const NAV_BASE = [
   { href: '/dashboard',               icon: '🏠', label: 'Dashboard' },
   { href: '/dashboard/transcricoes',  icon: '📝', label: 'Conversões' },

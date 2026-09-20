@@ -364,7 +364,7 @@ function AtendeKbContent() {
                       </button>
                       <button
                         onClick={() => handleDelete(entry.id)}
-                        className="text-xs text-red-400 hover:text-red-400"
+                        className="text-xs text-red-400 hover:opacity-80"
                       >
                         Excluir
                       </button>

@@ -285,7 +285,7 @@ export default function AtendeWelcomePage() {
                               setRemoveAudio(true);
                               setAudioPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
                             }}
-                            className="text-xs text-red-400 hover:text-red-400"
+                            className="text-xs text-red-400 hover:opacity-80"
                           >
                             remover
                           </button>
@@ -332,7 +332,7 @@ export default function AtendeWelcomePage() {
                               setVideoPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
                               if (videoInputRef.current) videoInputRef.current.value = '';
                             }}
-                            className="text-xs text-red-400 hover:text-red-400"
+                            className="text-xs text-red-400 hover:opacity-80"
                           >
                             remover
                           </button>

@@ -112,7 +112,7 @@ export default function ConversationReplayCoach({
       </div>
 
       {/* Dica */}
-      <div className="rounded-lg border border-brand-primary/40 bg-brand-primary/30 p-3">
+      <div className="rounded-lg border border-brand-primary/40 bg-brand-primary/10 p-3">
         <div className="text-sm font-medium text-brand-primary mb-2">💡 Como melhorar:</div>
         <p className="text-xs text-brand-primary">
           {matchedFAQs.length === 0

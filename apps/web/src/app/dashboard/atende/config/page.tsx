@@ -276,7 +276,7 @@ export default function AtendeConfigPage() {
                             onClick={() => applyNicheTemplate(t)}
                             className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                               selectedNiche?.key === t.key
-                                ? 'border-brand-primary bg-brand-primary/40 text-brand-primary'
+                                ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
                                 : 'border-brand-border text-brand-text-secondary hover:border-brand-primary/30'
                             }`}
                           >

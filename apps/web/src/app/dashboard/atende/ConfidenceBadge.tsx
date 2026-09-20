@@ -21,9 +21,9 @@ export default function ConfidenceBadge({
   const isLow = confidence < 40;
 
   const colors = isHigh
-    ? { bg: 'bg-brand-primary/50', border: 'border-brand-primary/60', text: 'text-brand-primary', badge: '🟢' }
+    ? { bg: 'bg-brand-primary/10', border: 'border-brand-primary/60', text: 'text-brand-primary', badge: '🟢' }
     : isMedium
-      ? { bg: 'bg-amber-950/50', border: 'border-amber-800/60', text: 'text-amber-400', badge: '🟡' }
+      ? { bg: 'bg-amber-400/10', border: 'border-amber-400/30', text: 'text-amber-400', badge: '🟡' }
       : { bg: 'bg-red-400/10', border: 'border-red-400/30', text: 'text-red-400', badge: '🔴' };
 
   const sizes = {

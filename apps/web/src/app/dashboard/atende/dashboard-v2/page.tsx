@@ -41,7 +41,7 @@ export default function AtendeDashboardV2() {
         ) : (
           <button
             onClick={() => setShowFAQBuilder(true)}
-            className="w-full rounded-xl border border-brand-primary/60 bg-brand-primary/20 p-6 text-left hover:bg-brand-primary/30 transition-colors"
+            className="w-full rounded-xl border border-brand-primary/60 bg-brand-primary/10 p-6 text-left hover:bg-brand-primary/20 transition-colors"
           >
             <div className="flex items-center justify-between">
               <div>

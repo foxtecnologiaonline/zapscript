@@ -62,17 +62,17 @@ export default function PerformanceMetricsBadge() {
       {/* Métricas em grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {/* Auto-resolvidas */}
-        <div className="rounded-lg bg-brand-primary/50 border border-brand-primary/40 p-4">
+        <div className="rounded-lg bg-brand-primary/10 border border-brand-primary/40 p-4">
           <div className="text-xs text-brand-primary uppercase tracking-wider mb-1">Automático</div>
           <div className="text-2xl font-bold text-brand-primary">{metrics.autoResolved}%</div>
           <div className="text-[10px] text-brand-primary mt-1">de respostas</div>
         </div>
 
         {/* Escaladas */}
-        <div className="rounded-lg bg-amber-950/50 border border-amber-800/40 p-4">
-          <div className="text-xs text-amber-600 uppercase tracking-wider mb-1">Escalado</div>
+        <div className="rounded-lg bg-amber-400/10 border border-amber-400/30 p-4">
+          <div className="text-xs text-amber-400 uppercase tracking-wider mb-1">Escalado</div>
           <div className="text-2xl font-bold text-amber-400">{metrics.escalated}%</div>
-          <div className="text-[10px] text-amber-600 mt-1">para humano</div>
+          <div className="text-[10px] text-amber-400 mt-1">para humano</div>
         </div>
 
         {/* Confiança */}

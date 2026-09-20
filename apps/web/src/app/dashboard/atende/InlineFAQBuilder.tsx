@@ -55,16 +55,16 @@ export default function InlineFAQBuilder({ onSuccess, onCancel }: InlineFAQBuild
   }
 
   const qualityColors = {
-    excellent: { bg: 'bg-brand-primary/50', border: 'border-brand-primary', text: 'text-brand-primary', badge: '🟢' },
-    good: { bg: 'bg-brand-primary/30', border: 'border-brand-primary/60', text: 'text-brand-primary', badge: '🟡' },
-    fair: { bg: 'bg-amber-950/30', border: 'border-amber-800/60', text: 'text-amber-300', badge: '🟠' },
+    excellent: { bg: 'bg-brand-primary/10', border: 'border-brand-primary', text: 'text-brand-primary', badge: '🟢' },
+    good: { bg: 'bg-brand-primary/10', border: 'border-brand-primary/60', text: 'text-brand-primary', badge: '🟡' },
+    fair: { bg: 'bg-amber-400/10', border: 'border-amber-400/30', text: 'text-amber-300', badge: '🟠' },
     poor: { bg: 'bg-red-400/10', border: 'border-red-400/30', text: 'text-red-400', badge: '🔴' },
   };
 
   const colors = quality ? qualityColors[quality.score] : qualityColors.excellent;
 
   return (
-    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/20 p-6">
+    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/10 p-6">
       <h3 className="text-lg font-semibold text-brand-text mb-4 flex items-center gap-2">
         ⬇️ Criar Pergunta Rápida
       </h3>

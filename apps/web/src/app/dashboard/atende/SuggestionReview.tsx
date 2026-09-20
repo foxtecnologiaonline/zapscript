@@ -53,7 +53,7 @@ function TextSuggestion(props: Extract<SuggestionReviewProps, { kind: 'text' }>)
   const busy = saving || !!props.busy;
 
   return (
-    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/20 p-5">
+    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/10 p-5">
       <h3 className="font-medium text-brand-primary">{props.title}</h3>
       {props.description && <p className="text-xs text-brand-text-secondary mt-1 mb-3">{props.description}</p>}
       <textarea
@@ -121,7 +121,7 @@ function QaListSuggestion(props: Extract<SuggestionReviewProps, { kind: 'qa-list
   }
 
   return (
-    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/20 p-5">
+    <div className="rounded-xl border border-brand-primary/60 bg-brand-primary/10 p-5">
       <h3 className="font-medium text-brand-primary">{props.title}</h3>
       {props.description && <p className="text-xs text-brand-text-secondary mt-1 mb-3">{props.description}</p>}
 

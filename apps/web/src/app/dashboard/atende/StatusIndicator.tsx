@@ -80,13 +80,13 @@ export default function StatusIndicator() {
           </div>
         </div>
 
-        <div className="rounded-lg bg-brand-primary/50 p-3 border border-brand-primary/40">
+        <div className="rounded-lg bg-brand-primary/10 p-3 border border-brand-primary/40">
           <div className="text-[10px] text-brand-primary uppercase tracking-wider">✅ Automático</div>
           <div className="text-lg font-bold text-brand-primary mt-1">{status.autoResolved}</div>
         </div>
 
-        <div className="rounded-lg bg-amber-950/50 p-3 border border-amber-800/40">
-          <div className="text-[10px] text-amber-600 uppercase tracking-wider">👤 Escalado</div>
+        <div className="rounded-lg bg-amber-400/10 p-3 border border-amber-400/30">
+          <div className="text-[10px] text-amber-400 uppercase tracking-wider">👤 Escalado</div>
           <div className="text-lg font-bold text-amber-400 mt-1">{status.escalated}</div>
         </div>
       </div>

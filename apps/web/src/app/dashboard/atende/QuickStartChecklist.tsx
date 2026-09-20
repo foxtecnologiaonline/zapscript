@@ -54,7 +54,7 @@ export default function QuickStartChecklist() {
   const progressPercent = Math.round(checklist.progress * 100);
 
   return (
-    <div className={`rounded-xl border ${checklist.allComplete ? 'border-brand-primary/60 bg-brand-primary/20' : 'border-amber-800/60 bg-amber-950/20'} p-6`}>
+    <div className={`rounded-xl border ${checklist.allComplete ? 'border-brand-primary/60 bg-brand-primary/10' : 'border-amber-400/30 bg-amber-400/10'} p-6`}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-brand-text flex items-center gap-2">
           🚀 Quick Start — {progressPercent}%
@@ -84,7 +84,7 @@ export default function QuickStartChecklist() {
             key={item.id}
             className={`rounded-lg border p-3 flex items-center justify-between transition-colors ${
               item.completed
-                ? 'border-brand-primary/40 bg-brand-primary/20'
+                ? 'border-brand-primary/40 bg-brand-primary/10'
                 : 'border-brand-border bg-brand-surface/50 hover:bg-brand-elevated/50'
             }`}
           >
@@ -117,7 +117,7 @@ export default function QuickStartChecklist() {
       )}
 
       {checklist.allComplete && (
-        <div className="rounded-lg border border-brand-primary bg-brand-primary/30 p-3 text-sm text-brand-primary text-center font-medium">
+        <div className="rounded-lg border border-brand-primary bg-brand-primary/10 p-3 text-sm text-brand-primary text-center font-medium">
           ✨ Parabéns! Seu Atende está pronto. Clientes agora recebem respostas automáticas.
         </div>
       )}
