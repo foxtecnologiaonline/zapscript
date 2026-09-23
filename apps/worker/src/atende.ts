@@ -3,6 +3,7 @@ import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
 import { captureJobFailure, captureWorkerError } from './lib/sentry';
+import { recordFailedJob } from './lib/dlq';
 import { sendMessageViaEvolution, downloadAudioFromEvolution } from './services/evolution';
 import { convertToMp3, estimateMp3DurationSec } from './services/audio';
 import { transcribeAudio } from './services/whisper';
@@ -247,6 +248,7 @@ atendeWorker.on('completed', (job, result) => {
 
 atendeWorker.on('failed', (job, err) => {
   captureJobFailure('atende-replies', job, err);
+  void recordFailedJob('atende-replies', job, err);
   logger.error(`[Atende] ❌ Job ${job?.id} falhou: ${err.message}`);
 });
 

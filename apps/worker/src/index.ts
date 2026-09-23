@@ -16,6 +16,7 @@ import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encry
 import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
 import { initSentry, captureJobFailure, captureWorkerError, flushSentry } from './lib/sentry';
+import { recordFailedJob } from './lib/dlq';
 import { logAiUsage } from './lib/aiUsage';
 import { processCampanhaJob, markCampanhaJobExhausted } from './modules/campanhas';
 import { processMissionJob, markMissionJobExhausted } from './modules/mktfast';
@@ -1809,6 +1810,7 @@ worker.on('completed', (job, result) => {
 
 worker.on('failed', (job, err) => {
   captureJobFailure('transcriptions', job, err);
+  void recordFailedJob('transcriptions', job, err);
   const attempts = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 4;
   logger.error(
@@ -1846,6 +1848,7 @@ legendaWorker.on('completed', (job) => {
 
 legendaWorker.on('failed', (job, err) => {
   captureJobFailure('legendas', job, err);
+  void recordFailedJob('legendas', job, err);
   const attempts = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 2;
   logger.error(`[LegendaWorker] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
@@ -1885,6 +1888,7 @@ campanhasWorker.on('completed', (job, result) => {
 
 campanhasWorker.on('failed', (job, err) => {
   captureJobFailure('campanhas', job, err);
+  void recordFailedJob('campanhas', job, err);
   const attempts    = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 3;
   logger.error(`[Campanhas] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
@@ -1926,6 +1930,7 @@ mktfastWorker.on('completed', (job, result) => {
 
 mktfastWorker.on('failed', (job, err) => {
   captureJobFailure('mktfast', job, err);
+  void recordFailedJob('mktfast', job, err);
   const attempts    = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 3;
   logger.error(`[MKT-Fast] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);

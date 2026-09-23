@@ -3,6 +3,7 @@ import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
 import { captureJobFailure, captureWorkerError } from './lib/sentry';
+import { recordFailedJob } from './lib/dlq';
 import { sendMessageViaEvolution } from './services/evolution';
 import {
   triageConversation, buildBriefing, buildGroupDigest,
@@ -424,6 +425,7 @@ const copilotoWorker = new Worker('copiloto', processCopilotoJob, {
 
 copilotoWorker.on('failed', (job, err) => {
   captureJobFailure('copiloto', job, err);
+  void recordFailedJob('copiloto', job, err);
   logger.error(`[Copiloto] ❌ Job ${job?.id} (${job?.name}) falhou: ${err.message}`);
 });
 

@@ -5,6 +5,7 @@ import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
 import { captureJobFailure, captureWorkerError } from './lib/sentry';
+import { recordFailedJob } from './lib/dlq';
 import { transcribeAudio } from './services/whisper';
 import { convertToMp3 } from './services/audio';
 import { buildModelChain, callAiWithFallback, ModelSpec } from './services/ai-fallback';
@@ -193,6 +194,7 @@ zapscreveWorker.on('completed', (job) => {
 
 zapscreveWorker.on('failed', (job, err) => {
   captureJobFailure('zapscreve', job, err);
+  void recordFailedJob('zapscreve', job, err);
   const attempts = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 2;
   logger.error(`[ZapScreveWorker] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);

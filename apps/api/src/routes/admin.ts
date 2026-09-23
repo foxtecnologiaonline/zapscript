@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
+import { safeCompare } from '../lib/safeCompare';
 import { retryWithBackoff } from '../lib/db-retry';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
@@ -27,14 +28,6 @@ const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!,
 );
-
-function safeCompare(a: string | undefined, b: string | undefined): boolean {
-  if (!a || !b) return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
 
 function buildTesterMessage(name: string, link: string): string {
   return `Oi, ${name}! 👋

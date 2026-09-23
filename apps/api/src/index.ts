@@ -314,6 +314,7 @@ app.register(import('./routes/admin'),          { prefix: '/sys/g5r8t2' });
 app.register(import('./routes/admin-master'),   { prefix: '/sys/g5r8t2/master' });
 app.register(import('./routes/suporte-admin'),  { prefix: '/sys/g5r8t2/suporte' });
 app.register(import('./routes/mktfast-admin'),  { prefix: '/sys/g5r8t2/mktfast' });
+app.register(import('./routes/admin-dlq'),      { prefix: '/sys/g5r8t2/failed-jobs' });
 app.register(import('./routes/invites'),         { prefix: '/invites' });
 app.register(import('./routes/privacy'),         { prefix: '/privacy' });
 app.register(import('./routes/webhook-config'),  { prefix: '/webhook-config' });

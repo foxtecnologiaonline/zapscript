@@ -132,3 +132,19 @@ export const zapscreveQueue = new Queue('zapscreve', {
     removeOnFail:     { count: 1000, age: 7 * 24 * 60 * 60 },
   },
 });
+
+// ── Fila do Comando de Voz Universal ─────────────────────────────────────────
+// A API não PRODUZ para esta fila (quem enfileira é o worker, depois de
+// transcrever a self-note — ver apps/worker/src/lib/queue.ts). Ela existe aqui
+// só para o replay do dead-letter queue conseguir reenfileirar um job desta
+// fila como o de qualquer outra. Opções idênticas às do produtor real; se
+// divergirem, o job replayado teria política de retry diferente do original.
+export const voiceCommandQueue = new Queue('voice-commands', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff:  { type: 'exponential', delay: 5_000 },
+    removeOnComplete: { count: 500, age: 48 * 60 * 60 },
+    removeOnFail:     { count: 1_000, age: 7 * 24 * 60 * 60 },
+  },
+});
