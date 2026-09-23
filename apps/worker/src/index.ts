@@ -22,13 +22,17 @@ import {
   planEfetivo, audioQuotaFor, pickFooterVariant, formatSavedTime,
   MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
 } from './lib/freemium';
-import './atende'; // registra o worker da fila 'atende-replies' (ZapScript Atende)
-import './voice-command'; // registra o worker da fila 'voice-commands' (Comando de Voz Universal)
+// Os imports nomeados abaixo também registram os workers (o módulo é executado
+// igual a um import de efeito colateral) — a referência é necessária para que o
+// graceful shutdown no fim deste arquivo consiga fechar TODAS as filas, não só
+// as declaradas aqui.
+import { atendeWorker } from './atende'; // fila 'atende-replies' (ZapScript Atende)
+import { voiceCommandWorker } from './voice-command'; // fila 'voice-commands' (Comando de Voz Universal)
 import './crm'; // registra o cron de notificação de lembretes vencidos (ZapScript CRM)
 import './tarefas'; // registra o cron de tarefas atrasadas (ZapScript Tarefas)
-import './copiloto'; // registra o worker da fila 'copiloto' (ZapScript Copiloto — briefings ao dono)
-import { enqueueCopilotoIngest, hasCopiloto } from './copiloto'; // áudio de cliente transcrito → Copiloto
-import './zapscreve'; // registra o worker da fila 'zapscreve' (ZapScript ZapScreve — áudio do dono vira texto)
+// fila 'copiloto' (ZapScript Copiloto — briefings ao dono) + áudio de cliente transcrito → Copiloto
+import { copilotoWorker, enqueueCopilotoIngest, hasCopiloto } from './copiloto';
+import { zapscreveWorker } from './zapscreve'; // fila 'zapscreve' (áudio do dono vira texto)
 import './campanhas-scheduler'; // registra o agendador de disparo automático (ZapScript Campanhas)
 import './mktfast-scheduler'; // registra o agendador de disparo automático (MKT-Fast)
 import './modules/campanhas-chat-notifier'; // updates de progresso a cada 30s no chat (Chatbot Campanhas)
@@ -2818,25 +2822,61 @@ cleanupOptinTimeouts();
 setInterval(cleanupOptinTimeouts, 5 * 60 * 1000); // 5 minutos
 
 // ── Graceful shutdown ────────────────────────────────────────────
-process.on('SIGTERM', async () => {
-  logger.info('Worker encerrando...');
+// Fecha TODAS as filas registradas neste processo. Faltando qualquer uma aqui,
+// os jobs em voo dela são mortos sem liberar o lock no restart do deploy: ficam
+// presos até lockDuration expirar e só então voltam pelo caminho de stalled —
+// e um job que já produziu efeito externo (mensagem enviada ao WhatsApp) antes
+// de ser morto é reprocessado, ou seja, envio duplicado para o cliente.
+const ALL_WORKERS = [
+  worker,             // 'transcriptions'
+  legendaWorker,      // 'legendas'
+  campanhasWorker,    // 'campanhas'
+  mktfastWorker,      // 'mktfast'
+  atendeWorker,       // 'atende-replies'
+  voiceCommandWorker, // 'voice-commands'
+  copilotoWorker,     // 'copiloto'
+  zapscreveWorker,    // 'zapscreve'
+];
+
+let shuttingDown = false;
+
+async function gracefulShutdown(signal: string) {
+  // Um segundo SIGTERM/SIGINT (ex.: docker compose stop seguido de Ctrl+C) não
+  // pode reiniciar o processo de shutdown nem derrubar o que já está fechando.
+  if (shuttingDown) {
+    logger.warn(`[Worker] ${signal} recebido durante shutdown — ignorando`);
+    return;
+  }
+  shuttingDown = true;
+
+  logger.info(`Worker encerrando (${signal})...`);
   const forceExit = setTimeout(() => {
     logger.error('Worker graceful shutdown timeout — forçando saída');
     process.exit(1);
   }, 30_000);
-  try {
-    await worker.close();
-    await legendaWorker.close();
-    await campanhasWorker.close();
-    await prisma.$disconnect();
-    clearTimeout(forceExit);
-    process.exit(0);
-  } catch (err) {
-    logger.error('Erro ao encerrar worker', { err: (err as Error).message });
-    clearTimeout(forceExit);
-    process.exit(1);
+
+  // Em paralelo e com allSettled: uma fila lenta não pode consumir sozinha o
+  // orçamento de 30s das outras, e uma que falhe ao fechar não pode impedir
+  // que as demais liberem seus locks.
+  const results = await Promise.allSettled(ALL_WORKERS.map(w => w.close()));
+  for (const r of results) {
+    if (r.status === 'rejected') {
+      logger.error('Erro ao fechar fila no shutdown', { err: String(r.reason?.message ?? r.reason) });
+    }
   }
-});
+
+  await prisma.$disconnect().catch((err: Error) =>
+    logger.error('Erro ao desconectar Prisma no shutdown', { err: err.message }));
+
+  clearTimeout(forceExit);
+  const failed = results.some(r => r.status === 'rejected');
+  process.exit(failed ? 1 : 0);
+}
+
+process.on('SIGTERM', () => { void gracefulShutdown('SIGTERM'); });
+// SIGINT (Ctrl+C em dev / `docker compose down` em alguns runtimes) passava
+// direto pelo default do Node e matava os jobs em voo do mesmo jeito.
+process.on('SIGINT', () => { void gracefulShutdown('SIGINT'); });
 
 // ── Helper ───────────────────────────────────────────────────────
 function log(job: Job, msg: string) {
