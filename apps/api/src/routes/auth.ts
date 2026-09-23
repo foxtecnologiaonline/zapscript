@@ -598,6 +598,20 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Erro ao redefinir senha. Tente novamente.' });
       }
 
+      // Trocar a senha DERRUBA todas as sessões abertas. O motivo canônico de
+      // redefinir senha é suspeita de invasão — sem isto, o refresh token que
+      // o invasor já tenha continuaria válido por 30 dias, exatamente o que a
+      // troca de senha deveria cortar. (Antes da rotação de refresh token não
+      // havia como revogar nada, então a omissão não aparecia.)
+      const encerradas = await revokeAllForUser(userData.user.id)
+        .catch((err: Error) => {
+          logger.error(`[Auth] Falha ao revogar sessões após reset de senha: ${err.message}`);
+          return 0;
+        });
+      if (encerradas > 0) {
+        logger.info(`[Auth] ${encerradas} sessão(ões) encerrada(s) após redefinição de senha`);
+      }
+
       return { message: 'Senha redefinida com sucesso! Faça login com sua nova senha.' };
     }
   );
@@ -693,8 +707,6 @@ export default async function authRoutes(app: FastifyInstance) {
     }
   );
 
-  // ── GET /auth/me ──────────────────────────────────────────────────────────
-  // C3: Retornar apenas campos necessários ao frontend (sem metadados internos de compliance)
   // ── POST /auth/refresh ────────────────────────────────────────────────────
   // Troca um refresh token válido por um access novo + refresh novo (rotação).
   // Não exige Authorization: é justamente o caminho de quando o access expirou.
@@ -752,6 +764,8 @@ export default async function authRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // ── GET /auth/me ──────────────────────────────────────────────────────────
+  // C3: Retornar apenas campos necessários ao frontend (sem metadados internos de compliance)
   app.get('/me', { preHandler: [(app as any).authenticate] }, async (req: any) => {
     const user = await prisma.user.findUnique({
       where:  { id: req.user.sub },

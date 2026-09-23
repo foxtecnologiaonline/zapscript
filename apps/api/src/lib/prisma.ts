@@ -40,12 +40,33 @@ const datasourceUrl = buildDatasourceUrl();
 // verdade (limit/offset explícitos) é feita nas rotas que listam coleções que
 // crescem com o uso.
 //
+// Cobertura: a extensão intercepta findMany de topo. Relação carregada por
+// include/select NÃO passa por aqui — esse caso continua sem teto.
+//
 // E, principalmente, NUNCA trunca em silêncio: ao bater o teto sai um warn
 // nomeando o model, que é o sinal de que aquela query precisa de paginação
 // real. Silêncio aqui seria pior que o problema original — uma varredura que
 // espera 6000 linhas e recebe 5000 quebraria regra de negócio sem deixar
 // rastro.
-const FIND_MANY_HARD_CAP = parseInt(process.env.PRISMA_FIND_MANY_CAP || '5000', 10);
+// Validado, e não só parseInt: este número entra como `take` em TODA query
+// sem take da API. Um PRISMA_FIND_MANY_CAP mal digitado viraria NaN (take:NaN)
+// ou 0 (zero linhas em tudo) — quebrando a API inteira em silêncio por causa
+// de uma variável de ambiente. Valor inválido cai no default e avisa.
+const CAP_DEFAULT = 5_000;
+function lerCap(): number {
+  const bruto = process.env.PRISMA_FIND_MANY_CAP;
+  if (!bruto) return CAP_DEFAULT;
+  const n = Number(bruto);
+  if (!Number.isInteger(n) || n < 1) {
+    logger.warn(
+      { valor: bruto, usando: CAP_DEFAULT },
+      '[Prisma] PRISMA_FIND_MANY_CAP inválido (precisa ser inteiro >= 1) — usando o default.',
+    );
+    return CAP_DEFAULT;
+  }
+  return n;
+}
+const FIND_MANY_HARD_CAP = lerCap();
 
 function withFindManyCap<T extends PrismaClient>(client: T) {
   return client.$extends({

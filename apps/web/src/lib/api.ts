@@ -52,7 +52,19 @@ async function refreshSession(): Promise<boolean> {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ refreshToken }),
       });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        // O single-flight só vale DENTRO desta aba. Com duas abas abertas,
+        // cada uma tem seu próprio contexto JS e as duas renovam ao mesmo
+        // tempo com o mesmo refresh; o servidor deixa uma ganhar e recusa a
+        // outra. Sem este trecho, a aba perdedora tratava a recusa como
+        // "sessão acabou" e deslogava o usuário — a cada hora, só por ter
+        // duas abas abertas.
+        //
+        // Se o refresh guardado mudou enquanto esperávamos, foi a outra aba
+        // que rotacionou com sucesso: a sessão está viva e é só seguir com o
+        // token novo.
+        return getRefreshToken() !== refreshToken;
+      }
       const data = await res.json();
       if (!data?.token) return false;
       storeTokens(data.token, data.refreshToken);

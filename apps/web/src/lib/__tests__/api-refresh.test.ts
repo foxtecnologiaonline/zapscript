@@ -101,3 +101,37 @@ test('logout revoga no servidor antes de limpar o local', async () => {
   expect(store['zs_token']).toBeUndefined();
   expect(store['zs_refresh']).toBeUndefined();
 });
+
+test('outra aba já rotacionou: repete com o token novo em vez de deslogar', async () => {
+  // Regressão do logout entre abas. O single-flight é por contexto JS; com 2
+  // abas abertas as duas renovam com o mesmo refresh e o servidor recusa uma.
+  // A recusada NÃO pode deslogar o usuário se a outra rotacionou com sucesso.
+  const fetchMock = jest.fn(async (url: any) => {
+    if (String(url).includes('/auth/refresh')) {
+      // simula a outra aba tendo rotacionado enquanto esperávamos
+      store['zs_token']   = 'access-da-outra-aba';
+      store['zs_refresh'] = 'refresh-da-outra-aba';
+      return jsonRes({ error: 'Sessão expirada. Faça login novamente.' }, 401);
+    }
+    return store['zs_token'] === 'access-da-outra-aba' ? jsonRes({ ok: true }) : jsonRes({ error: 'expirado' }, 401);
+  }) as any;
+  global.fetch = fetchMock;
+
+  await expect(api.get('/dashboard')).resolves.toEqual({ ok: true });
+  // sessão preservada — nada foi limpo
+  expect(store['zs_token']).toBe('access-da-outra-aba');
+  expect(store['zs_refresh']).toBe('refresh-da-outra-aba');
+});
+
+test('refresh recusado E sem rotação de outra aba: desloga de verdade', async () => {
+  // Contraprova do teste acima — o token guardado NÃO muda, então é sessão
+  // realmente encerrada e o logout tem de acontecer.
+  const fetchMock = jest.fn()
+    .mockResolvedValueOnce(jsonRes({ error: 'expirado' }, 401))
+    .mockResolvedValueOnce(jsonRes({ error: 'sessao' }, 401));
+  global.fetch = fetchMock;
+
+  await expect(api.get('/dashboard')).rejects.toThrow();
+  expect(store['zs_token']).toBeUndefined();
+  expect(store['zs_refresh']).toBeUndefined();
+});
