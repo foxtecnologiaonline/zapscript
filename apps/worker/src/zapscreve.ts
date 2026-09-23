@@ -4,6 +4,7 @@ import ws from 'ws';
 import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
+import { captureJobFailure, captureWorkerError } from './lib/sentry';
 import { transcribeAudio } from './services/whisper';
 import { convertToMp3 } from './services/audio';
 import { buildModelChain, callAiWithFallback, ModelSpec } from './services/ai-fallback';
@@ -191,6 +192,7 @@ zapscreveWorker.on('completed', (job) => {
 });
 
 zapscreveWorker.on('failed', (job, err) => {
+  captureJobFailure('zapscreve', job, err);
   const attempts = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 2;
   logger.error(`[ZapScreveWorker] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
@@ -201,6 +203,7 @@ zapscreveWorker.on('stalled', (jobId) => {
 });
 
 zapscreveWorker.on('error', (err) => {
+  captureWorkerError('zapscreve', err);
   logger.error('[ZapScreveWorker] Erro interno', { err: err.message });
 });
 

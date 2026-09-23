@@ -15,6 +15,7 @@ import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread }
 import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encryption';
 import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
+import { initSentry, captureJobFailure, captureWorkerError, flushSentry } from './lib/sentry';
 import { logAiUsage } from './lib/aiUsage';
 import { processCampanhaJob, markCampanhaJobExhausted } from './modules/campanhas';
 import { processMissionJob, markMissionJobExhausted } from './modules/mktfast';
@@ -95,6 +96,9 @@ if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.startsWith('
   console.error('[Worker] FATAL: ANTHROPIC_API_KEY não configurada. Configure no Render.com e redeploy.');
   process.exit(1);
 }
+
+// Sentry antes de qualquer cliente/worker subir, pra capturar falha de boot também.
+initSentry();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -1804,6 +1808,7 @@ worker.on('completed', (job, result) => {
 });
 
 worker.on('failed', (job, err) => {
+  captureJobFailure('transcriptions', job, err);
   const attempts = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 4;
   logger.error(
@@ -1817,6 +1822,7 @@ worker.on('stalled', (jobId) => {
 });
 
 worker.on('error', (err) => {
+  captureWorkerError('transcriptions', err);
   logger.error('[Worker] Erro interno', { err: err.message });
 });
 
@@ -1839,6 +1845,7 @@ legendaWorker.on('completed', (job) => {
 });
 
 legendaWorker.on('failed', (job, err) => {
+  captureJobFailure('legendas', job, err);
   const attempts = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 2;
   logger.error(`[LegendaWorker] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
@@ -1849,6 +1856,7 @@ legendaWorker.on('stalled', (jobId) => {
 });
 
 legendaWorker.on('error', (err) => {
+  captureWorkerError('legendas', err);
   logger.error('[LegendaWorker] Erro interno', { err: err.message });
 });
 
@@ -1876,6 +1884,7 @@ campanhasWorker.on('completed', (job, result) => {
 });
 
 campanhasWorker.on('failed', (job, err) => {
+  captureJobFailure('campanhas', job, err);
   const attempts    = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 3;
   logger.error(`[Campanhas] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
@@ -1888,6 +1897,7 @@ campanhasWorker.on('failed', (job, err) => {
 });
 
 campanhasWorker.on('error', (err) => {
+  captureWorkerError('campanhas', err);
   logger.error('[Campanhas] Erro interno', { err: err.message });
 });
 
@@ -1915,6 +1925,7 @@ mktfastWorker.on('completed', (job, result) => {
 });
 
 mktfastWorker.on('failed', (job, err) => {
+  captureJobFailure('mktfast', job, err);
   const attempts    = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 3;
   logger.error(`[MKT-Fast] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
@@ -1925,6 +1936,7 @@ mktfastWorker.on('failed', (job, err) => {
 });
 
 mktfastWorker.on('error', (err) => {
+  captureWorkerError('mktfast', err);
   logger.error('[MKT-Fast] Erro interno', { err: err.message });
 });
 
@@ -2867,6 +2879,9 @@ async function gracefulShutdown(signal: string) {
 
   await prisma.$disconnect().catch((err: Error) =>
     logger.error('Erro ao desconectar Prisma no shutdown', { err: err.message }));
+
+  // Depois das filas e do Prisma: envia o que ficou em buffer antes do exit().
+  await flushSentry();
 
   clearTimeout(forceExit);
   const failed = results.some(r => r.status === 'rejected');

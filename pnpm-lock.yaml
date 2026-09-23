@@ -246,6 +246,9 @@ importers:
       '@prisma/client':
         specifier: 5.22.0
         version: 5.22.0(prisma@5.22.0)
+      '@sentry/node':
+        specifier: ^10.51.0
+        version: 10.54.0
       '@supabase/supabase-js':
         specifier: ^2.108.0
         version: 2.108.1
