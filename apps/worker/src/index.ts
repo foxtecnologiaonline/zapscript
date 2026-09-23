@@ -529,7 +529,7 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
 
     // Buscar número conectado para enviar o alerta
     const n = await (prisma as any).whatsappNumber.findFirst({
-      where: { userId, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } },
+      where: { userId, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: 'pending' } },
       orderBy: { connectedAt: 'desc' },
     });
     if (!n?.zapiInstanceId || !n?.phoneNumber) return;
@@ -868,7 +868,7 @@ async function triggerQuotaBlockNotice(userId: string): Promise<void> {
       `Não volte a ouvir áudio:\n👉 ${APP_URL}/dashboard/plano`;
 
     const n = await prisma.whatsappNumber.findFirst({
-      where:   { userId, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } },
+      where:   { userId, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: 'pending' } },
       orderBy: { connectedAt: 'desc' },
     });
     if (n?.zapiInstanceId && n?.phoneNumber) {
@@ -1433,8 +1433,22 @@ async function processEvolutionJob(job: Job) {
       log(job, `🆕 Demo pública: quota ignorada`);
     }
 
+    // whatsappNumber pode ser null de verdade em três situações: demo pública
+    // sem numberId, número apagado entre o enfileiramento e o processamento, e
+    // usuário sem número nenhum (findFirst sem resultado). Fora da demo ele é
+    // obrigatório — sem este guard os acessos abaixo estouravam TypeError no
+    // meio do job, com mensagem que não dizia nada sobre a causa.
+    if (!isPublicDemo && !whatsappNumber) {
+      throw new Error(
+        `Número WhatsApp ${numberId ?? '(primeiro do usuário)'} não encontrado — ` +
+        'pode ter sido removido depois que o job foi enfileirado.',
+      );
+    }
+
     // PASSO 2: Baixar áudio via Evolution API (getBase64FromMediaMessage)
-    const instName = instanceName ?? whatsappNumber.zapiInstanceId;
+    // Na demo pública whatsappNumber pode ser null de propósito, daí o `?.` —
+    // nesse caminho o instanceName vem do webhook.
+    const instName = instanceName ?? whatsappNumber?.zapiInstanceId;
     if (!instName) throw new Error('instanceName não disponível para download do áudio');
 
     log(job, '⬇️  Baixando áudio via Evolution API...');
@@ -1450,7 +1464,7 @@ async function processEvolutionJob(job: Job) {
     const estDurSec = Math.max(estimateMp3DurationSec(mp3Buffer), durationHint || 0);
     if (isAudioTooLong(estDurSec)) {
       log(job, `⚠️  Áudio acima de 10 min (~${Math.round(estDurSec / 60)}min) — rejeitado sem contar cota`);
-      const instNameReject = instanceName ?? whatsappNumber.zapiInstanceId;
+      const instNameReject = instanceName ?? whatsappNumber?.zapiInstanceId;
       if (instNameReject) await sendMessageViaEvolution(instNameReject, senderPhone, REJECT_TOO_LONG_MSG).catch(() => null);
       return { skipped: true, reason: 'audio_too_long' };
     }
@@ -1498,7 +1512,7 @@ async function processEvolutionJob(job: Job) {
           if (!enabled) return;
           return enqueueCopilotoIngest({
             userId,
-            numberId:     whatsappNumber.id,
+            numberId:     whatsappNumber!.id,
             contactPhone: senderPhone,
             contactName:  senderName,
             direction:    'in',
@@ -1555,10 +1569,10 @@ async function processEvolutionJob(job: Job) {
     // Quando ligado (privateMode === true), a transcrição vai só ao próprio número
     // (nunca cai na conversa do contato). Desativado em self-notes (áudio que o próprio usuário encaminhou).
     const isPrivate   = !isSelfNote
-                        && !!whatsappNumber.privateMode
-                        && !!whatsappNumber.phoneNumber
-                        && whatsappNumber.phoneNumber !== 'pending';
-    const targetPhone = isPrivate ? whatsappNumber.phoneNumber! : senderPhone;
+                        && !!whatsappNumber?.privateMode
+                        && !!whatsappNumber?.phoneNumber
+                        && whatsappNumber?.phoneNumber !== 'pending';
+    const targetPhone = isPrivate ? whatsappNumber!.phoneNumber! : senderPhone;
 
     // Rodapé viral: mostra sempre, exceto Modo Privado ativo ou self-note.
     const footer = decideFooter(isSelfNote, isPrivate);
@@ -1584,7 +1598,7 @@ async function processEvolutionJob(job: Job) {
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId,
-      numberId:     whatsappNumber.id,
+      numberId:     whatsappNumber!.id,
       contactPhone: senderPhone,
       contactName:  senderName,
       durationSec,
@@ -1600,7 +1614,7 @@ async function processEvolutionJob(job: Job) {
     if (isSelfNote) {
       voiceCommandQueue.add('classify', {
         userId,
-        numberId:        whatsappNumber.id,
+        numberId:        whatsappNumber!.id,
         instanceName:    instName,
         senderPhone,
         transcriptionId: transcription.id,
@@ -1618,7 +1632,7 @@ async function processEvolutionJob(job: Job) {
         body: JSON.stringify({
           userId,
           event: 'transcription_ready',
-          data:  { transcriptionId: transcription.id, numberId: whatsappNumber.id, durationSec, senderName },
+          data:  { transcriptionId: transcription.id, numberId: whatsappNumber!.id, durationSec, senderName },
         }),
         signal: AbortSignal.timeout(5_000),
       }).catch(() => null);  // não bloqueia o pipeline
@@ -1801,8 +1815,12 @@ const worker = new Worker('transcriptions', routeJob, {
 });
 
 worker.on('completed', (job, result) => {
-  if (result?.skipped) {
-    logger.warn(`[Worker] Job ${job.id} ignorado — motivo: ${result.reason}`);
+  // routeJob devolve uma união (cada pipeline tem seu formato) e nem todos
+  // carregam `skipped` — o de vendas devolve { visitId }. O `in` estreita a
+  // união antes do acesso, em vez de contar com undefined.
+  if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
+    const reason = 'reason' in result ? result.reason : 'desconhecido';
+    logger.warn(`[Worker] Job ${job.id} ignorado — motivo: ${reason}`);
   } else {
     logger.info(`[Worker] ✅ Job ${job.id} [${job.name}] concluído`);
   }
@@ -2037,7 +2055,7 @@ async function resetExpiredMinutes() {
 
         // Notificação por WhatsApp
         const wn = await prisma.whatsappNumber.findFirst({
-          where: { userId: sub.userId, status: 'connected', phoneNumber: { not: null } },
+          where: { userId: sub.userId, status: 'connected', phoneNumber: { not: 'pending' } },
           orderBy: { connectedAt: 'desc' },
         }).catch(() => null);
 
@@ -2165,12 +2183,12 @@ async function runWeeklyWhatsappDigest() {
         deletedAt: null,
         NOT:           { lifecycleEmailsSent: { has: tag } },
         transcriptions: { some: { createdAt: { gte: weekAgo } } },
-        numbers:        { some: { status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } } },
+        numbers:        { some: { status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: 'pending' } } },
       },
       select: {
         id: true, name: true, lifecycleEmailsSent: true,
         numbers: {
-          where:   { status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } },
+          where:   { status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: 'pending' } },
           orderBy: { connectedAt: 'desc' },
           take:    1,
           select:  { zapiInstanceId: true, phoneNumber: true },

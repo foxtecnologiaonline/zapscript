@@ -5,11 +5,19 @@
     "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": "./src",
-    "strict": false,
+    // strict ligado (era false, com noImplicitAny:false junto). O worker é o
+    // lado que mexe em cota, cobrança e chamadas externas — era justamente ele
+    // que rodava sem strictNullChecks. Ligar custou 3 correções reais, não
+    // anotação de tipo: um TypeError de null no processEvolutionJob, um filtro
+    // Prisma que nunca filtrava, e um acesso a campo ausente numa união.
+    "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noImplicitAny": false,
+    // Mesmo conjunto extra que a API já usava, todos limpos de primeira:
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     // Ligado junto com --enable-source-maps no Dockerfile: o worker é onde
     // quebra o pipeline de áudio (ffmpeg/Whisper/filas) e o stack trace vinha
     // apontando linha do .js compilado, que não bate com o fonte.
