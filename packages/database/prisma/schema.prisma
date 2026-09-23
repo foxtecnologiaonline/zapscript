@@ -40,6 +40,7 @@ model User {
   subscription            Subscription?
   balance                 MinuteBalance?
   numbers                 WhatsappNumber[]
+  refreshTokens           RefreshToken[]
   transcriptions          Transcription[]
   usageLogs               UsageLog[]
   supportTickets          SupportTicket[]
@@ -1818,4 +1819,33 @@ model FailedJob {
   @@index([queue, failedAt])
   @@index([userId])
   @@index([replayedAt])
+}
+
+/// Refresh token rotativo (sessão longa) emitido no login/cadastro.
+///
+/// O access token JWT passou a durar 1h; a sessão de 30 dias que o usuário
+/// espera é sustentada por este registro, que — diferente do JWT — pode ser
+/// REVOGADO. Antes, o JWT de 30d era um bearer de longa duração sem qualquer
+/// forma de revogação: vazou, valia um mês.
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  /// SHA-256 do token cru. O valor em claro nunca é persistido — um dump do
+  /// banco não dá sessão de ninguém.
+  tokenHash  String    @unique
+  /// Cadeia de rotação. Se um token JÁ USADO reaparecer (sinal clássico de
+  /// roubo), a família inteira é revogada de uma vez.
+  familyId   String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  /// id do token que substituiu este na rotação — permite auditar a cadeia.
+  replacedBy String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
 }

@@ -13,6 +13,9 @@ jest.mock('../lib/prisma', () => ({
     minuteBalance:{ create: jest.fn() },
     plan:         { findUnique: jest.fn() },
     auditLog:     { create: jest.fn() },
+    // login e cadastro passaram a emitir refresh token rotativo
+    // (lib/refreshToken.ts) — sem este mock as duas rotas dão 500.
+    refreshToken: { create: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn(async (fn: any) => fn({
       user:            { create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', createdAt: new Date() }) },
       subscription:    { create: jest.fn() },
@@ -137,6 +140,9 @@ describe('POST /auth/register', () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().emailVerified).toBe(false);
+    // sessão longa agora vem do refresh token, não de um JWT de 30d
+    expect(res.json()).toHaveProperty('refreshToken');
+    expect(res.json()).toHaveProperty('refreshTokenExpiresAt');
   });
 });
 
@@ -185,6 +191,7 @@ describe('POST /auth/login', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toHaveProperty('token');
+    expect(res.json()).toHaveProperty('refreshToken');
   });
 });
 

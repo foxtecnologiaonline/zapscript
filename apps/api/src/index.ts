@@ -23,6 +23,7 @@ import { startLifecycleEmails }   from './services/lifecycle-emails';
 import { startLifecycleWhatsapp } from './services/lifecycle-whatsapp';
 import { startOnboardingNudge } from './services/onboarding-nudge';
 import { startCopilotoUnreadSweep } from './services/copiloto-backfill';
+import { purgeExpiredRefreshTokens } from './lib/refreshToken';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -1466,6 +1467,20 @@ async function start() {
     //    (antes ou depois do Copiloto estar ligado) passe pela triagem, mesmo
     //    se o webhook tiver falhado — a cada 2h, ver copiloto-backfill.ts ──
     startCopilotoUnreadSweep(app.log);
+
+    // ── Limpeza de refresh tokens ────────────────────────────────────────────
+    // A tabela ganha uma linha a cada renovação (rotação emite token novo e
+    // revoga o anterior), então sem poda ela só cresce. Remove os expirados e
+    // os revogados há mais de 7 dias — a janela serve pra detecção de reuso
+    // ainda conseguir reconhecer um token roubado recentemente.
+    const podarRefreshTokens = () => {
+      purgeExpiredRefreshTokens()
+        .then(n => { if (n > 0) app.log.info(`[Auth] ${n} refresh token(s) expirado(s) removido(s)`); })
+        .catch(err => app.log.error({ err: err.message }, '[Auth] Falha ao podar refresh tokens'));
+    };
+    podarRefreshTokens();
+    // unref(): poda periódica não pode segurar o processo num shutdown.
+    setInterval(podarRefreshTokens, 24 * 60 * 60 * 1000).unref();
 
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 
