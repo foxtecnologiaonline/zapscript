@@ -173,6 +173,16 @@ jobs:
         if: always()
         run: pnpm --filter web test
 
+      # Herdado do test.yml, que este workflow substitui. Nunca bloqueia
+      # (fail_ci_if_error: false) — cobertura é sinal, não gate.
+      - name: Upload coverage
+        if: always()
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage/coverage-final.json
+          flags: unittests
+          fail_ci_if_error: false
+
   # ── SECURITY AUDIT ─────────────────────────────────────────────
   audit:
     name: Security Audit
