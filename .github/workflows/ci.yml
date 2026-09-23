@@ -84,9 +84,46 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+
+    # Postgres + Redis reais: a suíte da API não é 100% mockada —
+    # optin-system.test.ts exercita o fluxo de opt-in/opt-out contra o banco
+    # de verdade (prisma.user.create/deleteMany etc.) e várias rotas abrem
+    # conexão BullMQ no import. Sem estes services o job falhava em TODO push
+    # (mesma suíte passa em test.yml, que já os declara) e derrubava o gate
+    # "CI Status" junto, mesmo com build e type-check verdes.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: zapscript_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://test:test@localhost:5432/testdb
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/zapscript_test
+      # schema.prisma declara datasource com url + directUrl; o Prisma resolve
+      # os DOIS env() ao carregar o schema (inclusive em `generate`), então
+      # faltar DIRECT_URL já quebra com "Environment variable not found".
+      # Aqui é um Postgres local sem pooler — os dois apontam pro mesmo lugar.
+      DIRECT_URL: postgresql://postgres:password@localhost:5432/zapscript_test
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: test-secret-key-12345678901234567890
       ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
@@ -114,10 +151,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma Client
+        run: pnpm --filter database exec prisma generate
+
+      - name: Apply migrations (schema de teste)
+        run: pnpm --filter database exec prisma migrate deploy
+
       - name: Run API tests
         run: pnpm --filter api test
 
+      # Sem `if: always()` os testes do worker eram PULADOS sempre que a API
+      # falhava — a suíte inteira do worker ficava sem rodar no CI.
       - name: Run Worker tests
+        if: always()
         run: pnpm --filter worker test
 
   # ── SECURITY AUDIT ─────────────────────────────────────────────
