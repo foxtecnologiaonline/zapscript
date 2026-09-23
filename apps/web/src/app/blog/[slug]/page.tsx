@@ -12,9 +12,11 @@ export function generateStaticParams() {
 
 /* ── Dynamic metadata ───────────────────────────────────────────────── */
 export async function generateMetadata(
-  { params }: { params: { slug: string } }
+  { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
-  const post = getPost(params.slug);
+  // Next 15: params/searchParams viraram Promise (request APIs assíncronas).
+  const { slug } = await params;
+  const post = getPost(slug);
   if (!post) return { title: 'Post não encontrado' };
 
   const canonical = `https://www.zapscript.me/blog/${post.slug}`;
@@ -114,8 +116,9 @@ function BreadcrumbJsonLd({ post }: { post: BlogPost }) {
 }
 
 /* ── Page ───────────────────────────────────────────────────────────── */
-export default function BlogPost({ params }: { params: { slug: string } }) {
-  const post = getPost(params.slug);
+export default async function BlogPost({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const post = getPost(slug);
   if (!post) notFound();
 
   // Prioriza posts da mesma categoria (cluster) para fortalecer o silo de internal linking

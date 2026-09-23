@@ -9,9 +9,11 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata(
-  { params }: { params: { slug: string } }
+  { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
-  const category = getCategoryBySlug(params.slug);
+  // Next 15: params/searchParams viraram Promise (request APIs assíncronas).
+  const { slug } = await params;
+  const category = getCategoryBySlug(slug);
   if (!category) return { title: 'Categoria não encontrada' };
 
   const canonical = `https://www.zapscript.me/blog/categoria/${category.slug}`;
@@ -51,8 +53,9 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-export default function BlogCategoryPage({ params }: { params: { slug: string } }) {
-  const category = getCategoryBySlug(params.slug);
+export default async function BlogCategoryPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const category = getCategoryBySlug(slug);
   if (!category) notFound();
 
   const posts = [...POSTS]

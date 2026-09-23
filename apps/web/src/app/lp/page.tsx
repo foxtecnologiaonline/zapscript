@@ -71,9 +71,11 @@ const META: Record<string, { title: string; description: string }> = {
 };
 
 export async function generateMetadata(
-  { searchParams }: { searchParams: { v?: string } }
+  { searchParams }: { searchParams: Promise<{ v?: string }> }
 ): Promise<Metadata> {
-  const key = (searchParams.v ?? 'default') as string;
+  // Next 15: params/searchParams viraram Promise (request APIs assíncronas).
+  const { v } = await searchParams;
+  const key = (v ?? 'default') as string;
   const meta = META[key] ?? META['default'];
 
   return {
@@ -96,10 +98,11 @@ export async function generateMetadata(
 }
 
 /* ── Page ────────────────────────────────────────────────────────── */
-export default function LandingPage(
-  { searchParams }: { searchParams: { v?: string } }
+export default async function LandingPage(
+  { searchParams }: { searchParams: Promise<{ v?: string }> }
 ) {
-  const key = (searchParams.v ?? 'default') as string;
+  const { v } = await searchParams;
+  const key = (v ?? 'default') as string;
   const variant = VARIANTS[key] ?? VARIANTS['default'];
 
   return <LandingPageClient variant={variant} />;
