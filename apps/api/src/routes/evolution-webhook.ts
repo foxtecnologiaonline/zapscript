@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { logger } from '../lib/logger';
 import { transcriptionQueue, atendeQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
 import { notifyWelcome, notifyReconnected, notifyCobrancaPossiblePayment } from '../services/whatsapp-notify';
@@ -55,8 +56,13 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
     reply.code(200).send({ received: true });
 
     // Processar em background
-    processEvolutionEvent(req.body, app.log).catch(err =>
-      app.log.error({ err: err.message }, '[Evolution] Erro ao processar evento')
+    // Usa o logger de negócio (sempre 'info' em produção), não o app.log do
+    // Fastify — esse é 'warn' em produção de propósito (silencia log de
+    // request por request, que seria enorme), e ia engolir junto o
+    // messages.upsert/enfileiramento de áudio (achado investigando um áudio
+    // que "sumia": chegava, processava, mas nada aparecia no log).
+    processEvolutionEvent(req.body, logger).catch(err =>
+      logger.error({ err: err.message }, '[Evolution] Erro ao processar evento')
     );
   });
 
