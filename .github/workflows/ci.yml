@@ -166,6 +166,13 @@ jobs:
         if: always()
         run: pnpm --filter worker test
 
+      # A suíte do web nunca rodou em CI. Além dos testes de preço, é ela que
+      # guarda o espelho de marketing da cota (freemium-mirror.test.ts) —
+      # sem rodar aqui, o guard não guarda nada.
+      - name: Run Web tests
+        if: always()
+        run: pnpm --filter web test
+
   # ── SECURITY AUDIT ─────────────────────────────────────────────
   audit:
     name: Security Audit

@@ -1,7 +1,12 @@
 /**
  * Regras de negócio do Freemium / métrica por áudios / rodapé condicional.
  *
- * ⚠️ Este arquivo é DUPLICADO em apps/api/src/lib/freemium.ts.
+ * ⚠️ Este arquivo existe DUPLICADO, byte a byte, em
+ *    apps/api/src/lib/freemium.ts e apps/worker/src/lib/freemium.ts.
+ *    A divergência entre os dois é barrada no CI por
+ *    apps/worker/src/__tests__/freemium-sync.test.ts; o espelho de
+ *    marketing (CORE_AUDIO_QUOTA em apps/web/src/lib/promo.ts), por
+ *    apps/web/src/lib/__tests__/freemium-mirror.test.ts.
  *    Mantenha os dois em sincronia (constantes + lógica pura).
  *    São funções puras (sem Prisma) para poderem viver nos dois builds.
  */
