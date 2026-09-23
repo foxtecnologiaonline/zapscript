@@ -10,7 +10,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",
     "dotenv": "^16.4.5",
-    "nodemailer": "^6.9.14",
+    "nodemailer": "^9.1.0",
     "node-cron": "^3.0.3"
   },
   "devDependencies": {

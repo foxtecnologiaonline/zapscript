@@ -15,7 +15,7 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@prisma/client": "5.22.0",
     "@supabase/supabase-js": "^2.108.0",
-    "axios": "^1.7.2",
+    "axios": "^1.18.0",
     "bullmq": "^5.8.4",
     "dotenv": "^16.4.5",
     "fluent-ffmpeg": "^2.1.3",
