@@ -225,7 +225,18 @@ export async function setGroupsIgnore(instanceNameStr: string, ignore: boolean):
   const res = await fetch(`${base}/settings/set/${instanceNameStr}`, {
     method:  'POST',
     headers: evolutionHeaders(),
-    body: JSON.stringify({ groupsIgnore: ignore }),
+    // A partir da v2.3.7 a Evolution API passou a exigir o objeto `Setting`
+    // completo (400 "instance requires property X" se faltar algum) — não
+    // aceita mais só o campo que a gente quer mudar. Os demais replicam o
+    // default de criação de instância (ver createInstance acima).
+    body: JSON.stringify({
+      groupsIgnore:    ignore,
+      rejectCall:      false,
+      alwaysOnline:    false,
+      readMessages:    false,
+      readStatus:      false,
+      syncFullHistory: false,
+    }),
     signal:  AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
