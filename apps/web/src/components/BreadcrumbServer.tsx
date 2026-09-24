@@ -59,10 +59,13 @@ function buildBreadcrumb(pathname: string): { name: string; url: string }[] {
  * Apenas rotas públicas conhecidas são renderizadas; páginas internas
  * (/dashboard, /app, etc.) são ignoradas.
  */
-export default function BreadcrumbServer() {
+// async: headers() virou assíncrono no Next 15 (as request APIs passaram a
+// ser Promise). Server component pode ser async normalmente — quem renderiza
+// não muda.
+export default async function BreadcrumbServer() {
   let pathname = '/';
   try {
-    const h = headers();
+    const h = await headers();
     const p = h.get('x-pathname');
     if (p) pathname = p;
   } catch {

@@ -343,7 +343,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Close drawer automatically on navigation
   useEffect(() => { setMenuOpen(false); }, [pathname]);
 
-  function logout() { api.clearToken(); router.push('/login'); }
+  // Revoga a sessão no SERVIDOR antes de sair — só limpar o localStorage
+  // deixava o refresh token válido pra quem tivesse uma cópia.
+  async function logout() { await api.logout(); router.push('/login'); }
 
   return (
     <div className="flex min-h-screen dashboard-bg">

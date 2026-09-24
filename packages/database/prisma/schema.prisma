@@ -40,6 +40,7 @@ model User {
   subscription            Subscription?
   balance                 MinuteBalance?
   numbers                 WhatsappNumber[]
+  refreshTokens           RefreshToken[]
   transcriptions          Transcription[]
   usageLogs               UsageLog[]
   supportTickets          SupportTicket[]
@@ -1789,4 +1790,62 @@ model MissionExecution {
 
   @@unique([missionId, channel, targetRef])
   @@index([missionId, status])
+}
+
+/// Dead-letter queue: job que ESGOTOU as tentativas do BullMQ.
+///
+/// Antes disto, um job que estourava os attempts ficava em 'failed' no Redis
+/// e era apagado pelo removeOnFail (7 dias) sem ninguém ser avisado e sem
+/// jeito de reprocessar — na fila 'transcriptions' isso é áudio de cliente
+/// que simplesmente nunca voltou. Aqui ele fica registrado, visível no admin
+/// e reprocessável.
+model FailedJob {
+  id           String    @id @default(cuid())
+  queue        String // 'transcriptions' | 'atende-replies' | 'copiloto' | ...
+  jobName      String
+  bullJobId    String? // id do job no BullMQ (na fila 'transcriptions' é o messageId)
+  userId       String? // extraído do payload quando existe — permite filtrar por cliente
+  payload      Json // job.data para o replay; campos grandes/voláteis removidos (ver lib/dlq.ts)
+  payloadTrimmed Boolean @default(false) // true = payload incompleto, replay pode não reproduzir
+  errorMessage String
+  attempts     Int
+  failedAt     DateTime  @default(now())
+  replayedAt   DateTime?
+  replayCount  Int       @default(0)
+
+  // Idempotência: o mesmo job não vira duas linhas se o evento 'failed' vier
+  // duplicado (acontece em reconexão do worker).
+  @@unique([queue, bullJobId])
+  @@index([queue, failedAt])
+  @@index([userId])
+  @@index([replayedAt])
+}
+
+/// Refresh token rotativo (sessão longa) emitido no login/cadastro.
+///
+/// O access token JWT passou a durar 1h; a sessão de 30 dias que o usuário
+/// espera é sustentada por este registro, que — diferente do JWT — pode ser
+/// REVOGADO. Antes, o JWT de 30d era um bearer de longa duração sem qualquer
+/// forma de revogação: vazou, valia um mês.
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  /// SHA-256 do token cru. O valor em claro nunca é persistido — um dump do
+  /// banco não dá sessão de ninguém.
+  tokenHash  String    @unique
+  /// Cadeia de rotação. Se um token JÁ USADO reaparecer (sinal clássico de
+  /// roubo), a família inteira é revogada de uma vez.
+  familyId   String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  /// id do token que substituiu este na rotação — permite auditar a cadeia.
+  replacedBy String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
 }

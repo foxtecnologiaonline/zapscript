@@ -104,7 +104,7 @@ function CadastroForm() {
     setLoading(true);
     try {
       const utm = readUtm();
-      const res = await api.post<{ token: string; numberId?: string; pairingCode?: string }>('/auth/register', {
+      const res = await api.post<{ token: string; refreshToken?: string; numberId?: string; pairingCode?: string }>('/auth/register', {
         name:       form.name,
         email:      form.email,
         phone:      form.phone,
@@ -125,7 +125,7 @@ function CadastroForm() {
       // Opção A: login automático — o usuário já entra usando o ZapScript.
       // A verificação de e-mail e o CPF são exigidos só na assinatura.
       if (res?.token) {
-        api.setToken(res.token);
+        api.setToken(res.token, res.refreshToken);
         clearAffiliateCode();
         // Onboarding facilitado: número já provisionado no cadastro — abre o
         // painel direto na tela de conexão (pairing code já pronto ou a caminho).

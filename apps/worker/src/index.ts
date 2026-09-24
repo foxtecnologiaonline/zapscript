@@ -15,6 +15,8 @@ import { downloadAudioFromEvolution, sendMessageViaEvolution, markChatAsUnread }
 import { encryptStr, encryptArr, decryptStr, decryptArr } from './services/encryption';
 import { sendEmail } from './services/mailer';
 import { logger } from './lib/logger';
+import { initSentry, captureJobFailure, captureWorkerError, flushSentry } from './lib/sentry';
+import { recordFailedJob } from './lib/dlq';
 import { logAiUsage } from './lib/aiUsage';
 import { processCampanhaJob, markCampanhaJobExhausted } from './modules/campanhas';
 import { processMissionJob, markMissionJobExhausted } from './modules/mktfast';
@@ -22,13 +24,17 @@ import {
   planEfetivo, audioQuotaFor, pickFooterVariant, formatSavedTime,
   MAX_AUDIO_SECONDS, MAX_AUDIO_MARGIN_SECONDS, FREE_AUDIO_QUOTA, PRO_AUDIO_CAP,
 } from './lib/freemium';
-import './atende'; // registra o worker da fila 'atende-replies' (ZapScript Atende)
-import './voice-command'; // registra o worker da fila 'voice-commands' (Comando de Voz Universal)
+// Os imports nomeados abaixo também registram os workers (o módulo é executado
+// igual a um import de efeito colateral) — a referência é necessária para que o
+// graceful shutdown no fim deste arquivo consiga fechar TODAS as filas, não só
+// as declaradas aqui.
+import { atendeWorker } from './atende'; // fila 'atende-replies' (ZapScript Atende)
+import { voiceCommandWorker } from './voice-command'; // fila 'voice-commands' (Comando de Voz Universal)
 import './crm'; // registra o cron de notificação de lembretes vencidos (ZapScript CRM)
 import './tarefas'; // registra o cron de tarefas atrasadas (ZapScript Tarefas)
-import './copiloto'; // registra o worker da fila 'copiloto' (ZapScript Copiloto — briefings ao dono)
-import { enqueueCopilotoIngest, hasCopiloto } from './copiloto'; // áudio de cliente transcrito → Copiloto
-import './zapscreve'; // registra o worker da fila 'zapscreve' (ZapScript ZapScreve — áudio do dono vira texto)
+// fila 'copiloto' (ZapScript Copiloto — briefings ao dono) + áudio de cliente transcrito → Copiloto
+import { copilotoWorker, enqueueCopilotoIngest, hasCopiloto } from './copiloto';
+import { zapscreveWorker } from './zapscreve'; // fila 'zapscreve' (áudio do dono vira texto)
 import './campanhas-scheduler'; // registra o agendador de disparo automático (ZapScript Campanhas)
 import './mktfast-scheduler'; // registra o agendador de disparo automático (MKT-Fast)
 import './modules/campanhas-chat-notifier'; // updates de progresso a cada 30s no chat (Chatbot Campanhas)
@@ -91,6 +97,9 @@ if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.startsWith('
   console.error('[Worker] FATAL: ANTHROPIC_API_KEY não configurada. Configure no Render.com e redeploy.');
   process.exit(1);
 }
+
+// Sentry antes de qualquer cliente/worker subir, pra capturar falha de boot também.
+initSentry();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -559,7 +568,7 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
 
     // Buscar número conectado para enviar o alerta
     const n = await (prisma as any).whatsappNumber.findFirst({
-      where: { userId, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } },
+      where: { userId, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: 'pending' } },
       orderBy: { connectedAt: 'desc' },
     });
     if (!n?.zapiInstanceId || !n?.phoneNumber) return;
@@ -898,7 +907,7 @@ async function triggerQuotaBlockNotice(userId: string): Promise<void> {
       `Não volte a ouvir áudio:\n👉 ${APP_URL}/dashboard/plano`;
 
     const n = await prisma.whatsappNumber.findFirst({
-      where:   { userId, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } },
+      where:   { userId, status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: 'pending' } },
       orderBy: { connectedAt: 'desc' },
     });
     if (n?.zapiInstanceId && n?.phoneNumber) {
@@ -1463,8 +1472,22 @@ async function processEvolutionJob(job: Job) {
       log(job, `🆕 Demo pública: quota ignorada`);
     }
 
+    // whatsappNumber pode ser null de verdade em três situações: demo pública
+    // sem numberId, número apagado entre o enfileiramento e o processamento, e
+    // usuário sem número nenhum (findFirst sem resultado). Fora da demo ele é
+    // obrigatório — sem este guard os acessos abaixo estouravam TypeError no
+    // meio do job, com mensagem que não dizia nada sobre a causa.
+    if (!isPublicDemo && !whatsappNumber) {
+      throw new Error(
+        `Número WhatsApp ${numberId ?? '(primeiro do usuário)'} não encontrado — ` +
+        'pode ter sido removido depois que o job foi enfileirado.',
+      );
+    }
+
     // PASSO 2: Baixar áudio via Evolution API (getBase64FromMediaMessage)
-    const instName = instanceName ?? whatsappNumber.zapiInstanceId;
+    // Na demo pública whatsappNumber pode ser null de propósito, daí o `?.` —
+    // nesse caminho o instanceName vem do webhook.
+    const instName = instanceName ?? whatsappNumber?.zapiInstanceId;
     if (!instName) throw new Error('instanceName não disponível para download do áudio');
 
     log(job, '⬇️  Baixando áudio via Evolution API...');
@@ -1480,7 +1503,7 @@ async function processEvolutionJob(job: Job) {
     const estDurSec = Math.max(estimateMp3DurationSec(mp3Buffer), durationHint || 0);
     if (isAudioTooLong(estDurSec)) {
       log(job, `⚠️  Áudio acima de 10 min (~${Math.round(estDurSec / 60)}min) — rejeitado sem contar cota`);
-      const instNameReject = instanceName ?? whatsappNumber.zapiInstanceId;
+      const instNameReject = instanceName ?? whatsappNumber?.zapiInstanceId;
       if (instNameReject) await sendMessageViaEvolution(instNameReject, senderPhone, REJECT_TOO_LONG_MSG).catch(() => null);
       return { skipped: true, reason: 'audio_too_long' };
     }
@@ -1528,7 +1551,7 @@ async function processEvolutionJob(job: Job) {
           if (!enabled) return;
           return enqueueCopilotoIngest({
             userId,
-            numberId:     whatsappNumber.id,
+            numberId:     whatsappNumber!.id,
             contactPhone: senderPhone,
             contactName:  senderName,
             direction:    'in',
@@ -1585,10 +1608,10 @@ async function processEvolutionJob(job: Job) {
     // Quando ligado (privateMode === true), a transcrição vai só ao próprio número
     // (nunca cai na conversa do contato). Desativado em self-notes (áudio que o próprio usuário encaminhou).
     const isPrivate   = !isSelfNote
-                        && !!whatsappNumber.privateMode
-                        && !!whatsappNumber.phoneNumber
-                        && whatsappNumber.phoneNumber !== 'pending';
-    const targetPhone = isPrivate ? whatsappNumber.phoneNumber! : senderPhone;
+                        && !!whatsappNumber?.privateMode
+                        && !!whatsappNumber?.phoneNumber
+                        && whatsappNumber?.phoneNumber !== 'pending';
+    const targetPhone = isPrivate ? whatsappNumber!.phoneNumber! : senderPhone;
 
     // Rodapé viral: mostra sempre, exceto Modo Privado ativo ou self-note.
     const footer = decideFooter(isSelfNote, isPrivate);
@@ -1614,7 +1637,7 @@ async function processEvolutionJob(job: Job) {
     log(job, '💾 Salvando...');
     const transcription = await saveTranscription({
       userId,
-      numberId:     whatsappNumber.id,
+      numberId:     whatsappNumber!.id,
       contactPhone: senderPhone,
       contactName:  senderName,
       durationSec,
@@ -1630,7 +1653,7 @@ async function processEvolutionJob(job: Job) {
     if (isSelfNote) {
       voiceCommandQueue.add('classify', {
         userId,
-        numberId:        whatsappNumber.id,
+        numberId:        whatsappNumber!.id,
         instanceName:    instName,
         senderPhone,
         transcriptionId: transcription.id,
@@ -1648,7 +1671,7 @@ async function processEvolutionJob(job: Job) {
         body: JSON.stringify({
           userId,
           event: 'transcription_ready',
-          data:  { transcriptionId: transcription.id, numberId: whatsappNumber.id, durationSec, senderName },
+          data:  { transcriptionId: transcription.id, numberId: whatsappNumber!.id, durationSec, senderName },
         }),
         signal: AbortSignal.timeout(5_000),
       }).catch(() => null);  // não bloqueia o pipeline
@@ -1831,14 +1854,20 @@ const worker = new Worker('transcriptions', routeJob, {
 });
 
 worker.on('completed', (job, result) => {
-  if (result?.skipped) {
-    logger.warn(`[Worker] Job ${job.id} ignorado — motivo: ${result.reason}`);
+  // routeJob devolve uma união (cada pipeline tem seu formato) e nem todos
+  // carregam `skipped` — o de vendas devolve { visitId }. O `in` estreita a
+  // união antes do acesso, em vez de contar com undefined.
+  if (result && typeof result === 'object' && 'skipped' in result && result.skipped) {
+    const reason = 'reason' in result ? result.reason : 'desconhecido';
+    logger.warn(`[Worker] Job ${job.id} ignorado — motivo: ${reason}`);
   } else {
     logger.info(`[Worker] ✅ Job ${job.id} [${job.name}] concluído`);
   }
 });
 
 worker.on('failed', (job, err) => {
+  captureJobFailure('transcriptions', job, err);
+  void recordFailedJob('transcriptions', job, err);
   const attempts = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 4;
   logger.error(
@@ -1852,6 +1881,7 @@ worker.on('stalled', (jobId) => {
 });
 
 worker.on('error', (err) => {
+  captureWorkerError('transcriptions', err);
   logger.error('[Worker] Erro interno', { err: err.message });
 });
 
@@ -1874,6 +1904,8 @@ legendaWorker.on('completed', (job) => {
 });
 
 legendaWorker.on('failed', (job, err) => {
+  captureJobFailure('legendas', job, err);
+  void recordFailedJob('legendas', job, err);
   const attempts = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 2;
   logger.error(`[LegendaWorker] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
@@ -1884,6 +1916,7 @@ legendaWorker.on('stalled', (jobId) => {
 });
 
 legendaWorker.on('error', (err) => {
+  captureWorkerError('legendas', err);
   logger.error('[LegendaWorker] Erro interno', { err: err.message });
 });
 
@@ -1911,6 +1944,8 @@ campanhasWorker.on('completed', (job, result) => {
 });
 
 campanhasWorker.on('failed', (job, err) => {
+  captureJobFailure('campanhas', job, err);
+  void recordFailedJob('campanhas', job, err);
   const attempts    = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 3;
   logger.error(`[Campanhas] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
@@ -1923,6 +1958,7 @@ campanhasWorker.on('failed', (job, err) => {
 });
 
 campanhasWorker.on('error', (err) => {
+  captureWorkerError('campanhas', err);
   logger.error('[Campanhas] Erro interno', { err: err.message });
 });
 
@@ -1950,6 +1986,8 @@ mktfastWorker.on('completed', (job, result) => {
 });
 
 mktfastWorker.on('failed', (job, err) => {
+  captureJobFailure('mktfast', job, err);
+  void recordFailedJob('mktfast', job, err);
   const attempts    = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts?.attempts ?? 3;
   logger.error(`[MKT-Fast] ❌ Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
@@ -1960,6 +1998,7 @@ mktfastWorker.on('failed', (job, err) => {
 });
 
 mktfastWorker.on('error', (err) => {
+  captureWorkerError('mktfast', err);
   logger.error('[MKT-Fast] Erro interno', { err: err.message });
 });
 
@@ -2055,7 +2094,7 @@ async function resetExpiredMinutes() {
 
         // Notificação por WhatsApp
         const wn = await prisma.whatsappNumber.findFirst({
-          where: { userId: sub.userId, status: 'connected', phoneNumber: { not: null } },
+          where: { userId: sub.userId, status: 'connected', phoneNumber: { not: 'pending' } },
           orderBy: { connectedAt: 'desc' },
         }).catch(() => null);
 
@@ -2183,12 +2222,12 @@ async function runWeeklyWhatsappDigest() {
         deletedAt: null,
         NOT:           { lifecycleEmailsSent: { has: tag } },
         transcriptions: { some: { createdAt: { gte: weekAgo } } },
-        numbers:        { some: { status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } } },
+        numbers:        { some: { status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: 'pending' } } },
       },
       select: {
         id: true, name: true, lifecycleEmailsSent: true,
         numbers: {
-          where:   { status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: null } },
+          where:   { status: 'connected', zapiInstanceId: { not: null }, phoneNumber: { not: 'pending' } },
           orderBy: { connectedAt: 'desc' },
           take:    1,
           select:  { zapiInstanceId: true, phoneNumber: true },
@@ -2857,25 +2896,64 @@ cleanupOptinTimeouts();
 setInterval(cleanupOptinTimeouts, 5 * 60 * 1000); // 5 minutos
 
 // ── Graceful shutdown ────────────────────────────────────────────
-process.on('SIGTERM', async () => {
-  logger.info('Worker encerrando...');
+// Fecha TODAS as filas registradas neste processo. Faltando qualquer uma aqui,
+// os jobs em voo dela são mortos sem liberar o lock no restart do deploy: ficam
+// presos até lockDuration expirar e só então voltam pelo caminho de stalled —
+// e um job que já produziu efeito externo (mensagem enviada ao WhatsApp) antes
+// de ser morto é reprocessado, ou seja, envio duplicado para o cliente.
+const ALL_WORKERS = [
+  worker,             // 'transcriptions'
+  legendaWorker,      // 'legendas'
+  campanhasWorker,    // 'campanhas'
+  mktfastWorker,      // 'mktfast'
+  atendeWorker,       // 'atende-replies'
+  voiceCommandWorker, // 'voice-commands'
+  copilotoWorker,     // 'copiloto'
+  zapscreveWorker,    // 'zapscreve'
+];
+
+let shuttingDown = false;
+
+async function gracefulShutdown(signal: string) {
+  // Um segundo SIGTERM/SIGINT (ex.: docker compose stop seguido de Ctrl+C) não
+  // pode reiniciar o processo de shutdown nem derrubar o que já está fechando.
+  if (shuttingDown) {
+    logger.warn(`[Worker] ${signal} recebido durante shutdown — ignorando`);
+    return;
+  }
+  shuttingDown = true;
+
+  logger.info(`Worker encerrando (${signal})...`);
   const forceExit = setTimeout(() => {
     logger.error('Worker graceful shutdown timeout — forçando saída');
     process.exit(1);
   }, 30_000);
-  try {
-    await worker.close();
-    await legendaWorker.close();
-    await campanhasWorker.close();
-    await prisma.$disconnect();
-    clearTimeout(forceExit);
-    process.exit(0);
-  } catch (err) {
-    logger.error('Erro ao encerrar worker', { err: (err as Error).message });
-    clearTimeout(forceExit);
-    process.exit(1);
+
+  // Em paralelo e com allSettled: uma fila lenta não pode consumir sozinha o
+  // orçamento de 30s das outras, e uma que falhe ao fechar não pode impedir
+  // que as demais liberem seus locks.
+  const results = await Promise.allSettled(ALL_WORKERS.map(w => w.close()));
+  for (const r of results) {
+    if (r.status === 'rejected') {
+      logger.error('Erro ao fechar fila no shutdown', { err: String(r.reason?.message ?? r.reason) });
+    }
   }
-});
+
+  await prisma.$disconnect().catch((err: Error) =>
+    logger.error('Erro ao desconectar Prisma no shutdown', { err: err.message }));
+
+  // Depois das filas e do Prisma: envia o que ficou em buffer antes do exit().
+  await flushSentry();
+
+  clearTimeout(forceExit);
+  const failed = results.some(r => r.status === 'rejected');
+  process.exit(failed ? 1 : 0);
+}
+
+process.on('SIGTERM', () => { void gracefulShutdown('SIGTERM'); });
+// SIGINT (Ctrl+C em dev / `docker compose down` em alguns runtimes) passava
+// direto pelo default do Node e matava os jobs em voo do mesmo jeito.
+process.on('SIGINT', () => { void gracefulShutdown('SIGINT'); });
 
 // ── Helper ───────────────────────────────────────────────────────
 function log(job: Job, msg: string) {

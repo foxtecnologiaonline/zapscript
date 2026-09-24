@@ -13,6 +13,9 @@ jest.mock('../lib/prisma', () => ({
     minuteBalance:{ create: jest.fn() },
     plan:         { findUnique: jest.fn() },
     auditLog:     { create: jest.fn() },
+    // login e cadastro passaram a emitir refresh token rotativo
+    // (lib/refreshToken.ts) — sem este mock as duas rotas dão 500.
+    refreshToken: { create: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
     $transaction: jest.fn(async (fn: any) => fn({
       user:            { create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', createdAt: new Date() }) },
       subscription:    { create: jest.fn() },
@@ -137,6 +140,9 @@ describe('POST /auth/register', () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().emailVerified).toBe(false);
+    // sessão longa agora vem do refresh token, não de um JWT de 30d
+    expect(res.json()).toHaveProperty('refreshToken');
+    expect(res.json()).toHaveProperty('refreshTokenExpiresAt');
   });
 });
 
@@ -185,6 +191,7 @@ describe('POST /auth/login', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toHaveProperty('token');
+    expect(res.json()).toHaveProperty('refreshToken');
   });
 });
 
@@ -207,5 +214,50 @@ describe('POST /auth/forgot-password', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().message).toMatch(/instruções/i);
+  });
+});
+
+describe('POST /auth/reset-password', () => {
+  let app: Awaited<ReturnType<typeof buildApp>>;
+
+  beforeAll(async () => { app = await buildApp(); });
+  afterAll(async () => { await app.close(); });
+  beforeEach(() => { (prisma.refreshToken.updateMany as jest.Mock).mockClear(); });
+
+  test('redefinir senha ENCERRA todas as sessões abertas', async () => {
+    // O motivo canônico de redefinir senha é suspeita de invasão. Sem revogar,
+    // o refresh token que o invasor já tenha continuaria valendo 30 dias —
+    // exatamente o que a troca de senha deveria cortar.
+    mockSupabaseClient.auth.getUser.mockResolvedValueOnce({
+      data: { user: { id: 'u-reset' } }, error: null,
+    });
+    mockSupabaseClient.auth.admin.updateUserById.mockResolvedValueOnce({ error: null });
+
+    const res = await app.inject({
+      method: 'POST', url: '/auth/reset-password',
+      payload: { access_token: 'tok', new_password: 'novasenha123' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ userId: 'u-reset', revokedAt: null }),
+      }),
+    );
+  });
+
+  test('senha NÃO alterada (erro do provider) não revoga sessão nenhuma', async () => {
+    mockSupabaseClient.auth.getUser.mockResolvedValueOnce({
+      data: { user: { id: 'u-reset' } }, error: null,
+    });
+    mockSupabaseClient.auth.admin.updateUserById.mockResolvedValueOnce({ error: { message: 'falhou' } });
+
+    const res = await app.inject({
+      method: 'POST', url: '/auth/reset-password',
+      payload: { access_token: 'tok', new_password: 'novasenha123' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
   });
 });

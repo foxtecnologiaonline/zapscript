@@ -324,16 +324,23 @@ export default async function copilotoRoutes(app: FastifyInstance) {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const logs = await prisma.aiUsageLog.findMany({
+    // Agregado no banco, não em JS: antes isto carregava UMA LINHA POR CHAMADA
+    // de IA do mês só pra somar dois inteiros — num usuário intenso de Copiloto
+    // são milhares de linhas trafegadas e instanciadas a cada abertura do
+    // painel. O aggregate devolve três números.
+    const agg = await prisma.aiUsageLog.aggregate({
       where: { userId, feature: { startsWith: 'copiloto_' }, createdAt: { gte: startOfMonth } },
-      select: { inputTokens: true, outputTokens: true },
+      _count: { _all: true },
+      _sum:   { inputTokens: true, outputTokens: true },
     });
 
-    const calls = logs.length;
-    const inputTokens = logs.reduce((s, l) => s + l.inputTokens, 0);
-    const outputTokens = logs.reduce((s, l) => s + l.outputTokens, 0);
-
-    return { calls, inputTokens, outputTokens, since: startOfMonth };
+    return {
+      calls:        agg._count._all,
+      // _sum vem null quando não há nenhuma linha no período
+      inputTokens:  agg._sum.inputTokens  ?? 0,
+      outputTokens: agg._sum.outputTokens ?? 0,
+      since:        startOfMonth,
+    };
   });
 
   // ── GET /copiloto/metrics ─────────────────────────────────────────────────

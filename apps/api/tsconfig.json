@@ -20,8 +20,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
+    // declaration/declarationMap ficaram de fora de propósito: a API é um
+    // serviço executado (CMD node dist/index.js), não um pacote importado por
+    // ninguém — os .d.ts/.d.ts.map só engordavam o dist (844 KB de 3,6 MB).
+    // sourceMap fica: agora é de fato carregado em runtime via
+    // --enable-source-maps no Dockerfile, o que dá stack trace em .ts no
+    // Sentry (Sentry.init em src/index.ts) em vez de linha do .js compilado.
     "sourceMap": true
   },
   "include": ["src/**/*"],

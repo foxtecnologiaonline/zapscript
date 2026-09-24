@@ -1,6 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../lib/prisma';
+import {
+  ACCESS_TOKEN_TTL, issueRefreshToken, rotateRefreshToken,
+  revokeRefreshToken, revokeAllForUser,
+} from '../lib/refreshToken';
 import { sendEmail, emailWrapper } from '../lib/mailer';
 import { logger } from '../lib/logger';
 import { validateRequest, registerSchema, loginSchema } from '../lib/validation';
@@ -321,10 +325,15 @@ export default async function authRoutes(app: FastifyInstance) {
         );
       }
 
-      // Auto-login (Opção A): emitir JWT na hora para o usuário ir direto ao dashboard
-      const token = app.jwt.sign({ sub: data.user!.id, email }, { expiresIn: '30d' });
+      // Auto-login (Opção A): emitir JWT na hora para o usuário ir direto ao dashboard.
+      // Access curto (1h) + refresh rotativo de 30d — a sessão longa continua,
+      // mas agora é revogável (ver lib/refreshToken.ts).
+      const token = app.jwt.sign({ sub: data.user!.id, email }, { expiresIn: ACCESS_TOKEN_TTL });
+      const refresh = await issueRefreshToken(data.user!.id);
       return reply.code(201).send({
         token,
+        refreshToken:          refresh.token,
+        refreshTokenExpiresAt: refresh.expiresAt,
         user: { id: data.user!.id, email },
         emailVerified: false,
         isTester: !!testerInvite,
@@ -424,8 +433,14 @@ export default async function authRoutes(app: FastifyInstance) {
       // normalmente. A verificação (User.emailVerified) é exigida apenas no
       // checkout. Não sincronizamos emailVerified aqui, pois o login não prova
       // posse do e-mail (a conta é autoconfirmada no Supabase no cadastro).
-      const token = app.jwt.sign({ sub: data!.user!.id, email }, { expiresIn: '30d' });
-      return { token, user: { id: data!.user!.id, email } };
+      const token = app.jwt.sign({ sub: data!.user!.id, email }, { expiresIn: ACCESS_TOKEN_TTL });
+      const refresh = await issueRefreshToken(data!.user!.id);
+      return {
+        token,
+        refreshToken:          refresh.token,
+        refreshTokenExpiresAt: refresh.expiresAt,
+        user: { id: data!.user!.id, email },
+      };
     }
   );
 
@@ -583,6 +598,20 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Erro ao redefinir senha. Tente novamente.' });
       }
 
+      // Trocar a senha DERRUBA todas as sessões abertas. O motivo canônico de
+      // redefinir senha é suspeita de invasão — sem isto, o refresh token que
+      // o invasor já tenha continuaria válido por 30 dias, exatamente o que a
+      // troca de senha deveria cortar. (Antes da rotação de refresh token não
+      // havia como revogar nada, então a omissão não aparecia.)
+      const encerradas = await revokeAllForUser(userData.user.id)
+        .catch((err: Error) => {
+          logger.error(`[Auth] Falha ao revogar sessões após reset de senha: ${err.message}`);
+          return 0;
+        });
+      if (encerradas > 0) {
+        logger.info(`[Auth] ${encerradas} sessão(ões) encerrada(s) após redefinição de senha`);
+      }
+
       return { message: 'Senha redefinida com sucesso! Faça login com sua nova senha.' };
     }
   );
@@ -677,6 +706,63 @@ export default async function authRoutes(app: FastifyInstance) {
       return { accepted: true };
     }
   );
+
+  // ── POST /auth/refresh ────────────────────────────────────────────────────
+  // Troca um refresh token válido por um access novo + refresh novo (rotação).
+  // Não exige Authorization: é justamente o caminho de quando o access expirou.
+  app.post<{ Body: { refreshToken?: string } }>('/refresh', async (req, reply) => {
+    const raw = req.body?.refreshToken;
+    if (!raw) return reply.code(400).send({ error: 'refreshToken é obrigatório.' });
+
+    const result = await rotateRefreshToken(raw);
+    if (!result.ok) {
+      // 401 nos três casos: o cliente não deve distinguir "expirado" de
+      // "roubado" — só precisa saber que tem de logar de novo. O motivo fica
+      // no log do servidor.
+      logger.warn(`[Auth] Refresh recusado: ${result.reason}`);
+      return reply.code(401).send({ error: 'Sessão expirada. Faça login novamente.' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where:  { id: result.userId },
+      select: { id: true, email: true, deletedAt: true },
+    });
+    // Conta apagada entre a emissão e o refresh: não reemite.
+    if (!user || user.deletedAt) {
+      await revokeAllForUser(result.userId);
+      return reply.code(401).send({ error: 'Sessão expirada. Faça login novamente.' });
+    }
+
+    const token = app.jwt.sign({ sub: user.id, email: user.email }, { expiresIn: ACCESS_TOKEN_TTL });
+    return {
+      token,
+      refreshToken:          result.refresh.token,
+      refreshTokenExpiresAt: result.refresh.expiresAt,
+      user: { id: user.id, email: user.email },
+    };
+  });
+
+  // ── POST /auth/logout ─────────────────────────────────────────────────────
+  // Revoga a sessão de verdade no servidor. Antes não existia logout: o front
+  // apagava o token do localStorage e o JWT de 30d seguia válido pra quem
+  // tivesse uma cópia.
+  app.post<{ Body: { refreshToken?: string; allDevices?: boolean } }>('/logout', async (req: any, reply) => {
+    // Sair de TODOS os dispositivos exige estar autenticado (o refresh token
+    // sozinho prova posse de uma sessão, não autoriza derrubar as outras).
+    if (req.body?.allDevices) {
+      try {
+        await req.jwtVerify();
+      } catch {
+        return reply.code(401).send({ error: 'Autenticação necessária para encerrar todas as sessões.' });
+      }
+      const n = await revokeAllForUser(req.user.sub);
+      return { ok: true, sessoesEncerradas: n };
+    }
+
+    if (req.body?.refreshToken) await revokeRefreshToken(req.body.refreshToken);
+    // Sempre 200: logout é idempotente e não deve vazar se o token existia.
+    return { ok: true };
+  });
 
   // ── GET /auth/me ──────────────────────────────────────────────────────────
   // C3: Retornar apenas campos necessários ao frontend (sem metadados internos de compliance)

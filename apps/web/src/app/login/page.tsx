@@ -41,8 +41,8 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true); setError(''); setNeedsVerification(false);
     try {
-      const res = await api.post<{ token: string }>('/auth/login', form);
-      api.setToken(res.token);
+      const res = await api.post<{ token: string; refreshToken?: string }>('/auth/login', form);
+      api.setToken(res.token, res.refreshToken);
       router.push('/dashboard');
     } catch (err: any) {
       if (err.needsVerification) {

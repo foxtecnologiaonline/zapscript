@@ -2,6 +2,8 @@ import { Worker, Job } from 'bullmq';
 import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
+import { captureJobFailure, captureWorkerError } from './lib/sentry';
+import { recordFailedJob } from './lib/dlq';
 import { sendMessageViaEvolution } from './services/evolution';
 import { classifyVoiceCommand } from './services/voice-command-agent';
 import { executeVoiceCommand } from './services/voice-command-executor';
@@ -81,10 +83,13 @@ voiceCommandWorker.on('completed', (job, result) => {
 });
 
 voiceCommandWorker.on('failed', (job, err) => {
+  captureJobFailure('voice-commands', job, err);
+  void recordFailedJob('voice-commands', job, err);
   logger.error(`[VoiceCommand] ❌ Job ${job?.id} falhou: ${err.message}`);
 });
 
 voiceCommandWorker.on('error', (err) => {
+  captureWorkerError('voice-commands', err);
   logger.error('[VoiceCommand] Erro interno do worker', { err: err.message });
 });
 

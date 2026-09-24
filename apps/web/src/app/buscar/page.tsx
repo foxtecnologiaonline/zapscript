@@ -42,8 +42,10 @@ function searchPosts(q: string) {
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 }
 
-export default function BuscarPage({ searchParams }: { searchParams: { q?: string } }) {
-  const query = searchParams.q?.trim() ?? '';
+export default async function BuscarPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  // Next 15: params/searchParams viraram Promise (request APIs assíncronas).
+  const { q } = await searchParams;
+  const query = q?.trim() ?? '';
   const results = query ? searchPosts(query) : [];
 
   return (
