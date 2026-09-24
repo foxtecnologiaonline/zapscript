@@ -94,6 +94,15 @@ if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.startsWith('
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Gemini e Groq expõem camada de compatibilidade com a API da OpenAI — mesmo
+// client, só troca a baseURL (mesmo padrão de services/ai-fallback.ts) — usados
+// como 3º/4º elo do resumo (generateBullets), depois de Claude e gpt-4o-mini.
+const gemini = process.env.GEMINI_API_KEY
+  ? new OpenAI({ apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/' })
+  : null;
+const groq = process.env.GROQ_API_KEY
+  ? new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' })
+  : null;
 
 /** Bucket Supabase Storage para MP3s de laudos jurídicos (permanente) */
 const AUDIO_JURIDICAL_BUCKET = 'audio-juridical';
@@ -200,12 +209,11 @@ function summaryMode(text: string, durationSec: number): SummaryMode {
 
 /**
  * Gera resumo com densidade escalonada pela duração e bloco dedicado de
- * pendências/perguntas. Modelo escalonado por complexidade:
- *   curto/médio → Haiku (rápido/barato)
- *   longo       → Sonnet (síntese de reunião) com fallback Haiku
+ * pendências/perguntas. Cadeia de custo/velocidade mínima (Opção 3, todos os
+ * modos): claude-haiku-4-5 → gpt-4o-mini → gemini-2.5-flash →
+ * llama-3.3-70b-versatile (Groq) → placeholder.
  *
  * Retorna string[] possivelmente com sentinels ::H:: (seção) e ::P:: (pendência).
- * Cadeia: [modelo do tier] → claude-3-5-haiku → claude-3-haiku → gpt-4o-mini → placeholder.
  *
  * `userId`, quando informado, loga o custo real (modelo + tokens) em AiUsageLog
  * — feature 'core_summary' (telemetria de custo, ver lib/aiUsage.ts).
@@ -289,11 +297,11 @@ Exemplos:
   const parse = (raw: string): string[] =>
     mode === 'tldr' ? parseTldr(raw) : parseStructured(raw);
 
-  // Modelo escalonado: áudio longo usa Sonnet primeiro (melhor síntese);
-  // demais usam direto a cadeia Haiku (rápido/barato).
-  const claudeChain = mode === 'long'
-    ? ['claude-sonnet-4-6', 'claude-haiku-4-5', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307']
-    : ['claude-haiku-4-5', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307'];
+  // Cadeia de custo/velocidade mínima (Opção 3): Haiku 4.5 é suficiente pros
+  // três modos — claude-3-5-haiku-20241022 e claude-3-haiku-20240307 foram
+  // retirados/depreciados pela Anthropic (ver shared/model-migration.md) e
+  // causavam 400 em cascata antes de cair pro OpenAI.
+  const claudeChain = ['claude-haiku-4-5'];
   const maxTokens = mode === 'long' ? 700 : mode === 'medium' ? 400 : 200;
 
   // ── Tentativa 1: Claude ───────────────────────────────────────────────────
@@ -339,6 +347,37 @@ Exemplos:
     logger.warn(`[Resumo] gpt-4o-mini respondeu vazio: "${raw.slice(0, 100)}"`);
   } catch (err: any) {
     logger.error(`[Resumo] gpt-4o-mini falhou: ${err.message}`);
+  }
+
+  // ── Tentativa 3: Gemini 2.5 Flash / Tentativa 4: Groq Llama 3.3 70B ───────
+  // Mesmos clients OpenAI-compatíveis do resto do sistema (ai-fallback.ts) —
+  // só entram se a respectiva API key estiver configurada.
+  for (const [label, client, model] of [
+    ['gemini-2.5-flash', gemini, 'gemini-2.5-flash'],
+    ['llama-3.3-70b-versatile', groq, 'llama-3.3-70b-versatile'],
+  ] as const) {
+    if (!client) continue;
+    try {
+      const res = await client.chat.completions.create({
+        model,
+        max_tokens:  maxTokens,
+        temperature: 0,
+        messages: [
+          { role: 'system', content: systemMsg },
+          { role: 'user',   content: userMsg   },
+        ],
+      });
+      const raw     = res.choices[0]?.message?.content?.trim() || '';
+      const bullets = parse(raw);
+      if (bullets.length > 0) {
+        logger.info(`[Resumo] ${label} ✅ (modo: ${mode})`);
+        if (userId) logAiUsage(userId, 'core_summary', label, res.usage?.prompt_tokens, res.usage?.completion_tokens);
+        return bullets;
+      }
+      logger.warn(`[Resumo] ${label} respondeu vazio: "${raw.slice(0, 100)}"`);
+    } catch (err: any) {
+      logger.error(`[Resumo] ${label} falhou: ${err.message}`);
+    }
   }
 
   // ── Fallback final ────────────────────────────────────────────────────────

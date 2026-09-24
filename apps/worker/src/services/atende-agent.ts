@@ -16,8 +16,8 @@ import { detectLanguage, getLanguageLabel } from '../lib/language-detect';
  */
 
 const AGENT_MODELS: ModelSpec[] = buildModelChain({
-  anthropic: [process.env.ATENDE_AGENT_MODEL || 'claude-sonnet-4-6', 'claude-sonnet-4-20250514', 'claude-haiku-4-5'],
-  openaiModel: process.env.ATENDE_AGENT_MODEL_OPENAI || 'gpt-4o',
+  anthropic: [process.env.ATENDE_AGENT_MODEL || 'claude-haiku-4-5'],
+  openaiModel: process.env.ATENDE_AGENT_MODEL_OPENAI || 'gpt-4o-mini',
   groqModel: process.env.ATENDE_AGENT_MODEL_GROQ || 'llama-3.3-70b-versatile',
   geminiModel: process.env.ATENDE_AGENT_MODEL_GEMINI || 'gemini-2.5-flash',
 });

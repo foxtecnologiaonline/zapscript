@@ -26,9 +26,7 @@ function logAiUsage(userId: string | undefined, feature: string, model: string, 
 }
 
 const CLAUDE_MODELS = [
-  process.env.ATENDE_AGENT_MODEL || 'claude-sonnet-4-6',
-  'claude-sonnet-4-20250514',
-  'claude-haiku-4-5',
+  process.env.ATENDE_AGENT_MODEL || 'claude-haiku-4-5',
 ].filter((v, i, a) => a.indexOf(v) === i);
 
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;

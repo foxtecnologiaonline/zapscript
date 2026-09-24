@@ -15,8 +15,8 @@ import { buildModelChain, callAiWithFallback, type ModelSpec } from './ai-fallba
 // Modelo configurável; default no Sonnet 4 mais recente. Cadeia de fallback cobre
 // indisponibilidade pontual de um id específico, e depois provedores inteiros.
 const AGENT_MODELS: ModelSpec[] = buildModelChain({
-  anthropic: [process.env.SUPPORT_AGENT_MODEL || 'claude-sonnet-4-6', 'claude-sonnet-4-20250514', 'claude-haiku-4-5'],
-  openaiModel: process.env.SUPPORT_AGENT_MODEL_OPENAI || 'gpt-4o',
+  anthropic: [process.env.SUPPORT_AGENT_MODEL || 'claude-haiku-4-5'],
+  openaiModel: process.env.SUPPORT_AGENT_MODEL_OPENAI || 'gpt-4o-mini',
   groqModel: process.env.SUPPORT_AGENT_MODEL_GROQ || 'llama-3.3-70b-versatile',
   geminiModel: process.env.SUPPORT_AGENT_MODEL_GEMINI || 'gemini-2.5-flash',
 });

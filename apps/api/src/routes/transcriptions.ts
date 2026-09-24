@@ -1,11 +1,11 @@
 import { FastifyInstance } from 'fastify';
-import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
 import { prisma } from '../lib/prisma';
 import { transcriptionQueue } from '../services/queue';
 import { decryptStr, decryptArr } from '../services/encryption';
 import { getUserPlan, requirePlan } from '../lib/planGate';
+import { buildModelChain, callAiWithFallback, type ModelSpec } from '../services/ai-fallback';
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL;
@@ -27,7 +27,17 @@ const PLAN_TAGS    = ['pro', 'pro-tester', 'executive', 'profissional', 'empresa
 const PLAN_LANG    = ['pro', 'pro-tester', 'executive', 'profissional', 'empresas'];   // filtro por idioma para Pro+
 const PLAN_AI_FEAT = ['pro', 'pro-tester', 'executive', 'profissional', 'empresas'];   // reply sugerida + doc para Pro+
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Cadeia de custo/velocidade mínima (Opção 3) — mesmo padrão usado nos
+// outros agentes (ai-fallback.ts): sugestão de resposta e geração de
+// documento não têm nada de crítico que justifique modelo caro, mas
+// precisam de rede de segurança (antes rodavam só em claude-3-haiku-20240307,
+// já retirado/depreciado pela Anthropic, sem fallback nenhum — 500 puro).
+const AI_FEAT_MODELS: ModelSpec[] = buildModelChain({
+  anthropic:   ['claude-haiku-4-5'],
+  openaiModel: 'gpt-4o-mini',
+  groqModel:   'llama-3.3-70b-versatile',
+  geminiModel: 'gemini-2.5-flash',
+});
 
 // ── Conversão Profissional — HTML imprimível ───────────────────────────────
 function buildJuridicalPdfHtml(t: any, transcriptText: string): string {
@@ -465,9 +475,7 @@ ${rows}
       const bullets = decryptArr(t.summaryBullets as string);
       const contact = t.contactName || decryptStr(t.contactPhone);
 
-      const prompt = `Você é um assistente de comunicação. Analise esta mensagem de áudio recebida via WhatsApp e gere exatamente 3 sugestões de resposta em português brasileiro.
-
-Remetente: ${contact}
+      const prompt = `Remetente: ${contact}
 Conversão: "${text}"
 ${bullets.length ? `Pontos principais:\n${bullets.map(b => `• ${b}`).join('\n')}` : ''}
 
@@ -480,14 +488,13 @@ Responda SOMENTE com JSON no formato:
 {"replies": ["resposta curta", "resposta média", "resposta completa"]}`;
 
       try {
-        const response = await anthropic.messages.create({
-          model:      'claude-3-haiku-20240307',
-          max_tokens: 600,
-          messages:   [{ role: 'user', content: prompt }],
+        const json = await callAiWithFallback({
+          models:   AI_FEAT_MODELS,
+          system:   'Você é um assistente de comunicação. Analise a mensagem de áudio recebida via WhatsApp e gere exatamente 3 sugestões de resposta em português brasileiro. Responda SOMENTE com o JSON pedido.',
+          user:     prompt,
+          maxTokens: 600,
+          label:    '[SuggestReply]',
         });
-        const raw   = (response.content[0] as any).text?.trim() || '{}';
-        const match = raw.match(/\{[\s\S]*\}/);
-        const json  = JSON.parse(match ? match[0] : raw);
         return { replies: json.replies || [] };
       } catch (err) {
         app.log.error({ err }, 'suggest-reply: Claude error');
@@ -531,15 +538,18 @@ Remetente: ${contact}
 Conversão completa: "${text}"
 ${bullets.length ? `Pontos principais já identificados:\n${bullets.map(b => `• ${b}`).join('\n')}` : ''}
 
-Gere apenas o documento, sem explicações adicionais.`;
+Gere apenas o documento, sem explicações adicionais. Responda SOMENTE com JSON no formato:
+{"content": "<documento aqui, com \\n para quebras de linha>"}`;
 
       try {
-        const response = await anthropic.messages.create({
-          model:      'claude-3-haiku-20240307',
-          max_tokens: 1000,
-          messages:   [{ role: 'user', content: prompt }],
+        const json = await callAiWithFallback({
+          models:   AI_FEAT_MODELS,
+          system:   'Você gera documentos profissionais em português brasileiro a partir de transcrições de áudio do WhatsApp. Responda SOMENTE com o JSON pedido.',
+          user:     prompt,
+          maxTokens: 1000,
+          label:    '[GenerateDocument]',
         });
-        const content = (response.content[0] as any).text?.trim() || '';
+        const content = (json.content || '').trim();
         return { docType, content, contact, date };
       } catch (err) {
         app.log.error({ err }, 'generate-document: Claude error');
