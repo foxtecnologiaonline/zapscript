@@ -98,3 +98,36 @@ test('404 ao replayar id inexistente', async () => {
   const r = await app.inject({ method: 'POST', url: '/nao-existe/replay', headers: AUTH });
   expect(r.statusCode).toBe(404);
 });
+
+test('dois replays simultâneos geram jobIds DISTINTOS (não colidem)', async () => {
+  // Lendo replayCount antes de incrementar, as duas requisições calculariam o
+  // mesmo replay-<id>-1: o BullMQ ignora o add repetido em silêncio e o admin
+  // veria replayCount 2 com UM job só enfileirado.
+  const j = await seed({ queue: 'transcriptions' });
+
+  const [a, b] = await Promise.all([
+    app.inject({ method: 'POST', url: `/${j.id}/replay`, headers: AUTH }),
+    app.inject({ method: 'POST', url: `/${j.id}/replay`, headers: AUTH }),
+  ]);
+  expect(a.statusCode).toBe(200);
+  expect(b.statusCode).toBe(200);
+
+  const ids = add.mock.calls.map((c: any[]) => c[2].jobId);
+  expect(ids).toHaveLength(2);
+  expect(new Set(ids).size).toBe(2);                 // distintos
+  expect(new Set(ids)).toEqual(new Set([`replay-${j.id}-1`, `replay-${j.id}-2`]));
+
+  const after = await prisma.failedJob.findUnique({ where: { id: j.id } });
+  expect(after!.replayCount).toBe(2);                // bate com os 2 enfileirados
+  await prisma.failedJob.delete({ where: { id: j.id } });
+});
+
+test('falha ao enfileirar responde 502 em vez de "ok" mentiroso', async () => {
+  const j = await seed({ queue: 'transcriptions' });
+  add.mockImplementationOnce(() => { throw new Error('redis fora'); });
+
+  const r = await app.inject({ method: 'POST', url: `/${j.id}/replay`, headers: AUTH });
+  expect(r.statusCode).toBe(502);
+  expect(r.json().error).toContain('redis fora');
+  await prisma.failedJob.delete({ where: { id: j.id } });
+});

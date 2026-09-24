@@ -71,6 +71,9 @@ export default async function adminDlqRoutes(app: FastifyInstance) {
 
     return {
       items, total, limit, offset,
+      // Atenção ao ler: `items`/`total` respeitam os filtros da query, mas
+      // `pendentesPorFila` é GLOBAL de propósito — serve para o admin ver de
+      // onde vêm as falhas sem ter que consultar fila por fila.
       pendentesPorFila: Object.fromEntries(porFila.map(g => [g.queue, g._count._all])),
     };
   });
@@ -97,16 +100,28 @@ export default async function adminDlqRoutes(app: FastifyInstance) {
       });
     }
 
-    // jobId novo e único: reaproveitar o original faria o BullMQ ignorar o add
-    // silenciosamente (o id antigo ainda pode estar retido na fila) — o admin
-    // veria "replay ok" sem nada ter sido reprocessado.
-    const replayJobId = `replay-${job.id}-${job.replayCount + 1}`;
-    await queue.add(job.jobName, job.payload as any, { jobId: replayJobId });
-
+    // O incremento vem ANTES do add, e o jobId sai do valor devolvido por ele.
+    // Lendo replayCount do findUnique acima, dois replays simultâneos (dois
+    // admins, ou um duplo clique) calculariam o MESMO replayJobId: o BullMQ
+    // ignora em silêncio o add repetido, os dois incrementariam mesmo assim, e
+    // o admin veria replayCount 2 com um único job enfileirado — exatamente o
+    // engano que o jobId novo deveria evitar. Com o increment atômico antes,
+    // cada requisição recebe um número próprio e um jobId distinto.
     const updated = await prisma.failedJob.update({
       where: { id: job.id },
       data:  { replayedAt: new Date(), replayCount: { increment: 1 } },
     });
+    const replayJobId = `replay-${job.id}-${updated.replayCount}`;
+
+    try {
+      await queue.add(job.jobName, job.payload as any, { jobId: replayJobId });
+    } catch (err: any) {
+      // Contagem já incrementada mas nada enfileirado. Preferimos o contador
+      // adiantado a um "ok" mentiroso — o erro vai explícito para o admin.
+      req.log.error({ failedJobId: job.id, queue: job.queue, err: err.message },
+        '[DLQ] Falha ao reenfileirar job');
+      return reply.code(502).send({ error: `Não foi possível reenfileirar na fila "${job.queue}": ${err.message}` });
+    }
 
     req.log.warn({ failedJobId: job.id, queue: job.queue, replayJobId }, '[DLQ] Job reenfileirado manualmente');
     return { ok: true, replayJobId, replayCount: updated.replayCount };
