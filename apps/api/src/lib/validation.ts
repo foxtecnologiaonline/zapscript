@@ -35,25 +35,11 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Senha é obrigatória').max(128),
 });
 
-export const resetPasswordSchema = z.object({
-  email: z.string().email('Email inválido').toLowerCase(),
-});
-
-export const confirmResetSchema = z.object({
-  token: z.string().min(1, 'Token é obrigatório'),
-  newPassword: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
-});
-
 // ── Numbers Schemas ──────────────────────────────────────
 export const createNumberSchema = z.object({
   displayName: z.string().min(1).max(50).optional(),
   // phoneNumber é opcional — usuário pode conectar via QR sem informar o número
   phoneNumber: z.string().regex(/^\d{10,15}$/, 'Número deve ter 10-15 dígitos').optional(),
-});
-
-export const updateNumberSchema = z.object({
-  displayName: z.string().min(1, 'Nome é obrigatório').max(50).optional(),
-  status: z.enum(['connected', 'disconnected', 'pending']).optional(),
 });
 
 // ── Transcriptions Schemas ────────────────────────────────
@@ -63,14 +49,6 @@ export const createTranscriptionSchema = z.object({
   contactPhone: z.string().regex(/^\d{10,15}$/, 'Telefone inválido'),
   contactName: z.string().max(100).optional(),
   language: z.enum(['pt', 'en', 'es']).default('pt'),
-});
-
-export const transcriptionQuerySchema = z.object({
-  numberId: z.string().cuid().optional(),
-  limit: z.coerce.number().min(1).max(100).default(20),
-  offset: z.coerce.number().min(0).default(0),
-  startDate: z.coerce.date().optional(),
-  endDate: z.coerce.date().optional(),
 });
 
 // ── Billing Schemas ──────────────────────────────────────
@@ -118,48 +96,12 @@ export const moduleSubscribeSchema = z.object({
   billingAddress: billingAddressSchema,
 });
 
-export const createSubscriptionSchema = z.object({
-  planId: z.string().cuid('ID do plano inválido'),
-});
-
-export const updateSubscriptionSchema = z.object({
-  planId: z.string().cuid('ID do plano inválido').optional(),
-});
-
-export const cancelSubscriptionSchema = z.object({
-  reason: z.string().max(500).optional(),
-});
-
 // ── Admin Schemas ────────────────────────────────────────
 export const adminUpdateUserSchema = z.object({
   name: z.string().min(2).optional(),
   email: z.string().email().optional(),
   isAdmin: z.boolean().optional(),
   planId: z.string().cuid().optional(),
-});
-
-export const adminCreatePlanSchema = z.object({
-  name: z.string().min(1).max(50),
-  label: z.string().min(1).max(100),
-  audiosPerMonth: z.number().min(0).optional(),
-  minutesPerMonth: z.number().min(0),
-  maxNumbers: z.number().min(1),
-  priceBrl: z.number().min(0),
-  features: z.array(z.string()).default([]),
-});
-
-export const adminUpdatePlanSchema = z.object({
-  label: z.string().min(1).max(100).optional(),
-  audiosPerMonth: z.number().min(0).optional(),
-  minutesPerMonth: z.number().min(0).optional(),
-  maxNumbers: z.number().min(1).optional(),
-  priceBrl: z.number().min(0).optional(),
-  features: z.array(z.string()).optional(),
-});
-
-export const adminUpdateTicketSchema = z.object({
-  status: z.enum(['open', 'replied', 'closed']),
-  response: z.string().max(5000).optional(),
 });
 
 // ── CRM Schemas ───────────────────────────────────────────
@@ -214,16 +156,6 @@ export const crmImportSchema = z.object({
 });
 
 // ── Support Schemas ──────────────────────────────────────
-export const createSupportTicketSchema = z.object({
-  subject: z.string().min(5, 'Assunto deve ter pelo menos 5 caracteres').max(200),
-  message: z.string().min(10, 'Mensagem deve ter pelo menos 10 caracteres').max(5000),
-  category: z.enum(['bug', 'feature', 'billing', 'other']).default('other'),
-});
-
-export const replySupportTicketSchema = z.object({
-  message: z.string().min(10, 'Resposta deve ter pelo menos 10 caracteres').max(5000),
-});
-
 // ── Atende Schemas ────────────────────────────────────────
 export const atendeConfigSchema = z.object({
   enabled:         z.boolean().optional(),
@@ -439,15 +371,6 @@ export const createApiKeySchema = z.object({
   name:   z.string().min(2, 'Nome precisa ter pelo menos 2 caracteres').max(60),
   scopes: z.array(z.enum(['conversations:read', 'contacts:read'])).min(1, 'Escolha ao menos 1 escopo'),
 });
-
-// ── Types Export ──────────────────────────────────────────
-export type SignupInput = z.infer<typeof signupSchema>;
-export type LoginInput = z.infer<typeof loginSchema>;
-export type CreateNumberInput = z.infer<typeof createNumberSchema>;
-export type CreateTranscriptionInput = z.infer<typeof createTranscriptionSchema>;
-export type CreateSubscriptionInput = z.infer<typeof createSubscriptionSchema>;
-export type AdminUpdateUserInput = z.infer<typeof adminUpdateUserSchema>;
-export type CreateSupportTicketInput = z.infer<typeof createSupportTicketSchema>;
 
 // ── Middleware helper ──────────────────────────────────
 export function validateRequest<T>(schema: z.ZodSchema<T>) {

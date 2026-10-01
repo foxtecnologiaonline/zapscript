@@ -52,3 +52,6 @@ scripts/send-password-reset.mjs
 # Worktrees locais do Claude Code — nunca faz sentido versionar (gitlink órfão
 # sem .gitmodules correspondente já causou warning no checkout do CI uma vez).
 .claude/worktrees/
+
+# Cache incremental do tsc — artefato de build, nunca versionar
+*.tsbuildinfo
