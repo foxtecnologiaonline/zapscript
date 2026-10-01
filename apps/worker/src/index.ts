@@ -193,9 +193,9 @@ function detectDomain(text: string): SummaryDomain {
   return 'generico';
 }
 
-// Abaixo deste limiar não vale a pena gerar resumo (recado curto já é a
-// própria transcrição) — pula a chamada de IA, economizando custo/latência,
-// e a mensagem sai só com cabeçalho + transcrição completa.
+// Resumo só é gerado para áudio com duração MAIOR que este limiar — em até
+// 15s (inclusive) o recado curto já é a própria transcrição, então pula a
+// chamada de IA (custo/latência) e a mensagem sai só com cabeçalho + transcrição.
 const MIN_SUMMARY_DURATION_SEC = 15;
 
 /**
@@ -744,8 +744,9 @@ function splitText(text: string, firstMax: number, restMax: number): string[] {
  * casos (normal, self-note, Modo Privado) — só o assunto do cabeçalho e a
  * linha de telefone/resposta mudam conforme o contexto:
  *
- *   📋 *Resumo do áudio de [nome]* • ⏱ [dur]
+ *   🎙️*Áudio de [nome]* [dur]
  *
+ *   📋 *Resumo*
  *   • bullet 1
  *   • bullet 2
  *
@@ -755,6 +756,10 @@ function splitText(text: string, firstMax: number, restMax: number): string[] {
  *   ———
  *
  *   ⚡ https://ZapScript.me
+ *
+ * O bloco "📋 *Resumo*" só existe quando `bullets` não está vazio — o caller
+ * já decide não chamar generateBullets() para áudio ≤ MIN_SUMMARY_DURATION_SEC,
+ * então essa seção inteira some nesse caso (não só os bullets).
  *
  * Modo Privado antepõe "🔒 *Privado* |" ao assunto e mostra o telefone do
  * remetente; ele e o self-note (quando a origem é conhecida) adicionam
@@ -802,15 +807,13 @@ function buildMessage(
     subject = hasName ? `áudio de ${safeName}` : 'áudio';
   }
   const privacyTag = isPrivate ? '🔒 *Privado* | ' : '';
-  // Sem resumo (áudio curto, abaixo do limiar) o cabeçalho não promete um
-  // "Resumo" que não existe — vira só a identificação do áudio.
-  const headerLabel = hasRealBullets
-    ? `📋 *Resumo do ${subject}*`
-    : `🎙️ *${subject.charAt(0).toUpperCase()}${subject.slice(1)}*`;
-  const header       = `${privacyTag}${headerLabel}${durStr ? ` • ${durStr}` : ''}`;
+  // Cabeçalho de identificação do áudio — sempre aparece, com ou sem resumo.
+  const capitalizedSubject = `${subject.charAt(0).toUpperCase()}${subject.slice(1)}`;
+  const header       = `${privacyTag}🎙️*${capitalizedSubject}*${durStr ? ` ${durStr}` : ''}`;
   const phoneLine    = isPrivate && senderPhone ? `\n📱 ${fmtPhone(senderPhone)}` : '';
 
-  // ── Seção de resumo: bullets + seções + pendências ──
+  // ── Seção de resumo: só existe quando há bullets reais (caller já decide
+  // não gerá-los para áudio curto — ver MIN_SUMMARY_DURATION_SEC) ──
   // Sentinels: ::H::Título → "*Título*" (negrito WhatsApp); ::P::texto → "⚠️ texto".
   const renderSummaryLine = (b: string): string => {
     if (b.startsWith(SUMMARY_HEADER))  return `\n*${b.slice(SUMMARY_HEADER.length)}*`;
@@ -818,7 +821,7 @@ function buildMessage(
     return `• ${b}`;
   };
   const summarySection = hasRealBullets
-    ? `\n\n${bullets.map(renderSummaryLine).join('\n')}`
+    ? `\n\n📋 *Resumo*\n${bullets.map(renderSummaryLine).join('\n')}`
     : '';
 
   // ── Rodapé ──
@@ -1121,7 +1124,7 @@ async function processOfficialWhatsAppJob(job: Job) {
     log(job, `✅ ${durationSec}s — lang:${detectedLang} — "${originalText.substring(0, 60)}..."`);
 
     // PASSO 5: Resumo com Claude — pulado abaixo do limiar (só transcrição)
-    const bullets = durationSec >= MIN_SUMMARY_DURATION_SEC
+    const bullets = durationSec > MIN_SUMMARY_DURATION_SEC
       ? await generateBullets(originalText, durationSec, detectedLang, userId)
       : [];
     log(job, bullets.length > 0 ? `🤖 Claude resumo ✅ ${bullets.length} bullet(s)` : '🤖 Resumo pulado (áudio curto)');
@@ -1222,7 +1225,7 @@ async function processTwilioJob(job: Job) {
     log(job, `✅ ${durationSec}s — lang:${detectedLang} — "${originalText.substring(0, 60)}..."`);
 
     // PASSO 5: Resumo com Claude — pulado abaixo do limiar (só transcrição)
-    const bullets = durationSec >= MIN_SUMMARY_DURATION_SEC
+    const bullets = durationSec > MIN_SUMMARY_DURATION_SEC
       ? await generateBullets(originalText, durationSec, detectedLang, userId)
       : [];
     log(job, bullets.length > 0 ? `🤖 Claude resumo ✅ ${bullets.length} bullet(s)` : '🤖 Resumo pulado (áudio curto)');
@@ -1582,7 +1585,7 @@ async function processEvolutionJob(job: Job) {
     }
 
     // PASSO 5: Resumo com Claude — pulado abaixo do limiar (só transcrição)
-    const bullets = durationSec >= MIN_SUMMARY_DURATION_SEC
+    const bullets = durationSec > MIN_SUMMARY_DURATION_SEC
       ? await generateBullets(originalText, durationSec, detectedLanguage, userId)
       : [];
     log(job, bullets.length > 0 ? `🤖 Claude resumo ✅ ${bullets.length} bullet(s)` : '🤖 Resumo pulado (áudio curto)');
