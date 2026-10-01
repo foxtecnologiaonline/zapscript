@@ -773,9 +773,15 @@ function buildMessage(
   const { contactName, durationSec, isPrivate, senderPhone, isSelfNote, forwarded, originPhone, footerText } = opts;
 
   const hasName = contactName && contactName !== 'manual' && contactName.trim().length > 0;
-  // Nome vem do pushName do WhatsApp — pode conter "*" literal, o que quebraria
-  // o par de negrito do header (ela inteira vai envolvida em um "*...*" único).
-  const safeName = hasName ? contactName!.replace(/\*/g, '∗') : contactName;
+  // Marcadores de formatação do WhatsApp neutralizados em TODO texto de terceiro
+  // que entra na mensagem (nome vindo do pushName, bullets vindos do modelo):
+  //   "*" quebraria o par de negrito do header/seções (vão envolvidos num par único);
+  //   "_" em número ímpar se parearia com o "_" que abre a transcrição logo abaixo,
+  //       jogando o itálico para cima do cabeçalho e deixando o resto cru.
+  // O WhatsApp alterna a cada marcador e não suporta aninhamento, então um único
+  // caractere solto desalinha a mensagem inteira.
+  const deMark   = (s: string) => s.replace(/\*/g, '∗').replace(/_/g, '‗');
+  const safeName = hasName ? deMark(contactName!) : contactName;
   const durStr  = durationSec && durationSec > 0
     ? `⏱ ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60 > 0 ? ` ${durationSec % 60}s` : ''}` : `${durationSec}s`}`
     : '';
@@ -793,20 +799,20 @@ function buildMessage(
   let subject: string;
   if (isSelfNote) {
     const origin = originPhone ? ` de ${fmtPhone(originPhone)}` : '';
-    subject = forwarded ? `áudio encaminhado${origin}` : 'sua nota de voz';
+    subject = forwarded ? `do áudio encaminhado${origin}` : 'da sua nota de voz';
   } else {
-    subject = hasName ? `áudio de ${safeName}` : 'áudio';
+    subject = hasName ? `do áudio de ${safeName}` : 'do áudio';
   }
   const privacyTag = isPrivate ? '🔒 *Privado* | ' : '';
-  const header      = `${privacyTag}📋 *Resumo do ${subject}*${durStr ? ` • ${durStr}` : ''}`;
+  const header      = `${privacyTag}📋 *Resumo ${subject}*${durStr ? ` • ${durStr}` : ''}`;
   const phoneLine    = isPrivate && senderPhone ? `\n📱 ${fmtPhone(senderPhone)}` : '';
 
   // ── Seção de resumo: bullets + seções + pendências ──
   // Sentinels: ::H::Título → "*Título*" (negrito WhatsApp); ::P::texto → "⚠️ texto".
-  const renderSummaryLine = (b: string): string => {
-    if (b.startsWith(SUMMARY_HEADER))  return `\n*${b.slice(SUMMARY_HEADER.length)}*`;
-    if (b.startsWith(SUMMARY_PENDING)) return `⚠️ *${b.slice(SUMMARY_PENDING.length)}*`;
-    return `• ${b}`;
+  const renderSummaryLine = (raw: string): string => {
+    if (raw.startsWith(SUMMARY_HEADER))  return `\n*${deMark(raw.slice(SUMMARY_HEADER.length))}*`;
+    if (raw.startsWith(SUMMARY_PENDING)) return `⚠️ *${deMark(raw.slice(SUMMARY_PENDING.length))}*`;
+    return `• ${deMark(raw)}`;
   };
   const summarySection = hasRealBullets
     ? `\n\n${bullets.map(renderSummaryLine).join('\n')}`
@@ -832,11 +838,11 @@ function buildMessage(
   // truncado. Itálico (_..._) é reaberto/fechado em cada parte, já que o
   // WhatsApp não sustenta formatação através de mensagens separadas.
   //
-  // Underscores literais da transcrição (nome de arquivo, @handle, variável
+  // Marcadores literais da transcrição (nome de arquivo, @handle, variável
   // ditada) são neutralizados ANTES do split: um número ímpar deles quebraria
-  // o par de itálico que o cabeçalho/rodapé de cada parte depende, deixando
-  // o resto da mensagem sem formatação ou com um "_" solto visível.
-  const safeText = originalText.replace(/_/g, '‗');
+  // o par de itálico de que cada parte depende, deixando o resto da mensagem
+  // sem formatação ou com um marcador solto visível.
+  const safeText = deMark(originalText);
 
   const transcHeader = `\n\n🗒️ *Áudio completo*\n`;
   const contHeader   = `🗒️ *Áudio completo (cont.)*\n`;
