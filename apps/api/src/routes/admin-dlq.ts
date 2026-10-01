@@ -4,7 +4,7 @@ import { safeCompare } from '../lib/safeCompare';
 import { checkAdminTotp } from '../lib/totp';
 import {
   transcriptionQueue, campanhasQueue, mktfastQueue, atendeQueue,
-  legendaQueue, copilotoQueue, zapscreveQueue, voiceCommandQueue,
+  legendaQueue, copilotoQueue, zapscreveQueue, voiceCommandQueue, zapmonneyQueue,
 } from '../services/queue';
 
 /**
@@ -28,6 +28,7 @@ const QUEUES = {
   'copiloto':        copilotoQueue,
   'zapscreve':       zapscreveQueue,
   'voice-commands':  voiceCommandQueue,
+  'zapmonney':       zapmonneyQueue,
 } as const;
 
 type QueueName = keyof typeof QUEUES;

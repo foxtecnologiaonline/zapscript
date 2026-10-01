@@ -15,6 +15,7 @@ import { ingestCopilotoGroupMessage } from '../services/copiloto-groups';
 import { handleHarveyMessage } from '../services/harvey-commands';
 import { OPT_OUT_KEYWORDS, registerCampanhaOptOut, handleOptinResponse } from './modules/campanhas';
 import { isCampanhaChatCommand, handleCampanhaChatCommand, handleCampanhaChatReply } from '../services/campanhas-chat-commands';
+import { routeZapMonneyMessage } from '../services/zapmonney-router';
 import { io } from '../index';
 
 // Módulo Cobrança (#6): heurística leve p/ detectar cliente avisando que já
@@ -168,6 +169,19 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
     log.info({ event, instance: instName }, '[Evolution] Evento recebido');
 
     if (!instName) { log.warn('[Evolution] Evento sem instance name'); return; }
+
+    // ── ZapMonney: instância dedicada ao assistente financeiro ───────────────
+    // Tenancy invertida (o número é nosso, quem escreve é identificado pelo
+    // próprio telefone), então NADA do fluxo B2B abaixo se aplica — sem Atende,
+    // Copiloto, Campanhas, Cobrança, self-chat ou Entitlement. Comparação com
+    // env, sem consulta ao banco: isso roda em todo evento de todo cliente, e a
+    // feature nasce inerte enquanto ZAPMONNEY_INSTANCE não estiver configurada.
+    // Só messages.upsert é interceptado: connection.update/qrcode.updated
+    // seguem o caminho normal, para o número conectar pelo painel como os outros.
+    if (event === 'messages.upsert' && process.env.ZAPMONNEY_INSTANCE && instName === process.env.ZAPMONNEY_INSTANCE) {
+      await routeZapMonneyMessage(instName, data, log);
+      return;
+    }
 
     // ── Encontrar número no banco pelo nome da instância ─────────────────────
     // instanceName = 'zs-{numberId}' — armazenado em zapiInstanceId por compatibilidade

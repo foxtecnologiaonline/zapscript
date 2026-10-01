@@ -30,6 +30,7 @@ import {
 // as declaradas aqui.
 import { atendeWorker } from './atende'; // fila 'atende-replies' (ZapScript Atende)
 import { voiceCommandWorker } from './voice-command'; // fila 'voice-commands' (Comando de Voz Universal)
+import './zapmonney'; // fila 'zapmonney' (assistente financeiro em número próprio)
 import './crm'; // registra o cron de notificação de lembretes vencidos (ZapScript CRM)
 import './tarefas'; // registra o cron de tarefas atrasadas (ZapScript Tarefas)
 // fila 'copiloto' (ZapScript Copiloto — briefings ao dono) + áudio de cliente transcrito → Copiloto

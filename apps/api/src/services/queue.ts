@@ -148,3 +148,18 @@ export const voiceCommandQueue = new Queue('voice-commands', {
     removeOnFail:     { count: 1_000, age: 7 * 24 * 60 * 60 },
   },
 });
+
+// ── Fila do ZapMonney (assistente financeiro em número próprio) ──────────────
+// Produzida pelo router do webhook (services/zapmonney-router.ts) e consumida
+// pelo worker (apps/worker/src/zapmonney.ts). attempts=2: uma mensagem de
+// WhatsApp reprocessada demais vira resposta duplicada para a pessoa, o que é
+// pior que perder o retry — a pessoa simplesmente repete o que disse.
+export const zapmonneyQueue = new Queue('zapmonney', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff:  { type: 'exponential', delay: 5_000 },
+    removeOnComplete: { count: 1_000, age: 48 * 60 * 60 },
+    removeOnFail:     { count: 2_000, age: 7 * 24 * 60 * 60 },
+  },
+});

@@ -1849,3 +1849,70 @@ model RefreshToken {
   @@index([familyId])
   @@index([expiresAt])
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ZapMonney — assistente financeiro em número próprio
+//
+// Tenancy invertida em relação ao resto do ZapScript: aqui o número de WhatsApp
+// é NOSSO e quem conversa é identificado pelo próprio telefone. Não há login,
+// Entitlement nem billing no caminho — qualquer pessoa que chamar o número se
+// cadastra na conversa. Por isso ZmUser é uma identidade própria e NÃO uma
+// relação com User (a maioria não é cliente ZapScript); `userId` é só um
+// vínculo frouxo, preenchido quando o telefone casa com uma conta existente.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ZmUser {
+  id         String    @id @default(cuid())
+  /// dígitos limpos com DDI — mesma convenção de WhatsappOnboardingLead.phone
+  phone      String    @unique
+  name       String?
+  /// awaiting_consent → active | blocked
+  stage      String    @default("awaiting_consent")
+  consentAt  DateTime?
+  /// conta ZapScript do mesmo telefone, quando existe. Sem FK de propósito:
+  /// a vida do ZmUser não depende de uma conta no produto principal.
+  userId     String?
+  lastSeenAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  transactions ZmTransaction[]
+
+  @@index([stage])
+  @@index([userId])
+}
+
+model ZmTransaction {
+  id          String   @id @default(cuid())
+  zmUserId    String
+  /// 'expense' | 'income'
+  type        String
+  /// Decimal, não Float: é livro-caixa. Divergência consciente de
+  /// CrmContact.value (Float), que é estimativa comercial, não dinheiro contado.
+  amount      Decimal  @db.Decimal(12, 2)
+  /// valor de ZM_CATEGORIES (worker/services/zapmonney-agent.ts). Sem tabela
+  /// própria enquanto não existe categoria customizável — tabela só compraria
+  /// join e seed por usuário.
+  category    String
+  description String?
+  /// data do FATO (quando a despesa aconteceu), não do registro. Gravada às
+  /// 12:00 BRT para nunca cair na borda do mês em nenhuma conversão.
+  occurredAt  DateTime
+  /// 'pending' (aguardando confirmação) | 'confirmed' | 'discarded' | 'deleted'
+  /// No máximo um 'pending' por usuário — garantido em código (Prisma não
+  /// expressa unique parcial): os anteriores viram 'discarded' antes do insert.
+  status      String   @default("pending")
+  /// texto/transcrição original — auditoria da extração e debug de prompt
+  rawText     String
+  confidence  Float?
+  /// messageId da Evolution: segunda rede de idempotência contra reentrega do
+  /// webhook (a primeira é jobId=messageId na fila)
+  sourceMsgId String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  zmUser ZmUser @relation(fields: [zmUserId], references: [id], onDelete: Cascade)
+
+  @@index([zmUserId, status])
+  @@index([zmUserId, occurredAt(sort: Desc)])
+}
