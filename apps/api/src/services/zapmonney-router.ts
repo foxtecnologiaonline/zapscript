@@ -27,7 +27,10 @@ const MEDIA_TYPES = new Set([
 
 // Teto diário por telefone. O número é público: sem isso, um único remetente
 // em loop paga LLM + Whisper à nossa custa indefinidamente.
-const DAILY_LIMIT = parseInt(process.env.ZAPMONNEY_DAILY_LIMIT || '60');
+// Valor inválido na env cai no default em vez de virar NaN: com NaN,
+// `count <= DAILY_LIMIT` é sempre falso E `count === DAILY_LIMIT + 1` também,
+// então o número ficaria mudo para todo mundo sem nem mandar o aviso.
+const DAILY_LIMIT = Number.parseInt(process.env.ZAPMONNEY_DAILY_LIMIT || '', 10) || 60;
 
 /** Dia no fuso de São Paulo (UTC-3 fixo) — a janela precisa virar à meia-noite
  *  de quem está conversando, senão a mensagem "a gente continua amanhã" libera

@@ -31,6 +31,22 @@ const MONTH_NAMES = [
 const DELETE_ACCOUNT_PHRASE = 'APAGAR TUDO';
 const RECENT_LIMIT = 10;
 
+/**
+ * Janela em que um lançamento pendente ainda conta como "a conversa de agora".
+ * Sem ela, um pendente que a pessoa nunca respondeu ficaria na fila para sempre
+ * e um "sim" dado dias depois, a outro lançamento, arrastaria aquele junto para
+ * o saldo. Pendente mais velho que isso é abandono, não fila.
+ */
+const PENDING_WINDOW_MIN = 60;
+
+function pendingWhere(zmUserId: string) {
+  return {
+    zmUserId,
+    status:    'pending',
+    createdAt: { gte: new Date(Date.now() - PENDING_WINDOW_MIN * 60_000) },
+  };
+}
+
 export interface ZmMessageInput {
   phone: string;
   pushName?: string | null;
@@ -117,12 +133,22 @@ const HELP_TEXT =
 
 // ── Lançamento pendente ──────────────────────────────────────────────────────
 
-function pendingPrompt(tx: {
+function txLine(tx: {
   type: string; amount: unknown; category: string; description: string | null; occurredAt: Date;
 }): string {
   const sinal = tx.type === 'income' ? '📥 Entrada' : '📤 Despesa';
   const desc  = tx.description ? ` · ${tx.description}` : '';
-  return `${sinal}: *${fmtBRL(tx.amount)}* · ${tx.category}${desc} · ${fmtDate(tx.occurredAt)}\n\n` +
+  return `${sinal}: *${fmtBRL(tx.amount)}* · ${tx.category}${desc} · ${fmtDate(tx.occurredAt)}`;
+}
+
+function pendingPrompt(
+  tx: Parameters<typeof txLine>[0],
+  outrosPendentes = 0,
+): string {
+  const fila = outrosPendentes > 0
+    ? `\n_(+${outrosPendentes} lançamento(s) também esperando — o *sim* salva todos.)_`
+    : '';
+  return `${txLine(tx)}${fila}\n\n` +
          'Confirma? Responde *sim* para salvar, *não* para descartar — ou me diz o que corrigir.';
 }
 
@@ -140,20 +166,22 @@ async function createPending(
   }
 
   // Retry do mesmo job (o envio da resposta falhou DEPOIS do insert) não pode
-  // criar um segundo lançamento nem explodir no unique de sourceMsgId — e sem
-  // isso o discard logo abaixo apagaria justamente o pendente da primeira
-  // tentativa. Se a conversa já seguiu adiante, fica calado.
+  // criar um segundo lançamento nem explodir no unique de sourceMsgId. Se a
+  // conversa já seguiu adiante, fica calado.
   if (sourceMsgId) {
     const existing = await prisma.zmTransaction.findUnique({ where: { sourceMsgId } });
     if (existing) return existing.status === 'pending' ? pendingPrompt(existing) : null;
   }
 
-  // Um pendente por pessoa: o anterior é descartado antes de abrir o novo
-  // (Prisma não expressa unique parcial, então a regra vive aqui).
-  await prisma.zmTransaction.updateMany({
-    where: { zmUserId, status: 'pending' },
-    data:  { status: 'discarded' },
-  });
+  // Vários pendentes convivem de propósito. A regra anterior ("um por pessoa,
+  // descarta o anterior") perdia dinheiro em uso normal: quem dita duas despesas
+  // seguidas — "gastei 50 no mercado", "e 20 de uber" — tinha a primeira
+  // descartada antes de confirmar, respondia um "sim" e só a segunda entrava, sem
+  // nunca saber da outra. Em livro-caixa isso é perda silenciosa de lançamento.
+  // Deixar a fila aberta também elimina o read-modify-write que tornava a ordem
+  // de processamento relevante: dois jobs simultâneos agora só criam dois
+  // pendentes, que é estado válido.
+  const outrosPendentes = await prisma.zmTransaction.count({ where: pendingWhere(zmUserId) });
 
   const tx = await prisma.zmTransaction.create({
     data: {
@@ -171,18 +199,56 @@ async function createPending(
     },
   });
 
-  return pendingPrompt(tx);
+  return pendingPrompt(tx, outrosPendentes);
 }
 
-async function confirmPending(pending: { id: string; type: string; amount: unknown }): Promise<ZmReply> {
-  await prisma.zmTransaction.update({ where: { id: pending.id }, data: { status: 'confirmed' } });
-  const verbo = pending.type === 'income' ? 'Entrada' : 'Despesa';
-  return `✅ ${verbo} de *${fmtBRL(pending.amount)}* registrada.`;
+/**
+ * O "sim" vale para tudo que está esperando, porque é isso que a pessoa quis
+ * dizer depois de ditar dois ou três lançamentos em sequência. Confirmar só o
+ * último deixaria os outros parados fora do saldo para sempre.
+ */
+async function confirmPending(zmUserId: string): Promise<ZmReply> {
+  const pendentes = await prisma.zmTransaction.findMany({
+    where:   pendingWhere(zmUserId),
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (pendentes.length === 0) return 'ℹ️ Não tem nenhum lançamento aguardando confirmação agora.';
+
+  await prisma.zmTransaction.updateMany({
+    where: { id: { in: pendentes.map((p) => p.id) } },
+    data:  { status: 'confirmed' },
+  });
+
+  // Varre os abandonados no mesmo gesto: é exatamente aqui que eles causariam
+  // dano se um dia voltassem a ser elegíveis, e não custa escrita no caminho
+  // comum (só roda quando alguém confirma algo).
+  prisma.zmTransaction
+    .updateMany({
+      where: { zmUserId, status: 'pending', id: { notIn: pendentes.map((p) => p.id) } },
+      data:  { status: 'discarded' },
+    })
+    .catch(() => null);
+
+  if (pendentes.length === 1) {
+    const verbo = pendentes[0].type === 'income' ? 'Entrada' : 'Despesa';
+    return `✅ ${verbo} de *${fmtBRL(pendentes[0].amount)}* registrada.`;
+  }
+
+  return `✅ ${pendentes.length} lançamentos registrados:\n\n` +
+         pendentes.map((p) => txLine(p)).join('\n');
 }
 
-async function cancelPending(pendingId: string): Promise<ZmReply> {
-  await prisma.zmTransaction.update({ where: { id: pendingId }, data: { status: 'discarded' } });
-  return '🗑️ Descartado, nada foi salvo.';
+async function cancelPending(zmUserId: string): Promise<ZmReply> {
+  const { count } = await prisma.zmTransaction.updateMany({
+    where: { zmUserId, status: 'pending' },
+    data:  { status: 'discarded' },
+  });
+
+  if (count === 0) return 'ℹ️ Não tem nada pendente para descartar.';
+  return count === 1
+    ? '🗑️ Descartado, nada foi salvo.'
+    : `🗑️ Descartei os ${count} lançamentos pendentes, nada foi salvo.`;
 }
 
 async function correctPending(
@@ -369,15 +435,19 @@ export async function handleZapMonneyMessage(input: ZmMessageInput): Promise<ZmR
 
   // ── Consentimento pendente: resolvido por regex, sem gastar modelo ────────
   if (zmUser.stage === 'awaiting_consent') {
+    // A RECUSA é testada primeiro, de propósito: CONSENT_YES casa palavra solta
+    // ("pode", "quero", "vamos"), e "não quero" / "não, não pode agora" contêm
+    // as duas. Registrar consentimento contra um "não" explícito é o pior erro
+    // possível aqui (é a base legal do tratamento), então na dúvida vale o não.
+    if (CONSENT_NO.test(text)) {
+      return 'Tudo bem, sem problema. Quando quiser começar, só responder *sim* por aqui. 👋';
+    }
     if (CONSENT_YES.test(text)) {
       await prisma.zmUser.update({
         where: { id: zmUser.id },
         data:  { stage: 'active', consentAt: new Date() },
       });
       return tutorialText(firstName(zmUser.name));
-    }
-    if (CONSENT_NO.test(text)) {
-      return 'Tudo bem, sem problema. Quando quiser começar, só responder *sim* por aqui. 👋';
     }
     return welcomeText(firstName(zmUser.name));
   }
@@ -387,8 +457,10 @@ export async function handleZapMonneyMessage(input: ZmMessageInput): Promise<ZmR
     return deleteAccount(zmUser.id);
   }
 
+  // O mais recente da fila: é o alvo de uma correção ("era 80") e o sinal de que
+  // existe algo aberto. Confirmar/descartar agem na fila inteira.
   const pending = await prisma.zmTransaction.findFirst({
-    where:   { zmUserId: zmUser.id, status: 'pending' },
+    where:   pendingWhere(zmUser.id),
     orderBy: { createdAt: 'desc' },
   });
 
@@ -396,8 +468,8 @@ export async function handleZapMonneyMessage(input: ZmMessageInput): Promise<ZmR
   // do produto, e não precisa de modelo para ser entendida.
   if (pending) {
     const quick = matchQuickReply(text);
-    if (quick === 'confirm') return confirmPending(pending);
-    if (quick === 'cancel')  return cancelPending(pending.id);
+    if (quick === 'confirm') return confirmPending(zmUser.id);
+    if (quick === 'cancel')  return cancelPending(zmUser.id);
   }
 
   const classification = await classifyZapMonneyMessage(text, {
@@ -415,15 +487,12 @@ export async function handleZapMonneyMessage(input: ZmMessageInput): Promise<ZmR
     case 'add_income':
       return createPending(zmUser.id, 'income', classification.data, text, classification.confidence, input.sourceMsgId);
 
+    // As duas já respondem sozinhas quando a fila está vazia.
     case 'confirm':
-      return pending
-        ? confirmPending(pending)
-        : 'ℹ️ Não tem nenhum lançamento aguardando confirmação agora.';
+      return confirmPending(zmUser.id);
 
     case 'cancel':
-      return pending
-        ? cancelPending(pending.id)
-        : 'ℹ️ Não tem nada pendente para descartar.';
+      return cancelPending(zmUser.id);
 
     case 'correct':
       return pending

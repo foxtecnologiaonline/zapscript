@@ -19,6 +19,7 @@ jest.mock('../lib/prisma', () => ({
     zmTransaction: {
       findFirst:  jest.fn(),
       findUnique: jest.fn(),
+      count:      jest.fn().mockResolvedValue(0),
       findMany:   jest.fn(),
       create:     jest.fn(),
       update:     jest.fn().mockResolvedValue({}),
@@ -165,6 +166,23 @@ describe('onboarding', () => {
     );
   });
 
+  // A recusa tem que vencer o "sim" solto: "não quero" / "não pode agora" contêm
+  // palavras da regex de aceite, e ativar a conta aí seria registrar
+  // consentimento contra um "não" explícito — a base legal do tratamento.
+  it.each(['não', 'não quero', 'não, não pode agora', 'depois eu vejo'])(
+    'não ativa a conta quando a resposta é recusa (%s)',
+    async (text) => {
+      activeUser({ stage: 'awaiting_consent' });
+
+      const reply = await handleZapMonneyMessage({ phone: PHONE, text });
+
+      expect(prisma.zmUser.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ stage: 'active' }) }),
+      );
+      expect(reply).toContain('Tudo bem');
+    },
+  );
+
   it('não responde nada a usuário bloqueado', async () => {
     activeUser({ stage: 'blocked' });
 
@@ -196,21 +214,22 @@ describe('ciclo pendente → confirmado', () => {
     expect(reply).toContain('Confirma?');
   });
 
-  it('descarta o pendente anterior antes de abrir um novo', async () => {
+  it('NÃO descarta o pendente anterior ao abrir um novo, e avisa da fila', async () => {
+    // Regressão da perda silenciosa: quem dita duas despesas seguidas tinha a
+    // primeira descartada antes de confirmar, e só a segunda entrava no saldo.
     activeUser();
     withPending();
+    (prisma.zmTransaction.count as jest.Mock).mockResolvedValueOnce(1);
     intent('add_expense', { valor: 20, categoria: 'Transporte' });
     (prisma.zmTransaction.create as jest.Mock).mockResolvedValueOnce({
       type: 'expense', amount: '20.00', category: 'Transporte',
       description: null, occurredAt: new Date('2026-10-01T15:00:00Z'),
     });
 
-    await handleZapMonneyMessage({ phone: PHONE, text: 'uber 20' });
+    const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'uber 20' });
 
-    expect(prisma.zmTransaction.updateMany).toHaveBeenCalledWith({
-      where: { zmUserId: 'zm1', status: 'pending' },
-      data:  { status: 'discarded' },
-    });
+    expect(prisma.zmTransaction.updateMany).not.toHaveBeenCalled();
+    expect(reply).toContain('+1 lançamento(s) também esperando');
   });
 
   it('pede o valor de novo quando a extração não traz valor', async () => {
@@ -227,26 +246,68 @@ describe('ciclo pendente → confirmado', () => {
   it('confirma com "sim" sem chamar a IA', async () => {
     activeUser();
     withPending();
+    (prisma.zmTransaction.findMany as jest.Mock).mockResolvedValueOnce([
+      { id: 'tx1', type: 'expense', amount: '50.00', category: 'Alimentação',
+        description: 'mercado', occurredAt: new Date('2026-10-01T15:00:00Z') },
+    ]);
 
     const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'sim' });
 
     expect(classify).not.toHaveBeenCalled();
-    expect(prisma.zmTransaction.update).toHaveBeenCalledWith({
-      where: { id: 'tx1' }, data: { status: 'confirmed' },
+    expect(prisma.zmTransaction.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['tx1'] } }, data: { status: 'confirmed' },
     });
     expect(reply).toMatch(/50,00/);
+  });
+
+  it('o "sim" salva TODOS os pendentes da fila, não só o último', async () => {
+    activeUser();
+    withPending();
+    (prisma.zmTransaction.findMany as jest.Mock).mockResolvedValueOnce([
+      { id: 'tx1', type: 'expense', amount: '50.00', category: 'Alimentação',
+        description: 'mercado', occurredAt: new Date('2026-10-01T15:00:00Z') },
+      { id: 'tx2', type: 'expense', amount: '20.00', category: 'Transporte',
+        description: null, occurredAt: new Date('2026-10-01T15:00:00Z') },
+    ]);
+
+    const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'sim' });
+
+    expect(prisma.zmTransaction.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['tx1', 'tx2'] } }, data: { status: 'confirmed' },
+    });
+    expect(reply).toContain('2 lançamentos registrados');
+    expect(reply).toMatch(/50,00/);
+    expect(reply).toMatch(/20,00/);
+  });
+
+  it('ignora pendente fora da janela de conversa', async () => {
+    activeUser();
+    withPending();
+    (prisma.zmTransaction.findMany as jest.Mock).mockResolvedValueOnce([]);
+
+    await handleZapMonneyMessage({ phone: PHONE, text: 'sim' });
+
+    // A busca precisa carregar o corte temporal — sem ele, um "sim" de hoje
+    // confirmaria um pendente abandonado semanas atrás.
+    expect(prisma.zmTransaction.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        status:    'pending',
+        createdAt: { gte: expect.any(Date) },
+      }),
+    }));
   });
 
   it('descarta com "não" sem chamar a IA', async () => {
     activeUser();
     withPending();
+    (prisma.zmTransaction.updateMany as jest.Mock).mockResolvedValueOnce({ count: 1 });
 
     const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'não' });
 
     expect(classify).not.toHaveBeenCalled();
-    expect(prisma.zmTransaction.update).toHaveBeenCalledWith({
-      where: { id: 'tx1' }, data: { status: 'discarded' },
-    });
+    expect(prisma.zmTransaction.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { status: 'discarded' },
+    }));
     expect(reply).toContain('Descartado');
   });
 
@@ -306,10 +367,11 @@ describe('ciclo pendente → confirmado', () => {
     activeUser();
     noPending();
     intent('confirm');
+    (prisma.zmTransaction.findMany as jest.Mock).mockResolvedValueOnce([]);
 
     const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'confirmado então' });
 
-    expect(prisma.zmTransaction.update).not.toHaveBeenCalled();
+    expect(prisma.zmTransaction.updateMany).not.toHaveBeenCalled();
     expect(reply).toContain('aguardando confirmação');
   });
 });

@@ -59,13 +59,38 @@ async function processZapMonneyJob(job: Job<ZapMonneyJobData>) {
     }
   }
 
-  if (!text) return { skipped: true, reason: 'empty' };
+  // Whisper devolveu vazio (áudio sem fala, mic apertado por engano): a pessoa
+  // mandou algo de propósito e silêncio é indistinguível de produto quebrado —
+  // mesma resposta do áudio ilegível, já que para ela é o mesmo caso.
+  if (!text) {
+    if (kind === 'audio') {
+      logger.warn(`[ZapMonney] Áudio sem fala detectada de ${phone}`);
+      await sendMessageViaEvolution(
+        instanceName, phone,
+        '🎙️ Não consegui entender esse áudio. Pode mandar de novo, ou escrever?',
+      ).catch(() => null);
+    }
+    return { skipped: true, reason: 'empty' };
+  }
 
   const reply = await handleZapMonneyMessage({ phone, pushName, text, sourceMsgId: messageId });
 
   if (!reply) return { skipped: true, reason: 'no_reply' };
 
-  await sendMessageViaEvolution(instanceName, phone, reply);
+  // O envio NÃO pode derrubar o job: quando ele falha, o passo conversacional já
+  // escreveu no banco (confirmou, descartou, apagou o último lançamento) e só
+  // `add_expense`/`add_income` têm rede de idempotência por sourceMsgId. Um retry
+  // aqui re-executaria o efeito — "apaga o último" apagaria um SEGUNDO lançamento
+  // que a pessoa nunca pediu. Perder o retry do envio é o lado barato do trade-off
+  // (é o mesmo raciocínio do attempts=2 da fila em api/services/queue.ts).
+  try {
+    await sendMessageViaEvolution(instanceName, phone, reply);
+  } catch (err: any) {
+    captureWorkerError('zapmonney', err);
+    logger.error(`[ZapMonney] Falha ao enviar resposta para ${phone} (efeito já aplicado, sem retry): ${err.message}`);
+    return { skipped: true, reason: 'send_failed' };
+  }
+
   return { replied: true };
 }
 

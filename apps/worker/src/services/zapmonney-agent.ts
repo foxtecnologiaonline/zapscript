@@ -105,7 +105,7 @@ function buildSystemPrompt(todayBrt: string, hasPending: boolean): string {
 Hoje é ${todayBrt} (fuso de São Paulo). Use essa data para resolver referências relativas: "hoje" = ${todayBrt}, "ontem" = o dia anterior, "dia 5" = dia 5 do mês corrente (ou do mês passado, se o dia 5 ainda não chegou neste mês).
 
 ${hasPending
-  ? 'ATENÇÃO: existe um lançamento aguardando confirmação desta pessoa. Se a mensagem confirmar ("sim", "isso", "pode"), use "confirm". Se recusar ("não", "cancela"), use "cancel". Se corrigir algum dado ("era 80", "foi no transporte", "foi ontem"), use "correct" e extraia SÓ os campos citados.'
+  ? 'ATENÇÃO: existe pelo menos um lançamento aguardando confirmação desta pessoa. Se a mensagem confirmar ("sim", "isso", "pode"), use "confirm" — ela vale para todos os pendentes. Se recusar ("não", "cancela"), use "cancel". Se corrigir algum dado ("era 80", "foi no transporte", "foi ontem"), use "correct" e extraia SÓ os campos citados (a correção vale para o lançamento mais recente).'
   : 'Não há lançamento aguardando confirmação, então "confirm", "cancel" e "correct" são improváveis nesta mensagem.'}
 
 Tipos possíveis:
@@ -216,15 +216,28 @@ export async function classifyZapMonneyMessage(
 
     if (confidence < CONFIDENCE_THRESHOLD) return fallback;
 
-    const dados = parsed.dados ?? {};
+    const dados = (parsed.dados && typeof parsed.dados === 'object' && !Array.isArray(parsed.dados))
+      ? parsed.dados
+      : {};
     const valor = parseAmount(dados.valor);
+
+    // Os campos de texto são normalizados AQUI, na fronteira com o modelo: o
+    // executor chama `.trim()` neles direto, e um modelo que devolva
+    // "descricao": 123 ou "data": 20261001 (acontece nos fallbacks) explodiria
+    // o job com TypeError — a pessoa ficaria sem resposta nenhuma por causa de
+    // um campo acessório. Só string sobrevive; o resto vira undefined.
+    const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
     return {
       intent,
       confidence,
       data: {
-        ...dados,
-        valor: valor ?? undefined,
+        valor:           valor ?? undefined,
+        categoria:       str(dados.categoria),
+        descricao:       str(dados.descricao),
+        data:            str(dados.data),
+        periodo:         str(dados.periodo),
+        filtroCategoria: str(dados.filtroCategoria),
       },
     };
   } catch (err: any) {

@@ -11,6 +11,7 @@ jest.mock('../services/queue', () => {
   return {
     transcriptionQueue: q, campanhasQueue: q, mktfastQueue: q, atendeQueue: q,
     legendaQueue: q, copilotoQueue: q, zapscreveQueue: q, voiceCommandQueue: q,
+    zapmonneyQueue: q,
     redis: {},
   };
 });
