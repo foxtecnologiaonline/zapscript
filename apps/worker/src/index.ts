@@ -772,6 +772,9 @@ function buildMessage(
   const { contactName, durationSec, isPrivate, senderPhone, isSelfNote, forwarded, originPhone, footerText } = opts;
 
   const hasName = contactName && contactName !== 'manual' && contactName.trim().length > 0;
+  // Nome vem do pushName do WhatsApp — pode conter "*" literal, o que quebraria
+  // o par de negrito do header (ela inteira vai envolvida em um "*...*" único).
+  const safeName = hasName ? contactName!.replace(/\*/g, '∗') : contactName;
   const durStr  = durationSec && durationSec > 0
     ? `⏱ ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60 > 0 ? ` ${durationSec % 60}s` : ''}` : `${durationSec}s`}`
     : '';
@@ -783,12 +786,15 @@ function buildMessage(
   // Áudio encaminhado/enviado pelo usuário ao próprio número (self-chat): a
   // origem só aparece quando o WhatsApp expõe `participant` (mensagem
   // citada) — num encaminhamento puro o remetente original não vem.
+  // Sem aninhar "*...*" aqui dentro: o header inteiro já vai envolvido em um
+  // único par de negrito logo abaixo — um segundo par ao redor do nome/telefone
+  // quebraria o negrito do WhatsApp (ele alterna a cada "*", não suporta nesting).
   let subject: string;
   if (isSelfNote) {
-    const origin = originPhone ? ` de *${fmtPhone(originPhone)}*` : '';
+    const origin = originPhone ? ` de ${fmtPhone(originPhone)}` : '';
     subject = forwarded ? `áudio encaminhado${origin}` : 'sua nota de voz';
   } else {
-    subject = hasName ? `áudio de *${contactName}*` : 'áudio';
+    subject = hasName ? `áudio de ${safeName}` : 'áudio';
   }
   const privacyTag = isPrivate ? '🔒 *Privado* | ' : '';
   const header      = `${privacyTag}📋 *Resumo do ${subject}*${durStr ? ` • ${durStr}` : ''}`;
