@@ -100,15 +100,59 @@ describe('startPoller', () => {
     p.stop();
   });
 
-  it('o horizonte nunca acorda antes do intervalo mínimo', async () => {
+  it('agendamento já vencido volta à cadência mínima (não vira sono de ~0ms)', async () => {
     const p = startPoller({
       name: 't6', minMs: MIN, maxMs: MAX, jitterPct: 0,
-      // Agendamento no passado (já vencido) não pode virar sono de 0ms em loop.
       tick: async () => ({ worked: false, nextAt: new Date(Date.now() - 60_000) }),
     });
 
     await advance(0);
     expect(p.currentDelayMs()).toBe(MIN);
+    p.stop();
+  });
+
+  // ── Regressão: o sono do horizonte precisa ser EXATO ──────────────────────
+  // Com jitter aplicado (ou com o piso de minMs), o poller acordava ANTES da
+  // hora, não encontrava nada, e então esperava outro minMs inteiro — o atraso
+  // que o horizonte existe para eliminar. Estes dois testes travam isso.
+  it('acorda no instante exato do agendamento, sem jitter', async () => {
+    const tick = jest.fn(async () => ({ worked: false, nextAt: new Date(Date.now() + 5_000) }));
+    // jitter alto de propósito: se vazar para o sono do horizonte, o teste quebra.
+    const p = startPoller({ name: 't10', minMs: 10_000, maxMs: 60_000, jitterPct: 0.5, tick });
+
+    await advance(0);
+    expect(p.currentDelayMs()).toBe(5_000);
+
+    await advance(4_999);
+    expect(tick).toHaveBeenCalledTimes(1);   // ainda não acordou
+
+    await advance(1);
+    expect(tick).toHaveBeenCalledTimes(2);   // acordou exatamente em 5s
+    p.stop();
+  });
+
+  it('o horizonte pode encurtar o sono abaixo do intervalo mínimo', async () => {
+    // minMs de 60s com trabalho conhecido em 5s: esperar os 60s significaria
+    // disparar 55s atrasado. Pontualidade vence a cadência mínima aqui; o loop
+    // quente não acontece porque, ao disparar, o tick devolve worked=true.
+    const p = startPoller({
+      name: 't11', minMs: 60_000, maxMs: 600_000, jitterPct: 0,
+      tick: async () => ({ worked: false, nextAt: new Date(Date.now() + 5_000) }),
+    });
+
+    await advance(0);
+    expect(p.currentDelayMs()).toBe(5_000);
+    p.stop();
+  });
+
+  it('respeita o piso absoluto de 1s mesmo com horizonte em milissegundos', async () => {
+    const p = startPoller({
+      name: 't12', minMs: 60_000, maxMs: 600_000, jitterPct: 0,
+      tick: async () => ({ worked: false, nextAt: new Date(Date.now() + 5) }),
+    });
+
+    await advance(0);
+    expect(p.currentDelayMs()).toBe(1_000);
     p.stop();
   });
 

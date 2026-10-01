@@ -29,12 +29,22 @@ import { logger } from './logger';
  *    ainda precisa ser descoberto, e `maxMs` é o atraso máximo nesse caso. É
  *    por isso que `maxMs` não deve ser arbitrariamente grande.
  *
+ *    Um sono definido pelo horizonte é EXATO: não leva jitter nem respeita o
+ *    piso de `minMs`. Os dois existem para o caso ocioso; aplicados aqui,
+ *    fariam o poller acordar antes da hora, não achar nada e então esperar
+ *    outro `minMs` inteiro — exatamente o atraso que o horizonte elimina.
+ *    O piso absoluto de MIN_TIMER_MS evita sono degenerado se um `nextAt`
+ *    patológico (relógio fora de hora) ficar sempre a milissegundos à frente.
+ *
  * Sem heartbeat de propósito: gravar `CronHeartbeat` a cada tick adicionaria
  * justamente as escritas que este módulo existe para remover, e o watchdog de
  * `health-monitor.ts` filtra por uma lista fixa de `jobName` (COPILOTO_CRON_*)
  * que não inclui estes pollers. Se um deles entrar nessa lista no futuro, o
  * lugar de gravar é dentro do próprio tick, não aqui.
  */
+
+/** Piso absoluto de qualquer sono agendado — rede contra loop quente. */
+const MIN_TIMER_MS = 1_000;
 
 export interface PollerTickResult {
   /** true = achou trabalho neste tick → o próximo intervalo volta para `minMs`. */
@@ -88,28 +98,36 @@ export function startPoller(opts: PollerOptions): PollerHandle {
 
   function withJitter(ms: number): number {
     const spread = ms * jitterPct;
-    return Math.max(1_000, Math.round(ms + (Math.random() * 2 - 1) * spread));
+    return Math.max(MIN_TIMER_MS, Math.round(ms + (Math.random() * 2 - 1) * spread));
   }
 
-  function schedule(ms: number): void {
+  /** `exact` = sono ditado pelo horizonte: agenda no instante pedido, sem jitter. */
+  function schedule(ms: number, exact = false): void {
     if (stopped) return;
     // ms <= 0 (primeiro tick) roda imediatamente, sem jitter.
-    timer = setTimeout(run, ms <= 0 ? 0 : withJitter(ms));
+    timer = setTimeout(run, ms <= 0 ? 0 : exact ? ms : withJitter(ms));
     // unref(): um poller nunca deve segurar o processo vivo num shutdown.
     timer.unref?.();
   }
 
   async function run(): Promise<void> {
     if (stopped) return;
+    let exact = false;
     try {
       const result = (await tick()) || {};
       // Achou trabalho → cadência mínima. Ocioso → dobra até o teto.
       delay = result.worked ? minMs : Math.min(delay * 2, maxMs);
       if (result.nextAt) {
         const untilNext = result.nextAt.getTime() - Date.now();
-        // Horizonte só encurta: nunca dorme além do próximo trabalho conhecido,
-        // nem acorda antes de `minMs`.
-        delay = Math.min(delay, Math.max(untilNext, minMs));
+        if (untilNext <= 0) {
+          // Agendamento que já venceu mas não entrou no lote de trabalho deste
+          // tick: volta à cadência mínima em vez de virar sono de ~0ms.
+          delay = minMs;
+        } else if (untilNext < delay) {
+          // Horizonte vence o backoff: dorme até o instante do agendamento.
+          delay = Math.max(MIN_TIMER_MS, untilNext);
+          exact = true;
+        }
       }
     } catch (err: any) {
       // O tick já trata os próprios erros; isto é a rede de segurança. Falha
@@ -118,7 +136,7 @@ export function startPoller(opts: PollerOptions): PollerHandle {
       logger.error(`[Poller:${name}] Erro não tratado no tick: ${err?.message ?? err}`);
       delay = Math.min(delay * 2, maxMs);
     }
-    schedule(delay);
+    schedule(delay, exact);
   }
 
   logger.info(

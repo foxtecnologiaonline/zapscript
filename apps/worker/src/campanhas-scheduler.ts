@@ -17,6 +17,7 @@ import { startPoller, envMs, PollerHandle, PollerTickResult } from './lib/poller
  * atômica e idempotente, então rodar mais de uma réplica do worker não
  * enfileira a mesma campanha duas vezes.
  */
+
 const EVOLUTION_DAILY_LIMIT = parseInt(process.env.CAMPANHAS_EVOLUTION_DAILY_LIMIT || '40', 10);
 const EVOLUTION_WARMUP_DAYS = parseInt(process.env.CAMPANHAS_EVOLUTION_WARMUP_DAYS || '10', 10);
 const EVOLUTION_WARMUP_FLOOR_PCT = 0.15;
@@ -403,11 +404,13 @@ async function runCampanhaSchedulerTick(): Promise<PollerTickResult> {
 }
 
 /**
- * Cadência: 60s com trabalho em mão (igual à anterior) e até 10min ocioso. O
- * horizonte deixa o disparo MAIS pontual que antes — uma campanha agendada com
- * mais de 10min de antecedência é disparada no horário, não até 60s depois.
- * Campanha agendada para menos de maxMs à frente é descoberta em até maxMs: é
- * esse o motivo de o teto ser 10min e não uma hora.
+ * Cadência: 60s com trabalho em mão (igual à anterior) e até 10min ocioso.
+ *
+ * O horizonte deixa o disparo MAIS pontual do que era: o poller acorda no
+ * instante exato do `scheduledAt` (sem jitter — ver lib/poller.ts), em vez de
+ * no próximo múltiplo de 60s. O único caso impreciso é a campanha CRIADA
+ * durante o sono do poller com horário dentro desse mesmo sono — essa é
+ * descoberta em até `maxMs`, e é esse o motivo de o teto ser 10min e não 1h.
  */
 export function startCampanhasScheduler(): PollerHandle {
   return startPoller({

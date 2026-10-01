@@ -106,17 +106,20 @@ export async function runCampanhaChatNotifierTick(): Promise<PollerTickResult> {
         whatsappNumber: { select: { zapiInstanceId: true, phoneNumber: true, status: true } },
       },
     });
+    // Conta só o que é ACIONÁVEL: uma campanha 'completed' cujo relatório final
+    // já saiu continua aparecendo na query pela janela de 10min, e tratá-la como
+    // trabalho prenderia a cadência em 30s por esses 10min sem nada a fazer.
+    let actionable = 0;
     for (const campanha of campanhas) {
       if (campanha.status === 'completed' && finalReportSent.has(campanha.id)) continue;
+      actionable++;
       try {
         await notifyCampanha(campanha as any);
       } catch (err: any) {
         logger.error(`[Campanhas][ChatNotifier] Falha ao processar campanha ${campanha.id}: ${err.message}`);
       }
     }
-    // Só há o que relatar enquanto existe campanha via chat em andamento (ou
-    // recém-concluída). Sem nenhuma, o poller desacelera até o teto.
-    return { worked: campanhas.length > 0 };
+    return { worked: actionable > 0 };
   } catch (err: any) {
     logger.error(`[Campanhas][ChatNotifier] Erro no tick: ${err.message}`);
     return { worked: false };
