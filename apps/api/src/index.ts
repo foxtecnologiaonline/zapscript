@@ -1307,6 +1307,30 @@ async function runAutoMigrations() {
     app.log.warn(`[AutoMigration] privateMode default: ${e.message}`)
   );
   app.log.info('[AutoMigration] ✅ privateMode default = false');
+
+  // ── Blindagem: RLS deny-all + revoga anon/authenticated (idempotente) ──
+  // O AutoMigration acima cria tabelas via SQL cru, sem RLS. Reaplica a cada
+  // boot para que nenhuma tabela nova fique exposta na API REST pública do
+  // Supabase (anon key vai no bundle do front). Prisma/service_role têm
+  // BYPASSRLS e não são afetados.
+  await prisma.$executeRawUnsafe(`DO $$
+    DECLARE r record;
+    BEGIN
+      FOR r IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'public' AND c.relkind IN ('r','p') AND NOT c.relrowsecurity
+      LOOP
+        EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', r.relname);
+      END LOOP;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        REVOKE ALL ON ALL TABLES IN SCHEMA public FROM authenticated;
+      END IF;
+    END $$`).catch((e: any) =>
+    app.log.warn(`[AutoMigration] RLS lockdown: ${e.message}`)
+  );
+  app.log.info('[AutoMigration] ✅ RLS lockdown aplicado');
 }
 
 /**

@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { sendEmail } from '../lib/mailer';
 import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'crypto';
 
 // Bucket no Supabase Storage para anexos de suporte (criar no dashboard Supabase se ainda não existir)
 const ATTACHMENTS_BUCKET = 'support-attachments';
@@ -61,8 +62,13 @@ export default async function supportRoutes(app: FastifyInstance) {
         // Upload para Supabase Storage (evita Base64 gigante no banco)
         try {
           const supabase = getSupabase();
-          const ext      = part.filename?.split('.').pop() || 'bin';
-          const path     = `tickets/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+          // Extensão derivada do MIME validado (nunca do filename do cliente) e nome
+          // não-adivinhável: o bucket é público, então o path é o único segredo.
+          const extByMime: Record<string, string> = {
+            'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif',
+            'application/pdf': 'pdf', 'text/plain': 'txt',
+          };
+          const path     = `tickets/${randomUUID()}.${extByMime[part.mimetype] || 'bin'}`;
           const { error: uploadError } = await supabase.storage
             .from(ATTACHMENTS_BUCKET)
             .upload(path, buffer, { contentType: part.mimetype, upsert: false });
