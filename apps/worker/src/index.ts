@@ -193,6 +193,11 @@ function detectDomain(text: string): SummaryDomain {
   return 'generico';
 }
 
+// Abaixo deste limiar não vale a pena gerar resumo (recado curto já é a
+// própria transcrição) — pula a chamada de IA, economizando custo/latência,
+// e a mensagem sai só com cabeçalho + transcrição completa.
+const MIN_SUMMARY_DURATION_SEC = 15;
+
 /**
  * Modo de resumo baseado na DURAÇÃO do áudio (com fallback por nº de palavras
  * quando a duração não está disponível). Escala a densidade do resumo:
@@ -797,7 +802,12 @@ function buildMessage(
     subject = hasName ? `áudio de ${safeName}` : 'áudio';
   }
   const privacyTag = isPrivate ? '🔒 *Privado* | ' : '';
-  const header      = `${privacyTag}📋 *Resumo do ${subject}*${durStr ? ` • ${durStr}` : ''}`;
+  // Sem resumo (áudio curto, abaixo do limiar) o cabeçalho não promete um
+  // "Resumo" que não existe — vira só a identificação do áudio.
+  const headerLabel = hasRealBullets
+    ? `📋 *Resumo do ${subject}*`
+    : `🎙️ *${subject.charAt(0).toUpperCase()}${subject.slice(1)}*`;
+  const header       = `${privacyTag}${headerLabel}${durStr ? ` • ${durStr}` : ''}`;
   const phoneLine    = isPrivate && senderPhone ? `\n📱 ${fmtPhone(senderPhone)}` : '';
 
   // ── Seção de resumo: bullets + seções + pendências ──
@@ -1110,10 +1120,11 @@ async function processOfficialWhatsAppJob(job: Job) {
       await transcribeAudio(mp3Buffer, { vocab: [senderName], userId });
     log(job, `✅ ${durationSec}s — lang:${detectedLang} — "${originalText.substring(0, 60)}..."`);
 
-    // PASSO 5: Resumo com Claude (densidade por duração + tradução se necessário)
-    log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(originalText, durationSec, detectedLang, userId);
-    log(job, `✅ ${bullets.length} bullet(s)`);
+    // PASSO 5: Resumo com Claude — pulado abaixo do limiar (só transcrição)
+    const bullets = durationSec >= MIN_SUMMARY_DURATION_SEC
+      ? await generateBullets(originalText, durationSec, detectedLang, userId)
+      : [];
+    log(job, bullets.length > 0 ? `🤖 Claude resumo ✅ ${bullets.length} bullet(s)` : '🤖 Resumo pulado (áudio curto)');
 
     // Rodapé viral: mostra sempre (pipeline sem Modo Privado).
     const footer = decideFooter(false, false);
@@ -1210,10 +1221,11 @@ async function processTwilioJob(job: Job) {
       await transcribeAudio(mp3Buffer, { vocab: [senderName], userId });
     log(job, `✅ ${durationSec}s — lang:${detectedLang} — "${originalText.substring(0, 60)}..."`);
 
-    // PASSO 5: Resumo com Claude (densidade por duração + tradução se necessário)
-    log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(originalText, durationSec, detectedLang, userId);
-    log(job, `✅ ${bullets.length} bullet(s)`);
+    // PASSO 5: Resumo com Claude — pulado abaixo do limiar (só transcrição)
+    const bullets = durationSec >= MIN_SUMMARY_DURATION_SEC
+      ? await generateBullets(originalText, durationSec, detectedLang, userId)
+      : [];
+    log(job, bullets.length > 0 ? `🤖 Claude resumo ✅ ${bullets.length} bullet(s)` : '🤖 Resumo pulado (áudio curto)');
 
     // Rodapé viral: mostra sempre (pipeline sem Modo Privado).
     const footer = decideFooter(false, false);
@@ -1569,10 +1581,11 @@ async function processEvolutionJob(job: Job) {
         .catch((err: any) => log(job, `⚠️  Copiloto: falha ao enfileirar transcrição: ${err.message}`));
     }
 
-    // PASSO 5: Resumo com Claude (densidade por duração + tradução se não PT-BR)
-    log(job, '🤖 Claude resumo...');
-    const bullets = await generateBullets(originalText, durationSec, detectedLanguage, userId);
-    log(job, `✅ ${bullets.length} bullet(s)`);
+    // PASSO 5: Resumo com Claude — pulado abaixo do limiar (só transcrição)
+    const bullets = durationSec >= MIN_SUMMARY_DURATION_SEC
+      ? await generateBullets(originalText, durationSec, detectedLanguage, userId)
+      : [];
+    log(job, bullets.length > 0 ? `🤖 Claude resumo ✅ ${bullets.length} bullet(s)` : '🤖 Resumo pulado (áudio curto)');
 
     // PASSO 6: Enviar resposta via Evolution API
     log(job, '📤 Enviando resposta via Evolution API...');
