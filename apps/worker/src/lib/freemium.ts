@@ -57,21 +57,15 @@ export function normalizeContactId(phone: string | null | undefined): string {
   return (phone || '').replace(/\D/g, '');
 }
 
-// ── Variações do rodapé viral (B1) — preparadas para A/B futuro ──────────────
-// `id` é gravado em Transcription.footerVariant / ProContactSeed.footerVariant
-// para medir conversão por variação depois.
+// ── Rodapé viral (B1) — fixo; `id` é gravado em Transcription.footerVariant /
+// ProContactSeed.footerVariant (histórico do A/B anterior).
 export const FOOTER_VARIANTS: { id: string; text: string }[] = [
-  { id: 'v1', text: '🎧→📄 Áudio vira texto: ZapScript.me' },
-  { id: 'v2', text: '🔇 Leia sem fone: ZapScript.me' },
-  { id: 'v3', text: '⚡ Áudio vira texto: ZapScript.me' },
-  { id: 'v4', text: '⚡ Sem tempo de ouvir? ZapScript.me' },
-  { id: 'v5', text: '⚡ Ouvir? Leia Áudios: ZapScript.me' },
-  { id: 'v6', text: '⚡ Ouvir=demorado, Ler=rápido: ZapScript.me' },
+  { id: 'fixed', text: '⚡ https://ZapScript.me' },
 ];
 
-/** Sorteia uma variação de rodapé (rotação aleatória, base para A/B). */
+/** Rodapé viral (sem A/B — sempre a mesma variação). */
 export function pickFooterVariant(): { id: string; text: string } {
-  return FOOTER_VARIANTS[Math.floor(Math.random() * FOOTER_VARIANTS.length)];
+  return FOOTER_VARIANTS[0];
 }
 
 /** Converte segundos economizados em rótulo amigável ("2h15" / "45min"). */

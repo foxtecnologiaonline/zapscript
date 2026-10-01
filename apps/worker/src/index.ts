@@ -735,21 +735,25 @@ function splitText(text: string, firstMax: number, restMax: number): string[] {
 }
 
 /**
- * Formata mensagem de resposta para o WhatsApp.
+ * Formata mensagem de resposta para o WhatsApp. Layout único pra todos os
+ * casos (normal, self-note, Modo Privado) — só o assunto do cabeçalho e a
+ * linha de telefone/resposta mudam conforme o contexto:
  *
- * Modo normal:
- *   🎙️ *Áudio de [nome]* • ⏱ [dur]
- *   📋 *Resumo* / bullets
- *   📝 *Conversão*
- *   _Gerado por_ → *ZapScript.me* ⚡
+ *   📋 *Resumo do áudio de [nome]* • ⏱ [dur]
  *
- * Modo Privado (Opção B):
- *   🔒 *Privado* | *[nome]* → você
- *   📱 +55 xx x xxxx-xxxx · ⏱ [dur]
- *   📋 *Resumo* / bullets
- *   📝 *Conversão*
- *   ↩️ Responder: wa.me/[phone]
- *   _Gerado por_ → *ZapScript.me* ⚡
+ *   • bullet 1
+ *   • bullet 2
+ *
+ *   🗒️ *Áudio completo*
+ *   _[texto completo]_
+ *
+ *   ———
+ *
+ *   ⚡ https://ZapScript.me
+ *
+ * Modo Privado antepõe "🔒 *Privado* |" ao assunto e mostra o telefone do
+ * remetente; ele e o self-note (quando a origem é conhecida) adicionam
+ * "↩️ Responder: wa.me/[phone]" antes do rodapé.
  */
 function buildMessage(
   bullets:      string[],
@@ -767,10 +771,6 @@ function buildMessage(
 ): string[] {
   const { contactName, durationSec, isPrivate, senderPhone, isSelfNote, forwarded, originPhone, footerText } = opts;
 
-  const isTldr  = summaryMode(originalText, durationSec ?? 0) === 'tldr'
-    && bullets.length === 1
-    && !bullets[0].startsWith(SUMMARY_HEADER)
-    && !bullets[0].startsWith(SUMMARY_PENDING);
   const hasName = contactName && contactName !== 'manual' && contactName.trim().length > 0;
   const durStr  = durationSec && durationSec > 0
     ? `⏱ ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m${durationSec % 60 > 0 ? ` ${durationSec % 60}s` : ''}` : `${durationSec}s`}`
@@ -778,42 +778,31 @@ function buildMessage(
 
   const FALLBACK       = ['Conversão disponível', 'Resumo não disponível', 'Não foi possível'];
   const hasRealBullets = bullets.length > 0 && !bullets.some(b => FALLBACK.some(f => b.includes(f)));
-  const tldr           = hasRealBullets && isTldr ? bullets[0] : null;
 
   // ── Cabeçalho ──
-  // Modo TLDR: frase integrada na mesma linha do cabeçalho → menos blocos, mais direto
-  // Modo Bullets: cabeçalho simples + seção 📋 separada abaixo
-  let header: string;
+  // Áudio encaminhado/enviado pelo usuário ao próprio número (self-chat): a
+  // origem só aparece quando o WhatsApp expõe `participant` (mensagem
+  // citada) — num encaminhamento puro o remetente original não vem.
+  let subject: string;
   if (isSelfNote) {
-    // Áudio encaminhado/enviado pelo usuário ao próprio número (self-chat).
-    // Origem só aparece quando o WhatsApp expõe `participant` (mensagem citada);
-    // num encaminhamento puro o remetente original não vem — mostramos só o selo.
-    const label    = forwarded ? '🔁 *Áudio encaminhado*' : '🎙️ *Sua nota de voz*';
-    const origin   = originPhone ? ` de *${fmtPhone(originPhone)}*` : '';
-    const tldrLine = tldr ? `\n→ ${tldr}` : '';
-    header = `${label}${origin}${durStr ? ` • ${durStr}` : ''}${tldrLine}`;
-  } else if (isPrivate && senderPhone) {
-    const namePart  = hasName ? `*${contactName}*` : `*${fmtPhone(senderPhone)}*`;
-    const phoneLine = `📱 ${fmtPhone(senderPhone)}${durStr ? ` · ${durStr}` : ''}`;
-    const tldrLine  = tldr ? `\n↯ ${tldr}` : '';
-    header = `🔒 *Privado* | ${namePart} → você\n${phoneLine}${tldrLine}`;
-  } else if (tldr) {
-    const nameStr = hasName ? `*${contactName}*` : '*Áudio*';
-    header = `🎙️ ${nameStr}${durStr ? ` • ${durStr}` : ''}\n→ ${tldr}`;
+    const origin = originPhone ? ` de *${fmtPhone(originPhone)}*` : '';
+    subject = forwarded ? `áudio encaminhado${origin}` : 'sua nota de voz';
   } else {
-    const nameStr = hasName ? `Áudio de *${contactName}*` : '*Áudio*';
-    header = `🎙️ ${nameStr}${durStr ? ` • ${durStr}` : ''}`;
+    subject = hasName ? `áudio de *${contactName}*` : 'áudio';
   }
+  const privacyTag = isPrivate ? '🔒 *Privado* | ' : '';
+  const header      = `${privacyTag}📋 *Resumo do ${subject}*${durStr ? ` • ${durStr}` : ''}`;
+  const phoneLine    = isPrivate && senderPhone ? `\n📱 ${fmtPhone(senderPhone)}` : '';
 
-  // ── Seção de resumo (não-TLDR): bullets + seções + pendências ──
+  // ── Seção de resumo: bullets + seções + pendências ──
   // Sentinels: ::H::Título → "*Título*" (negrito WhatsApp); ::P::texto → "⚠️ texto".
   const renderSummaryLine = (b: string): string => {
     if (b.startsWith(SUMMARY_HEADER))  return `\n*${b.slice(SUMMARY_HEADER.length)}*`;
     if (b.startsWith(SUMMARY_PENDING)) return `⚠️ *${b.slice(SUMMARY_PENDING.length)}*`;
     return `• ${b}`;
   };
-  const pontoSection = hasRealBullets && !isTldr
-    ? `\n\n📋 *Resumo*\n${bullets.map(renderSummaryLine).join('\n')}`
+  const summarySection = hasRealBullets
+    ? `\n\n${bullets.map(renderSummaryLine).join('\n')}`
     : '';
 
   // ── Rodapé ──
@@ -825,23 +814,25 @@ function buildMessage(
   // Rodapé viral CONDICIONAL (BLOCO B): só aparece quando footerText é fornecido.
   //   FREE → rodapé em toda transcrição (transcrição cai na conversa do contato).
   //   PAGO → Modo Privado automático: transcrição vai só ao próprio número, sem rodapé.
-  // A decisão (mostrar/qual variação) é tomada pelo caller; aqui só renderizamos.
+  // A decisão (mostrar/qual texto) é tomada pelo caller; aqui só renderizamos.
   // O preview do link é desativado no envio (evolution.ts).
-  const ctaLine = footerText ? `\n\n${footerText}` : '';
+  const ctaLine = footerText ? `\n\n———\n\n${footerText}` : '';
   const footer = `${replyLink}${ctaLine}`;
 
-  // ── Conversão COMPLETA, dividida em mensagens se exceder o teto do WhatsApp ──
-  // A 1ª mensagem carrega cabeçalho + resumo + início da conversão; as demais
-  // continuam a conversão. O rodapé fica só na última. Nada é truncado.
-  const transcHeader = `\n\n📝 *Conversão*\n`;
-  const contHeader   = `📝 *Conversão (cont.)*\n`;
-  const head         = header + pontoSection + transcHeader;
+  // ── Áudio completo, dividido em mensagens se exceder o teto do WhatsApp ──
+  // A 1ª mensagem carrega cabeçalho + resumo + início da transcrição; as
+  // demais continuam a transcrição. O rodapé fica só na última. Nada é
+  // truncado. Itálico (_..._) é fechado em cada parte, já que o WhatsApp não
+  // sustenta formatação através de mensagens separadas.
+  const transcHeader = `\n\n🗒️ *Áudio completo*\n_`;
+  const contHeader   = `🗒️ *Áudio completo (cont.)*\n_`;
+  const head         = header + phoneLine + summarySection + transcHeader;
 
-  const firstBudget = Math.max(500, WHATSAPP_LIMIT - head.length - footer.length);
-  const restBudget  = Math.max(500, WHATSAPP_LIMIT - contHeader.length - footer.length);
+  const firstBudget = Math.max(500, WHATSAPP_LIMIT - head.length - 1 - footer.length);
+  const restBudget  = Math.max(500, WHATSAPP_LIMIT - contHeader.length - 1 - footer.length);
   const parts       = splitText(originalText, firstBudget, restBudget);
 
-  const messages = parts.map((part, i) => (i === 0 ? head + part : contHeader + part));
+  const messages = parts.map((part, i) => (i === 0 ? head + part + '_' : contHeader + part + '_'));
   // Rodapé apenas na última mensagem (evita repetir a assinatura em cada parte)
   messages[messages.length - 1] += footer;
   return messages;
