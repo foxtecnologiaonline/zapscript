@@ -822,17 +822,27 @@ function buildMessage(
   // ── Áudio completo, dividido em mensagens se exceder o teto do WhatsApp ──
   // A 1ª mensagem carrega cabeçalho + resumo + início da transcrição; as
   // demais continuam a transcrição. O rodapé fica só na última. Nada é
-  // truncado. Itálico (_..._) é fechado em cada parte, já que o WhatsApp não
-  // sustenta formatação através de mensagens separadas.
-  const transcHeader = `\n\n🗒️ *Áudio completo*\n_`;
-  const contHeader   = `🗒️ *Áudio completo (cont.)*\n_`;
+  // truncado. Itálico (_..._) é reaberto/fechado em cada parte, já que o
+  // WhatsApp não sustenta formatação através de mensagens separadas.
+  //
+  // Underscores literais da transcrição (nome de arquivo, @handle, variável
+  // ditada) são neutralizados ANTES do split: um número ímpar deles quebraria
+  // o par de itálico que o cabeçalho/rodapé de cada parte depende, deixando
+  // o resto da mensagem sem formatação ou com um "_" solto visível.
+  const safeText = originalText.replace(/_/g, '‗');
+
+  const transcHeader = `\n\n🗒️ *Áudio completo*\n`;
+  const contHeader   = `🗒️ *Áudio completo (cont.)*\n`;
   const head         = header + phoneLine + summarySection + transcHeader;
 
-  const firstBudget = Math.max(500, WHATSAPP_LIMIT - head.length - 1 - footer.length);
-  const restBudget  = Math.max(500, WHATSAPP_LIMIT - contHeader.length - 1 - footer.length);
-  const parts       = splitText(originalText, firstBudget, restBudget);
+  const firstBudget = Math.max(500, WHATSAPP_LIMIT - head.length - 2 - footer.length);
+  const restBudget  = Math.max(500, WHATSAPP_LIMIT - contHeader.length - 2 - footer.length);
+  const parts       = splitText(safeText, firstBudget, restBudget);
 
-  const messages = parts.map((part, i) => (i === 0 ? head + part + '_' : contHeader + part + '_'));
+  // Só envolve em itálico quando há texto de fato — áudio sem fala detectada
+  // não deve virar um "_ _" vazio.
+  const wrapItalic = (s: string) => (s.trim() ? `_${s}_` : s);
+  const messages = parts.map((part, i) => (i === 0 ? head + wrapItalic(part) : contHeader + wrapItalic(part)));
   // Rodapé apenas na última mensagem (evita repetir a assinatura em cada parte)
   messages[messages.length - 1] += footer;
   return messages;
