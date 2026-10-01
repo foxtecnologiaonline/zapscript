@@ -1,11 +1,13 @@
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { sendMessageViaEvolution } from '../services/evolution';
+import { startPoller, envMs, PollerHandle, PollerTickResult } from '../lib/poller';
 
 /**
  * Chatbot Campanhas — updates periódicos de progresso no próprio chat (self-chat,
  * mesmo número que disparou) pras campanhas criadas via bot (Campanha.createdViaChat).
- * Mesmo padrão de setInterval auto-registrado de campanhas-scheduler.ts.
+ * Sobe por startCampanhaChatNotifier(), chamado explicitamente no boot do worker
+ * (apps/worker/src/index.ts) — não por efeito colateral de import.
  *
  * Sem coluna própria pra marcar "já mandei o relatório final" (evita mais uma
  * migration nesta fatia) — usa guardas em memória do processo. Seguro porque a
@@ -14,8 +16,6 @@ import { sendMessageViaEvolution } from '../services/evolution';
  * uma vez a mais, o que é cosmético (não afeta saldo/envio). Se a infra crescer pra
  * múltiplas réplicas persistentes, migrar esse estado pra uma coluna é o próximo passo.
  */
-
-const CHECK_INTERVAL_MS = 30 * 1000;
 
 const lastSnapshotSent = new Map<string, string>(); // campanhaId -> assinatura do último snapshot mandado
 const finalReportSent  = new Set<string>();          // campanhaId -> já mandou o relatório final
@@ -87,7 +87,7 @@ async function notifyCampanha(campanha: {
     .catch((err: any) => logger.warn(`[Campanhas][ChatNotifier] Falha ao mandar progresso (${campanha.id}): ${err.message}`));
 }
 
-export async function runCampanhaChatNotifierTick(): Promise<void> {
+export async function runCampanhaChatNotifierTick(): Promise<PollerTickResult> {
   try {
     // 'completed' só entra na janela dos últimos 10min — o relatório final já devia ter
     // saído bem antes disso; sem esse corte, campanhas antigas ficariam sendo
@@ -114,12 +114,27 @@ export async function runCampanhaChatNotifierTick(): Promise<void> {
         logger.error(`[Campanhas][ChatNotifier] Falha ao processar campanha ${campanha.id}: ${err.message}`);
       }
     }
+    // Só há o que relatar enquanto existe campanha via chat em andamento (ou
+    // recém-concluída). Sem nenhuma, o poller desacelera até o teto.
+    return { worked: campanhas.length > 0 };
   } catch (err: any) {
     logger.error(`[Campanhas][ChatNotifier] Erro no tick: ${err.message}`);
+    return { worked: false };
   }
 }
 
-runCampanhaChatNotifierTick();
-setInterval(runCampanhaChatNotifierTick, CHECK_INTERVAL_MS);
-
-export { CHECK_INTERVAL_MS };
+/**
+ * Cadência: 30s enquanto há campanha em andamento (idêntica à anterior), caindo
+ * até 5min em ociosidade. O teto de 5min é invisível na prática: o envio pelo
+ * canal Evolution é espaçado por evolutionSendDelayMs (24h / limite diário —
+ * ~36min entre envios no limite padrão de 40/dia, ver campanhas-scheduler.ts),
+ * então o snapshot de progresso muda numa escala muito maior que 5min.
+ */
+export function startCampanhaChatNotifier(): PollerHandle {
+  return startPoller({
+    name:  'campanhas-chat-notifier',
+    minMs: envMs('POLLER_CAMPANHAS_NOTIFIER_MIN_MS', 30 * 1000),
+    maxMs: envMs('POLLER_CAMPANHAS_NOTIFIER_MAX_MS', 5 * 60 * 1000),
+    tick:  runCampanhaChatNotifierTick,
+  });
+}

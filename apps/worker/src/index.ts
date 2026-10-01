@@ -36,9 +36,11 @@ import './tarefas'; // registra o cron de tarefas atrasadas (ZapScript Tarefas)
 // fila 'copiloto' (ZapScript Copiloto — briefings ao dono) + áudio de cliente transcrito → Copiloto
 import { copilotoWorker, enqueueCopilotoIngest, hasCopiloto } from './copiloto';
 import { zapscreveWorker } from './zapscreve'; // fila 'zapscreve' (áudio do dono vira texto)
-import './campanhas-scheduler'; // registra o agendador de disparo automático (ZapScript Campanhas)
-import './mktfast-scheduler'; // registra o agendador de disparo automático (MKT-Fast)
-import './modules/campanhas-chat-notifier'; // updates de progresso a cada 30s no chat (Chatbot Campanhas)
+// Agendadores e notifier: sobem por chamada explícita no fim deste arquivo (não
+// mais por efeito colateral de import), com intervalo adaptativo — ver lib/poller.ts.
+import { startCampanhasScheduler } from './campanhas-scheduler';
+import { startMktfastScheduler } from './mktfast-scheduler';
+import { startCampanhaChatNotifier } from './modules/campanhas-chat-notifier';
 // Baileys removido — agora usando Meta Cloud API exclusivamente
 
 // ── Supabase Storage — download/delete de áudios temporários ─────────────────
@@ -2928,6 +2930,18 @@ async function cleanupOptinTimeouts() {
 cleanupOptinTimeouts();
 setInterval(cleanupOptinTimeouts, 5 * 60 * 1000); // 5 minutos
 
+// ── Pollers de agendamento ───────────────────────────────────────
+// Antes estes três subiam por `import './x'` com setInterval fixo no fim do
+// módulo — o que impedia qualquer controle de cadência e somava ~5.760 queries
+// por dia ao Supabase mesmo sem nenhuma campanha ou missão no sistema. Agora são
+// explícitos e usam intervalo adaptativo (lib/poller.ts): mesma cadência quando
+// há trabalho, desaceleração em ociosidade.
+const POLLERS = [
+  startCampanhasScheduler(),
+  startMktfastScheduler(),
+  startCampanhaChatNotifier(),
+];
+
 // ── Graceful shutdown ────────────────────────────────────────────
 // Fecha TODAS as filas registradas neste processo. Faltando qualquer uma aqui,
 // os jobs em voo dela são mortos sem liberar o lock no restart do deploy: ficam
@@ -2957,6 +2971,11 @@ async function gracefulShutdown(signal: string) {
   shuttingDown = true;
 
   logger.info(`Worker encerrando (${signal})...`);
+
+  // Cancela o próximo tick dos pollers antes de fechar as filas — evita um tick
+  // disparar fireCampanha() contra uma fila que já está fechando.
+  for (const poller of POLLERS) poller.stop();
+
   const forceExit = setTimeout(() => {
     logger.error('Worker graceful shutdown timeout — forçando saída');
     process.exit(1);

@@ -1,6 +1,7 @@
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
 import { mktfastQueue } from './lib/queue';
+import { startPoller, envMs, PollerHandle, PollerTickResult } from './lib/poller';
 
 /**
  * MKT-Fast — dispara automaticamente missões agendadas (status 'scheduled',
@@ -10,8 +11,6 @@ import { mktfastQueue } from './lib/queue';
  * 'pending' já materializadas na criação da missão — ver
  * apps/api/src/routes/mktfast-admin.ts e MKTFAST_ESCOPO.md.
  */
-
-const CHECK_INTERVAL_MS = 60 * 1000;
 
 async function fireMission(missionId: string): Promise<void> {
   const mission = await prisma.mission.findUnique({ where: { id: missionId }, include: { whatsappNumber: true } });
@@ -57,12 +56,23 @@ async function fireMission(missionId: string): Promise<void> {
   logger.info(`[MKT-Fast][Scheduler] ▶ Missão ${missionId} iniciada automaticamente (${pending.length} execução(ões)).`);
 }
 
-async function runMissionSchedulerTick(): Promise<void> {
+/** Mesma semântica de SCHEDULER_BATCH em campanhas-scheduler.ts. */
+const SCHEDULER_BATCH = 50;
+
+async function runMissionSchedulerTick(): Promise<PollerTickResult> {
   try {
-    const due = await prisma.mission.findMany({
-      where: { status: 'scheduled', scheduledAt: { lte: new Date() } },
-      select: { id: true },
+    // Uma query resolve o vencido (dispara agora) e o horizonte (quando acordar).
+    const scheduled = await prisma.mission.findMany({
+      where:   { status: 'scheduled', scheduledAt: { not: null } },
+      select:  { id: true, scheduledAt: true },
+      orderBy: { scheduledAt: 'asc' },
+      take:    SCHEDULER_BATCH,
     });
+
+    const now    = Date.now();
+    const due    = scheduled.filter((m: any) => m.scheduledAt!.getTime() <= now);
+    const nextAt = scheduled.find((m: any) => m.scheduledAt!.getTime() > now)?.scheduledAt ?? null;
+
     for (const { id } of due) {
       try {
         await fireMission(id);
@@ -70,12 +80,21 @@ async function runMissionSchedulerTick(): Promise<void> {
         logger.error(`[MKT-Fast][Scheduler] Falha ao iniciar missão ${id}: ${err.message}`);
       }
     }
+    return { worked: due.length > 0, nextAt };
   } catch (err: any) {
     logger.error(`[MKT-Fast][Scheduler] Erro no tick do agendador: ${err.message}`);
+    return { worked: false };
   }
 }
 
-runMissionSchedulerTick();
-setInterval(runMissionSchedulerTick, CHECK_INTERVAL_MS);
+/** Cadência igual à do agendador de campanhas — ver startCampanhasScheduler(). */
+export function startMktfastScheduler(): PollerHandle {
+  return startPoller({
+    name:  'mktfast-scheduler',
+    minMs: envMs('POLLER_MKTFAST_SCHED_MIN_MS', 60 * 1000),
+    maxMs: envMs('POLLER_MKTFAST_SCHED_MAX_MS', 10 * 60 * 1000),
+    tick:  runMissionSchedulerTick,
+  });
+}
 
 export { runMissionSchedulerTick };

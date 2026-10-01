@@ -1,8 +1,9 @@
 /**
  * Testes do notifier de progresso (Chatbot Campanhas) — updates periódicos no
- * self-chat para campanhas criadas via bot. O módulo registra um setInterval
- * na importação (mesmo padrão de campanhas-scheduler.ts); usamos fake timers
- * pra não deixar um intervalo real rodando durante os testes.
+ * self-chat para campanhas criadas via bot. O módulo não registra mais timer na
+ * importação (sobe por startCampanhaChatNotifier() no boot do worker — ver
+ * lib/poller.ts); os fake timers ficam como salvaguarda de que nenhum timer
+ * real escape durante os testes.
  */
 jest.useFakeTimers();
 

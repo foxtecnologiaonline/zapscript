@@ -2,6 +2,7 @@ import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
 import { campanhasQueue } from './lib/queue';
 import { sendEmail } from './services/mailer';
+import { startPoller, envMs, PollerHandle, PollerTickResult } from './lib/poller';
 
 /**
  * ZapScript Campanhas — dispara automaticamente campanhas agendadas (status
@@ -16,8 +17,6 @@ import { sendEmail } from './services/mailer';
  * atômica e idempotente, então rodar mais de uma réplica do worker não
  * enfileira a mesma campanha duas vezes.
  */
-
-const CHECK_INTERVAL_MS = 60 * 1000;
 const EVOLUTION_DAILY_LIMIT = parseInt(process.env.CAMPANHAS_EVOLUTION_DAILY_LIMIT || '40', 10);
 const EVOLUTION_WARMUP_DAYS = parseInt(process.env.CAMPANHAS_EVOLUTION_WARMUP_DAYS || '10', 10);
 const EVOLUTION_WARMUP_FLOOR_PCT = 0.15;
@@ -365,12 +364,30 @@ async function fireCampanha(campanhaId: string): Promise<void> {
   }
 }
 
-async function runCampanhaSchedulerTick(): Promise<void> {
+/**
+ * Lote máximo por tick. Em ordem crescente de scheduledAt as vencidas vêm
+ * sempre antes das futuras, então o teto nunca "esconde" uma vencida atrás de
+ * uma futura: ele só reparte um acúmulo grande entre ticks consecutivos — e,
+ * tendo disparado alguma, o poller volta à cadência mínima e pega o resto.
+ */
+const SCHEDULER_BATCH = 50;
+
+async function runCampanhaSchedulerTick(): Promise<PollerTickResult> {
   try {
-    const due = await prisma.campanha.findMany({
-      where: { status: 'scheduled', scheduledAt: { lte: new Date() } },
-      select: { id: true },
+    // Uma única query resolve as duas perguntas do poller: o que já venceu
+    // (dispara agora) e quando é o próximo agendamento (horizonte — o poller
+    // acorda nesse instante em vez de a cada 60s para sempre).
+    const scheduled = await prisma.campanha.findMany({
+      where:   { status: 'scheduled', scheduledAt: { not: null } },
+      select:  { id: true, scheduledAt: true },
+      orderBy: { scheduledAt: 'asc' },
+      take:    SCHEDULER_BATCH,
     });
+
+    const now    = Date.now();
+    const due    = scheduled.filter((c: any) => c.scheduledAt!.getTime() <= now);
+    const nextAt = scheduled.find((c: any) => c.scheduledAt!.getTime() > now)?.scheduledAt ?? null;
+
     for (const { id } of due) {
       try {
         await fireCampanha(id);
@@ -378,12 +395,27 @@ async function runCampanhaSchedulerTick(): Promise<void> {
         logger.error(`[Campanhas][Scheduler] Falha ao iniciar campanha ${id}: ${err.message}`);
       }
     }
+    return { worked: due.length > 0, nextAt };
   } catch (err: any) {
     logger.error(`[Campanhas][Scheduler] Erro no tick do agendador: ${err.message}`);
+    return { worked: false };
   }
 }
 
-runCampanhaSchedulerTick();
-setInterval(runCampanhaSchedulerTick, CHECK_INTERVAL_MS);
+/**
+ * Cadência: 60s com trabalho em mão (igual à anterior) e até 10min ocioso. O
+ * horizonte deixa o disparo MAIS pontual que antes — uma campanha agendada com
+ * mais de 10min de antecedência é disparada no horário, não até 60s depois.
+ * Campanha agendada para menos de maxMs à frente é descoberta em até maxMs: é
+ * esse o motivo de o teto ser 10min e não uma hora.
+ */
+export function startCampanhasScheduler(): PollerHandle {
+  return startPoller({
+    name:  'campanhas-scheduler',
+    minMs: envMs('POLLER_CAMPANHAS_SCHED_MIN_MS', 60 * 1000),
+    maxMs: envMs('POLLER_CAMPANHAS_SCHED_MAX_MS', 10 * 60 * 1000),
+    tick:  runCampanhaSchedulerTick,
+  });
+}
 
 export { runCampanhaSchedulerTick };
