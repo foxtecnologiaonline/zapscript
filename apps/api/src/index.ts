@@ -334,6 +334,10 @@ app.register(import('./routes/modules/vendas'),  { prefix: '/modules/vendas' });
 app.register(import('./routes/cobranca'),        { prefix: '/cobranca' });
 app.register(import('./routes/legendas'),        { prefix: '/legendas' });
 app.register(import('./routes/zapscreve'),       { prefix: '/zapscreve' });
+// ZapMonney — API consumida pelo MonneyHub (interface gráfica). Identidade
+// própria (ZmUser por telefone), sessão com aud 'zm', sem relação com o
+// Entitlement/billing do painel: é produto aberto a qualquer pessoa.
+app.register(import('./routes/zapmonney'),       { prefix: '/zapmonney' });
 // Plano Empresas — multi-seat MVP
 app.register(import('./routes/teams'),           { prefix: '/teams' });
 // API pública ZapScript 2.0 (tier Empresas) — gestão de chaves (sessão) + consumo externo (X-Api-Key)
