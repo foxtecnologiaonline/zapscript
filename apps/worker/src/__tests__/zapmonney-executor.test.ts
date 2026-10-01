@@ -438,6 +438,92 @@ describe('consultas', () => {
   });
 });
 
+describe('previsão', () => {
+  function gastoDoMes(gasto: string, entrada?: string) {
+    const rows: any[] = [{ type: 'expense', _sum: { amount: gasto } }];
+    if (entrada) rows.push({ type: 'income', _sum: { amount: entrada } });
+    (prisma.zmTransaction.groupBy as jest.Mock).mockResolvedValueOnce(rows);
+  }
+
+  it('projeta o fechamento do mês pelo ritmo de gasto', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-10T15:00:00Z')); // dia 10 em BRT
+    activeUser();
+    noPending();
+    intent('query_forecast');
+    gastoDoMes('1000.00');
+
+    const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'vou fechar o mês no azul?' });
+
+    // 1000 em 10 dias = 100/dia × 31 dias de outubro = 3100
+    expect(reply).toMatch(/100,00\/dia/);
+    expect(reply).toMatch(/3\.100,00/);
+    jest.useRealTimers();
+  });
+
+  it('projeta a sobra quando há entradas no mês', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-10T15:00:00Z'));
+    activeUser();
+    noPending();
+    intent('query_forecast');
+    gastoDoMes('1000.00', '5000.00');
+
+    const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'vai sobrar dinheiro?' });
+
+    expect(reply).toMatch(/1\.900,00/); // 5000 − 3100
+    jest.useRealTimers();
+  });
+
+  it('não extrapola com menos de 3 dias de dados', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-02T15:00:00Z')); // dia 2
+    activeUser();
+    noPending();
+    intent('query_forecast');
+    gastoDoMes('40.00');
+
+    const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'quanto vou gastar?' });
+
+    expect(reply).toContain('pouco para projetar');
+    expect(reply).not.toMatch(/fecha o mês/);
+    jest.useRealTimers();
+  });
+
+  it('avisa quando não há gasto para projetar', async () => {
+    activeUser();
+    noPending();
+    intent('query_forecast');
+    (prisma.zmTransaction.groupBy as jest.Mock).mockResolvedValueOnce([]);
+
+    const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'previsão do mês' });
+
+    expect(reply).toContain('não tenho gasto nenhum confirmado');
+  });
+});
+
+describe('guarda de conteúdo', () => {
+  it('recusa recomendação de investimento e oferece o que está no escopo', async () => {
+    activeUser();
+    noPending();
+    intent('advice_request');
+
+    const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'onde invisto 5 mil?' });
+
+    expect(reply).toContain('não dou recomendação de investimento');
+    expect(reply).toContain('projetar');
+    expect(prisma.zmTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it('redireciona assunto fora de escopo sem ficar mudo', async () => {
+    activeUser();
+    noPending();
+    intent('off_topic');
+
+    const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'me dá uma receita de bolo' });
+
+    expect(reply).toBeTruthy();
+    expect(reply).toContain('caderno de finanças');
+  });
+});
+
 describe('ações destrutivas', () => {
   it('apaga o último lançamento confirmado marcando como deleted', async () => {
     activeUser();

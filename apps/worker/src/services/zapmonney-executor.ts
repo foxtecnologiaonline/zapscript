@@ -120,6 +120,24 @@ function firstName(name?: string | null): string {
   return n && n.length > 1 ? n : '';
 }
 
+/**
+ * Guarda de conteúdo, parte 2: as respostas de recusa.
+ *
+ * Recomendação de investimento não é algo que este produto possa dar — não há
+ * perfil de risco, não há habilitação, e a conversa chega por um número aberto a
+ * qualquer pessoa. A recusa é explicada e oferece o que ESTÁ no escopo, para não
+ * virar porta fechada na cara de quem perguntou de boa-fé.
+ */
+const ADVICE_REFUSAL =
+  '🙋 Essa eu não respondo: não dou recomendação de investimento nem digo se um ativo ' +
+  'vale a pena. Não tenho como avaliar seu perfil, e essa decisão merece alguém habilitado.\n\n' +
+  'O que eu faço bem é a parte de dentro da sua casa: registrar o que entra e sai, ' +
+  'mostrar para onde seu dinheiro está indo e projetar como o mês deve fechar.';
+
+const OFF_TOPIC_REFUSAL =
+  '🙂 Eu sou só o seu caderno de finanças — não consigo ajudar com isso.\n\n' +
+  'Me manda um gasto, uma entrada, ou pergunta do seu saldo que eu resolvo na hora.';
+
 const HELP_TEXT =
   '💡 *Como usar o ZapMonney*\n\n' +
   'Me manda por texto ou áudio, do jeito que você falaria para uma pessoa:\n\n' +
@@ -128,6 +146,7 @@ const HELP_TEXT =
   '• _"qual meu saldo"_ — balanço do mês\n' +
   '• _"quanto gastei com transporte"_ — total por categoria\n' +
   '• _"meus últimos lançamentos"_ — extrato recente\n' +
+  '• _"vou fechar o mês no azul?"_ — projeção pelo seu ritmo\n' +
   '• _"apaga o último"_ — remove o último lançamento\n\n' +
   'Sempre confirmo com você antes de salvar qualquer coisa. ✅';
 
@@ -335,6 +354,60 @@ async function querySummary(zmUserId: string, data: ZmIntentResult['data']): Pro
   return `📊 *Despesas de ${label}*\n\n${lines.join('\n')}\n\nTotal: *${fmtBRL(total)}*`;
 }
 
+/**
+ * Projeção em linha reta: o que a pessoa gastou dividido pelos dias já corridos,
+ * multiplicado pelos dias do mês. Não é modelo nem previsão de nada externo — é
+ * aritmética sobre o próprio ritmo dela, e o texto diz isso com essas palavras,
+ * para ninguém ler como promessa.
+ */
+async function queryForecast(zmUserId: string, now = new Date()): Promise<ZmReply> {
+  const { start, end, label } = monthRangeBrt('mes_atual', now);
+  const { d: diaHoje } = brtParts(now);
+  // end é 00:00 BRT do dia 1 do mês seguinte, então -1 dia dá o último dia deste.
+  const diasNoMes = new Date(end.getTime() - 86_400_000).getUTCDate();
+
+  const grouped = await prisma.zmTransaction.groupBy({
+    by:    ['type'],
+    where: { zmUserId, status: 'confirmed', occurredAt: { gte: start, lt: end } },
+    _sum:  { amount: true },
+  });
+
+  const gasto   = Number(grouped.find((g) => g.type === 'expense')?._sum.amount ?? 0);
+  const entrada = Number(grouped.find((g) => g.type === 'income')?._sum.amount ?? 0);
+
+  if (gasto === 0) {
+    return `📈 Ainda não tenho gasto nenhum confirmado em ${label} para projetar. ` +
+           'Registra alguns lançamentos e eu te mostro como o mês deve fechar.';
+  }
+
+  // Com 1 ou 2 dias de dados a extrapolação é ruído: um almoço de 40 reais no
+  // dia 1 projetaria 1.240 no mês. Melhor dizer que é cedo do que dar número.
+  if (diaHoje < 3) {
+    return `📈 Em ${label} só tenho ${diaHoje} dia(s) de lançamento — pouco para projetar sem chutar. ` +
+           `Até agora: ${fmtBRL(gasto)} em gastos.`;
+  }
+
+  const mediaDia  = gasto / diaHoje;
+  const projecao  = mediaDia * diasNoMes;
+  const linhas = [
+    `📈 *Projeção de ${label}*`,
+    '',
+    `Até o dia ${diaHoje}: ${fmtBRL(gasto)} em gastos (${fmtBRL(mediaDia)}/dia)`,
+    `No mesmo ritmo, fecha o mês em *${fmtBRL(projecao)}*`,
+  ];
+
+  if (entrada > 0) {
+    const saldoProjetado = entrada - projecao;
+    linhas.push(
+      '',
+      `Com ${fmtBRL(entrada)} de entradas, sobra projetada: ${saldoProjetado >= 0 ? '🟢' : '🔴'} *${fmtBRL(saldoProjetado)}*`,
+    );
+  }
+
+  linhas.push('', '_É só o seu ritmo atual projetado, não uma previsão do que vai acontecer._');
+  return linhas.join('\n');
+}
+
 async function listRecent(zmUserId: string): Promise<ZmReply> {
   const rows = await prisma.zmTransaction.findMany({
     where:   { zmUserId, status: 'confirmed' },
@@ -511,6 +584,15 @@ export async function handleZapMonneyMessage(input: ZmMessageInput): Promise<ZmR
 
     case 'delete_last':
       return deleteLast(zmUser.id);
+
+    case 'query_forecast':
+      return queryForecast(zmUser.id);
+
+    case 'advice_request':
+      return ADVICE_REFUSAL;
+
+    case 'off_topic':
+      return OFF_TOPIC_REFUSAL;
 
     case 'delete_account':
       return '⚠️ Isso apaga sua conta e *todos* os seus lançamentos, sem como desfazer.\n\n' +
