@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import crypto from 'crypto';
+import { promises as dns } from 'dns';
 import { Worker, Job } from 'bullmq';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
@@ -655,6 +656,33 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
   }
 }
 
+// IPs privados/internos — bloqueados para prevenir SSRF (mesma lista de
+// apps/api/src/routes/webhook-config.ts).
+const WEBHOOK_PRIVATE_IP_RE =
+  /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|::1$|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:)/i;
+
+/**
+ * Revalida a URL do webhook imediatamente antes do fetch (não confia só na
+ * validação feita no momento em que o usuário salvou a config): sem isso um
+ * domínio com TTL baixo pode resolver pra um IP público na hora do cadastro
+ * e pra um IP interno (169.254.169.254, etc.) na hora do disparo — DNS
+ * rebinding clássico. Não fecha 100% o TOCTOU (o worker ainda usa o `fetch`
+ * global, que resolve DNS de novo internamente), mas reduz bastante a janela
+ * de exploração em vez de confiar cegamente numa validação de minutos/dias atrás.
+ */
+async function isSafeWebhookUrl(url: string): Promise<boolean> {
+  let u: URL;
+  try { u = new URL(url); } catch { return false; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+  if (['localhost', '0.0.0.0', 'metadata.google.internal'].includes(u.hostname.toLowerCase())) return false;
+  try {
+    const addresses = await dns.lookup(u.hostname, { all: true });
+    return addresses.every(({ address }) => !WEBHOOK_PRIVATE_IP_RE.test(address));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Dispara webhook personalizado do usuário após uma conversão concluída.
  * Fire-and-forget: erros são logados mas não afetam o pipeline.
@@ -667,6 +695,11 @@ async function dispatchWebhook(
   try {
     const config = await (prisma as any).webhookConfig.findUnique({ where: { userId, active: true } });
     if (!config) return;
+
+    if (!(await isSafeWebhookUrl(config.url))) {
+      logger.warn(`[Webhook] URL recusada na revalidação SSRF: ${config.url}`);
+      return;
+    }
 
     const payload = {
       event:     'transcription.completed',
@@ -688,14 +721,15 @@ async function dispatchWebhook(
     const signature = 'sha256=' + crypto.createHmac('sha256', config.secret).update(body).digest('hex');
 
     await fetch(config.url, {
-      method:  'POST',
+      method:   'POST',
       headers: {
         'Content-Type':          'application/json',
         'X-ZapScript-Signature': signature,
         'X-ZapScript-Event':     'transcription.completed',
       },
       body,
-      signal: AbortSignal.timeout(5_000),
+      redirect: 'manual', // não seguir redirect — evita bypass da validação SSRF via 3xx pra IP interno
+      signal:   AbortSignal.timeout(5_000),
     });
 
     logger.info(`[Webhook] ✅ Disparado para ${config.url}`);

@@ -29,7 +29,13 @@ export function convertToMp3(inputBuffer: Buffer, inputFormat?: string): Promise
       return reject(new Error(`Falha ao criar diretório temporário: ${(err as Error).message}`));
     }
 
-    const ext     = inputFormat ? `.${inputFormat}` : '.bin';
+    // inputFormat pode vir direto do nome de arquivo enviado pelo usuário
+    // (ex. extensão de originalFilename) — sem essa sanitização, um nome como
+    // "a.b/../../../../tmp/evil" vira uma extensão com "../" que o path.join
+    // abaixo resolveria pra fora do diretório temporário isolado (path
+    // traversal / escrita arbitrária no host do worker).
+    const safeFormat = (inputFormat || '').replace(/[^a-z0-9]/gi, '').slice(0, 10);
+    const ext        = safeFormat ? `.${safeFormat}` : '.bin';
     const tempIn  = join(tempDir, `input${ext}`);
     const tempOut = join(tempDir, 'output.mp3');
 

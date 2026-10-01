@@ -1420,6 +1420,13 @@ async function start() {
         app.log.error('[Startup] FATAL: ENCRYPTION_KEY inválida. Deve ter 64 caracteres hex.');
         process.exit(1);
       }
+      // Integração oficial WhatsApp Cloud API (Meta) habilitada ⇒ a assinatura
+      // x-hub-signature-256 do webhook precisa de WHATSAPP_APP_SECRET, senão
+      // qualquer POST bem-formado é aceito como se viesse da Meta.
+      if (process.env.WHATSAPP_PHONE_NUMBER_ID && !process.env.WHATSAPP_APP_SECRET) {
+        app.log.error('[Startup] FATAL: WHATSAPP_PHONE_NUMBER_ID configurado mas WHATSAPP_APP_SECRET não — o webhook do WhatsApp oficial (Meta) ficaria sem validação de assinatura.');
+        process.exit(1);
+      }
     }
 
     // app.log está em nível 'warn' em produção (silencia .info) — logger (lib/logger.ts)

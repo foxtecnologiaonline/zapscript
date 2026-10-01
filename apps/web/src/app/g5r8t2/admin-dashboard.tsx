@@ -3110,8 +3110,11 @@ function UserDetailPanel({ userId, token, onClose, onAction }: {
       const res = await fetch(`${API}/sys/g5r8t2/users/${userId}/impersonate`, { method: 'POST', headers: h });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Erro');
-      // Abre nova aba com token de impersonação
-      const url = `${window.location.origin}/dashboard?impersonate_token=${d.token}`;
+      // Abre nova aba com token de impersonação via URL fragment (não query
+      // string): fragments não são enviados ao servidor, não aparecem em
+      // logs de proxy/acesso nem no header Referer — o dashboard consome e
+      // limpa o fragment assim que carrega (ver dashboard/layout.tsx).
+      const url = `${window.location.origin}/dashboard#impersonate_token=${encodeURIComponent(d.token)}`;
       window.open(url, '_blank');
       onAction('⚠️ Sessão de impersonação aberta (1h) — feche quando terminar', 'warn');
     } catch (e: any) { onAction(`❌ ${e.message}`, 'err'); }

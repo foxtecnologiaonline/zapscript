@@ -320,6 +320,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [showTermsModal, setShowTermsModal] = useState(false);
 
   useEffect(() => {
+    // Consome o token de impersonação do painel admin (vem via URL fragment,
+    // nunca query string — fragments não são enviados ao servidor nem
+    // aparecem em logs de proxy/acesso ou no header Referer). Lido uma única
+    // vez e removido do histórico na hora com replaceState, pra não ficar
+    // reaproveitável a partir do histórico do navegador.
+    if (typeof window !== 'undefined' && window.location.hash.startsWith('#impersonate_token=')) {
+      const token = decodeURIComponent(window.location.hash.slice('#impersonate_token='.length));
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      if (token) api.setToken(token);
+    }
+
     api.get<any>('/auth/me')
       .then(u => {
         setUser(u);

@@ -151,14 +151,15 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
 
     try {
       const res = await fetch(config.url, {
-        method:  'POST',
+        method:   'POST',
         headers: {
           'Content-Type':          'application/json',
           'X-ZapScript-Signature': signature,
           'X-ZapScript-Event':     'test',
         },
         body,
-        signal: AbortSignal.timeout(8_000),
+        redirect: 'manual', // não seguir redirect — evita bypass da validação SSRF via 3xx pra IP interno
+        signal:   AbortSignal.timeout(8_000),
       });
 
       return {

@@ -10,7 +10,10 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
       POSTGRES_DB: ${DB_NAME:-zapscript}
     ports:
-      - "5432:5432"
+      # Igual ao redis logo abaixo: só loopback. Sem o prefixo 127.0.0.1, rodar
+      # este compose numa VM cloud sem firewall expõe o Postgres (com a senha
+      # fraca default ${DB_PASSWORD:-password}) na internet pública.
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
