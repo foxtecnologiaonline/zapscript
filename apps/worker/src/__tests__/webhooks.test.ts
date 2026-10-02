@@ -48,15 +48,18 @@ const PLAIN_SECRET = 'a'.repeat(64);
 const URL = 'https://mindmanager.example.com/api/webhooks/zapscript';
 
 function job(overrides: any = {}) {
+  const { attemptsMade, id, ...dataOverrides } = overrides;
   return {
+    id: id ?? 'job_1',
     data: {
       userId:     'u1',
       event:      'message.received',
       occurredAt: '2026-10-02T14:30:00Z',
       data:       { contactPhone: '5511999999999', text: 'sim' },
-      ...overrides,
+      deliveryId: 'd1e11ve1-0000-4000-8000-000000000001',
+      ...dataOverrides,
     },
-    attemptsMade: 0,
+    attemptsMade: attemptsMade ?? 0,
   } as any;
 }
 
@@ -100,7 +103,30 @@ describe('assinatura', () => {
     const [, opts] = fetchMock.mock.calls[0];
     expect(opts.headers['X-ZapScript-Event']).toBe('message.received');
     expect(opts.headers['X-ZapScript-Timestamp']).toBe('2026-10-02T14:30:00Z');
-    expect(opts.headers['X-ZapScript-Delivery']).toMatch(/^[0-9a-f-]{36}$/);
+    expect(opts.headers['X-ZapScript-Delivery']).toBe('d1e11ve1-0000-4000-8000-000000000001');
+  });
+
+  it('REGRESSÃO: X-ZapScript-Delivery é ESTÁVEL entre as tentativas', async () => {
+    // A documentação manda o integrador deduplicar por este header. Se ele
+    // mudasse a cada tentativa, uma reentrega (nosso POST chegou mas a
+    // resposta se perdeu) viraria processamento duplicado da mesma resposta do
+    // contato — a deduplicação prometida simplesmente não funcionaria.
+    await processWebhookJob(job({ attemptsMade: 0 }));
+    await processWebhookJob(job({ attemptsMade: 1 }));
+    await processWebhookJob(job({ attemptsMade: 4 }));
+
+    const ids = fetchMock.mock.calls.map(([, o]: any) => o.headers['X-ZapScript-Delivery']);
+    expect(new Set(ids).size).toBe(1);
+
+    // O número da tentativa, por outro lado, avança no log de entregas.
+    const attempts = logCreate.mock.calls.map(([a]: any) => a.data.attempt);
+    expect(attempts).toEqual([1, 2, 5]);
+  });
+
+  it('job antigo sem deliveryId (em voo no deploy) cai num id derivado do job', async () => {
+    await processWebhookJob(job({ deliveryId: undefined, id: 'job_42' }));
+    const [, opts] = fetchMock.mock.calls[0];
+    expect(opts.headers['X-ZapScript-Delivery']).toBe('job-job_42');
   });
 
   it('o corpo tem o envelope { event, timestamp, data } esperado pelo integrador', async () => {

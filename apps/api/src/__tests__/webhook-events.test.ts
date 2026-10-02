@@ -50,6 +50,17 @@ describe('enqueueWebhook', () => {
     const [, job] = add.mock.calls[0];
     expect(job).toMatchObject({ userId: 'u1', event: 'message.received', data: { text: 'sim' } });
     expect(typeof job.occurredAt).toBe('string');
+    // deliveryId nasce aqui (não no disparo) para ficar estável entre as
+    // tentativas de reentrega — é o que o integrador usa para deduplicar.
+    expect(job.deliveryId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
+  it('cada evento ganha um deliveryId próprio', async () => {
+    findUnique.mockResolvedValue({ active: true, events: ['message.received'] });
+    await enqueueWebhook('u1', WEBHOOK_EVENTS.MESSAGE_RECEIVED, { text: 'sim' });
+    await enqueueWebhook('u1', WEBHOOK_EVENTS.MESSAGE_RECEIVED, { text: 'nao' });
+    const ids = add.mock.calls.map(([, j]: any) => j.deliveryId);
+    expect(new Set(ids).size).toBe(2);
   });
 
   it('NÃO enfileira evento que o usuário não assinou', async () => {

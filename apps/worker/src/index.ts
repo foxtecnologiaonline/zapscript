@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { Worker, Job } from 'bullmq';
+import { randomUUID } from 'crypto';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
@@ -687,6 +688,7 @@ async function dispatchWebhook(
       userId,
       event:      'transcription.completed',
       occurredAt: new Date().toISOString(),
+      deliveryId: randomUUID(),
       data: {
         id:             transcription.id,
         contactPhone:   decryptStr(transcription.contactPhone),

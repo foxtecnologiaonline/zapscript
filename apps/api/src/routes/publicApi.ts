@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { requireApiKey } from '../lib/apiKeyAuth';
+import { requireApiKey, hashApiKey } from '../lib/apiKeyAuth';
 import { getUserPlan } from '../lib/planGate';
 import { validateRequest, publicSendMessageSchema } from '../lib/validation';
 import { sendOutboundMessage, serializeOutboundMessage } from '../services/outbound-message';
@@ -25,12 +25,34 @@ import crypto from 'crypto';
  *   4. GET  /public/v1/messages/:id  → (opcional) confere a entrega
  */
 export default async function publicApiRoutes(app: FastifyInstance) {
-  const rateLimit = { max: 60, timeWindow: '1 minute' };
+  /**
+   * Limite por CHAVE, não por IP (que é o default do @fastify/rate-limit).
+   *
+   * Esta é uma API servidor-a-servidor: todo o tráfego de um integrador sai de
+   * um punhado de IPs, e integradores diferentes podem perfeitamente sair do
+   * mesmo IP de saída (mesma VPC, mesmo NAT de provedor). Com a chave por IP,
+   * dois clientes atrás do mesmo NAT dividiriam o mesmo orçamento e um
+   * derrubaria o outro — e o mesmo cliente ganharia orçamento novo só por
+   * trocar de IP de saída.
+   *
+   * O rate limit roda no hook onRequest, ANTES do preHandler, então aqui ainda
+   * não existe req.apiKeyUserId — a chave sai do header. Usa-se o HASH do
+   * token (nunca o token em claro, que viraria parte do nome da chave no
+   * Redis). Sem header, cai no IP para não deixar requisição anônima sem teto.
+   */
+  function apiKeyRateKey(req: any): string {
+    const header = req.headers['x-api-key'];
+    return typeof header === 'string' && header.trim()
+      ? 'ak:' + hashApiKey(header.trim()).slice(0, 32)
+      : 'ip:' + req.ip;
+  }
+
+  const rateLimit = { max: 60, timeWindow: '1 minute', keyGenerator: apiKeyRateKey };
   // Envio tem limite próprio e mais baixo que leitura: cada chamada vira uma
   // mensagem de WhatsApp de verdade para uma pessoa de verdade, e um laço
   // acidental no integrador viraria spam em nome do cliente (e risco de ban
   // do número na Meta, que é dano irreversível).
-  const sendRateLimit = { max: 30, timeWindow: '1 minute' };
+  const sendRateLimit = { max: 30, timeWindow: '1 minute', keyGenerator: apiKeyRateKey };
 
   /** Só dígitos — aceita "+55 11 99999-9999" e devolve "5511999999999". */
   function normalizePhone(raw: string): string {

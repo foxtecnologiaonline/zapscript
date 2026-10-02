@@ -6,6 +6,8 @@ import { logger } from './lib/logger';
 import { decryptStr } from './services/encryption';
 import { buildWebhookHeaders } from './lib/webhook-signature';
 import { isSafeWebhookUrl } from './lib/webhook-url-guard';
+import { recordFailedJob } from './lib/dlq';
+import { captureJobFailure } from './lib/sentry';
 
 /**
  * Consumidor da fila `webhooks` — o ÚNICO lugar do sistema que assina e
@@ -30,6 +32,8 @@ export interface WebhookJobData {
   event: string;
   data: Record<string, unknown>;
   occurredAt: string;
+  /** Gerado no enfileiramento — ver a justificativa em lib/webhook-events.ts. */
+  deliveryId?: string;
 }
 
 async function logDelivery(args: {
@@ -80,7 +84,10 @@ export async function processWebhookJob(job: Job<WebhookJobData>): Promise<void>
     return;
   }
 
-  const deliveryId = crypto.randomUUID();
+  // ESTÁVEL entre as tentativas: é o que permite o receptor deduplicar uma
+  // reentrega. O fallback cobre job enfileirado por uma versão anterior que
+  // ainda estivesse na fila no momento do deploy.
+  const deliveryId = job.data.deliveryId ?? `job-${job.id ?? crypto.randomUUID()}`;
   // `timestamp` vai DENTRO do corpo assinado — é assim que o receptor rejeita
   // payload velho (replay) sem precisar de um segundo esquema de assinatura.
   const payload = { event, timestamp: occurredAt, data };
@@ -134,11 +141,54 @@ export async function processWebhookJob(job: Job<WebhookJobData>): Promise<void>
   throw new Error(`[Webhook] ${event} → ${config.url} devolveu HTTP ${res.status} (tentativa ${attempt})`);
 }
 
+// ── Retenção do log de entregas ──────────────────────────────────────────────
+// WebhookDelivery grava UMA LINHA POR TENTATIVA, e message.received dispara a
+// cada mensagem de texto recebida — numa conta movimentada com integração
+// ativa isso cresce rápido e sem teto. Mesma política do serviceStatusLog
+// (apps/worker/src/index.ts): janela de 30 dias, limpeza diária.
+const DELIVERY_RETENTION_DAYS = 30;
+
+async function pruneWebhookDeliveries(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - DELIVERY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const { count } = await (prisma as any).webhookDelivery.deleteMany({
+      where: { createdAt: { lt: cutoff } },
+    });
+    if (count > 0) {
+      logger.info(`[Webhook] 🧹 ${count} registro(s) de entrega com mais de ${DELIVERY_RETENTION_DAYS} dias removidos`);
+    }
+  } catch (err: any) {
+    logger.warn(`[Webhook] Falha ao limpar log de entregas: ${err.message}`);
+  }
+}
+
+void pruneWebhookDeliveries();
+// unref: a limpeza é trabalho de fundo e não deve segurar o event loop (nem
+// manter o processo de teste vivo depois que a suíte termina).
+setInterval(pruneWebhookDeliveries, 24 * 60 * 60 * 1000).unref();
+
 export const webhooksWorker = new Worker('webhooks', processWebhookJob, {
   connection:  redis as any,
   concurrency: 5,
 });
 
 webhooksWorker.on('failed', (job, err) => {
-  logger.warn('[Webhook] Job falhou', { jobId: job?.id, err: err?.message });
+  // Mesmo tratamento das outras filas: ao ESGOTAR as tentativas o job vira
+  // linha em FailedJob (visível em GET /admin/failed-jobs e reenfileirável por
+  // POST /admin/failed-jobs/:id/replay) e sobe para o Sentry. Ambas as funções
+  // checam attempts >= maxAttempts internamente, então retry transitório não
+  // polui nada.
+  //
+  // Sem isto, um webhook que esgotasse as 5 tentativas desaparecia em
+  // silêncio quando o removeOnFail limpasse o Redis — justamente o cenário que
+  // esta fila existe para evitar (a resposta do paciente que ninguém viu).
+  captureJobFailure('webhooks', job, err);
+  void recordFailedJob('webhooks', job, err);
+
+  const attempts    = job?.attemptsMade ?? 0;
+  const maxAttempts = job?.opts?.attempts ?? 5;
+  logger.warn(
+    `[Webhook] ❌ Entrega falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`,
+    { jobId: job?.id, event: (job?.data as any)?.event },
+  );
 });

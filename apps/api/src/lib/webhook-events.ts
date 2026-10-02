@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { prisma } from './prisma';
 import { webhooksQueue } from '../services/queue';
 import { logger } from './logger';
@@ -39,6 +40,17 @@ export interface WebhookJobData {
   data: Record<string, unknown>;
   /** ISO-8601 do momento do FATO (não da tentativa de entrega). */
   occurredAt: string;
+  /**
+   * Id desta entrega, gerado AQUI (no enfileiramento) e não no disparo.
+   *
+   * Isso é essencial e não é detalhe: o header X-ZapScript-Delivery é o que o
+   * integrador usa para deduplicar, e a fila pode reentregar o mesmo evento
+   * até 5 vezes (ex.: nosso POST chegou, mas a resposta se perdeu no caminho).
+   * Se o id fosse sorteado a cada tentativa, o receptor veria 5 entregas
+   * distintas e processaria a mesma resposta do contato 5 vezes — ou seja, a
+   * deduplicação que a documentação promete não funcionaria.
+   */
+  deliveryId: string;
 }
 
 /**
@@ -73,7 +85,11 @@ export async function enqueueWebhook(
       : [WEBHOOK_EVENTS.TRANSCRIPTION_COMPLETED];
     if (!subscribed.includes(event)) return false;
 
-    const job: WebhookJobData = { userId, event, data, occurredAt: occurredAt.toISOString() };
+    const job: WebhookJobData = {
+      userId, event, data,
+      occurredAt: occurredAt.toISOString(),
+      deliveryId: crypto.randomUUID(),
+    };
     await webhooksQueue.add(WEBHOOK_JOB, job);
     return true;
   } catch (err: any) {

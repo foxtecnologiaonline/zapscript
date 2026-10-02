@@ -129,7 +129,25 @@ um "aceito, confie em nós":
 |---|---|
 | `sent` | entregue à Evolution API com sucesso |
 | `failed` | as 3 tentativas falharam; veja `failureReason` |
-| `queued` | estado transitório (só visível em leitura concorrente) |
+| `queued` | registro criado, envio ainda não concluído |
+
+O `POST` só responde **depois** de tentar enviar, então a resposta já vem com
+`sent` ou `failed` — `queued` praticamente não aparece ali. Ele existe para o
+caso de leitura concorrente e para a borda em que o processo da API é
+reiniciado no meio do envio: nesse cenário o registro fica em `queued` e o
+status real deve ser confirmado pelo evento `message.status` ou por uma nova
+consulta.
+
+### Timeout do seu cliente HTTP
+
+Como o `POST` aguarda o envio, use um timeout de cliente **de pelo menos 60s**.
+São até 3 tentativas e cada uma tem teto de 15s contra a Evolution API, então o
+pior caso (instância pendurada três vezes) chega a ~45s. No caminho normal a
+resposta sai em 1–2s.
+
+Se o seu cliente desistir antes, **reenvie com a mesma `idempotencyKey`**: a
+chamada seguinte devolve o registro original em vez de mandar a mensagem de
+novo. É exatamente para isso que a chave existe.
 
 ### Idempotência
 
@@ -178,6 +196,12 @@ curl -X POST https://api.zapscript.me/public/v1/webhooks \
   "secret": "f3a9...64 hex"
 }
 ```
+
+> **Uma URL por conta.** A configuração de webhook é única por conta ZapScript:
+> chamar `POST /webhooks` de novo (ou configurar pelo dashboard) **substitui** a
+> URL e a lista de eventos anterior. Não é possível hoje mandar
+> `transcription.completed` para um destino e `message.received` para outro —
+> aponte todos os eventos para a mesma URL e roteie por `event` do seu lado.
 
 Guarde o `secret` — é com ele que você valida a assinatura. A URL precisa ser
 HTTPS e pública: endereços internos, loopback e metadata de nuvem são
