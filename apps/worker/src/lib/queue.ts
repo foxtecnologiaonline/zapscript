@@ -79,3 +79,18 @@ export const mktfastQueue = new Queue('mktfast', {
     removeOnFail:     { count: 2_000, age: 7 * 24 * 60 * 60 },
   },
 });
+
+// ── Fila de entrega de webhooks de saída (API pública v1) ────────────────────
+// O worker é produtor (transcription.completed, message.status) E consumidor
+// (apps/worker/src/webhooks.ts). As opções precisam ser idênticas às do
+// produtor da API (apps/api/src/services/queue.ts) — se divergirem, o mesmo
+// evento teria política de retry diferente dependendo de quem o enfileirou.
+export const webhooksQueue = new Queue('webhooks', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff:  { type: 'exponential', delay: 10_000 },
+    removeOnComplete: { count: 1_000, age: 24 * 60 * 60 },
+    removeOnFail:     { count: 5_000, age: 7 * 24 * 60 * 60 },
+  },
+});

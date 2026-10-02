@@ -84,6 +84,8 @@ model User {
   assignedTasks           Task[]              @relation("TaskAssignee")
   taskComments            TaskComment[]
   aiUsageLogs             AiUsageLog[]
+  outboundMessages        OutboundMessage[]
+  webhookDeliveries       WebhookDelivery[]
 }
 
 model Plan {
@@ -190,6 +192,7 @@ model WhatsappNumber {
   campanhas           Campanha[]
   avisos              Aviso[]
   missions            Mission[] // MKT-Fast — número usado para enviar as execuções do canal 'whatsapp'
+  outboundMessages    OutboundMessage[]
 
   @@index([userId]) // A2: listagem de números por usuário
   @@index([zapiInstanceId]) // A2: busca de instância em webhook (hot path)
@@ -339,10 +342,15 @@ model PrivacyPolicy {
 }
 
 model WebhookConfig {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  url       String
-  secret    String // Chave HMAC-SHA256 para assinar payloads
+  id     String @id @default(cuid())
+  userId String @unique
+  url    String
+  secret String // Chave HMAC-SHA256 para assinar payloads (criptografada em repouso)
+  // Eventos assinados por esta config. Default = só 'transcription.completed',
+  // que era o único evento existente antes da API pública v1 — assim nenhuma
+  // config já criada passa a receber eventos novos (ex.: message.received) de
+  // surpresa. Catálogo em apps/api/src/lib/webhook-events.ts.
+  events    String[] @default(["transcription.completed"])
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1915,4 +1923,63 @@ model ZmTransaction {
 
   @@index([zmUserId, status])
   @@index([zmUserId, occurredAt(sort: Desc)])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API pública v1 — mensageria estilo Twilio (apps/api/src/routes/publicApi.ts).
+//
+// OutboundMessage é o recurso durável de envio: ao contrário de `Aviso` (que é
+// só o registro do que o dono digitou no dashboard e volta 201 antes do envio
+// acontecer), aqui o status de entrega é observável pelo integrador via
+// GET /public/v1/messages/:id e pelo evento de webhook `message.status`.
+//
+// idempotencyKey: o integrador manda uma chave por intenção de envio. Um POST
+// repetido com a mesma chave (retry de rede, redeploy no meio da requisição)
+// devolve o registro original em vez de mandar a mesma mensagem duas vezes
+// pro WhatsApp do cliente final.
+// ─────────────────────────────────────────────────────────────────────────────
+model OutboundMessage {
+  id             String    @id @default(cuid())
+  userId         String
+  numberId       String
+  to             String // telefone de destino, só dígitos (10-15)
+  body           String
+  status         String    @default("queued") // 'queued' | 'sent' | 'failed'
+  attempts       Int       @default(0)
+  failureReason  String?
+  idempotencyKey String?
+  // Quem originou o envio: 'public_api' (chave X-Api-Key) ou 'dashboard'.
+  source         String    @default("public_api")
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number WhatsappNumber @relation(fields: [numberId], references: [id], onDelete: Cascade)
+
+  // Idempotência por usuário (não global): a chave de um cliente nunca colide
+  // com a de outro. Parcial não é suportado pelo Prisma, então envios sem
+  // chave gravam NULL — e no Postgres NULLs não colidem entre si no unique.
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([numberId])
+}
+
+// Log de entrega de webhook — observabilidade pro integrador e pro suporte
+// ("o evento saiu? que status a URL devolveu?"). Uma linha por tentativa.
+model WebhookDelivery {
+  id         String   @id @default(cuid())
+  userId     String
+  event      String // 'message.received' | 'message.status' | 'transcription.completed'
+  url        String
+  success    Boolean  @default(false)
+  httpStatus Int?
+  attempt    Int      @default(1)
+  error      String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([event, createdAt(sort: Desc)])
 }

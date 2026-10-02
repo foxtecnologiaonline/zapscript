@@ -1,11 +1,10 @@
 import 'dotenv/config';
-import crypto from 'crypto';
 import { Worker, Job } from 'bullmq';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
-import { redis, voiceCommandQueue } from './lib/queue';
+import { redis, voiceCommandQueue, webhooksQueue } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { convertToMp3, splitMp3ByDuration, estimateMp3DurationSec } from './services/audio';
 import { transcribeAudio, WhisperSegment } from './services/whisper';
@@ -29,6 +28,7 @@ import {
 // graceful shutdown no fim deste arquivo consiga fechar TODAS as filas, não só
 // as declaradas aqui.
 import { atendeWorker } from './atende'; // fila 'atende-replies' (ZapScript Atende)
+import { webhooksWorker } from './webhooks'; // fila 'webhooks' (entrega de webhooks de saída)
 import { voiceCommandWorker } from './voice-command'; // fila 'voice-commands' (Comando de Voz Universal)
 import './zapmonney'; // fila 'zapmonney' (assistente financeiro em número próprio)
 import './crm'; // registra o cron de notificação de lembretes vencidos (ZapScript CRM)
@@ -656,8 +656,15 @@ async function triggerMinuteAlertIfNeeded(userId: string): Promise<void> {
 }
 
 /**
- * Dispara webhook personalizado do usuário após uma conversão concluída.
- * Fire-and-forget: erros são logados mas não afetam o pipeline.
+ * Enfileira o webhook `transcription.completed` do usuário após uma conversão.
+ *
+ * ANTES esta função montava e assinava o POST aqui mesmo — e assinava com
+ * `config.secret` CRU, que está criptografado em repouso. A assinatura saía
+ * sobre o blob `iv:tag:ciphertext` em vez do secret que o dono recebeu, então
+ * nenhum receptor que validasse corretamente conseguia aceitar o evento (e o
+ * /webhook-config/test, que assinava certo, dava a falsa impressão de que
+ * estava tudo bem). Agora só enfileira: assinar e entregar é responsabilidade
+ * única de apps/worker/src/webhooks.ts, que também ganhou retry e log.
  */
 async function dispatchWebhook(
   userId: string,
@@ -665,42 +672,35 @@ async function dispatchWebhook(
   plain: { originalText: string; bullets: string[] },
 ): Promise<void> {
   try {
-    const config = await (prisma as any).webhookConfig.findUnique({ where: { userId, active: true } });
-    if (!config) return;
-
-    const payload = {
-      event:     'transcription.completed',
-      timestamp: new Date().toISOString(),
-      data: {
-        id:            transcription.id,
-        contactPhone:  decryptStr(transcription.contactPhone),
-        contactName:   transcription.contactName,
-        durationSec:   transcription.durationSec,
-        originalText:  plain.originalText,
-        summaryBullets: plain.bullets,
-        language:      transcription.language,
-        source:        transcription.source,
-        createdAt:     transcription.createdAt.toISOString(),
-      },
-    };
-
-    const body      = JSON.stringify(payload);
-    const signature = 'sha256=' + crypto.createHmac('sha256', config.secret).update(body).digest('hex');
-
-    await fetch(config.url, {
-      method:  'POST',
-      headers: {
-        'Content-Type':          'application/json',
-        'X-ZapScript-Signature': signature,
-        'X-ZapScript-Event':     'transcription.completed',
-      },
-      body,
-      signal: AbortSignal.timeout(5_000),
+    const config = await (prisma as any).webhookConfig.findUnique({
+      where:  { userId },
+      select: { active: true, events: true },
     });
+    if (!config?.active) return;
 
-    logger.info(`[Webhook] ✅ Disparado para ${config.url}`);
+    const subscribed: string[] = Array.isArray(config.events) && config.events.length
+      ? config.events
+      : ['transcription.completed'];
+    if (!subscribed.includes('transcription.completed')) return;
+
+    await webhooksQueue.add('deliver', {
+      userId,
+      event:      'transcription.completed',
+      occurredAt: new Date().toISOString(),
+      data: {
+        id:             transcription.id,
+        contactPhone:   decryptStr(transcription.contactPhone),
+        contactName:    transcription.contactName,
+        durationSec:    transcription.durationSec,
+        originalText:   plain.originalText,
+        summaryBullets: plain.bullets,
+        language:       transcription.language,
+        source:         transcription.source,
+        createdAt:      transcription.createdAt.toISOString(),
+      },
+    });
   } catch (err: any) {
-    logger.warn(`[Webhook] Falha ao disparar: ${err.message}`);
+    logger.warn(`[Webhook] Falha ao enfileirar transcription.completed: ${err.message}`);
   }
 }
 
@@ -2943,6 +2943,7 @@ const ALL_WORKERS = [
   voiceCommandWorker, // 'voice-commands'
   copilotoWorker,     // 'copiloto'
   zapscreveWorker,    // 'zapscreve'
+  webhooksWorker,     // 'webhooks'
 ];
 
 let shuttingDown = false;
