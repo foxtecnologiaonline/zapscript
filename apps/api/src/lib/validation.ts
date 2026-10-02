@@ -369,7 +369,10 @@ export const previewContatosSchema = z.object({
 // ── API pública (tier Empresas) ────────────────────────────
 export const createApiKeySchema = z.object({
   name:   z.string().min(2, 'Nome precisa ter pelo menos 2 caracteres').max(60),
-  scopes: z.array(z.enum(['conversations:read', 'contacts:read'])).min(1, 'Escolha ao menos 1 escopo'),
+  scopes: z.array(z.enum([
+    'conversations:read', 'contacts:read',
+    'messages:send', 'messages:read', 'webhooks:manage',
+  ])).min(1, 'Escolha ao menos 1 escopo'),
 });
 
 // ── Middleware helper ──────────────────────────────────
@@ -383,3 +386,14 @@ export function validateRequest<T>(schema: z.ZodSchema<T>) {
     return { valid: false, error: errors };
   };
 }
+
+// ── API pública v1 — envio de mensagem (recurso "Messages") ────────────────
+// `to` aceita o número com ou sem formatação e é normalizado na rota; a
+// validação de dígitos acontece depois da normalização (um integrador mandando
+// "+55 11 99999-9999" não deve tomar 400).
+export const publicSendMessageSchema = z.object({
+  numberId:       z.string().cuid('numberId inválido'),
+  to:             z.string().min(10, 'to é obrigatório').max(25),
+  body:           z.string().min(1, 'body não pode ser vazio').max(1000),
+  idempotencyKey: z.string().min(8, 'idempotencyKey deve ter ao menos 8 caracteres').max(128).optional(),
+});

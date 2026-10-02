@@ -14,6 +14,7 @@ import {
 import { ingestCopilotoGroupMessage } from '../services/copiloto-groups';
 import { handleHarveyMessage } from '../services/harvey-commands';
 import { OPT_OUT_KEYWORDS, registerCampanhaOptOut, handleOptinResponse } from './modules/campanhas';
+import { enqueueWebhook, WEBHOOK_EVENTS } from '../lib/webhook-events';
 import { isCampanhaChatCommand, handleCampanhaChatCommand, handleCampanhaChatReply } from '../services/campanhas-chat-commands';
 import { routeZapMonneyMessage } from '../services/zapmonney-router';
 import { io } from '../index';
@@ -402,6 +403,32 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
           // Web + fluxos de Atende/Campanhas/Copiloto/Cobrança) — evita repetir a
           // mesma consulta ao banco neste hot path.
           const number = messageText ? await findNumber(false) : null;
+
+          // ── Webhook de saída: message.received (API pública v1) ──────────────
+          // PRIMEIRO consumidor do texto, de propósito, e isso é essencial:
+          // daqui para baixo o fluxo tem uma cascata de `return` (consulta admin
+          // de saques, onboarding do número oficial, opt-in/opt-out de
+          // Campanhas) que consome a mensagem e encerra o processamento. Duas
+          // dessas interceptações pegam justamente as respostas mais comuns a
+          // uma pergunta de confirmação:
+          //   - "SIM"      → handleOptinResponse, quando há opt-in pendente;
+          //   - "CANCELAR" → OPT_OUT_KEYWORDS, sempre.
+          // Um disparo colocado junto ao bloco do Atende (o lugar "natural")
+          // simplesmente nunca veria essas duas — ou seja, a integração
+          // perderia exatamente o evento que ela existe para receber.
+          //
+          // Fire-and-forget: enqueueWebhook nunca lança e não é aguardado, então
+          // não atrasa o ACK para a Evolution nem altera em nada o
+          // comportamento de quem não tem webhook assinando este evento.
+          if (messageText && number && !number.isPublic && !fromMe) {
+            enqueueWebhook(number.userId, WEBHOOK_EVENTS.MESSAGE_RECEIVED, {
+              numberId:     number.id,
+              contactPhone: senderPhone,
+              contactName:  senderName,
+              text:         messageText,
+              messageId,
+            }).catch(() => null);
+          }
 
           // ── WhatsApp Web simplificado ────────────────────────────────────────
           // Replica a mensagem em tempo real para a aba aberta no site, indepen-

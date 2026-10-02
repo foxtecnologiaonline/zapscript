@@ -163,3 +163,22 @@ export const zapmonneyQueue = new Queue('zapmonney', {
     removeOnFail:     { count: 2_000, age: 7 * 24 * 60 * 60 },
   },
 });
+
+// ── Fila de entrega de webhooks de saída (API pública v1) ────────────────────
+// Produzida pela API (lib/webhook-events.ts → enqueueWebhook) e pelo worker
+// (transcription.completed); consumida só pelo worker (apps/worker/src/
+// webhooks.ts), que é o único lugar que assina e faz o POST.
+//
+// attempts=5 com backoff de 10s (10s → 20s → 40s → 80s → 160s): webhook é
+// entrega para servidor de terceiro, onde indisponibilidade curta é comum e
+// reentregar é seguro — o receptor deduplica pelo header X-ZapScript-Delivery.
+// Isso substitui o `fetch` sem retry que perdia o evento em qualquer soluço.
+export const webhooksQueue = new Queue('webhooks', {
+  connection: redis as any,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff:  { type: 'exponential', delay: 10_000 },
+    removeOnComplete: { count: 1_000, age: 24 * 60 * 60 },
+    removeOnFail:     { count: 5_000, age: 7 * 24 * 60 * 60 },
+  },
+});

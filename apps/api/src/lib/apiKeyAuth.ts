@@ -8,7 +8,16 @@ import { prisma } from './prisma';
  * dali em diante só o hash (SHA-256) fica no banco — ver ApiKey no schema.
  */
 
-export const ALLOWED_SCOPES = ['conversations:read', 'contacts:read'] as const;
+export const ALLOWED_SCOPES = [
+  'conversations:read',
+  'contacts:read',
+  // API pública v1 — mensageria. Separados de propósito: um integrador
+  // terceiro que só precisa disparar mensagem recebe 'messages:send' e nada
+  // mais, sem ganhar leitura de conversas/CRM de tabela.
+  'messages:send',
+  'messages:read',
+  'webhooks:manage',
+] as const;
 export type ApiScope = typeof ALLOWED_SCOPES[number];
 
 const TOKEN_PREFIX = 'zsk_live_';
@@ -26,7 +35,8 @@ export function hashApiKey(token: string): string {
 /**
  * preHandler factory: exige uma API key válida (header `X-Api-Key`), não
  * revogada, com todos os `scopes` pedidos. Em sucesso, grava req.apiKeyUserId
- * (dono do tier Empresas dono da chave) e atualiza lastUsedAt (fire-and-forget).
+ * (dono da conta dona da chave) e req.apiKeyScopes, e atualiza lastUsedAt
+ * (fire-and-forget).
  */
 export function requireApiKey(scopes: ApiScope[]) {
   return async (req: any, reply: FastifyReply) => {
@@ -50,6 +60,10 @@ export function requireApiKey(scopes: ApiScope[]) {
     }
 
     req.apiKeyUserId = key.userId;
+    // Escopos da chave ficam disponíveis para a rota — GET /public/v1/me os
+    // devolve, para o integrador saber o que a chave dele pode fazer sem
+    // precisar descobrir por 403 em produção.
+    req.apiKeyScopes = key.scopes;
     prisma.apiKey.update({ where: { id: key.id }, data: { lastUsedAt: new Date() } }).catch(() => null);
   };
 }
