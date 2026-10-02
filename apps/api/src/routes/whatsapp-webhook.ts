@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { whatsappAPI } from '../services/whatsapp-official';
 import { transcriptionQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
+import { applyProviderStatus, logInbound } from '../services/message-log';
+import { mapProviderError } from '../lib/apiErrors';
 import { io } from '../index';
 import { OPT_OUT_KEYWORDS, registerCampanhaOptOut } from './modules/campanhas';
 
@@ -101,6 +103,37 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
   /**
    * Processar mensagem recebida do webhook
    */
+  /**
+   * Tipo da Meta → tipo do MessageLog. Tipos que não mapeamos (button,
+   * interactive, location, contacts…) entram como 'text': o log existe para
+   * responder "chegou algo deste contato", não para espelhar a taxonomia da
+   * Meta.
+   */
+  function inboundType(metaType: string | undefined): 'text' | 'image' | 'audio' | 'video' | 'document' | 'sticker' {
+    switch (metaType) {
+      case 'image':    return 'image';
+      case 'audio':    return 'audio';
+      case 'video':    return 'video';
+      case 'document': return 'document';
+      case 'sticker':  return 'sticker';
+      default:         return 'text';
+    }
+  }
+
+  /**
+   * Erro de STATUS da Meta (o que vem em statuses[].errors) → código do
+   * catálogo. Reaproveita mapProviderError montando a mesma forma que ele
+   * espera de uma resposta da Graph API, em vez de duplicar a tabela de
+   * códigos aqui.
+   */
+  function mapMetaStatusError(code: unknown): string {
+    if (code === undefined || code === null) return 'message.undeliverable';
+    return mapProviderError(
+      { response: { status: 400, data: { error: { code: Number(code) } } } },
+      { provider: 'meta', fallback: 'message.undeliverable' },
+    ).code;
+  }
+
   async function processWebhookMessage(body: any) {
     try {
       // Estrutura do webhook da Meta:
@@ -151,6 +184,26 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
           }
         } catch (err: any) {
           app.log.error({ err: err.message, wamid }, '[WhatsApp] Erro ao atualizar status de contato de campanha');
+        }
+
+        // Log unificado de mensagens (item 5 do escopo ZapScript × Twilio): o
+        // mesmo status alimenta MessageLog, independentemente de a mensagem ter
+        // vindo de campanha, do Atende ou da API de escrita. É daqui que saem
+        // os eventos message.delivered / message.read / message.failed
+        // (applyProviderStatus emite — ver services/message-log.ts).
+        if (metaStatus === 'delivered' || metaStatus === 'read' || metaStatus === 'failed') {
+          const metaError = status.errors?.[0];
+          await applyProviderStatus(wamid, metaStatus, {
+            // Traduz o código numérico da Meta para o código do nosso catálogo —
+            // é o que o cliente consegue programar contra.
+            ...(metaStatus === 'failed'
+              ? {
+                  errorCode:    mapMetaStatusError(metaError?.code),
+                  errorMessage: metaError?.title || metaError?.message || null,
+                }
+              : {}),
+          }).catch((err: any) =>
+            app.log.warn({ err: err?.message, wamid }, '[WhatsApp] Falha ao aplicar status no MessageLog'));
         }
       }
 
@@ -208,6 +261,21 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
         const senderName = contact?.profile?.name || senderPhone;
 
         app.log.info(`[WhatsApp] Mensagem de ${senderName} (${senderPhone}) - tipo: ${msg.type}`);
+
+        // Entrada no log unificado (item 5) — emite message.received para quem
+        // tem webhook inscrito (item 2). Fire-and-forget: registrar o
+        // recebimento não pode atrasar nem derrubar o processamento da mensagem.
+        void logInbound({
+          userId,
+          numberId:          whatsappNumber.id,
+          channel:           'meta',
+          source:            'sistema',
+          toPhone:           cleanBusiness || whatsappNumber.phoneNumber,
+          fromPhone:         senderPhone,
+          type:              inboundType(msg.type),
+          body:              msg.text?.body ?? msg[msg.type]?.caption ?? null,
+          providerMessageId: messageId,
+        });
 
         // ─────────────────────────────────
         // Processar áudio

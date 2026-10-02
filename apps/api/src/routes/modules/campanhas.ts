@@ -12,6 +12,10 @@ import { campanhasQueue } from '../../services/queue';
 import { sendEmail } from '../../lib/mailer';
 import { logger } from '../../lib/logger';
 import { debitCampanhaMessages, refundCampanhaMessages, InsufficientCampanhaBalanceError } from '../../lib/campanha-credit';
+import { ApiError, isApiError } from '../../lib/apiErrors';
+import { sendApiError } from '../../lib/httpErrors';
+import { findTemplateByName } from '../../services/meta-templates';
+import { assertTemplateSendable, templateBodyVarCount } from '../../services/template-components';
 
 /**
  * ZapScript Campanhas — disparo em massa via WhatsApp API oficial (Meta Cloud API).
@@ -911,8 +915,9 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     if (!v.valid) return reply.code(400).send({ error: v.error });
     const {
       name, whatsappNumberId, channel, templateName, templateLanguage, templateComponents, templateVarCount, messageBody,
+      headerMediaType, headerMediaUrl, headerMediaFilename,
       abTestEnabled, variantBTemplateName, variantBTemplateLanguage, variantBTemplateComponents, variantBTemplateVarCount, variantBMessageBody,
-    } = v.data;
+    } = v.data as any;
 
     const whatsappNumber = await prisma.whatsappNumber.findFirst({
       where: { id: whatsappNumberId, userId, provider: channel },
@@ -925,9 +930,46 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       });
     }
 
+    // ── Header de mídia (item 8 do escopo ZapScript × Twilio) ───────────────
+    // Confere AQUI, na criação, contra o template aprovado na Meta: se o
+    // template tem header de imagem e a campanha não traz a mídia (ou traz o
+    // tipo errado), o disparo falharia contato por contato com um 132012
+    // opaco — depois de o usuário já ter subido a lista e confirmado o envio.
+    if (channel === 'meta' && templateName) {
+      try {
+        const token = whatsappNumber.metaAccessTokenEnc ? decryptStr(whatsappNumber.metaAccessTokenEnc) : null;
+        if (token && whatsappNumber.metaWabaId) {
+          const template = await findTemplateByName(
+            token, whatsappNumber.metaWabaId, templateName, templateLanguage,
+          );
+          if (template) {
+            assertTemplateSendable({
+              template,
+              header: headerMediaType
+                ? { type: headerMediaType, link: headerMediaUrl, filename: headerMediaFilename }
+                : null,
+              // Variáveis do corpo vêm por contato (CSV/CRM), não aqui — a
+              // conferência de quantidade é a do upload (templateVarCount).
+              bodyVariables: Array.from({ length: templateBodyVarCount(template) }, () => ''),
+            });
+          }
+        }
+      } catch (err: any) {
+        if (isApiError(err)) {
+          return sendApiError(reply, err as ApiError);
+        }
+        // Falha ao CONSULTAR a Meta não pode bloquear a criação de um rascunho:
+        // o disparo revalida antes de enviar (worker + /:id/start).
+        app.log.warn({ err: err?.message, templateName }, '[Campanhas] não foi possível validar o template na criação');
+      }
+    }
+
     const campanha = await prisma.campanha.create({
       data: {
         userId, whatsappNumberId, name, channel,
+        headerMediaType:     channel === 'meta' ? (headerMediaType ?? null) : null,
+        headerMediaUrl:      channel === 'meta' ? (headerMediaUrl ?? null) : null,
+        headerMediaFilename: channel === 'meta' ? (headerMediaFilename ?? null) : null,
         templateName:     channel === 'meta' ? templateName : null,
         templateLanguage,
         templateComponents: channel === 'meta' ? templateComponents : undefined,

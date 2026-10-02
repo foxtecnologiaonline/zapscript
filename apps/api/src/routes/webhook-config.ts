@@ -3,52 +3,51 @@ import { prisma } from '../lib/prisma';
 import { getUserPlan, requirePlan } from '../lib/planGate';
 import { encryptStr, decryptStr } from '../services/encryption';
 import crypto from 'crypto';
-import { promises as dns } from 'dns';
+import { isSafeWebhookUrl } from '../lib/url-safety';
+import { invalidateListenerCache } from '../services/events';
 
 const PLAN_WEBHOOK = ['executive'];
 
-// IPs privados/internos — bloqueados para prevenir SSRF
-const PRIVATE_IP_RE =
-  /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|::1$|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:)/i;
-
-const BLOCKED_HOSTNAMES = new Set([
-  'localhost', '0.0.0.0', 'metadata.google.internal',
-]);
+/**
+ * Webhook "clássico" — UMA URL por conta, sem seleção de evento e sem
+ * histórico. Mantido no ar porque há integração de cliente apontada para cá;
+ * o substituto é /webhook-endpoints (item 2 do escopo ZapScript × Twilio).
+ *
+ * Duas mudanças desta leva:
+ *   • a validação anti-SSRF saiu daqui para lib/url-safety.ts, compartilhada
+ *     com as rotas novas (uma checagem, dois consumidores);
+ *   • toda alteração aqui é ESPELHADA no WebhookEndpoint legado do usuário.
+ *     Sem isso, quem editasse a URL nesta tela continuaria recebendo os
+ *     eventos novos no endereço antigo — o pior dos dois mundos.
+ */
 
 /**
- * Valida se a URL do webhook é segura para fetch server-side (anti-SSRF):
- * - HTTPS obrigatório em produção
- * - Bloqueia IPs privados, loopback, link-local e metadata services
- * - Resolve DNS e verifica todos os IPs retornados
+ * Mantém o endpoint legado (signatureScheme='legacy') em sincronia com o
+ * WebhookConfig. Há no máximo um por usuário, criado na primeira emissão de
+ * evento (ensureLegacyEndpointMigrated, services/events.ts).
  */
-async function isSafeWebhookUrl(url: string): Promise<{ ok: boolean; error?: string }> {
-  let u: URL;
-  try { u = new URL(url); } catch { return { ok: false, error: 'URL inválida.' }; }
+async function syncLegacyEndpoint(
+  userId: string,
+  data: { url?: string; secret?: string; active?: boolean },
+): Promise<void> {
+  const endpoint = await prisma.webhookEndpoint.findFirst({
+    where: { userId, signatureScheme: 'legacy' },
+  }).catch(() => null);
+  if (!endpoint) return; // ainda não migrado — nasce já com os dados novos
 
-  if (process.env.NODE_ENV === 'production' && u.protocol !== 'https:') {
-    return { ok: false, error: 'Apenas URLs HTTPS são aceitas em produção.' };
-  }
-  if (u.protocol !== 'https:' && u.protocol !== 'http:') {
-    return { ok: false, error: 'Protocolo não suportado. Use https://.' };
-  }
-
-  const hostname = u.hostname.toLowerCase();
-  if (BLOCKED_HOSTNAMES.has(hostname)) {
-    return { ok: false, error: 'URL aponta para host interno não permitido.' };
-  }
-
-  try {
-    const addresses = await dns.lookup(hostname, { all: true });
-    for (const { address } of addresses) {
-      if (PRIVATE_IP_RE.test(address)) {
-        return { ok: false, error: 'URL aponta para endereço IP interno não permitido.' };
-      }
-    }
-  } catch {
-    return { ok: false, error: 'Não foi possível resolver o hostname da URL.' };
-  }
-
-  return { ok: true };
+  await prisma.webhookEndpoint.update({
+    where: { id: endpoint.id },
+    data: {
+      ...(data.url    !== undefined ? { url: data.url } : {}),
+      ...(data.secret !== undefined ? { secret: data.secret } : {}),
+      ...(data.active !== undefined
+        ? data.active
+          ? { active: true, consecutiveFailures: 0, disabledAt: null, disabledReason: null }
+          : { active: false, disabledAt: new Date(), disabledReason: 'Desativado em /webhook-config' }
+        : {}),
+    },
+  }).catch(() => null);
+  await invalidateListenerCache(userId);
 }
 
 export default async function webhookConfigRoutes(app: FastifyInstance) {
@@ -93,6 +92,7 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
         where: { userId },
         data:  { url, active: true, updatedAt: new Date() },
       });
+      await syncLegacyEndpoint(userId, { url, active: true });
       return updated;
     }
 
@@ -101,6 +101,10 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
     const config = await (prisma as any).webhookConfig.create({
       data: { userId, url, secret: encryptStr(rawSecret), active: true },
     });
+    // Invalida o cache de "tem ouvinte?" (services/events.ts) — sem isso, os
+    // eventos dos próximos 60s seriam descartados por acharem que não há
+    // webhook configurado, justamente logo depois de o cliente configurar um.
+    await invalidateListenerCache(userId);
     return reply.code(201).send({ ...config, secret: rawSecret });
   });
 
@@ -118,6 +122,7 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
       where: { userId },
       data:  { active: false, updatedAt: new Date() },
     });
+    await syncLegacyEndpoint(userId, { active: false });
     return reply.code(200).send({ active: false });
   });
 

@@ -8,8 +8,15 @@ jest.mock('../lib/prisma', () => ({
     campanha:        { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     campanhaContato: { findUnique: jest.fn(), update: jest.fn(), groupBy: jest.fn().mockResolvedValue([]) },
     whatsappNumber:  { findUnique: jest.fn() },
+    // O envio bem-sucedido passou a gravar no log unificado de mensagens
+    // (item 5 do escopo ZapScript × Twilio) — ver services/message-log.ts.
+    messageLog:      { create: jest.fn().mockResolvedValue({ id: 'msg-log-1', userId: 'u1' }) },
   },
 }));
+
+// A emissão de evento de webhook é testada em webhooks.test.ts; aqui só não
+// deve estorvar o teste de campanha.
+jest.mock('../services/events', () => ({ emitEvent: jest.fn().mockResolvedValue(null) }));
 
 jest.mock('../services/encryption', () => ({
   decryptStr: jest.fn().mockReturnValue('decrypted-token'),

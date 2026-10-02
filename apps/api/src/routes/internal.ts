@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { whatsappAPI } from '../services/whatsapp-official';
 import { prisma } from '../lib/prisma';
+import { renderPrometheusMetrics } from '../services/metrics';
 import crypto from 'crypto';
 import { io } from '../index';
 
@@ -95,6 +96,33 @@ export default async function internalRoutes(app: FastifyInstance) {
       // Emite para a sala do usuário — apenas o socket autenticado desse usuário recebe
       io.to(`user:${userId}`).emit(event, data ?? {});
       return { emitted: true, room: `user:${userId}`, event };
+    }
+  );
+
+  // ── GET /internal/metrics — exposição Prometheus (item 7 do escopo
+  //    ZapScript × Twilio) ──────────────────────────────────────────────────
+  // Métricas GLOBAIS de operação, não do cliente: mensagens por status/canal,
+  // falhas por código do catálogo, entregas de webhook e — o sinal mais
+  // acionável — quantas mensagens foram aceitas e não saíram (fila parada ou
+  // worker fora do ar). Sem rótulo por usuário: cardinalidade por tenant
+  // explodiria o Prometheus, e seria dado de cliente num sistema de
+  // observabilidade. Protegida pelo INTERNAL_TOKEN, igual ao resto deste arquivo.
+  app.get(
+    '/metrics',
+    { preHandler: [verifyToken], config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (_req, reply) => {
+      try {
+        const body = await renderPrometheusMetrics();
+        // Content-Type da exposição de texto do Prometheus (v0.0.4).
+        return reply
+          .header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+          .send(body);
+      } catch (err: any) {
+        // Scrape nunca deve derrubar a API: devolve 503 e o Prometheus marca o
+        // target como down, em vez de a rota estourar uma exceção não tratada.
+        app.log.error({ err: err?.message }, '[Internal] Falha ao render métricas');
+        return reply.code(503).send({ error: 'métricas indisponíveis' });
+      }
     }
   );
 }

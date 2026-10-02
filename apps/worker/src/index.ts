@@ -36,6 +36,8 @@ import './tarefas'; // registra o cron de tarefas atrasadas (ZapScript Tarefas)
 // fila 'copiloto' (ZapScript Copiloto — briefings ao dono) + áudio de cliente transcrito → Copiloto
 import { copilotoWorker, enqueueCopilotoIngest, hasCopiloto } from './copiloto';
 import { zapscreveWorker } from './zapscreve'; // fila 'zapscreve' (áudio do dono vira texto)
+import { messagesOutWorker } from './messages-out'; // fila 'messages-out' (envio da API pública de escrita)
+import { webhooksWorker } from './webhooks'; // fila 'webhooks' (entrega dos eventos de plataforma)
 import './campanhas-scheduler'; // registra o agendador de disparo automático (ZapScript Campanhas)
 import './mktfast-scheduler'; // registra o agendador de disparo automático (MKT-Fast)
 import './modules/campanhas-chat-notifier'; // updates de progresso a cada 30s no chat (Chatbot Campanhas)
@@ -2943,6 +2945,8 @@ const ALL_WORKERS = [
   voiceCommandWorker, // 'voice-commands'
   copilotoWorker,     // 'copiloto'
   zapscreveWorker,    // 'zapscreve'
+  messagesOutWorker,  // 'messages-out'
+  webhooksWorker,     // 'webhooks'
 ];
 
 let shuttingDown = false;
