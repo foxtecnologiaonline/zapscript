@@ -47,6 +47,18 @@ describe('occurredAtFrom — 12:00 BRT = 15:00 UTC', () => {
     expect(occurredAtFrom(undefined, now).toISOString()).toBe('2026-10-01T15:00:00.000Z');
     expect(occurredAtFrom('ontem', now).toISOString()).toBe('2026-10-01T15:00:00.000Z');
   });
+
+  it('rejeita data com formato certo mas que não existe no calendário', () => {
+    // 30/02 casa o regex e o Date.UTC rolaria para 02/03 — o lançamento mudaria
+    // de mês calado e sumiria do saldo que a pessoa está olhando.
+    expect(occurredAtFrom('2026-02-30', now).toISOString()).toBe('2026-10-01T15:00:00.000Z');
+    expect(occurredAtFrom('2026-04-31', now).toISOString()).toBe('2026-10-01T15:00:00.000Z');
+    expect(occurredAtFrom('2026-13-01', now).toISOString()).toBe('2026-10-01T15:00:00.000Z');
+  });
+
+  it('aceita 29/02 em ano bissexto', () => {
+    expect(occurredAtFrom('2024-02-29', now).toISOString()).toBe('2024-02-29T15:00:00.000Z');
+  });
 });
 
 describe('monthRange — mês fechado em São Paulo', () => {

@@ -80,11 +80,21 @@ export function todayBrt(now = new Date()): string {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
+/** 'YYYY-MM-DD' que sobrevive a ser construída e lida de volta. */
+function isRealDate(ymd: string): boolean {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  return probe.getUTCFullYear() === y && probe.getUTCMonth() === m - 1 && probe.getUTCDate() === d;
+}
+
 /** Instante UTC de 12:00 BRT da data — ver o porquê do meio-dia no worker. */
 export function occurredAtFrom(dateStr: string | undefined, now = new Date()): Date {
   const today = todayBrt(now);
   const match = /^\d{4}-\d{2}-\d{2}$/.exec((dateStr ?? '').trim());
-  const day = !match || match[0] > today ? today : match[0];
+  // O regex garante o FORMATO, não que a data exista: '2026-02-30' passa e o
+  // Date.UTC rola para 02/03 calado — o lançamento muda de MÊS e some do saldo
+  // que a pessoa está olhando.
+  const day = !match || match[0] > today || !isRealDate(match[0]) ? today : match[0];
   const [y, m, d] = day.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d, 12 + BRT_OFFSET_HOURS));
 }
@@ -93,8 +103,14 @@ export function occurredAtFrom(dateStr: string | undefined, now = new Date()): D
 export function monthRange(month?: string, now = new Date()): { start: Date; end: Date; label: string } {
   const match = /^(\d{4})-(\d{2})$/.exec((month ?? '').trim());
   const { y, m } = brtParts(now);
-  const year  = match ? Number(match[1]) : y;
-  const index = match ? Number(match[2]) - 1 : m;
+  // Dois dígitos não garantem mês: '2026-13' e '2026-00' casam o regex e
+  // `Date.UTC` normalizaria para janeiro/2027 e dezembro/2025 sem reclamar —
+  // devolveria o balanço de OUTRO mês ecoando o mês pedido. Fora da faixa cai
+  // no mês corrente, que é o mesmo default de `month` ausente.
+  const mm    = match ? Number(match[2]) : 0;
+  const valid = !!match && mm >= 1 && mm <= 12;
+  const year  = valid ? Number(match![1]) : y;
+  const index = valid ? mm - 1 : m;
 
   // 00:00 BRT = 03:00 UTC. Date.UTC normaliza virada de ano sozinho.
   const start = new Date(Date.UTC(year, index, 1, BRT_OFFSET_HOURS));
@@ -176,19 +192,30 @@ export default async function zapmonneyRoutes(app: FastifyInstance) {
       message: 'Se este número já conversa com o ZapMonney, o código chegou no WhatsApp.',
     };
 
-    const ip = req.ip || 'sem-ip';
+    const ip  = req.ip || 'sem-ip';
+    const day = dayKey();
     try {
-      const [cooldown, dayCount, ipCount] = await Promise.all([
-        redis.exists(otpCooldownKey(phone)),
-        redis.incr(`zm:otp:day:${phone}:${dayKey()}`),
-        redis.incr(`zm:otp:ip:${ip}:${dayKey()}`),
+      // O cooldown é checado SOZINHO e antes de contar: contar o pedido junto
+      // gastava uma das 10 cotas do dia em cada toque de "reenviar" dentro do
+      // minuto de espera — dez toques impacientes travavam o login da pessoa
+      // pelo resto do dia sem que um único código tivesse sido enviado.
+      if (await redis.exists(otpCooldownKey(phone))) {
+        logger.warn(`[ZapMonney/API] 🚦 Pedido de código em cooldown (${phone}, ip=${ip})`);
+        return reply.send(genericOk);
+      }
+
+      const dayPhoneKey = `zm:otp:day:${phone}:${day}`;
+      const dayIpKey    = `zm:otp:ip:${ip}:${day}`;
+      const [dayCount, ipCount] = await Promise.all([
+        redis.incr(dayPhoneKey),
+        redis.incr(dayIpKey),
       ]);
       await Promise.all([
-        redis.expire(`zm:otp:day:${phone}:${dayKey()}`, 36 * 3_600),
-        redis.expire(`zm:otp:ip:${ip}:${dayKey()}`, 36 * 3_600),
+        redis.expire(dayPhoneKey, 36 * 3_600),
+        redis.expire(dayIpKey, 36 * 3_600),
       ]);
 
-      if (cooldown || dayCount > OTP_DAY_CAP || ipCount > OTP_IP_DAY_CAP) {
+      if (dayCount > OTP_DAY_CAP || ipCount > OTP_IP_DAY_CAP) {
         logger.warn(`[ZapMonney/API] 🚦 Pedido de código barrado (${phone}, ip=${ip})`);
         return reply.send(genericOk);
       }
@@ -241,7 +268,18 @@ export default async function zapmonneyRoutes(app: FastifyInstance) {
     let tries  = 0;
     try {
       stored = await redis.get(otpKey(phone));
-      tries  = Number(await redis.get(otpTriesKey(phone)) ?? 0);
+
+      // O contador é incrementado ANTES de comparar, e o teto vale sobre o valor
+      // devolvido pelo INCR. Ler primeiro e incrementar só no erro deixava N
+      // requisições simultâneas enxergarem todas o mesmo `tries` velho: o teto
+      // de 5 não limitava nada, e os 6 dígitos caíam por força bruta paralela
+      // (um pedido de código para o telefone da vítima não exige autenticação).
+      if (stored) {
+        tries = await redis.incr(otpTriesKey(phone));
+        // INCR em chave ausente cria sem TTL. O pedido de código já grava '0'
+        // com EX, então isto só cobre a chave ter sido perdida no meio.
+        if (tries === 1) await redis.expire(otpTriesKey(phone), OTP_TTL_SEC);
+      }
     } catch (err: any) {
       logger.error(`[ZapMonney/API] Redis indisponível na verificação: ${err.message}`);
       return reply.code(503).send({ error: 'Login temporariamente indisponível' });
@@ -251,13 +289,12 @@ export default async function zapmonneyRoutes(app: FastifyInstance) {
 
     // Força bruta num espaço de 6 dígitos só é inviável com teto de tentativas:
     // sem isso, 1 milhão de chutes cabe folgado nos 5 minutos de validade.
-    if (tries >= OTP_MAX_ATTEMPTS) {
+    if (tries > OTP_MAX_ATTEMPTS) {
       await redis.del(otpKey(phone)).catch(() => null);
       return reply.code(429).send({ error: 'Muitas tentativas. Peça um código novo.' });
     }
 
     if (!safeCompare(hashCode(parsed.data.code), stored)) {
-      await redis.incr(otpTriesKey(phone)).catch(() => null);
       return reply.code(401).send(invalid);
     }
 
@@ -293,7 +330,7 @@ export default async function zapmonneyRoutes(app: FastifyInstance) {
 
   app.get('/transactions', auth, async (req: any, reply) => {
     const parsed = z.object({
-      month:    z.string().regex(/^\d{4}-\d{2}$/).optional(),
+      month:    z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
       type:     z.enum(['expense', 'income']).optional(),
       category: z.enum(CATEGORIES).optional(),
       status:   z.enum(['confirmed', 'pending']).default('confirmed'),
@@ -384,7 +421,12 @@ export default async function zapmonneyRoutes(app: FastifyInstance) {
     });
     if (count === 0) return reply.code(404).send({ error: 'Lançamento não encontrado' });
 
+    // A releitura pode vir vazia mesmo depois de o UPDATE ter casado: um
+    // DELETE /account concorrente (cascade) apaga a linha no meio. `serializeTx`
+    // recebe `any`, então o TypeScript não cobre isso e o acesso a `tx.amount`
+    // viraria 500 no lugar do 404 que o resto do handler já sabe devolver.
     const tx = await prisma.zmTransaction.findUnique({ where: { id: req.params.id } });
+    if (!tx) return reply.code(404).send({ error: 'Lançamento não encontrado' });
     return reply.send(serializeTx(tx));
   });
 
@@ -409,7 +451,7 @@ export default async function zapmonneyRoutes(app: FastifyInstance) {
   // ── Resumo do mês ─────────────────────────────────────────────────────────
 
   app.get('/summary', auth, async (req: any, reply) => {
-    const parsed = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/).optional() }).safeParse(req.query);
+    const parsed = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional() }).safeParse(req.query);
     if (!parsed.success) return reply.code(400).send({ error: 'Mês inválido' });
 
     const { start, end, label } = monthRange(parsed.data.month);

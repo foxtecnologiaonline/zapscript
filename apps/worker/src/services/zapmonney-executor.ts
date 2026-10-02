@@ -76,6 +76,13 @@ export function todayBrt(now = new Date()): string {
  * futuro faça continua caindo no mesmo dia, e o lançamento nunca escorrega para
  * o mês vizinho.
  */
+/** 'YYYY-MM-DD' que sobrevive a ser construída e lida de volta. */
+function isRealDate(ymd: string): boolean {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const probe = new Date(Date.UTC(y!, m! - 1, d!));
+  return probe.getUTCFullYear() === y && probe.getUTCMonth() === m! - 1 && probe.getUTCDate() === d;
+}
+
 export function occurredAtFrom(dateStr: string | undefined, now = new Date()): Date {
   const today = todayBrt(now);
   const match = /^\d{4}-\d{2}-\d{2}$/.exec((dateStr ?? '').trim());
@@ -85,10 +92,14 @@ export function occurredAtFrom(dateStr: string | undefined, now = new Date()): D
   // despesa de hoje é de hoje. Data realmente adiante é quase sempre erro de
   // extração (ano trocado, "dia 5" do mês que vem) e jogaria o lançamento fora
   // do mês corrente sem a pessoa notar.
-  const day = !match || match[0] > today ? today : match[0];
+  // O regex garante o FORMATO, não que a data exista: '2026-02-30' passa e o
+  // Date.UTC rola para 02/03 calado — o lançamento muda de MÊS e some do saldo
+  // que a pessoa está olhando. Só uma data que volta igual depois de construída
+  // é uma data de verdade.
+  const day = !match || match[0] > today || !isRealDate(match[0]) ? today : match[0];
 
   const [y, m, d] = day.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d, 12 + BRT_OFFSET_HOURS));
+  return new Date(Date.UTC(y!, m! - 1, d!, 12 + BRT_OFFSET_HOURS));
 }
 
 export function monthRangeBrt(
@@ -355,10 +366,10 @@ async function querySummary(zmUserId: string, data: ZmIntentResult['data']): Pro
 }
 
 /**
- * Projeção em linha reta: o que a pessoa gastou dividido pelos dias já corridos,
- * multiplicado pelos dias do mês. Não é modelo nem previsão de nada externo — é
- * aritmética sobre o próprio ritmo dela, e o texto diz isso com essas palavras,
- * para ninguém ler como promessa.
+ * Projeção em linha reta: o gasto do mês dividido pelos dias em que a pessoa
+ * realmente registrou algo, e esse ritmo aplicado aos dias que ainda faltam.
+ * Não é modelo nem previsão de nada externo — é aritmética sobre o próprio ritmo
+ * dela, e o texto diz isso com essas palavras, para ninguém ler como promessa.
  */
 async function queryForecast(zmUserId: string, now = new Date()): Promise<ZmReply> {
   const { start, end, label } = monthRangeBrt('mes_atual', now);
@@ -370,25 +381,40 @@ async function queryForecast(zmUserId: string, now = new Date()): Promise<ZmRepl
     by:    ['type'],
     where: { zmUserId, status: 'confirmed', occurredAt: { gte: start, lt: end } },
     _sum:  { amount: true },
+    // Primeiro dia com lançamento: é o denominador honesto do ritmo (abaixo).
+    _min:  { occurredAt: true },
   });
 
-  const gasto   = Number(grouped.find((g) => g.type === 'expense')?._sum.amount ?? 0);
-  const entrada = Number(grouped.find((g) => g.type === 'income')?._sum.amount ?? 0);
+  const despesas = grouped.find((g) => g.type === 'expense');
+  const gasto    = Number(despesas?._sum.amount ?? 0);
+  const entrada  = Number(grouped.find((g) => g.type === 'income')?._sum.amount ?? 0);
 
   if (gasto === 0) {
     return `📈 Ainda não tenho gasto nenhum confirmado em ${label} para projetar. ` +
            'Registra alguns lançamentos e eu te mostro como o mês deve fechar.';
   }
 
+  // O denominador são os dias que a pessoa REALMENTE registrou, não o dia do
+  // mês. Dividir por `diaHoje` subestimava quem começou no meio: quem entrou no
+  // dia 20 e gastou 1.200 até o dia 25 veria "48/dia" e um mês fechando em
+  // 1.488 — três vezes abaixo do ritmo real, justamente no primeiro mês, que é
+  // quando a projeção decide se a pessoa confia no número.
+  const primeiroGasto = despesas?._min?.occurredAt;
+  const diasCorridos  = primeiroGasto instanceof Date
+    ? Math.max(1, diaHoje - brtParts(primeiroGasto).d + 1)
+    : diaHoje;
+
   // Com 1 ou 2 dias de dados a extrapolação é ruído: um almoço de 40 reais no
   // dia 1 projetaria 1.240 no mês. Melhor dizer que é cedo do que dar número.
-  if (diaHoje < 3) {
-    return `📈 Em ${label} só tenho ${diaHoje} dia(s) de lançamento — pouco para projetar sem chutar. ` +
+  if (diasCorridos < 3) {
+    return `📈 Em ${label} só tenho ${diasCorridos} dia(s) de lançamento — pouco para projetar sem chutar. ` +
            `Até agora: ${fmtBRL(gasto)} em gastos.`;
   }
 
-  const mediaDia  = gasto / diaHoje;
-  const projecao  = mediaDia * diasNoMes;
+  const mediaDia = gasto / diasCorridos;
+  // Realizado + ritmo nos dias que faltam, não média × mês inteiro: os dias já
+  // passados valem o que foi gasto de fato, não uma média aplicada por cima.
+  const projecao = gasto + mediaDia * Math.max(0, diasNoMes - diaHoje);
   const linhas = [
     `📈 *Projeção de ${label}*`,
     '',
@@ -397,10 +423,15 @@ async function queryForecast(zmUserId: string, now = new Date()): Promise<ZmRepl
   ];
 
   if (entrada > 0) {
-    const saldoProjetado = entrada - projecao;
+    // `entrada` é o que JÁ entrou, e `projecao` é o mês inteiro: a conta mistura
+    // duas bases, então o texto diz qual é qual. Chamar isso de "sobra projetada"
+    // pintava de 🔴 quem recebe ao longo do mês (freelancer com 2.000 recebidos
+    // no dia 10 contra 3.100 de gasto projetado) e fecharia o mês no azul.
+    const saldo = entrada - projecao;
     linhas.push(
       '',
-      `Com ${fmtBRL(entrada)} de entradas, sobra projetada: ${saldoProjetado >= 0 ? '🟢' : '🔴'} *${fmtBRL(saldoProjetado)}*`,
+      `Contra as entradas já confirmadas (${fmtBRL(entrada)}): ${saldo >= 0 ? '🟢' : '🔴'} *${fmtBRL(saldo)}*`,
+      '_Se ainda falta entrada no mês, essa conta melhora._',
     );
   }
 

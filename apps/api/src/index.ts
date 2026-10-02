@@ -144,6 +144,16 @@ io.use((socket: Socket, next: (err?: Error) => void) => {
   try {
     // Verifica JWT usando a chave secreta da API
     const decoded = app.jwt.verify(token) as any;
+
+    // Token do ZapMonney (aud 'zm') é assinado com o MESMO JWT_SECRET e qualquer
+    // pessoa com um número de WhatsApp consegue um — ele não é sessão de painel.
+    // Sem esta checagem, `verify` sozinho o aceitaria aqui e a conexão passaria
+    // pelo portão de autenticação com um `sub` que não é id de User.
+    if (decoded.aud === 'zm' || (Array.isArray(decoded.aud) && decoded.aud.includes('zm'))) {
+      app.log.warn('[Socket.IO] Token de outra audiência (zm) recusado');
+      return next(new Error('[Socket.IO] Invalid token'));
+    }
+
     socket.data.userId = decoded.sub;
     socket.data.email = decoded.email;
     app.log.info(`[Socket.IO] User ${decoded.sub} autenticado`);

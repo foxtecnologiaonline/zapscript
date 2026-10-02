@@ -100,6 +100,16 @@ describe('datas no fuso de São Paulo', () => {
     expect(occurredAtFrom('ontem', now).toISOString()).toBe('2026-10-01T15:00:00.000Z');
   });
 
+  it('occurredAtFrom rejeita data que casa o formato mas não existe', () => {
+    // Gêmea do mesmo caso em apps/api — 30/02 rolaria para 02/03 e o lançamento
+    // mudaria de mês calado.
+    const now = new Date('2026-10-01T12:00:00Z');
+    expect(occurredAtFrom('2026-02-30', now).toISOString()).toBe('2026-10-01T15:00:00.000Z');
+    expect(occurredAtFrom('2026-13-01', now).toISOString()).toBe('2026-10-01T15:00:00.000Z');
+    // 29/02 em ano bissexto é data real e precisa passar.
+    expect(occurredAtFrom('2024-02-29', now).toISOString()).toBe('2024-02-29T15:00:00.000Z');
+  });
+
   it('monthRangeBrt abre o mês às 00:00 BRT (03:00 UTC)', () => {
     const r = monthRangeBrt('mes_atual', new Date('2026-10-15T12:00:00Z'));
     expect(r.start.toISOString()).toBe('2026-10-01T03:00:00.000Z');
@@ -439,9 +449,15 @@ describe('consultas', () => {
 });
 
 describe('previsão', () => {
-  function gastoDoMes(gasto: string, entrada?: string) {
-    const rows: any[] = [{ type: 'expense', _sum: { amount: gasto } }];
-    if (entrada) rows.push({ type: 'income', _sum: { amount: entrada } });
+  /**
+   * `primeiroDia` é o dia do mês do gasto mais antigo — o `_min.occurredAt` que
+   * o groupBy real devolve. É ele, e não o dia de hoje, que dá o denominador do
+   * ritmo: sem isso a projeção de quem começou no meio do mês sai subestimada.
+   */
+  function gastoDoMes(gasto: string, entrada?: string, primeiroDia = 1) {
+    const primeiro = new Date(Date.UTC(2026, 9, primeiroDia, 15)); // 12:00 BRT
+    const rows: any[] = [{ type: 'expense', _sum: { amount: gasto }, _min: { occurredAt: primeiro } }];
+    if (entrada) rows.push({ type: 'income', _sum: { amount: entrada }, _min: { occurredAt: primeiro } });
     (prisma.zmTransaction.groupBy as jest.Mock).mockResolvedValueOnce(rows);
   }
 
@@ -457,6 +473,23 @@ describe('previsão', () => {
     // 1000 em 10 dias = 100/dia × 31 dias de outubro = 3100
     expect(reply).toMatch(/100,00\/dia/);
     expect(reply).toMatch(/3\.100,00/);
+    jest.useRealTimers();
+  });
+
+  it('usa os dias registrados, não o dia do mês, para quem começou no meio', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-25T15:00:00Z')); // dia 25 em BRT
+    activeUser();
+    noPending();
+    intent('query_forecast');
+    gastoDoMes('1200.00', undefined, 20); // começou a registrar no dia 20
+
+    const reply = await handleZapMonneyMessage({ phone: PHONE, text: 'nesse ritmo quanto vou gastar?' });
+
+    // 1200 em 6 dias (20→25) = 200/dia; 1200 já gastos + 200 × 6 dias restantes.
+    // Dividir por 25 (o dia do mês) daria 48/dia e um mês fechando em 1.488 —
+    // três vezes abaixo do ritmo real de quem acabou de chegar.
+    expect(reply).toMatch(/200,00\/dia/);
+    expect(reply).toMatch(/2\.400,00/);
     jest.useRealTimers();
   });
 
