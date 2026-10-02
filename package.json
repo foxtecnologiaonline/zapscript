@@ -19,7 +19,7 @@
   "devDependencies": {
     "concurrently": "^8.2.2",
     "prisma": "^5.22.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"

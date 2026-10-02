@@ -2,19 +2,19 @@
   "name": "database",
   "version": "1.0.0",
   "scripts": {
-    "migrate:dev":    "prisma migrate dev",
+    "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
-    "seed":           "ts-node --project tsconfig.json prisma/seed.ts",
-    "studio":         "prisma studio",
-    "generate":       "prisma generate"
+    "seed": "ts-node --project tsconfig.json prisma/seed.ts",
+    "studio": "prisma studio",
+    "generate": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "5.22.0"
   },
   "devDependencies": {
-    "prisma":      "5.22.0",
-    "ts-node":     "^10.9.2",
-    "typescript":  "^5.4.5",
-    "@types/node": "^20.14.0"
+    "@types/node": "^20.19.43",
+    "prisma": "5.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }

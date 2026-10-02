@@ -4,20 +4,20 @@
   "description": "ZapScript AI Monitoring Agent — 3x daily health checks",
   "scripts": {
     "start": "node dist/index.js",
-    "dev":   "ts-node src/index.ts",
+    "dev": "ts-node src/index.ts",
     "build": "tsc"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",
-    "dotenv": "^16.4.5",
-    "nodemailer": "^9.1.0",
-    "node-cron": "^3.0.3"
+    "dotenv": "^16.6.1",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^9.1.1"
   },
   "devDependencies": {
-    "@types/node":       "^20.14.0",
-    "@types/nodemailer": "^6.4.15",
-    "@types/node-cron":  "^3.0.11",
-    "ts-node":           "^10.9.2",
-    "typescript":        "^5.4.5"
+    "@types/node": "^20.19.43",
+    "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^6.4.24",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }
