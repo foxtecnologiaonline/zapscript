@@ -44,3 +44,13 @@ push em `master` colocou nada novo no ar na API/Worker.
   Diagnóstico/comando direto no servidor precisa ser rodado pelo usuário, que
   cola o resultado de volta. Não adianta gerar chave nem pedir autorização —
   é limitação de rede do ambiente, não de credencial.
+
+## Estilo de resposta
+
+Respostas curtas, objetivas e assertivas, feitas pra visualização rápida:
+
+- Veredito/conclusão primeiro; contexto só se mudar a decisão.
+- Tabela e bullet no lugar de parágrafo. Negrito na informação que decide.
+- Sem preâmbulo, sem recapitular o que foi pedido, sem fechar com resumo do que já foi dito.
+- Afirmar com evidência (`arquivo:linha`, trecho de doc) em vez de hedge.
+- Quando a análise for longa, salvar em `.md` e responder só com o veredito + caminho.
