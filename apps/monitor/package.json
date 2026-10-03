@@ -10,13 +10,12 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",
     "dotenv": "^16.6.1",
-    "node-cron": "^3.0.3",
-    "nodemailer": "^9.1.1"
+    "node-cron": "^4.6.0",
+    "nodemailer": "^10.0.13"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
     "@types/node-cron": "^3.0.11",
-    "@types/nodemailer": "^6.4.24",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

@@ -23,5 +23,10 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss": "^8.5.28"
+    }
   }
 }

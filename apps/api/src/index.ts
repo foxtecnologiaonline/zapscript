@@ -5,8 +5,6 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
-import swagger from '@fastify/swagger';
-import swaggerUI from '@fastify/swagger-ui';
 import helmet from '@fastify/helmet';
 // @ts-ignore - socket.io has built-in types but TypeScript doesn't find them
 import { Server as SocketServer, Socket } from 'socket.io';
@@ -236,8 +234,12 @@ app.register(rateLimit, {
 app.register(multipart, { limits: { fileSize: 15 * 1024 * 1024 } });
 
 // ── Swagger/OpenAPI Documentation — somente em desenvolvimento ─────────────
+// Os dois pacotes vivem em devDependencies e são carregados por import()
+// DENTRO deste gate: a imagem de produção roda `npm ci --omit=dev`, então
+// eles não existem lá. Import estático no topo quebraria o boot com
+// MODULE_NOT_FOUND mesmo nunca sendo registrado.
 if (process.env.NODE_ENV !== 'production') {
-  app.register(swagger, {
+  app.register(import('@fastify/swagger'), {
     swagger: {
       info: {
         title: 'ZapScript API',
@@ -263,7 +265,7 @@ if (process.env.NODE_ENV !== 'production') {
     },
   });
 
-  app.register(swaggerUI, {
+  app.register(import('@fastify/swagger-ui'), {
     routePrefix: '/documentation',
     uiConfig: { deepLinking: false },
   });
