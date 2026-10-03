@@ -1,6 +1,9 @@
 # ── Build stage ───────────────────────────────────────────────
-# node:20-slim (Debian) — evita problemas de OpenSSL do Alpine com Prisma
-FROM node:20-slim AS builder
+# node:22-slim (Debian) — Debian em vez de Alpine evita problemas de OpenSSL
+# com o Prisma. Node 22 (e não 20) porque o .node-version do repo é 22 e o
+# 20 não tem WebSocket nativo: o @supabase/realtime-js >=2.117 exige e morre
+# no boot sem ele (derrubou a API em 2026-10-03, run 154).
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
@@ -26,7 +29,7 @@ RUN cd apps/api && npm ci
 RUN cd apps/api && npm run build
 
 # ── Production stage ──────────────────────────────────────────
-FROM node:20-slim
+FROM node:22-slim
 
 WORKDIR /app
 

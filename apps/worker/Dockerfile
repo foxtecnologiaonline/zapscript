@@ -1,5 +1,6 @@
 # ── Build stage ───────────────────────────────────────────────
-FROM node:20-slim AS builder
+# Node 22 alinhado ao .node-version do repo e ao Dockerfile da API.
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
@@ -25,7 +26,7 @@ RUN cd apps/worker && npm ci
 RUN cd apps/worker && npm run build
 
 # ── Production stage ──────────────────────────────────────────
-FROM node:20-slim
+FROM node:22-slim
 
 WORKDIR /app
 
