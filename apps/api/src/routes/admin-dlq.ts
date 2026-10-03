@@ -5,6 +5,7 @@ import { checkAdminTotp } from '../lib/totp';
 import {
   transcriptionQueue, campanhasQueue, mktfastQueue, atendeQueue,
   legendaQueue, copilotoQueue, zapscreveQueue, voiceCommandQueue, zapmonneyQueue,
+  webhooksQueue,
 } from '../services/queue';
 
 /**
@@ -29,6 +30,11 @@ const QUEUES = {
   'zapscreve':       zapscreveQueue,
   'voice-commands':  voiceCommandQueue,
   'zapmonney':       zapmonneyQueue,
+  // Entrega de webhook de saída: replayar é seguro (o receptor deduplica pelo
+  // header X-ZapScript-Delivery) e é o único jeito de reentregar um evento que
+  // esgotou as 5 tentativas — ex.: a URL do integrador ficou fora do ar mais
+  // tempo que a janela de backoff.
+  'webhooks':        webhooksQueue,
 } as const;
 
 type QueueName = keyof typeof QUEUES;

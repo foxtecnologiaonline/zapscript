@@ -1,205 +1,202 @@
 /**
- * Entrega de webhook (item 2 do escopo ZapScript × Twilio).
+ * Testes do entregador de webhooks (apps/worker/src/webhooks.ts) — o único
+ * lugar que assina e faz o POST de um evento de saída.
  *
- * O webhook antigo era fire-and-forget: endpoint fora do ar naquele segundo =
- * evento perdido, sem registro e sem reentrega. Estes testes travam o que
- * substituiu isso — retry, histórico por entrega e circuit breaker.
+ * O que está sendo travado aqui:
+ *  1. assina com o secret DESCRIPTOGRAFADO (o bug que existia assinava com o
+ *     blob criptografado, e nenhum receptor conseguia validar);
+ *  2. a política de retry: erro de rede e 5xx pedem reentrega (lança), 4xx
+ *     permanente não (não lança), porque retry em 4xx só queima tentativa;
+ *  3. respeita a assinatura de eventos e a revalidação anti-SSRF no disparo.
  */
-
 jest.mock('../lib/queue', () => ({
-  redis:         { on: jest.fn(), options: {} },
-  webhooksQueue: { add: jest.fn().mockResolvedValue({}) },
+  redis: {},
+  webhooksQueue: { add: jest.fn() },
 }));
-
 jest.mock('bullmq', () => ({
-  Worker: jest.fn().mockImplementation(() => ({ on: jest.fn(), close: jest.fn() })),
-  Queue:  jest.fn().mockImplementation(() => ({ add: jest.fn() })),
+  // Evita abrir conexão real de Redis só por importar o módulo.
+  Worker: class { on() { return this; } },
+  Queue:  class { add() { return Promise.resolve({}); } },
 }));
-
 jest.mock('../lib/prisma', () => ({
   prisma: {
-    webhookDelivery: { findUnique: jest.fn(), update: jest.fn() },
-    webhookEndpoint: { update: jest.fn() },
-    $transaction:    jest.fn((ops: any[]) => Promise.all(ops)),
+    webhookConfig:   { findUnique: jest.fn() },
+    webhookDelivery: { create: jest.fn().mockResolvedValue({}) },
   },
 }));
-
-jest.mock('../lib/sentry', () => ({
-  captureJobFailure: jest.fn(), captureWorkerError: jest.fn(),
+jest.mock('../services/encryption', () => ({
+  // Simula o formato iv:tag:data → devolve o secret em claro.
+  decryptStr: jest.fn((v: string) => (v?.startsWith('enc:') ? v.slice(4) : v)),
 }));
-jest.mock('../lib/dlq', () => ({ recordFailedJob: jest.fn() }));
-
-jest.mock('../lib/url-safety', () => ({
+jest.mock('../lib/webhook-url-guard', () => ({
   isSafeWebhookUrl: jest.fn().mockResolvedValue({ ok: true }),
 }));
-
-jest.mock('../services/events', () => ({
-  ...jest.requireActual('../services/events'),
-  revealWebhookSecret: jest.fn(() => 'segredo-em-claro'),
+jest.mock('../lib/logger', () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
-import { isSafeWebhookUrl } from '../lib/url-safety';
-import { processWebhookDeliveryJob } from '../webhooks';
+import { isSafeWebhookUrl } from '../lib/webhook-url-guard';
+import { processWebhookJob } from '../webhooks';
 
-const db = prisma as any;
+const findUnique  = (prisma as any).webhookConfig.findUnique as jest.Mock;
+const logCreate   = (prisma as any).webhookDelivery.create as jest.Mock;
+const urlGuard    = isSafeWebhookUrl as jest.Mock;
 
-const entrega = (over: any = {}) => ({
-  id: 'del-1', endpointId: 'ep-1', eventId: 'evt-1', status: 'pending', attempts: 0,
-  endpoint: {
-    id: 'ep-1', url: 'https://cliente.com/hook', active: true,
-    signatureScheme: 'v1', secret: 'enc', consecutiveFailures: 0,
-  },
-  event: { id: 'evt-1', type: 'message.delivered', createdAt: new Date('2026-10-02T10:00:00Z'), data: { message: { id: 'm1' } } },
-  ...over,
-});
+const PLAIN_SECRET = 'a'.repeat(64);
+const URL = 'https://mindmanager.example.com/api/webhooks/zapscript';
 
-const job = (attemptsMade = 0, attempts = 6): any => ({
-  id: 'job-1', attemptsMade, opts: { attempts }, data: { deliveryId: 'del-1' },
-});
+function job(overrides: any = {}) {
+  const { attemptsMade, id, ...dataOverrides } = overrides;
+  return {
+    id: id ?? 'job_1',
+    data: {
+      userId:     'u1',
+      event:      'message.received',
+      occurredAt: '2026-10-02T14:30:00Z',
+      data:       { contactPhone: '5511999999999', text: 'sim' },
+      deliveryId: 'd1e11ve1-0000-4000-8000-000000000001',
+      ...dataOverrides,
+    },
+    attemptsMade: attemptsMade ?? 0,
+  } as any;
+}
 
 let fetchMock: jest.Mock;
 
 beforeEach(() => {
-  jest.clearAllMocks();
-  db.webhookDelivery.findUnique.mockResolvedValue(entrega());
-  db.webhookDelivery.update.mockResolvedValue({});
-  db.webhookEndpoint.update.mockResolvedValue({ consecutiveFailures: 1 });
-  (isSafeWebhookUrl as jest.Mock).mockResolvedValue({ ok: true });
-  fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => 'ok' });
+  findUnique.mockReset();
+  logCreate.mockReset().mockResolvedValue({});
+  urlGuard.mockReset().mockResolvedValue({ ok: true });
+  // Secret guardado "criptografado" (prefixo enc:) — o dispatcher precisa
+  // descriptografar antes de assinar.
+  findUnique.mockResolvedValue({
+    active: true, events: ['message.received'], url: URL, secret: 'enc:' + PLAIN_SECRET,
+  });
+  fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
   (global as any).fetch = fetchMock;
 });
 
-describe('entrega bem-sucedida', () => {
-  it('faz POST assinado, com headers de correlação, e zera o contador de falhas', async () => {
-    const out: any = await processWebhookDeliveryJob(job());
-    expect(out.status).toBe(200);
+describe('assinatura', () => {
+  it('assina com o secret EM CLARO, validável por um receptor externo', async () => {
+    await processWebhookJob(job());
 
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://cliente.com/hook');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe(URL);
 
-    // Corpo é o envelope público do evento.
-    expect(JSON.parse(init.body)).toEqual({
-      id: 'evt-1', type: 'message.delivered',
-      createdAt: '2026-10-02T10:00:00.000Z', data: { message: { id: 'm1' } },
-    });
-
-    // Headers que o cliente usa para deduplicar e validar.
-    expect(init.headers['X-ZapScript-Event']).toBe('message.delivered');
-    expect(init.headers['X-ZapScript-Event-Id']).toBe('evt-1');
-    expect(init.headers['X-ZapScript-Delivery-Id']).toBe('del-1');
-    expect(init.headers['X-ZapScript-Attempt']).toBe('1');
-
-    // Assinatura v1 confere com t + '.' + body.
-    const sig = init.headers['X-ZapScript-Signature'] as string;
-    const [tPart, vPart] = sig.split(',');
-    const t = tPart.replace('t=', '');
-    const esperado = crypto.createHmac('sha256', 'segredo-em-claro').update(`${t}.${init.body}`).digest('hex');
-    expect(vPart).toBe(`v1=${esperado}`);
-
-    expect(db.webhookEndpoint.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ consecutiveFailures: 0 }),
-    }));
+    // Exatamente o cálculo que o integrador faz do outro lado.
+    const expected = 'sha256=' + crypto.createHmac('sha256', PLAIN_SECRET).update(opts.body).digest('hex');
+    expect(opts.headers['X-ZapScript-Signature']).toBe(expected);
   });
 
-  it('usa o formato LEGADO quando o endpoint é o migrado do webhook antigo', async () => {
-    db.webhookDelivery.findUnique.mockResolvedValueOnce(entrega({
-      endpoint: { id: 'ep-1', url: 'https://cliente.com/hook', active: true, signatureScheme: 'legacy', secret: 'enc', consecutiveFailures: 0 },
-    }));
+  it('REGRESSÃO: não assina com o blob criptografado', async () => {
+    await processWebhookJob(job());
+    const [, opts] = fetchMock.mock.calls[0];
+    const wrong = 'sha256=' + crypto.createHmac('sha256', 'enc:' + PLAIN_SECRET).update(opts.body).digest('hex');
+    expect(opts.headers['X-ZapScript-Signature']).not.toBe(wrong);
+  });
 
-    await processWebhookDeliveryJob(job());
-    const init = fetchMock.mock.calls[0][1];
-    const esperado = crypto.createHmac('sha256', 'segredo-em-claro').update(init.body).digest('hex');
-    // Exatamente o que a integração em produção do cliente já valida.
-    expect(init.headers['X-ZapScript-Signature']).toBe(`sha256=${esperado}`);
+  it('envia os headers de evento, entrega e timestamp', async () => {
+    await processWebhookJob(job());
+    const [, opts] = fetchMock.mock.calls[0];
+    expect(opts.headers['X-ZapScript-Event']).toBe('message.received');
+    expect(opts.headers['X-ZapScript-Timestamp']).toBe('2026-10-02T14:30:00Z');
+    expect(opts.headers['X-ZapScript-Delivery']).toBe('d1e11ve1-0000-4000-8000-000000000001');
+  });
+
+  it('REGRESSÃO: X-ZapScript-Delivery é ESTÁVEL entre as tentativas', async () => {
+    // A documentação manda o integrador deduplicar por este header. Se ele
+    // mudasse a cada tentativa, uma reentrega (nosso POST chegou mas a
+    // resposta se perdeu) viraria processamento duplicado da mesma resposta do
+    // contato — a deduplicação prometida simplesmente não funcionaria.
+    await processWebhookJob(job({ attemptsMade: 0 }));
+    await processWebhookJob(job({ attemptsMade: 1 }));
+    await processWebhookJob(job({ attemptsMade: 4 }));
+
+    const ids = fetchMock.mock.calls.map(([, o]: any) => o.headers['X-ZapScript-Delivery']);
+    expect(new Set(ids).size).toBe(1);
+
+    // O número da tentativa, por outro lado, avança no log de entregas.
+    const attempts = logCreate.mock.calls.map(([a]: any) => a.data.attempt);
+    expect(attempts).toEqual([1, 2, 5]);
+  });
+
+  it('job antigo sem deliveryId (em voo no deploy) cai num id derivado do job', async () => {
+    await processWebhookJob(job({ deliveryId: undefined, id: 'job_42' }));
+    const [, opts] = fetchMock.mock.calls[0];
+    expect(opts.headers['X-ZapScript-Delivery']).toBe('job-job_42');
+  });
+
+  it('o corpo tem o envelope { event, timestamp, data } esperado pelo integrador', async () => {
+    await processWebhookJob(job());
+    const [, opts] = fetchMock.mock.calls[0];
+    expect(JSON.parse(opts.body)).toEqual({
+      event:     'message.received',
+      timestamp: '2026-10-02T14:30:00Z',
+      data:      { contactPhone: '5511999999999', text: 'sim' },
+    });
   });
 });
 
-describe('guardas', () => {
-  it('entrega já concluída não é repetida', async () => {
-    db.webhookDelivery.findUnique.mockResolvedValueOnce(entrega({ status: 'succeeded' }));
-    const out: any = await processWebhookDeliveryJob(job());
-    expect(out.skipped).toBe(true);
+describe('assinatura de eventos e guardas', () => {
+  it('descarta (sem POST) se a config ficou inativa após o enfileiramento', async () => {
+    findUnique.mockResolvedValue({ active: false, events: ['message.received'], url: URL, secret: PLAIN_SECRET });
+    await expect(processWebhookJob(job())).resolves.toBeUndefined();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('endpoint desativado não recebe', async () => {
-    db.webhookDelivery.findUnique.mockResolvedValueOnce(entrega({
-      endpoint: { id: 'ep-1', url: 'https://x/h', active: false, signatureScheme: 'v1', secret: 'enc', consecutiveFailures: 0 },
-    }));
-    const out: any = await processWebhookDeliveryJob(job());
-    expect(out.skipped).toBe(true);
+  it('descarta se o evento não está mais assinado', async () => {
+    findUnique.mockResolvedValue({ active: true, events: ['transcription.completed'], url: URL, secret: PLAIN_SECRET });
+    await processWebhookJob(job());
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('URL que passou a resolver para IP interno é bloqueada e desativa o endpoint', async () => {
-    // DNS rebinding: o host era público no cadastro e passou a apontar para a
-    // rede interna. Revalidar a cada entrega é o que impede o SSRF.
-    (isSafeWebhookUrl as jest.Mock).mockResolvedValueOnce({ ok: false, error: 'IP interno' });
-
-    const out: any = await processWebhookDeliveryJob(job());
-    expect(out.reason).toBe('webhook.url_blocked');
+  it('não faz POST se a URL falha na revalidação anti-SSRF (DNS rebinding)', async () => {
+    urlGuard.mockResolvedValue({ ok: false, error: 'IP interno' });
+    await expect(processWebhookJob(job())).resolves.toBeUndefined();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(db.webhookEndpoint.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ active: false }),
+    // Registra a recusa para o dono conseguir diagnosticar.
+    expect(logCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ success: false }),
     }));
   });
 });
 
-describe('falha e retry', () => {
-  it('5xx do cliente relança para o BullMQ retentar, mantendo a entrega pendente', async () => {
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 503, text: async () => 'indisponível' });
+describe('política de retry', () => {
+  it('erro de rede/timeout LANÇA (fila reentrega)', async () => {
+    fetchMock.mockRejectedValue(new Error('ETIMEDOUT'));
+    await expect(processWebhookJob(job())).rejects.toThrow(/ETIMEDOUT/);
+  });
 
-    await expect(processWebhookDeliveryJob(job(0, 6))).rejects.toMatchObject({
-      code: 'webhook.delivery_failed',
-    });
-    expect(db.webhookDelivery.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        status: 'pending', attempts: 1, responseStatus: 503, responseBody: 'indisponível',
-      }),
+  it('5xx LANÇA (indisponibilidade temporária do receptor)', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 503 });
+    await expect(processWebhookJob(job())).rejects.toThrow(/503/);
+  });
+
+  it('4xx permanente NÃO lança (retry não conserta payload recusado)', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 400 });
+    await expect(processWebhookJob(job())).resolves.toBeUndefined();
+  });
+
+  it('408 e 429 LANÇAM (são os 4xx que valem retry)', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 429 });
+    await expect(processWebhookJob(job())).rejects.toThrow(/429/);
+    fetchMock.mockResolvedValue({ ok: false, status: 408 });
+    await expect(processWebhookJob(job())).rejects.toThrow(/408/);
+  });
+
+  it('2xx não lança e registra entrega bem-sucedida', async () => {
+    await expect(processWebhookJob(job())).resolves.toBeUndefined();
+    expect(logCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ success: true, httpStatus: 200, attempt: 1 }),
     }));
   });
 
-  it('na última tentativa marca a entrega como failed sem relançar', async () => {
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'erro' });
-    const out: any = await processWebhookDeliveryJob(job(5, 6));
-    expect(out.skipped).toBe(true);
-    expect(db.webhookDelivery.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: 'failed', nextRetryAt: null }),
-    }));
-  });
-
-  it('410 Gone desativa o endpoint sem insistir', async () => {
-    // É o jeito padrão de dizer "não me mande mais" — retentar 6x seria insistir
-    // contra um pedido explícito.
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 410, text: async () => 'gone' });
-
-    const out: any = await processWebhookDeliveryJob(job());
-    expect(out.reason).toContain('410');
-    expect(db.webhookEndpoint.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ active: false, disabledReason: expect.stringContaining('410') }),
-    }));
-  });
-
-  it('erro de rede é traduzido e contado como falha do endpoint', async () => {
-    fetchMock.mockRejectedValueOnce(Object.assign(new Error('timeout of 10000ms'), { code: 'ETIMEDOUT' }));
-    await expect(processWebhookDeliveryJob(job(0, 6))).rejects.toMatchObject({ code: 'provider.timeout' });
-    expect(db.webhookEndpoint.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ consecutiveFailures: { increment: 1 } }),
-    }));
-  });
-
-  it('circuit breaker: ao bater o limite de falhas consecutivas, desativa', async () => {
-    db.webhookEndpoint.update.mockResolvedValueOnce({ consecutiveFailures: 15 });
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'erro' });
-
-    await processWebhookDeliveryJob(job(5, 6));
-
-    const desativacao = db.webhookEndpoint.update.mock.calls.find(
-      ([arg]: any) => arg?.data?.active === false,
-    );
-    expect(desativacao).toBeDefined();
-    expect(desativacao[0].data.disabledReason).toContain('15 falhas');
+  it('falha ao gravar o log NÃO derruba a entrega', async () => {
+    logCreate.mockRejectedValue(new Error('banco caiu'));
+    await expect(processWebhookJob(job())).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalled();
   });
 });

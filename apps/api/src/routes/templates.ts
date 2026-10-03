@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { ApiError } from '../lib/apiErrors';
-import { sendApiError } from '../lib/httpErrors';
+import { sendError } from '../lib/apiResponse';
 import { resolveTeamScope, roleAtLeast } from '../lib/teamScope';
 import { validateRequest, createTemplateSchema } from '../lib/validation';
 import { resolveMetaNumber } from '../services/meta-number';
@@ -75,7 +75,7 @@ export default async function templatesRoutes(app: FastifyInstance) {
           },
         };
       } catch (err) {
-        if (err instanceof ApiError) return sendApiError(reply, err);
+        if (err instanceof ApiError) return sendError(reply, err);
         throw err;
       }
     },
@@ -92,20 +92,20 @@ export default async function templatesRoutes(app: FastifyInstance) {
       try {
         await scopeForWrite(req.user.sub);
       } catch (err) {
-        if (err instanceof ApiError) return sendApiError(reply, err);
+        if (err instanceof ApiError) return sendError(reply, err);
         throw err;
       }
 
       const file = await req.file().catch(() => null);
       if (!file) {
-        return sendApiError(reply, 'request.invalid', {
+        return sendError(reply, 'request.invalid', {
           message: 'Envie o arquivo em multipart/form-data no campo "file".',
         });
       }
 
       const mime = String(file.mimetype || '').toLowerCase();
       if (!ALLOWED_HANDLE_MIME.has(mime)) {
-        return sendApiError(reply, 'template.header_media_unsupported', {
+        return sendError(reply, 'template.header_media_unsupported', {
           message: `Tipo "${mime}" não aceito como exemplo de header.`,
           details: { allowed: Array.from(ALLOWED_HANDLE_MIME) },
         });
@@ -113,7 +113,7 @@ export default async function templatesRoutes(app: FastifyInstance) {
 
       const buffer: Buffer = await file.toBuffer();
       if (buffer.length > MAX_HANDLE_BYTES) {
-        return sendApiError(reply, 'request.invalid', {
+        return sendError(reply, 'request.invalid', {
           message: `Arquivo de ${(buffer.length / 1024 / 1024).toFixed(1)}MB — o máximo é ${MAX_HANDLE_BYTES / 1024 / 1024}MB.`,
         });
       }
@@ -122,7 +122,7 @@ export default async function templatesRoutes(app: FastifyInstance) {
         const handle = await uploadTemplateHeaderHandle({ buffer, mimeType: mime });
         return { handle, mimeType: mime, bytes: buffer.length };
       } catch (err) {
-        if (err instanceof ApiError) return sendApiError(reply, err);
+        if (err instanceof ApiError) return sendError(reply, err);
         throw err;
       }
     },
@@ -137,12 +137,12 @@ export default async function templatesRoutes(app: FastifyInstance) {
       try {
         ({ ownerId } = await scopeForWrite(req.user.sub));
       } catch (err) {
-        if (err instanceof ApiError) return sendApiError(reply, err);
+        if (err instanceof ApiError) return sendError(reply, err);
         throw err;
       }
 
       const v = validateRequest(createTemplateSchema)(req.body);
-      if (!v.valid) return sendApiError(reply, 'request.invalid', { message: v.error });
+      if (!v.valid) return sendError(reply, 'request.invalid', { message: v.error });
       const input = v.data as any;
 
       try {
@@ -163,7 +163,7 @@ export default async function templatesRoutes(app: FastifyInstance) {
           message: 'Template enviado para análise da Meta. O status aparece aqui quando ela responder.',
         });
       } catch (err) {
-        if (err instanceof ApiError) return sendApiError(reply, err);
+        if (err instanceof ApiError) return sendError(reply, err);
         throw err;
       }
     },
@@ -178,7 +178,7 @@ export default async function templatesRoutes(app: FastifyInstance) {
       try {
         ({ ownerId } = await scopeForWrite(req.user.sub));
       } catch (err) {
-        if (err instanceof ApiError) return sendApiError(reply, err);
+        if (err instanceof ApiError) return sendError(reply, err);
         throw err;
       }
 
@@ -187,7 +187,7 @@ export default async function templatesRoutes(app: FastifyInstance) {
         await deleteTemplate(ctx.accessToken, ctx.wabaId, req.params.name, req.query?.hsmId);
         return { ok: true };
       } catch (err) {
-        if (err instanceof ApiError) return sendApiError(reply, err);
+        if (err instanceof ApiError) return sendError(reply, err);
         throw err;
       }
     },
@@ -202,7 +202,7 @@ export default async function templatesRoutes(app: FastifyInstance) {
       const all = await listTemplates(ctx.accessToken, ctx.wabaId, { useCache: false });
       return { templates: all.map(toPublicTemplate) };
     } catch (err) {
-      if (err instanceof ApiError) return sendApiError(reply, err);
+      if (err instanceof ApiError) return sendError(reply, err);
       throw err;
     }
   });

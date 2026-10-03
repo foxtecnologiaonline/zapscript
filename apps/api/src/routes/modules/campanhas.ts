@@ -13,7 +13,7 @@ import { sendEmail } from '../../lib/mailer';
 import { logger } from '../../lib/logger';
 import { debitCampanhaMessages, refundCampanhaMessages, InsufficientCampanhaBalanceError } from '../../lib/campanha-credit';
 import { ApiError, isApiError } from '../../lib/apiErrors';
-import { sendApiError } from '../../lib/httpErrors';
+import { sendError } from '../../lib/apiResponse';
 import { findTemplateByName } from '../../services/meta-templates';
 import { assertTemplateSendable, templateBodyVarCount } from '../../services/template-components';
 
@@ -956,7 +956,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
         }
       } catch (err: any) {
         if (isApiError(err)) {
-          return sendApiError(reply, err as ApiError);
+          return sendError(reply, err as ApiError);
         }
         // Falha ao CONSULTAR a Meta não pode bloquear a criação de um rascunho:
         // o disparo revalida antes de enviar (worker + /:id/start).

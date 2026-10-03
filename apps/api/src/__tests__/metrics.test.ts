@@ -1,30 +1,27 @@
 /**
- * Métricas de plataforma (item 7 do escopo ZapScript × Twilio).
+ * Métricas de plataforma (item 7 do escopo ZapScript × Twilio), lendo as
+ * tabelas que a API pública v1 de fato produz.
  *
- * O detalhe que mais erra numa implementação ingênua: `status` no MessageLog é
- * o ESTADO ATUAL, não um acumulado. Uma mensagem lida conta só em `read` — se a
- * taxa de entrega dividir por `sent`, dá absurdo (ou divisão por zero) assim
- * que os status avançam.
+ * O que estes testes travam, acima de tudo: a AUSÊNCIA de taxa de entrega. O
+ * envio da v1 sai pela Evolution, que confirma "aceitei para envio" e não "o
+ * aparelho recebeu". Publicar um deliveryRate calculado sobre `sent` seria
+ * apresentar uma coisa como a outra — exatamente a confusão que o item 7 existe
+ * para desfazer.
  */
 
 jest.mock('../lib/prisma', () => ({
   prisma: {
-    messageLog:      { groupBy: jest.fn(), count: jest.fn() },
-    platformEvent:   { groupBy: jest.fn() },
-    webhookEndpoint: { findMany: jest.fn() },
+    outboundMessage: { groupBy: jest.fn(), count: jest.fn() },
+    inboundMessage:  { groupBy: jest.fn() },
     webhookDelivery: { groupBy: jest.fn() },
     $queryRaw:       jest.fn(),
   },
 }));
 
-jest.mock('../services/queue', () => ({
-  redis: { get: jest.fn(), set: jest.fn(), del: jest.fn() },
-}));
-
 import { prisma } from '../lib/prisma';
 import {
-  resolveWindow, getMessageMetrics, getWebhookMetrics, getEventMetrics,
-  getMessageSeries, getTopErrorCodes, renderPrometheusMetrics,
+  resolveWindow, getOutboundMetrics, getInboundMetrics, getWebhookMetrics,
+  getMessageSeries, getPlatformMetrics, renderPrometheusMetrics,
 } from '../services/metrics';
 
 const db = prisma as any;
@@ -33,170 +30,174 @@ const janela = () => resolveWindow({
   since: '2026-09-25T00:00:00Z', until: '2026-10-02T00:00:00Z',
 });
 
-/** groupBy devolve um formato por campo pedido — este helper monta isso. */
+/** groupBy devolve um registro por valor do campo pedido. */
 const grupos = (field: string, pares: Record<string, number>) =>
-  Object.entries(pares).map(([k, v]) => ({ [field]: k, _count: { _all: v } }));
+  Object.entries(pares).map(([k, v]) => ({
+    [field]: k === 'true' ? true : k === 'false' ? false : k,
+    _count: { _all: v },
+  }));
 
 beforeEach(() => {
   jest.clearAllMocks();
   db.$queryRaw.mockResolvedValue([]);
-  db.messageLog.groupBy.mockResolvedValue([]);
-  db.messageLog.count.mockResolvedValue(0);
-  db.platformEvent.groupBy.mockResolvedValue([]);
-  db.webhookEndpoint.findMany.mockResolvedValue([]);
+  db.outboundMessage.groupBy.mockResolvedValue([]);
+  db.outboundMessage.count.mockResolvedValue(0);
+  db.inboundMessage.groupBy.mockResolvedValue([]);
   db.webhookDelivery.groupBy.mockResolvedValue([]);
 });
 
 describe('resolveWindow', () => {
-  it('sem parâmetros usa os últimos 7 dias por dia', () => {
+  it('sem parâmetros usa os últimos 7 dias, por dia', () => {
     const w = resolveWindow({});
     expect(w.granularity).toBe('day');
-    const dias = (w.until.getTime() - w.since.getTime()) / 86_400_000;
-    expect(Math.round(dias)).toBe(7);
+    expect(Math.round((w.until.getTime() - w.since.getTime()) / 86_400_000)).toBe(7);
   });
 
-  it('aceita granularity=hour e rejeita qualquer outro valor silenciosamente', () => {
+  it('só aceita hour|day — nada do cliente chega cru na query', () => {
     expect(resolveWindow({ granularity: 'hour' }).granularity).toBe('hour');
-    // Nunca chega SQL cru vindo do cliente: só 'hour' | 'day' passam.
     expect(resolveWindow({ granularity: "day'; DROP TABLE" }).granularity).toBe('day');
   });
 
   it('recusa data inválida, intervalo invertido e período longo demais', () => {
     expect(() => resolveWindow({ since: 'ontem' })).toThrow(/ISO 8601/);
-    expect(() => resolveWindow({ since: '2026-10-02T00:00:00Z', until: '2026-10-01T00:00:00Z' }))
-      .toThrow(/anterior/);
-    expect(() => resolveWindow({ since: '2025-01-01T00:00:00Z', until: '2026-01-01T00:00:00Z' }))
-      .toThrow(/92 dias/);
+    expect(() => resolveWindow({ since: '2026-10-02T00:00:00Z', until: '2026-10-01T00:00:00Z' })).toThrow(/anterior/);
+    expect(() => resolveWindow({ since: '2025-01-01T00:00:00Z', until: '2026-01-01T00:00:00Z' })).toThrow(/92 dias/);
     expect(() => resolveWindow({
       since: '2026-09-01T00:00:00Z', until: '2026-10-01T00:00:00Z', granularity: 'hour',
     })).toThrow(/8 dias/);
   });
 });
 
-describe('getMessageMetrics', () => {
-  it('calcula entrega/falha/leitura tratando status como estado atual', async () => {
-    db.messageLog.groupBy
-      // byStatus
-      .mockResolvedValueOnce(grupos('status', { sent: 10, delivered: 30, read: 50, failed: 10, queued: 5 }))
-      .mockResolvedValueOnce(grupos('direction', { outbound: 100, inbound: 5 }))
-      .mockResolvedValueOnce(grupos('channel', { meta: 90, evolution: 15 }))
-      .mockResolvedValueOnce(grupos('source', { api: 60, campanha: 45 }))
-      // topErrorCodes
-      .mockResolvedValueOnce([{ errorCode: 'message.outside_window', _count: { _all: 7 } }]);
+describe('getOutboundMetrics', () => {
+  it('calcula envio/falha sobre o que chegou a um estado terminal', async () => {
+    db.outboundMessage.groupBy
+      .mockResolvedValueOnce(grupos('status', { sent: 90, failed: 10, queued: 5 }))
+      .mockResolvedValueOnce(grupos('source', { public_api: 95, dashboard: 10 }))
+      .mockResolvedValueOnce([{ errorCode: 'message.invalid_recipient', _count: { _all: 6 } }]);
 
-    const m = await getMessageMetrics('u1', janela());
+    const m = await getOutboundMetrics('u1', janela());
 
-    // base terminal = sent+delivered+read+failed = 100 (queued fica fora: ainda vai sair)
-    expect(m.deliveryRate).toBe(80);  // (30+50)/100
-    expect(m.failureRate).toBe(10);   // 10/100
-    expect(m.readRate).toBe(62.5);    // 50/(30+50)
+    // `queued` fica FORA da base: ainda vai ser tentada, contá-la como falha
+    // mostraria uma taxa pior que a real a cada pico de volume.
+    expect(m.sentRate).toBe(90);
+    expect(m.failureRate).toBe(10);
     expect(m.total).toBe(105);
-    expect(m.topErrorCodes).toEqual([{ code: 'message.outside_window', count: 7 }]);
+    expect(m.topErrorCodes).toEqual([{ code: 'message.invalid_recipient', count: 6 }]);
   });
 
-  it('sem mensagem terminal as taxas são null, não 0 nem NaN', async () => {
-    db.messageLog.groupBy
+  it('NÃO expõe taxa de entrega — a Evolution não confirma entrega', async () => {
+    db.outboundMessage.groupBy
+      .mockResolvedValueOnce(grupos('status', { sent: 10 }))
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const m: any = await getOutboundMetrics('u1', janela());
+    expect(m.deliveryRate).toBeUndefined();
+    expect(m.readRate).toBeUndefined();
+  });
+
+  it('sem envio terminal as taxas são null, não 0 nem NaN', async () => {
+    db.outboundMessage.groupBy
       .mockResolvedValueOnce(grupos('status', { queued: 3 }))
-      .mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
-
-    const m = await getMessageMetrics('u1', janela());
-    // null = "não há base para calcular", diferente de 0% = "nada foi entregue".
-    expect(m.deliveryRate).toBeNull();
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const m = await getOutboundMetrics('u1', janela());
+    // null = "não há base para calcular", diferente de 0% = "nada foi enviado".
+    expect(m.sentRate).toBeNull();
     expect(m.failureRate).toBeNull();
-    expect(m.readRate).toBeNull();
+  });
+
+  it('agrupa erro só de quem falhou', async () => {
+    db.outboundMessage.groupBy
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    await getOutboundMetrics('u1', janela());
+    const chamadaErro = db.outboundMessage.groupBy.mock.calls[2][0];
+    expect(chamadaErro.where.errorCode).toEqual({ not: null });
   });
 });
 
-describe('série temporal', () => {
-  it('agrega no banco e converte o bucket para ISO', async () => {
-    db.$queryRaw.mockResolvedValueOnce([
-      { bucket: new Date('2026-10-01T00:00:00Z'), queued: 1n, sent: 2n, delivered: 3n, read: 4n, failed: 5n, received: 6n },
-    ]);
-    const serie = await getMessageSeries('u1', janela());
-    // BigInt do COUNT do Postgres precisa virar number — senão o JSON.stringify quebra.
-    expect(serie).toEqual([{
-      bucket: '2026-10-01T00:00:00.000Z',
-      queued: 1, sent: 2, delivered: 3, read: 4, failed: 5, received: 6,
-    }]);
-  });
+describe('getInboundMetrics', () => {
+  it('soma por tipo e por canal', async () => {
+    db.inboundMessage.groupBy
+      .mockResolvedValueOnce(grupos('type', { text: 40, audio: 12 }))
+      .mockResolvedValueOnce(grupos('channel', { evolution: 50, meta: 2 }));
 
-  it('filtra por numberId quando informado', async () => {
-    db.$queryRaw.mockResolvedValueOnce([]);
-    await getMessageSeries('u1', { ...janela(), numberId: 'num-1' });
-    expect(db.$queryRaw).toHaveBeenCalled();
-  });
-});
-
-describe('getTopErrorCodes', () => {
-  it('agrupa por código do catálogo, ignorando quem não falhou', async () => {
-    db.messageLog.groupBy.mockResolvedValueOnce([
-      { errorCode: 'message.undeliverable', _count: { _all: 9 } },
-      { errorCode: 'template.param_mismatch', _count: { _all: 2 } },
-    ]);
-    const top = await getTopErrorCodes('u1', janela());
-    expect(top).toEqual([
-      { code: 'message.undeliverable', count: 9 },
-      { code: 'template.param_mismatch', count: 2 },
-    ]);
-    expect(db.messageLog.groupBy).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ errorCode: { not: null } }),
-    }));
+    const m = await getInboundMetrics('u1', janela());
+    expect(m.total).toBe(52);
+    expect(m.byType).toEqual({ text: 40, audio: 12 });
+    expect(m.byChannel).toEqual({ evolution: 50, meta: 2 });
   });
 });
 
 describe('getWebhookMetrics', () => {
-  it('conta endpoints ativos/desativados e a taxa de entrega', async () => {
-    db.webhookEndpoint.findMany.mockResolvedValueOnce([
-      { id: 'ep-1', active: true }, { id: 'ep-2', active: false },
-    ]);
-    db.webhookDelivery.groupBy.mockResolvedValueOnce(
-      grupos('status', { succeeded: 90, failed: 10, pending: 5 }),
-    );
+  it('conta tentativas (uma linha por tentativa) e a taxa de sucesso', async () => {
+    db.webhookDelivery.groupBy
+      .mockResolvedValueOnce(grupos('success', { true: 90, false: 10 }))
+      .mockResolvedValueOnce(grupos('event', { 'message.received': 70, 'message.status': 30 }))
+      .mockResolvedValueOnce([{ httpStatus: 200, _count: { _all: 90 } }, { httpStatus: 500, _count: { _all: 10 } }]);
 
     const w = await getWebhookMetrics('u1', janela());
-    expect(w.endpoints).toEqual({ total: 2, active: 1, disabled: 1 });
-    expect(w.deliveries).toEqual({ total: 105, succeeded: 90, failed: 10, pending: 5 });
-    // Pendentes ficam FORA da base: ainda vão ser tentadas, contá-las como
-    // falha mostraria uma taxa pior que a real a cada pico de volume.
+    expect(w.attempts).toBe(100);
+    expect(w.succeeded).toBe(90);
+    expect(w.failed).toBe(10);
     expect(w.successRate).toBe(90);
+    expect(w.byHttpStatus).toEqual({ '200': 90, '500': 10 });
   });
 
-  it('sem endpoint não consulta entregas', async () => {
+  it('sem entrega a taxa é null', async () => {
     const w = await getWebhookMetrics('u1', janela());
-    expect(db.webhookDelivery.groupBy).not.toHaveBeenCalled();
     expect(w.successRate).toBeNull();
+    expect(w.attempts).toBe(0);
   });
 });
 
-describe('getEventMetrics', () => {
-  it('soma por tipo', async () => {
-    db.platformEvent.groupBy.mockResolvedValueOnce(
-      grupos('type', { 'message.sent': 12, 'message.delivered': 10 }),
-    );
-    const e = await getEventMetrics('u1', janela());
-    expect(e.total).toBe(22);
-    expect(e.byType).toEqual({ 'message.sent': 12, 'message.delivered': 10 });
+describe('série temporal', () => {
+  it('converte bucket para ISO e BigInt do COUNT para number', async () => {
+    db.$queryRaw.mockResolvedValueOnce([
+      { bucket: new Date('2026-10-01T00:00:00Z'), queued: 1n, sent: 2n, failed: 3n, received: 4n },
+    ]);
+    // BigInt precisa virar number — senão JSON.stringify estoura na resposta.
+    expect(await getMessageSeries('u1', janela())).toEqual([
+      { bucket: '2026-10-01T00:00:00.000Z', queued: 1, sent: 2, failed: 3, received: 4 },
+    ]);
+  });
+
+  it('bucket presente só na entrada não some (FULL JOIN, não costura no Node)', async () => {
+    db.$queryRaw.mockResolvedValueOnce([
+      { bucket: new Date('2026-10-01T00:00:00Z'), queued: 0, sent: 0, failed: 0, received: 7 },
+    ]);
+    const serie = await getMessageSeries('u1', janela());
+    expect(serie[0].received).toBe(7);
+    expect(serie[0].sent).toBe(0);
+  });
+});
+
+describe('getPlatformMetrics', () => {
+  it('devolve o período e as quatro seções', async () => {
+    const m = await getPlatformMetrics('u1', janela());
+    expect(m.period).toMatchObject({ granularity: 'day', numberId: null });
+    expect(m.outbound).toBeDefined();
+    expect(m.inbound).toBeDefined();
+    expect(m.webhooks).toBeDefined();
+    expect(Array.isArray(m.series)).toBe(true);
   });
 });
 
 describe('exposição Prometheus (operação)', () => {
   it('rende sem identificador de usuário e com o sinal de fila parada', async () => {
-    db.messageLog.groupBy
+    db.outboundMessage.groupBy
       .mockResolvedValueOnce(grupos('status', { sent: 5, failed: 1 }))
-      .mockResolvedValueOnce(grupos('channel', { meta: 6 }))
-      .mockResolvedValueOnce([{ errorCode: 'message.throttled', _count: { _all: 1 } }]);
-    db.webhookDelivery.groupBy.mockResolvedValueOnce(grupos('status', { succeeded: 4 }));
-    db.messageLog.count.mockResolvedValueOnce(3);
+      .mockResolvedValueOnce([{ errorCode: 'number.disconnected', _count: { _all: 1 } }]);
+    db.webhookDelivery.groupBy.mockResolvedValueOnce(grupos('success', { true: 4 }));
+    db.inboundMessage.groupBy.mockResolvedValueOnce(grupos('channel', { evolution: 9 }));
+    db.outboundMessage.count.mockResolvedValueOnce(3);
 
     const texto = await renderPrometheusMetrics();
 
-    expect(texto).toContain('zapscript_messages_24h{status="sent"} 5');
-    expect(texto).toContain('zapscript_messages_by_channel_24h{channel="meta"} 6');
-    expect(texto).toContain('zapscript_message_errors_24h{code="message.throttled"} 1');
-    expect(texto).toContain('zapscript_webhook_deliveries_24h{status="succeeded"} 4');
-    // O sinal mais acionável: mensagem aceita que não saiu = fila parada.
-    expect(texto).toContain('zapscript_messages_stuck_queued 3');
+    expect(texto).toContain('zapscript_outbound_24h{status="sent"} 5');
+    expect(texto).toContain('zapscript_outbound_errors_24h{code="number.disconnected"} 1');
+    expect(texto).toContain('zapscript_inbound_24h{channel="evolution"} 9');
+    expect(texto).toContain('zapscript_webhook_attempts_24h{success="true"} 4');
+    // O sinal mais acionável: envio aceito que não saiu = fila parada.
+    expect(texto).toContain('zapscript_outbound_stuck_queued 3');
     // Cardinalidade por tenant explodiria o Prometheus — e seria dado de cliente
     // num sistema de observabilidade.
     expect(texto).not.toMatch(/user|tenant/i);

@@ -3,7 +3,6 @@ import { prisma } from '../lib/prisma';
 import { decryptStr } from '../services/encryption';
 import { sendTemplateMessage } from '../services/whatsapp-campaigns';
 import { buildTemplateComponents } from '../services/template-components';
-import { logSentOutbound } from '../services/message-log';
 import { sendMessageViaEvolution } from '../services/evolution';
 import { sendEmail } from '../services/mailer';
 import { logger } from '../lib/logger';
@@ -147,25 +146,13 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
     where: { id: contatoId },
     data: { status: 'sent', wamid: messageId, sentAt: new Date(), errorMessage: null },
   });
-  // Log unificado de mensagens (item 5 do escopo ZapScript × Twilio): campanha
-  // passa a aparecer no MESMO lugar que envio por API, Atende e avisos. Sem
-  // isto, "esta mensagem saiu?" continuaria exigindo saber por onde ela saiu.
-  // Fire-and-forget: a mensagem já está no WhatsApp do contato.
-  void logSentOutbound({
-    userId:            campanha.userId,
-    numberId:          numero?.id ?? null,
-    channel:           campanha.channel === 'meta' ? 'meta' : 'evolution',
-    source:            'campanha',
-    sourceId:          contatoId,
-    toPhone:           contato.phone,
-    fromPhone:         numero?.phoneNumber && numero.phoneNumber !== 'pending' ? numero.phoneNumber : null,
-    type:              campanha.channel === 'meta' ? 'template' : 'text',
-    body:              campanha.channel === 'meta' ? null : (campanha.messageBody ?? null),
-    templateName:      campanha.channel === 'meta' ? (campanha.templateName ?? null) : null,
-    templateLanguage:  campanha.channel === 'meta' ? campanha.templateLanguage : null,
-    mediaUrl:          campanha.headerMediaUrl ?? null,
-    providerMessageId: messageId,
-  });
+  // Por que campanha NÃO grava em OutboundMessage: aquela tabela é o recurso
+  // "Messages" da API pública (body obrigatório, uma linha por intenção de envio
+  // do integrador). Campanha de template não tem texto livre, e o rastreio por
+  // contato já vive em CampanhaContato — que é mais rico para isso (guarda
+  // delivered/read/optout por destinatário, que OutboundMessage não tem).
+  // Duplicar aqui dobraria a escrita no caminho quente do disparo sem responder
+  // nada que CampanhaContato já não responda.
   logger.info(`[Campanhas] ✅ Enviado ${contato.phone} (campanha ${campanhaId}, canal ${campanha.channel}) — id ${messageId}`);
   // sentCount separado do processedCount: sentCount é "quantos deram certo" (métrica visível
   // pro usuário), processedCount é "quantos já passaram por aqui" (sent+failed+optout, usado

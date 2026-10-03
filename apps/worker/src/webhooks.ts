@@ -1,260 +1,194 @@
 import { Worker, Job } from 'bullmq';
+import crypto from 'crypto';
 import { redis } from './lib/queue';
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
-import { captureJobFailure, captureWorkerError } from './lib/sentry';
+import { decryptStr } from './services/encryption';
+import { buildWebhookHeaders } from './lib/webhook-signature';
+import { isSafeWebhookUrl } from './lib/webhook-url-guard';
 import { recordFailedJob } from './lib/dlq';
-import { ApiError, mapProviderError } from './lib/apiErrors';
-import { isSafeWebhookUrl } from './lib/url-safety';
-import { buildSignature, revealWebhookSecret, toEventEnvelope } from './services/events';
-import { RESPONSE_SNIPPET_MAX } from './services/message-log';
+import { captureJobFailure } from './lib/sentry';
 
 /**
- * Fila 'webhooks' — entrega dos eventos de plataforma (item 2 do escopo
- * ZapScript × Twilio).
+ * Consumidor da fila `webhooks` — o ÚNICO lugar do sistema que assina e
+ * entrega um webhook de saída. Antes existiam três implementações soltas
+ * (worker/index.ts, /webhook-config/test e o que fosse surgindo), e elas já
+ * tinham divergido: o worker assinava com `config.secret` cru, que está
+ * CRIPTOGRAFADO em repouso. Resultado: a assinatura do evento real nunca
+ * validava no receptor, enquanto o endpoint de teste assinava certo — ou seja,
+ * "no teste funciona, em produção não", o sintoma mais difícil de diagnosticar
+ * que existe. Centralizar aqui é o que impede isso de voltar.
  *
- * O que o webhook antigo não tinha e aqui existe: retry com backoff, histórico
- * por entrega, e um circuit breaker que desativa endpoint morto em vez de
- * tentar para sempre.
- *
- * Headers de cada entrega:
- *   X-ZapScript-Event        tipo do evento (ex.: message.delivered)
- *   X-ZapScript-Event-Id     id do evento (dedup do lado do cliente)
- *   X-ZapScript-Delivery-Id  id desta entrega
- *   X-ZapScript-Attempt      tentativa (1-based)
- *   X-ZapScript-Signature    t=<unix>,v1=<hmac>  (ou sha256=<hmac> no legado)
+ * Responsabilidades: montar o envelope, revalidar a URL (anti-SSRF no momento
+ * do disparo, não só no cadastro), assinar com o secret EM CLARO, fazer o POST
+ * e registrar a tentativa em WebhookDelivery. O retry é da fila (5 tentativas,
+ * backoff exponencial) — lançar aqui é o jeito correto de pedir reentrega.
  */
 
-/** Tempo máximo esperando o endpoint do cliente. */
-const TIMEOUT_MS = Math.max(2_000, Number(process.env.WEBHOOK_TIMEOUT_MS || 10_000));
+const WEBHOOK_TIMEOUT_MS = 8_000;
 
-/**
- * Falhas consecutivas que desativam o endpoint. 15 com o backoff da fila
- * (30s → ~8min) é mais de uma hora de indisponibilidade antes de desligar —
- * manutenção normal do cliente não derruba a integração dele.
- */
-const DISABLE_AFTER_FAILURES = Math.max(3, Number(process.env.WEBHOOK_DISABLE_AFTER || 15));
-
-export interface DeliveryJobData {
-  deliveryId: string;
+export interface WebhookJobData {
+  userId: string;
+  event: string;
+  data: Record<string, unknown>;
+  occurredAt: string;
+  /** Gerado no enfileiramento — ver a justificativa em lib/webhook-events.ts. */
+  deliveryId?: string;
 }
 
-type Outcome = { skipped: true; reason: string } | { skipped?: false; status: number };
-
-export async function processWebhookDeliveryJob(job: Job<DeliveryJobData>): Promise<Outcome> {
-  const { deliveryId } = job.data;
-
-  const delivery = await prisma.webhookDelivery.findUnique({
-    where:   { id: deliveryId },
-    include: { endpoint: true, event: true },
-  });
-  if (!delivery)             return { skipped: true, reason: `entrega ${deliveryId} não existe mais` };
-  if (delivery.status === 'succeeded') return { skipped: true, reason: 'já entregue' };
-  if (!delivery.endpoint.active)       return { skipped: true, reason: 'endpoint desativado' };
-
-  const attempt     = (job.attemptsMade ?? 0) + 1;
-  const maxAttempts = job.opts?.attempts ?? 6;
-
-  // Revalida a URL salva antes de cada fetch (defesa em profundidade): o DNS do
-  // host do cliente pode ter passado a apontar para a rede interna DEPOIS do
-  // cadastro — é o DNS rebinding na prática.
-  const safe = await isSafeWebhookUrl(delivery.endpoint.url);
-  if (!safe.ok) {
-    await failDelivery(delivery, attempt, {
-      errorCode:    'webhook.url_blocked',
-      errorMessage: safe.error || 'URL bloqueada',
-      final:        true,
-    });
-    await disableEndpoint(delivery.endpointId, `URL bloqueada: ${safe.error}`);
-    return { skipped: true, reason: 'webhook.url_blocked' };
-  }
-
-  const envelope = toEventEnvelope(delivery.event);
-  const body = JSON.stringify(envelope);
-
-  let secret: string;
-  try {
-    secret = revealWebhookSecret(delivery.endpoint.secret);
-  } catch (err: any) {
-    // Segredo ilegível (ENCRYPTION_KEY trocada sem rotação): assinar com lixo
-    // faria o cliente recusar silenciosamente para sempre. Melhor falhar alto.
-    await failDelivery(delivery, attempt, {
-      errorCode:    'internal.error',
-      errorMessage: `Segredo do endpoint ilegível: ${err?.message}`,
-      final:        true,
-    });
-    return { skipped: true, reason: 'segredo ilegível' };
-  }
-
-  try {
-    const res = await fetch(delivery.endpoint.url, {
-      method:  'POST',
-      headers: {
-        'Content-Type':             'application/json',
-        'User-Agent':               'ZapScript-Webhooks/1.0',
-        'X-ZapScript-Event':        envelope.type,
-        'X-ZapScript-Event-Id':     envelope.id,
-        'X-ZapScript-Delivery-Id':  delivery.id,
-        'X-ZapScript-Attempt':      String(attempt),
-        'X-ZapScript-Signature':    buildSignature(delivery.endpoint.signatureScheme, secret, body),
-      },
-      body,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-
-    const snippet = await res.text()
-      .then((t) => t.slice(0, RESPONSE_SNIPPET_MAX))
-      .catch(() => null);
-
-    if (res.ok) {
-      await prisma.$transaction([
-        prisma.webhookDelivery.update({
-          where: { id: delivery.id },
-          data: {
-            status:         'succeeded',
-            attempts:       attempt,
-            responseStatus: res.status,
-            responseBody:   snippet,
-            errorCode:      null,
-            errorMessage:   null,
-            nextRetryAt:    null,
-            deliveredAt:    new Date(),
-          },
-        }),
-        prisma.webhookEndpoint.update({
-          where: { id: delivery.endpointId },
-          data:  { consecutiveFailures: 0, lastSuccessAt: new Date() },
-        }),
-      ]);
-      logger.info(`[Webhooks] ✅ ${envelope.type} entregue em ${delivery.endpoint.url} (${res.status})`);
-      return { status: res.status };
-    }
-
-    // 410 Gone é o jeito padrão de o cliente dizer "não me mande mais":
-    // retentar 6 vezes seria insistir contra um pedido explícito.
-    const isGone = res.status === 410;
-    const final = isGone || attempt >= maxAttempts;
-
-    await failDelivery(delivery, attempt, {
-      errorCode:      'webhook.delivery_failed',
-      errorMessage:   `HTTP ${res.status}`,
-      responseStatus: res.status,
-      responseBody:   snippet,
-      final,
-    });
-
-    if (isGone) {
-      await disableEndpoint(delivery.endpointId, 'O endpoint respondeu 410 Gone');
-      return { skipped: true, reason: 'endpoint respondeu 410' };
-    }
-
-    await bumpEndpointFailure(delivery.endpointId);
-    if (final) return { skipped: true, reason: `HTTP ${res.status} após ${attempt} tentativa(s)` };
-
-    // Relança para o BullMQ agendar o backoff.
-    throw new ApiError('webhook.delivery_failed', { message: `HTTP ${res.status}` });
-  } catch (err: any) {
-    if (err instanceof ApiError && err.code === 'webhook.delivery_failed' && err.message.startsWith('HTTP ')) {
-      throw err; // já contabilizado acima
-    }
-
-    const apiErr = mapProviderError(err, { fallback: 'webhook.delivery_failed' });
-    const final = attempt >= maxAttempts;
-
-    await failDelivery(delivery, attempt, {
-      errorCode:    apiErr.code,
-      errorMessage: apiErr.message,
-      final,
-    });
-    await bumpEndpointFailure(delivery.endpointId);
-
-    if (final) {
-      logger.error(`[Webhooks] ❌ ${envelope.type} desistiu após ${attempt} tentativas: ${apiErr.message}`);
-      return { skipped: true, reason: apiErr.code };
-    }
-    throw apiErr;
-  }
-}
-
-async function failDelivery(
-  delivery: { id: string },
-  attempt: number,
-  opts: {
-    errorCode: string; errorMessage: string;
-    responseStatus?: number; responseBody?: string | null; final: boolean;
-  },
-) {
-  await prisma.webhookDelivery.update({
-    where: { id: delivery.id },
+async function logDelivery(args: {
+  userId: string; event: string; url: string;
+  success: boolean; httpStatus?: number; attempt: number; error?: string;
+}): Promise<void> {
+  // O log é observabilidade, nunca o motivo de um evento falhar.
+  await (prisma as any).webhookDelivery.create({
     data: {
-      status:         opts.final ? 'failed' : 'pending',
-      attempts:       attempt,
-      errorCode:      opts.errorCode,
-      errorMessage:   opts.errorMessage.slice(0, 1000),
-      ...(opts.responseStatus !== undefined ? { responseStatus: opts.responseStatus } : {}),
-      ...(opts.responseBody   !== undefined ? { responseBody: opts.responseBody } : {}),
-      // Espelha o backoff exponencial da fila (30s × 2^(n-1)), só para o
-      // cliente ver no painel quando será a próxima tentativa.
-      nextRetryAt:    opts.final ? null : new Date(Date.now() + 30_000 * Math.pow(2, attempt - 1)),
+      userId:     args.userId,
+      event:      args.event,
+      url:        args.url,
+      success:    args.success,
+      httpStatus: args.httpStatus ?? null,
+      attempt:    args.attempt,
+      error:      args.error?.slice(0, 500) ?? null,
     },
-  }).catch((err: any) => {
-    logger.warn(`[Webhooks] falha ao gravar status da entrega ${delivery.id}: ${err?.message}`);
-  });
+  }).catch(() => null);
 }
 
-/** Conta a falha e, no limite, desativa o endpoint (circuit breaker). */
-async function bumpEndpointFailure(endpointId: string) {
-  const updated = await prisma.webhookEndpoint.update({
-    where: { id: endpointId },
-    data:  { consecutiveFailures: { increment: 1 }, lastFailureAt: new Date() },
-  }).catch(() => null);
+export async function processWebhookJob(job: Job<WebhookJobData>): Promise<void> {
+  const { userId, event, data, occurredAt } = job.data;
+  const attempt = (job.attemptsMade ?? 0) + 1;
 
-  if (updated && updated.consecutiveFailures >= DISABLE_AFTER_FAILURES) {
-    await disableEndpoint(
-      endpointId,
-      `${updated.consecutiveFailures} falhas consecutivas — reative no painel depois de corrigir o endpoint`,
-    );
+  const config = await (prisma as any).webhookConfig.findUnique({ where: { userId } });
+
+  // Config apagada/desativada depois do enfileiramento, ou evento removido da
+  // assinatura: descarta sem erro — reentregar não mudaria nada.
+  if (!config?.active) {
+    logger.info(`[Webhook] ${event}: config inativa/ausente (user ${userId}) — descartado`);
+    return;
+  }
+  const subscribed: string[] = Array.isArray(config.events) && config.events.length
+    ? config.events
+    : ['transcription.completed'];
+  if (!subscribed.includes(event)) {
+    logger.info(`[Webhook] ${event}: não assinado por ${userId} — descartado`);
+    return;
+  }
+
+  // Revalidação anti-SSRF no disparo: entre o cadastro e agora, o DNS do host
+  // pode ter passado a apontar para IP interno (DNS rebinding). Falha aqui é
+  // definitiva — reentregar bateria no mesmo IP interno.
+  const safe = await isSafeWebhookUrl(config.url);
+  if (!safe.ok) {
+    logger.warn(`[Webhook] ${event}: URL recusada na revalidação (${safe.error}) — user ${userId}`);
+    await logDelivery({ userId, event, url: config.url, success: false, attempt, error: `URL recusada: ${safe.error}` });
+    return;
+  }
+
+  // ESTÁVEL entre as tentativas: é o que permite o receptor deduplicar uma
+  // reentrega. O fallback cobre job enfileirado por uma versão anterior que
+  // ainda estivesse na fila no momento do deploy.
+  const deliveryId = job.data.deliveryId ?? `job-${job.id ?? crypto.randomUUID()}`;
+  // `timestamp` vai DENTRO do corpo assinado — é assim que o receptor rejeita
+  // payload velho (replay) sem precisar de um segundo esquema de assinatura.
+  const payload = { event, timestamp: occurredAt, data };
+  const rawBody = JSON.stringify(payload);
+
+  // decryptStr: o secret está criptografado em repouso. A própria decryptStr
+  // devolve o valor como está se não estiver no formato iv:tag:data, então
+  // linhas legadas em plaintext continuam funcionando.
+  const headers = buildWebhookHeaders({
+    secretPlain: decryptStr(config.secret),
+    rawBody,
+    event,
+    deliveryId,
+    timestamp: occurredAt,
+  });
+
+  let res: Response;
+  try {
+    res = await fetch(config.url, {
+      method: 'POST',
+      headers,
+      body:   rawBody,
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
+    });
+  } catch (err: any) {
+    const msg = err?.message ?? 'erro de rede';
+    await logDelivery({ userId, event, url: config.url, success: false, attempt, error: msg });
+    // Lança: rede/timeout é exatamente o caso que merece retry da fila.
+    throw new Error(`[Webhook] ${event} → ${config.url} falhou (tentativa ${attempt}): ${msg}`);
+  }
+
+  await logDelivery({
+    userId, event, url: config.url,
+    success: res.ok, httpStatus: res.status, attempt,
+    error: res.ok ? undefined : `HTTP ${res.status}`,
+  });
+
+  if (res.ok) {
+    logger.info(`[Webhook] ✅ ${event} → ${config.url} (${res.status}, entrega ${deliveryId})`);
+    return;
+  }
+
+  // 4xx (exceto 408/429) é erro do receptor que retry não conserta — payload
+  // que ele rejeita agora vai rejeitar igual daqui a 160s. Não gasta tentativa.
+  const permanent = res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429;
+  if (permanent) {
+    logger.warn(`[Webhook] ${event} → ${config.url}: HTTP ${res.status} (permanente) — sem retry`);
+    return;
+  }
+
+  throw new Error(`[Webhook] ${event} → ${config.url} devolveu HTTP ${res.status} (tentativa ${attempt})`);
+}
+
+// ── Retenção do log de entregas ──────────────────────────────────────────────
+// WebhookDelivery grava UMA LINHA POR TENTATIVA, e message.received dispara a
+// cada mensagem de texto recebida — numa conta movimentada com integração
+// ativa isso cresce rápido e sem teto. Mesma política do serviceStatusLog
+// (apps/worker/src/index.ts): janela de 30 dias, limpeza diária.
+const DELIVERY_RETENTION_DAYS = 30;
+
+async function pruneWebhookDeliveries(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - DELIVERY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const { count } = await (prisma as any).webhookDelivery.deleteMany({
+      where: { createdAt: { lt: cutoff } },
+    });
+    if (count > 0) {
+      logger.info(`[Webhook] 🧹 ${count} registro(s) de entrega com mais de ${DELIVERY_RETENTION_DAYS} dias removidos`);
+    }
+  } catch (err: any) {
+    logger.warn(`[Webhook] Falha ao limpar log de entregas: ${err.message}`);
   }
 }
 
-async function disableEndpoint(endpointId: string, reason: string) {
-  await prisma.webhookEndpoint.update({
-    where: { id: endpointId },
-    data:  { active: false, disabledAt: new Date(), disabledReason: reason.slice(0, 500) },
-  }).then(() => {
-    logger.warn(`[Webhooks] endpoint ${endpointId} desativado: ${reason}`);
-  }).catch(() => null);
-}
+void pruneWebhookDeliveries();
+// unref: a limpeza é trabalho de fundo e não deve segurar o event loop (nem
+// manter o processo de teste vivo depois que a suíte termina).
+setInterval(pruneWebhookDeliveries, 24 * 60 * 60 * 1000).unref();
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Worker
-// ─────────────────────────────────────────────────────────────────────────────
-const CONCURRENCY = parseInt(process.env.WEBHOOKS_CONCURRENCY || '5', 10);
-
-export const webhooksWorker = new Worker<DeliveryJobData>('webhooks', processWebhookDeliveryJob, {
+export const webhooksWorker = new Worker('webhooks', processWebhookJob, {
   connection:  redis as any,
-  concurrency: CONCURRENCY,
-});
-
-webhooksWorker.on('completed', (job, result: any) => {
-  if (result?.skipped) logger.warn(`[Webhooks] Job ${job.id} ignorado — ${result.reason}`);
+  concurrency: 5,
 });
 
 webhooksWorker.on('failed', (job, err) => {
+  // Mesmo tratamento das outras filas: ao ESGOTAR as tentativas o job vira
+  // linha em FailedJob (visível em GET /admin/failed-jobs e reenfileirável por
+  // POST /admin/failed-jobs/:id/replay) e sobe para o Sentry. Ambas as funções
+  // checam attempts >= maxAttempts internamente, então retry transitório não
+  // polui nada.
+  //
+  // Sem isto, um webhook que esgotasse as 5 tentativas desaparecia em
+  // silêncio quando o removeOnFail limpasse o Redis — justamente o cenário que
+  // esta fila existe para evitar (a resposta do paciente que ninguém viu).
+  captureJobFailure('webhooks', job, err);
+  void recordFailedJob('webhooks', job, err);
+
   const attempts    = job?.attemptsMade ?? 0;
-  const maxAttempts = job?.opts?.attempts ?? 6;
-  logger.warn(`[Webhooks] Job ${job?.id} falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
-  // Endpoint de cliente fora do ar é rotina, não incidente nosso: só vai para
-  // Sentry/DLQ na exaustão, senão o alerta vira ruído a cada manutenção deles.
-  if (job && attempts >= maxAttempts) {
-    captureJobFailure('webhooks', job, err);
-    void recordFailedJob('webhooks', job, err);
-  }
+  const maxAttempts = job?.opts?.attempts ?? 5;
+  logger.warn(
+    `[Webhook] ❌ Entrega falhou (tentativa ${attempts}/${maxAttempts}): ${err.message}`,
+    { jobId: job?.id, event: (job?.data as any)?.event },
+  );
 });
-
-webhooksWorker.on('error', (err) => {
-  captureWorkerError('webhooks', err);
-  logger.error('[Webhooks] Erro interno', { err: err.message });
-});
-
-logger.info(`Worker de webhooks iniciado (concorrência ${CONCURRENCY})`);

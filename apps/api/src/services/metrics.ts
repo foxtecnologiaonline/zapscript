@@ -4,15 +4,23 @@ import { prisma } from '../lib/prisma';
 /**
  * Métricas de plataforma (item 7 do escopo ZapScript × Twilio).
  *
- * Fica por último no escopo por dependência: só faz sentido depois que a API
- * de escrita (item 1), os eventos (item 2) e o log de mensagens (item 5)
- * começaram a produzir dado. Antes disso, o que existia de "métrica" era
- * contagem de campanha (sentCount) e de transcrição — nada sobre entrega,
- * nada sobre erro por motivo, nada sobre saúde de webhook.
+ * Lê as tabelas que a API pública v1 de fato produz — OutboundMessage (saída),
+ * InboundMessage (entrada) e WebhookDelivery (entrega de evento). Antes disto, o
+ * que existia de "métrica" era contagem de campanha (sentCount) e de
+ * transcrição: nada sobre falha por motivo, nada sobre saúde de webhook.
  *
- * Tudo é agregado no banco (groupBy / date_trunc), nunca carregando linhas
- * para somar em memória: um cliente com 200 mil mensagens no período derrubaria
- * o processo.
+ * Uma decisão que vale explicitar: **não existe taxa de entrega aqui**. O envio
+ * da v1 sai pela Evolution, que confirma "aceitei para envio", não "o aparelho
+ * recebeu" — `OutboundMessage.status` vai de `queued` a `sent` ou `failed` e
+ * para aí. Publicar um `deliveryRate` calculado sobre isso seria apresentar
+ * "aceito pelo provedor" como "entregue ao destinatário", que é justamente a
+ * confusão que o item 7 existe para desfazer. Quando o envio por Cloud API
+ * entrar na API pública (que tem recibo de entrega e leitura), a taxa entra com
+ * ele.
+ *
+ * Tudo é agregado no banco (groupBy / date_trunc), nunca carregando linhas para
+ * somar em memória: um cliente com 200 mil mensagens no período derrubaria o
+ * processo.
  */
 
 export type Granularity = 'hour' | 'day';
@@ -24,14 +32,12 @@ export interface MetricsWindow {
   numberId?: string | null;
 }
 
-/** Janela padrão: últimos 7 dias por dia. */
+/** Janela padrão: últimos 7 dias, por dia. */
 export function resolveWindow(raw: {
   since?: string; until?: string; granularity?: string; numberId?: string;
 }): MetricsWindow {
   const until = raw.until ? new Date(raw.until) : new Date();
-  const since = raw.since
-    ? new Date(raw.since)
-    : new Date(until.getTime() - 7 * 86_400_000);
+  const since = raw.since ? new Date(raw.since) : new Date(until.getTime() - 7 * 86_400_000);
 
   if (Number.isNaN(since.getTime()) || Number.isNaN(until.getTime())) {
     throw new Error('since/until precisam ser datas ISO 8601.');
@@ -39,7 +45,7 @@ export function resolveWindow(raw: {
   if (since >= until) throw new Error('since precisa ser anterior a until.');
 
   // Teto de 92 dias: acima disso a série diária passa de 90 pontos e a query
-  // começa a varrer índice demais para uma resposta que ninguém lê inteira.
+  // varre índice demais para uma resposta que ninguém lê inteira.
   if (until.getTime() - since.getTime() > 92 * 86_400_000) {
     throw new Error('O período máximo é de 92 dias.');
   }
@@ -52,218 +58,229 @@ export function resolveWindow(raw: {
   return { since, until, granularity, numberId: raw.numberId || null };
 }
 
-function messageWhere(userId: string, w: MetricsWindow): Prisma.MessageLogWhereInput {
+function outboundWhere(userId: string, w: MetricsWindow): Prisma.OutboundMessageWhereInput {
   return {
     userId,
-    queuedAt: { gte: w.since, lte: w.until },
+    createdAt: { gte: w.since, lte: w.until },
     ...(w.numberId ? { numberId: w.numberId } : {}),
   };
 }
 
-async function countBy(
-  userId: string, w: MetricsWindow, field: 'status' | 'direction' | 'channel' | 'source',
+async function groupCount<T extends string>(
+  model: any, field: T, where: any,
 ): Promise<Record<string, number>> {
-  const rows = await prisma.messageLog.groupBy({
-    by:     [field] as any,
-    where:  messageWhere(userId, w),
-    _count: { _all: true },
-  });
+  const rows = await model.groupBy({ by: [field], where, _count: { _all: true } });
   const out: Record<string, number> = {};
   for (const r of rows as any[]) out[String(r[field])] = r._count._all;
   return out;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Saída
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface OutboundMetrics {
+  total: number;
+  byStatus: Record<string, number>;
+  bySource: Record<string, number>;
+  /** Enviadas ÷ (enviadas + falhas). null quando não há base. */
+  sentRate: number | null;
+  failureRate: number | null;
+  /** Falhas por CÓDIGO do catálogo — não pela frase do provedor. */
+  topErrorCodes: Array<{ code: string; count: number }>;
+}
+
+const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 10_000) / 100 : null);
+
+export async function getOutboundMetrics(userId: string, w: MetricsWindow): Promise<OutboundMetrics> {
+  const where = outboundWhere(userId, w);
+
+  const [byStatus, bySource, errorRows] = await Promise.all([
+    groupCount(prisma.outboundMessage, 'status', where),
+    groupCount(prisma.outboundMessage, 'source', where),
+    prisma.outboundMessage.groupBy({
+      by:      ['errorCode'],
+      where:   { ...where, errorCode: { not: null } },
+      _count:  { _all: true },
+      orderBy: { _count: { errorCode: 'desc' } },
+      take:    10,
+    }),
+  ]);
+
+  const sent   = byStatus.sent   ?? 0;
+  const failed = byStatus.failed ?? 0;
+  // `queued` fica fora da base: ainda vai ser tentada, contá-la como falha
+  // mostraria uma taxa pior que a real a cada pico de volume.
+  const terminal = sent + failed;
+
+  return {
+    total:         Object.values(byStatus).reduce((a, b) => a + b, 0),
+    byStatus,
+    bySource,
+    sentRate:      pct(sent, terminal),
+    failureRate:   pct(failed, terminal),
+    topErrorCodes: (errorRows as any[]).map((r) => ({ code: String(r.errorCode), count: r._count._all })),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Entrada
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface InboundMetrics {
+  total: number;
+  byType: Record<string, number>;
+  byChannel: Record<string, number>;
+}
+
+export async function getInboundMetrics(userId: string, w: MetricsWindow): Promise<InboundMetrics> {
+  const where: Prisma.InboundMessageWhereInput = {
+    userId,
+    receivedAt: { gte: w.since, lte: w.until },
+    ...(w.numberId ? { numberId: w.numberId } : {}),
+  };
+  const [byType, byChannel] = await Promise.all([
+    groupCount(prisma.inboundMessage, 'type', where),
+    groupCount(prisma.inboundMessage, 'channel', where),
+  ]);
+  return {
+    total: Object.values(byType).reduce((a, b) => a + b, 0),
+    byType,
+    byChannel,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Série temporal
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface SeriesPoint {
   bucket: string;
   queued: number;
   sent: number;
-  delivered: number;
-  read: number;
   failed: number;
   received: number;
 }
 
 /**
- * Série temporal por status. SQL cru porque o Prisma não expõe `date_trunc`
- * no groupBy — e fazer isso no Node exigiria trazer todas as linhas.
+ * Série por período. SQL cru porque o Prisma não expõe `date_trunc` no groupBy —
+ * e fazer isso no Node exigiria trazer todas as linhas.
  *
- * `granularity` nunca vem do cliente direto para a query: `resolveWindow` já o
+ * `granularity` nunca vem do cliente direto para a query: resolveWindow já o
  * reduziu a 'hour' | 'day', e o literal é escolhido aqui dentro.
+ *
+ * Saída e entrada vêm em UMA query (FULL JOIN sobre o bucket) em vez de duas +
+ * costura no Node: evita buraco quando um lado tem bucket que o outro não tem.
  */
 export async function getMessageSeries(userId: string, w: MetricsWindow): Promise<SeriesPoint[]> {
   const trunc = w.granularity === 'hour' ? 'hour' : 'day';
-  const numberFilter = w.numberId
-    ? Prisma.sql`AND "numberId" = ${w.numberId}`
-    : Prisma.empty;
+  const numeroOut = w.numberId ? Prisma.sql`AND o."numberId" = ${w.numberId}` : Prisma.empty;
+  const numeroIn  = w.numberId ? Prisma.sql`AND i."numberId" = ${w.numberId}` : Prisma.empty;
 
   const rows = await prisma.$queryRaw<Array<Record<string, any>>>(Prisma.sql`
-    SELECT
-      date_trunc(${trunc}, "queuedAt") AS bucket,
-      COUNT(*) FILTER (WHERE "status" = 'queued')    AS queued,
-      COUNT(*) FILTER (WHERE "status" = 'sent')      AS sent,
-      COUNT(*) FILTER (WHERE "status" = 'delivered') AS delivered,
-      COUNT(*) FILTER (WHERE "status" = 'read')      AS read,
-      COUNT(*) FILTER (WHERE "status" = 'failed')    AS failed,
-      COUNT(*) FILTER (WHERE "status" = 'received')  AS received
-    FROM "MessageLog"
-    WHERE "userId" = ${userId}
-      AND "queuedAt" >= ${w.since}
-      AND "queuedAt" <= ${w.until}
-      ${numberFilter}
-    GROUP BY 1
-    ORDER BY 1 ASC
+    WITH saida AS (
+      SELECT date_trunc(${trunc}, o."createdAt") AS bucket,
+             COUNT(*) FILTER (WHERE o."status" = 'queued') AS queued,
+             COUNT(*) FILTER (WHERE o."status" = 'sent')   AS sent,
+             COUNT(*) FILTER (WHERE o."status" = 'failed') AS failed
+        FROM "OutboundMessage" o
+       WHERE o."userId" = ${userId}
+         AND o."createdAt" >= ${w.since} AND o."createdAt" <= ${w.until}
+         ${numeroOut}
+       GROUP BY 1
+    ),
+    entrada AS (
+      SELECT date_trunc(${trunc}, i."receivedAt") AS bucket, COUNT(*) AS received
+        FROM "InboundMessage" i
+       WHERE i."userId" = ${userId}
+         AND i."receivedAt" >= ${w.since} AND i."receivedAt" <= ${w.until}
+         ${numeroIn}
+       GROUP BY 1
+    )
+    SELECT COALESCE(s.bucket, e.bucket) AS bucket,
+           COALESCE(s.queued, 0)   AS queued,
+           COALESCE(s.sent, 0)     AS sent,
+           COALESCE(s.failed, 0)   AS failed,
+           COALESCE(e.received, 0) AS received
+      FROM saida s
+      FULL OUTER JOIN entrada e ON e.bucket = s.bucket
+     ORDER BY 1 ASC
   `);
 
   return rows.map((r) => ({
-    bucket:    new Date(r.bucket).toISOString(),
-    queued:    Number(r.queued ?? 0),
-    sent:      Number(r.sent ?? 0),
-    delivered: Number(r.delivered ?? 0),
-    read:      Number(r.read ?? 0),
-    failed:    Number(r.failed ?? 0),
-    received:  Number(r.received ?? 0),
+    bucket:   new Date(r.bucket).toISOString(),
+    queued:   Number(r.queued ?? 0),
+    sent:     Number(r.sent ?? 0),
+    failed:   Number(r.failed ?? 0),
+    received: Number(r.received ?? 0),
   }));
 }
 
-/** Erros mais frequentes, por CÓDIGO do catálogo — não por frase do provedor. */
-export async function getTopErrorCodes(
-  userId: string, w: MetricsWindow, limit = 10,
-): Promise<Array<{ code: string; count: number }>> {
-  const rows = await prisma.messageLog.groupBy({
-    by:      ['errorCode'],
-    where:   { ...messageWhere(userId, w), errorCode: { not: null } },
-    _count:  { _all: true },
-    orderBy: { _count: { errorCode: 'desc' } },
-    take:    limit,
-  });
-  return (rows as any[]).map((r) => ({ code: String(r.errorCode), count: r._count._all }));
-}
-
-export interface MessageMetrics {
-  total: number;
-  byStatus: Record<string, number>;
-  byDirection: Record<string, number>;
-  byChannel: Record<string, number>;
-  bySource: Record<string, number>;
-  /** Entregues ÷ saídas que chegaram ao provedor. null quando não há base. */
-  deliveryRate: number | null;
-  failureRate: number | null;
-  readRate: number | null;
-  series: SeriesPoint[];
-  topErrorCodes: Array<{ code: string; count: number }>;
-}
-
-export async function getMessageMetrics(userId: string, w: MetricsWindow): Promise<MessageMetrics> {
-  const [byStatus, byDirection, byChannel, bySource, series, topErrorCodes] = await Promise.all([
-    countBy(userId, w, 'status'),
-    countBy(userId, w, 'direction'),
-    countBy(userId, w, 'channel'),
-    countBy(userId, w, 'source'),
-    getMessageSeries(userId, w),
-    getTopErrorCodes(userId, w),
-  ]);
-
-  const total = Object.values(byStatus).reduce((a, b) => a + b, 0);
-
-  const sent      = byStatus.sent      ?? 0;
-  const delivered = byStatus.delivered ?? 0;
-  const read      = byStatus.read      ?? 0;
-  const failed    = byStatus.failed    ?? 0;
-
-  // Status é o ESTADO ATUAL, não um acumulado: uma mensagem lida conta só em
-  // `read`. Então "chegou ao provedor" = sent + delivered + read + failed, e
-  // "foi entregue" = delivered + read (quem leu, recebeu).
-  const outboundTerminal = sent + delivered + read + failed;
-  const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 10_000) / 100 : null);
-
-  return {
-    total,
-    byStatus,
-    byDirection,
-    byChannel,
-    bySource,
-    deliveryRate: pct(delivered + read, outboundTerminal),
-    failureRate:  pct(failed, outboundTerminal),
-    readRate:     pct(read, delivered + read),
-    series,
-    topErrorCodes,
-  };
-}
+// ─────────────────────────────────────────────────────────────────────────────
+//  Webhooks
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface WebhookMetrics {
-  endpoints: { total: number; active: number; disabled: number };
-  deliveries: { total: number; succeeded: number; failed: number; pending: number };
+  /** WebhookDelivery tem uma linha por TENTATIVA — este é o total de tentativas. */
+  attempts: number;
+  succeeded: number;
+  failed: number;
   successRate: number | null;
+  byEvent: Record<string, number>;
+  /** Distribuição dos status HTTP devolvidos pelo endpoint do cliente. */
+  byHttpStatus: Record<string, number>;
 }
 
 export async function getWebhookMetrics(userId: string, w: MetricsWindow): Promise<WebhookMetrics> {
-  const endpoints = await prisma.webhookEndpoint.findMany({
-    where:  { userId },
-    select: { id: true, active: true },
-  });
-  const ids = endpoints.map((e) => e.id);
+  const where: Prisma.WebhookDeliveryWhereInput = {
+    userId,
+    createdAt: { gte: w.since, lte: w.until },
+  };
 
-  const byStatus = ids.length === 0 ? [] : await prisma.webhookDelivery.groupBy({
-    by:     ['status'],
-    where:  { endpointId: { in: ids }, createdAt: { gte: w.since, lte: w.until } },
-    _count: { _all: true },
-  });
+  const [bySuccess, byEvent, byHttp] = await Promise.all([
+    groupCount(prisma.webhookDelivery, 'success', where),
+    groupCount(prisma.webhookDelivery, 'event', where),
+    prisma.webhookDelivery.groupBy({
+      by:     ['httpStatus'],
+      where:  { ...where, httpStatus: { not: null } },
+      _count: { _all: true },
+    }),
+  ]);
 
-  const counts: Record<string, number> = {};
-  for (const r of byStatus as any[]) counts[String(r.status)] = r._count._all;
+  const succeeded = bySuccess['true']  ?? 0;
+  const failed    = bySuccess['false'] ?? 0;
 
-  const succeeded = counts.succeeded ?? 0;
-  const failed    = counts.failed ?? 0;
-  const pending   = counts.pending ?? 0;
-  const total     = succeeded + failed + pending;
+  const byHttpStatus: Record<string, number> = {};
+  for (const r of byHttp as any[]) byHttpStatus[String(r.httpStatus)] = r._count._all;
 
   return {
-    endpoints: {
-      total:    endpoints.length,
-      active:   endpoints.filter((e) => e.active).length,
-      disabled: endpoints.filter((e) => !e.active).length,
-    },
-    deliveries: { total, succeeded, failed, pending },
-    // Pendentes ficam fora da base: ainda vão ser tentadas, contá-las como
-    // falha mostraria uma taxa pior que a realidade a cada pico de volume.
-    successRate: succeeded + failed > 0
-      ? Math.round((succeeded / (succeeded + failed)) * 10_000) / 100
-      : null,
+    attempts: succeeded + failed,
+    succeeded,
+    failed,
+    successRate: pct(succeeded, succeeded + failed),
+    byEvent,
+    byHttpStatus,
   };
 }
 
-export interface EventMetrics {
-  total: number;
-  byType: Record<string, number>;
-}
-
-export async function getEventMetrics(userId: string, w: MetricsWindow): Promise<EventMetrics> {
-  const rows = await prisma.platformEvent.groupBy({
-    by:     ['type'],
-    where:  { userId, createdAt: { gte: w.since, lte: w.until } },
-    _count: { _all: true },
-  });
-  const byType: Record<string, number> = {};
-  let total = 0;
-  for (const r of rows as any[]) {
-    byType[String(r.type)] = r._count._all;
-    total += r._count._all;
-  }
-  return { total, byType };
-}
+// ─────────────────────────────────────────────────────────────────────────────
+//  Agregado
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface PlatformMetrics {
   period: { since: string; until: string; granularity: Granularity; numberId: string | null };
-  messages: MessageMetrics;
+  outbound: OutboundMetrics;
+  inbound: InboundMetrics;
   webhooks: WebhookMetrics;
-  events: EventMetrics;
+  series: SeriesPoint[];
 }
 
 export async function getPlatformMetrics(userId: string, w: MetricsWindow): Promise<PlatformMetrics> {
-  const [messages, webhooks, events] = await Promise.all([
-    getMessageMetrics(userId, w),
+  const [outbound, inbound, webhooks, series] = await Promise.all([
+    getOutboundMetrics(userId, w),
+    getInboundMetrics(userId, w),
     getWebhookMetrics(userId, w),
-    getEventMetrics(userId, w),
+    getMessageSeries(userId, w),
   ]);
   return {
     period: {
@@ -272,9 +289,7 @@ export async function getPlatformMetrics(userId: string, w: MetricsWindow): Prom
       granularity: w.granularity,
       numberId:    w.numberId ?? null,
     },
-    messages,
-    webhooks,
-    events,
+    outbound, inbound, webhooks, series,
   };
 }
 
@@ -283,63 +298,62 @@ export async function getPlatformMetrics(userId: string, w: MetricsWindow): Prom
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Métricas GLOBAIS da plataforma no formato de exposição do Prometheus — para
- * o nosso lado (dashboard de operação), não para o cliente. Agregadas por
- * status/canal, sem nenhum identificador de usuário: cardinalidade de série
- * por tenant explodiria o Prometheus, e seria dado de cliente num sistema de
- * observabilidade.
+ * Métricas GLOBAIS da plataforma no formato de exposição do Prometheus — para o
+ * nosso lado (operação), não para o cliente. Agregadas, sem nenhum
+ * identificador de usuário: cardinalidade de série por tenant explodiria o
+ * Prometheus, e seria dado de cliente num sistema de observabilidade.
  */
 export async function renderPrometheusMetrics(): Promise<string> {
   const since = new Date(Date.now() - 24 * 3_600_000);
 
-  const [byStatus, byChannel, byErrorCode, deliveries, stuck] = await Promise.all([
-    prisma.messageLog.groupBy({ by: ['status'],  where: { queuedAt: { gte: since } }, _count: { _all: true } }),
-    prisma.messageLog.groupBy({ by: ['channel'], where: { queuedAt: { gte: since } }, _count: { _all: true } }),
-    prisma.messageLog.groupBy({
+  const [byStatus, byErrorCode, bySuccess, inbound, presas] = await Promise.all([
+    prisma.outboundMessage.groupBy({ by: ['status'], where: { createdAt: { gte: since } }, _count: { _all: true } }),
+    prisma.outboundMessage.groupBy({
       by: ['errorCode'],
-      where: { queuedAt: { gte: since }, errorCode: { not: null } },
+      where: { createdAt: { gte: since }, errorCode: { not: null } },
       _count: { _all: true },
       orderBy: { _count: { errorCode: 'desc' } },
       take: 20,
     }),
-    prisma.webhookDelivery.groupBy({ by: ['status'], where: { createdAt: { gte: since } }, _count: { _all: true } }),
-    prisma.messageLog.count({
-      where: { status: 'queued', queuedAt: { lt: new Date(Date.now() - 10 * 60_000) } },
+    prisma.webhookDelivery.groupBy({ by: ['success'], where: { createdAt: { gte: since } }, _count: { _all: true } }),
+    prisma.inboundMessage.groupBy({ by: ['channel'], where: { receivedAt: { gte: since } }, _count: { _all: true } }),
+    // O sinal mais acionável do conjunto: envio aceito que não saiu em 10
+    // minutos significa fila parada ou worker fora do ar.
+    prisma.outboundMessage.count({
+      where: { status: 'queued', createdAt: { lt: new Date(Date.now() - 10 * 60_000) } },
     }),
   ]);
 
-  const lines: string[] = [];
   const esc = (v: string) => v.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const lines: string[] = [];
 
-  lines.push('# HELP zapscript_messages_24h Mensagens nas últimas 24h, por status.');
-  lines.push('# TYPE zapscript_messages_24h gauge');
+  lines.push('# HELP zapscript_outbound_24h Envios pela API pública nas últimas 24h, por status.');
+  lines.push('# TYPE zapscript_outbound_24h gauge');
   for (const r of byStatus as any[]) {
-    lines.push(`zapscript_messages_24h{status="${esc(String(r.status))}"} ${r._count._all}`);
+    lines.push(`zapscript_outbound_24h{status="${esc(String(r.status))}"} ${r._count._all}`);
   }
 
-  lines.push('# HELP zapscript_messages_by_channel_24h Mensagens nas últimas 24h, por canal.');
-  lines.push('# TYPE zapscript_messages_by_channel_24h gauge');
-  for (const r of byChannel as any[]) {
-    lines.push(`zapscript_messages_by_channel_24h{channel="${esc(String(r.channel))}"} ${r._count._all}`);
-  }
-
-  lines.push('# HELP zapscript_message_errors_24h Falhas de mensagem nas últimas 24h, por código do catálogo.');
-  lines.push('# TYPE zapscript_message_errors_24h gauge');
+  lines.push('# HELP zapscript_outbound_errors_24h Falhas de envio nas últimas 24h, por código do catálogo.');
+  lines.push('# TYPE zapscript_outbound_errors_24h gauge');
   for (const r of byErrorCode as any[]) {
-    lines.push(`zapscript_message_errors_24h{code="${esc(String(r.errorCode))}"} ${r._count._all}`);
+    lines.push(`zapscript_outbound_errors_24h{code="${esc(String(r.errorCode))}"} ${r._count._all}`);
   }
 
-  lines.push('# HELP zapscript_webhook_deliveries_24h Entregas de webhook nas últimas 24h, por status.');
-  lines.push('# TYPE zapscript_webhook_deliveries_24h gauge');
-  for (const r of deliveries as any[]) {
-    lines.push(`zapscript_webhook_deliveries_24h{status="${esc(String(r.status))}"} ${r._count._all}`);
+  lines.push('# HELP zapscript_inbound_24h Mensagens recebidas nas últimas 24h, por canal.');
+  lines.push('# TYPE zapscript_inbound_24h gauge');
+  for (const r of inbound as any[]) {
+    lines.push(`zapscript_inbound_24h{channel="${esc(String(r.channel))}"} ${r._count._all}`);
   }
 
-  // O sinal mais acionável do conjunto: mensagem aceita que não saiu em 10min
-  // significa fila parada ou worker fora do ar.
-  lines.push('# HELP zapscript_messages_stuck_queued Mensagens em queued há mais de 10 minutos.');
-  lines.push('# TYPE zapscript_messages_stuck_queued gauge');
-  lines.push(`zapscript_messages_stuck_queued ${stuck}`);
+  lines.push('# HELP zapscript_webhook_attempts_24h Tentativas de entrega de webhook nas últimas 24h.');
+  lines.push('# TYPE zapscript_webhook_attempts_24h gauge');
+  for (const r of bySuccess as any[]) {
+    lines.push(`zapscript_webhook_attempts_24h{success="${r.success ? 'true' : 'false'}"} ${r._count._all}`);
+  }
+
+  lines.push('# HELP zapscript_outbound_stuck_queued Envios em queued há mais de 10 minutos.');
+  lines.push('# TYPE zapscript_outbound_stuck_queued gauge');
+  lines.push(`zapscript_outbound_stuck_queued ${presas}`);
 
   return lines.join('\n') + '\n';
 }

@@ -1,53 +1,38 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { getUserPlan, requirePlan } from '../lib/planGate';
+import { getUserPlan } from '../lib/planGate';
+import { requireIntegrationPlan } from '../lib/integrationGate';
 import { encryptStr, decryptStr } from '../services/encryption';
+import { isSafeWebhookUrl } from '../lib/webhook-url-guard';
+import { buildWebhookHeaders } from '../lib/webhook-signature';
+import { ALL_WEBHOOK_EVENTS, WEBHOOK_EVENTS, WebhookEvent } from '../lib/webhook-events';
 import crypto from 'crypto';
-import { isSafeWebhookUrl } from '../lib/url-safety';
-import { invalidateListenerCache } from '../services/events';
-
-const PLAN_WEBHOOK = ['executive'];
 
 /**
- * Webhook "clássico" — UMA URL por conta, sem seleção de evento e sem
- * histórico. Mantido no ar porque há integração de cliente apontada para cá;
- * o substituto é /webhook-endpoints (item 2 do escopo ZapScript × Twilio).
+ * Configuração do webhook de saída (API pública v1).
  *
- * Duas mudanças desta leva:
- *   • a validação anti-SSRF saiu daqui para lib/url-safety.ts, compartilhada
- *     com as rotas novas (uma checagem, dois consumidores);
- *   • toda alteração aqui é ESPELHADA no WebhookEndpoint legado do usuário.
- *     Sem isso, quem editasse a URL nesta tela continuaria recebendo os
- *     eventos novos no endereço antigo — o pior dos dois mundos.
+ * Mudanças em relação à versão anterior:
+ *  - gate: era só o plano 'executive'; agora passa pelo integrationGate (ver o
+ *    porquê em lib/integrationGate.ts — o gate antigo tornava impossível ter
+ *    webhook e envio de mensagem no mesmo plano);
+ *  - `events`: a config passou a declarar QUAIS eventos assina. Config sem
+ *    `events` (criada antes da migration) vale como ['transcription.completed'],
+ *    então ninguém começa a receber evento novo sem pedir;
+ *  - a guarda anti-SSRF e a assinatura HMAC saíram daqui para libs
+ *    compartilhadas, porque o worker precisa das duas no momento do disparo.
  */
 
-/**
- * Mantém o endpoint legado (signatureScheme='legacy') em sincronia com o
- * WebhookConfig. Há no máximo um por usuário, criado na primeira emissão de
- * evento (ensureLegacyEndpointMigrated, services/events.ts).
- */
-async function syncLegacyEndpoint(
-  userId: string,
-  data: { url?: string; secret?: string; active?: boolean },
-): Promise<void> {
-  const endpoint = await prisma.webhookEndpoint.findFirst({
-    where: { userId, signatureScheme: 'legacy' },
-  }).catch(() => null);
-  if (!endpoint) return; // ainda não migrado — nasce já com os dados novos
-
-  await prisma.webhookEndpoint.update({
-    where: { id: endpoint.id },
-    data: {
-      ...(data.url    !== undefined ? { url: data.url } : {}),
-      ...(data.secret !== undefined ? { secret: data.secret } : {}),
-      ...(data.active !== undefined
-        ? data.active
-          ? { active: true, consecutiveFailures: 0, disabledAt: null, disabledReason: null }
-          : { active: false, disabledAt: new Date(), disabledReason: 'Desativado em /webhook-config' }
-        : {}),
-    },
-  }).catch(() => null);
-  await invalidateListenerCache(userId);
+/** Normaliza e valida a lista de eventos vinda do body. */
+function parseEvents(input: unknown): { ok: true; events: WebhookEvent[] } | { ok: false; error: string } {
+  if (input === undefined) return { ok: true, events: [WEBHOOK_EVENTS.TRANSCRIPTION_COMPLETED] };
+  if (!Array.isArray(input) || input.length === 0) {
+    return { ok: false, error: 'events deve ser um array com ao menos 1 evento.' };
+  }
+  const unknown = input.filter((e) => !ALL_WEBHOOK_EVENTS.includes(e as WebhookEvent));
+  if (unknown.length) {
+    return { ok: false, error: `Evento(s) desconhecido(s): ${unknown.join(', ')}. Válidos: ${ALL_WEBHOOK_EVENTS.join(', ')}.` };
+  }
+  return { ok: true, events: Array.from(new Set(input as WebhookEvent[])) };
 }
 
 export default async function webhookConfigRoutes(app: FastifyInstance) {
@@ -57,55 +42,103 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
   app.get('/', auth, async (req: any, reply) => {
     const userId = req.user.sub;
     const plan   = await getUserPlan(userId);
-    if (!requirePlan(plan, PLAN_WEBHOOK, reply)) return;
+    if (!requireIntegrationPlan(plan, reply)) return;
 
     const config = await (prisma as any).webhookConfig.findUnique({ where: { userId } });
-    if (!config) return reply.code(404).send({ configured: false });
+    if (!config) {
+      return reply.code(404).send({ configured: false, availableEvents: ALL_WEBHOOK_EVENTS });
+    }
     return {
       id:        config.id,
       url:       config.url,
       secret:    decryptStr(config.secret),
+      events:    config.events?.length ? config.events : [WEBHOOK_EVENTS.TRANSCRIPTION_COMPLETED],
       active:    config.active,
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
+      availableEvents: ALL_WEBHOOK_EVENTS,
     };
   });
 
   // ── POST /webhook-config ──────────────────────────────
-  // Cria ou atualiza configuração de webhook
-  app.post<{ Body: { url: string } }>('/', auth, async (req: any, reply) => {
+  // Cria ou atualiza a configuração (URL e/ou eventos assinados).
+  app.post<{ Body: { url: string; events?: string[] } }>('/', auth, async (req: any, reply) => {
     const userId = req.user.sub;
     const plan   = await getUserPlan(userId);
-    if (!requirePlan(plan, PLAN_WEBHOOK, reply)) return;
+    if (!requireIntegrationPlan(plan, reply)) return;
 
-    const { url } = req.body;
+    const { url } = req.body ?? {};
     if (!url) return reply.code(400).send({ error: 'URL é obrigatória.' });
 
     const safe = await isSafeWebhookUrl(url);
     if (!safe.ok) return reply.code(400).send({ error: safe.error });
 
+    const parsed = parseEvents(req.body?.events);
+    if (!parsed.ok) return reply.code(400).send({ error: parsed.error });
+
     const existing = await (prisma as any).webhookConfig.findUnique({ where: { userId } });
 
     if (existing) {
-      // Atualiza URL, mantém secret existente, reativa se estava inativo
+      // Mantém o secret (o integrador já o guardou do outro lado) e reativa se
+      // estava inativo. `events` só muda se vier explicitamente no body —
+      // atualizar só a URL não pode zerar a assinatura de eventos.
       const updated = await (prisma as any).webhookConfig.update({
         where: { userId },
-        data:  { url, active: true, updatedAt: new Date() },
+        data: {
+          url,
+          active:    true,
+          updatedAt: new Date(),
+          ...(req.body?.events !== undefined ? { events: parsed.events } : {}),
+        },
       });
-      await syncLegacyEndpoint(userId, { url, active: true });
-      return updated;
+      // Shape explícito: o código anterior devolvia a linha do Prisma inteira,
+      // o que vazava `userId` e o `secret` AINDA CRIPTOGRAFADO (inútil para
+      // quem fosse validar). Aqui o secret vai em claro, igual ao GET — quem
+      // chama já é o dono autenticado da conta.
+      return {
+        id:        updated.id,
+        url:       updated.url,
+        events:    updated.events,
+        active:    updated.active,
+        secret:    decryptStr(updated.secret),
+        updatedAt: updated.updatedAt,
+      };
     }
 
-    // Cria nova configuração com secret gerado automaticamente (criptografado em repouso)
     const rawSecret = crypto.randomBytes(32).toString('hex');
     const config = await (prisma as any).webhookConfig.create({
-      data: { userId, url, secret: encryptStr(rawSecret), active: true },
+      data: { userId, url, secret: encryptStr(rawSecret), events: parsed.events, active: true },
     });
-    // Invalida o cache de "tem ouvinte?" (services/events.ts) — sem isso, os
-    // eventos dos próximos 60s seriam descartados por acharem que não há
-    // webhook configurado, justamente logo depois de o cliente configurar um.
-    await invalidateListenerCache(userId);
-    return reply.code(201).send({ ...config, secret: rawSecret });
+    // Único momento em que o secret em claro é devolvido — o integrador precisa
+    // copiar agora para validar a assinatura do outro lado.
+    return reply.code(201).send({
+      id:        config.id,
+      url:       config.url,
+      events:    config.events,
+      active:    config.active,
+      secret:    rawSecret,
+      createdAt: config.createdAt,
+    });
+  });
+
+  // ── PATCH /webhook-config/events ──────────────────────
+  // Troca só a lista de eventos assinados, sem mexer na URL nem no secret.
+  app.patch<{ Body: { events: string[] } }>('/events', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const plan   = await getUserPlan(userId);
+    if (!requireIntegrationPlan(plan, reply)) return;
+
+    const existing = await (prisma as any).webhookConfig.findUnique({ where: { userId } });
+    if (!existing) return reply.code(404).send({ error: 'Webhook não configurado.' });
+
+    const parsed = parseEvents(req.body?.events);
+    if (!parsed.ok) return reply.code(400).send({ error: parsed.error });
+
+    const updated = await (prisma as any).webhookConfig.update({
+      where: { userId },
+      data:  { events: parsed.events, updatedAt: new Date() },
+    });
+    return { id: updated.id, events: updated.events, active: updated.active };
   });
 
   // ── DELETE /webhook-config ────────────────────────────
@@ -113,7 +146,7 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
   app.delete('/', auth, async (req: any, reply) => {
     const userId = req.user.sub;
     const plan   = await getUserPlan(userId);
-    if (!requirePlan(plan, PLAN_WEBHOOK, reply)) return;
+    if (!requireIntegrationPlan(plan, reply)) return;
 
     const existing = await (prisma as any).webhookConfig.findUnique({ where: { userId } });
     if (!existing) return reply.code(404).send({ error: 'Webhook não configurado.' });
@@ -122,16 +155,37 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
       where: { userId },
       data:  { active: false, updatedAt: new Date() },
     });
-    await syncLegacyEndpoint(userId, { active: false });
     return reply.code(200).send({ active: false });
   });
 
+  // ── GET /webhook-config/deliveries ────────────────────
+  // Últimas tentativas de entrega — o integrador consegue depurar sozinho
+  // ("o evento saiu? que status a minha URL devolveu?") sem abrir suporte.
+  app.get<{ Querystring: { limit?: string } }>('/deliveries', auth, async (req: any, reply) => {
+    const userId = req.user.sub;
+    const plan   = await getUserPlan(userId);
+    if (!requireIntegrationPlan(plan, reply)) return;
+
+    const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit ?? '', 10) || 25));
+    const deliveries = await (prisma as any).webhookDelivery.findMany({
+      where:   { userId },
+      orderBy: { createdAt: 'desc' },
+      take:    limit,
+      select:  { id: true, event: true, url: true, success: true, httpStatus: true, attempt: true, error: true, createdAt: true },
+    });
+    return { data: deliveries };
+  });
+
   // ── POST /webhook-config/test ─────────────────────────
-  // Dispara payload de teste para a URL configurada
+  // Dispara payload de teste para a URL configurada. Síncrono de propósito: o
+  // dono clicou "testar" e quer o status HTTP na hora, então aqui NÃO passa
+  // pela fila. Usa a mesma função de assinatura do disparo real
+  // (lib/webhook-signature.ts) — era justamente a divergência entre o teste e
+  // o disparo real que esconder o bug do secret criptografado.
   app.post('/test', auth, async (req: any, reply) => {
     const userId = req.user.sub;
     const plan   = await getUserPlan(userId);
-    if (!requirePlan(plan, PLAN_WEBHOOK, reply)) return;
+    if (!requireIntegrationPlan(plan, reply)) return;
 
     const config = await (prisma as any).webhookConfig.findUnique({ where: { userId, active: true } });
     if (!config) {
@@ -144,25 +198,28 @@ export default async function webhookConfigRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: `URL inválida: ${safe.error}` });
     }
 
+    const timestamp = new Date().toISOString();
     const payload = {
       event:     'test',
-      timestamp: new Date().toISOString(),
+      timestamp,
       userId,
       data:      { message: 'Este é um payload de teste do ZapScript Webhook.' },
     };
 
-    const body      = JSON.stringify(payload);
-    const signature = 'sha256=' + crypto.createHmac('sha256', decryptStr(config.secret)).update(body).digest('hex');
+    const rawBody = JSON.stringify(payload);
+    const headers = buildWebhookHeaders({
+      secretPlain: decryptStr(config.secret),
+      rawBody,
+      event:       'test',
+      deliveryId:  crypto.randomUUID(),
+      timestamp,
+    });
 
     try {
       const res = await fetch(config.url, {
-        method:  'POST',
-        headers: {
-          'Content-Type':          'application/json',
-          'X-ZapScript-Signature': signature,
-          'X-ZapScript-Event':     'test',
-        },
-        body,
+        method: 'POST',
+        headers,
+        body:   rawBody,
         signal: AbortSignal.timeout(8_000),
       });
 

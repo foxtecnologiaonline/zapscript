@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { logger } from '../lib/logger';
 import { transcriptionQueue, atendeQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
-import { logInbound } from '../services/message-log';
+import { logInboundMessage } from '../services/inbound-log';
 import { notifyWelcome, notifyReconnected, notifyCobrancaPossiblePayment } from '../services/whatsapp-notify';
 import { handleOfficialNumberText, closeLeadOnConnected } from '../services/onboarding-whatsapp';
 import { storeQr } from '../lib/qrStore';
@@ -15,6 +15,7 @@ import {
 import { ingestCopilotoGroupMessage } from '../services/copiloto-groups';
 import { handleHarveyMessage } from '../services/harvey-commands';
 import { OPT_OUT_KEYWORDS, registerCampanhaOptOut, handleOptinResponse } from './modules/campanhas';
+import { enqueueWebhook, WEBHOOK_EVENTS } from '../lib/webhook-events';
 import { isCampanhaChatCommand, handleCampanhaChatCommand, handleCampanhaChatReply } from '../services/campanhas-chat-commands';
 import { routeZapMonneyMessage } from '../services/zapmonney-router';
 import { io } from '../index';
@@ -377,28 +378,27 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
 
       log.info({ messageType, senderPhone, instance: instName }, '[Evolution] messages.upsert');
 
-      // ── Log unificado de mensagens (item 5 do escopo ZapScript × Twilio) ────
+      // ── Log de entrada (item 5 do escopo ZapScript × Twilio) ────────────────
       // Registra a ENTRADA antes de qualquer decisão de produto (áudio vs texto,
       // Atende vs Copiloto): o log tem que responder "chegou mensagem deste
       // contato" mesmo quando nenhum módulo age sobre ela. Só entrada de
       // terceiro — `fromMe` é mensagem do próprio dono (inclusive resposta do
-      // nosso bot), que viraria eco do que já registramos na saída.
+      // nosso bot), que viraria eco do que já saiu por OutboundMessage.
       if (!fromMe) {
         void findNumber().then((numero: any) => {
           if (!numero) return;
-          return logInbound({
+          return logInboundMessage({
             userId:            numero.userId,
             numberId:          numero.id,
             channel:           'evolution',
-            source:            'sistema',
-            toPhone:           numero.phoneNumber && numero.phoneNumber !== 'pending' ? numero.phoneNumber : senderPhone,
-            fromPhone:         senderPhone,
+            to:                numero.phoneNumber && numero.phoneNumber !== 'pending' ? numero.phoneNumber : null,
+            from:              senderPhone,
             type:              evolutionInboundType(messageType),
             body:              evolutionInboundText(msg),
             providerMessageId: key?.id ?? null,
           });
         }).catch((err: any) =>
-          log.warn({ err: err?.message }, '[Evolution] Falha ao registrar entrada no MessageLog'));
+          log.warn({ err: err?.message }, '[Evolution] Falha ao registrar entrada no log'));
       }
 
       // ── Verificar se é áudio ───────────────────────────────────────────────
@@ -427,6 +427,32 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
           // Web + fluxos de Atende/Campanhas/Copiloto/Cobrança) — evita repetir a
           // mesma consulta ao banco neste hot path.
           const number = messageText ? await findNumber(false) : null;
+
+          // ── Webhook de saída: message.received (API pública v1) ──────────────
+          // PRIMEIRO consumidor do texto, de propósito, e isso é essencial:
+          // daqui para baixo o fluxo tem uma cascata de `return` (consulta admin
+          // de saques, onboarding do número oficial, opt-in/opt-out de
+          // Campanhas) que consome a mensagem e encerra o processamento. Duas
+          // dessas interceptações pegam justamente as respostas mais comuns a
+          // uma pergunta de confirmação:
+          //   - "SIM"      → handleOptinResponse, quando há opt-in pendente;
+          //   - "CANCELAR" → OPT_OUT_KEYWORDS, sempre.
+          // Um disparo colocado junto ao bloco do Atende (o lugar "natural")
+          // simplesmente nunca veria essas duas — ou seja, a integração
+          // perderia exatamente o evento que ela existe para receber.
+          //
+          // Fire-and-forget: enqueueWebhook nunca lança e não é aguardado, então
+          // não atrasa o ACK para a Evolution nem altera em nada o
+          // comportamento de quem não tem webhook assinando este evento.
+          if (messageText && number && !number.isPublic && !fromMe) {
+            enqueueWebhook(number.userId, WEBHOOK_EVENTS.MESSAGE_RECEIVED, {
+              numberId:     number.id,
+              contactPhone: senderPhone,
+              contactName:  senderName,
+              text:         messageText,
+              messageId,
+            }).catch(() => null);
+          }
 
           // ── WhatsApp Web simplificado ────────────────────────────────────────
           // Replica a mensagem em tempo real para a aba aberta no site, indepen-

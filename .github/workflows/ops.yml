@@ -255,6 +255,10 @@ jobs:
             status=$(docker inspect --format='{{.State.Health.Status}}' zapscript-api 2>/dev/null || echo unknown)
             if [ "$status" = "healthy" ]; then echo "api healthy apos ${i}x5s"; break; fi
             if [ "$i" = "100" ]; then echo "TIMEOUT esperando api ficar healthy"; docker logs zapscript-api --tail 120; exit 1; fi
+            # Progresso a cada 30s: mantem o canal SSH com trafego (ver nota do
+            # ServerAliveInterval) e mostra no log que ainda esta esperando, em
+            # vez de uma lacuna muda de varios minutos.
+            if [ $((i % 6)) -eq 0 ]; then echo "   ... api ainda ${status:-unknown} (${i}x5s)"; fi
             sleep 5
           done
 
@@ -296,6 +300,10 @@ jobs:
             status=$(docker inspect --format='{{.State.Health.Status}}' zapscript-api 2>/dev/null || echo unknown)
             if [ "$status" = "healthy" ]; then echo "api healthy apos ${i}x5s"; break; fi
             if [ "$i" = "100" ]; then echo "TIMEOUT esperando api ficar healthy"; docker logs zapscript-api --tail 120; exit 1; fi
+            # Progresso a cada 30s: mantem o canal SSH com trafego (ver nota do
+            # ServerAliveInterval) e mostra no log que ainda esta esperando, em
+            # vez de uma lacuna muda de varios minutos.
+            if [ $((i % 6)) -eq 0 ]; then echo "   ... api ainda ${status:-unknown} (${i}x5s)"; fi
             sleep 5
           done
 
@@ -320,4 +328,16 @@ jobs:
           SSH_HOST:   ${{ secrets.VULTR_HOST }}
           REMOTE_CMD: ${{ steps.cmd.outputs.cmd }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "root@$SSH_HOST" "$REMOTE_CMD"
+          # ServerAliveInterval: sem isto, o deploy de 2026-10-02 ficou pendurado
+          # 2h14 e morreu com "client_loop: send disconnect: Broken pipe".
+          # O loop de healthcheck abaixo pode ficar minutos sem imprimir nada, e
+          # uma conexao TCP ociosa atras do NAT do runner e' descartada em
+          # silencio — sem keepalive o cliente SSH nao percebe e espera para
+          # sempre. Resultado daquele incidente: a api subiu com a imagem nova,
+          # mas o worker nunca foi recriado (deploy pela metade, sem erro visivel
+          # na hora). 15s x 8 = derruba em ~2min se o servidor parar de responder.
+          ssh -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=8 \
+            "root@$SSH_HOST" "$REMOTE_CMD"

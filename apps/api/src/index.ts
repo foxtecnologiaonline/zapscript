@@ -24,9 +24,6 @@ import { startLifecycleWhatsapp } from './services/lifecycle-whatsapp';
 import { startOnboardingNudge } from './services/onboarding-nudge';
 import { startCopilotoUnreadSweep } from './services/copiloto-backfill';
 import { purgeExpiredRefreshTokens } from './lib/refreshToken';
-import { purgeExpiredIdempotencyRecords } from './lib/idempotency';
-import { purgeOldMessageLogs } from './services/message-log';
-import { purgeOldEvents } from './services/events';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -344,11 +341,12 @@ app.register(import('./routes/apiKeys'),         { prefix: '/api-keys' });
 app.register(import('./routes/publicApi'),       { prefix: '/public/v1' });
 
 // ── Plataforma (escopo ZapScript × Twilio) — painel, autenticado por JWT.
-// A mesma informação sai pela API pública em /public/v1/* (X-Api-Key).
-// Ver PLATAFORMA_API_PUBLICA.md.
-app.register(import('./routes/message-log'),       { prefix: '/messages' });          // log + métricas (itens 5 e 7)
-app.register(import('./routes/webhook-endpoints'), { prefix: '/webhook-endpoints' }); // eventos (item 2)
-app.register(import('./routes/templates'),         { prefix: '/templates' });         // templates + header de mídia (itens 4 e 8)
+// Templates do WhatsApp oficial: criar, acompanhar a análise da Meta e ler o
+// motivo de uma reprovação (itens 4 e 8). Ver docs/API_PUBLICA_V1.md.
+app.register(import('./routes/templates'), { prefix: '/templates' });
+// Leitura da plataforma: métricas, envios, recebidas, entregas de webhook e o
+// catálogo de códigos de erro (itens 5, 6 e 7).
+app.register(import('./routes/platform'),  { prefix: '/platform' });
 // Demo de upload no site removido — vira app/site separado. Rota desativada.
 app.register(import('./routes/analytics'),       { prefix: '/analytics' });
 
@@ -1492,24 +1490,6 @@ async function start() {
     // unref(): poda periódica não pode segurar o processo num shutdown.
     setInterval(podarRefreshTokens, 24 * 60 * 60 * 1000).unref();
 
-    // ── Poda da plataforma (itens 2, 3 e 5 do escopo ZapScript × Twilio) ─────
-    // As três tabelas novas crescem por requisição/mensagem, não por usuário:
-    // sem poda, IdempotencyRecord ganha uma linha por POST e MessageLog uma
-    // por mensagem trafegada. Retenções configuráveis por env
-    // (IDEMPOTENCY_TTL_HOURS, MESSAGE_LOG_RETENTION_DAYS, EVENT_RETENTION_DAYS).
-    const podarPlataforma = () => {
-      purgeExpiredIdempotencyRecords()
-        .catch(err => app.log.error({ err: err.message }, '[Idempotency] Falha na poda'));
-      purgeOldMessageLogs()
-        .catch(err => app.log.error({ err: err.message }, '[MessageLog] Falha na poda'));
-      purgeOldEvents()
-        .catch(err => app.log.error({ err: err.message }, '[Events] Falha na poda'));
-    };
-    podarPlataforma();
-    // Horário, não diário: o registro de idempotência vive 24h por padrão, mas
-    // o automático vive 10 SEGUNDOS — uma poda só por dia deixaria milhares de
-    // linhas vencidas acumuladas entre execuções.
-    setInterval(podarPlataforma, 60 * 60 * 1000).unref();
 
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 

@@ -84,11 +84,9 @@ model User {
   assignedTasks           Task[]              @relation("TaskAssignee")
   taskComments            TaskComment[]
   aiUsageLogs             AiUsageLog[]
-  // ── Plataforma/API pública (ver PLATAFORMA_API_PUBLICA.md) ──
-  idempotencyRecords      IdempotencyRecord[]
-  messageLogs             MessageLog[]
-  platformEvents          PlatformEvent[]
-  webhookEndpoints        WebhookEndpoint[]
+  outboundMessages        OutboundMessage[]
+  webhookDeliveries       WebhookDelivery[]
+  inboundMessages         InboundMessage[]
 }
 
 model Plan {
@@ -195,6 +193,7 @@ model WhatsappNumber {
   campanhas           Campanha[]
   avisos              Aviso[]
   missions            Mission[] // MKT-Fast — número usado para enviar as execuções do canal 'whatsapp'
+  outboundMessages    OutboundMessage[]
 
   @@index([userId]) // A2: listagem de números por usuário
   @@index([zapiInstanceId]) // A2: busca de instância em webhook (hot path)
@@ -344,10 +343,15 @@ model PrivacyPolicy {
 }
 
 model WebhookConfig {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  url       String
-  secret    String // Chave HMAC-SHA256 para assinar payloads
+  id     String @id @default(cuid())
+  userId String @unique
+  url    String
+  secret String // Chave HMAC-SHA256 para assinar payloads (criptografada em repouso)
+  // Eventos assinados por esta config. Default = só 'transcription.completed',
+  // que era o único evento existente antes da API pública v1 — assim nenhuma
+  // config já criada passa a receber eventos novos (ex.: message.received) de
+  // surpresa. Catálogo em apps/api/src/lib/webhook-events.ts.
+  events    String[] @default(["transcription.completed"])
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1933,193 +1937,103 @@ model ZmTransaction {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PLATAFORMA / API PÚBLICA — itens 1,2,3,5 do escopo ZapScript × Twilio.
-// Documentação do contrato: PLATAFORMA_API_PUBLICA.md
+// API pública v1 — mensageria estilo Twilio (apps/api/src/routes/publicApi.ts).
+//
+// OutboundMessage é o recurso durável de envio: ao contrário de `Aviso` (que é
+// só o registro do que o dono digitou no dashboard e volta 201 antes do envio
+// acontecer), aqui o status de entrega é observável pelo integrador via
+// GET /public/v1/messages/:id e pelo evento de webhook `message.status`.
+//
+// idempotencyKey: o integrador manda uma chave por intenção de envio. Um POST
+// repetido com a mesma chave (retry de rede, redeploy no meio da requisição)
+// devolve o registro original em vez de mandar a mesma mensagem duas vezes
+// pro WhatsApp do cliente final.
 // ─────────────────────────────────────────────────────────────────────────────
-
-/// Idempotência das escritas da API pública (item 3).
-///
-/// Por que é pré-requisito DURO da API de escrita: um retry de rede do cliente
-/// (ou do Zapier/Make, que retentam sozinhos em 5xx e timeout) reenvia o mesmo
-/// POST. Sem este registro, o mesmo texto sai duas vezes no WhatsApp do
-/// contato final — dano visível para o cliente do nosso cliente, não um
-/// registro duplicado qualquer.
-///
-/// Semântica (igual à do Stripe): a 1ª requisição cria a linha com
-/// status='in_progress'; ao terminar, grava statusCode+responseBody. Uma 2ª
-/// requisição com a MESMA chave devolve a resposta gravada (replay) em vez de
-/// reexecutar. Mesma chave com corpo diferente é erro (idempotency.request_mismatch)
-/// — protege contra reuso acidental de chave.
-model IdempotencyRecord {
-  id           String    @id @default(cuid())
-  userId       String
-  /// Rota lógica, ex.: 'POST /public/v1/messages'. Faz o escopo da chave ser
-  /// por endpoint: a mesma chave em rotas diferentes não colide.
-  scope        String
-  /// Idempotency-Key do cliente, ou fingerprint automático (ver autoDerived).
-  key          String
-  /// SHA-256 do corpo canonicalizado — detecta reuso da chave com outro corpo.
-  requestHash  String
-  status       String    @default("in_progress") // 'in_progress' | 'completed'
-  statusCode   Int?
-  responseBody Json?
-  /// Id do recurso criado (ex.: MessageLog.id) — atalho para logs e suporte.
-  resourceId   String?
-  /// true = o cliente NÃO mandou Idempotency-Key e nós derivamos uma do corpo,
-  /// com janela curta (ver lib/idempotency.ts). Distingue "cliente idempotente"
-  /// de "rede de segurança nossa" nas métricas.
-  autoDerived  Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  completedAt  DateTime?
-  expiresAt    DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, scope, key])
-  @@index([expiresAt]) // purga periódica
-}
-
-/// Log unificado de mensagens (item 5) — o equivalente ao recurso Message do
-/// Twilio. Antes disto, "o que foi enviado para quem" estava espalhado em
-/// CampanhaContato, AtendeMessage, Aviso, CobrancaEnvio e em lugar nenhum para
-/// envios por API: não havia uma pergunta única "esta mensagem saiu?".
-///
-/// É append-only e nunca bloqueia o envio: falha ao gravar o log não derruba a
-/// mensagem (o envio já aconteceu). `numberId` é coluna solta, SEM FK, de
-/// propósito — o log precisa sobreviver à remoção do número, e toda consulta
-/// já filtra por userId.
-model MessageLog {
-  id                String    @id @default(cuid())
-  userId            String
-  numberId          String?
-  direction         String // 'outbound' | 'inbound'
-  channel           String // 'meta' | 'evolution'
-  /// Quem originou: 'api' | 'campanha' | 'atende' | 'aviso' | 'cobranca' |
-  /// 'copiloto' | 'zapscreve' | 'transcricao' | 'suporte'
-  source            String
-  sourceId          String? // id do registro de origem (ex.: CampanhaContato.id)
-  toPhone           String
-  fromPhone         String?
-  type              String // 'text' | 'template' | 'image' | 'audio' | 'video' | 'document' | 'sticker'
-  /// Conteúdo textual (ou legenda da mídia), truncado — ver BODY_MAX_CHARS em
-  /// services/message-log.ts. Não guardamos binário de mídia aqui.
-  body              String?
-  templateName      String?
-  templateLanguage  String?
-  mediaUrl          String?
-  /// queued → sent → delivered → read   (ou → failed em qualquer ponto)
-  /// 'received' é o estado terminal do inbound.
-  status            String    @default("queued")
-  /// wamid (Meta) ou id da Evolution — é a chave de correlação do status vindo
-  /// por webhook do provedor.
-  providerMessageId String?
-  /// Código do catálogo (lib/apiErrors.ts), não a frase do provedor.
-  errorCode         String?
-  errorMessage      String?
-  /// Tentativas de envio consumidas (o job da fila pode retentar).
-  attempts          Int       @default(0)
-  idempotencyKey    String?
-  queuedAt          DateTime  @default(now())
-  sentAt            DateTime?
-  deliveredAt       DateTime?
-  readAt            DateTime?
-  failedAt          DateTime?
-  updatedAt         DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, queuedAt]) // listagem padrão da API (ordem decrescente)
-  @@index([userId, status])
-  @@index([userId, direction, queuedAt])
-  @@index([providerMessageId]) // correlação de status do provedor (hot path)
-  @@index([numberId, queuedAt])
-  @@index([source, sourceId])
-  @@index([queuedAt]) // purga por retenção
-}
-
-/// Evento de plataforma (item 2) — fato imutável que já aconteceu. Fica gravado
-/// independentemente de haver webhook configurado: é o que permite ao cliente
-/// buscar eventos por API (GET /public/v1/events) depois de uma indisponibilidade
-/// do endpoint dele, em vez de perder o acontecido.
-model PlatformEvent {
-  id         String   @id @default(cuid())
-  userId     String
-  /// Tipo do catálogo de eventos (services/events.ts), ex.: 'message.delivered'.
-  type       String
-  /// Recurso a que o evento se refere (ex.: MessageLog.id).
-  resourceId String?
-  /// Payload público do evento — o MESMO objeto entregue no webhook.
-  data       Json
-  createdAt  DateTime @default(now())
-
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  deliveries WebhookDelivery[]
-
-  @@index([userId, createdAt])
-  @@index([userId, type, createdAt])
-  @@index([createdAt]) // purga por retenção
-}
-
-/// Endpoint de webhook do cliente (item 2). Substitui, sem apagar, o
-/// WebhookConfig antigo (1 URL por usuário, sem seleção de eventos e sem
-/// reentrega): aqui são N endpoints, cada um assinando os tipos que quer, com
-/// histórico de entrega e retry. O WebhookConfig legado continua recebendo —
-/// o dispatcher o trata como um endpoint 'legacy' inscrito em tudo, para não
-/// quebrar integração de quem já configurou.
-model WebhookEndpoint {
-  id                  String    @id @default(cuid())
-  userId              String
-  url                 String
-  description         String?
-  /// Segredo HMAC, criptografado em repouso (services/encryption.ts).
-  secret              String
-  /// Tipos assinados. ['*'] = todos (inclusive tipos futuros).
-  events              String[]  @default(["*"])
-  active              Boolean   @default(true)
-  /// 'v1' = X-ZapScript-Signature: t=<unix>,v1=<hmac(t.body)>  (resiste a replay)
-  /// 'legacy' = sha256=<hmac(body)>, formato do WebhookConfig antigo.
-  signatureScheme     String    @default("v1")
-  /// Desativação automática após falhas consecutivas (circuit breaker).
-  consecutiveFailures Int       @default(0)
-  disabledAt          DateTime?
-  disabledReason      String?
-  lastSuccessAt       DateTime?
-  lastFailureAt       DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  deliveries WebhookDelivery[]
-
-  @@index([userId])
-  @@index([userId, active])
-}
-
-/// Tentativa de entrega de um evento num endpoint (item 2). Uma linha por
-/// par (evento, endpoint) — as tentativas ficam no contador, não em linhas
-/// novas, para o cliente ver "esta entrega" e não um rastro confuso.
-model WebhookDelivery {
+model OutboundMessage {
   id             String    @id @default(cuid())
-  endpointId     String
-  eventId        String
-  status         String    @default("pending") // 'pending' | 'succeeded' | 'failed'
+  userId         String
+  numberId       String
+  to             String // telefone de destino, só dígitos (10-15)
+  body           String
+  status         String    @default("queued") // 'queued' | 'sent' | 'failed'
   attempts       Int       @default(0)
-  responseStatus Int?
-  /// Início do corpo da resposta do endpoint (truncado) — é o que explica um 4xx.
-  responseBody   String?
+  failureReason  String?
+  /// Código ESTÁVEL do catálogo (apps/api/src/lib/apiErrors.ts), ao lado da
+  /// frase crua do provedor em failureReason. Item 6 do escopo
+  /// ZapScript × Twilio: `failureReason` é texto do provedor — muda sem aviso e
+  /// não dá para programar contra. Este campo é o que o integrador consegue
+  /// comparar (`message.invalid_recipient`, `number.disconnected`…) e o que as
+  /// métricas agrupam para responder "por que as mensagens estão falhando".
   errorCode      String?
-  errorMessage   String?
-  nextRetryAt    DateTime?
-  deliveredAt    DateTime?
+  idempotencyKey String?
+  // Quem originou o envio: 'public_api' (chave X-Api-Key) ou 'dashboard'.
+  source         String    @default("public_api")
+  sentAt         DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
-  event    PlatformEvent   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number WhatsappNumber @relation(fields: [numberId], references: [id], onDelete: Cascade)
 
-  /// Idempotência da entrega: o mesmo evento não é entregue duas vezes no
-  /// mesmo endpoint, nem se o job for reenfileirado.
-  @@unique([endpointId, eventId])
-  @@index([endpointId, createdAt])
-  @@index([status, nextRetryAt])
+  // Idempotência por usuário (não global): a chave de um cliente nunca colide
+  // com a de outro. Parcial não é suportado pelo Prisma, então envios sem
+  // chave gravam NULL — e no Postgres NULLs não colidem entre si no unique.
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([numberId])
+}
+
+// Log de entrega de webhook — observabilidade pro integrador e pro suporte
+// ("o evento saiu? que status a URL devolveu?"). Uma linha por tentativa.
+model WebhookDelivery {
+  id         String   @id @default(cuid())
+  userId     String
+  event      String // 'message.received' | 'message.status' | 'transcription.completed'
+  url        String
+  success    Boolean  @default(false)
+  httpStatus Int?
+  attempt    Int      @default(1)
+  error      String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([event, createdAt(sort: Desc)])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lado de ENTRADA do log de mensagens (item 5 do escopo ZapScript × Twilio).
+//
+// A v1 publicou OutboundMessage (o que sai) e o evento `message.received` (o
+// que chega, empurrado na hora). Faltava o registro DURÁVEL da entrada: sem
+// ele, "este contato me mandou alguma coisa?" só tinha resposta se o webhook do
+// cliente estivesse de pé naquele exato segundo, e não havia como contar volume
+// de entrada em nenhuma métrica.
+//
+// Espelha OutboundMessage de propósito (mesmos nomes de campo onde o conceito é
+// o mesmo) para que as duas pontas se leiam juntas.
+// ─────────────────────────────────────────────────────────────────────────────
+model InboundMessage {
+  id       String  @id @default(cuid())
+  userId   String
+  numberId String? // número da conta que recebeu; solto, sem FK, para o registro sobreviver à remoção do número
+  channel  String // 'meta' | 'evolution'
+  from     String // telefone de origem, só dígitos
+  to       String? // número da conta que recebeu, só dígitos
+  type     String  @default("text") // 'text' | 'image' | 'audio' | 'video' | 'document' | 'sticker'
+  /// Texto, ou legenda da mídia. Truncado — ver INBOUND_BODY_MAX em services/inbound-log.ts.
+  body     String?
+  /// id da mensagem no provedor (wamid na Meta, key.id na Evolution).
+  providerMessageId String?
+  receivedAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Deduplicação de reentrega: o webhook do provedor repete a mesma mensagem em
+  /// reconexão, e sem isto cada repetição viraria uma linha nova. Envio sem id
+  /// do provedor grava NULL — e no Postgres NULLs não colidem entre si no unique.
+  @@unique([channel, providerMessageId])
+  @@index([userId, receivedAt(sort: Desc)])
+  @@index([numberId, receivedAt(sort: Desc)])
 }

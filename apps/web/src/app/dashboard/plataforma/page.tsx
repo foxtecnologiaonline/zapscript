@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import MessageLogPanel from './_components/MessageLogPanel';
+import MensagensPanel from './_components/MensagensPanel';
 import WebhooksPanel from './_components/WebhooksPanel';
 import TemplatesPanel from './_components/TemplatesPanel';
 
@@ -55,7 +55,7 @@ export default function PlataformaPage() {
 
       <p className="text-xs mb-4" style={{ color: 'rgb(var(--color-text-muted))' }}>{atual.hint}</p>
 
-      {aba === 'mensagens' && <MessageLogPanel />}
+      {aba === 'mensagens' && <MensagensPanel />}
       {aba === 'webhooks'  && <WebhooksPanel />}
       {aba === 'templates' && <TemplatesPanel />}
     </div>

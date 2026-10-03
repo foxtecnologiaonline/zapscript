@@ -1,16 +1,19 @@
 import { promises as dns } from 'dns';
 
 /**
- * Validação anti-SSRF de URL de webhook.
+ * Guarda anti-SSRF das URLs de webhook. Estava embutida em
+ * routes/webhook-config.ts; foi extraída porque agora precisa rodar em DOIS
+ * momentos distintos:
+ *   1. no cadastro/teste da URL (rota) — feedback imediato pro dono;
+ *   2. em CADA disparo (worker) — porque entre o cadastro e o disparo o DNS do
+ *      host pode ter passado a resolver para IP interno (DNS rebinding). Sem a
+ *      revalidação no disparo, a validação do cadastro é só teatro.
  *
- * Extraído de routes/webhook-config.ts para ser compartilhado com os endpoints
- * novos do sistema de eventos (item 2): são DUAS superfícies que aceitam uma
- * URL do cliente e depois fazem fetch server-side. Ter a checagem em um só
- * lugar evita o cenário clássico de "a rota nova esqueceu de validar" — que
- * aqui significaria usar nosso servidor para alcançar a rede interna.
+ * Cópia idêntica em apps/worker/src/lib/webhook-url-guard.ts (apps separados,
+ * sem pacote compartilhado). Se mudar aqui, mude lá.
  */
 
-// IPs privados/internos — bloqueados para prevenir SSRF
+// IPs privados/internos/link-local — inclui 169.254.169.254 (metadata de nuvem)
 const PRIVATE_IP_RE =
   /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|::1$|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:)/i;
 
@@ -18,19 +21,7 @@ const BLOCKED_HOSTNAMES = new Set([
   'localhost', '0.0.0.0', 'metadata.google.internal',
 ]);
 
-export interface UrlSafetyResult {
-  ok: boolean;
-  error?: string;
-}
-
-/**
- * Valida se a URL do webhook é segura para fetch server-side:
- * - HTTPS obrigatório em produção
- * - Bloqueia IPs privados, loopback, link-local e metadata services
- * - Resolve DNS e verifica TODOS os IPs retornados (um hostname público pode
- *   apontar para 127.0.0.1 — é o ataque de DNS rebinding na forma mais simples)
- */
-export async function isSafeWebhookUrl(url: string): Promise<UrlSafetyResult> {
+export async function isSafeWebhookUrl(url: string): Promise<{ ok: boolean; error?: string }> {
   let u: URL;
   try { u = new URL(url); } catch { return { ok: false, error: 'URL inválida.' }; }
 

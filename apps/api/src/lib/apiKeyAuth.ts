@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import { FastifyReply } from 'fastify';
 import { prisma } from './prisma';
-import { sendApiError } from './httpErrors';
 
 /**
  * API pública ZapScript 2.0 (tier Empresas) — autenticação por chave (não usa
@@ -9,23 +8,21 @@ import { sendApiError } from './httpErrors';
  * dali em diante só o hash (SHA-256) fica no banco — ver ApiKey no schema.
  */
 
-/**
- * Escopos da API pública. Leitura e escrita são escopos SEPARADOS de propósito:
- * uma chave de automação que só lê conversas nunca deve poder disparar
- * mensagem no WhatsApp dos contatos do cliente.
- */
 export const ALLOWED_SCOPES = [
   'conversations:read',
   'contacts:read',
-  // ── Plataforma (escopo ZapScript × Twilio) ──
-  'messages:read',   // log de mensagens (item 5)
-  'messages:write',  // envio por API (item 1)
-  'templates:read',  // listar templates do WABA (item 4)
-  'templates:write', // criar/apagar templates (item 4)
-  'events:read',     // histórico de eventos (item 2)
-  'webhooks:read',   // listar endpoints e entregas (item 2)
-  'webhooks:write',  // criar/alterar endpoints (item 2)
-  'metrics:read',    // métricas agregadas (item 7)
+  // API pública v1 — mensageria. Separados de propósito: um integrador
+  // terceiro que só precisa disparar mensagem recebe 'messages:send' e nada
+  // mais, sem ganhar leitura de conversas/CRM de tabela.
+  'messages:send',
+  'messages:read',
+  'webhooks:manage',
+  // Acrescentados ao portar os itens 4 e 7 do escopo ZapScript × Twilio.
+  // Leitura pura: 'templates:read' é pré-requisito para montar um envio de
+  // template correto (saber quantas variáveis e se há mídia no cabeçalho), e
+  // 'metrics:read' devolve só agregados.
+  'templates:read',
+  'metrics:read',
 ] as const;
 export type ApiScope = typeof ALLOWED_SCOPES[number];
 
@@ -44,41 +41,35 @@ export function hashApiKey(token: string): string {
 /**
  * preHandler factory: exige uma API key válida (header `X-Api-Key`), não
  * revogada, com todos os `scopes` pedidos. Em sucesso, grava req.apiKeyUserId
- * (dono do tier Empresas dono da chave) e atualiza lastUsedAt (fire-and-forget).
- *
- * Os erros saem no envelope público com código do catálogo
- * (`auth.key_missing` / `auth.key_invalid` / `auth.scope_missing`) — ver
- * lib/apiErrors.ts. Antes era `{ error: '<frase>' }`, que não dava para
- * programar: o cliente não conseguia distinguir "chave revogada" de "falta
- * escopo" sem comparar texto em português.
+ * (dono da conta dona da chave) e req.apiKeyScopes, e atualiza lastUsedAt
+ * (fire-and-forget).
  */
 export function requireApiKey(scopes: ApiScope[]) {
   return async (req: any, reply: FastifyReply) => {
     const header = req.headers['x-api-key'];
     const token = typeof header === 'string' ? header.trim() : '';
     if (!token) {
-      sendApiError(reply, 'auth.key_missing');
+      reply.code(401).send({ error: 'Envie a chave no header X-Api-Key.' });
       return reply;
     }
 
     const key = await prisma.apiKey.findUnique({ where: { keyHash: hashApiKey(token) } });
     if (!key || key.revokedAt) {
-      sendApiError(reply, 'auth.key_invalid');
+      reply.code(401).send({ error: 'Chave inválida ou revogada.' });
       return reply;
     }
 
     const missing = scopes.find((s) => !key.scopes.includes(s));
     if (missing) {
-      sendApiError(reply, 'auth.scope_missing', {
-        message: `Esta chave não tem o escopo "${missing}".`,
-        details: { required: scopes, missing, granted: key.scopes },
-      });
+      reply.code(403).send({ error: `Esta chave não tem o escopo "${missing}".` });
       return reply;
     }
 
-    req.apiKeyId = key.id;
-
     req.apiKeyUserId = key.userId;
+    // Escopos da chave ficam disponíveis para a rota — GET /public/v1/me os
+    // devolve, para o integrador saber o que a chave dele pode fazer sem
+    // precisar descobrir por 403 em produção.
+    req.apiKeyScopes = key.scopes;
     prisma.apiKey.update({ where: { id: key.id }, data: { lastUsedAt: new Date() } }).catch(() => null);
   };
 }

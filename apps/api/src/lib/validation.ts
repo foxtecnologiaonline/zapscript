@@ -445,95 +445,34 @@ export const previewContatosSchema = z.object({
 // ── API pública (tier Empresas) ────────────────────────────
 export const createApiKeySchema = z.object({
   name:   z.string().min(2, 'Nome precisa ter pelo menos 2 caracteres').max(60),
-  // Mantido em sincronia com ALLOWED_SCOPES (lib/apiKeyAuth.ts) — um teste
-  // falha se divergirem, para não existir escopo criável que a autenticação
-  // não reconheça (nem o contrário).
+  // Escopos da API pública v1 (contrato publicado — ver docs/API_PUBLICA_V1.md).
+  // Mantido em sincronia com ALLOWED_SCOPES (lib/apiKeyAuth.ts); um teste falha
+  // se divergirem, para não existir escopo criável que a autenticação não
+  // reconheça — nem o contrário.
   scopes: z.array(z.enum([
     'conversations:read', 'contacts:read',
-    'messages:read', 'messages:write',
-    'templates:read', 'templates:write',
-    'events:read', 'webhooks:read', 'webhooks:write',
-    'metrics:read',
+    'messages:send', 'messages:read', 'webhooks:manage',
+    // Acrescentados ao portar os itens 4 e 7: listar template é pré-requisito
+    // para montar um envio de template correto, e métricas são leitura pura.
+    'templates:read', 'metrics:read',
   ])).min(1, 'Escolha ao menos 1 escopo'),
 });
 
-// ── API pública de escrita: POST /public/v1/messages (item 1) ──────────────
-// Telefone sempre em dígitos com DDI (ex.: 5511999999999). 10 a 15 dígitos é a
-// faixa do E.164 — rejeitar aqui é melhor que colher 131009 da Meta depois.
-const phoneDigits = z.string()
-  .trim()
-  .transform((v) => v.replace(/\D/g, ''))
-  .refine((v) => v.length >= 10 && v.length <= 15,
-    'Telefone precisa ter 10 a 15 dígitos, com DDI (ex.: 5511999999999)');
-
-const mediaRefSchema = z.object({
-  link:     z.string().url('media.link precisa ser uma URL').max(2048).optional(),
-  id:       z.string().max(128).optional(),
-  caption:  z.string().max(1024).optional(),
-  filename: z.string().max(255).optional(),
-}).refine((m) => Boolean(m.link || m.id), 'Informe media.link ou media.id');
-
-const templateHeaderSchema = z.object({
-  type:     z.enum(['image', 'video', 'document']),
-  link:     z.string().url('template.header.link precisa ser uma URL').max(2048).optional(),
-  id:       z.string().max(128).optional(),
-  filename: z.string().max(255).optional(),
-}).refine((h) => Boolean(h.link || h.id), 'Informe template.header.link ou template.header.id');
-
-export const sendMessageSchema = z.object({
-  to:         phoneDigits,
-  // Ausente = número conectado do cliente (o único, no caso comum). Obrigatório
-  // na prática quando a conta tem mais de um número — ver routes/publicApi.ts.
-  numberId:   z.string().max(64).optional(),
-  type:       z.enum(['text', 'template', 'image', 'audio', 'video', 'document']).default('text'),
-  text:       z.string().min(1).max(4096).optional(),
-  previewUrl: z.boolean().optional(),
-  media:      mediaRefSchema.optional(),
-  template:   z.object({
-    name:      z.string().min(1).max(512),
-    language:  z.string().min(2).max(10).default('pt_BR'),
-    variables: z.array(z.union([z.string().max(1024), z.number()])).max(30).optional(),
-    header:    templateHeaderSchema.optional(),
-  }).optional(),
-}).superRefine((data, ctx) => {
-  if (data.type === 'text' && !data.text) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['text'], message: 'Obrigatório quando type=text' });
-  }
-  if (data.type === 'template' && !data.template) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['template'], message: 'Obrigatório quando type=template' });
-  }
-  if (['image', 'audio', 'video', 'document'].includes(data.type) && !data.media) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['media'], message: `Obrigatório quando type=${data.type}` });
-  }
-});
-
-// ── Endpoints de webhook (item 2) ──────────────────────────────────────────
-export const webhookEndpointCreateSchema = z.object({
-  url:         z.string().url('URL inválida').max(2048),
-  description: z.string().max(200).optional(),
-  // ['*'] = todos os tipos, inclusive os que criarmos depois.
-  events:      z.array(z.string().min(3).max(60)).min(1).max(40).default(['*']),
-});
-
-export const webhookEndpointUpdateSchema = z.object({
-  url:         z.string().url('URL inválida').max(2048).optional(),
-  description: z.string().max(200).nullable().optional(),
-  events:      z.array(z.string().min(3).max(60)).min(1).max(40).optional(),
-  active:      z.boolean().optional(),
-}).refine((d) => Object.keys(d).length > 0, 'Informe pelo menos um campo');
-
-// ── Templates in-app (item 4) ─────────────────────────────────────────────
+// ── Templates de mensagem (item 4) — criação pelo painel ───────────────────
+// Só o painel cria template (JWT, papel admin): é um ato que passa por análise
+// da Meta e afeta a qualidade do número da conta inteira. Pela API pública, só
+// leitura (escopo templates:read).
 export const createTemplateSchema = z.object({
   // A Meta aceita só minúsculas, números e underscore no nome.
   name:     z.string().regex(/^[a-z0-9_]{1,512}$/, 'Use apenas minúsculas, números e _ (ex.: promo_verao)'),
   language: z.string().min(2).max(10).default('pt_BR'),
   category: z.enum(['MARKETING', 'UTILITY', 'AUTHENTICATION']),
   header:   z.object({
-    format:   z.enum(['TEXT', 'IMAGE', 'VIDEO', 'DOCUMENT']),
-    text:     z.string().max(60).optional(),
+    format:  z.enum(['TEXT', 'IMAGE', 'VIDEO', 'DOCUMENT']),
+    text:    z.string().max(60).optional(),
     // header_handle obtido em POST /templates/media-handle (item 8).
-    handle:   z.string().max(2048).optional(),
-    example:  z.array(z.string().max(200)).max(10).optional(),
+    handle:  z.string().max(2048).optional(),
+    example: z.array(z.string().max(200)).max(10).optional(),
   }).optional(),
   body:     z.object({
     text:    z.string().min(1).max(1024),
@@ -556,7 +495,6 @@ export type CreateTranscriptionInput = z.infer<typeof createTranscriptionSchema>
 export type CreateSubscriptionInput = z.infer<typeof createSubscriptionSchema>;
 export type AdminUpdateUserInput = z.infer<typeof adminUpdateUserSchema>;
 export type CreateSupportTicketInput = z.infer<typeof createSupportTicketSchema>;
-export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 
 // ── Middleware helper ──────────────────────────────────
@@ -570,3 +508,14 @@ export function validateRequest<T>(schema: z.ZodSchema<T>) {
     return { valid: false, error: errors };
   };
 }
+
+// ── API pública v1 — envio de mensagem (recurso "Messages") ────────────────
+// `to` aceita o número com ou sem formatação e é normalizado na rota; a
+// validação de dígitos acontece depois da normalização (um integrador mandando
+// "+55 11 99999-9999" não deve tomar 400).
+export const publicSendMessageSchema = z.object({
+  numberId:       z.string().cuid('numberId inválido'),
+  to:             z.string().min(10, 'to é obrigatório').max(25),
+  body:           z.string().min(1, 'body não pode ser vazio').max(1000),
+  idempotencyKey: z.string().min(8, 'idempotencyKey deve ter ao menos 8 caracteres').max(128).optional(),
+});

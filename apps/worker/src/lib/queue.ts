@@ -80,41 +80,17 @@ export const mktfastQueue = new Queue('mktfast', {
   },
 });
 
-// ── Fila de saída da API pública (messages-out) ───────────────────────────────
-// Declarada aqui também porque o worker PRODUZ para ela (reenfileira o envio
-// de um MessageLog ainda em queued no sweep de recuperação). Mesmas opções da
-// declaração em apps/api/src/services/queue.ts — se divergirem, o job
-// reenfileirado teria política de retry diferente do original.
-// Toda escrita de /public/v1/messages passa por aqui (item 1 do escopo
-// ZapScript × Twilio). Por que assíncrono em vez de enviar na requisição:
-//   • o retry fica com o BullMQ (e o job esgotado cai no DLQ, igual ao resto),
-//     em vez de exigir que o cliente retente e arrisque duplicar;
-//   • a resposta do HTTP não fica presa ao tempo da Graph API;
-//   • o ciclo de vida (queued → sent → delivered → read) vira evento de
-//     webhook, que é exatamente o modelo que quem vem do Twilio espera.
-// attempts=3 com backoff longo: erro de envio costuma ser throttle do número,
-// que não melhora em 5 segundos. O processor só deixa retentar erro marcado
-// como retryable no catálogo (ver modules/messages-out.ts).
-export const messagesOutQueue = new Queue('messages-out', {
-  connection: redis as any,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff:  { type: 'exponential', delay: 15_000 }, // 15s → 30s → 60s
-    removeOnComplete: { count: 2_000, age: 48 * 60 * 60 },
-    removeOnFail:     { count: 5_000, age: 7 * 24 * 60 * 60 },
-  },
-});
-
-// ── Fila de entrega de webhooks de saída (item 2) ────────────────────────────
-// Um job por par (evento, endpoint). attempts=6 com backoff exponencial longo
-// (30s → 1m → 2m → 4m → 8m): endpoint de cliente cai e volta, e desistir em 3
-// tentativas rápidas perderia evento por manutenção de 5 minutos do lado dele.
+// ── Fila de entrega de webhooks de saída (API pública v1) ────────────────────
+// O worker é produtor (transcription.completed, message.status) E consumidor
+// (apps/worker/src/webhooks.ts). As opções precisam ser idênticas às do
+// produtor da API (apps/api/src/services/queue.ts) — se divergirem, o mesmo
+// evento teria política de retry diferente dependendo de quem o enfileirou.
 export const webhooksQueue = new Queue('webhooks', {
   connection: redis as any,
   defaultJobOptions: {
-    attempts: 6,
-    backoff:  { type: 'exponential', delay: 30_000 },
-    removeOnComplete: { count: 2_000, age: 48 * 60 * 60 },
+    attempts: 5,
+    backoff:  { type: 'exponential', delay: 10_000 },
+    removeOnComplete: { count: 1_000, age: 24 * 60 * 60 },
     removeOnFail:     { count: 5_000, age: 7 * 24 * 60 * 60 },
   },
 });
