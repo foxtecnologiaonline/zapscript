@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { sendTextWithRetry } from './send-with-retry';
 import { enqueueWebhook, WEBHOOK_EVENTS } from '../lib/webhook-events';
+import { mapProviderError } from '../lib/apiErrors';
 
 /**
  * Envio de mensagem pela API pública v1 — o recurso "Messages", análogo ao da
@@ -91,6 +92,13 @@ export async function sendOutboundMessage(args: SendOutboundArgs): Promise<Outbo
 
   const result = await sendTextWithRetry(number.zapiInstanceId, to, body);
 
+  // Item 6 do escopo ZapScript × Twilio: além da frase crua do provedor
+  // (failureReason), grava o CÓDIGO do catálogo. A frase da Evolution muda sem
+  // aviso e não dá para programar contra; `errorCode` é estável, então o
+  // integrador consegue distinguir "número inválido" de "instância
+  // desconectada" com um `if`, e as métricas conseguem agrupar por motivo.
+  const apiErr = result.success ? null : mapProviderError(result.lastError, { provider: 'evolution' });
+
   const updated = await (prisma as any).outboundMessage.update({
     where: { id: record.id },
     data: {
@@ -98,6 +106,7 @@ export async function sendOutboundMessage(args: SendOutboundArgs): Promise<Outbo
       attempts:      result.attempts,
       sentAt:        result.success ? new Date() : null,
       failureReason: result.success ? null : (result.lastError?.message ?? 'unknown_error').slice(0, 500),
+      errorCode:     apiErr?.code ?? null,
     },
   }).catch((err: any) => {
     // O envio já aconteceu; não conseguir gravar o status não desfaz isso.
@@ -112,6 +121,9 @@ export async function sendOutboundMessage(args: SendOutboundArgs): Promise<Outbo
     status:        updated.status,
     attempts:      updated.attempts,
     failureReason: updated.failureReason ?? null,
+    // Aditivo no payload do evento: quem já lia failureReason segue igual, e
+    // quem quiser reagir programaticamente passa a ter o código estável.
+    errorCode:     updated.errorCode ?? null,
   }).catch(() => null);
 
   return { kind: 'created', message: updated };
@@ -127,6 +139,9 @@ export function serializeOutboundMessage(m: any) {
     numberId:       m.numberId,
     attempts:       m.attempts,
     failureReason:  m.failureReason ?? null,
+    // `errorCode` é o campo estável (item 6); `failureReason` continua ali para
+    // não quebrar quem já lê — acréscimo, nunca troca.
+    errorCode:      m.errorCode ?? null,
     idempotencyKey: m.idempotencyKey ?? null,
     sentAt:         m.sentAt ?? null,
     createdAt:      m.createdAt,

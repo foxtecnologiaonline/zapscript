@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { whatsappAPI } from '../services/whatsapp-official';
 import { transcriptionQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
+import { logInboundMessage } from '../services/inbound-log';
 import { io } from '../index';
 import { OPT_OUT_KEYWORDS, registerCampanhaOptOut } from './modules/campanhas';
 
@@ -101,6 +102,23 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
   /**
    * Processar mensagem recebida do webhook
    */
+  /**
+   * Tipo da Meta → tipo do MessageLog. Tipos que não mapeamos (button,
+   * interactive, location, contacts…) entram como 'text': o log existe para
+   * responder "chegou algo deste contato", não para espelhar a taxonomia da
+   * Meta.
+   */
+  function inboundType(metaType: string | undefined): 'text' | 'image' | 'audio' | 'video' | 'document' | 'sticker' {
+    switch (metaType) {
+      case 'image':    return 'image';
+      case 'audio':    return 'audio';
+      case 'video':    return 'video';
+      case 'document': return 'document';
+      case 'sticker':  return 'sticker';
+      default:         return 'text';
+    }
+  }
+
   async function processWebhookMessage(body: any) {
     try {
       // Estrutura do webhook da Meta:
@@ -152,6 +170,7 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
         } catch (err: any) {
           app.log.error({ err: err.message, wamid }, '[WhatsApp] Erro ao atualizar status de contato de campanha');
         }
+
       }
 
       // ─────────────────────────────────
@@ -208,6 +227,20 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance) {
         const senderName = contact?.profile?.name || senderPhone;
 
         app.log.info(`[WhatsApp] Mensagem de ${senderName} (${senderPhone}) - tipo: ${msg.type}`);
+
+        // Log de entrada (item 5) — registro durável, complementar ao evento
+        // message.received que a v1 já empurra. Fire-and-forget: registrar não
+        // pode atrasar nem derrubar o processamento da mensagem.
+        void logInboundMessage({
+          userId,
+          numberId:          whatsappNumber.id,
+          channel:           'meta',
+          to:                cleanBusiness || whatsappNumber.phoneNumber,
+          from:              senderPhone,
+          type:              inboundType(msg.type),
+          body:              msg.text?.body ?? msg[msg.type]?.caption ?? null,
+          providerMessageId: messageId,
+        });
 
         // ─────────────────────────────────
         // Processar áudio

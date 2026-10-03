@@ -290,6 +290,11 @@ export const createCampanhaSchema = z.object({
   templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
   templateComponents: z.array(z.record(z.any())).optional(),
   templateVarCount:   z.coerce.number().int().min(0).max(20).optional(),
+  // Header de mídia (item 8): exigido quando o template aprovado tem header
+  // IMAGE/VIDEO/DOCUMENT. A rota confere contra a definição do template na Meta.
+  headerMediaType:     z.enum(['image', 'video', 'document']).optional(),
+  headerMediaUrl:      z.string().url('headerMediaUrl precisa ser uma URL').max(2048).optional(),
+  headerMediaFilename: z.string().max(255).optional(),
   messageBody:        z.string().min(1, 'Escreva a mensagem').max(4096).optional(),
   // A/B test (§15.3) — variante B opcional, só reporta métricas por variante,
   // sem promoção automática de vencedor. Mesmas regras de conteúdo por canal
@@ -303,6 +308,9 @@ export const createCampanhaSchema = z.object({
 }).refine(
   (v) => (v.channel === 'meta' ? !!v.templateName : !!v.messageBody),
   { message: 'Campanhas via Meta exigem um template; via Evolution exigem o texto da mensagem.' },
+).refine(
+  (v) => !v.headerMediaType || !!v.headerMediaUrl,
+  { message: 'Com headerMediaType informado, headerMediaUrl é obrigatório.' },
 ).refine(
   (v) => !v.abTestEnabled || (v.channel === 'meta' ? !!v.variantBTemplateName : !!v.variantBMessageBody),
   { message: 'Com A/B test ativado, informe o conteúdo da variante B (variantBTemplateName no Meta, variantBMessageBody no Evolution).' },
@@ -369,12 +377,47 @@ export const previewContatosSchema = z.object({
 // ── API pública (tier Empresas) ────────────────────────────
 export const createApiKeySchema = z.object({
   name:   z.string().min(2, 'Nome precisa ter pelo menos 2 caracteres').max(60),
+  // Escopos da API pública v1 (contrato publicado — ver docs/API_PUBLICA_V1.md).
+  // Mantido em sincronia com ALLOWED_SCOPES (lib/apiKeyAuth.ts); um teste falha
+  // se divergirem, para não existir escopo criável que a autenticação não
+  // reconheça — nem o contrário.
   scopes: z.array(z.enum([
     'conversations:read', 'contacts:read',
     'messages:send', 'messages:read', 'webhooks:manage',
+    // Acrescentados ao portar os itens 4 e 7: listar template é pré-requisito
+    // para montar um envio de template correto, e métricas são leitura pura.
+    'templates:read', 'metrics:read',
   ])).min(1, 'Escolha ao menos 1 escopo'),
 });
 
+// ── Templates de mensagem (item 4) — criação pelo painel ───────────────────
+// Só o painel cria template (JWT, papel admin): é um ato que passa por análise
+// da Meta e afeta a qualidade do número da conta inteira. Pela API pública, só
+// leitura (escopo templates:read).
+export const createTemplateSchema = z.object({
+  // A Meta aceita só minúsculas, números e underscore no nome.
+  name:     z.string().regex(/^[a-z0-9_]{1,512}$/, 'Use apenas minúsculas, números e _ (ex.: promo_verao)'),
+  language: z.string().min(2).max(10).default('pt_BR'),
+  category: z.enum(['MARKETING', 'UTILITY', 'AUTHENTICATION']),
+  header:   z.object({
+    format:  z.enum(['TEXT', 'IMAGE', 'VIDEO', 'DOCUMENT']),
+    text:    z.string().max(60).optional(),
+    // header_handle obtido em POST /templates/media-handle (item 8).
+    handle:  z.string().max(2048).optional(),
+    example: z.array(z.string().max(200)).max(10).optional(),
+  }).optional(),
+  body:     z.object({
+    text:    z.string().min(1).max(1024),
+    example: z.array(z.string().max(200)).max(30).optional(),
+  }),
+  footer:   z.object({ text: z.string().min(1).max(60) }).optional(),
+  buttons:  z.array(z.object({
+    type:  z.enum(['QUICK_REPLY', 'URL', 'PHONE_NUMBER']),
+    text:  z.string().min(1).max(25),
+    url:   z.string().url().max(2048).optional(),
+    phone_number: z.string().max(20).optional(),
+  })).max(10).optional(),
+});
 // ── Middleware helper ──────────────────────────────────
 export function validateRequest<T>(schema: z.ZodSchema<T>) {
   return (data: unknown): { valid: true; data: T } | { valid: false; error: string } => {

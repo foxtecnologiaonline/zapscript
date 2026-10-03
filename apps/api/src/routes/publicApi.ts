@@ -8,6 +8,11 @@ import { ALL_WEBHOOK_EVENTS, WEBHOOK_EVENTS, WebhookEvent } from '../lib/webhook
 import { isSafeWebhookUrl } from '../lib/webhook-url-guard';
 import { encryptStr, decryptStr } from '../services/encryption';
 import crypto from 'crypto';
+import { sendError } from '../lib/apiResponse';
+import { isApiError, type ApiError } from '../lib/apiErrors';
+import { resolveMetaNumber } from '../services/meta-number';
+import { listTemplates, toPublicTemplate } from '../services/meta-templates';
+import { getPlatformMetrics, resolveWindow } from '../services/metrics';
 
 /**
  * API pública ZapScript v1 — autenticação por header `X-Api-Key`
@@ -296,4 +301,50 @@ export default async function publicApiRoutes(app: FastifyInstance) {
       return { data: contacts };
     }
   );
+  // ── GET /public/v1/templates — templates do WABA (item 4) ─────────────────
+  // Só leitura por aqui, de propósito: criar template passa por análise da Meta
+  // e afeta a qualidade do número da conta inteira, então mora no painel
+  // (routes/templates.ts), onde o dono vê o formulário e o motivo da reprovação.
+  // O que a API precisa é responder "quais templates existem, com quantas
+  // variáveis e se exigem mídia no cabeçalho".
+  app.get<{ Querystring: { numberId?: string; status?: string } }>(
+    '/templates',
+    { preHandler: [requireApiKey(['templates:read'])], config: { rateLimit } },
+    async (req: any, reply) => {
+      try {
+        const ctx = await resolveMetaNumber(req.apiKeyUserId, req.query?.numberId);
+        const todos = await listTemplates(ctx.accessToken, ctx.wabaId);
+
+        // Sem filtro explícito devolve só APPROVED: é o único que pode ser
+        // enviado, então é o que o integrador quer listar.
+        const querido = (req.query?.status || 'APPROVED').toUpperCase();
+        const filtrados = querido === 'ALL'
+          ? todos
+          : todos.filter((t) => t.status.toUpperCase() === querido);
+
+        return { data: filtrados.map(toPublicTemplate), numberId: ctx.numberId };
+      } catch (err) {
+        if (isApiError(err)) return sendError(reply, err as ApiError);
+        throw err;
+      }
+    }
+  );
+
+  // ── GET /public/v1/metrics — agregados do período (item 7) ────────────────
+  // Limite mais baixo que as outras leituras: cada chamada faz várias
+  // agregações no Postgres.
+  app.get<{ Querystring: Record<string, string | undefined> }>(
+    '/metrics',
+    { preHandler: [requireApiKey(['metrics:read'])], config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (req: any, reply) => {
+      let window;
+      try {
+        window = resolveWindow(req.query || {});
+      } catch (err: any) {
+        return sendError(reply, 'request.invalid', { message: err?.message });
+      }
+      return { data: await getPlatformMetrics(req.apiKeyUserId, window) };
+    }
+  );
+
 }

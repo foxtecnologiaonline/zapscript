@@ -339,6 +339,14 @@ app.register(import('./routes/teams'),           { prefix: '/teams' });
 // API pública ZapScript 2.0 (tier Empresas) — gestão de chaves (sessão) + consumo externo (X-Api-Key)
 app.register(import('./routes/apiKeys'),         { prefix: '/api-keys' });
 app.register(import('./routes/publicApi'),       { prefix: '/public/v1' });
+
+// ── Plataforma (escopo ZapScript × Twilio) — painel, autenticado por JWT.
+// Templates do WhatsApp oficial: criar, acompanhar a análise da Meta e ler o
+// motivo de uma reprovação (itens 4 e 8). Ver docs/API_PUBLICA_V1.md.
+app.register(import('./routes/templates'), { prefix: '/templates' });
+// Leitura da plataforma: métricas, envios, recebidas, entregas de webhook e o
+// catálogo de códigos de erro (itens 5, 6 e 7).
+app.register(import('./routes/platform'),  { prefix: '/platform' });
 // Demo de upload no site removido — vira app/site separado. Rota desativada.
 app.register(import('./routes/analytics'),       { prefix: '/analytics' });
 
@@ -1481,6 +1489,7 @@ async function start() {
     podarRefreshTokens();
     // unref(): poda periódica não pode segurar o processo num shutdown.
     setInterval(podarRefreshTokens, 24 * 60 * 60 * 1000).unref();
+
 
     app.log.info(`🚀 ZapScript API rodando na porta ${process.env.PORT || 3001}`);
 

@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { logger } from '../lib/logger';
 import { transcriptionQueue, atendeQueue } from '../services/queue';
 import { prisma } from '../lib/prisma';
+import { logInboundMessage } from '../services/inbound-log';
 import { notifyWelcome, notifyReconnected, notifyCobrancaPossiblePayment } from '../services/whatsapp-notify';
 import { handleOfficialNumberText, closeLeadOnConnected } from '../services/onboarding-whatsapp';
 import { storeQr } from '../lib/qrStore';
@@ -376,6 +377,29 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
       const senderName  = msg?.pushName || senderPhone;
 
       log.info({ messageType, senderPhone, instance: instName }, '[Evolution] messages.upsert');
+
+      // ── Log de entrada (item 5 do escopo ZapScript × Twilio) ────────────────
+      // Registra a ENTRADA antes de qualquer decisão de produto (áudio vs texto,
+      // Atende vs Copiloto): o log tem que responder "chegou mensagem deste
+      // contato" mesmo quando nenhum módulo age sobre ela. Só entrada de
+      // terceiro — `fromMe` é mensagem do próprio dono (inclusive resposta do
+      // nosso bot), que viraria eco do que já saiu por OutboundMessage.
+      if (!fromMe) {
+        void findNumber().then((numero: any) => {
+          if (!numero) return;
+          return logInboundMessage({
+            userId:            numero.userId,
+            numberId:          numero.id,
+            channel:           'evolution',
+            to:                numero.phoneNumber && numero.phoneNumber !== 'pending' ? numero.phoneNumber : null,
+            from:              senderPhone,
+            type:              evolutionInboundType(messageType),
+            body:              evolutionInboundText(msg),
+            providerMessageId: key?.id ?? null,
+          });
+        }).catch((err: any) =>
+          log.warn({ err: err?.message }, '[Evolution] Falha ao registrar entrada no log'));
+      }
 
       // ── Verificar se é áudio ───────────────────────────────────────────────
       let isAudio    = false;
@@ -934,4 +958,40 @@ export default async function evolutionWebhookRoutes(app: FastifyInstance) {
     // Eventos não tratados — apenas logar
     log.info(`[Evolution] Evento não tratado: ${event}`);
   }
+}
+
+/**
+ * messageType da Evolution/Baileys → tipo do MessageLog (item 5 do escopo
+ * ZapScript × Twilio).
+ *
+ * A Evolution usa a taxonomia do Baileys ('pttMessage', 'audioMessage',
+ * 'documentWithCaptionMessage'…), bem mais granular que a nossa. O log quer
+ * responder "que tipo de coisa chegou", não espelhar o protocolo — então nota
+ * de voz e áudio comum são ambos 'audio', e o que não reconhecemos é 'text'.
+ */
+export function evolutionInboundType(
+  messageType: string | undefined,
+): 'text' | 'image' | 'audio' | 'video' | 'document' | 'sticker' {
+  if (!messageType) return 'text';
+  if (messageType === 'audioMessage' || messageType === 'pttMessage') return 'audio';
+  if (messageType === 'imageMessage')   return 'image';
+  if (messageType === 'videoMessage')   return 'video';
+  if (messageType === 'stickerMessage') return 'sticker';
+  if (messageType.startsWith('document')) return 'document';
+  return 'text';
+}
+
+/** Texto (ou legenda da mídia) de uma mensagem da Evolution, quando houver. */
+export function evolutionInboundText(msg: any): string | null {
+  const m = msg?.message;
+  if (!m) return null;
+  return (
+    m.conversation ??
+    m.extendedTextMessage?.text ??
+    m.imageMessage?.caption ??
+    m.videoMessage?.caption ??
+    m.documentMessage?.caption ??
+    m.documentWithCaptionMessage?.message?.documentMessage?.caption ??
+    null
+  );
 }

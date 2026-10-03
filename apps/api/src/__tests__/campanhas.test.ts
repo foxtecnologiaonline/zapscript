@@ -942,6 +942,9 @@ describe('Canal Evolution (guardrails)', () => {
         userId: 'u1', whatsappNumberId: NUM_ID, name: 'Promo', channel: 'evolution',
         templateName: null, templateLanguage: 'pt_BR', templateComponents: undefined,
         templateVarCount: null, messageBody: 'Oi {{nome}}!', abTestEnabled: false,
+        // Header de mídia (item 8 do escopo ZapScript × Twilio) é recurso de
+        // template da Cloud API — no canal Evolution sai sempre nulo.
+        headerMediaType: null, headerMediaUrl: null, headerMediaFilename: null,
       },
     });
   });

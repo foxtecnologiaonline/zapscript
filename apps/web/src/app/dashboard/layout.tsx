@@ -18,6 +18,11 @@ const NAV_BASE = [
   { href: '/dashboard/numeros',       icon: '📱', label: 'Números' },
   { href: '/dashboard/whatsapp',      icon: '💬', label: 'WhatsApp Web' },
   { href: '/dashboard/campanhas',     icon: '📣', label: 'Campanhas' },
+  // Plataforma: log de mensagens + métricas, webhooks por evento e templates
+  // da API oficial — as superfícies abertas pelo escopo ZapScript × Twilio
+  // (ver PLATAFORMA_API_PUBLICA.md). Entra no menu base porque o log de
+  // mensagens vale para qualquer plano: é onde se responde "esta mensagem saiu?".
+  { href: '/dashboard/plataforma',    icon: '🔌', label: 'Plataforma' },
   { href: '/dashboard/plano',         icon: '💳', label: 'Plano' },
   { href: '/dashboard/afiliado',      icon: '💰', label: 'Carteira' },
   { href: '/dashboard/configuracoes', icon: '⚙️', label: 'Configurações' },

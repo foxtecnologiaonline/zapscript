@@ -86,6 +86,33 @@ async function refreshSession(): Promise<boolean> {
   return pendente;
 }
 
+/**
+ * Extrai a mensagem humana do corpo de erro da API, nos DOIS formatos em uso:
+ *
+ *  • antigo (rotas do painel):  { error: "frase em português" }
+ *  • novo (plataforma/API pública, item 6 do escopo ZapScript × Twilio):
+ *    { error: { code, message, docUrl, retryable, requestId } }
+ *
+ * Sem isto, `new Error(body.error)` no formato novo produziria a mensagem
+ * "[object Object]" na tela. Além da frase, devolve o `code` estável para quem
+ * quiser tratar um erro específico (ex.: distinguir "chave sem escopo" de
+ * "chave revogada") sem comparar texto.
+ */
+function parseApiError(body: any, fallback: string): { message: string; code?: string; extra: Record<string, any> } {
+  const raw = body?.error;
+  if (raw && typeof raw === 'object') {
+    return {
+      message: typeof raw.message === 'string' && raw.message ? raw.message : fallback,
+      code:    typeof raw.code === 'string' ? raw.code : undefined,
+      extra:   { ...raw, error: undefined },
+    };
+  }
+  return {
+    message: typeof raw === 'string' && raw ? raw : fallback,
+    extra:   { ...(body && typeof body === 'object' ? body : {}) },
+  };
+}
+
 async function request<T>(path: string, opts: RequestInit = {}, isFormData = false, isRetry = false): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -114,15 +141,17 @@ async function request<T>(path: string, opts: RequestInit = {}, isFormData = fal
 
     handleUnauthorized();
     const body = await res.json().catch(() => ({ error: 'Sessão expirada. Faça login novamente.' }));
-    const err  = new Error(body.error || 'Sessão expirada. Faça login novamente.') as any;
-    Object.assign(err, body);
+    const parsed = parseApiError(body, 'Sessão expirada. Faça login novamente.');
+    const err = new Error(parsed.message) as any;
+    Object.assign(err, parsed.extra, { code: parsed.code, status: res.status });
     throw err;
   }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    const err  = new Error(body.error || 'Request failed') as any;
-    Object.assign(err, body);
+    const parsed = parseApiError(body, res.statusText || 'Request failed');
+    const err = new Error(parsed.message) as any;
+    Object.assign(err, parsed.extra, { code: parsed.code, status: res.status });
     throw err;
   }
   if (res.status === 204) return undefined as T;

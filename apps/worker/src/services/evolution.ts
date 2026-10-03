@@ -180,3 +180,43 @@ export async function markChatAsUnread(
     // Silencioso — markChatAsUnread é best-effort, endpoint nem sempre suportado
   }
 }
+
+/**
+ * Envia mídia por URL via Evolution API (endpoint sendMedia aceita URL em
+ * `media`, não só base64). Usado pela fila de saída da API pública
+ * (modules/messages-out.ts): o cliente manda um link, não um binário —
+ * carregar o arquivo para reenviar em base64 só gastaria memória do worker.
+ *
+ * Devolve o id da mensagem na Evolution (quando ela informa) — é a chave de
+ * correlação do status no MessageLog.
+ */
+export async function sendMediaByUrlViaEvolution(
+  instanceName: string,
+  phone: string,
+  mediatype: 'image' | 'video' | 'document' | 'audio',
+  mediaUrl: string,
+  opts: { caption?: string; fileName?: string; mimetype?: string } = {},
+): Promise<{ id: string | null }> {
+  const base  = evolutionBase();
+  const clean = phone.replace(/\D/g, '');
+
+  // Áudio na Evolution não passa pelo sendMedia — é sendWhatsAppAudio (PTT).
+  const path = mediatype === 'audio'
+    ? `${base}/message/sendWhatsAppAudio/${instanceName}`
+    : `${base}/message/sendMedia/${instanceName}`;
+
+  const body = mediatype === 'audio'
+    ? { number: clean, audio: mediaUrl }
+    : {
+        number:    clean,
+        mediatype,
+        media:     mediaUrl,
+        ...(opts.caption  ? { caption: opts.caption }   : {}),
+        ...(opts.fileName ? { fileName: opts.fileName } : {}),
+        ...(opts.mimetype ? { mimetype: opts.mimetype } : {}),
+      };
+
+  const res = await axios.post(path, body, { headers: headers(), timeout: 30_000 });
+  logger.info(`[Evolution] ${mediatype} enviado por URL para ${clean} (instância ${instanceName})`);
+  return { id: res.data?.key?.id ?? null };
+}

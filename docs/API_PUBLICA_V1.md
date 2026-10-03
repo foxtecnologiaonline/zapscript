@@ -32,6 +32,8 @@ mensagem não deve carregar leitura do CRM.
 | `webhooks:manage` | `POST /webhooks`, `GET /webhooks/deliveries` |
 | `conversations:read` | `GET /conversations` |
 | `contacts:read` | `GET /contacts` |
+| `templates:read` | `GET /templates` |
+| `metrics:read` | `GET /metrics` |
 
 Chave sem o escopo exigido recebe `403`; chave ausente, inválida ou revogada
 recebe `401`.
@@ -41,7 +43,11 @@ recebe `401`.
 | Rota | Limite |
 |---|---|
 | `POST /messages` | 30 / minuto |
+| `GET /metrics` | 30 / minuto |
 | Demais rotas | 60 / minuto |
+
+`GET /metrics` tem limite próprio porque cada chamada faz várias agregações no
+Postgres — não é uma leitura de linha.
 
 O limite de envio é mais baixo de propósito: cada chamada vira uma mensagem de
 WhatsApp real para uma pessoa real, e um laço acidental no integrador viraria
@@ -376,4 +382,106 @@ desmarcar"*.
 | `422` | número existe mas não está conectado ao WhatsApp |
 | `429` | limite de uso excedido |
 
-Formato: `{ "error": "mensagem legível" }`.
+### Formato
+
+```json
+{
+  "error": "Template não encontrado no WABA deste número.",
+  "code": "template.not_found",
+  "docUrl": "https://zapscript.me/docs/erros/template.not_found",
+  "retryable": false
+}
+```
+
+`error` é a frase legível e **sempre esteve aqui** — quem já lê esse campo
+continua funcionando. `code`, `docUrl` e `retryable` são acréscimos:
+
+- **`code` é contrato.** Nunca é renomeado nem muda de status HTTP. É o que dá
+  para comparar com um `if`. A frase em `error` não serve para isso: muda com
+  qualquer revisão de texto.
+- **`retryable`** diz se repetir a MESMA requisição pode funcionar
+  (indisponibilidade, throttle, timeout) ou se vai colher o mesmo erro.
+
+Trate código desconhecido pelo prefixo de domínio (`message.`, `template.`,
+`number.`, `auth.`…) ou pelo status HTTP — códigos novos podem aparecer a
+qualquer momento.
+
+### Erro de provedor não vaza cru
+
+Quando o envio falha, `failureReason` guarda a frase que a Evolution devolveu e
+`errorCode` guarda o código do catálogo. Os dois aparecem em
+`GET /messages/:id` e no payload do evento `message.status`. A tradução cobre o
+que muda a decisão de quem integra:
+
+| Situação | `errorCode` |
+|---|---|
+| número sem WhatsApp, ou JID inválido | `message.invalid_recipient` |
+| instância da Evolution caiu / não conectada | `number.disconnected` |
+| credencial recusada pelo provedor | `number.missing_credentials` |
+| provedor limitou a chamada | `request.rate_limited` |
+| provedor não respondeu no tempo | `provider.timeout` |
+| provedor fora do ar | `provider.unavailable` |
+
+`retryable` já vem calculado: `provider.timeout` e `provider.unavailable` são
+`true`, `message.invalid_recipient` é `false` (repetir dá o mesmo erro).
+
+O catálogo inteiro está em `apps/api/src/lib/apiErrors.ts`, e o dashboard expõe
+em `GET /platform/error-codes` (sessão JWT) para não hardcodar a lista na tela.
+
+---
+
+## 7. Templates (`templates:read`)
+
+```
+GET /public/v1/templates?status=APPROVED
+```
+
+Lista os templates do WABA do número oficial. Devolve o que falta para montar um
+envio de template correto na primeira tentativa:
+
+```json
+{ "data": [{
+  "name": "boleto_mensal", "language": "pt_BR", "status": "APPROVED",
+  "headerFormat": "DOCUMENT", "requiresHeaderMedia": true,
+  "bodyVariableCount": 2, "bodyText": "Olá {{1}}, seu boleto de {{2}}...",
+  "rejectedReason": null
+}], "numberId": "ckx..." }
+```
+
+`status=ALL` inclui `PENDING` e `REJECTED` (com `rejectedReason`). Sem o
+parâmetro, devolve só `APPROVED` — o único que pode ser enviado.
+
+**Criar template é no painel**, não por API: passa por análise da Meta e afeta a
+qualidade do número da conta inteira, então mora onde o dono vê o formulário, o
+status da análise e o motivo de uma reprovação
+(`/dashboard/plataforma` → Templates). O painel também sobe a mídia de exemplo
+que a Meta exige para aprovar template com cabeçalho de imagem, vídeo ou PDF.
+
+Requer um número oficial (Meta) conectado; sem isso a resposta é `404`
+`number.not_found`.
+
+---
+
+## 8. Métricas (`metrics:read`)
+
+```
+GET /public/v1/metrics?since=2026-09-25T00:00:00Z&granularity=day
+```
+
+Agregados do período: envios por status e por origem, taxa de envio e de falha,
+**falhas por código** (`topErrorCodes`), mensagens recebidas por tipo e canal,
+saúde das entregas de webhook, e a série temporal.
+
+Janela máxima de 92 dias (8 dias com `granularity=hour`).
+
+### Não existe taxa de entrega aqui
+
+O envio sai pela Evolution, que confirma *"aceitei para envio"* — não *"o
+aparelho recebeu"*. `status` vai de `queued` a `sent` ou `failed` e para aí.
+Publicar um `deliveryRate` calculado sobre isso apresentaria uma coisa como a
+outra. Quando o envio por Cloud API entrar (que tem recibo de entrega e de
+leitura), a taxa entra com ele.
+
+Pelo mesmo motivo, entregas de webhook ainda `pending` ficam fora da taxa de
+sucesso: elas ainda vão ser tentadas, e contá-las como falha mostraria uma taxa
+pior que a real a cada pico de volume.

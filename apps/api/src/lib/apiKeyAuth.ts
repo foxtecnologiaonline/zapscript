@@ -17,6 +17,12 @@ export const ALLOWED_SCOPES = [
   'messages:send',
   'messages:read',
   'webhooks:manage',
+  // Acrescentados ao portar os itens 4 e 7 do escopo ZapScript × Twilio.
+  // Leitura pura: 'templates:read' é pré-requisito para montar um envio de
+  // template correto (saber quantas variáveis e se há mídia no cabeçalho), e
+  // 'metrics:read' devolve só agregados.
+  'templates:read',
+  'metrics:read',
 ] as const;
 export type ApiScope = typeof ALLOWED_SCOPES[number];
 

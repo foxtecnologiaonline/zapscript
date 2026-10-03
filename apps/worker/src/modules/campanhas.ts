@@ -2,6 +2,7 @@ import { Job } from 'bullmq';
 import { prisma } from '../lib/prisma';
 import { decryptStr } from '../services/encryption';
 import { sendTemplateMessage } from '../services/whatsapp-campaigns';
+import { buildTemplateComponents } from '../services/template-components';
 import { sendMessageViaEvolution } from '../services/evolution';
 import { sendEmail } from '../services/mailer';
 import { logger } from '../lib/logger';
@@ -120,9 +121,21 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
     const templateLanguage = (isVariantB ? campanha.variantBTemplateLanguage : campanha.templateLanguage)!;
     const staticComponents = ((isVariantB ? campanha.variantBTemplateComponents : campanha.templateComponents) as Array<Record<string, any>> | null) || [];
     const bodyVars = (contato.variables as string[] | null) || [];
-    const components = bodyVars.length
-      ? [...staticComponents, { type: 'body', parameters: bodyVars.map((v) => ({ type: 'text', text: String(v) })) }]
-      : staticComponents;
+    // Header de mídia (item 8 do escopo ZapScript × Twilio): a Meta exige a
+    // mídia em CADA envio de template com header IMAGE/VIDEO/DOCUMENT — o que
+    // ficou aprovado foi só o exemplo. Validado na criação da campanha
+    // (routes/modules/campanhas.ts); aqui só montamos o componente.
+    const components = buildTemplateComponents({
+      header: campanha.headerMediaType
+        ? {
+            type:     campanha.headerMediaType as 'image' | 'video' | 'document',
+            link:     campanha.headerMediaUrl ?? undefined,
+            filename: campanha.headerMediaFilename ?? undefined,
+          }
+        : null,
+      bodyVariables:    bodyVars,
+      staticComponents,
+    });
     messageId = await sendTemplateMessage(
       token, numero.metaPhoneNumberId, contato.phone,
       templateName, templateLanguage, components,
@@ -133,6 +146,13 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
     where: { id: contatoId },
     data: { status: 'sent', wamid: messageId, sentAt: new Date(), errorMessage: null },
   });
+  // Por que campanha NÃO grava em OutboundMessage: aquela tabela é o recurso
+  // "Messages" da API pública (body obrigatório, uma linha por intenção de envio
+  // do integrador). Campanha de template não tem texto livre, e o rastreio por
+  // contato já vive em CampanhaContato — que é mais rico para isso (guarda
+  // delivered/read/optout por destinatário, que OutboundMessage não tem).
+  // Duplicar aqui dobraria a escrita no caminho quente do disparo sem responder
+  // nada que CampanhaContato já não responda.
   logger.info(`[Campanhas] ✅ Enviado ${contato.phone} (campanha ${campanhaId}, canal ${campanha.channel}) — id ${messageId}`);
   // sentCount separado do processedCount: sentCount é "quantos deram certo" (métrica visível
   // pro usuário), processedCount é "quantos já passaram por aqui" (sent+failed+optout, usado
