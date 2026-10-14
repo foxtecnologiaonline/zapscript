@@ -13,8 +13,13 @@ interface ApiKey {
 }
 
 const SCOPES = [
+  { value: 'messages:send',      label: 'Enviar mensagens' },
+  { value: 'messages:read',      label: 'Consultar envios' },
+  { value: 'webhooks:manage',    label: 'Gerenciar webhooks' },
   { value: 'conversations:read', label: 'Conversas (Atende)' },
   { value: 'contacts:read',      label: 'Contatos (CRM)' },
+  { value: 'templates:read',     label: 'Consultar templates' },
+  { value: 'metrics:read',       label: 'Métricas' },
 ];
 
 /** Painel de chaves da API pública — só renderizado para o dono do tier Empresas (ver page.tsx). */
