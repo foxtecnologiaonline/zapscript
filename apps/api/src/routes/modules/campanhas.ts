@@ -40,6 +40,17 @@ export function normalizePhone(raw: string): string {
   return digits.startsWith('55') ? digits : `55${digits}`;
 }
 
+/**
+ * Canal evolution: toda audiência passa por warmContactsForNumber (já conversou com o número),
+ * então a relação prévia vale como autorização — marca optinConfirmedAt na criação e o worker
+ * pula a pergunta de opt-in. Canal meta não é afetado.
+ */
+function withWarmOptin<T extends object>(channel: string, rows: T[]): (T & { optinConfirmedAt?: Date })[] {
+  if (channel !== 'evolution') return rows;
+  const now = new Date();
+  return rows.map(r => ({ ...r, optinConfirmedAt: now }));
+}
+
 /** Palavras-chave de opt-out (convenção SMS/WhatsApp) — igualdade exata após trim+uppercase. */
 export const OPT_OUT_KEYWORDS = new Set(['PARAR', 'SAIR', 'STOP', 'CANCELAR', 'UNSUBSCRIBE']);
 
@@ -1151,7 +1162,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     }
 
     if (toCreate.length > 0) {
-      await prisma.campanhaContato.createMany({ data: toCreate });
+      await prisma.campanhaContato.createMany({ data: withWarmOptin(campanha.channel, toCreate) });
       await prisma.campanha.update({
         where: { id },
         data: { audienceCount: { increment: toCreate.length } },
@@ -1215,7 +1226,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     }
 
     if (toCreate.length > 0) {
-      await prisma.campanhaContato.createMany({ data: toCreate });
+      await prisma.campanhaContato.createMany({ data: withWarmOptin(campanha.channel, toCreate) });
       await prisma.campanha.update({
         where: { id },
         data: { audienceCount: { increment: toCreate.length } },
@@ -1285,7 +1296,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     }
 
     if (toCreate.length > 0) {
-      await prisma.campanhaContato.createMany({ data: toCreate });
+      await prisma.campanhaContato.createMany({ data: withWarmOptin(campanha.channel, toCreate) });
       await prisma.campanha.update({
         where: { id },
         data: {
@@ -1490,7 +1501,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
 
     const contatosBase = await prisma.campanhaContato.findMany({
       where: { campanhaId: id, status: { not: 'optout' } },
-      select: { phone: true, name: true, variables: true },
+      select: { phone: true, name: true, variables: true, optinConfirmedAt: true },
     });
 
     const steps = [];
@@ -1511,7 +1522,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       });
       if (contatosBase.length > 0) {
         await prisma.campanhaContato.createMany({
-          data: contatosBase.map((c: any) => ({ campanhaId: child.id, phone: c.phone, name: c.name, variables: c.variables })),
+          data: contatosBase.map((c: any) => ({ campanhaId: child.id, phone: c.phone, name: c.name, variables: c.variables, optinConfirmedAt: c.optinConfirmedAt })),
         });
       }
       steps.push(child);
