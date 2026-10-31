@@ -11,7 +11,7 @@ jest.mock('../lib/prisma', () => ({
   prisma: {
     // findMany tem default [] (sequência/drip: POST /:id/start consulta passos-
     // filhos sempre) — testes que precisam de outro retorno usam mockResolvedValueOnce.
-    campanha:        { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), delete: jest.fn(), count: jest.fn() },
+    campanha:        { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }), delete: jest.fn(), count: jest.fn() },
     campanhaContato: { findMany: jest.fn(), groupBy: jest.fn(), createMany: jest.fn(), updateMany: jest.fn(), count: jest.fn() },
     campanhaOptOut:  { findMany: jest.fn(), upsert: jest.fn() },
     whatsappNumber:  { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
@@ -20,7 +20,7 @@ jest.mock('../lib/prisma', () => ({
     transcription:        { findMany: jest.fn() },
     atendeConversation:   { findMany: jest.fn() },
     copilotoConversation: { findMany: jest.fn() },
-    crmContact:           { findMany: jest.fn() },
+    crmContact:           { findMany: jest.fn(), updateMany: jest.fn() },
   },
 }));
 
@@ -31,7 +31,7 @@ jest.mock('../lib/mailer', () => ({
 // Redis mockado — moduleGate lê o cache de entitlements daqui (evita conexão real)
 jest.mock('../services/queue', () => ({
   redis: { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue('OK'), del: jest.fn().mockResolvedValue(1) },
-  campanhasQueue: { addBulk: jest.fn().mockResolvedValue([]) },
+  campanhasQueue: { addBulk: jest.fn().mockResolvedValue([]), getJob: jest.fn().mockResolvedValue(null) },
 }));
 
 jest.mock('../services/encryption', () => ({
@@ -72,7 +72,7 @@ import { redis, campanhasQueue } from '../services/queue';
 import { sendEmail } from '../lib/mailer';
 import { listTemplates, getPhoneNumberLimits, tierToNumericCap } from '../services/whatsapp-campaigns';
 import {
-  evolutionSendDelayMs, applySendWindow, effectiveEvolutionDailyLimit, registerCampanhaOptOut,
+  evolutionSendDelayMs, applySendWindow, effectiveEvolutionDailyLimit, registerCampanhaOptOut, handleOptinResponse,
 } from '../routes/modules/campanhas';
 
 /** Espera a fila de microtasks esvaziar — as notificações de conclusão (item 10)
@@ -567,7 +567,7 @@ describe('Ciclo start/pause/cancel', () => {
       ]);
       expect(prisma.campanha.update).toHaveBeenCalledWith({
         where: { id: 'c1' },
-        data: { status: 'running', startedAt: expect.any(Date), pausedReason: null, consecutiveFailures: 0 },
+        data: { status: 'running', startedAt: expect.any(Date), pausedReason: null, consecutiveFailures: 0, messagesCost: 2 },
       });
     });
 
@@ -671,7 +671,69 @@ describe('Ciclo start/pause/cancel', () => {
     });
   });
 
+
+  describe('POST /:id/start — retomada e concorrência', () => {
+    it('retomar campanha pausada NÃO cobra de novo e libera jobIds já concluídos pra reenfileirar', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'paused', audienceCount: 2, whatsappNumberId: NUM_ID, startedAt: new Date('2026-10-01'), consentConfirmedAt: new Date(), poolNumberIds: [] });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
+      (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }, { id: 'ct2' }]);
+      (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
+      const remove = jest.fn().mockResolvedValue(undefined);
+      (campanhasQueue.getJob as jest.Mock)
+        .mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue('completed'), remove }) // pulado na pausa
+        .mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue('delayed'),   remove }); // ainda na fila
+
+      const token = makeToken(app);
+      const res = await app.inject({ method: 'POST', url: '/modules/campanhas/c1/start', headers: { authorization: `Bearer ${token}` } });
+      expect(res.statusCode).toBe(200);
+      expect(debitCampanhaMessages).not.toHaveBeenCalled();
+      expect(remove).toHaveBeenCalledTimes(1);
+      expect(campanhasQueue.addBulk).toHaveBeenCalled();
+      expect(prisma.campanha.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: expect.not.objectContaining({ messagesCost: expect.anything() }),
+      });
+    });
+
+    it('retorna 409 e não cobra quando outro request já iniciou a campanha (claim atômico)', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 1, whatsappNumberId: NUM_ID, startedAt: null, consentConfirmedAt: new Date(), poolNumberIds: [] });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
+      (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }]);
+      (prisma.campanha.updateMany as jest.Mock).mockResolvedValueOnce({ count: 0 });
+
+      const token = makeToken(app);
+      const res = await app.inject({ method: 'POST', url: '/modules/campanhas/c1/start', headers: { authorization: `Bearer ${token}` } });
+      expect(res.statusCode).toBe(409);
+      expect(debitCampanhaMessages).not.toHaveBeenCalled();
+      expect(campanhasQueue.addBulk).not.toHaveBeenCalled();
+    });
+
+    it('sem saldo devolve a campanha ao status anterior (não fica presa em running)', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'draft', audienceCount: 1, whatsappNumberId: NUM_ID, startedAt: null, consentConfirmedAt: new Date(), poolNumberIds: [] });
+      (prisma.whatsappNumber.findUnique as jest.Mock).mockResolvedValueOnce({ status: 'connected', metaAccessTokenEnc: 'enc' });
+      (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1' }]);
+      (debitCampanhaMessages as jest.Mock).mockRejectedValueOnce(new InsufficientCampanhaBalanceError());
+
+      const token = makeToken(app);
+      const res = await app.inject({ method: 'POST', url: '/modules/campanhas/c1/start', headers: { authorization: `Bearer ${token}` } });
+      expect(res.statusCode).toBe(402);
+      expect(prisma.campanha.updateMany).toHaveBeenCalledWith({ where: { id: 'c1', status: 'running' }, data: { status: 'draft' } });
+    });
+  });
+
   describe('POST /:id/cancel', () => {
+    it('permite cancelar uma campanha agendada', async () => {
+      grantModuleAccess();
+      (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'scheduled' });
+      (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({});
+      const token = makeToken(app);
+      const res = await app.inject({ method: 'POST', url: '/modules/campanhas/c1/cancel', headers: { authorization: `Bearer ${token}` } });
+      expect(res.statusCode).toBe(200);
+    });
+
     it('retorna 400 se a campanha já está finalizada', async () => {
       grantModuleAccess();
       (prisma.campanha.findFirst as jest.Mock).mockResolvedValueOnce({ id: 'c1', status: 'completed' });
@@ -998,7 +1060,8 @@ describe('Canal Evolution (guardrails)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ imported: 1, skippedOptOut: 1, skippedDuplicate: 1, elegiveis: 3 });
     expect(prisma.campanhaContato.createMany).toHaveBeenCalledWith({
-      data: [{ campanhaId: 'c1', phone: '5511911111111', name: 'Ana' }],
+      // Evolution: quem já conversou com o número entra com opt-in confirmado.
+      data: [{ campanhaId: 'c1', phone: '5511911111111', name: 'Ana', optinConfirmedAt: expect.any(Date) }],
     });
   });
 
@@ -1067,7 +1130,7 @@ describe('Canal Evolution (guardrails)', () => {
       where: { id: 'c1' },
       data: {
         status: 'running', startedAt: expect.any(Date),
-        pausedReason: null, consecutiveFailures: 0,
+        pausedReason: null, consecutiveFailures: 0, messagesCost: 2,
         consentConfirmedAt: expect.any(Date), consentConfirmedIp: expect.anything(),
       },
     });
@@ -1978,5 +2041,45 @@ describe('A/B test — 2 variantes (§15.3)', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().statsByVariant).toEqual({ A: { sent: 3 }, B: { sent: 2 } });
+  });
+});
+
+describe('handleOptinResponse — fluxo de opt-in (Evolution)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('SIM confirma e REENFILEIRA a mensagem real (antes o contato voltava a pending e nunca era enviado)', async () => {
+    (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1', campanhaId: 'c1' }]);
+    (prisma.campanhaContato.updateMany as jest.Mock).mockResolvedValueOnce({ count: 1 });
+    (prisma.crmContact.updateMany as jest.Mock).mockResolvedValueOnce({ count: 0 });
+    (prisma.campanha.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'c1' }]);
+    const remove = jest.fn().mockResolvedValue(undefined);
+    (campanhasQueue.getJob as jest.Mock).mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue('completed'), remove });
+
+    const r = await handleOptinResponse('u1', '11999999999', ' sim ');
+
+    expect(r).toBe('confirmed');
+    expect(remove).toHaveBeenCalled(); // job da pergunta liberado pra reusar o jobId
+    const [jobs] = (campanhasQueue.addBulk as jest.Mock).mock.calls[0];
+    expect(jobs).toEqual([{ name: 'send', data: { campanhaId: 'c1', contatoId: 'ct1' }, opts: { jobId: 'c1:ct1', delay: expect.any(Number) } }]);
+  });
+
+  it('SIM sem pergunta pendente não faz nada', async () => {
+    (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([]);
+    expect(await handleOptinResponse('u1', '11999999999', 'SIM')).toBe('none');
+    expect(campanhasQueue.addBulk).not.toHaveBeenCalled();
+  });
+
+  it('NÃO com pergunta pendente tira da campanha na hora (inclui status pending_optin)', async () => {
+    (prisma.campanhaOptOut.upsert as jest.Mock).mockResolvedValueOnce({});
+    (prisma.campanhaContato.findMany as jest.Mock).mockResolvedValueOnce([{ id: 'ct1', campanhaId: 'c1' }]);
+    (prisma.campanhaContato.updateMany as jest.Mock).mockResolvedValueOnce({ count: 1 });
+    (prisma.campanha.update as jest.Mock).mockResolvedValueOnce({ processedCount: 1, audienceCount: 5, status: 'running' });
+
+    await registerCampanhaOptOut('u1', '11999999999', 'NÃO');
+
+    expect(prisma.campanhaContato.findMany).toHaveBeenCalledWith({
+      where: { phone: '5511999999999', status: { in: ['pending', 'pending_optin'] }, campanha: { userId: 'u1' } },
+      select: { id: true, campanhaId: true },
+    });
   });
 });

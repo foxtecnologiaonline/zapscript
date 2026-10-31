@@ -103,6 +103,7 @@ const CAMP_STATUS_LABEL: Record<string, string> = {
 
 const CONTATO_STATUS_LABEL: Record<string, string> = {
   pending: 'Pendente',
+  pending_optin: 'Aguardando opt-in',
   sent: 'Enviado',
   delivered: 'Entregue',
   read: 'Lido',
@@ -112,6 +113,7 @@ const CONTATO_STATUS_LABEL: Record<string, string> = {
 
 const CONTATO_STATUS_COLOR: Record<string, string> = {
   pending: 'text-brand-muted',
+  pending_optin: 'text-violet-500',
   sent: 'text-blue-500',
   delivered: 'text-emerald-600',
   read: 'text-emerald-500',
@@ -253,11 +255,16 @@ export default function CampanhaDetailPage() {
   // Poll enquanto a campanha está em andamento, para refletir progresso ao vivo.
   useEffect(() => {
     if (campanha?.status !== 'running') return;
-    const t = setInterval(() => {
+    // Só consulta com a aba visível (aba em segundo plano não gasta API) e
+    // atualiza na hora quando o usuário volta pra ela.
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
       loadCampanha();
       loadContatos();
-    }, 5000);
-    return () => clearInterval(t);
+    };
+    const t = setInterval(tick, 5000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', tick); };
   }, [campanha?.status, loadCampanha, loadContatos]);
 
   // Pool de números (item 2) — só faz sentido editar antes/entre disparos.

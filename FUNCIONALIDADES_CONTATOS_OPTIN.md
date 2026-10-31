@@ -1,3 +1,5 @@
+> **Nota (2026-10-31):** os endpoints `POST /contatos/from-csv`, `GET /contatos/preview-historico` e `GET /contatos/preview-crm` descritos abaixo foram **removidos** — nunca foram usados pelo painel. O import de CSV vive em `POST /listas/:listaId/contatos` e a audiência por conversas/CRM em `POST /:id/contatos/from-conversas|from-crm`. No canal Evolution, contato de audiência quente já entra com opt-in confirmado.
+
 # 📋 ZapScript Contatos + Opt-in WhatsApp — Documentação Técnica
 
 ## 🎯 Resumo Executivo

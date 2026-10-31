@@ -100,8 +100,11 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
         },
       });
       logger.info(`[Campanhas] 🔔 Pergunta de opt-in enviada: ${contato.phone} (campanha ${campanhaId})`);
-      // NÃO incrementa sentCount aqui — é apenas a pergunta, não a mensagem real
-      await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: true });
+      // NÃO conta como processado: o contato ainda não chegou a um estado final. Ele
+      // volta a 'pending' (SIM → API reenfileira) ou vira 'optout' (NÃO/timeout) — e
+      // é nesses pontos que processedCount sobe. Contar aqui fazia o SIM contar 2x e
+      // a campanha "concluir" antes de mandar a mensagem de verdade.
+      await prisma.campanha.update({ where: { id: campanhaId }, data: { consecutiveFailures: 0 } });
       return {};
     }
 
@@ -157,8 +160,7 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
   // sentCount separado do processedCount: sentCount é "quantos deram certo" (métrica visível
   // pro usuário), processedCount é "quantos já passaram por aqui" (sent+failed+optout, usado
   // só pra saber se a campanha terminou — ver bumpProcessedAndMaybeComplete).
-  await prisma.campanha.update({ where: { id: campanhaId }, data: { sentCount: { increment: 1 } } });
-  await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: true });
+  await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: true, sent: true });
   return {};
 }
 
@@ -196,11 +198,13 @@ async function markContatoFailed(contatoId: string, errorMessage: string): Promi
  * incrementar processedCount pros seus contatos — senão uma campanha com muitos
  * opt-outs nunca bateria audienceCount e ficaria "running" pra sempre. Ver ali.
  */
-async function bumpProcessedAndMaybeComplete(campanhaId: string, opts: { resetFailures: boolean }): Promise<void> {
+async function bumpProcessedAndMaybeComplete(campanhaId: string, opts: { resetFailures: boolean; sent?: boolean; count?: number }): Promise<void> {
   const updated = await prisma.campanha.update({
     where: { id: campanhaId },
     data: {
-      processedCount: { increment: 1 },
+      processedCount: { increment: opts.count ?? 1 },
+      // sentCount no MESMO update (antes eram 2 round-trips por mensagem enviada).
+      ...(opts.sent ? { sentCount: { increment: 1 } } : {}),
       consecutiveFailures: opts.resetFailures ? 0 : { increment: 1 },
     },
     select: { processedCount: true, audienceCount: true, consecutiveFailures: true, status: true },
@@ -287,4 +291,40 @@ async function notifyCampanhaAutoPaused(campanhaId: string): Promise<void> {
     <div style="font-size:11px;color:#6ee7b7;opacity:0.5;margin-top:24px">ZapScript · zapscript.me</div>
   </div>`;
   await sendEmail(campanha.user.email, `⚠️ Campanha "${campanha.name}" pausada automaticamente`, html);
+}
+
+/**
+ * Contatos que não responderam à pergunta de opt-in no prazo: saem DESTA campanha
+ * (status 'optout', não recebem a mensagem), mas NÃO entram na lista global de
+ * opt-out — silêncio não é pedido de descadastro, e bloquear pra sempre quem só
+ * demorou a ver o WhatsApp tirava o contato de todas as campanhas futuras. Também
+ * conta como processado (estado final), senão a campanha nunca concluía.
+ */
+export async function expireOptinTimeouts(): Promise<number> {
+  const timedOut = await prisma.campanhaContato.findMany({
+    where: { status: 'pending_optin', optinTimeoutAt: { lte: new Date() } },
+    select: { id: true, campanhaId: true },
+    take: 500,
+  });
+  if (timedOut.length === 0) return 0;
+
+  const porCampanha = new Map<string, string[]>();
+  for (const t of timedOut) {
+    const arr = porCampanha.get(t.campanhaId);
+    if (arr) arr.push(t.id); else porCampanha.set(t.campanhaId, [t.id]);
+  }
+  let total = 0;
+  for (const [campanhaId, ids] of porCampanha) {
+    // Filtro de status no WHERE: se o SIM chegou no meio, o contato já saiu de
+    // pending_optin e não é tocado — o count real é o que vale pro contador.
+    const res = await prisma.campanhaContato.updateMany({
+      where: { id: { in: ids }, status: 'pending_optin' },
+      data:  { status: 'optout', errorMessage: 'Sem resposta ao opt-in no prazo' },
+    });
+    if (res.count > 0) {
+      total += res.count;
+      await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: true, count: res.count });
+    }
+  }
+  return total;
 }

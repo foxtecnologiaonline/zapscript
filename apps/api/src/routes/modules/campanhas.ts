@@ -3,7 +3,7 @@ import { prisma } from '../../lib/prisma';
 import {
   validateRequest, createCampanhaSchema, scheduleCampanhaSchema, campanhaSequenceSchema,
   createCampanhaListaSchema, updateCampanhaListaSchema, addCampanhaListaContatosSchema, applyCampanhaListaSchema,
-  mergeCampanhaListasSchema, uploadContatosCsvSchema, previewContatosSchema,
+  mergeCampanhaListasSchema,
 } from '../../lib/validation';
 import { decryptStr } from '../../services/encryption';
 import { listTemplates, getPhoneNumberLimits, tierToNumericCap, sendTemplateMessage } from '../../services/whatsapp-campaigns';
@@ -70,24 +70,24 @@ export async function handleOptinResponse(userId: string, rawPhone: string, mess
 
   // Detectar resposta: Sim = confirmar, Não/Sair = rejeitar
   if (OPT_IN_KEYWORDS.has(normalized)) {
-    // Marca todos os CampanhaContato com status 'pending_optin' deste contato como 'confirmed'
-    const updated = await prisma.campanhaContato.updateMany({
-      where: {
-        phone,
-        status: 'pending_optin',
-        campanha: { userId },
-      },
-      data: {
-        optinConfirmedAt: new Date(),
-        status: 'pending', // volta a enviar
-      },
+    const aguardando = await prisma.campanhaContato.findMany({
+      where: { phone, status: 'pending_optin', campanha: { userId } },
+      select: { id: true, campanhaId: true },
     });
-    if (updated.count > 0) {
+    if (aguardando.length > 0) {
+      const now = new Date();
+      await prisma.campanhaContato.updateMany({
+        where: { id: { in: aguardando.map((a) => a.id) }, status: 'pending_optin' },
+        data:  { optinConfirmedAt: now, status: 'pending' }, // volta a enviar
+      });
       // Também marcar no CrmContact se existir
       await prisma.crmContact.updateMany({
         where: { phone, userId },
-        data: { whatsappOptinConfirmedAt: new Date() },
+        data: { whatsappOptinConfirmedAt: now },
       });
+      // Reenfileira a mensagem real — sem isto o contato voltava a 'pending' e
+      // ninguém mais o enviava (o job original já tinha concluído na pergunta).
+      await requeueConfirmedOptins(aguardando);
       return 'confirmed';
     }
   }
@@ -119,6 +119,23 @@ export async function handleOptinResponse(userId: string, rawPhone: string, mess
   }
 
   return 'none';
+}
+
+/** Reenfileira (sem delay além da janela de envio) contatos que acabaram de confirmar opt-in. */
+async function requeueConfirmedOptins(contatos: { id: string; campanhaId: string }[]): Promise<void> {
+  const running = new Set((await prisma.campanha.findMany({
+    where: { id: { in: Array.from(new Set(contatos.map((c) => c.campanhaId))) }, status: 'running' },
+    select: { id: true },
+  })).map((c) => c.id));
+  for (const campanhaId of running) {
+    const ids = contatos.filter((c) => c.campanhaId === campanhaId);
+    await releaseFinishedJobIds(campanhaId, ids);
+    await campanhasQueue.addBulk(ids.map((c) => ({
+      name: 'send',
+      data: { campanhaId, contatoId: c.id },
+      opts: { jobId: `${campanhaId}:${c.id}`, delay: applySendWindow(0) },
+    })));
+  }
 }
 
 function escHtml(s: string | null | undefined): string {
@@ -179,8 +196,10 @@ export async function registerCampanhaOptOut(userId: string, rawPhone: string, k
     update: { reason: keyword },
   });
 
+  // 'pending_optin' também: responder "NÃO"/"SAIR" à pergunta de opt-in tira o
+  // contato da campanha na hora (antes ficava esperando o timeout).
   const afetados = await prisma.campanhaContato.findMany({
-    where: { phone, status: 'pending', campanha: { userId } },
+    where: { phone, status: { in: ['pending', 'pending_optin'] }, campanha: { userId } },
     select: { id: true, campanhaId: true },
   });
   if (afetados.length === 0) return phone;
@@ -493,6 +512,26 @@ function requireConsentAcknowledgement(campanha: { channel: string; consentConfi
 }
 
 /**
+ * Retomada após pausa / reenvio pós opt-in: o worker conclui como "skipped" os jobs
+ * de uma campanha pausada, e o BullMQ guarda jobs concluídos (removeOnComplete) —
+ * um addBulk com o MESMO jobId seria ignorado em silêncio e a campanha ficaria
+ * 'running' pra sempre sem enviar nada. Remove só os jobs já finalizados
+ * (completed/failed); os que ainda estão na fila (delayed/waiting/active) ficam,
+ * e voltam a valer porque a campanha está 'running' de novo — idempotência mantida.
+ */
+async function releaseFinishedJobIds(campanhaId: string, pendentes: { id: string }[]): Promise<void> {
+  const CHUNK = 200;
+  for (let i = 0; i < pendentes.length; i += CHUNK) {
+    await Promise.all(pendentes.slice(i, i + CHUNK).map(async (p) => {
+      const job = await campanhasQueue.getJob(`${campanhaId}:${p.id}`);
+      if (!job) return;
+      const state = await job.getState();
+      if (state === 'completed' || state === 'failed') await job.remove().catch(() => null);
+    }));
+  }
+}
+
+/**
  * Enfileira o disparo dos contatos 'pending' de uma campanha — jobId
  * determinístico campanhaId:contatoId (reenviar não duplica jobs em voo),
  * pool/round-robin (assignedNumberId — §11/item 2), aquecimento progressivo do
@@ -532,6 +571,8 @@ export async function enqueueCampanhaSend(
   const dailyLimit = channel === 'evolution'
     ? Math.min(...sendNumbers.map((n: any) => effectiveEvolutionDailyLimit(n.connectedAt)))
     : EVOLUTION_DAILY_LIMIT;
+
+  await releaseFinishedJobIds(campanhaId, pendentes);
 
   await campanhasQueue.addBulk(
     pendentes.map((p: any, i: number) => ({
@@ -1701,12 +1742,29 @@ export default async function campanhasRoutes(app: FastifyInstance) {
       }
     }
 
+    // Claim atômico (mesmo idioma do Chatbot Campanhas): dois cliques/requests
+    // simultâneos não podem cobrar e enfileirar a mesma campanha duas vezes.
+    const claim = await prisma.campanha.updateMany({
+      where: { id, status: campanha.status },
+      data:  { status: 'running' },
+    });
+    if (claim.count === 0) {
+      return reply.code(409).send({ error: 'A campanha já está sendo iniciada.' });
+    }
+
+    // Cobra só no PRIMEIRO início (startedAt nulo): contatos só entram em rascunho,
+    // então todo 'pending' de uma retomada já foi pago no início original — cobrar
+    // de novo a cada pausa/retomada seria cobrança em dobro.
+    const isFirstStart = !campanha.startedAt;
+    const toCharge = isFirstStart ? pendentes.length : 0;
+
     // Cobra ANTES de iniciar o disparo (nunca depois) — mesmo princípio do
     // Chatbot Campanhas (services/campanhas-chat-commands.ts). Sem saldo,
     // 402 com o que falta em vez de travar o disparo pela metade.
     try {
-      await debitCampanhaMessages(userId, pendentes.length, { referenceType: 'campanha', referenceId: id });
+      if (toCharge > 0) await debitCampanhaMessages(userId, toCharge, { referenceType: 'campanha', referenceId: id });
     } catch (err) {
+      await prisma.campanha.updateMany({ where: { id, status: 'running' }, data: { status: campanha.status } }).catch(() => null);
       if (err instanceof InsufficientCampanhaBalanceError) {
         return reply.code(402).send({
           error:   'Saldo de mensagens insuficiente.',
@@ -1732,6 +1790,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
           // deve ressurgir enganosamente numa pausa manual futura (ver §11/item 1).
           status: 'running', startedAt: campanha.startedAt ?? new Date(),
           pausedReason: null, consecutiveFailures: 0,
+          ...(isFirstStart ? { messagesCost: toCharge } : {}),
           ...(!campanha.consentConfirmedAt
             ? { consentConfirmedAt: new Date(), consentConfirmedIp: req.ip }
             : {}),
@@ -1766,8 +1825,11 @@ export default async function campanhasRoutes(app: FastifyInstance) {
 
       return reply.send({ ok: true, enqueued });
     } catch (err) {
-      await refundCampanhaMessages(userId, pendentes.length, { referenceType: 'campanha_start_failed', referenceId: id })
-        .catch((refundErr) => logger.error(`[Campanhas] Falha ao estornar ${pendentes.length} msgs da campanha ${id} após erro no /start: ${(refundErr as Error).message}`));
+      if (toCharge > 0) {
+        await refundCampanhaMessages(userId, toCharge, { referenceType: 'campanha_start_failed', referenceId: id })
+          .catch((refundErr) => logger.error(`[Campanhas] Falha ao estornar ${toCharge} msgs da campanha ${id} após erro no /start: ${(refundErr as Error).message}`));
+      }
+      await prisma.campanha.updateMany({ where: { id, status: 'running' }, data: { status: campanha.status } }).catch(() => null);
       throw err;
     }
   });
@@ -1793,7 +1855,7 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     const { id } = req.params;
     const campanha = await ownedCampanha(userId, id);
     if (!campanha) return reply.code(404).send({ error: 'Campanha não encontrada.' });
-    if (!['running', 'paused', 'draft'].includes(campanha.status)) {
+    if (!['running', 'paused', 'draft', 'scheduled'].includes(campanha.status)) {
       return reply.code(400).send({ error: 'Campanha já finalizada.' });
     }
     await prisma.campanha.update({ where: { id }, data: { status: 'canceled', completedAt: new Date() } });
@@ -1809,197 +1871,5 @@ export default async function campanhasRoutes(app: FastifyInstance) {
     }
 
     return reply.send({ ok: true });
-  });
-
-  // ── POST /contatos/from-csv — upload de contatos via CSV ────────────────
-  // Aceita file multipart + listaId (reutilizar) ou listName (criar nova)
-  app.post<{ Body: any }>('/contatos/from-csv', auth, async (req: any, reply) => {
-    const userId = req.user.sub;
-    let data;
-    try {
-      data = await req.file();
-    } catch (err: any) {
-      return reply.code(400).send({ error: 'Erro ao processar arquivo. Verifique se é um CSV válido.' });
-    }
-    if (!data) return reply.code(400).send({ error: 'Arquivo CSV é obrigatório.' });
-
-    const validation = validateRequest(uploadContatosCsvSchema)(data.fields);
-    if (!validation.valid) return reply.code(400).send({ error: validation.error });
-
-    const { listaId, listName } = validation.data;
-    if (!listaId && !listName) {
-      return reply.code(400).send({ error: 'Informe listaId (reutilizar) ou listName (criar nova).' });
-    }
-
-    let targetListaId = listaId;
-    if (!listaId) {
-      const newLista = await prisma.campanhaLista.create({
-        data: { userId, name: listName || 'Import CSV', description: `Importado em ${new Date().toLocaleString('pt-BR')}` },
-      });
-      targetListaId = newLista.id;
-    } else {
-      const lista = await prisma.campanhaLista.findUnique({ where: { id: listaId } });
-      if (!lista || lista.userId !== userId) {
-        return reply.code(404).send({ error: 'Lista não encontrada.' });
-      }
-    }
-
-    // Parse CSV com melhor tratamento de erros
-    const MAX_CSV_SIZE = 10 * 1024 * 1024; // 10 MB limit
-    let csv: string;
-    try {
-      const buffer = await data.file.toBuffer();
-      if (buffer.length > MAX_CSV_SIZE) {
-        return reply.code(413).send({ error: 'Arquivo muito grande (máximo 10 MB).' });
-      }
-      csv = buffer.toString('utf-8');
-      if (!csv || csv.length === 0) {
-        return reply.code(400).send({ error: 'Arquivo vazio.' });
-      }
-    } catch (err: any) {
-      return reply.code(400).send({ error: 'Erro ao ler arquivo.' });
-    }
-
-    const lines = csv.split('\n').map(l => l.trim()).filter(l => l);
-    if (lines.length < 2) return reply.code(400).send({ error: 'CSV deve ter ao menos 1 contato + header.' });
-
-    const headerLine = lines[0].toLowerCase();
-    const hasPhone = /\b(phone|numero|telefone)\b/.test(headerLine);
-    const hasName = /\b(name|nome)\b/.test(headerLine);
-    if (!hasPhone) return reply.code(400).send({ error: 'CSV deve conter coluna "phone", "numero" ou "telefone".' });
-
-    // Detectar delimiter (preferir , se ambos existem)
-    const commaCnt = (headerLine.match(/,/g) || []).length;
-    const semiCnt = (headerLine.match(/;/g) || []).length;
-    const delimiter = commaCnt >= semiCnt ? ',' : ';';
-
-    const headers = headerLine.split(delimiter).map((h: string) => h.trim());
-    const phoneIdx = headers.findIndex(h => ['phone', 'numero', 'telefone'].includes(h));
-    const nameIdx = hasName ? headers.findIndex(h => ['name', 'nome'].includes(h)) : -1;
-
-    if (phoneIdx === -1) {
-      return reply.code(400).send({ error: 'Não foi possível localizar coluna de telefone.' });
-    }
-
-    const contatos: Array<{ phone: string; name?: string }> = [];
-    const errors: string[] = [];
-    let imported = 0, skipped = 0;
-
-    for (let i = 1; i < lines.length; i++) {
-      const cells = lines[i].split(delimiter).map(c => c.trim().replace(/^"|"$/g, ''));
-      if (cells.length <= phoneIdx || !cells[phoneIdx]) continue;
-
-      const rawPhone = cells[phoneIdx].trim();
-      if (!PHONE_LIKE.test(rawPhone)) {
-        if (errors.length < 10) errors.push(`Linha ${i + 1}: "${rawPhone}" inválido.`);
-        skipped++;
-        continue;
-      }
-
-      try {
-        const phone = normalizePhone(rawPhone);
-        const name = nameIdx >= 0 && cells[nameIdx] ? cells[nameIdx] : undefined;
-        contatos.push({ phone, name });
-        imported++;
-      } catch (err: any) {
-        if (errors.length < 10) errors.push(`Linha ${i + 1}: erro ao processar.`);
-        skipped++;
-      }
-    }
-
-    if (imported === 0) {
-      return reply.code(400).send({ error: 'Nenhum contato válido encontrado no CSV.' });
-    }
-
-    // Dedup + insert
-    const existing = await prisma.campanhaListaContato.findMany({
-      where: { listaId: targetListaId! },
-      select: { phone: true },
-    });
-    const existingPhones = new Set(existing.map(e => e.phone));
-
-    const toInsert = contatos.filter(c => !existingPhones.has(c.phone));
-    const dedupedCount = contatos.length - toInsert.length;
-
-    if (toInsert.length > 0) {
-      await prisma.campanhaListaContato.createMany({
-        data: toInsert.map(c => ({ listaId: targetListaId!, phone: c.phone, name: c.name })),
-        skipDuplicates: true,
-      });
-    }
-
-    return reply.send({
-      ok: true,
-      listaId: targetListaId,
-      importedCount: toInsert.length,
-      skippedCount: skipped,
-      dedupedCount,
-      errors,
-    });
-  });
-
-  // ── GET /contatos/preview-historico — lista contatos do histórico ────────
-  app.get<{ Querystring: any }>('/contatos/preview-historico', auth, async (req: any, reply) => {
-    const userId = req.user.sub;
-    const validation = validateRequest(previewContatosSchema)(req.query);
-    if (!validation.valid) return reply.code(400).send({ error: validation.error });
-
-    const { numberId, since, limit } = validation.data;
-    const whereFilter: any = { userId };
-    if (numberId) whereFilter.numberId = numberId;
-    if (since) whereFilter.createdAt = { gte: since };
-
-    const transcricoes = await prisma.transcription.findMany({
-      where: whereFilter,
-      select: { contactPhone: true, contactName: true },
-      distinct: ['contactPhone'],
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-    });
-
-    // Filtro: já em CampanhaOptOut deste usuário?
-    const optOuts = await prisma.campanhaOptOut.findMany({
-      where: { userId },
-      select: { phone: true },
-    });
-    const optOutPhones = new Set(optOuts.map(o => o.phone));
-
-    const contatos = transcricoes
-      .filter(t => !optOutPhones.has(normalizePhone(t.contactPhone)))
-      .map(t => ({
-        phone: normalizePhone(t.contactPhone),
-        name: t.contactName || undefined,
-      }));
-
-    return reply.send({ ok: true, contatos, total: contatos.length });
-  });
-
-  // ── GET /contatos/preview-crm — lista contatos do CRM ─────────────────────
-  app.get<{ Querystring: any }>('/contatos/preview-crm', auth, async (req: any, reply) => {
-    const userId = req.user.sub;
-    const validation = validateRequest(previewContatosSchema)(req.query);
-    if (!validation.valid) return reply.code(400).send({ error: validation.error });
-
-    const { limit } = validation.data;
-
-    const crmContacts = await prisma.crmContact.findMany({
-      where: { userId },
-      select: { phone: true, name: true },
-      take: limit,
-      orderBy: { lastActivityAt: 'desc' },
-    });
-
-    // Filtro: já em CampanhaOptOut?
-    const optOuts = await prisma.campanhaOptOut.findMany({
-      where: { userId },
-      select: { phone: true },
-    });
-    const optOutPhones = new Set(optOuts.map(o => o.phone));
-
-    const contatos = crmContacts
-      .filter(c => !optOutPhones.has(c.phone))
-      .map(c => ({ phone: c.phone, name: c.name }));
-
-    return reply.send({ ok: true, contatos, total: contatos.length });
   });
 }

@@ -1281,3 +1281,37 @@ engine de crédito, `GET /campanha-packages`, `GET /campanha-balance`, `BalanceC
 Chatbot Campanhas (`packagesText()`) — lê os pacotes dinamicamente dali, sem valor hardcoded. Só
 precisou editar à mão a landing pública `/campanhas` (preço aparece como texto solto no JSX/FAQ,
 não vem da API).
+
+---
+
+## 18. Revisão de funcionamento (2026-10-31) — bugs corrigidos
+
+Revisão ponta a ponta do fluxo de disparo (api + worker + painel). Bugs reais corrigidos:
+
+1. **Retomar campanha pausada não enviava nada.** O worker conclui como "skipped" os jobs de
+   uma campanha pausada; o BullMQ guarda jobs concluídos (`removeOnComplete`), então o
+   `addBulk` da retomada, com o mesmo jobId `campanhaId:contatoId`, era ignorado em silêncio e
+   a campanha ficava `running` para sempre. `enqueueCampanhaSend` agora chama
+   `releaseFinishedJobIds`: remove só jobs `completed`/`failed` e mantém os que ainda estão na fila.
+2. **Cobrança em dobro ao retomar.** `/start` debitava todos os `pending` a cada retomada, mas
+   eles já tinham sido pagos no primeiro início (contatos só entram em rascunho). Agora cobra só
+   quando `startedAt` é nulo e grava `messagesCost`. O agendador segue a mesma regra.
+3. **Clique duplo em "Iniciar" cobrava 2×.** `/start` faz claim atômico (`updateMany` filtrado
+   por status). Um request concorrente recebe 409. Sem saldo ou em erro, a campanha volta ao
+   status anterior em vez de ficar presa.
+4. **Opt-in Evolution:**
+   - "SIM" voltava o contato a `pending`, mas ninguém o reenfileirava (a mensagem nunca saía).
+     Agora reenfileira.
+   - A pergunta contava como processada, então o SIM contava 2× e a campanha "concluía" antes
+     da hora. Agora não conta.
+   - "NÃO" não tirava da campanha quem estava em `pending_optin`. Agora tira.
+   - Timeout de 5 min gravava opt-out **global e permanente**. Agora o contato só sai daquela
+     campanha (conta como processado) e o cleanup roda a cada 1 min.
+   - Contato de audiência quente já entra com `optinConfirmedAt`, então esse fluxo só sobra para
+     contatos legados.
+5. **Campanha agendada não podia ser cancelada.** `/cancel` passou a aceitar `scheduled`.
+6. **Enxugamento:** removidos `POST /contatos/from-csv`, `GET /contatos/preview-historico` e
+   `GET /contatos/preview-crm` (nunca usados pelo painel) e seus schemas. Também saiu 1
+   round-trip de banco por mensagem enviada (`sentCount` no mesmo update de `processedCount`).
+7. **Painel:** status `pending_optin` com rótulo próprio. O polling da tela da campanha para
+   quando a aba fica em segundo plano.

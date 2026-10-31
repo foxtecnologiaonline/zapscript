@@ -265,14 +265,16 @@ async function fireCampanha(campanhaId: string): Promise<void> {
   const startedAt = new Date();
   const claimed = await prisma.campanha.updateMany({
     where: { id: campanhaId, status: 'scheduled' },
-    data: { status: 'running', startedAt },
+    data: { status: 'running', startedAt: campanha.startedAt ?? startedAt },
   });
   if (claimed.count === 0) return; // outra réplica já iniciou
 
   // Cobra ANTES de enfileirar (mesmo princípio de POST /:id/start, api) —
   // sem saldo, volta pra pausado (intervenção manual do usuário) em vez de
   // travar a campanha em 'running' sem nunca disparar nada.
-  const debited = await debitCampanhaMessagesOrFail(campanha.userId, pendentes.length, campanhaId);
+  // Só cobra no primeiro início — mesma regra de POST /:id/start (retomada não recobra).
+  const toCharge = campanha.startedAt ? 0 : pendentes.length;
+  const debited = toCharge === 0 || await debitCampanhaMessagesOrFail(campanha.userId, toCharge, campanhaId);
   if (!debited) {
     await prisma.campanha.updateMany({
       where: { id: campanhaId, status: 'running' },
@@ -354,8 +356,8 @@ async function fireCampanha(campanhaId: string): Promise<void> {
     );
     logger.info(`[Campanhas][Scheduler] ▶ Campanha ${campanhaId} iniciada automaticamente (${pendentes.length} contato(s)).`);
   } catch (err) {
-    await refundCampanhaMessagesOrFail(campanha.userId, pendentes.length, campanhaId).catch((refundErr: any) =>
-      logger.error(`[Campanhas][Scheduler] Falha ao estornar ${pendentes.length} msgs da campanha ${campanhaId}: ${refundErr.message}`));
+    await refundCampanhaMessagesOrFail(campanha.userId, toCharge, campanhaId).catch((refundErr: any) =>
+      logger.error(`[Campanhas][Scheduler] Falha ao estornar ${toCharge} msgs da campanha ${campanhaId}: ${refundErr.message}`));
     await prisma.campanha.updateMany({
       where: { id: campanhaId, status: 'running' },
       data: { status: 'scheduled', scheduledAt: new Date() }, // tenta de novo no próximo tick
