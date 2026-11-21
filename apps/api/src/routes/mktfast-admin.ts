@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
+import { mktfastSendJobId } from '../lib/queue-job-id';
 import { checkAdminTotp } from '../lib/totp';
 import { mktfastQueue } from '../services/queue';
 import { normalizePhone } from './modules/campanhas';
@@ -83,7 +84,7 @@ async function enqueuePendingExecutions(missionId: string): Promise<number> {
     pending.map((e) => ({
       name: 'send',
       data: { missionId, executionId: e.id },
-      opts: { jobId: `${missionId}:${e.id}` },
+      opts: { jobId: mktfastSendJobId(missionId, e.id) },
     })),
   );
   return pending.length;

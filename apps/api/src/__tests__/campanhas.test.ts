@@ -562,8 +562,8 @@ describe('Ciclo start/pause/cancel', () => {
       // (dentro do horário permitido) ou >0 (madrugada, empurrado pra frente), mas
       // sempre um número; o que importa aqui é jobId determinístico e sem duplicar.
       expect(jobs).toEqual([
-        { name: 'send', data: { campanhaId: 'c1', contatoId: 'ct1' }, opts: { jobId: 'c1:ct1', delay: expect.any(Number) } },
-        { name: 'send', data: { campanhaId: 'c1', contatoId: 'ct2' }, opts: { jobId: 'c1:ct2', delay: expect.any(Number) } },
+        { name: 'send', data: { campanhaId: 'c1', contatoId: 'ct1' }, opts: { jobId: 'camp-c1-ct1', delay: expect.any(Number) } },
+        { name: 'send', data: { campanhaId: 'c1', contatoId: 'ct2' }, opts: { jobId: 'camp-c1-ct2', delay: expect.any(Number) } },
       ]);
       expect(prisma.campanha.update).toHaveBeenCalledWith({
         where: { id: 'c1' },
@@ -1141,9 +1141,9 @@ describe('Canal Evolution (guardrails)', () => {
     // hora isso pode reordenar os totais entre índices, então aqui só valida
     // jobId determinístico e que o delay é sempre um número não-negativo — a
     // corretude da janela em si tem cobertura determinística própria.
-    expect(jobs[0].opts.jobId).toBe('c1:ct1');
+    expect(jobs[0].opts.jobId).toBe('camp-c1-ct1');
     expect(jobs[0].opts.delay).toBeGreaterThanOrEqual(0);
-    expect(jobs[1].opts.jobId).toBe('c1:ct2');
+    expect(jobs[1].opts.jobId).toBe('camp-c1-ct2');
     expect(jobs[1].opts.delay).toBeGreaterThanOrEqual(0);
   });
 });
@@ -2060,7 +2060,7 @@ describe('handleOptinResponse — fluxo de opt-in (Evolution)', () => {
     expect(r).toBe('confirmed');
     expect(remove).toHaveBeenCalled(); // job da pergunta liberado pra reusar o jobId
     const [jobs] = (campanhasQueue.addBulk as jest.Mock).mock.calls[0];
-    expect(jobs).toEqual([{ name: 'send', data: { campanhaId: 'c1', contatoId: 'ct1' }, opts: { jobId: 'c1:ct1', delay: expect.any(Number) } }]);
+    expect(jobs).toEqual([{ name: 'send', data: { campanhaId: 'c1', contatoId: 'ct1' }, opts: { jobId: 'camp-c1-ct1', delay: expect.any(Number) } }]);
   });
 
   it('SIM sem pergunta pendente não faz nada', async () => {

@@ -1,6 +1,7 @@
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
 import { campanhasQueue } from './lib/queue';
+import { campanhaSendJobId } from './lib/queue-job-id';
 import { sendEmail } from './services/mailer';
 
 /**
@@ -349,7 +350,7 @@ async function fireCampanha(campanhaId: string): Promise<void> {
         name: 'send',
         data: { campanhaId, contatoId: p.id },
         opts: {
-          jobId: `${campanhaId}:${p.id}`,
+          jobId: campanhaSendJobId(campanhaId, p.id),
           delay: applySendWindow(campanha.channel === 'evolution' ? evolutionSendDelayMs(i, dailyLimit) : 0),
         },
       })),
