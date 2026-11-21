@@ -16,6 +16,7 @@ import { ApiError, isApiError } from '../../lib/apiErrors';
 import { sendError } from '../../lib/apiResponse';
 import { findTemplateByName } from '../../services/meta-templates';
 import { assertTemplateSendable, templateBodyVarCount } from '../../services/template-components';
+import { campanhaSendJobId } from '../../lib/queue-job-id';
 
 /**
  * ZapScript Campanhas — disparo em massa via WhatsApp API oficial (Meta Cloud API).
@@ -133,7 +134,7 @@ async function requeueConfirmedOptins(contatos: { id: string; campanhaId: string
     await campanhasQueue.addBulk(ids.map((c) => ({
       name: 'send',
       data: { campanhaId, contatoId: c.id },
-      opts: { jobId: `${campanhaId}:${c.id}`, delay: applySendWindow(0) },
+      opts: { jobId: campanhaSendJobId(campanhaId, c.id), delay: applySendWindow(0) },
     })));
   }
 }
@@ -523,7 +524,7 @@ async function releaseFinishedJobIds(campanhaId: string, pendentes: { id: string
   const CHUNK = 200;
   for (let i = 0; i < pendentes.length; i += CHUNK) {
     await Promise.all(pendentes.slice(i, i + CHUNK).map(async (p) => {
-      const job = await campanhasQueue.getJob(`${campanhaId}:${p.id}`);
+      const job = await campanhasQueue.getJob(campanhaSendJobId(campanhaId, p.id));
       if (!job) return;
       const state = await job.getState();
       if (state === 'completed' || state === 'failed') await job.remove().catch(() => null);
@@ -579,7 +580,7 @@ export async function enqueueCampanhaSend(
       name: 'send',
       data: { campanhaId, contatoId: p.id },
       opts: {
-        jobId: `${campanhaId}:${p.id}`,
+        jobId: campanhaSendJobId(campanhaId, p.id),
         delay: applySendWindow(channel === 'evolution' ? evolutionSendDelayMs(i, dailyLimit) : 0),
       },
     })),

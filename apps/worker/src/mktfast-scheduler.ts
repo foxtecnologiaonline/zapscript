@@ -1,6 +1,7 @@
 import { prisma } from './lib/prisma';
 import { logger } from './lib/logger';
 import { mktfastQueue } from './lib/queue';
+import { mktfastSendJobId } from './lib/queue-job-id';
 
 /**
  * MKT-Fast — dispara automaticamente missões agendadas (status 'scheduled',
@@ -52,7 +53,7 @@ async function fireMission(missionId: string): Promise<void> {
   if (claimed.count === 0) return; // outra réplica já iniciou
 
   await mktfastQueue.addBulk(
-    pending.map((e) => ({ name: 'send', data: { missionId, executionId: e.id }, opts: { jobId: `${missionId}:${e.id}` } })),
+    pending.map((e) => ({ name: 'send', data: { missionId, executionId: e.id }, opts: { jobId: mktfastSendJobId(missionId, e.id) } })),
   );
   logger.info(`[MKT-Fast][Scheduler] ▶ Missão ${missionId} iniciada automaticamente (${pending.length} execução(ões)).`);
 }

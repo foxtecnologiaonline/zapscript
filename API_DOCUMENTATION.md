@@ -2,7 +2,7 @@
 
 **Versão:** 1.0.0  
 **Data:** 2026-05-04  
-**Base URL:** `https://zapscript-api.railway.app`
+**Base URL:** `https://api.zapscript.me`
 
 ---
 
@@ -613,7 +613,7 @@ X-RateLimit-Reset: 1234567890
 
 ### Register User
 ```bash
-curl -X POST https://zapscript-api.railway.app/auth/register \
+curl -X POST https://api.zapscript.me/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "email": "test@example.com",
@@ -624,7 +624,7 @@ curl -X POST https://zapscript-api.railway.app/auth/register \
 
 ### Login
 ```bash
-TOKEN=$(curl -s -X POST https://zapscript-api.railway.app/auth/login \
+TOKEN=$(curl -s -X POST https://api.zapscript.me/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"SecurePass123"}' \
   | jq -r '.token')
@@ -634,7 +634,7 @@ echo "Token: $TOKEN"
 
 ### Create Transcription
 ```bash
-curl -X POST https://zapscript-api.railway.app/transcriptions \
+curl -X POST https://api.zapscript.me/transcriptions \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -646,7 +646,7 @@ curl -X POST https://zapscript-api.railway.app/transcriptions \
 
 ### Get Dashboard Stats
 ```bash
-curl -X GET https://zapscript-api.railway.app/dashboard/stats \
+curl -X GET https://api.zapscript.me/dashboard/stats \
   -H "Authorization: Bearer $TOKEN"
 ```
 

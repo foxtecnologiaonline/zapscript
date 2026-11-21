@@ -178,8 +178,8 @@ describe('POST /mktfast/missions/:id/start', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ started: true, queued: 2 });
     expect(mktfastQueue.addBulk).toHaveBeenCalledWith([
-      { name: 'send', data: { missionId: 'm1', executionId: 'e1' }, opts: { jobId: 'm1:e1' } },
-      { name: 'send', data: { missionId: 'm1', executionId: 'e2' }, opts: { jobId: 'm1:e2' } },
+      { name: 'send', data: { missionId: 'm1', executionId: 'e1' }, opts: { jobId: 'mkt-m1-e1' } },
+      { name: 'send', data: { missionId: 'm1', executionId: 'e2' }, opts: { jobId: 'mkt-m1-e2' } },
     ]);
   });
 

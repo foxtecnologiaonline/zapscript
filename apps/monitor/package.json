@@ -11,7 +11,7 @@
     "@anthropic-ai/sdk": "^0.24.3",
     "dotenv": "^16.6.1",
     "node-cron": "^4.6.0",
-    "nodemailer": "^10.0.13"
+    "nodemailer": "^10.6.1"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

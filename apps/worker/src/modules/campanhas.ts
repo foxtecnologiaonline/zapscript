@@ -1,4 +1,4 @@
-import { Job } from 'bullmq';
+import { Job, DelayedError } from 'bullmq';
 import { prisma } from '../lib/prisma';
 import { decryptStr } from '../services/encryption';
 import { sendTemplateMessage } from '../services/whatsapp-campaigns';
@@ -6,6 +6,8 @@ import { buildTemplateComponents } from '../services/template-components';
 import { sendMessageViaEvolution } from '../services/evolution';
 import { sendEmail } from '../services/mailer';
 import { logger } from '../lib/logger';
+import { isMetaThrottleError, MetaSendError } from '../lib/meta-errors';
+import { acquireSendSlot } from '../lib/send-rate-limit';
 
 const CIRCUIT_BREAKER_THRESHOLD = parseInt(process.env.CAMPANHAS_CIRCUIT_BREAKER_THRESHOLD || '5', 10);
 
@@ -46,7 +48,7 @@ function renderEvolutionMessage(body: string, contato: { phone: string; name: st
  * se esgotam, tratada pelo listener 'failed' do worker (ver index.ts) para evitar
  * ambiguidade sobre o número exato da tentativa dentro do próprio processor.
  */
-export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean; reason?: string }> {
+export async function processCampanhaJob(job: Job, token?: string): Promise<{ skipped?: boolean; reason?: string }> {
   const { campanhaId, contatoId } = job.data as { campanhaId: string; contatoId: string };
 
   const campanha = await prisma.campanha.findUnique({
@@ -119,7 +121,7 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
       await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: false });
       return { skipped: true, reason: 'número desconectado' };
     }
-    const token = decryptStr(numero.metaAccessTokenEnc);
+    const accessToken = decryptStr(numero.metaAccessTokenEnc);
     const templateName     = (isVariantB ? campanha.variantBTemplateName : campanha.templateName)!;
     const templateLanguage = (isVariantB ? campanha.variantBTemplateLanguage : campanha.templateLanguage)!;
     const staticComponents = ((isVariantB ? campanha.variantBTemplateComponents : campanha.templateComponents) as Array<Record<string, any>> | null) || [];
@@ -139,10 +141,28 @@ export async function processCampanhaJob(job: Job): Promise<{ skipped?: boolean;
       bodyVariables:    bodyVars,
       staticComponents,
     });
-    messageId = await sendTemplateMessage(
-      token, numero.metaPhoneNumberId, contato.phone,
-      templateName, templateLanguage, components,
-    );
+    // Teto por número (§3.3): estourou a janela de 1s → reagenda o job ~1s à frente.
+    // DelayedError (e não um throw comum) porque um erro comum CONSOME uma tentativa
+    // de retry — e, esgotadas, o contato iria para 'failed' só por excesso de ritmo.
+    if (!(await acquireSendSlot(numero.id))) {
+      await job.moveToDelayed(Date.now() + 1000 + Math.floor(Math.random() * 500), token);
+      throw new DelayedError();
+    }
+    try {
+      messageId = await sendTemplateMessage(
+        accessToken, numero.metaPhoneNumberId, contato.phone,
+        templateName, templateLanguage, components,
+      );
+    } catch (err) {
+      // Throttling da Meta (§3.2): não é falha do contato. Pausa a campanha (idempotente)
+      // e devolve sem lançar — o contato segue 'pending' e volta na retomada. Lançar
+      // aqui gastaria retries e, esgotados, marcaria o contato como 'failed' à toa.
+      if (isMetaThrottleError(err)) {
+        await pauseForMetaThrottle(campanhaId, err as MetaSendError);
+        return { skipped: true, reason: `throttle da Meta (código ${(err as MetaSendError).code ?? (err as MetaSendError).httpStatus}) — campanha pausada` };
+      }
+      throw err;
+    }
   }
 
   await prisma.campanhaContato.update({
@@ -176,6 +196,22 @@ export async function markCampanhaJobExhausted(job: Job, err: Error): Promise<vo
 
   await markContatoFailed(contatoId, err.message || 'Falha ao enviar mensagem da campanha');
   await bumpProcessedAndMaybeComplete(campanhaId, { resetFailures: false });
+}
+
+/** Pausa a campanha porque a Meta limitou a taxa. Só a 1ª chamada efetiva (updateMany condicional). */
+async function pauseForMetaThrottle(campanhaId: string, err: MetaSendError): Promise<void> {
+  const codigo = err.code ?? err.httpStatus;
+  const paused = await prisma.campanha.updateMany({
+    where: { id: campanhaId, status: 'running' },
+    data: {
+      status: 'paused',
+      pausedReason: `A Meta limitou a taxa de envio deste número (código ${codigo}). Pausada automaticamente para proteger a qualidade do número — aguarde alguns minutos e retome. Os contatos pendentes não foram marcados como falha.`,
+    },
+  });
+  if (paused.count > 0) {
+    logger.warn(`[Campanhas] ⛔ Campanha ${campanhaId} pausada: throttle da Meta (código ${codigo}).`);
+    notifyCampanhaAutoPaused(campanhaId, 'throttle').catch((e: any) => logger.warn(`[Campanhas] Falha ao notificar pausa por throttle: ${e.message}`));
+  }
 }
 
 async function markContatoFailed(contatoId: string, errorMessage: string): Promise<void> {
@@ -268,7 +304,7 @@ async function notifyCampanhaCompleted(campanhaId: string): Promise<void> {
 }
 
 /** E-mail de auto-pausa (circuit breaker) — mesma filosofia fire-and-forget. */
-async function notifyCampanhaAutoPaused(campanhaId: string): Promise<void> {
+async function notifyCampanhaAutoPaused(campanhaId: string, motivo: 'falhas' | 'throttle' = 'falhas'): Promise<void> {
   const campanha = await prisma.campanha.findUnique({
     where: { id: campanhaId },
     include: { user: { select: { email: true, name: true } } },
@@ -281,9 +317,13 @@ async function notifyCampanhaAutoPaused(campanhaId: string): Promise<void> {
     <div style="font-size:22px;font-weight:bold;margin-bottom:16px">⚠️ Campanha pausada automaticamente</div>
     <div style="font-size:14px;line-height:1.7;color:#a7f3d0">
       Olá, ${firstName}!<br><br>
-      Sua campanha <strong>"${escHtml(campanha.name)}"</strong> teve várias falhas de envio seguidas e foi
+      ${motivo === 'throttle'
+        ? `Sua campanha <strong>"${escHtml(campanha.name)}"</strong> foi <strong>pausada automaticamente</strong>
+      porque a Meta limitou a taxa de envio do número. Nenhum contato foi perdido: os pendentes continuam na
+      fila. Aguarde alguns minutos e retome.`
+        : `Sua campanha <strong>"${escHtml(campanha.name)}"</strong> teve várias falhas de envio seguidas e foi
       <strong>pausada automaticamente</strong> pra evitar desperdiçar o restante da lista. Confira a conexão
-      do número antes de retomar.
+      do número antes de retomar.`}
     </div>
     <div style="margin:24px 0;text-align:center">
       <a href="${APP_URL}/dashboard/campanhas/${campanhaId}" style="background:#f59e0b;color:#04130c;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold">Ver campanha →</a>

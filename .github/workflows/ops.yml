@@ -24,7 +24,9 @@
 #      schema via runAutoMigrations() no boot da API (Copiloto, Cobrança,
 #      Legendas etc.) continuam funcionando à parte disso, mas o padrão daqui
 #      pra frente é: toda migration nova do Prisma passa por este passo.
-#   1. git clone --depth 1 do master para /root/zapscript-build-new
+#   0b. (gate) exige CI verde no commit (ci.yml) — `skip_ci_gate` só para emergência
+#   1. git clone --depth 1 do master para /root/zapscript-build-new, fixado no
+#      SHA exato do disparo (o mesmo que o gate validou)
 #   2. docker build das imagens api/worker com tag :new (isolado — não toca
 #      no que está rodando enquanto builda)
 #   3. tag do :latest atual → :previous (rede de segurança pro rollback) —
@@ -94,9 +96,15 @@ on:
         description: 'Comando shell remoto (usado só quando action = custom_ssh)'
         required: false
         type: string
+      skip_ci_gate:
+        description: 'EMERGÊNCIA: deploy sem exigir CI verde no commit (só action = deploy)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read   # gate de CI do deploy consulta o resultado do ci.yml
 
 jobs:
   # ── Migração de usuários para o Core — sem SSH, roda no runner mesmo. ──
@@ -137,6 +145,35 @@ jobs:
       group: ops-vultr-remote-ssh
       cancel-in-progress: false
     steps:
+      # Gate: só deploya commit com CI verde. Histórico que motivou isto: o run 160
+      # (31/10/2026) foi disparado com o `ci.yml` do mesmo commit VERMELHO — havia
+      # um bug de enfileiramento (jobId com ":" rejeitado pelo BullMQ) que o próprio
+      # CI apontava, e o deploy foi adiante. O `ci.yml` roda em todo push em
+      # master (sem filtro de paths), então sempre existe um run para o SHA.
+      # Rollback não passa por aqui — reverter tem que funcionar com CI vermelho.
+      - name: Gate — CI precisa estar verde neste commit
+        if: inputs.action == 'deploy' && !inputs.skip_ci_gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -e
+          runs=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=10" \
+            --jq '[.workflow_runs[] | {status, conclusion}]')
+          echo "Runs do ci.yml para $SHA: $runs"
+          if [ "$(echo "$runs" | jq 'length')" = "0" ]; then
+            echo "❌ Nenhum run do ci.yml para $SHA. Aguarde o CI iniciar (push em master) ou use skip_ci_gate (emergência)."; exit 1
+          fi
+          if [ "$(echo "$runs" | jq '[.[] | select(.status != "completed")] | length')" != "0" ]; then
+            echo "❌ CI ainda em andamento para $SHA. Aguarde terminar e rode o deploy de novo."; exit 1
+          fi
+          # Vale o run mais recente (a API lista do mais novo para o mais antigo):
+          # um re-run verde depois de um vermelho libera o deploy.
+          if [ "$(echo "$runs" | jq -r '.[0].conclusion')" != "success" ]; then
+            echo "❌ CI NÃO está verde para $SHA — corrija antes de deployar (ou skip_ci_gate em emergência)."; exit 1
+          fi
+          echo "✅ CI verde para $SHA"
+
       - name: Checkout (schema Prisma)
         if: inputs.action == 'deploy'
         uses: actions/checkout@v4
@@ -210,6 +247,7 @@ jobs:
         env:
           ACTION: ${{ inputs.action }}
           CUSTOM: ${{ inputs.custom_command }}
+          DEPLOY_SHA: ${{ github.sha }}
         run: |
           if [ "$ACTION" = "deploy" ]; then
             CMD=$(cat <<'REMOTE'
@@ -219,10 +257,18 @@ jobs:
           OLD_DIR=/root/zapscript-build-old
           COMPOSE_FILE=/root/docker-compose.zapscript.yml
 
-          echo "== clonando master =="
+          echo "== clonando master e fixando no commit validado pelo CI =="
+          DEPLOY_SHA=__DEPLOY_SHA__
           rm -rf "$NEW_DIR"
           git clone --depth 1 --branch master https://github.com/foxtecnologiaonline/zapscript.git "$NEW_DIR"
           cd "$NEW_DIR"
+          # Se alguém deu push depois do disparo, a ponta do master já não é o commit
+          # que passou no gate — builda exatamente o SHA do disparo, não o da hora.
+          if [ "$(git rev-parse HEAD)" != "$DEPLOY_SHA" ]; then
+            echo "master avancou desde o disparo — usando $DEPLOY_SHA"
+            git fetch --depth 1 origin "$DEPLOY_SHA"
+            git checkout -q "$DEPLOY_SHA"
+          fi
           git log -1 --oneline
 
           echo "== build api =="
@@ -275,6 +321,7 @@ jobs:
           echo "DEPLOY_OK"
           REMOTE
           )
+          CMD="${CMD//__DEPLOY_SHA__/$DEPLOY_SHA}"
           elif [ "$ACTION" = "rollback" ]; then
             CMD=$(cat <<'REMOTE'
           set -e

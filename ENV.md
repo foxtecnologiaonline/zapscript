@@ -1,5 +1,7 @@
 # Variáveis de Ambiente - ZapScript.me
 
+> ⚠️ **Produção atual:** API, Worker, Redis e Evolution rodam no **Vultr** (Docker Compose); as variáveis vivem no `.env` do servidor. O Redis é um container (`REDIS_URL` com `REDIS_PASSWORD`) — **não há mais Upstash, Render nem Railway**. As menções a eles abaixo são históricas; ver [`CLAUDE.md`](CLAUDE.md) e [`.env.example`](.env.example).
+
 Guia completo para configurar as variáveis de ambiente necessárias para rodar ZapScript em desenvolvimento, staging e produção.
 
 ## Índice
@@ -46,8 +48,7 @@ DATABASE_URL=postgresql://user:password@localhost:5432/zapscript
 #### Cache & Queue
 ```bash
 REDIS_URL=redis://default:password@localhost:6379
-# Para Upstash: redis://default:PASSWORD@HOST.upstash.io:6379
-# Obtém em: upstash.com → Redis → Connect
+# Produção (Vultr): redis://:REDIS_PASSWORD@redis:6379
 ```
 
 #### JWT & Encryption
@@ -84,7 +85,7 @@ WHATSAPP_WEBHOOK_TOKEN=webhook-xyz   # Token para webhooks (você cria)
 3. Adicione produto: WhatsApp
 4. Gere Access Token com scope: `whatsapp_business_messaging`
 5. Copie: App ID, App Secret, Access Token
-6. Configure webhook em: https://zapscript-api.onrender.com/webhook/whatsapp
+6. Configure webhook em: https://api.zapscript.me/webhook/whatsapp
 
 **Obs:** Meta cobra por mensagem (~R$ 0,05-0,15 cada). Grátis até 1.000/mês.
 
@@ -179,7 +180,7 @@ DATADOG_API_KEY=your-api-key
 # Obtém em: datadoghq.com → Organization Settings → API Keys
 
 # Monitor URLs
-API_HEALTH_URL=https://zapscript-api.railway.app/health
+API_HEALTH_URL=https://api.zapscript.me/health
 DASHBOARD_URL=https://zapscript.me/dashboard
 ALERT_EMAIL=seu@email.com
 ```
@@ -200,15 +201,12 @@ ALERT_EMAIL=seu@email.com
 
 **Custos:** Plano gratuito até 500 MB de dados
 
-### 2️⃣ Upstash (Redis Serverless)
+### 2️⃣ Redis (container no Vultr — antes Upstash, descomissionado)
 
 **Setup:**
-1. Acesse [upstash.com](https://upstash.com) e faça login
-2. Crie um novo Redis database
-3. Vá para Connect → .env
-4. Copie `REDIS_URL` para seu `.env`
+Em produção o Redis sobe pelo `docker-compose.zapscript.yml` com senha (`REDIS_PASSWORD`); a API/Worker usam `REDIS_URL=redis://:SENHA@redis:6379`. Em dev local: `redis://localhost:6379`.
 
-**Custos:** 10k comandos/dia gratuitos
+**Custos:** nenhum extra (mesmo servidor)
 
 ### 3️⃣ OpenAI (Whisper)
 
@@ -313,7 +311,7 @@ Verifica:
 ### "Redis connection timeout"
 - Verifique se REDIS_URL está correto
 - Teste: `redis-cli -u $REDIS_URL ping`
-- Upstash: verifique se a região está correta
+- Redis: verifique `REDIS_URL`/`REDIS_PASSWORD` e `docker compose ps redis`
 
 ### "Invalid API Key for OpenAI"
 - Gere uma nova chave em platform.openai.com
@@ -334,7 +332,7 @@ Verifica:
 NODE_ENV=development
 DATABASE_URL=postgresql://... (local ou Supabase)
 ASAAS_API_KEY=$aact_test_... (sandbox)
-REDIS_URL=redis://localhost:6379 (local ou Upstash)
+REDIS_URL=redis://localhost:6379 (local)
 ```
 
 ### Staging
@@ -342,7 +340,7 @@ REDIS_URL=redis://localhost:6379 (local ou Upstash)
 NODE_ENV=staging
 DATABASE_URL=postgresql://... (Supabase staging)
 ASAAS_API_KEY=$aact_test_... (sandbox)
-REDIS_URL=redis://... (Upstash)
+REDIS_URL=redis://... (container Redis)
 ```
 
 ### Production
@@ -350,7 +348,7 @@ REDIS_URL=redis://... (Upstash)
 NODE_ENV=production
 DATABASE_URL=postgresql://... (Supabase prod, replicated)
 ASAAS_API_KEY=$aact_... (production)
-REDIS_URL=redis://... (Upstash prod com backup)
+REDIS_URL=redis://... (container Redis, produção)
 SENTRY_DSN=... (error tracking)
 ```
 

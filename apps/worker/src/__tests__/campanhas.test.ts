@@ -23,6 +23,10 @@ jest.mock('../services/evolution', () => ({
   sendMessageViaEvolution: jest.fn(),
 }));
 
+jest.mock('../lib/send-rate-limit', () => ({
+  acquireSendSlot: jest.fn().mockResolvedValue(true),
+}));
+
 jest.mock('../services/mailer', () => ({
   sendEmail: jest.fn().mockResolvedValue(undefined),
 }));
@@ -32,6 +36,9 @@ import { sendTemplateMessage } from '../services/whatsapp-campaigns';
 import { sendMessageViaEvolution } from '../services/evolution';
 import { sendEmail } from '../services/mailer';
 import { processCampanhaJob, markCampanhaJobExhausted, expireOptinTimeouts } from '../modules/campanhas';
+import { acquireSendSlot } from '../lib/send-rate-limit';
+import { MetaSendError } from '../lib/meta-errors';
+import { DelayedError } from 'bullmq';
 
 const numeroConectado = {
   id: 'wn-primary',
@@ -57,7 +64,7 @@ function flushPromises(): Promise<void> {
 }
 
 describe('processCampanhaJob', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => { jest.clearAllMocks(); (acquireSendSlot as jest.Mock).mockResolvedValue(true); });
 
   it('ignora se a campanha não existe', async () => {
     (prisma.campanha.findUnique as jest.Mock).mockResolvedValueOnce(null);
@@ -455,5 +462,104 @@ describe('opt-in (Evolution)', () => {
       data: expect.objectContaining({ processedCount: { increment: 2 } }),
     }));
     expect((prisma as any).campanhaOptOut).toBeUndefined(); // nenhuma escrita na lista global
+  });
+});
+
+
+describe('processCampanhaJob — throttling da Meta (§3.2) e teto por número (§3.3)', () => {
+  const campanhaMeta = { id: 'c1', status: 'running', channel: 'meta', whatsappNumberId: 'wn-primary', whatsappNumber: numeroConectado, templateName: 't', templateLanguage: 'pt_BR', templateComponents: null, abTestEnabled: false };
+  const contatoPendente = { id: 'ct1', status: 'pending', phone: '5511999990000', name: 'Ana', variables: [], assignedNumberId: null };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (acquireSendSlot as jest.Mock).mockResolvedValue(true);
+    (prisma.campanha.findUnique as jest.Mock).mockResolvedValue(campanhaMeta);
+    (prisma.campanhaContato.findUnique as jest.Mock).mockResolvedValue(contatoPendente);
+  });
+
+  it('throttle da Meta (130429) pausa a campanha SEM marcar o contato como falha nem contar processado', async () => {
+    (sendTemplateMessage as jest.Mock).mockRejectedValueOnce(new MetaSendError('Throughput limit', 130429, undefined, 400));
+    (prisma.campanha.updateMany as jest.Mock).mockResolvedValueOnce({ count: 1 });
+    // 1ª leitura: o processador; 2ª: o e-mail de aviso (precisa do dono da campanha)
+    (prisma.campanha.findUnique as jest.Mock)
+      .mockResolvedValueOnce(campanhaMeta)
+      .mockResolvedValueOnce({ ...campanhaMeta, name: 'Black Friday', user: { email: 'dono@x.com', name: 'Dono' } });
+
+    const res = await processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }));
+    await flushPromises();
+
+    expect(res.skipped).toBe(true);
+    expect(res.reason).toMatch(/throttle da Meta \(código 130429\)/);
+    expect(prisma.campanha.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'c1', status: 'running' },
+      data: expect.objectContaining({ status: 'paused', pausedReason: expect.stringContaining('130429') }),
+    }));
+    // contato continua pending: nada de update em CampanhaContato nem em contadores da campanha
+    expect(prisma.campanhaContato.update).not.toHaveBeenCalled();
+    expect(prisma.campanha.update).not.toHaveBeenCalled();
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect((sendEmail as jest.Mock).mock.calls[0][2]).toContain('limitou a taxa');
+  });
+
+  it('HTTP 429 também é tratado como throttle', async () => {
+    (sendTemplateMessage as jest.Mock).mockRejectedValueOnce(new MetaSendError('Too many', undefined, undefined, 429));
+    (prisma.campanha.updateMany as jest.Mock).mockResolvedValueOnce({ count: 1 });
+    const res = await processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }));
+    expect(res.skipped).toBe(true);
+  });
+
+  it('segunda chamada concorrente não pausa nem notifica de novo (idempotente)', async () => {
+    (sendTemplateMessage as jest.Mock).mockRejectedValueOnce(new MetaSendError('limit', 80007));
+    (prisma.campanha.updateMany as jest.Mock).mockResolvedValueOnce({ count: 0 }); // outro job já pausou
+    await processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }));
+    await flushPromises();
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('falha permanente do contato (131026) continua propagando para o retry/failed do BullMQ', async () => {
+    (sendTemplateMessage as jest.Mock).mockRejectedValueOnce(new MetaSendError('Undeliverable', 131026, undefined, 400));
+    await expect(processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }))).rejects.toThrow('Undeliverable');
+    expect(prisma.campanha.updateMany).not.toHaveBeenCalled(); // não pausa por erro por-contato
+  });
+
+  it('limite do PAR (131056) é por contato — não pausa a campanha', async () => {
+    (sendTemplateMessage as jest.Mock).mockRejectedValueOnce(new MetaSendError('pair rate limit', 131056, undefined, 400));
+    await expect(processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }))).rejects.toThrow('pair rate limit');
+    expect(prisma.campanha.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('teto por número estourado: reagenda com moveToDelayed + DelayedError, sem enviar e sem gastar retry', async () => {
+    (acquireSendSlot as jest.Mock).mockResolvedValueOnce(false);
+    const moveToDelayed = jest.fn().mockResolvedValue(undefined);
+    const before = Date.now();
+
+    await expect(processCampanhaJob({ data: { campanhaId: 'c1', contatoId: 'ct1' }, moveToDelayed } as any, 'tok-1'))
+      .rejects.toBeInstanceOf(DelayedError);
+
+    expect(acquireSendSlot).toHaveBeenCalledWith('wn-primary');
+    expect(sendTemplateMessage).not.toHaveBeenCalled();
+    expect(moveToDelayed).toHaveBeenCalledTimes(1);
+    const [when, tok] = moveToDelayed.mock.calls[0];
+    expect(tok).toBe('tok-1');
+    expect(when).toBeGreaterThanOrEqual(before + 1000);
+    expect(when).toBeLessThanOrEqual(Date.now() + 1600);
+    expect(prisma.campanhaContato.update).not.toHaveBeenCalled();
+  });
+
+  it('com slot livre envia normalmente', async () => {
+    (sendTemplateMessage as jest.Mock).mockResolvedValueOnce('wamid.OK');
+    (prisma.campanha.update as jest.Mock).mockResolvedValue({ processedCount: 1, audienceCount: 10, consecutiveFailures: 0, status: 'running' });
+    const res = await processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }));
+    expect(res).toEqual({});
+    expect(sendTemplateMessage).toHaveBeenCalledWith('decrypted-token', 'phone-id-1', '5511999990000', 't', 'pt_BR', expect.anything());
+  });
+
+  it('canal evolution NÃO passa pelo limitador por número (já é espaçado no enqueue)', async () => {
+    (prisma.campanha.findUnique as jest.Mock).mockResolvedValue({ ...campanhaMeta, channel: 'evolution', whatsappNumber: numeroEvolutionConectado, messageBody: 'oi' });
+    (prisma.campanhaContato.findUnique as jest.Mock).mockResolvedValue({ ...contatoPendente, optinConfirmedAt: new Date() });
+    (sendMessageViaEvolution as jest.Mock).mockResolvedValueOnce({ id: 'evo-1' });
+    (prisma.campanha.update as jest.Mock).mockResolvedValue({ processedCount: 1, audienceCount: 10, consecutiveFailures: 0, status: 'running' });
+    await processCampanhaJob(job({ campanhaId: 'c1', contatoId: 'ct1' }));
+    expect(acquireSendSlot).not.toHaveBeenCalled();
   });
 });

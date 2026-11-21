@@ -48,7 +48,6 @@ jobs:
 
       - name: Build Worker
         run: pnpm --filter worker exec tsc
-        continue-on-error: true
 
   # ── TYPE CHECKING ──────────────────────────────────────────────
   type-check:
@@ -183,6 +182,77 @@ jobs:
           flags: unittests
           fail_ci_if_error: false
 
+  # ── LOCKFILES NPM (o que Docker e Vercel realmente instalam) ───────────
+  # O resto do CI usa pnpm + pnpm-lock.yaml, mas as imagens da API/Worker são
+  # buildadas no servidor com `npm ci` (Dockerfile) e a Vercel instala o web com
+  # `npm ci`. Os package-lock.json ficam fora do alcance do pnpm: já divergiram
+  # (transitivas vulneráveis que o pnpm audit não via) e um peer opcional em
+  # conflito (openai x zod 4) quebraria `npm ci` — erro que só apareceria no
+  # deploy. Este job reproduz exatamente esse caminho. Substitui o antigo
+  # deploy.yml ("CI — Validate before deploy"), que fazia o mesmo mas só em
+  # push com filtro de paths, com Node 20 e com web/worker em continue-on-error —
+  # e por isso não podia servir de gate para o ops.yml.
+  npm-lockfiles:
+    name: Lockfiles npm (Docker/Vercel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            apps/api/package-lock.json
+            apps/worker/package-lock.json
+            apps/web/package-lock.json
+            apps/monitor/package-lock.json
+
+      - name: API — npm ci + build
+        run: |
+          cd apps/api
+          npm ci
+          npm run build
+
+      - name: Worker — npm ci + build
+        run: |
+          cd apps/worker
+          npm ci
+          npm run build
+
+      - name: Web — npm ci + build
+        run: |
+          cd apps/web
+          npm ci
+          npm run build
+        env:
+          # Placeholders: o Next precisa destas NEXT_PUBLIC_* em tempo de build.
+          NEXT_PUBLIC_API_URL: https://api.zapscript.me
+          NEXT_PUBLIC_BASE_URL: https://zapscript.me
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          NEXT_PUBLIC_APP_NAME: ZapScript
+
+      - name: Monitor — npm ci
+        run: cd apps/monitor && npm ci
+
+      # Mesma política do job Security Audit: bloqueia em critical, relatório
+      # completo sem gate. Aqui o alvo é o que de fato vai para produção.
+      - name: npm audit (bloqueia em critical)
+        run: |
+          for app in api worker web monitor; do
+            echo "== $app"
+            (cd apps/$app && npm audit --omit=dev --audit-level=critical)
+          done
+
+      - name: npm audit — relatório completo (não bloqueia)
+        if: always()
+        run: |
+          for app in api worker web monitor; do
+            echo "== $app"
+            (cd apps/$app && npm audit --omit=dev || true)
+          done
+
   # ── SECURITY AUDIT ─────────────────────────────────────────────
   audit:
     name: Security Audit
@@ -218,21 +288,17 @@ jobs:
   status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [build, type-check, test, audit]
+    needs: [build, type-check, test, audit, npm-lockfiles]
     if: always()
     steps:
       - name: Check status
         run: |
-          if [ "${{ needs.build.result }}" != "success" ]; then
-            echo "❌ Build failed"
-            exit 1
-          fi
-          if [ "${{ needs.type-check.result }}" != "success" ]; then
-            echo "❌ Type check failed"
-            exit 1
-          fi
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "❌ Tests failed"
-            exit 1
-          fi
+          fail=0
+          check() { if [ "$2" != "success" ]; then echo "❌ $1: $2"; fail=1; fi; }
+          check "Build" "${{ needs.build.result }}"
+          check "Type check" "${{ needs.type-check.result }}"
+          check "Tests" "${{ needs.test.result }}"
+          check "Security audit" "${{ needs.audit.result }}"
+          check "Lockfiles npm" "${{ needs.npm-lockfiles.result }}"
+          if [ "$fail" -ne 0 ]; then exit 1; fi
           echo "✅ CI Pipeline completed"
