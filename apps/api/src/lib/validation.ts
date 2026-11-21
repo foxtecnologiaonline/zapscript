@@ -62,7 +62,7 @@ const cardSchema = z.object({
   ccv:         z.string().min(3, 'CVV inválido').max(4),
   // CPF do titular do cartão — exigido só no pagamento com cartão (não há gate de
   // CPF/CNPJ no perfil do usuário; ver MODULOS_ARQUITETURA.md e billing.ts).
-  document:    z.string({ required_error: 'Informe o CPF do titular do cartão (11 dígitos).' })
+  document:    z.string({ error: (iss) => (iss.input === undefined ? 'Informe o CPF do titular do cartão (11 dígitos).' : undefined) })
                  .regex(/^\d{11}$/, 'Informe o CPF do titular do cartão (11 dígitos).'),
 });
 
@@ -72,7 +72,7 @@ const billingAddressSchema = z.object({
 }).optional();
 
 export const billingCheckoutSchema = z.object({
-  planName:       z.enum(['pro', 'executive', 'profissional', 'empresas'], { errorMap: () => ({ message: 'Plano inválido.' }) }),
+  planName:       z.enum(['pro', 'executive', 'profissional', 'empresas'], { error: 'Plano inválido.' }),
   paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
   billingCycle:   z.enum(['monthly', 'yearly']).default('monthly'),
   card:           cardSchema.optional(),   // obrigatório se paymentMethod === 'credit_card' | 'debit_card'
@@ -82,7 +82,7 @@ export const billingCheckoutSchema = z.object({
 // Migração entre planos: qualquer plano pago do catálogo (legado + tiers 2.0)
 // — free não entra aqui porque downgrade pra free é /billing/cancel.
 export const billingUpgradeSchema = z.object({
-  targetPlan:     z.enum(['pro', 'executive', 'profissional', 'empresas'], { errorMap: () => ({ message: 'Plano inválido.' }) }),
+  targetPlan:     z.enum(['pro', 'executive', 'profissional', 'empresas'], { error: 'Plano inválido.' }),
   paymentMethod:  z.enum(['credit_card', 'debit_card', 'pix', 'pix_auto', 'google_pay', 'apple_pay']).default('pix'),
   billingCycle:   z.enum(['monthly', 'yearly']).default('monthly'),
   card:           cardSchema.optional(),
@@ -161,15 +161,15 @@ export const atendeConfigSchema = z.object({
   enabled:         z.boolean().optional(),
   businessContext: z.string().max(4000, 'Máximo de 4000 caracteres').optional(),
   tone:            z.enum(['profissional-amigavel', 'formal', 'descontraido'], {
-    errorMap: () => ({ message: 'Tom inválido' }),
+    error: 'Tom inválido',
   }).optional(),
   fallbackMessage: z.string().min(1, 'Mensagem de fallback não pode ser vazia').max(500).optional(),
   escalationPhone: z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos').nullable().optional(),
   confidenceLevel: z.enum(['conservador', 'equilibrado', 'autonomo'], {
-    errorMap: () => ({ message: 'Nível de confiança inválido' }),
+    error: 'Nível de confiança inválido',
   }).optional(),
   digestFrequency: z.enum(['off', 'daily', 'weekly'], {
-    errorMap: () => ({ message: 'Frequência de resumo inválida' }),
+    error: 'Frequência de resumo inválida',
   }).optional(),
 });
 
@@ -212,7 +212,7 @@ export const avisoCreateSchema = z.object({
   contactPhone: z.string().regex(/^\d{10,15}$/, 'Telefone deve ter 10-15 dígitos'),
   contactName:  z.string().max(100).optional(),
   category:     z.enum(['cobranca', 'agendamento', 'mercadoria_pronta', 'outro'], {
-    errorMap: () => ({ message: 'Categoria inválida' }),
+    error: 'Categoria inválida',
   }),
   message:      z.string().min(1, 'Mensagem não pode ser vazia').max(1000),
 });
@@ -232,7 +232,7 @@ export const cobrancaCobrancaSchema = z.object({
   clienteId: z.string().cuid('Cliente inválido'),
   descricao: z.string().min(2, 'Descrição deve ter pelo menos 2 caracteres').max(200),
   valor: z.number().positive('Valor deve ser maior que zero').max(1_000_000),
-  vencimento: z.coerce.date({ errorMap: () => ({ message: 'Data de vencimento inválida' }) }),
+  vencimento: z.coerce.date({ error: 'Data de vencimento inválida' }),
   recorrente: z.boolean().optional(),
   recorrenciaMeses: z.number().int().min(1).max(24).optional(),
 });
@@ -288,7 +288,7 @@ export const createCampanhaSchema = z.object({
   channel:            z.enum(['meta', 'evolution']).default('meta'),
   templateName:       z.string().min(1).max(512).optional(),
   templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
-  templateComponents: z.array(z.record(z.any())).optional(),
+  templateComponents: z.array(z.record(z.string(), z.any())).optional(),
   templateVarCount:   z.coerce.number().int().min(0).max(20).optional(),
   // Header de mídia (item 8): exigido quando o template aprovado tem header
   // IMAGE/VIDEO/DOCUMENT. A rota confere contra a definição do template na Meta.
@@ -302,7 +302,7 @@ export const createCampanhaSchema = z.object({
   abTestEnabled:              z.boolean().optional(),
   variantBTemplateName:       z.string().min(1).max(512).optional(),
   variantBTemplateLanguage:   z.string().min(2).max(10).optional(),
-  variantBTemplateComponents: z.array(z.record(z.any())).optional(),
+  variantBTemplateComponents: z.array(z.record(z.string(), z.any())).optional(),
   variantBTemplateVarCount:   z.coerce.number().int().min(0).max(20).optional(),
   variantBMessageBody:        z.string().min(1).max(4096).optional(),
 }).refine(
@@ -327,7 +327,7 @@ const campanhaSequenceStepSchema = z.object({
   delayDays:          z.number().int().min(1, 'delayDays deve ser pelo menos 1').max(90, 'delayDays máximo é 90'),
   templateName:       z.string().min(1).max(512).optional(),
   templateLanguage:   z.string().min(2).max(10).default('pt_BR'),
-  templateComponents: z.array(z.record(z.any())).optional(),
+  templateComponents: z.array(z.record(z.string(), z.any())).optional(),
   templateVarCount:   z.coerce.number().int().min(0).max(20).optional(),
   messageBody:        z.string().min(1).max(4096).optional(),
 });
@@ -412,7 +412,7 @@ export function validateRequest<T>(schema: z.ZodSchema<T>) {
     if (result.success) {
       return { valid: true, data: result.data as T };
     }
-    const errors = result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+    const errors = result.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
     return { valid: false, error: errors };
   };
 }
