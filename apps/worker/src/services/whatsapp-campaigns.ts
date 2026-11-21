@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { logger } from '../lib/logger';
+import { MetaSendError } from '../lib/meta-errors';
 
 /**
  * Meta Graph API — envio de campanhas (mensagens de template fora da janela de 24h).
@@ -57,6 +58,12 @@ export async function sendTemplateMessage(
   } catch (error) {
     const msg = formatError(error);
     logger.error(`[Campanhas] sendTemplateMessage falhou: ${msg}`);
+    // Preserva código/subcódigo/status da Graph API — é o que permite ao processador
+    // distinguir throttling (pausa a campanha) de falha permanente do contato.
+    if (axios.isAxiosError(error)) {
+      const g = (error.response?.data as any)?.error;
+      throw new MetaSendError(msg, g?.code, g?.error_subcode, error.response?.status);
+    }
     throw new Error(msg);
   }
 }

@@ -24,16 +24,16 @@ Data: 2026-09-09 (revisão 7 — opt-in nos dois canais + tier/quality real, §9
   módulo está pronto e "bundled" no catálogo, mas nenhum cliente conectou um número Meta ainda.
   Isso não muda nenhuma recomendação abaixo — só o contexto: é a janela ideal para aplicar
   correções de schema sem custo de migração de dados.
-- **Risco nº 1 (P0) — [PARCIALMENTE RESOLVIDO em §9]:** o `/:id/start` agora lê
-  `messaging_limit_tier`/`quality_rating` de verdade na Graph API e trava (com opção de
-  prosseguir mesmo assim) se a audiência excede o tier do número. O que falta do P0 original:
-  auto-pausa automática se a Meta começar a rejeitar em massa **durante** o envio (§3.2) e
-  rate limit por tenant/número em vez do teto global de 10 msg/s (§3.3) — nenhum dos dois foi
-  feito ainda.
-- **Risco nº 2 (P0) — [RESOLVIDO em §9]:** opt-in auditável agora existe nos dois canais —
-  antes só existia (e só de forma implícita) no canal Evolution.
-- **Risco nº 2 (P0):** não há checagem de opt-in — só opt-out reativo. Maior exposição
-  LGPD/política Meta da suíte inteira.
+- **Risco nº 1 (P0) — [RESOLVIDO em §9 e §19]:** o `/:id/start` lê `messaging_limit_tier`/
+  `quality_rating` de verdade na Graph API e trava (com opção de prosseguir mesmo assim) se a
+  audiência excede o tier do número. A auto-pausa quando a Meta começa a rejeitar em massa
+  **durante** o envio (§3.2) e o rate limit por número (§3.3) foram implementados em §19.
+- **Risco nº 2 (P0) — [RESOLVIDO em §9]:** opt-in auditável existe nos dois canais (antes só
+  havia, e de forma implícita, no canal Evolution). A frase anterior "não há checagem de
+  opt-in" era da revisão 1 e estava obsoleta.
+- **Bug latente corrigido (§19):** o enfileiramento lançava exceção — o `jobId`
+  `campanhaId:contatoId` é rejeitado pelo BullMQ ("Custom Id cannot contain :", verificado contra
+  o BullMQ real). Não apareceu porque os testes mockavam a fila e não havia campanha real em produção.
 - **Correção desta revisão:** a v1 sugeria rate-limit "por grupo" do BullMQ — isso é recurso
   do **BullMQ Pro**; o projeto usa `bullmq` OSS (`^5.8.4`, confirmado em `package.json`), que
   não tem isso. Substituído por um design concreto de token bucket em Redis (§5.3).
@@ -143,7 +143,7 @@ enfileirar, comparar `audienceCount` (pendentes) contra o teto numérico do
 enviam em lotes ao longo de vários dias) — em vez disso, **avisar** no response e deixar a
 decisão de negócio para §5.2 decidir o ritmo real de envio.
 
-### 3.2 Auto-pausa em erro de rate-limit da Graph API
+### 3.2 Auto-pausa em erro de rate-limit da Graph API — [IMPLEMENTADO, ver §19]
 
 Hoje (`processCampanhaJob`, `apps/worker/src/modules/campanhas.ts`) qualquer erro de
 `sendTemplateMessage` vira uma tentativa de retry do BullMQ e, ao esgotar, o contato é marcado
@@ -169,7 +169,7 @@ registrado para a UI explicar ao usuário *por que* pausou (novo campo opcional
 `Campanha.pausedReason`, ou reaproveitar `errorMessage` a nível de campanha — hoje só existe a
 nível de contato).
 
-### 3.3 Rate limit por tenant/número (Redis token bucket)
+### 3.3 Rate limit por tenant/número (Redis token bucket) — [IMPLEMENTADO, ver §19]
 
 **Problema real:** o `limiter: { max: 10, duration: 1000 }` do `Worker('campanhas')` é
 avaliado pelo BullMQ **globalmente**, somando os envios de todos os clientes. Duas campanhas
@@ -1315,3 +1315,55 @@ Revisão ponta a ponta do fluxo de disparo (api + worker + painel). Bugs reais c
    round-trip de banco por mensagem enviada (`sentCount` no mesmo update de `processedCount`).
 7. **Painel:** status `pending_optin` com rótulo próprio. O polling da tela da campanha para
    quando a aba fica em segundo plano.
+
+---
+
+## 19. Revisão 2026-11-21 — enfileiramento, throttling da Meta e teto por número
+
+### 19.1 [CORRIGIDO] `jobId` com ":" — nenhum disparo enfileirava
+
+O BullMQ rejeita `jobId` customizado com `:` (exceto o formato de 3 segmentos reservado a jobs
+repetíveis) com `Custom Id cannot contain :`. O padrão `campanhaId:contatoId` tem 2 segmentos, então
+**todo** `addBulk` falhava: `/start`, retomada, agendador e reenvio pós-opt-in (e o
+`missionId:executionId` do MKT-Fast). Só veio à tona quando o CI de `a5e8d74` rodou
+`optin-system.test.ts` contra Redis real; os testes de rota mockam a fila.
+
+- IDs agora vêm de `lib/queue-job-id.ts` (`camp-<campanhaId>-<contatoId>`, `mkt-<missão>-<execução>`),
+  **duplicado em `apps/api` e `apps/worker`** — api e worker enfileiram os mesmos jobs (o agendador do
+  worker e `/start`), então os dois lados têm que gerar o mesmo ID. O helper recusa partes vazias/com `:`.
+- Teste de regressão com a validação real do BullMQ (`queue-job-id.test.ts`) e teste de integração com
+  Redis real (`campanhas-queue.integration.test.ts`: `addBulk`, idempotência e `getJob`).
+- ⚠ Antes desta correção o enfileiramento lançava exceção (verificado contra BullMQ real), então o
+  fluxo de disparo não deveria ter rodado de ponta a ponta em produção. O teste real do §9.4
+  continua pendente e passa a ser o próximo passo de validação.
+
+### 19.2 [IMPLEMENTADO] §3.2 — throttling da Meta pausa a campanha sem queimar contatos
+
+`sendTemplateMessage` (worker) deixou de achatar o erro: lança `MetaSendError` com `code`,
+`subcode` e `httpStatus` da Graph API (`lib/meta-errors.ts`). `isMetaThrottleError` separa:
+
+| Tipo | Códigos | Efeito |
+|---|---|---|
+| Throttle de conta/número | `4, 17, 32, 613, 80007, 130429, 131048` e HTTP 429 | **pausa a campanha** (`pausedReason` explica), contato fica `pending`, e-mail ao dono |
+| Limite do par (empresa × destinatário) | `131056` | por contato → retry normal |
+| Permanente por contato | `131026, 131047, 131051`… | retry → `failed` (como antes) |
+
+O processador **retorna** (não lança) no throttle: lançar gastaria retries e, esgotados, o contato
+iria para `failed` à toa. Retomar usa o caminho do §18 (`releaseFinishedJobIds` + reenfileira
+`pending`). A pausa é um `updateMany` condicional a `status = 'running'` — só a 1ª chamada efetiva e
+notifica. O circuit breaker genérico (§11.1) segue valendo para falhas que não são throttle.
+
+### 19.3 [IMPLEMENTADO] §3.3 — teto de envios por número
+
+`lib/send-rate-limit.ts`: janela de 1 s por `WhatsappNumber.id` em Redis (`INCR` + `EXPIRE 2`),
+teto `CAMPANHAS_PER_NUMBER_MAX_PER_SEC` (default **5**), **só no canal Meta** (o Evolution já sai
+espaçado por delay+jitter). O teto global de 10/s do Worker continua por cima como cinto de segurança.
+
+- Estourou a janela → `job.moveToDelayed(agora + ~1–1,5 s)` + `throw new DelayedError()`. Não é um
+  throw comum de propósito: o reagendamento **não consome tentativa de retry** nem emite `failed`
+  (provado com BullMQ real no teste de integração).
+- **Fail-open:** se o Redis falhar, deixa enviar (travar o disparo por causa de um limitador
+  auxiliar seria pior; o teto global segue protegendo).
+- Não implementado (decisão): variar o teto pelo `metaMessagingLimitTier`. Fica como ajuste fino
+  depois que o teste real mostrar números.
+
