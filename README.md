@@ -11,10 +11,11 @@ zapscript/
 ├── apps/
 │   ├── api/          → Servidor Fastify (autenticação, números, billing, webhooks)
 │   ├── worker/       → Pipeline de transcrição (Whisper + Claude)
-│   ├── web/          → Frontend Next.js 14
+│   ├── web/          → Frontend Next.js 15
 │   └── monitor/      → Health checker + alertas
 ├── packages/
-│   └── database/     → Schema Prisma + migrations
+│   ├── database/     → Schema Prisma + migrations
+│   └── modules/      → Catálogo de módulos (fonte única de preço/estado)
 └── infra/            → Scripts de deploy e configuração
 ```
 
@@ -25,7 +26,7 @@ zapscript/
 Instale antes de começar:
 
 ```bash
-# Node.js v20 LTS
+# Node.js v22 LTS (mesmo runtime das imagens Docker — ver .node-version)
 https://nodejs.org
 
 # pnpm
@@ -115,7 +116,8 @@ Acessar:
 ### Vultr (API + Worker, Docker self-hosted)
 
 O deploy é **sempre manual** — nada acontece sozinho quando o código chega em
-`master`:
+`master`. O workflow **exige CI verde no commit** (`ci.yml`) e builda exatamente
+o SHA que o CI validou; `skip_ci_gate` existe só para emergência:
 
 - Aba **Actions → "Ops — Vultr / Migração" → Run workflow → `action: deploy`**
   (`.github/workflows/ops.yml`). O workflow faz SSH no servidor, clona o
@@ -150,7 +152,7 @@ sem passo manual.
 
 | Camada       | Tecnologia                         |
 |--------------|------------------------------------|
-| Frontend     | Next.js 14, Tailwind CSS           |
+| Frontend     | Next.js 15, Tailwind CSS           |
 | API          | Fastify, TypeScript                |
 | WebSocket    | Socket.io + Redis adapter          |
 | Worker/Filas | BullMQ + Redis (container local no Vultr) |
@@ -171,7 +173,7 @@ sem passo manual.
 
 | Plano        | Preço                        | Áudios/mês | Números | Inclui                                  |
 |--------------|-------------------------------|------------|---------|------------------------------------------|
-| Core         | Grátis                        | 200        | 1       | Transcrição + resumo com IA              |
+| Core         | Grátis                        | 300        | 1       | Transcrição + resumo com IA              |
 | Profissional | R$49/mês (R$295/ano)          | 500        | 1       | + Atende (atendimento 24/7 por IA)       |
 | Empresas     | R$99/mês (R$595/ano)          | 500        | 5       | + CRM, Tarefas                           |
 

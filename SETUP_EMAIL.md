@@ -307,8 +307,8 @@ curl -X POST http://localhost:3001/support/test-email \
 
 ### Verificar logs
 ```bash
-# Railway
-railway logs --follow
+# Produção (Vultr) — rodar no servidor
+docker logs -f zapscript-api
 
 # Local
 npm run dev  # Veja os logs no terminal
@@ -325,7 +325,7 @@ npm run dev  # Veja os logs no terminal
 - [ ] Criar templates de email
 - [ ] Integrar em rotas de auth (register, forgot-password)
 - [ ] Testar envio de email
-- [ ] Configurar em Railway/Vercel via variáveis de ambiente
+- [ ] Configurar no `.env` do servidor Vultr (API) e nas variáveis da Vercel (web)
 - [ ] Verificar deliverability (SPF, DKIM, DMARC)
 
 ---

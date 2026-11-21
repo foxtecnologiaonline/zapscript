@@ -15,10 +15,25 @@ na migração de 2026-07-21 (ver `MIGRACAO_VULTR.md` para o histórico). Se algu
 doc antigo (`README.md` velho, `SETUP_*.md`, `CHECKLIST_*.md` com data) ainda
 mencionar esses serviços, é registro histórico — não é a infra atual.
 
-`.github/workflows/build-and-push.yml` ainda publica imagens da API/Worker no
-`ghcr.io` a cada push em `master`, mas **isso não alimenta o deploy real** — o
-`ops.yml` builda direto no servidor e ignora essas imagens. Não assuma que um
-push em `master` colocou nada novo no ar na API/Worker.
+`.github/workflows/build-and-push.yml` é **só manual** (`workflow_dispatch`) e publica
+imagens da API/Worker no `ghcr.io` que **nada consome** — o `ops.yml` builda direto no
+servidor e ignora essas imagens. Não assuma que um push em `master` colocou nada novo no ar
+na API/Worker.
+
+## CI e gate de deploy
+
+- `.github/workflows/ci.yml` roda em **todo push/PR** (sem filtro de paths): build, type
+  check, testes (com Postgres + Redis reais), `pnpm audit` (bloqueia em *critical*) e o job
+  **"Lockfiles npm"**, que faz `npm ci` + build de api/worker/web/monitor e `npm audit`
+  nos `package-lock.json` — são eles (e não o `pnpm-lock.yaml`) que Docker e Vercel instalam.
+- O `ops.yml` com `action=deploy` **recusa rodar se o `ci.yml` do commit não estiver verde**
+  (ou ainda em andamento) e builda no servidor o **SHA exato** do disparo, não a ponta atual
+  do `master`. `skip_ci_gate=true` é só para emergência. `rollback` não passa pelo gate.
+- Ao mexer em dependências: atualize **os dois mundos** — `pnpm-lock.yaml` e o
+  `package-lock.json` do app afetado (`npm install <pkg> --package-lock-only` dentro do app).
+  Mudar só um deles passa no CI antigo e quebra o `npm ci` do Docker no deploy.
+- Jobs do BullMQ: `jobId` customizado **não pode ter `:`** (nem ser só número). Use os
+  helpers de `lib/queue-job-id.ts` (existem em `apps/api` e `apps/worker`, devem ficar iguais).
 
 ## Fluxo padrão ao pedir "commit + push + deploy"
 
@@ -28,7 +43,8 @@ push em `master` colocou nada novo no ar na API/Worker.
 4. Para API/Worker, ainda falta o passo manual: disparar `ops.yml` com
    `action=deploy` (via `gh workflow run` ou pela MCP tool
    `mcp__github__actions_run_trigger` com `method: run_workflow`,
-   `workflow_id: ops.yml`, `ref: master`, `inputs: {"action":"deploy"}`).
+   `workflow_id: ops.yml`, `ref: master`, `inputs: {"action":"deploy"}`). O próprio
+   `ops.yml` recusa se o `ci.yml` do commit não estiver verde (ver "CI e gate de deploy").
 5. Acompanhar o run com `mcp__github__actions_list` /
    `mcp__github__actions_get` até `conclusion: success`.
 
