@@ -1,0 +1,52 @@
+# tls-expiry.yml — vigia, DE FORA do servidor, a validade dos certificados e a
+# saúde pública da API.
+#
+# Por que existe: em 2026-11-20 o certificado de api.zapscript.me expirou e
+# ninguém soube por ~16h. O certbot do servidor estava no método `standalone`
+# (precisa abrir a porta 80, que o nginx ocupa), então toda renovação falhava em
+# silêncio. Nenhum alerta rodava no próprio servidor — e o healthcheck do Docker
+# é interno (127.0.0.1), logo ficava verde com o TLS quebrado. Este job enxerga o
+# que o cliente enxerga: qualquer falha deixa a execução vermelha na aba Actions
+# (e dispara o e-mail de falha de workflow do GitHub).
+#
+# Limiar de 14 dias: o certbot renova a partir de 30 dias antes do vencimento;
+# se chegou a 14 dias sem renovar, a renovação automática já está quebrada e
+# ainda sobra tempo de sobra para consertar sem incidente.
+
+name: Produção — TLS e /health
+
+on:
+  schedule:
+    - cron: '17 11 * * *'   # diário, 11:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Certificados e /health
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validade dos certificados (alerta com <= 14 dias)
+        run: |
+          fail=0
+          for host in api.zapscript.me zapscript.me; do
+            cert=$(echo | openssl s_client -connect "$host:443" -servername "$host" 2>/dev/null | openssl x509 2>/dev/null) || cert=""
+            if [ -z "$cert" ]; then
+              echo "::error::$host: não foi possível obter o certificado TLS"; fail=1; continue
+            fi
+            echo "== $host"; echo "$cert" | openssl x509 -noout -subject -issuer -enddate
+            # -checkend N: falha se vence em até N segundos (e se já venceu).
+            if ! echo "$cert" | openssl x509 -noout -checkend $((14 * 86400)) >/dev/null; then
+              echo "::error::$host: certificado vence em menos de 14 dias (ou já venceu) — renovação automática quebrada?"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      # Handshake COMPLETO com verificação de cadeia/nome pelo CA store do runner
+      # + resposta real da API — cobre o que a checagem de data sozinha não vê.
+      - name: API responde em HTTPS com certificado válido
+        run: curl -fsS -m 20 https://api.zapscript.me/health

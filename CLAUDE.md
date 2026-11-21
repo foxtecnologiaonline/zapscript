@@ -48,6 +48,23 @@ na API/Worker.
 5. Acompanhar o run com `mcp__github__actions_list` /
    `mcp__github__actions_get` até `conclusion: success`.
 
+## TLS da API (nginx + certbot no host)
+
+- `api.zapscript.me` termina TLS num **nginx instalado no host do Vultr** (fora do Docker),
+  com certificado Let's Encrypt via **certbot**. Config de referência: `infra/nginx-zapscript.conf`
+  (o `location /.well-known/acme-challenge/` serve de `/var/www/html`).
+- **Incidente 2026-11-20:** o certificado expirou e ficou ~16h assim. O certbot estava com
+  `authenticator = standalone` (abre a porta 80, ocupada pelo nginx) e toda renovação falhava
+  em silêncio; o healthcheck do Docker é interno e não via nada. Corrigido para
+  `authenticator = webroot` (`/var/www/html`), validado com `certbot renew --dry-run`.
+- **Nunca** emita/renove com `--standalone` nem pare o nginx para renovar. Para reemitir:
+  `certbot certonly --webroot -w /var/www/html -d api.zapscript.me --cert-name api.zapscript.me`
+  e `systemctl reload nginx`. Para conferir: `certbot certificates`.
+- `.github/workflows/tls-expiry.yml` checa todo dia, **de fora**, a validade (alerta com <= 14
+  dias) e `https://api.zapscript.me/health`. Run vermelho = olhar o certbot no servidor.
+- Comando no servidor sem SSH: `ops.yml` com `action=custom_ssh` + `custom_command` (a saída
+  vai para o log do job — nunca imprima `.env`, chaves ou dados de clientes).
+
 ## Outras notas úteis
 
 - `ENCRYPTION_KEY`, `JWT_SECRET`, `INTERNAL_TOKEN`, `ADMIN_TOKEN` etc. vivem no
