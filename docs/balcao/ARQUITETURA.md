@@ -19,7 +19,7 @@ Este documento é o contrato entre as frentes de trabalho — leia antes de mexe
 | D9 | IA: base de conhecimento aprovada + **busca full-text do Postgres (português)** + LLM com resposta ancorada (JSON com confiança). Sem vetor/embeddings no MVP. Curadoria = mineração de conversas escaladas gerando sugestões revisadas por humano. | Zero infra nova, determinístico, auditável; evita alucinação (só responde com base aprovada). |
 | D10 | Acessibilidade: HTML semântico/ARIA/teclado (eMAG/WCAG) + **VLibras** (avatar 3D oficial do gov.br) para Libras; videochamada via Jitsi (URL configurável) com legenda ao vivo no navegador (Web Speech API). | TR 1.1.3.1.7.1. |
 | D11 | Armazenamento de objetos em disco (`BV_STORAGE_DIR`, volume na mesma região) atrás de uma interface trocável por S3-compatível. | Residência de dados no Brasil; simplicidade. |
-| D12 | **Não depender do Tiledesk** (fora do repo, não verificado, risco de licença/branding). Attende-ZapBot não é alterado neste MVP. | Controle total de cada requisito eliminatório da PoC. |
+| D12 | **Núcleo nativo; Tiledesk como base opcional/inicial para console e widget** (autorizado pelo responsável do projeto). O Balcão não depende do Tiledesk para nenhum requisito eliminatório; ver `docs/balcao/TILEDESK.md`. | Tiledesk está fora do repo e nunca foi validado aqui (ponte do Attende-ZapBot sem teste real), é open-core (branding/white label pode ser enterprise) e não cobre voz SIP, tarefas, e-Proc/GOV.BR, curadoria nem painel do fiscal. O núcleo nativo já existia e é testável. |
 
 ## 2. Mapa de frentes (propriedade de arquivos)
 
