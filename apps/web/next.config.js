@@ -34,7 +34,7 @@ const nextConfig = {
     return [
       // ── Headers de segurança para todas as rotas ───────────────────────
       {
-        source: '/(.*)',
+        source: '/((?!balcao).*)',
         headers: [
           // Impede que o site seja embutido em iframes (clickjacking)
           { key: 'X-Frame-Options',        value: 'DENY' },
@@ -46,6 +46,18 @@ const nextConfig = {
           { key: 'Permissions-Policy',     value: 'camera=(), microphone=(), geolocation=(), payment=()' },
           // Aviso de copyright
           { key: 'X-Copyright',            value: '© 2026 ZapScript / FOX TecnologIA. Unauthorized copying prohibited.' },
+        ],
+      },
+      // ── Balcão Virtual: mesmos headers, mas microfone/câmera liberados p/ o próprio domínio (softphone, vídeo) ──
+      {
+        source: '/balcao/(.*)',
+        headers: [
+          { key: 'X-Frame-Options',        value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy',        value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy',     value: 'camera=(self), microphone=(self), geolocation=(), payment=()' },
+          { key: 'X-Robots-Tag',           value: 'noindex, nofollow, noarchive' },
+          { key: 'Cache-Control',          value: 'no-store' },
         ],
       },
       // ── Dashboard e rotas internas: noindex ────────────────────────────

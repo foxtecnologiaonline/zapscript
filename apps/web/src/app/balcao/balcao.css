@@ -1,0 +1,41 @@
+/* Balcão Virtual — tokens de design (eMAG/WCAG 2.1 AA: contraste ≥ 4.5:1, foco visível, alvo ≥ 24px).
+   Escopo: tudo dentro de .bv-app. Preferências do usuário via atributos em <html>:
+   data-bv-contrast="high" · data-bv-font="sm|md|lg|xl" · data-bv-motion="reduce" */
+.bv-app {
+  --bv-bg: 244 246 250;
+  --bv-surface: 255 255 255;
+  --bv-subtle: 238 241 247;
+  --bv-border: 205 212 224;
+  --bv-text: 20 27 45;
+  --bv-muted: 82 94 118;            /* 6.6:1 sobre branco */
+  --bv-primary: 31 78 156;          /* 8.2:1 sobre branco */
+  --bv-primary-fg: 255 255 255;
+  --bv-primary-soft: 224 234 252;
+  --bv-success: 16 110 64;
+  --bv-success-soft: 220 245 230;
+  --bv-warning: 150 90 0;
+  --bv-warning-soft: 254 240 205;
+  --bv-danger: 176 28 40;
+  --bv-danger-soft: 253 226 228;
+  --bv-focus: 255 170 0;
+  color: rgb(var(--bv-text));
+  background: rgb(var(--bv-bg));
+  font-family: var(--font-dm-sans), system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+html[data-bv-contrast='high'] .bv-app {
+  --bv-bg: 0 0 0; --bv-surface: 0 0 0; --bv-subtle: 20 20 20; --bv-border: 255 255 255;
+  --bv-text: 255 255 255; --bv-muted: 230 230 230; --bv-primary: 255 221 0; --bv-primary-fg: 0 0 0;
+  --bv-primary-soft: 40 40 0; --bv-success: 90 255 140; --bv-success-soft: 0 40 15;
+  --bv-warning: 255 200 60; --bv-warning-soft: 45 30 0; --bv-danger: 255 120 120; --bv-danger-soft: 50 0 0;
+  --bv-focus: 0 255 255;
+}
+html[data-bv-font='sm'] .bv-app { font-size: 14px; }
+html[data-bv-font='md'] .bv-app { font-size: 16px; }
+html[data-bv-font='lg'] .bv-app { font-size: 18px; }
+html[data-bv-font='xl'] .bv-app { font-size: 20px; }
+.bv-app :focus-visible { outline: 3px solid rgb(var(--bv-focus)); outline-offset: 2px; border-radius: 4px; }
+.bv-app .bv-skip { position: absolute; left: -9999px; top: 0; z-index: 100; padding: .75rem 1rem; background: rgb(var(--bv-primary)); color: rgb(var(--bv-primary-fg)); }
+.bv-app .bv-skip:focus { left: .5rem; top: .5rem; }
+.bv-app .bv-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: reduce) { .bv-app *, .bv-app *::before, .bv-app *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; } }
+html[data-bv-motion='reduce'] .bv-app *, html[data-bv-motion='reduce'] .bv-app *::before { animation-duration: .001ms !important; transition-duration: .001ms !important; }

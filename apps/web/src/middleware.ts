@@ -31,8 +31,15 @@ export function middleware(req: NextRequest) {
   // Controla informações de referrer enviadas ao navegar
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
-  // Permissions-Policy — desabilita APIs sensíveis não usadas pelo app
-  res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  // Permissions-Policy — desabilita APIs sensíveis não usadas pelo app.
+  // Exceção: console do Balcão Virtual (softphone WebRTC usa microfone; videochamada usa câmera).
+  const isBalcao = req.nextUrl.pathname.startsWith('/balcao');
+  res.headers.set(
+    'Permissions-Policy',
+    isBalcao
+      ? 'camera=(self), microphone=(self), geolocation=(), payment=()'
+      : 'camera=(), microphone=(), geolocation=(), payment=()',
+  );
 
   // Content-Security-Policy (M2) — bloqueia XSS e injeção de recursos externos
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.zapscript.me';
@@ -68,7 +75,11 @@ export function middleware(req: NextRequest) {
     `'unsafe-inline'`,
     ...(isDev ? [`'unsafe-eval'`] : []),
     analyticsHosts,
+    // VLibras (avatar 3D de Libras — gov.br) só no console do Balcão Virtual
+    ...(isBalcao ? ['https://vlibras.gov.br'] : []),
   ].join(' ');
+  // Videochamada do Balcão (Jitsi por padrão; configurável por env no build)
+  const jitsi = process.env.NEXT_PUBLIC_BV_JITSI_ORIGIN || 'https://meet.jit.si';
 
   const csp = [
     `default-src 'self'`,
@@ -77,6 +88,7 @@ export function middleware(req: NextRequest) {
     `img-src 'self' data: blob: https:`,                            // QR codes (data:), imagens externas
     `connect-src 'self' ${apiUrl} ${supabaseUrl} ${analyticsHosts} wss: https:`,
     `font-src 'self' data: https://fonts.gstatic.com`,             // fontes locais + Google Fonts CDN
+    ...(isBalcao ? [`frame-src 'self' ${jitsi} https://vlibras.gov.br`, `media-src 'self' blob: data: https:`] : []),
     `frame-ancestors 'none'`,                                    // equiv. X-Frame-Options: DENY
     `object-src 'none'`,          // <object>/<embed>: vetor clássico de XSS, e o app não usa nenhum
     `base-uri 'self'`,

@@ -13,6 +13,25 @@ module.exports = {
         mobile: '430px',
       },
       colors: {
+        // Balcão Virtual (console do atendimento) — tokens em app/balcao/balcao.css
+        bv: {
+          bg:       'rgb(var(--bv-bg) / <alpha-value>)',
+          surface:  'rgb(var(--bv-surface) / <alpha-value>)',
+          subtle:   'rgb(var(--bv-subtle) / <alpha-value>)',
+          border:   'rgb(var(--bv-border) / <alpha-value>)',
+          text:     'rgb(var(--bv-text) / <alpha-value>)',
+          muted:    'rgb(var(--bv-muted) / <alpha-value>)',
+          primary:  'rgb(var(--bv-primary) / <alpha-value>)',
+          'primary-fg': 'rgb(var(--bv-primary-fg) / <alpha-value>)',
+          'primary-soft': 'rgb(var(--bv-primary-soft) / <alpha-value>)',
+          success:  'rgb(var(--bv-success) / <alpha-value>)',
+          'success-soft': 'rgb(var(--bv-success-soft) / <alpha-value>)',
+          warning:  'rgb(var(--bv-warning) / <alpha-value>)',
+          'warning-soft': 'rgb(var(--bv-warning-soft) / <alpha-value>)',
+          danger:   'rgb(var(--bv-danger) / <alpha-value>)',
+          'danger-soft': 'rgb(var(--bv-danger-soft) / <alpha-value>)',
+          focus:    'rgb(var(--bv-focus) / <alpha-value>)',
+        },
         brand: {
           bg:       'rgb(var(--color-bg) / <alpha-value>)',
           surface:  'rgb(var(--color-surface) / <alpha-value>)',
