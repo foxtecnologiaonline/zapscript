@@ -46,10 +46,9 @@ export async function rotateFieldKeys(opts: RotateOptions = {}): Promise<RotateR
     let cursor: string | undefined;
     while (budget > 0) {
       const rows: Array<{ id: string } & Record<string, string>> = await dl.findMany({
-        where: notCurrent(c.column, kid, opts.orgId),
+        where: { ...notCurrent(c.column, kid, opts.orgId), ...(cursor ? { id: { gt: cursor } } : {}) },
         select: { id: true, [c.column]: true },
         orderBy: { id: 'asc' }, take: Math.min(batchSize, budget),
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       });
       if (!rows.length) break;
       for (const row of rows) {

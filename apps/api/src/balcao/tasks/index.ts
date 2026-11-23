@@ -29,7 +29,7 @@ export function registerTasksBotTool(): void {
       const title = typeof input?.title === 'string' ? input.title.trim() : '';
       const description = typeof input?.description === 'string' ? input.description.trim() : '';
       if (title.length < 3 || !description) return { ok: false, message: 'Informe título e descrição da demanda.' };
-      const priority = ['LOW', 'NORMAL', 'HIGH'].includes(input?.priority) ? (input.priority as Priority) : 'NORMAL';
+      const priority = ['LOW', 'NORMAL', 'HIGH', 'URGENT'].includes(input?.priority) ? (input.priority as Priority) : 'NORMAL';
       try {
         const t = await createTaskFromBot(ctx.orgId, {
           conversationId: ctx.conversationId, title, description,

@@ -1,9 +1,9 @@
 import crypto from 'crypto';
-import { createLocalJWKSet, jwtVerify, type JSONWebKeySet, type JWTPayload } from 'jose';
 import { redis } from '../../services/queue';
 import { logIntegration } from '../core/integrations';
 import type { IntegrationType } from '../core/types';
 import { randomToken } from '../core/crypto';
+import { verifyJws, JwsError, type Jwks } from './jws';
 import { basicAuth, formBody, IntegrationError, parseJsonSafe, type HttpClient } from './http-client';
 
 /** Utilitários compartilhados pelos fluxos OIDC (GOV.BR e IdP do TJTO) e pelo registro de chamadas. */
@@ -95,38 +95,40 @@ export async function exchangeCode(cfg: OidcClientConfig, http: HttpClient, code
   return { idToken: j.id_token, accessToken: j.access_token };
 }
 
-const jwksCache = new Map<string, { at: number; keys: JSONWebKeySet }>();
+const jwksCache = new Map<string, { at: number; keys: Jwks }>();
 const JWKS_TTL_MS = 5 * 60_000;
 export const clearJwksCache = () => jwksCache.clear();
 
-async function loadJwks(cfg: OidcClientConfig, http: HttpClient, force: boolean): Promise<JSONWebKeySet> {
+async function loadJwks(cfg: OidcClientConfig, http: HttpClient, force: boolean): Promise<Jwks> {
   const hit = jwksCache.get(cfg.jwksUri);
   if (hit && !force && Date.now() - hit.at < JWKS_TTL_MS) return hit.keys;
   const res = await http.request({ url: cfg.jwksUri, headers: { accept: 'application/json' } });
-  const keys = parseJsonSafe<JSONWebKeySet>(res.text);
+  const keys = parseJsonSafe<Jwks>(res.text);
   if (res.status !== 200 || !keys || !Array.isArray(keys.keys)) throw new IntegrationError('oidc.jwks_unavailable', 'JWKS indisponível');
   jwksCache.set(cfg.jwksUri, { at: Date.now(), keys });
   return keys;
 }
 
-/** Verifica assinatura (JWKS), iss, aud, exp/nbf e nonce do id_token. Refaz o JWKS uma vez se a chave (kid) não for achada. */
-export async function verifyIdToken(cfg: OidcClientConfig, http: HttpClient, idToken: string, expectedNonce: string): Promise<JWTPayload> {
-  const opts = { issuer: cfg.issuer, audience: cfg.clientId, algorithms: ['RS256', 'PS256', 'ES256'], clockTolerance: 30 };
-  let payload: JWTPayload;
+export type IdTokenClaims = Record<string, any> & { sub: string };
+
+/** Verifica assinatura (JWKS), iss, aud, exp/nbf e nonce do id_token. Refaz o JWKS uma vez se a chave (kid) não for achada (rotação). */
+export async function verifyIdToken(cfg: OidcClientConfig, http: HttpClient, idToken: string, expectedNonce: string): Promise<IdTokenClaims> {
+  const opts = { issuer: cfg.issuer, audience: cfg.clientId, algorithms: ['RS256', 'PS256', 'ES256'], clockToleranceSec: 30 };
+  let payload: Record<string, any>;
   try {
-    ({ payload } = await jwtVerify(idToken, createLocalJWKSet(await loadJwks(cfg, http, false)), opts));
+    try { payload = verifyJws(idToken, await loadJwks(cfg, http, false), opts); }
+    catch (err) {
+      if (!(err instanceof JwsError) || err.code !== 'jws.no_matching_key') throw err;
+      payload = verifyJws(idToken, await loadJwks(cfg, http, true), opts);
+    }
   } catch (err: any) {
-    if (err?.code !== 'ERR_JWKS_NO_MATCHING_KEY') throw mapJoseError(err);
-    try { ({ payload } = await jwtVerify(idToken, createLocalJWKSet(await loadJwks(cfg, http, true)), opts)); } catch (e2: any) { throw mapJoseError(e2); }
+    if (err instanceof IntegrationError) throw err;
+    throw new IntegrationError('oidc.invalid_id_token', `id_token inválido (${String(err?.code ?? 'erro')})`);
   }
   const nonce = typeof payload.nonce === 'string' ? payload.nonce : '';
   if (!nonce || nonce.length !== expectedNonce.length || !crypto.timingSafeEqual(Buffer.from(nonce), Buffer.from(expectedNonce))) throw new IntegrationError('oidc.nonce_mismatch', 'nonce inválido');
   if (typeof payload.sub !== 'string' || !payload.sub) throw new IntegrationError('oidc.no_sub', 'id_token sem sub');
-  return payload;
-}
-function mapJoseError(err: any): IntegrationError {
-  if (err instanceof IntegrationError) return err;
-  return new IntegrationError('oidc.invalid_id_token', `id_token inválido (${String(err?.code ?? 'erro')})`);
+  return payload as IdTokenClaims;
 }
 
 // ── Páginas HTML mínimas e acessíveis ───────────────────────────────────────────────────────────

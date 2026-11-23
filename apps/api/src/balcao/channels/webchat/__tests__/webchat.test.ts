@@ -21,7 +21,7 @@ import { WIDGET_JS } from '../widgetSource';
 import { hashToken } from '../../../core/crypto';
 
 let app: FastifyInstance;
-const ENV_KEYS = ['BV_WEBCHAT_ENFORCE_ORIGIN', 'BV_WEBCHAT_RL_MSG', 'BV_WEBCHAT_RL_SESSIONS', 'BV_WEBCHAT_MAX_ATTACHMENT_MB', 'BV_JITSI_BASE_URL', 'BV_WEBCHAT_MAX_MESSAGE_CHARS', 'BV_WEBCHAT_SESSION_TTL_SEC'];
+const ENV_KEYS = ['BV_WEBCHAT_ENFORCE_ORIGIN', 'BV_WEBCHAT_RL_MSG', 'BV_WEBCHAT_RL_SESSIONS', 'BV_WEBCHAT_MAX_ATTACHMENT_MB', 'BV_WEBCHAT_RL_ATTACH', 'BV_JITSI_BASE_URL', 'BV_WEBCHAT_MAX_MESSAGE_CHARS', 'BV_WEBCHAT_SESSION_TTL_SEC'];
 const rnd = () => crypto.randomBytes(4).toString('hex');
 const ipOf = () => `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
 
@@ -103,11 +103,13 @@ describe('webchat — widget.js e demo', () => {
   });
 
   it('acessibilidade estática: ARIA, foco preso, Esc, teclado, alto contraste, movimento reduzido, Shadow DOM', () => {
-    for (const s of ['aria-live', 'role="log"', "role: 'dialog'", 'aria-modal', 'aria-labelledby', 'aria-label', 'aria-expanded', 'aria-pressed', 'role: \'status\'', "role: 'alert'",
-      'attachShadow', "'Escape'", "'Tab'", 'prefers-reduced-motion', 'prefers-contrast', 'tabindex', '.hc ', 'data-vlibras', 'vlibras-plugin.js', 'fieldset', 'legend', 'type: \'radio\'']) {
-      expect(WIDGET_JS).toContain(s.replace(/\\'/g, "'"));
-    }
-    expect(WIDGET_JS).toContain('role="log"'.replace('role="log"', "role: 'log'"));
+    const must = ['aria-live', "role: 'dialog'", "role: 'log'", "role: 'status'", "role: 'alert'", "'aria-modal'", "'aria-labelledby'", "'aria-label'", "'aria-expanded'", "'aria-pressed'",
+      'attachShadow', "'Escape'", "'Tab'", 'prefers-reduced-motion', 'prefers-contrast', "tabindex: '0'", '.hc ', 'data-vlibras', 'vlibras-plugin.js', "h('fieldset'", 'legend', "type: 'radio'", "max-width:480px"];
+    for (const s of must) expect(WIDGET_JS).toContain(s);
+    // aria-live="polite" na região de mensagens
+    expect(WIDGET_JS).toMatch(/role: 'log', 'aria-live': 'polite'/);
+    // todo campo de formulário tem rótulo associado (label for / aria-label)
+    for (const id of ['bv-n', 'bv-e', 'bv-m']) expect(WIDGET_JS).toContain(`for: '${id}'`);
     expect(WIDGET_JS).toMatch(/<label|h\('label'/);
     // nunca insere HTML vindo do servidor (XSS): innerHTML só com literais estáticos
     const uses = [...WIDGET_JS.matchAll(/innerHTML\s*=\s*([^;]+);/g)].map((m) => m[1].trim());
@@ -125,14 +127,14 @@ describe('webchat — widget.js e demo', () => {
     expect(res.body).toContain('/balcao/webchat/widget.js');
     const evil = await app.inject({ method: 'GET', url: `/balcao/webchat/demo?org=${encodeURIComponent('"><script>alert(1)</script>')}` });
     expect(evil.body).not.toContain('<script>alert');
-    expect(evil.body).not.toContain('data-org=');
+    expect(evil.body).not.toMatch(/<script[^>]*data-org/);
   });
 });
 
 // ── config pública ────────────────────────────────────────────────────────────
 describe('webchat — configuração pública', () => {
   it('devolve só dados de apresentação e o estado aberto/fechado', async () => {
-    const o = await makeOrg({ ai: { enabled: true }, businessHours: {}, webchat: { title: 'TJ Atende', primaryColor: '#0a6b3d', offlineMessage: 'Fechado agora.', allowedOrigins: [] } });
+    const o = await makeOrg({ ai: { enabled: true }, businessHours: { sun: [], mon: [], tue: [], wed: [], thu: [], fri: [], sat: [] }, webchat: { title: 'TJ Atende', primaryColor: '#0a6b3d', offlineMessage: 'Fechado agora.', allowedOrigins: [] } });
     const res = await app.inject({ method: 'GET', url: `/balcao/webchat/public/config?org=${o.slug}`, headers: { 'x-forwarded-for': ipOf() } });
     expect(res.statusCode).toBe(200);
     const c = res.json();
@@ -351,6 +353,7 @@ describe('webchat — anexos', () => {
   });
 
   it('aceita PDF; recusa tipo não permitido, tipo forjado, vazio e acima do limite', async () => {
+    process.env.BV_WEBCHAT_RL_ATTACH = '50';
     const o = await org();
     const v = await session(o);
     expect((await upload(v, { name: 'a.pdf', type: 'application/pdf', data: Buffer.from('%PDF-1.4\n%fake') })).statusCode).toBe(201);

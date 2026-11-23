@@ -212,7 +212,8 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     el.bd.textContent = unread ? String(unread) : ''; el.bd.hidden = !unread;
     el.l.setAttribute('aria-label', T.open + (unread ? ' (' + unread + ' ' + T.newMsg + ')' : ''));
   }
-  function say(text, err) { var n = err ? el.er : el.st; (err ? el.st : el.er).textContent = ''; n.textContent = ''; setTimeout(function () { n.textContent = text; }, 30); }
+  var sayT;
+  function say(text, err) { clearTimeout(sayT); el.st.textContent = ''; el.er.textContent = ''; if (!text) return; var n = err ? el.er : el.st; sayT = setTimeout(function () { n.textContent = text; }, 30); }
 
   function applyState(s) {
     if (!s) return;
@@ -241,7 +242,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
       busy = false; el.send.disabled = false;
       if (r.status === 401) return expire();
       if (!r.ok) return say(errText(r, T.sendErr), true);
-      pendingId = null; el.ta.value = ''; el.ta.style.height = 'auto'; el.st.textContent = '';
+      pendingId = null; el.ta.value = ''; el.ta.style.height = 'auto'; say('');
       addMsg(r.data.message); applyState(r.data.state); el.ta.focus();
     });
   }
@@ -329,7 +330,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
       tok = r.data.token; sset(KEY, tok);
       showView('chat');
       addMsg({ id: 'welcome', from: 'bot', kind: 'TEXT', text: cfg.welcome, attachments: [], at: new Date().toISOString() });
-      el.st.textContent = ''; sockOpen(); schedule();
+      say(''); sockOpen(); schedule();
     });
   }
   function applyPrefs() {

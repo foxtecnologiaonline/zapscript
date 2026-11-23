@@ -34,6 +34,7 @@ export async function rotateSession(refreshToken: string, meta: Meta = {}): Prom
 
 export async function revokeSession(sessionId: string): Promise<void> {
   await prisma.bvSession.updateMany({ where: { id: sessionId, revokedAt: null }, data: { revokedAt: new Date() } });
+  clearAuthCache();
 }
 
 export async function revokeAllSessions(userId: string): Promise<void> {

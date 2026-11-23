@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import http from 'http';
 import type { AddressInfo } from 'net';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { exportJWK, generateKeyPair, SignJWT, exportPKCS8, type JWK, type KeyLike } from 'jose';
+import { signRs256, type Jwk } from '../jws';
 
 export interface FakeServer { url: string; port: number; close: () => Promise<void>; hits: Array<{ method: string; path: string; headers: http.IncomingHttpHeaders; body: string }> }
 
@@ -49,23 +49,23 @@ export const b64u = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('bas
 /** IdP OIDC falso: JWKS RSA, endpoint de token (valida PKCE e autenticação do cliente) e userinfo. */
 export class FakeIdp {
   server!: FakeServer;
-  privateKey!: KeyLike; jwk!: JWK; kid = 'k1';
+  privatePem!: string; otherPem!: string; jwk!: Jwk; kid = 'k1';
   clientId = 'client-123'; clientSecret = 'segredo-do-cliente';
   authMethod: 'basic' | 'post' = 'basic';
   issuer = '';
   codes = new Map<string, { nonce: string; challenge: string; claims: Record<string, unknown>; redirectUri: string }>();
   /** Falhas injetáveis. */
   opts: { wrongAud?: boolean; wrongNonce?: boolean; expired?: boolean; wrongIssuer?: boolean; otherKey?: boolean } = {};
-  otherKey?: KeyLike;
   confiabilidades: unknown = [{ id: 3 }];
   confiabilidadesStatus = 200;
   accessToken = 'at-fake';
 
   static async create(): Promise<FakeIdp> {
     const i = new FakeIdp();
-    const { privateKey, publicKey } = await generateKeyPair('RS256', { extractable: true });
-    i.privateKey = privateKey; i.otherKey = (await generateKeyPair('RS256')).privateKey;
-    i.jwk = { ...(await exportJWK(publicKey)), kid: i.kid, alg: 'RS256', use: 'sig' };
+    const kp = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    i.privatePem = kp.privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+    i.otherPem = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+    i.jwk = { ...(kp.publicKey.export({ format: 'jwk' }) as any), kid: i.kid, alg: 'RS256', use: 'sig' };
     i.server = await listen(async (r) => {
       const path = r.path.split('?')[0];
       if (path === '/jwks') return [200, { keys: [i.jwk] }];
@@ -86,10 +86,10 @@ export class FakeIdp {
         const verifier = p.get('code_verifier') ?? '';
         if (crypto.createHash('sha256').update(verifier).digest('base64url') !== rec.challenge) return [400, { error: 'invalid_grant', error_description: 'pkce' }];
         const now = Math.floor(Date.now() / 1000);
-        const idToken = await new SignJWT({ ...rec.claims, nonce: i.opts.wrongNonce ? 'outro' : rec.nonce })
-          .setProtectedHeader({ alg: 'RS256', kid: i.kid }).setIssuer(i.opts.wrongIssuer ? 'https://evil.example' : i.issuer)
-          .setAudience(i.opts.wrongAud ? 'outro-cliente' : i.clientId).setIssuedAt(now - 10).setExpirationTime(i.opts.expired ? now - 3600 : now + 300)
-          .sign(i.opts.otherKey ? i.otherKey! : i.privateKey);
+        const idToken = signRs256({
+          ...rec.claims, nonce: i.opts.wrongNonce ? 'outro' : rec.nonce, iss: i.opts.wrongIssuer ? 'https://evil.example' : i.issuer,
+          aud: i.opts.wrongAud ? 'outro-cliente' : i.clientId, iat: now - 10, exp: i.opts.expired ? now - 3600 : now + 300,
+        }, i.opts.otherKey ? i.otherPem : i.privatePem, { kid: i.kid });
         return [200, { id_token: idToken, access_token: i.accessToken, token_type: 'Bearer' }];
       }
       return [404, {}];
@@ -118,5 +118,4 @@ export class FakeIdp {
   /** Caminho+query (para app.inject) a partir de uma URL absoluta. */
   static pathOf(url: string) { const u = new URL(url); return `${u.pathname}${u.search}`; }
   close() { return this.server.close(); }
-  async privatePem() { return exportPKCS8(this.privateKey as any); }
 }

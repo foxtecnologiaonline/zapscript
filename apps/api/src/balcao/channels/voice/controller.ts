@@ -568,7 +568,7 @@ export class AriController {
       },
     });
     if (rec.main && rec.ura) await this.mergeConversationMeta(s, { voice: { uraRecording: { key: rec.ura.key, sha256: rec.ura.sha256, size: rec.ura.size } } });
-    await recordUsage(s.orgId, 'VOICE_MINUTES', Math.ceil(durationSec / 60));
+    await recordUsage(s.orgId, 'VOICE_MINUTES', Math.max(1, Math.ceil((endedAt.getTime() - s.startedAt.getTime()) / 60_000)));
 
     // conversa
     const conv = await prisma.bvConversation.findUnique({ where: { id: s.conversationId }, select: { status: true } });

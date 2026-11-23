@@ -81,15 +81,25 @@ export async function searchKb(orgId: string, q: string, opts: SearchOptions = {
     return mapRows(rows, 'like');
   };
 
-  const order = opts.first === 'any' ? [any, like] : [web, any, like];
-  for (const step of order) {
-    try {
-      const hits = await step();
-      if (hits.length) return hits;
-    } catch (err: any) {
+  const tryStep = async (step: () => Promise<KbHit[]>): Promise<KbHit[]> => {
+    try { return await step(); } catch (err: any) {
       // tsquery inválida não pode derrubar o atendimento: segue para o próximo método
       if (!/tsquery|syntax/i.test(String(err?.message))) throw err;
+      return [];
     }
+  };
+
+  if (opts.first === 'any') {
+    // bot: OR + complemento acento-insensível (o usuário digita sem acento, o texto tem acento)
+    const hits = await tryStep(any);
+    if (hits.length >= limit) return hits;
+    const seen = new Set(hits.map((h) => h.id));
+    const extra = (await tryStep(like)).filter((h) => !seen.has(h.id));
+    return [...hits, ...extra].slice(0, limit);
+  }
+  for (const step of [web, any, like]) {
+    const hits = await tryStep(step);
+    if (hits.length) return hits;
   }
   return [];
 }

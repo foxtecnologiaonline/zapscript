@@ -241,6 +241,7 @@ async function callWithRetry(cfg: EprocConfig, http: HttpClient, mk: () => Param
       return res;
     } catch (err: any) {
       if (err instanceof IntegrationError && err.retryable) { last = new IntegrationError(err.code === 'http.timeout' ? 'eproc.timeout' : 'eproc.unavailable', err.message, undefined, true); continue; }
+      if (err instanceof IntegrationError && err.code.startsWith('http.')) throw new IntegrationError('eproc.unavailable', err.message); // SSRF, tamanho, URL
       throw err;
     }
   }

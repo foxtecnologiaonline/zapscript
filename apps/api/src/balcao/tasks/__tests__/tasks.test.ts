@@ -131,7 +131,7 @@ describe('balcao/tasks — máquina de estados e permissões', () => {
     expect((await call(c.fis, 'POST', `/${sr.id}/rating`, { score: 9 })).status).toBe(409); // ainda não concluída
     await call(c.sup, 'POST', `/${sr.id}/status`, { status: 'IN_PROGRESS' });
     await call(c.sup, 'POST', `/${sr.id}/status`, { status: 'DONE', resolution: 'Corrigido' });
-    expect((await call(c.ag1, 'POST', `/${sr.id}/rating`, { score: 9 })).status).toBe(404); // atendente não vê
+    expect((await call(c.ag1, 'POST', `/${sr.id}/rating`, { score: 9 })).status).toBe(403); // atendente vê (caixa geral) mas não avalia
     expect((await call(c.fis, 'POST', `/${sr.id}/rating`, { score: 11 })).status).toBe(400);
     expect((await call(c.fis, 'POST', `/${sr.id}/rating`, { score: 8 })).status).toBe(200);
     expect((await call(c.fis, 'POST', `/${sr.id}/rating`, { score: 10, comment: 'ótimo' })).status).toBe(200);
@@ -284,7 +284,7 @@ describe('balcao/tasks — origens', () => {
     expect(await createTaskFromBot(c.orgId, { conversationId: conv.conversation.id, title: 'Outra', description: 'd' })).toMatchObject({ origin: 'CHATBOT' });
   });
 
-  it('back-office via token de API (BACKOFFICE) e SYSTEM; tarefa interna sem conversa', async () => {
+  it('back-office (BACKOFFICE), origem do bot e tarefa interna sem conversa', async () => {
     const c = await setup();
     const i = await mk(c.adm, { title: 'Revisar backups', kind: 'INTERNAL', origin: 'BACKOFFICE' });
     expect(i.origin).toBe('BACKOFFICE');
@@ -476,8 +476,7 @@ describe('balcao/tasks — SLA e sweep', () => {
 
     // segunda varredura: nada se repete
     const total = await prisma.bvNotification.count({ where: { orgId: c.orgId } });
-    const r2 = await runTasksSweep(now);
-    expect(r2.breaches + r2.due24h + r2.due1h + r2.overdue).toBeLessThanOrEqual(0 + (r2.breaches + r2.due24h + r2.due1h + r2.overdue)); // tarefas de outros órgãos podem aparecer
+    await runTasksSweep(now);
     await runTasksSweep(new Date(now.getTime() + 1000));
     expect(await prisma.bvNotification.count({ where: { orgId: c.orgId } })).toBe(total);
     await wait();
@@ -568,7 +567,7 @@ describe('balcao/tasks — indicadores do service desk (ISA, IOSA, IR)', () => {
     expect(ind('ISA4')).toMatchObject({ considered: 0, value: null, met: null });
     expect(ind('ISA1').glosaPercent).toBe(5); // 20 pontos abaixo → faixa ≤ 20
     expect(ind('ISA2').glosaPercent).toBe(10); // 45 pontos abaixo
-    expect(ind('IR')).toMatchObject({ considered: 7 - 0 > 0 ? ind('IR').considered : 0, value: 73.33, met: false });
+    expect(ind('IR')).toMatchObject({ considered: 7, value: 73.33, met: false });
     expect(ind('IR').extra).toMatchObject({ rated: 3, averageScore: 7.33 });
     expect(ind('IOSA').value).toBeGreaterThan(5);
     expect(ind('IOSA').met).toBe(false);
@@ -583,8 +582,8 @@ describe('balcao/tasks — indicadores do service desk (ISA, IOSA, IR)', () => {
     expect(String(csv.body).split('\r\n')[0]).toContain('indicador');
     expect(String(csv.body)).toContain('ISA1,');
     const list = await call(c.fis, 'GET', `/service-desk/requests?${rangeQ}&format=csv`);
-    expect(String(list.body).split('\r\n').filter(Boolean)).toHaveLength(1 + 8);
-    expect((await call(c.fis, 'GET', `/service-desk/requests?${rangeQ}`)).body.count).toBe(8);
+    expect(String(list.body).split('\r\n').filter(Boolean)).toHaveLength(1 + 10);
+    expect((await call(c.fis, 'GET', `/service-desk/requests?${rangeQ}`)).body.count).toBe(10);
     expect((await call(c.fis, 'GET', '/service-desk/indicators?from=ontem')).status).toBe(400);
   });
 

@@ -59,12 +59,18 @@ export async function runCustom(orgId: string, def: CustomDefinition, tz: string
   const period = periodOf(def.period, tz, now);
   const f: Filters = { orgId, period, ...def.filters };
   const rows = await aggregate(f, def.groupBy, def.metrics, { orderBy: def.orderBy, limit: def.limit });
+  const columns = columnsFor(def.groupBy, def.metrics);
+  return { definition: def, period: describePeriod(period), columns, rows };
+}
+
+/** Colunas (chave + rótulo em português) de uma consulta agregada. */
+export function columnsFor(groupBy: string[], metrics: string[]): Array<CsvColumn & { unit?: string }> {
   const columns: Array<CsvColumn & { unit?: string }> = [];
-  for (const g of def.groupBy) {
+  for (const g of groupBy) {
     columns.push({ key: g, label: DIMENSIONS[g].label });
     if (g === 'queue') columns.push({ key: 'queueName', label: 'Nome da fila' });
     if (g === 'agent') columns.push({ key: 'agentName', label: 'Nome do atendente' });
   }
-  for (const m of def.metrics) columns.push({ key: m, label: METRICS[m].label, unit: METRICS[m].unit });
-  return { definition: def, period: describePeriod(period), columns, rows };
+  for (const m of metrics) columns.push({ key: m, label: METRICS[m].label, unit: METRICS[m].unit });
+  return columns;
 }

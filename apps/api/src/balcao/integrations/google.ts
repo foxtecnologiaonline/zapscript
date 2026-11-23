@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { importPKCS8, SignJWT } from 'jose';
+import { signRs256 } from './jws';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
@@ -51,9 +51,8 @@ export async function getAccessToken(cfg: GoogleConfig, scope: string, http: Htt
   const key = crypto.createHash('sha256').update(`${sa.client_email}|${cfg.delegatedUser}|${scope}|${sa.token_uri}`).digest('hex');
   const hit = tokenCache.get(key);
   if (hit && hit.exp - 60_000 > Date.now()) return hit.token;
-  const assertion = await new SignJWT({ scope, sub: cfg.delegatedUser })
-    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' }).setIssuer(sa.client_email).setAudience(sa.token_uri).setIssuedAt().setExpirationTime('55m')
-    .sign(await importPKCS8(sa.private_key.replace(/\\n/g, '\n'), 'RS256'));
+  const iat = Math.floor(Date.now() / 1000);
+  const assertion = signRs256({ iss: sa.client_email, sub: cfg.delegatedUser, scope, aud: sa.token_uri, iat, exp: iat + 55 * 60 }, sa.private_key.replace(/\\n/g, '\n'));
   const res = await http.request({
     method: 'POST', url: sa.token_uri, timeoutMs: cfg.timeoutMs,
     headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },

@@ -25,7 +25,18 @@ export function parse<S extends z.ZodTypeAny>(schema: S, data: unknown, reply: F
 
 const userCache = new Map<string, { at: number; ctx: Omit<BvAuthContext, 'sessionId' | 'via'> | null }>();
 const USER_TTL_MS = 10_000;
-export const clearAuthCache = () => userCache.clear();
+const sessionCache = new Map<string, { at: number; ok: boolean }>();
+export const clearAuthCache = () => { userCache.clear(); sessionCache.clear(); };
+
+/** Sessão (sid do JWT) ainda válida? Logout/troca de senha/reuso de refresh revogam a sessão → o access token deixa de valer em ≤ 10 s. */
+async function sessionActive(sid: string): Promise<boolean> {
+  const hit = sessionCache.get(sid);
+  if (hit && Date.now() - hit.at < USER_TTL_MS) return hit.ok;
+  const row = await prisma.bvSession.findUnique({ where: { id: sid }, select: { revokedAt: true, expiresAt: true } });
+  const ok = !!row && !row.revokedAt && row.expiresAt > new Date();
+  sessionCache.set(sid, { at: Date.now(), ok });
+  return ok;
+}
 
 async function loadUser(userId: string): Promise<Omit<BvAuthContext, 'sessionId' | 'via'> | null> {
   const hit = userCache.get(userId);
@@ -57,6 +68,7 @@ export async function bvAuth(req: FastifyRequest, reply: FastifyReply) {
   if (!p) return sendError(reply, 401, 'auth.invalid_token', 'Sessão inválida ou expirada');
   const u = await loadUser(p.sub);
   if (!u) return sendError(reply, 401, 'auth.user_inactive', 'Usuário inativo');
+  if (p.sid && !(await sessionActive(p.sid))) return sendError(reply, 401, 'auth.session_revoked', 'Sessão encerrada');
   req.bv = { ...u, sessionId: p.sid, via: 'jwt' };
 }
 
