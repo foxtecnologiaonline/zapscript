@@ -25,6 +25,16 @@ export async function drainWhatsappBackground(): Promise<void> {
   while (inflight.size) await Promise.allSettled([...inflight]);
 }
 
+/** Serializa o processamento por contato (webhooks concorrentes do mesmo cidadão novo disputariam a criação do contato). */
+const chains = new Map<string, Promise<unknown>>();
+async function withKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = chains.get(key) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(fn);
+  const tail = run.catch(() => undefined);
+  chains.set(key, tail);
+  try { return await run; } finally { if (chains.get(key) === tail) chains.delete(key); }
+}
+
 // ── Tipos mínimos do payload da Meta ─────────────────────────────────────────
 export interface WaChange { field: string; value: any }
 export interface WaPayload { object?: string; entry?: Array<{ id?: string; changes?: WaChange[] }> }
@@ -136,9 +146,17 @@ async function handleInboundMessage(orgId: string, config: WaConfig, m: any, pro
   const wa: Record<string, unknown> = { ...mapped.wa };
   if (mapped.media) Object.assign(wa, { mediaId: mapped.media.id, mimeType: mapped.media.mime, mediaSha256: mapped.media.sha256, filename: mapped.media.filename, mediaStatus: 'PENDING', mediaAttempts: 0 });
 
-  const r = await ingestInbound({
-    orgId, channel: 'WHATSAPP', channelRef: from, externalId: from, name: profileName ?? null, phone: from,
+  const input = {
+    orgId, channel: 'WHATSAPP' as const, channelRef: from, externalId: from, name: profileName ?? null, phone: from,
     message: { kind: mapped.kind, body: mapped.body, attachments: [], channelMessageId: String(m.id), channelMeta: { wa }, createdAt },
+  };
+  // Entre instâncias da API a corrida de criação de contato/conversa vira P2002: uma nova tentativa já enxerga o registro.
+  const r = await withKeyLock(`${orgId}:${from}`, async () => {
+    for (let attempt = 1; ; attempt++) {
+      try { return await ingestInbound(input); } catch (err: any) {
+        if (err?.code !== 'P2002' || attempt >= 3) throw err;
+      }
+    }
   });
   if (r.duplicate) return 'dup';
 

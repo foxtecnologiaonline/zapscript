@@ -3,9 +3,8 @@ import { prisma } from '../../../lib/prisma';
 import { logger } from '../../../lib/logger';
 import { emitToConversation, rooms } from '../../core/realtime';
 import { getOrgSettings } from '../../core/settings';
-import { originAllowedForSocket } from './config';
+import { env, originAllowedForSocket } from './config';
 import { rateHit } from './ratelimit';
-import { env } from './config';
 import { findSessionByToken, isExpired } from './sessions';
 
 /**
@@ -93,7 +92,7 @@ export function attachVisitorNamespace(io: Server): void {
         const rl = await rateHit('typing', sessionId, env.rl.typing());
         if (!rl.ok) return;
         const s = await prisma.bvWebchatSession.findFirst({ where: { id: sessionId, orgId }, select: { conversationId: true, lastSeenAt: true, endedAt: true } });
-        if (!s?.conversationId || isExpired(s)) return socket.disconnect(true);
+        if (!s?.conversationId || isExpired(s)) { socket.disconnect(true); return; }
         emitToConversation(s.conversationId, 'typing', { conversationId: s.conversationId, from: 'CONTACT' });
       } catch { /* melhor esforço */ }
     });

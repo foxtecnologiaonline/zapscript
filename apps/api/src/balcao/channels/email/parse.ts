@@ -84,8 +84,9 @@ export function detectAutomated(mail: ParsedMail, fromAddress: string | null, ow
   if (h('x-autoreply') != null || h('x-autorespond') != null || h('x-failed-recipients') != null) return { automated: true, reason: 'auto_reply' };
   const ct = mail.headers.get('content-type') as any;
   if (ct?.value === 'multipart/report' || /delivery-status|disposition-notification/i.test(String(ct?.params?.['report-type'] ?? ''))) return { automated: true, reason: 'bounce' };
-  const rp = h('return-path');
-  if (rp != null && /^<\s*>$/.test(rp.trim())) return { automated: true, reason: 'null_return_path' };
+  const rpRaw = mail.headers.get('return-path') as any;
+  const rpVals: Array<{ address?: string }> | undefined = rpRaw && typeof rpRaw === 'object' ? rpRaw.value : undefined;
+  if ((Array.isArray(rpVals) && rpVals.every((v) => !v.address)) || (typeof rpRaw === 'string' && /^<\s*>$/.test(rpRaw.trim()))) return { automated: true, reason: 'null_return_path' };
   return { automated: false };
 }
 

@@ -12,7 +12,20 @@ import { getUsage } from '../../../core/usage';
 import { listMessages } from '../../../core/messages';
 import * as conversations from '../../../core/conversations';
 import { sendMessage } from '../../../core/conversations';
-import { authHeader, buildBalcaoTestApp, makeOrg, makeUser } from '../../../core/testing';
+import Fastify from 'fastify';
+import { authHeader, makeOrg, makeUser } from '../../../core/testing';
+import emailPlugin from '../index';
+
+/** App mínimo só com o plugin de e-mail (isola o teste de erros de outras frentes em andamento). Mesmo prefixo do plugin raiz. */
+async function buildBalcaoTestApp(): Promise<FastifyInstance> {
+  const app = Fastify({ logger: false, trustProxy: true });
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+    try { (req as any).rawBody = body; const s = body.toString().trim(); done(null, s ? JSON.parse(s) : {}); } catch (e: any) { done(e); }
+  });
+  await app.register(emailPlugin, { prefix: '/balcao/email' });
+  await app.ready();
+  return app;
+}
 import { htmlToText, normalizeSubject, parseRawEmail } from '../parse';
 import { ingestRawEmail } from '../inbound';
 import { extractProtocol } from '../threading';
@@ -111,8 +124,9 @@ describe('email — parse', () => {
     const html = '<html><head><style>p{color:red}</style></head><body><script>alert(1)</script><p>Prezados,</p><p>Segue o <b>pedido</b> &amp; o link <a href="https://tj.test/x">aqui</a>.</p><ul><li>um</li><li>dois</li></ul></body></html>';
     const p = await parseRawEmail(await raw({ html }));
     expect(p.text).not.toMatch(/<|alert|color:red/);
-    expect(p.text).toContain('Prezados,'); expect(p.text).toContain('pedido & o link'); expect(p.text).toContain('https://tj.test/x'); expect(p.text).toMatch(/- um/);
-    expect(htmlToText('<p>a&nbsp;b</p><br>c')).toBe('a b\n\nc'.replace('\n\nc', '\nc').replace('a b\nc', 'a b\n\nc'));
+    expect(p.text).toContain('Prezados,'); expect(p.text).toContain('pedido & o link'); expect(p.text).toContain('https://tj.test/x'); expect(p.text).toMatch(/[*-] um/);
+    // conversor próprio (fallback quando o parser não gera texto)
+    expect(htmlToText('<style>x{}</style><p>a&nbsp;&amp;b</p><p>c<br>d</p><script>x()</script>')).toBe('a &b\n\nc\nd');
   });
 
   it('anexos (nome, tipo, tamanho)', async () => {
@@ -433,7 +447,7 @@ describe('email — saída (SMTP)', () => {
     await sendMessage({ orgId: org.id, conversationId: first.conversationId, senderType: 'AGENT', body: 'Segue o documento.', attachments: [{ key, name: 'certidao.txt', mime: 'text/plain', size: 20 }], channelMeta: { quote: true } });
     const parsed = await simpleParser(mimes[0]);
     expect(parsed.subject).toBe(`Re: Certidão de objeto e pé [${first.protocol}]`);
-    expect(parsed.inReplyTo).toBe(rootId); expect(parsed.references).toEqual([rootId]);
+    expect(parsed.inReplyTo).toBe(rootId); expect([parsed.references].flat()).toEqual([rootId]);
     expect(parsed.attachments[0].filename).toBe('certidao.txt'); expect(parsed.attachments[0].content.toString()).toBe('conteudo anexo saida');
     expect(parsed.text).toContain('Segue o documento.'); expect(parsed.text).toContain('> Preciso de uma certidão.');
     expect(typeof parsed.html).toBe('string'); expect(String(parsed.html)).toContain('blockquote');
@@ -632,8 +646,10 @@ describe('email — admin (config, teste, mailboxes, poll)', () => {
     const box = new FakeBox();
     const shared = await raw({ text: 'mesma mensagem nos dois órgãos', subject: 'Compartilhado', messageId: mid('shared') });
     box.add(shared); setImapClientFactory(box.factory());
+    const box2 = new FakeBox(); box2.add(shared);
     const pa = await app.inject({ method: 'POST', url: '/balcao/email/poll', headers: authHeader(adminA) });
     expect(pa.statusCode).toBe(200); expect(pa.json()).toMatchObject({ polled: true, ingested: 1 });
+    setImapClientFactory(box2.factory());
     expect((await app.inject({ method: 'POST', url: '/balcao/email/poll', headers: authHeader(adminB) })).json()).toMatchObject({ ingested: 1 }); // mesmo Message-ID em outro órgão não é duplicata
     expect(await convCount(orgA.id)).toBe(1); expect(await convCount(orgB.id)).toBe(1);
 

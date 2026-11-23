@@ -56,12 +56,15 @@ async function configView(orgId: string) {
   };
 }
 
+/** Segredo novo (mín. `min` chars) ou o placeholder mascarado devolvido pelo GET (= manter o atual). */
+const secretField = (min: number, max: number) => z.string().max(max).refine((v) => v === SECRET_PLACEHOLDER || v.length >= min, { message: `mínimo de ${min} caracteres` });
+
 const configBody = z.object({
-  accessToken: z.string().min(10).max(4000).optional(),
+  accessToken: secretField(10, 4000).optional(),
   phoneNumberId: z.string().regex(/^\d{5,32}$/, 'phoneNumberId deve ser numérico').optional(),
   wabaId: z.string().regex(/^\d{5,32}$/, 'wabaId deve ser numérico').optional(),
-  appSecret: z.string().min(8).max(200).optional(),
-  verifyToken: z.string().min(8).max(200).optional(),
+  appSecret: secretField(8, 200).optional(),
+  verifyToken: secretField(8, 200).optional(),
   graphVersion: z.string().regex(/^v\d{1,2}\.\d{1,2}$/).optional(),
   apiBase: z.string().url().nullable().optional(),
   mock: z.boolean().optional(),

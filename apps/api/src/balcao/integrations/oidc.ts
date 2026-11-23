@@ -38,7 +38,7 @@ export const oidcConfigSchema = z.object({
   /** Perfil de quem é auto-provisionado sem grupo mapeado (ADMIN só via roleMapping explícito). */
   defaultRole: z.enum(['ATENDENTE', 'SUPERVISOR', 'FISCAL']).default('ATENDENTE'),
   roleClaim: z.string().max(100).default('groups'),
-  roleMapping: z.record(z.enum(ROLES)).default({}),
+  roleMapping: z.record(z.string(), z.enum(ROLES)).default({}),
   emailClaim: z.string().max(100).default('email'),
   nameClaim: z.string().max(100).default('name'),
   allowedEmailDomains: z.array(z.string().max(200)).max(50).optional(),

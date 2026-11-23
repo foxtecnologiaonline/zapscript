@@ -5,16 +5,18 @@ import { emitBvEvent, onBvEvent, type BvEventMap } from '../core/events';
 import { listMessages, readBody } from '../core/messages';
 import { getOrgSettings, type BvOrgSettings } from '../core/settings';
 import { getBotTool, identitySatisfies, listBotTools, type BotTool, type BotToolContext } from '../core/tools';
-import { assertQuota, QuotaExceededError, recordUsage } from '../core/usage';
+import { callJson } from './llmcall';
 import { encryptField } from '../core/crypto';
 import { isGreetingOnly, matchesEscalationKeyword, negativeSentimentScore, resolutionSignal, wantsHuman } from './detect';
 import { getLlmClient, type LlmClient } from './llm';
 import { markUsed, recordArticleFeedback } from './kb';
 import { PiiRedactor } from './pii';
-import { buildBotUserPrompt, BOT_SYSTEM, parseBotOutput, retrySuffix, type BotOutput } from './prompt';
+import { buildBotUserPrompt, BOT_SYSTEM, parseBotOutput } from './prompt';
 import { searchKb, type KbHit } from './search';
-import { estimateTokens } from './text';
 import { handleAgentAssist } from './assist';
+import { aiExtras, HANDOFF_NOTICE } from './config';
+
+export { aiExtras, HANDOFF_NOTICE };
 
 /**
  * Motor do chatbot (TR 1.1.3.1.5.1.1). Pipeline por mensagem do cidadão em conversa BOT:
@@ -31,20 +33,8 @@ export type EscalationReason =
   | 'HUMAN_REQUEST' | 'KEYWORD' | 'NEGATIVE_SENTIMENT' | 'NOT_RESOLVED' | 'MAX_TURNS' | 'LOW_CONFIDENCE' | 'NO_ARTICLE'
   | 'LLM_NEEDS_HUMAN' | 'LLM_INVALID' | 'LLM_ERROR' | 'QUOTA' | 'NON_TEXT' | 'TOOL_ERROR' | 'TOOL_UNKNOWN' | 'ASSISTED_TRIAGE' | 'BOT_STALLED';
 
-export const HANDOFF_NOTICE = 'Certo! Vou transferir você para um atendente. Aguarde um instante, por favor.';
 export const FAREWELL = 'Que bom ter ajudado! Se precisar de algo mais, é só chamar.';
 export const GREETING_FOLLOWUP = 'Como posso ajudar?';
-
-/** Campos de settings.ai além dos tipados no core (lidos com padrão seguro). */
-export function aiExtras(s: BvOrgSettings) {
-  const a = s.ai as any;
-  return {
-    agentAssist: a.agentAssist !== false,
-    idleCloseMinutes: Number(a.idleCloseMinutes ?? process.env.BV_AI_IDLE_MINUTES ?? 15),
-    handoffMessage: typeof a.handoffMessage === 'string' && a.handoffMessage ? a.handoffMessage : HANDOFF_NOTICE,
-    topK: Number(process.env.BV_AI_TOPK ?? 4),
-  };
-}
 
 export interface AnalysisState {
   botTurns: number;
@@ -92,40 +82,6 @@ function esc(reason: EscalationReason, mode: AiMode, extra: Partial<Analysis> = 
   return { action: 'ESCALATE', mode, reason, articles: [], usedArticleIds: [], ...extra };
 }
 
-/** Chama o LLM; 1 retry se a chamada falhar ou o JSON for inválido. Registra consumo (AI_CALLS/AI_TOKENS). */
-export async function callJsonLlm(orgId: string, llm: LlmClient, req: Omit<Parameters<LlmClient['complete']>[0], 'user'> & { user: string }): Promise<
-  { ok: true; value: BotOutput; model: string; tokensIn: number; tokensOut: number; calls: number } | { ok: false; kind: 'LLM_ERROR' | 'LLM_INVALID' | 'QUOTA'; calls: number }
-> {
-  let tokensIn = 0; let tokensOut = 0; let calls = 0; let lastErr = '';
-  let user = req.user;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try { await assertQuota(orgId, 'AI_CALLS'); } catch (err) {
-      if (err instanceof QuotaExceededError) return { ok: false, kind: 'QUOTA', calls };
-    }
-    let res;
-    try {
-      calls++;
-      res = await llm.complete({ ...req, user });
-    } catch (err: any) {
-      lastErr = `llm: ${String(err?.message ?? err).slice(0, 80)}`;
-      await recordUsage(orgId, 'AI_CALLS', 1);
-      logger.warn({ label: req.label, attempt, err: lastErr }, '[balcao.ai] chamada ao LLM falhou');
-      if (attempt === 1) return { ok: false, kind: 'LLM_ERROR', calls };
-      continue;
-    }
-    const tin = res.inputTokens || estimateTokens(req.system + user);
-    const tout = res.outputTokens || estimateTokens(res.text);
-    tokensIn += tin; tokensOut += tout;
-    await recordUsage(orgId, 'AI_CALLS', 1);
-    await recordUsage(orgId, 'AI_TOKENS', tin + tout);
-    const parsed = parseBotOutput(res.text);
-    if (parsed.ok) return { ok: true, value: parsed.value, model: res.model, tokensIn, tokensOut, calls };
-    lastErr = parsed.error;
-    user = req.user + retrySuffix(parsed.error);
-  }
-  return { ok: false, kind: 'LLM_INVALID', calls };
-}
-
 /**
  * Decide o que fazer com a mensagem do cidadão. Só efeitos colaterais: chamadas ao LLM e contabilização de uso.
  */
@@ -166,9 +122,9 @@ export async function analyzeMessage(i: AnalysisInput): Promise<Analysis> {
   const tools = i.tools ?? listBotTools();
 
   // (e) LLM
-  const r = await callJsonLlm(i.orgId, llm, {
+  const r = await callJson(i.orgId, llm, {
     tier: 'fast', system: BOT_SYSTEM, user: buildBotUserPrompt({ articles: hits, tools, history, message: redacted }), maxTokens: 900, label: 'bv.bot',
-  });
+  }, parseBotOutput);
   const debug = { redacted, piiFound: red.found, retrieval: hits.length, llmCalls: r.calls };
   const base = { mode, articles: hits.map((h) => ({ id: h.id, title: h.title, rank: h.rank })), debug };
   if (!r.ok) return esc(r.kind, mode, base as any);

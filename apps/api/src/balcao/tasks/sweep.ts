@@ -39,6 +39,7 @@ export async function runTasksSweep(now = new Date()): Promise<SweepResult> {
     await sweepBatch(tasks, now, out, sups);
     if (tasks.length < BATCH) break;
   }
+  return out;
 }
 
 async function sweepBatch(tasks: BvTask[], now: Date, out: SweepResult, sups: (orgId: string) => Promise<string[]>): Promise<void> {

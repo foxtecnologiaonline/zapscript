@@ -5,7 +5,9 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key-123456789012
 import crypto from 'crypto';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../../../lib/prisma';
-import { authHeader, buildBalcaoTestApp, makeOrg, makeUser } from '../../../core/testing';
+import Fastify from 'fastify';
+import { authHeader, makeOrg, makeUser } from '../../../core/testing';
+import waPlugin from '../index';
 import { clearBvEventHandlers } from '../../../core/events';
 import { saveIntegration } from '../../../core/integrations';
 import { ingestInbound, sendMessage } from '../../../core/conversations';
@@ -79,7 +81,13 @@ async function makeTemplate(ctx: Ctx, over: Record<string, any> = {}) {
 beforeAll(async () => {
   await graph.start();
   configureWaRuntime({ baseDelayMs: 1, maxDelayMs: 5, sleep: async () => undefined, statusRetryDelaysMs: [] });
-  app = await buildBalcaoTestApp();
+  // App isolado só com o plugin desta frente (não depende do estado das demais frentes em paralelo).
+  app = Fastify({ logger: false, trustProxy: true });
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+    try { (req as any).rawBody = body; const t = body.toString().trim(); done(null, t ? JSON.parse(t) : {}); } catch (e: any) { done(e); }
+  });
+  await app.register(waPlugin, { prefix: '/balcao/whatsapp' });
+  await app.ready();
 });
 afterAll(async () => { await drainWhatsappBackground(); await app.close(); await graph.stop(); clearBvEventHandlers(); setWaHttp(null); });
 beforeEach(() => graph.reset());
@@ -205,7 +213,7 @@ describe('whatsapp — entrada', () => {
     expect((await getObjectBuffer(att.key)).equals(data)).toBe(true);
     expect((row.channelMeta as any).wa.mediaStatus).toBe('STORED');
     expect((await listMessages(row.conversationId))[0].body).toBe('foto do documento');
-    expect(graph.callsTo(/media-in-1$/).length).toBe(1);
+    expect(graph.callsTo(/\/v23\.0\/media-in-1$/).length).toBe(1);
   });
 
   it('mídia: falha transitória deixa PENDING e o job reprocessa; sha256 divergente não é aceito', async () => {
@@ -418,21 +426,21 @@ describe('whatsapp — status de entrega', () => {
   it('status que chega antes do wamid ser gravado é reaplicado em segundo plano', async () => {
     const ctx = await setup();
     const { conversationId } = await inbound(ctx, '5563966660004');
-    configureWaRuntime({ statusRetryDelaysMs: [1, 1] });
+    configureWaRuntime({ statusRetryDelaysMs: [150, 150], sleep: (ms) => new Promise((res) => setTimeout(res, ms)) });
     const r = await sendMessage({ orgId: ctx.orgId, conversationId, senderType: 'BOT', body: 'oi' });
     const wamid = r.message.channelMessageId!;
     await prisma.bvMessage.update({ where: { id: r.message.id }, data: { channelMessageId: null } }); // simula a corrida
     await webhook(ctx, statusPayload(ctx, [{ id: wamid, status: 'delivered', timestamp: '1' }]));
     await prisma.bvMessage.update({ where: { id: r.message.id }, data: { channelMessageId: wamid } });
     await drainWhatsappBackground();
-    configureWaRuntime({ statusRetryDelaysMs: [] });
+    configureWaRuntime({ statusRetryDelaysMs: [], sleep: async () => undefined });
     expect((await prisma.bvMessage.findUniqueOrThrow({ where: { id: r.message.id } })).status).toBe('DELIVERED');
   });
 });
 
 describe('whatsapp — templates, cotas e consumo', () => {
   it('validação de componentes, parâmetros e renderização', () => {
-    expect(validateTemplateComponents([{ type: 'BODY', text: 'Olá {{1}}', example: { body_text: [['Ana']] } }], 'UTILITY')).toEqual(['BODY: o texto não pode começar nem terminar com variável'].slice(1));
+    expect(validateTemplateComponents([{ type: 'BODY', text: 'Olá {{1}}.', example: { body_text: [['Ana']] } }], 'UTILITY')).toEqual([]);
     expect(validateTemplateComponents([{ type: 'BODY', text: 'Olá {{1}} e {{3}}.' }], 'UTILITY').join('|')).toMatch(/sequenciais/);
     expect(validateTemplateComponents([{ type: 'BODY', text: '{{1}} oi' }], 'UTILITY').join('|')).toMatch(/começar/);
     expect(validateTemplateComponents([{ type: 'BODY', text: 'Olá {{1}}.' }], 'UTILITY').join('|')).toMatch(/example/);

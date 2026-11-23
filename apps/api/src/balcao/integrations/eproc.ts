@@ -31,8 +31,8 @@ export const eprocConfigSchema = z.object({
   maskPartyNames: z.boolean().default(true),
   /** Tabelas TPU opcionais: código nacional → descrição (classes, assuntos, movimentos). */
   tpu: z.object({
-    classes: z.record(z.string()).default({}), assuntos: z.record(z.string()).default({}), movimentos: z.record(z.string()).default({}),
-  }).default({}),
+    classes: z.record(z.string(), z.string()).default({}), assuntos: z.record(z.string(), z.string()).default({}), movimentos: z.record(z.string(), z.string()).default({}),
+  }).default({ classes: {}, assuntos: {}, movimentos: {} }),
   allowPrivateHosts: z.boolean().optional(),
 }).superRefine((c, ctx) => {
   if (c.mode === 'soap' && !(c.idConsultante && c.senhaConsultante)) ctx.addIssue({ code: 'custom', path: ['idConsultante'], message: 'idConsultante e senhaConsultante são obrigatórios no modo SOAP' });
@@ -125,7 +125,6 @@ export function buildConsultarProcessoEnvelope(cfg: Pick<EprocConfig, 'wsdlNames
 const xml = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', removeNSPrefix: true, parseTagValue: false, parseAttributeValue: false, trimValues: true });
 
 interface Parsed { processo: ProcessoResumo; partyDocs: Set<string> }
-type TpuMaps = EprocConfig['tpu'];
 
 /** Interpreta a resposta MNI. Lança IntegrationError com códigos `eproc.*` (fault, sigiloso, não encontrado, resposta inválida). */
 export function parseMniResponse(body: string, cfg: Pick<EprocConfig, 'maxMovimentos' | 'maskPartyNames' | 'tpu'>, includeMovs: boolean): Parsed {
