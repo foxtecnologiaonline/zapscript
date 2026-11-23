@@ -20,6 +20,8 @@ export interface BvEventMap {
   'agent.presence': { orgId: string; userId: string; presence: string };
   /** Capacidade livre de um agente (fim de atendimento, ficou ONLINE…) — ACD tenta drenar a fila. */
   'agent.available': { orgId: string; userId: string };
+  /** Cidadão autenticado (GOV.BR) na conversa — a IA retoma o atendimento. */
+  'identity.verified': { orgId: string; conversationId: string; contactId: string; level: 'bronze' | 'prata' | 'ouro' };
   'task.created': { orgId: string; taskId: string };
   'task.closed': { orgId: string; taskId: string };
   'sla.breach': { orgId: string; conversationId?: string; taskId?: string; kind: string };

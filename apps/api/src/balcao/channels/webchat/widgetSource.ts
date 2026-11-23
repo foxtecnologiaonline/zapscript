@@ -437,11 +437,11 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
 `;
 
 /**
- * Reduz o tamanho servido sem minificador: remove comentários de bloco (menos o banner /*!), linhas só de comentário
+ * Reduz o tamanho servido sem minificador: remove comentários de bloco (preserva o banner e os tipos JSDoc), linhas só de comentário
  * e a indentação. Seguro porque o script não tem strings multilinha nem "/*" dentro de strings/regex.
  */
 export const WIDGET_JS: string = SOURCE
-  .replace(/\/\*(?!!)[\s\S]*?\*\//g, '')
+  .replace(/\/\*(?![!*])[\s\S]*?\*\//g, '')
   .replace(/^[ \t]*\/\/.*$/gm, '')
   .replace(/^[ \t]+/gm, '')
   .replace(/\n{2,}/g, '\n');

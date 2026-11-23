@@ -8,6 +8,7 @@ import { blindIndex, randomToken } from '../core/crypto';
 import { getIntegration } from '../core/integrations';
 import { mergeContacts, normalizeDocument, setContactDocument } from '../core/contacts';
 import { sendMessage } from '../core/conversations';
+import { emitBvEvent } from '../core/events';
 import { registerBotTool } from '../core/tools';
 import {
   buildAuthorizeUrl, exchangeCode, hitLimit, htmlPage, logged, newPkce, publicBaseUrl, putOnce, SECURITY_HEADERS, takeOnce, verifyIdToken,
@@ -188,6 +189,7 @@ export function registerGovbrRoutes(app: FastifyInstance, deps: Deps = {}): void
       const contactId = await applyGovbrIdentity(rec.orgId, rec.contactId, { cpf: outcome.cpf, sub: blindIndex(outcome.cpf, 'govbr-sub'), level: outcome.level, name: outcome.name });
       await audit({ orgId: rec.orgId, actorType: 'CONTACT', actorId: contactId, action: 'govbr.identity_verified', entityType: 'conversation', entityId: rec.conversationId, meta: { level: outcome.level } });
       await notifyConversation(rec.orgId, rec.conversationId, `Identidade confirmada (nível ${outcome.level}).`);
+      emitBvEvent('identity.verified', { orgId: rec.orgId, conversationId: rec.conversationId, contactId, level: outcome.level });
       return page(reply, 200, 'Identidade confirmada', 'Você já pode voltar ao atendimento.', 'ok');
     } catch (err: any) {
       logger.warn({ code: err?.code ?? 'unexpected' }, '[balcao] govbr/callback falhou');
