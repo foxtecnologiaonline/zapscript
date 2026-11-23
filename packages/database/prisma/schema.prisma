@@ -2492,6 +2492,7 @@ model BvTask {
   slaResolutionDueAt DateTime?
   externalRef        String? // chave Jira
   tags               String[]  @default([])
+  metadata           Json?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -2531,6 +2532,7 @@ model BvTaskHistory {
 
   task BvTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
+  @@index([taskId, field])
   @@index([taskId, createdAt])
 }
 

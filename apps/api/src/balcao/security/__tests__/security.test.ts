@@ -158,7 +158,7 @@ describe('security — retenção', () => {
     const freshMsgs = await prisma.bvMessage.findMany({ where: { conversationId: fresh.conv.id } });
     expect(freshMsgs.every((m) => m.body !== null)).toBe(true);
     const call = await prisma.bvCall.findUniqueOrThrow({ where: { id: old.call.id } });
-    expect(call.recordingKey).toBeNull(); expect(call.fromNumber).toBe('***0000');
+    expect(call.recordingKey).toBeNull(); expect(call.fromNumber).toBe('***' + old.contact.phone!.slice(-4));
     expect(await prisma.bvAuditLog.count({ where: { orgId: org.id, action: 'velho' } })).toBe(0);
     expect(await prisma.bvAuditLog.count({ where: { orgId: org.id, action: 'meio' } })).toBe(1);
     expect(await prisma.bvRetentionRun.count({ where: { orgId: org.id, kind: 'MESSAGES' } })).toBe(1);

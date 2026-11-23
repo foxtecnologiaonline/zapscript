@@ -11,14 +11,14 @@ import { columnsFor, customDefinitionSchema, definitionsCatalog, runCustom } fro
 import { DATASETS, CursorError, exportPage, type Dataset } from './export';
 import { consumption, dashboard, listQuotas, registerFiscalJobs } from './fiscal';
 import {
-  AGENT_METRICS, GRANULARITIES, GRAN_DIM, METRICS, OVERVIEW_METRICS, TIMESERIES_METRICS, aggregate, agentsReport, compareKpis, heatmap,
+  AGENT_METRICS, GRANULARITIES, GRAN_DIM, METRICS, OVERVIEW_METRICS, TIMESERIES_METRICS, aggregate, agentsReport, compareKpis,
   iqaByContractMonth, npsDistribution, npsSummary, overviewKpis, slaViolationList, type Filters,
 } from './metrics';
 import { MONTH_RE, generateMonthly } from './monthly';
 import { realtimeSnapshot, registerRealtimeEmitter } from './realtime';
 import { FREQ_PRESET, downloadUrl, executeSavedReport, recipientAllowed, registerScheduleJob } from './schedule';
 import {
-  PeriodError, describePeriod, flatten, nextRunAfter, previousPeriod, resolvePeriod, toCsv, validTz, type CsvColumn, type Period,
+  PeriodError, describePeriod, nextRunAfter, previousPeriod, resolvePeriod, toCsv, validTz, type CsvColumn, type Period,
 } from './util';
 import { VOICE_COLUMNS, voiceReport } from './voice';
 
@@ -395,5 +395,4 @@ export default async function plugin(app: FastifyInstance): Promise<void> {
     return reply.code(204).send();
   });
 
-  void flatten; void heatmap;
 }

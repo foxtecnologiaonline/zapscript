@@ -2,7 +2,7 @@ import { prisma } from '../../../lib/prisma';
 import { clearBvEventHandlers } from '../../core/events';
 import { clearChannelSenders, registerChannelSender } from '../../core/channels';
 import { assignConversation, closeConversation } from '../../core/conversations';
-import { listMessages, createMessage } from '../../core/messages';
+import { listMessages } from '../../core/messages';
 import { clearBotTools, registerBotTool } from '../../core/tools';
 import { getUsage } from '../../core/usage';
 import { authHeader, makeOrg, makeUser } from '../../core/testing';
@@ -183,7 +183,7 @@ describe('balcao/ai — ferramentas do bot e identidade', () => {
     minIdentityLevel: 'ouro' as const,
     handler: async (ctx: any, input: any) => { calls.push({ ctx, input }); return { ok: true, message: `Processo ${input.numero}: concluso para despacho.` }; },
   });
-  const toolLlm = (req: any) => JSON.stringify({ answer: '', confidence: 0.9, intent: 'consulta_processo', category: 'processos', needsHuman: false, usedArticleIds: [], toolCall: { name: 'eproc.consultar_processo', input: { numero: '[PROCESSO_1]' } } });
+  const toolLlm = () => JSON.stringify({ answer: '', confidence: 0.9, intent: 'consulta_processo', category: 'processos', needsHuman: false, usedArticleIds: [], toolCall: { name: 'eproc.consultar_processo', input: { numero: '[PROCESSO_1]' } } });
 
   it('identidade insuficiente: não executa a ferramenta e pede login GOV.BR (com link da ferramenta identity.request_login)', async () => {
     const org = (await progressive()).id;
@@ -381,12 +381,12 @@ describe('balcao/ai — rotas /ai (config, teste seco, sugestão, resumo, estat�
     expect(j.escalationsByReason).toMatchObject({ LOW_CONFIDENCE: 1, HUMAN_REQUEST: 1 });
     // fechamos a automatizável escalada para entrar no denominador
     const low = await prisma.bvConversation.findFirstOrThrow({ where: { orgId: org, intent: 'segunda_via_certidao', status: 'WAITING' } });
+    const human = await makeUser(org, 'ATENDENTE');
+    await assignConversation({ orgId: org, conversationId: low.id, userId: human.id });
     await closeConversation({ orgId: org, conversationId: low.id, reason: 'RESOLVED', requestCsat: false });
     const j2 = (await app.inject({ method: 'GET', url: '/balcao/ai/stats', headers: authHeader(fiscal) })).json();
     expect(j2.iqa07).toMatchObject({ numerator: 2, denominator: 3 });
     expect(j2.iqa07.value).toBeCloseTo(2 / 3);
     expect(j2.usage.aiCalls).toBeGreaterThanOrEqual(3);
-    // agente fecha conversa mas createMessage direto não afeta nada aqui
-    void createMessage;
   });
 });

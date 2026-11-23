@@ -36,7 +36,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
       npsLow: '0 = nada provável', npsHigh: '10 = muito provável', npsPick: 'Selecione uma nota de 0 a 10.', npsComment: 'Comentário (opcional)', npsSend: 'Enviar avaliação',
       npsSkip: 'Agora não', thanks: 'Obrigado! Seu atendimento foi finalizado.', again: 'Novo atendimento', big: 'Arquivo muito grande (máximo {n} MB).',
       type: 'Tipo não permitido. Envie imagem (PNG, JPG, WEBP, GIF) ou PDF.', sent: 'Arquivo enviado.', proto: 'Protocolo', hint: 'Enter envia; Shift+Enter cria nova linha.',
-      newMsg: 'nova mensagem', download: 'Baixar'
+      newMsg: 'nova mensagem', download: 'Baixar', notice: 'Aviso de privacidade e uso de IA'
     },
     en: {
       open: 'Open support chat', close: 'Close chat', chat: 'Support chat', start: 'Start chat', name: 'Name (optional)', email: 'E-mail (optional)', startHint: 'Name and e-mail are optional.',
@@ -62,23 +62,23 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     '@media (max-width:480px){.p,.left .p{inset:0;width:auto;max-width:none;height:auto;border:0;border-radius:0}.l{bottom:12px;right:12px}.left .l{left:12px}}',
     '.h{background:var(--c);color:var(--t);padding:8px 8px 8px 14px;display:flex;align-items:center;gap:4px}.h h2{flex:1;margin:0;font-size:1.1em;line-height:1.25}',
     '.ib{min-width:44px;min-height:44px;border:1px solid transparent;border-radius:8px;background:transparent;color:inherit;cursor:pointer;font-weight:700}.ib:hover,.ib[aria-pressed=true]{background:rgba(255,255,255,.25);border-color:currentColor}',
-    '.n{padding:8px 14px;background:#f4f1e3;border-bottom:1px solid #8a7f3a;font-size:.85em;color:#2b2600}.n p{margin:2px 0}',
+    '.n{padding:8px 14px;background:#f4f1e3;border-bottom:1px solid #8a7f3a;font-size:.85em;color:#2b2600;margin:0 0 12px}.n p{margin:2px 0}summary{cursor:pointer;font-weight:600;min-height:24px}details.n{margin:0}.fm .n{border:1px solid #8a7f3a;border-radius:8px}',
     '.v{flex:1;min-height:0;display:flex;flex-direction:column}.sc{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}',
     'label,legend{font-weight:600;display:block;margin-bottom:4px}input[type=text],input[type=email],textarea{width:100%;padding:10px;border:2px solid #595959;border-radius:8px;background:#fff;color:#1a1a1a}',
     '.hint{font-size:.85em;color:#404040;margin:4px 0}.pb{min-height:44px;padding:8px 16px;border:2px solid var(--c);border-radius:8px;background:var(--c);color:var(--t);cursor:pointer;font-weight:700}',
     '.sb{min-height:44px;padding:8px 12px;border:2px solid #595959;border-radius:8px;background:#fff;color:#1a1a1a;cursor:pointer}.sb:disabled,.pb:disabled{opacity:.6;cursor:not-allowed}',
-    '.log{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#fafafa}',
+    '.log{flex:1 1 120px;min-height:80px;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#fafafa}',
     '.m{max-width:88%;padding:8px 12px;border-radius:12px;border:1px solid #767676;background:#eef1f6;overflow-wrap:anywhere;white-space:pre-wrap}.m a{color:#0b4fa8}',
     '.m .w{font-size:.78em;font-weight:700;display:block;color:#333}.m-visitor{align-self:flex-end;background:var(--c);color:var(--t);border-color:var(--c)}.m-visitor .w,.m-visitor a{color:var(--t)}',
     '.m-system{align-self:center;background:#fff7d6;border-color:#8a7f3a}.m-bot{background:#e7f2ea}.m img{max-width:100%;border-radius:6px;display:block;margin-top:6px}',
     '.ty{min-height:1.4em;padding:0 14px;font-size:.85em;color:#333;font-style:italic}.st{padding:4px 14px;font-size:.9em;color:#1a1a1a;min-height:1.5em}.er{padding:4px 14px;font-size:.9em;color:#9b1c13;font-weight:700}',
-    '.ac{display:flex;flex-wrap:wrap;gap:6px;padding:6px 12px;border-top:1px solid #bbb}.ac .sb{flex:1 1 auto;font-size:.85em}',
+    '.ac{display:flex;flex-wrap:wrap;gap:6px;padding:6px 12px;border-top:1px solid #bbb}.ac .sb{flex:1 1 45%;min-width:0;font-size:.82em}',
     '.cp{display:flex;gap:6px;padding:8px 12px 12px;border-top:1px solid #bbb;align-items:flex-end}.cp textarea{resize:none;min-height:44px;max-height:120px}',
     '.ns{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}.ns label{margin:0;font-weight:400}.ns input{position:absolute;opacity:0;width:1px;height:1px}',
     '.ns span{display:inline-block;min-width:36px;min-height:36px;line-height:32px;text-align:center;border:2px solid #595959;border-radius:6px;background:#fff;cursor:pointer}',
     '.ns input:checked+span{background:var(--c);color:var(--t);border-color:var(--c);font-weight:700}.ns input:focus-visible+span{outline:3px solid #1a1a1a;outline-offset:2px;box-shadow:0 0 0 2px #fff}',
     '.fm{padding:14px;overflow:auto}.fm .f{margin-bottom:12px}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
-    '.hc .p,.hc .log,.hc .n,.hc .m,.hc .sb,.hc input[type=text],.hc input[type=email],.hc textarea,.hc .ns span{background:#000;color:#fff;border-color:#fff}',
+    '.hc .p,.hc .log,.hc .n,.hc summary,.hc .m,.hc .sb,.hc input[type=text],.hc input[type=email],.hc textarea,.hc .ns span{background:#000;color:#fff;border-color:#fff}',
     '.hc .h,.hc .l,.hc .pb,.hc .m-visitor,.hc .ns input:checked+span{background:#ffeb3b;color:#000;border-color:#fff}.hc .m a{color:#ffeb3b}.hc .m-visitor a,.hc .m-visitor .w,.hc .h *{color:#000}',
     '.hc .m .w,.hc .hint,.hc .ty,.hc .st{color:#fff}.hc .er{color:#ff8a80}.hc .m{border-width:2px}',
     '@media (prefers-reduced-motion:no-preference){.p{animation:bvin .18s ease-out}@keyframes bvin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}',
@@ -363,21 +363,24 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     el.l = h('button', { type: 'button', class: 'l', 'aria-label': T.open, 'aria-expanded': 'false', 'aria-haspopup': 'dialog', 'aria-controls': 'bv-panel', onclick: function () { setOpen(true); } }, [ico, h('span', { text: title }), el.bd]);
 
     // cabeçalho
-    el.hc = h('button', { type: 'button', class: 'ib', 'aria-label': T.contrast, 'aria-pressed': 'false', title: T.contrast, text: '◐', onclick: function () { prefs.hc = !prefs.hc; applyPrefs(); } });
+    el.hc = h('button', { type: 'button', class: 'ib', 'aria-label': T.contrast, 'aria-pressed': 'false', title: T.contrast, onclick: function () { prefs.hc = !prefs.hc; applyPrefs(); } });
+    el.hc.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>';
     var hd = h('div', { class: 'h' }, [h('h2', { id: 'bv-t', text: title }),
       h('button', { type: 'button', class: 'ib', 'aria-label': T.fontDown, title: T.fontDown, text: 'A-', onclick: function () { prefs.fs--; applyPrefs(); } }),
       h('button', { type: 'button', class: 'ib', 'aria-label': T.fontUp, title: T.fontUp, text: 'A+', onclick: function () { prefs.fs++; applyPrefs(); } }), el.hc,
       h('button', { type: 'button', class: 'ib', 'aria-label': T.close, title: T.close, text: '✕', onclick: function () { setOpen(false); } })]);
 
     // avisos (LGPD / IA / fora do horário)
-    var nt = h('div', { class: 'n' }, [cfg.privacyNotice && h('p', { text: cfg.privacyNotice }), cfg.aiNotice && h('p', { text: cfg.aiNotice }), !cfg.open && h('p', { role: 'status', text: cfg.offlineMessage || '' })]);
+    function notes() { return [cfg.privacyNotice && h('p', { text: cfg.privacyNotice }), cfg.aiNotice && h('p', { text: cfg.aiNotice })]; }
+    var off = !cfg.open && h('p', { class: 'n', role: 'status', text: cfg.offlineMessage || '' });
+    var nt = h('details', { class: 'n' }, [h('summary', { text: T.notice })].concat(notes()));
     el.proto = h('div', { class: 'hint' });
 
     // início
     el.name = h('input', { type: 'text', id: 'bv-n', autocomplete: 'name', maxlength: '80' });
     el.email = h('input', { type: 'email', id: 'bv-e', autocomplete: 'email', maxlength: '160' });
     el.go = h('button', { type: 'submit', class: 'pb', text: cfg.open ? T.start : T.leave });
-    el.start = h('form', { class: 'fm', onsubmit: begin }, [h('div', { class: 'f' }, [h('label', { for: 'bv-n', text: T.name }), el.name]),
+    el.start = h('form', { class: 'fm', onsubmit: begin }, [h('div', { class: 'n' }, notes()), h('div', { class: 'f' }, [h('label', { for: 'bv-n', text: T.name }), el.name]),
       h('div', { class: 'f' }, [h('label', { for: 'bv-e', text: T.email }), el.email]), h('p', { class: 'hint', text: T.startHint }), el.go]);
 
     // conversa
@@ -406,8 +409,8 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     el.doneT = h('p', { text: T.thanks });
     el.done = h('div', { class: 'fm', hidden: true }, [el.doneT, h('button', { type: 'button', class: 'pb', text: T.again, onclick: function () { leave(false); } })]);
 
-    el.chat = h('div', { class: 'v', hidden: true }, [el.proto, el.log, el.ty, el.nps, el.done, el.ac, el.cp, hintEl]);
-    el.p = h('section', { class: 'p', id: 'bv-panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'bv-t', hidden: true, onkeydown: trap }, [hd, nt, el.start, el.chat, el.st, el.er]);
+    el.chat = h('div', { class: 'v', hidden: true }, [nt, el.proto, el.log, el.ty, el.nps, el.done, el.ac, el.cp, hintEl]);
+    el.p = h('section', { class: 'p', id: 'bv-panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'bv-t', hidden: true, onkeydown: trap }, [hd, off, el.start, el.chat, el.st, el.er]);
     r.appendChild(el.l); r.appendChild(el.p); root.appendChild(r); doc.body.appendChild(host);
     applyPrefs(); badge();
     if (me.getAttribute('data-vlibras') === 'true') vlibras();

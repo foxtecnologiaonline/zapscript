@@ -11,12 +11,13 @@ export const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 /** Titular completo: contato com CPF, identidades, conversa, mensagens (com anexo), chamada com gravação, tarefa. */
 export async function seedSubject(orgId: string, over: { email?: string; old?: boolean; document?: string } = {}) {
   const email = over.email ?? `titular-${crypto.randomBytes(3).toString('hex')}@exemplo.com`;
-  const contact = await prisma.bvContact.create({ data: { orgId, name: 'Maria da Silva', email, phone: '5563999990000', govbrSub: 'sub-' + crypto.randomBytes(4).toString('hex') } });
+  const phone = over.old === undefined && !over.email && !over.document ? '5563999990000' : '55639999' + String(Math.floor(1000 + Math.random() * 8999));
+  const contact = await prisma.bvContact.create({ data: { orgId, name: 'Maria da Silva', email, phone, govbrSub: 'sub-' + crypto.randomBytes(4).toString('hex') } });
   await setContactDocument(contact.id, over.document ?? '123.456.789-09');
   await prisma.bvContactIdentity.create({ data: { orgId, contactId: contact.id, channel: 'EMAIL', externalId: email } });
-  await prisma.bvContactIdentity.create({ data: { orgId, contactId: contact.id, channel: 'WHATSAPP', externalId: '5563999990000' } });
+  await prisma.bvContactIdentity.create({ data: { orgId, contactId: contact.id, channel: 'WHATSAPP', externalId: phone } });
   const when = over.old ? daysAgo(4000) : new Date();
-  const conv = await prisma.bvConversation.create({ data: { orgId, protocol: 'BV-T-' + crypto.randomBytes(4).toString('hex'), channel: 'WHATSAPP', contactId: contact.id, subject: 'Meu processo', csatComment: 'Ótimo atendimento', channelRef: '5563999990000', startedAt: when } });
+  const conv = await prisma.bvConversation.create({ data: { orgId, protocol: 'BV-T-' + crypto.randomBytes(4).toString('hex'), channel: 'WHATSAPP', contactId: contact.id, subject: 'Meu processo', csatComment: 'Ótimo atendimento', channelRef: phone, startedAt: when } });
   const key = newKey(orgId, 'attachments', 'pdf');
   const stored = await putObject(key, Buffer.from('%PDF-1.4 conteúdo sensível'));
   const m1 = await createMessage({ orgId, conversationId: conv.id, direction: 'IN', senderType: 'CONTACT', body: 'Meu CPF é 123.456.789-09', attachments: [{ key, name: 'doc.pdf', mime: 'application/pdf', size: stored.size, sha256: stored.sha256 }], createdAt: when });
@@ -24,7 +25,7 @@ export async function seedSubject(orgId: string, over: { email?: string; old?: b
   const note = await createMessage({ orgId, conversationId: conv.id, direction: 'INTERNAL', senderType: 'AGENT', body: 'nota interna', createdAt: when });
   const recKey = newKey(orgId, 'recordings', 'wav');
   const rec = await putObject(recKey, Buffer.from('RIFFfake-audio'));
-  const call = await prisma.bvCall.create({ data: { orgId, conversationId: conv.id, direction: 'IN', fromNumber: '5563999990000', toNumber: '6333000000', status: 'ENDED', recordingKey: recKey, recordingSha256: rec.sha256, recordingSizeBytes: BigInt(rec.size), startedAt: when, durationSec: 60 } });
+  const call = await prisma.bvCall.create({ data: { orgId, conversationId: conv.id, direction: 'IN', fromNumber: phone, toNumber: '6333000000', status: 'ENDED', recordingKey: recKey, recordingSha256: rec.sha256, recordingSizeBytes: BigInt(rec.size), startedAt: when, durationSec: 60 } });
   const task = await prisma.bvTask.create({ data: { orgId, code: 'TAR-' + crypto.randomBytes(3).toString('hex'), title: 'Retornar ligação', conversationId: conv.id, contactId: contact.id } });
   return { contact, conv, messages: [m1.message, m2.message, note.message], key, recKey, call, task, email };
 }

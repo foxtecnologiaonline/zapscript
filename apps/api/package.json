@@ -28,7 +28,7 @@
     "fastify": "^5.12.8",
     "imapflow": "^2.12.2",
     "ioredis": "^5.11.1",
-    "jose": "^6.2.18",
+    "jose": "^5.10.0",
     "mailparser": "^3.15.0",
     "nodemailer": "^10.6.1",
     "openai": "^4.104.0",
