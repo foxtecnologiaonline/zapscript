@@ -127,13 +127,13 @@ describe('voice/ARI — chamada recebida de ponta a ponta', () => {
     expect(ended.durationSec).toBeGreaterThanOrEqual(1);
     expect(Array.isArray(ended.ivrPath)).toBe(true);
     expect((ended.ivrPath as any[]).some((s) => s.event === 'choice' && s.input === '1')).toBe(true);
+    // conversa encerrada, eventos
+    await c.fake.waitFor(async () => (await prisma.bvConversation.findUniqueOrThrow({ where: { id: conv0.id } })).status === 'CLOSED', 'conversa fechada');
+    expect((await prisma.bvConversation.findUniqueOrThrow({ where: { id: conv0.id } })).closeReason).toBe('RESOLVED');
     // consumo
     const day = new Date(Date.now() - 86400_000);
     expect(await getUsage(c.orgId, 'VOICE_MINUTES', day, new Date())).toBeGreaterThanOrEqual(1);
     expect(await getUsage(c.orgId, 'VOICE_PEAK_CHANNELS', day, new Date())).toBe(1);
-    // conversa encerrada, eventos
-    await c.fake.waitFor(async () => (await prisma.bvConversation.findUniqueOrThrow({ where: { id: conv0.id } })).status === 'CLOSED', 'conversa fechada');
-    expect((await prisma.bvConversation.findUniqueOrThrow({ where: { id: conv0.id } })).closeReason).toBe('RESOLVED');
     await c.fake.waitFor(() => events.includes('ended'), 'call.ended');
     expect(events).toEqual(['started', 'ended']);
     // a gravação da fase da URA também foi guardada como secundária
@@ -193,8 +193,8 @@ describe('voice/ARI — chamada recebida de ponta a ponta', () => {
     const done = await c.fake.waitFor(async () => { const x = await c.callOf('ch-ab'); return x?.status === 'ABANDONED' ? x : null; }, 'abandonada');
     expect(done.endReason).toBe('CALLER_HANGUP_QUEUE');
     expect(done.recordingKey).toBeTruthy(); // a fase da URA/fila também é gravada
-    const conv = await prisma.bvConversation.findUniqueOrThrow({ where: { id: call.conversationId! } });
-    expect(conv.status).toBe('CLOSED'); expect(conv.closeReason).toBe('ABANDONED');
+    const conv = await c.fake.waitFor(async () => { const x = await prisma.bvConversation.findUniqueOrThrow({ where: { id: call.conversationId! } }); return x.status === 'CLOSED' ? x : null; }, 'conversa fechada');
+    expect(conv.closeReason).toBe('ABANDONED');
     expect(await prisma.bvConversation.count({ where: { id: conv.id, csatScore: { not: null } } })).toBe(0);
   });
 
@@ -286,7 +286,7 @@ describe('voice/ARI — chamada recebida de ponta a ponta', () => {
     ctx = await setup(); const c = ctx;
     c.fake.incoming('ch-hd', { number: '63999990011', did: c.did, headers: { 'X-URA-Option': '9' } });
     const call = await c.fake.waitFor(async () => { const x = await c.callOf('ch-hd'); return x?.status === 'QUEUED' ? x : null; }, 'direto para a fila (entryByHeader)');
-    const conv = await prisma.bvConversation.findUniqueOrThrow({ where: { id: call.conversationId! } });
+    const conv = await c.fake.waitFor(async () => { const x = await prisma.bvConversation.findUniqueOrThrow({ where: { id: call.conversationId! } }); return x.status === 'WAITING' ? x : null; }, 'conversa na fila');
     expect((conv.metadata as any).voice.headers['X-URA-Option']).toBe('9');
     expect(conv.category).toBe('PROCESSO');
     expect(c.fake.playsOn('ch-hd').some((p) => p.media[0].includes('Bem_vindo'))).toBe(false); // pulou o menu

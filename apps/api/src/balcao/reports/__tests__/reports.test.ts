@@ -71,14 +71,15 @@ describe('reports/util — funções puras', () => {
     expect(projectMonthEnd([10, 10, 10], 30).projected).toBe(300);
     expect(projectMonthEnd([10, 20, 30], 30).projected).toBeGreaterThan(300); // acelerando
     expect(projectMonthEnd([100, 100], 30, true).projected).toBe(100); // gauge estável
-    expect(projectMonthEnd([100, 110, 120], 30, true).projected).toBe(400);
+    expect(projectMonthEnd([100, 110, 120], 30, true).projected).toBe(390);
     expect(projectMonthEnd([5], 30).projected).toBe(150); // 1 ponto: proporcional
   });
   it('IQA: meta por mês de contrato e faixa de glosa', () => {
     expect([1, 3, 4, 6, 7, 20].map(iqaGoal)).toEqual([40, 40, 60, 60, 80, 80]);
     expect(iqaGlosa(45, 40)).toBe(0);
     expect(iqaGlosa(35, 40)).toBe(10);
-    expect(iqaGlosa(55, 80)).toBe(15);
+    expect(iqaGlosa(65, 80)).toBe(15);
+    expect(iqaGlosa(55, 80)).toBe(20);
     expect(iqaGlosa(10, 80)).toBe(20);
     expect(iqaGlosa(null, 80)).toBeNull();
   });
@@ -121,7 +122,7 @@ describe('reports — métricas com valores conhecidos', () => {
     expect(k.total).toBe(8); expect(k.closed).toBe(7); expect(k.open).toBe(1);
     expect([k.tmeAvg, k.tmeP50, k.tmeP90, k.tmeCount]).toEqual([165, 150, 264, 4]);
     expect([k.tmaAvg, k.tmaP50, k.tmaP90]).toEqual([615, 630, 828]);
-    expect(k.tmrAvg).toBe(Math.round(((720 + 330 + 700 + 950) / 4) * 10) / 10);
+    expect(k.tmrAvg).toBe(Math.round(((720 + 330 + 700 + 950 + 60 + 60 + 300) / 7) * 10) / 10); // todas as encerradas, inclusive bot e abandono
     expect(k.queueWaitAvg).toBe(60);
     expect(k.abandoned).toBe(1); expect(k.abandonRate).toBeCloseTo(14.29, 2);
     expect(k.fcrRate).toBeCloseTo(83.33, 2);
@@ -145,7 +146,7 @@ describe('reports — métricas com valores conhecidos', () => {
     expect(Object.fromEntries(ch.map((c: any) => [c.channel, c.total]))).toEqual({ WHATSAPP: 6, WEBCHAT: 2 });
     const qs = (await get(w, `/reports/queues?${PERIOD}`)).json().queues;
     const q2 = qs.find((q: any) => q.queue === w.q2);
-    expect(q2.queueName).toBe('Fila 2'); expect(q2.tmeAvg).toBe(240); expect(q2.nps).toBe(0);
+    expect(q2.queueName).toBe('Fila 2'); expect(q2.tmeAvg).toBe(240); expect(q2.nps).toBe(-50);
     const ag = (await get(w, `/reports/agents?${PERIOD}`)).json().agents;
     const a1 = ag.find((a: any) => a.agent === w.a1.id);
     expect(a1.total).toBe(2); expect(a1.tmeAvg).toBe(90); expect(a1.tmaAvg).toBe(480); expect(a1.nps).toBe(100);
@@ -155,7 +156,7 @@ describe('reports — métricas com valores conhecidos', () => {
     expect(nps.summary.nps).toBe(25);
     expect(nps.distribution).toHaveLength(11); expect(nps.distribution[10].count).toBe(1); expect(nps.distribution[5].count).toBe(1);
     expect(nps.check.nps).toBe(25);
-    expect(nps.byAgent.find((a: any) => a.agent === w.a2.id).nps).toBe(0);
+    expect(nps.byAgent.find((a: any) => a.agent === w.a2.id).nps).toBe(-50);
   });
 
   it('SLA: violações listadas; filtro por canal/fila', async () => {
@@ -263,7 +264,7 @@ describe('reports — relatórios personalizáveis (allowlist)', () => {
     const r = await custom({ metrics: ['total', 'tmeAvg', 'nps'], groupBy: ['channel'], period: { from: '2026-11-01', to: '2026-11-30' }, orderBy: { key: 'total', dir: 'desc' } });
     expect(r.statusCode).toBe(200);
     const rows = r.json().rows;
-    expect(rows[0]).toMatchObject({ channel: 'WHATSAPP', total: 6, tmeAvg: 215 });
+    expect(rows[0]).toMatchObject({ channel: 'WHATSAPP', total: 6, tmeAvg: 200 });
     expect(rows[1]).toMatchObject({ channel: 'WEBCHAT', total: 2, tmeAvg: 60, nps: 100 });
   });
 
@@ -534,7 +535,8 @@ describe('reports — salvos, agendamento e relatório mensal', () => {
     expect(d.voice.minutes).toBe(12); expect(d.storage.maxBytes).toBe(5000);
     expect(d.attendances.total).toBe(8);
     expect(d.indicators).toMatchObject({ nps: 25, tmeAvgSec: 165, tmaAvgSec: 615 });
-    expect(d.indicators.iqa).toMatchObject({ contractMonth: 3, goal: 40, glosaPct: 10, numerator: 1, base: 3 });
+    expect(d.indicators.iqa).toMatchObject({ contractMonth: 3, goal: 40, numerator: 1, base: 3 });
+    expect((await buildMonthly(w.orgId, '2026-11', new Date('2026-12-15T00:00:00Z'))).indicators.iqa).toMatchObject({ glosaPct: 10 }); // mês fechado → glosa apurada
     expect(d.serviceDesk.createdByKind.SERVICE_REQUEST).toEqual({ total: 2, byStatus: { OPEN: 1, DONE: 1 } });
     expect(d.serviceDesk.completedInMonth).toBe(1);
     expect(d.contractHours).toEqual({ curadoria: 12, integracao: 8, treinamento: 4 });

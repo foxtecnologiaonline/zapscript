@@ -31,7 +31,10 @@ export function groundedBot(req: LlmRequest, over: Record<string, unknown> = {})
   if (req.label !== 'bv.bot') {
     if (req.label === 'bv.assist') return JSON.stringify({ suggestion: 'Olá! Segue a orientação do artigo.', confidence: 0.8, usedArticleIds: ids.slice(0, 1) });
     if (req.label === 'bv.summary') return JSON.stringify({ summary: 'Cidadão pede segunda via de certidão.', intent: 'segunda_via_certidao', pending: ['enviar link'], keyFacts: ['certidão de nascimento'] });
-    if (req.label === 'bv.curation') return JSON.stringify({ title: 'Como solicitar a certidão', question: 'Como solicitar a certidão?', answer: 'Acesse o portal e informe os dados do registro; o prazo é o informado pelos atendentes.', category: 'certidoes', tags: ['certidao'] });
+    if (req.label === 'bv.curation') {
+      const q = req.user.match(/1\. (.+)/)?.[1] ?? 'pergunta';
+      return JSON.stringify({ title: `Artigo: ${q.slice(0, 60)}`, question: q, answer: 'Resposta consolidada a partir do que os atendentes informaram; revisar antes de publicar.', category: 'curadoria', tags: ['curadoria'] });
+    }
   }
   if (!ids.length) return JSON.stringify({ answer: '', confidence: 0.2, intent: 'assunto_desconhecido', category: null, needsHuman: true, usedArticleIds: [], toolCall: null, ...over });
   return JSON.stringify({ answer: 'Para a segunda via, acesse o portal do órgão e informe os dados. O prazo é de 5 dias úteis.', confidence: 0.92, intent: 'segunda_via_certidao', category: 'certidoes', needsHuman: false, usedArticleIds: [ids[0]], toolCall: null, ...over });

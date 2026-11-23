@@ -10,7 +10,7 @@ import { USAGE_ITEMS, type UsageItem } from '../core/types';
 /** Relatório mensal da contratada (TR 8.2.9). */
 export const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-export async function buildMonthly(orgId: string, month: string) {
+export async function buildMonthly(orgId: string, month: string, now = new Date()) {
   const tz = validTz((await getOrgSettings(orgId)).timezone);
   const [y, m] = month.split('-').map(Number);
   const period: Period = { from: zonedToUtc(y, m, 1, 0, 0, tz), to: zonedToUtc(y, m + 1, 1, 0, 0, tz), timezone: tz };
@@ -28,7 +28,7 @@ export async function buildMonthly(orgId: string, month: string) {
     prisma.bvTask.count({ where: { orgId, completedAt: { gte: period.from, lt: period.to } } }),
     getContractInfo(orgId, tz),
   ]);
-  const iqa = await iqaByContractMonth({ orgId }, tz, new Date(period.to.getTime() - 1));
+  const iqa = await iqaByContractMonth({ orgId }, tz, new Date(Math.min(period.to.getTime(), now.getTime())));
   const cm = iqa.months.find((x) => new Date(x.from) <= period.from && new Date(x.to) >= period.to) ?? iqa.months.find((x) => new Date(x.from) <= period.from && new Date(x.to) > period.from) ?? null;
 
   const sum = (item: UsageItem) => [...usage.values()].reduce((s, d) => s + (d.get(item) ?? 0), 0);
@@ -38,7 +38,7 @@ export async function buildMonthly(orgId: string, month: string) {
   for (const t of tasksByKind) { const k = (kinds[t.kind] ??= { total: 0, byStatus: {} }); k.total += t._count._all; k.byStatus[t.status] = t._count._all; }
 
   return {
-    kind: 'MONTHLY', month, generatedAt: new Date().toISOString(), period: describePeriod(period),
+    kind: 'MONTHLY', month, generatedAt: now.toISOString(), period: describePeriod(period),
     licenses: { atendentes: lic.atendente, supervisores: lic.supervisor, administradores: lic.admin, fiscais: lic.fiscal, total: lic.total, criterio: 'usuários distintos com sessão, login ou atendimento no mês' },
     messaging,
     storage: { maxBytes: max('STORAGE_BYTES') },

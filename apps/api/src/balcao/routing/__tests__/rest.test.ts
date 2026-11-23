@@ -89,6 +89,16 @@ describe('routing/REST — conversas (fluxo completo)', () => {
     expect((await call(ag2, 'POST', `/conversations/${id}/messages`, { text: 'tarde' })).status).toBe(409);
   });
 
+  it('pickup concorrente: dois atendentes puxando a mesma conversa — só um vence', async () => {
+    const orgId = await setup();
+    const a = await onlineAgent(orgId); const b = await onlineAgent(orgId);
+    await makeQueue(orgId, {}, [a.id, b.id]);
+    const c = await waitingConv(orgId);
+    const [ra, rb] = await Promise.all([call(a, 'POST', `/conversations/${c.id}/pickup`), call(b, 'POST', `/conversations/${c.id}/pickup`)]);
+    expect([ra.status, rb.status].sort()).toEqual([200, 409]);
+    expect(await prisma.bvConversationEvent.count({ where: { conversationId: c.id, type: 'ASSIGNED' } })).toBe(1);
+  });
+
   it('anexo: rejeita tipo proibido, conteúdo que não confere e arquivo > 15 MB', async () => {
     const orgId = await setup();
     const ag = await onlineAgent(orgId);

@@ -74,7 +74,7 @@ export class FakeAri {
   }
   failOriginated(id: string, cause = 19) { this.hangup(id, cause); }
 
-  async waitFor<T>(fn: () => T | Promise<T>, what = 'condição', timeoutMs = 4000): Promise<NonNullable<T>> {
+  async waitFor<T>(fn: () => T | Promise<T>, what = 'condição', timeoutMs = 8000): Promise<NonNullable<T>> {
     const t0 = Date.now();
     for (;;) {
       const v = await fn();

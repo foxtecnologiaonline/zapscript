@@ -72,7 +72,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     '.m .w{font-size:.78em;font-weight:700;display:block;color:#333}.m-visitor{align-self:flex-end;background:var(--c);color:var(--t);border-color:var(--c)}.m-visitor .w,.m-visitor a{color:var(--t)}',
     '.m-system{align-self:center;background:#fff7d6;border-color:#8a7f3a}.m-bot{background:#e7f2ea}.m img{max-width:100%;border-radius:6px;display:block;margin-top:6px}',
     '.ty{min-height:1.4em;padding:0 14px;font-size:.85em;color:#333;font-style:italic}.st{padding:4px 14px;font-size:.9em;color:#1a1a1a;min-height:1.5em}.er{padding:4px 14px;font-size:.9em;color:#9b1c13;font-weight:700}',
-    '.ac{display:flex;flex-wrap:wrap;gap:6px;padding:6px 12px;border-top:1px solid #bbb}.ac .sb{flex:1 1 45%;min-width:0;font-size:.82em}',
+    '.ac{display:flex;flex-wrap:wrap;gap:6px;padding:6px 12px;border-top:1px solid #bbb}.ac .sb{flex:1 1 45%;min-width:0;font-size:.82em;min-height:36px;padding:4px 8px}',
     '.cp{display:flex;gap:6px;padding:8px 12px 12px;border-top:1px solid #bbb;align-items:flex-end}.cp textarea{resize:none;min-height:44px;max-height:120px}',
     '.ns{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}.ns label{margin:0;font-weight:400}.ns input{position:absolute;opacity:0;width:1px;height:1px}',
     '.ns span{display:inline-block;min-width:36px;min-height:36px;line-height:32px;text-align:center;border:2px solid #595959;border-radius:6px;background:#fff;cursor:pointer}',
@@ -436,5 +436,12 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
 })();
 `;
 
-/** Remove só a indentação (seguro: o script não tem strings multilinha) para reduzir o tamanho servido. */
-export const WIDGET_JS: string = SOURCE.replace(/^[ \t]+/gm, '');
+/**
+ * Reduz o tamanho servido sem minificador: remove comentários de bloco (menos o banner /*!), linhas só de comentário
+ * e a indentação. Seguro porque o script não tem strings multilinha nem "/*" dentro de strings/regex.
+ */
+export const WIDGET_JS: string = SOURCE
+  .replace(/\/\*(?!!)[\s\S]*?\*\//g, '')
+  .replace(/^[ \t]*\/\/.*$/gm, '')
+  .replace(/^[ \t]+/gm, '')
+  .replace(/\n{2,}/g, '\n');

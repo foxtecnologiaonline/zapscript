@@ -142,7 +142,8 @@ async function handleInboundMessage(orgId: string, config: WaConfig, m: any, pro
   if (mapped === 'ignore') return 'ignored';
   const from = String(m.from);
   const ts = Number(m.timestamp);
-  const createdAt = Number.isFinite(ts) && ts > 0 && ts * 1000 <= Date.now() ? new Date(ts * 1000) : undefined;
+  // O timestamp da Meta tem resolução de 1 s: só o usamos quando há atraso real (senão `now` preserva a ordem em ms).
+  const createdAt = Number.isFinite(ts) && ts > 0 && Date.now() - ts * 1000 > 2000 ? new Date(ts * 1000) : undefined;
   const wa: Record<string, unknown> = { ...mapped.wa };
   if (mapped.media) Object.assign(wa, { mediaId: mapped.media.id, mimeType: mapped.media.mime, mediaSha256: mapped.media.sha256, filename: mapped.media.filename, mediaStatus: 'PENDING', mediaAttempts: 0 });
 

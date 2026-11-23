@@ -22,6 +22,10 @@ const STOPWORDS = new Set((
   'fazer faco faz fazem saber sobre algum alguma alguem tipo coisa so tambem mesmo ainda ai ne eh pois entao'
 ).split(/\s+/));
 
+/** Verbos/palavras de "pedido" genéricos: ignoradas só no agrupamento da curadoria (não na busca). */
+const REQUEST_WORDS = new Set('solicitar solicito solicitando pedir peco pedido emitir emito emissao obter obtenho tirar tiro retirar conseguir consigo requerer requeiro procedimento procedimentos funciona funcionar passo passos jeito forma maneira vejo ver saber informacao informacoes duvida duvidas'.split(' ').map((w) => w.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
+const REQUEST_STEMS = new Set([...REQUEST_WORDS].map((w) => lightStem(w)));
+
 export function isStopword(w: string): boolean { return STOPWORDS.has(w); }
 
 /** Redução leve de sufixos (plural, verbal, -ção). Só para comparar textos entre si. */
@@ -36,12 +40,14 @@ export function lightStem(w: string): string {
 }
 
 /** Tokens significativos (sem stopwords, com stemming leve, únicos). */
-export function tokenize(s: string, opts: { stem?: boolean; minLen?: number } = {}): string[] {
-  const { stem = true, minLen = 2 } = opts;
+export function tokenize(s: string, opts: { stem?: boolean; minLen?: number; dropRequestWords?: boolean } = {}): string[] {
+  const { stem = true, minLen = 2, dropRequestWords = false } = opts;
   const out = new Set<string>();
   for (const w of normalizeText(s).split(' ')) {
-    if (w.length < minLen || STOPWORDS.has(w)) continue;
-    out.add(stem ? lightStem(w) : w);
+    if (w.length < minLen || STOPWORDS.has(w) || /^\d+$/.test(w)) continue;
+    const t = stem ? lightStem(w) : w;
+    if (dropRequestWords && (REQUEST_WORDS.has(w) || REQUEST_STEMS.has(t))) continue;
+    out.add(t);
   }
   return [...out];
 }

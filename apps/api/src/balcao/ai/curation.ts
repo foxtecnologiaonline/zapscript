@@ -26,6 +26,8 @@ export interface CurationOptions {
 }
 export interface CurationResult { analyzed: number; clusters: number; created: number; updated: number; ambiguities: number; proposals: number; suggestionIds: string[] }
 
+export const clusterTokens = (q: string) => tokenize(q.replace(/\[[A-Z]+_\d+\]/g, ' '), { dropRequestWords: true });
+
 interface Item { convId: string; question: string; answers: string[]; intent: string | null; tokens: string[]; fromBot: boolean }
 
 async function loadItem(conv: { id: string; intent: string | null; botHandled: boolean }): Promise<Item | null> {
@@ -35,12 +37,12 @@ async function loadItem(conv: { id: string; intent: string | null; botHandled: b
   if (!inbound.length) return null;
   const question = truncate(red.redact(inbound[0].body!.trim()), 400);
   const answers = msgs.filter((m) => m.direction === 'OUT' && m.senderType === 'AGENT' && m.body && m.body.trim().length >= 20).slice(0, 3).map((m) => truncate(red.redact(m.body!.trim()), 800));
-  return { convId: conv.id, question, answers, intent: conv.intent, tokens: tokenize(question), fromBot: conv.botHandled };
+  return { convId: conv.id, question, answers, intent: conv.intent, tokens: clusterTokens(question), fromBot: conv.botHandled };
 }
 
 interface Cluster { items: Item[]; vec: Vec; seed: string[] }
 
-export function clusterQuestions(items: Item[], threshold = 0.4): Cluster[] {
+export function clusterQuestions(items: Item[], threshold = 0.35): Cluster[] {
   const idf = buildIdf(items.map((i) => i.tokens));
   const clusters: Cluster[] = [];
   for (const it of items) {
@@ -117,7 +119,7 @@ export async function runCuration(orgId: string, opts: CurationOptions = {}): Pr
   res.analyzed = items.length;
 
   // 2) agrupamento
-  const clusters = clusterQuestions(items, opts.similarity ?? 0.4).filter((c) => c.items.length >= minCluster);
+  const clusters = clusterQuestions(items, opts.similarity ?? 0.35).filter((c) => c.items.length >= minCluster);
   res.clusters = clusters.length;
   const recentClosed = await prisma.bvKbSuggestion.findMany({ where: { orgId, status: { in: ['ACCEPTED', 'DISMISSED'] }, resolvedAt: { gte: new Date(Date.now() - 60 * 86400_000) } }, select: { question: true }, take: 500 });
   const open = await prisma.bvKbSuggestion.findMany({ where: { orgId, status: 'OPEN', type: { not: 'AMBIGUITY' } }, take: 500 });
@@ -130,9 +132,9 @@ export async function runCuration(orgId: string, opts: CurationOptions = {}): Pr
     const samples = cl.items.slice(0, 5).map((i) => truncate(i.question, 200));
 
     // já tratada recentemente (aceita/descartada)? não recria
-    if (recentClosed.some((s) => jaccard(tokenize(s.question), repTokens) >= 0.6)) continue;
+    if (recentClosed.some((s) => jaccard(clusterTokens(s.question), repTokens) >= 0.6)) continue;
     // já existe sugestão aberta parecida? só atualiza a evidência
-    const existing = open.find((s) => jaccard(tokenize(s.question), repTokens) >= 0.5);
+    const existing = open.find((s) => jaccard(clusterTokens(s.question), repTokens) >= 0.5);
     if (existing) {
       const ev = (existing.evidence ?? {}) as any;
       const merged = [...new Set([...(ev.conversationIds ?? []), ...convIds])];
@@ -143,7 +145,7 @@ export async function runCuration(orgId: string, opts: CurationOptions = {}): Pr
 
     // cobertura parcial (artigo parecido existe)? → IMPROVE; senão NEW_ARTICLE (com proposta) ou GAP
     const hits = await searchKb(orgId, rep.question.replace(/\[[A-Z]+_\d+\]/g, ' '), { limit: 3, first: 'any' });
-    const close = hits.find((h) => jaccard(tokenize(`${h.title} ${h.question}`), repTokens) >= 0.4);
+    const close = hits.find((h) => jaccard(clusterTokens(`${h.title} ${h.question}`), repTokens) >= 0.4);
     let type: 'NEW_ARTICLE' | 'GAP' | 'IMPROVE' = close ? 'IMPROVE' : 'GAP';
     let proposedAnswer: string | null = null;
     const evidence: Record<string, unknown> = { conversationIds: convIds, count: convIds.length, sampleMessages: samples, hasAgentAnswers: cl.items.some((i) => i.answers.length), key: `cluster:${keyOf(repTokens.slice().sort().join(' '))}`, generatedAt: new Date() };
@@ -189,14 +191,14 @@ async function detectAmbiguities(orgId: string, since: Date, res: CurationResult
   }
   for (const [intent, list] of byIntent) {
     if (list.length < 3) continue;
-    const mean = meanPairwise(list.map((l) => tokenize(l.ans)));
+    const mean = meanPairwise(list.map((l) => clusterTokens(l.ans)));
     if (mean < 0.25 && await addAmbiguity(orgId, `ambiguity:divergent:${intent}`, `Respostas divergentes dos atendentes para a intenção "${intent}"`,
       { kind: 'DIVERGENT_ANSWERS', intent, conversationIds: list.map((l) => l.convId), count: list.length, meanSimilarity: Number(mean.toFixed(2)), sampleMessages: list.slice(0, 3).map((l) => truncate(l.ans, 200)) }, res)) n++;
   }
 
   // (b) artigos APPROVED concorrentes (perguntas quase iguais)
   const arts = await prisma.bvKbArticle.findMany({ where: { orgId, status: 'APPROVED' }, select: { id: true, title: true, question: true }, take: 300 });
-  const toks = arts.map((a) => tokenize(`${a.title} ${a.question}`));
+  const toks = arts.map((a) => clusterTokens(`${a.title} ${a.question}`));
   for (let i = 0; i < arts.length; i++) for (let j = i + 1; j < arts.length; j++) {
     const sim = jaccard(toks[i], toks[j]);
     if (sim >= 0.6) {

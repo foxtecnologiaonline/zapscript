@@ -71,8 +71,8 @@ export async function updateIncident(orgId: string, id: string, actorId: string 
 }
 
 /** Lembretes: faltando ≤ 6 h ou vencido, no máximo 1 por hora enquanto o contratante não for comunicado. */
-export async function remindIncidents(now = new Date()): Promise<number> {
-  const orgs = await prisma.bvConfigVersion.findMany({ where: { entityType: INCIDENT_ENTITY }, distinct: ['orgId'], select: { orgId: true } });
+export async function remindIncidents(now = new Date(), onlyOrgId?: string): Promise<number> {
+  const orgs = await prisma.bvConfigVersion.findMany({ where: { entityType: INCIDENT_ENTITY, ...(onlyOrgId ? { orgId: onlyOrgId } : {}) }, distinct: ['orgId'], select: { orgId: true } });
   let n = 0;
   for (const { orgId } of orgs) {
     for (const inc of await listIncidents(orgId)) {

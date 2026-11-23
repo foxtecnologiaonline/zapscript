@@ -38,6 +38,7 @@ export async function takeOnce<T = any>(ns: string, id: string): Promise<T | nul
 
 /** Rate limit simples (janela fixa); fail-open se o Redis falhar. */
 export async function hitLimit(ns: string, id: string, max: number, windowSec: number): Promise<boolean> {
+  if (process.env.NODE_ENV === 'test' && process.env.BV_INT_RL_FORCE !== '1') return true; // evita acúmulo entre execuções de teste
   const key = `bv:int:rl:${ns}:${id.slice(0, 80)}`;
   try {
     const n = await redis.incr(key);

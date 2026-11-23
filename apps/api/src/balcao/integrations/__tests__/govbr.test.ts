@@ -180,6 +180,16 @@ describe('integrations/govbr — OIDC + PKCE para o cidadão', () => {
     expect((await tool.handler({ ...ctx, orgId: none.id }, {})).ok).toBe(false);
   });
 
+  it('rate limit nas rotas públicas (por IP)', async () => {
+    process.env.BV_INT_RL_FORCE = '1';
+    try {
+      const ip = `10.9.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
+      let last = 0;
+      for (let i = 0; i < 61; i++) last = (await app.inject({ method: 'GET', url: '/balcao/integrations/govbr/callback', remoteAddress: ip })).statusCode;
+      expect(last).toBe(429);
+    } finally { delete process.env.BV_INT_RL_FORCE; }
+  });
+
   it('utilitários: níveis e CPF', () => {
     expect(highestLevel([{ id: 1 }, { id: 2 }])).toBe('prata');
     expect(highestLevel(['Bronze', 'ouro'])).toBe('ouro');

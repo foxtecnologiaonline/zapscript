@@ -322,7 +322,8 @@ describe('security — LGPD (DSR)', () => {
     const s = await seedSubject(org.id);
     const sent: Array<{ to: string; text: string }> = [];
     setDsrMailer(async (to, _subject, text) => { sent.push({ to, text }); });
-    const post = (payload: object, ip = '10.0.0.1') => app.inject({ method: 'POST', url: '/balcao/security/public/dsr', payload, remoteAddress: ip });
+    const ipBase = Math.floor(Math.random() * 200) + 20;
+    const post = (payload: object, ip = `10.${ipBase}.0.1`) => app.inject({ method: 'POST', url: '/balcao/security/public/dsr', payload, remoteAddress: ip });
 
     const r = await post({ org: org.slug, email: s.email, type: 'EXPORT' });
     expect(r.statusCode).toBe(202);
@@ -345,8 +346,8 @@ describe('security — LGPD (DSR)', () => {
 
     // e-mail/órgão desconhecidos: mesma resposta, sem envio
     const n = sent.length;
-    expect((await post({ org: org.slug, email: 'ninguem@exemplo.com', type: 'ACCESS' }, '10.0.0.2')).statusCode).toBe(202);
-    expect((await post({ org: 'nao-existe-x', email: 'a@exemplo.com', type: 'ACCESS' }, '10.0.0.3')).json()).toEqual(r.json());
+    expect((await post({ org: org.slug, email: `ninguem-${crypto.randomBytes(3).toString('hex')}@exemplo.com`, type: 'ACCESS' }, `10.${ipBase}.0.2`)).statusCode).toBe(202);
+    expect((await post({ org: 'nao-existe-x', email: `a-${crypto.randomBytes(3).toString('hex')}@exemplo.com`, type: 'ACCESS' }, `10.${ipBase}.0.3`)).json()).toEqual(r.json());
     expect(sent.length).toBe(n + 1); // só o órgão existente envia
     const v2 = await app.inject({ method: 'POST', url: '/balcao/security/public/dsr/verify', payload: { token: (/token=([A-Za-z0-9_-]+)/.exec(sent[n].text)![1]) } });
     expect(v2.json().status).toBe('NO_DATA');
@@ -354,7 +355,7 @@ describe('security — LGPD (DSR)', () => {
     // rate limit por e-mail (3/h)
     const mail = `rl-${crypto.randomBytes(3).toString('hex')}@exemplo.com`;
     const codes: number[] = [];
-    for (let i = 0; i < 5; i++) codes.push((await post({ org: org.slug, email: mail, type: 'ACCESS' }, '10.0.1.' + i)).statusCode);
+    for (let i = 0; i < 5; i++) codes.push((await post({ org: org.slug, email: mail, type: 'ACCESS' }, `10.${ipBase}.1.${i}`)).statusCode);
     expect(codes).toEqual([202, 202, 202, 429, 429]);
     await redis.del(`bv:sec:rl:dsr:mail:${crypto.createHash('sha256').update(mail).digest('hex')}`);
   });
@@ -543,8 +544,8 @@ describe('security — postura e incidentes', () => {
     expect(p1.checks.find((x: any) => x.id === 'incident.deadline').status).toBe('WARN');
 
     const { remindIncidents } = await import('../incidents');
-    expect(await remindIncidents()).toBe(1); // faltam 4 h (< 6 h)
-    expect(await remindIncidents()).toBe(0); // no máximo 1 por hora
+    expect(await remindIncidents(new Date(), org.id)).toBe(1); // faltam 4 h (< 6 h)
+    expect(await remindIncidents(new Date(), org.id)).toBe(0); // no máximo 1 por hora
     expect(await prisma.bvNotification.count({ where: { orgId: org.id, type: 'security.incident.reminder' } })).toBe(1);
 
     const n = await app.inject({ method: 'PATCH', url: `/balcao/security/incidents/${inc.id}`, headers: H(admin), payload: { notifiedAt: new Date().toISOString(), notifiedTo: 'dpo@tjto.jus.br', status: 'CONTAINED' } });
@@ -552,7 +553,7 @@ describe('security — postura e incidentes', () => {
     const got = (await app.inject({ method: 'GET', url: `/balcao/security/incidents/${inc.id}`, headers: H(sup) })).json();
     expect(got.history.length).toBeGreaterThanOrEqual(3);
     expect(got.incident.status).toBe('CONTAINED');
-    expect(await remindIncidents()).toBe(0);
+    expect(await remindIncidents(new Date(), org.id)).toBe(0);
     expect((await app.inject({ method: 'GET', url: '/balcao/security/incidents', headers: H(admin) })).json().items).toHaveLength(1);
     expect(await prisma.bvAuditLog.count({ where: { orgId: org.id, action: { in: ['security.incident.open', 'security.incident.notified'] } } })).toBe(2);
     const other = await makeOrg(); const oa = await makeUser(other.id, 'ADMIN');

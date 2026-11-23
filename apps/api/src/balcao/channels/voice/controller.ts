@@ -560,13 +560,6 @@ export class AriController {
     try { rec = await this.finalizeRecordings(s); } catch (err: any) { logger.error({ err: err?.message, callId: s.callId }, '[balcao/voice] finalizeRecordings'); }
     const main = rec.main ?? rec.ura; // sem ponte (não chegou a atendente): a gravação da fase da URA é a gravação da chamada
 
-    await prisma.bvCall.update({
-      where: { id: s.callId },
-      data: {
-        status, endedAt, durationSec, endReason: why.reason, ivrPath: s.ivrPath.length ? ([...s.ivrPath] as any) : undefined,
-        ...(main ? { recordingKey: main.key, recordingSha256: main.sha256, recordingSizeBytes: BigInt(main.size) } : {}),
-      },
-    });
     if (rec.main && rec.ura) await this.mergeConversationMeta(s, { voice: { uraRecording: { key: rec.ura.key, sha256: rec.ura.sha256, size: rec.ura.size } } });
     await recordUsage(s.orgId, 'VOICE_MINUTES', Math.max(1, Math.ceil((endedAt.getTime() - s.startedAt.getTime()) / 60_000)));
 
@@ -579,6 +572,13 @@ export class AriController {
           .catch((err) => logger.warn({ err: err?.message }, '[balcao/voice] closeConversation falhou'));
       }
     }
+    await prisma.bvCall.update({
+      where: { id: s.callId },
+      data: {
+        status, endedAt, durationSec, endReason: why.reason, ivrPath: s.ivrPath.length ? ([...s.ivrPath] as any) : undefined,
+        ...(main ? { recordingKey: main.key, recordingSha256: main.sha256, recordingSizeBytes: BigInt(main.size) } : {}),
+      },
+    });
     this.sessions.delete(s.callId); this.byConv.delete(s.conversationId);
     this.toSocket(s, 'call:ended', { status, durationSec, reason: why.reason, prevState });
     emitBvEvent('call.ended', { orgId: s.orgId, callId: s.callId, conversationId: s.conversationId });
