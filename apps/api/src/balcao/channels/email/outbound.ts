@@ -45,7 +45,7 @@ const devTransport = (orgId: string): MailTransport => ({
 // ── Helpers de composição ────────────────────────────────────────────────────
 
 export const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-const oneLine = (s: string) => s.replace(/[\r\n  ]+/g, ' ').trim();
+const oneLine = (s: string) => s.replace(/[\r\n\u2028\u2029]+/g, ' ').trim();
 
 export function buildReplySubject(convSubject: string | null, protocol: string): string {
   const base = normalizeSubject(convSubject ?? '') || 'Atendimento';

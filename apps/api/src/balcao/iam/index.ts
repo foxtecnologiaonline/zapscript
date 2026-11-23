@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify';
+import adminRoutes from './admin';
+import authRoutes from './auth';
 
-/** Plugin da frente — registrado em balcao/index.ts (o prefixo é definido lá). Implementar rotas aqui (ou em arquivos irmãos). */
-export default async function plugin(_app: FastifyInstance): Promise<void> {
-  // TODO(frente)
+/**
+ * Frente IAM — registrada em balcao/index.ts com prefixo '/'. Rotas finais: /balcao/auth/* e /balcao/admin/*.
+ * Doc: docs/balcao/api-iam.md.
+ */
+export default async function plugin(app: FastifyInstance): Promise<void> {
+  await app.register(authRoutes);
+  await app.register(adminRoutes);
 }
