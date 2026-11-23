@@ -7,13 +7,19 @@ import { decryptField, isEncrypted, encryptField } from '../core/crypto';
  * (BV_FIELD_KEY_CURRENT). Idempotente (o que já usa a chave atual não é tocado) e retomável (cada lote é
  * confirmado separadamente; basta chamar de novo). Valores legados sem prefixo `bv1.` também são cifrados.
  */
-export interface FieldColumn { table: string; model: string; column: string; delegate: string }
+export interface FieldColumn {
+  table: string; model: string; column: string; delegate: string;
+  /** Coluna Json que guarda o valor cifrado em `data[path]` (apenas linhas com `type`). Ex.: BvConversationEvent AI_SUGGESTION. */
+  json?: { path: string; type: string };
+}
 
 export const FIELD_COLUMNS: FieldColumn[] = [
   { table: 'BvMessage', model: 'bvMessage', column: 'body', delegate: 'bvMessage' },
   { table: 'BvContact', model: 'bvContact', column: 'documentEnc', delegate: 'bvContact' },
   { table: 'BvUser', model: 'bvUser', column: 'totpSecretEnc', delegate: 'bvUser' },
   { table: 'BvIntegration', model: 'bvIntegration', column: 'configEnc', delegate: 'bvIntegration' },
+  // sugestões de IA (ai/bot.ts e ai/assist.ts) guardam o texto cifrado dentro do JSON do evento
+  { table: 'BvConversationEvent', model: 'bvConversationEvent', column: 'data', delegate: 'bvConversationEvent', json: { path: 'textEnc', type: 'AI_SUGGESTION' } },
 ];
 
 /** kid da chave atual conforme o ambiente (mesma regra de core/crypto.ts, sem expor o material). */
@@ -26,11 +32,17 @@ export interface RotateOptions { orgId?: string; batchSize?: number; maxRows?: n
 export interface RotateTableResult { table: string; column: string; rotated: number; skipped: number; failed: number; remaining: number }
 export interface RotateResult { currentKid: string; tables: RotateTableResult[]; rotated: number; failed: number; remaining: number; done: boolean }
 
-const notCurrent = (col: string, kid: string, orgId?: string): any => ({
-  ...(orgId ? { orgId } : {}),
-  [col]: { not: null },
-  NOT: { [col]: { startsWith: `bv1.${kid}.` } },
-});
+const notCurrent = (c: FieldColumn, kid: string, orgId?: string): any => c.json
+  ? {
+    ...(orgId ? { orgId } : {}), type: c.json.type,
+    NOT: { data: { path: [c.json.path], string_starts_with: `bv1.${kid}.` } },
+  }
+  : { ...(orgId ? { orgId } : {}), [c.column]: { not: null }, NOT: { [c.column]: { startsWith: `bv1.${kid}.` } } };
+
+/** Valor cifrado da linha (coluna texto ou chave dentro do JSON) e o `data` que o substitui. */
+const readEnc = (c: FieldColumn, row: any): string | null => { const v = c.json ? row.data?.[c.json.path] : row[c.column]; return typeof v === 'string' ? v : null; };
+const writeWhere = (c: FieldColumn, id: string, old: string): any => (c.json ? { id, data: { path: [c.json.path], equals: old } } : { id, [c.column]: old });
+const writeData = (c: FieldColumn, row: any, next: string): any => (c.json ? { data: { ...row.data, [c.json.path]: next } } : { [c.column]: next });
 
 export async function rotateFieldKeys(opts: RotateOptions = {}): Promise<RotateResult> {
   const kid = currentKid();
@@ -45,18 +57,19 @@ export async function rotateFieldKeys(opts: RotateOptions = {}): Promise<RotateR
     const failedIds = new Set<string>();
     let cursor: string | undefined;
     while (budget > 0) {
-      const rows: Array<{ id: string } & Record<string, string>> = await dl.findMany({
-        where: { ...notCurrent(c.column, kid, opts.orgId), ...(cursor ? { id: { gt: cursor } } : {}) },
+      const rows: Array<{ id: string } & Record<string, any>> = await dl.findMany({
+        where: { ...notCurrent(c, kid, opts.orgId), ...(cursor ? { id: { gt: cursor } } : {}) },
         select: { id: true, [c.column]: true },
         orderBy: { id: 'asc' }, take: Math.min(batchSize, budget),
       });
       if (!rows.length) break;
       for (const row of rows) {
-        const old = row[c.column];
+        const old = readEnc(c, row);
+        if (old === null) { r.skipped++; continue; }
         try {
           const next = isEncrypted(old) ? encryptField(decryptField(old)) : encryptField(old);
           // otimista: só grava se o valor não mudou desde a leitura (evita sobrescrever escrita concorrente)
-          const res = await dl.updateMany({ where: { id: row.id, [c.column]: old }, data: { [c.column]: next } });
+          const res = await dl.updateMany({ where: writeWhere(c, row.id, old), data: writeData(c, row, next) });
           if (res.count) { r.rotated++; budget--; } else r.skipped++;
         } catch {
           r.failed++; failedIds.add(row.id); // não loga valor nem chave
@@ -64,7 +77,7 @@ export async function rotateFieldKeys(opts: RotateOptions = {}): Promise<RotateR
       }
       cursor = rows[rows.length - 1].id; // avança por id: linhas com falha não prendem o laço
     }
-    r.remaining = await dl.count({ where: notCurrent(c.column, kid, opts.orgId) });
+    r.remaining = await dl.count({ where: notCurrent(c, kid, opts.orgId) });
     out.push(r);
   }
   const remaining = out.reduce((a, t) => a + t.remaining, 0);
@@ -78,9 +91,11 @@ export async function keyStatus(orgId?: string): Promise<{ currentKid: string; k
   const usage: KeyUsage[] = [];
   for (const c of FIELD_COLUMNS) {
     const filter = orgId ? Prisma.sql`AND "orgId" = ${orgId}` : Prisma.empty;
+    const expr = Prisma.raw(c.json ? `("${c.column}"->>'${c.json.path}')` : `"${c.column}"`);
+    const typeFilter = c.json ? Prisma.sql`AND "type" = ${c.json.type}` : Prisma.empty;
     const rows = await prisma.$queryRaw<Array<{ kid: string | null; n: bigint }>>(Prisma.sql`
-      SELECT CASE WHEN ${Prisma.raw(`"${c.column}"`)} LIKE 'bv1.%' THEN split_part(${Prisma.raw(`"${c.column}"`)}, '.', 2) ELSE '_plain' END AS kid, count(*) AS n
-      FROM ${Prisma.raw(`"${c.table}"`)} WHERE ${Prisma.raw(`"${c.column}"`)} IS NOT NULL ${filter} GROUP BY 1`);
+      SELECT CASE WHEN ${expr} LIKE 'bv1.%' THEN split_part(${expr}, '.', 2) ELSE '_plain' END AS kid, count(*) AS n
+      FROM ${Prisma.raw(`"${c.table}"`)} WHERE ${expr} IS NOT NULL ${typeFilter} ${filter} GROUP BY 1`);
     const byKid: Record<string, number> = {};
     let plaintext = 0; let total = 0;
     for (const r of rows) {

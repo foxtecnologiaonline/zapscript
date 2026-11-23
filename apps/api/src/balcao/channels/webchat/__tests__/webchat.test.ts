@@ -672,3 +672,59 @@ describe('webchat — contrato com o core', () => {
     expect(again.conversation.id).toBe(conv.id);
   });
 });
+
+// ── Lacunas fechadas na auditoria ─────────────────────────────────────────────
+describe('webchat — auditoria de escopo', () => {
+  const CLOSED_ALL_WEEK = { sun: [], mon: [], tue: [], wed: [], thu: [], fri: [], sat: [] };
+
+  it('fora do horário o visitante ainda consegue deixar mensagem (vai à fila; a config informa open=false)', async () => {
+    const o = await makeOrg({ ai: { enabled: false }, businessHours: CLOSED_ALL_WEEK, webchat: { offlineMessage: 'Deixe sua mensagem.' } });
+    const cfg = await app.inject({ method: 'GET', url: `/balcao/webchat/public/config?org=${o.slug}`, headers: { 'x-forwarded-for': ipOf() } });
+    expect(cfg.json()).toMatchObject({ open: false, offlineMessage: 'Deixe sua mensagem.' });
+    const v = await session(o);
+    const res = await say(v, 'Preciso de retorno sobre meu processo.');
+    expect(res.statusCode).toBe(201);
+    expect(res.json().state.status).toBe('waiting');
+    expect((await convOf(v)).status).toBe('WAITING');
+    // o widget troca "Iniciar conversa/Enviar" por "Deixar mensagem" quando cfg.open é falso
+    expect(WIDGET_JS).toContain('cfg.open ? T.start : T.leave');
+    expect(WIDGET_JS).toContain('cfg.open ? T.send : T.leave');
+  });
+
+  it('o token do visitante só existe como hash (SHA-256) no banco e nunca é devolvido depois da criação', async () => {
+    const o = await org();
+    const v = await session(o, { name: 'Maria', email: `m${rnd()}@exemplo.gov.br` });
+    const row = await prisma.bvWebchatSession.findUniqueOrThrow({ where: { tokenHash: hashToken(v.token) } });
+    expect(row.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(row.tokenHash).not.toBe(v.token);
+    expect(JSON.stringify(row)).not.toContain(v.token);
+    await say(v, 'olá');
+    for (const r of [await poll(v), await app.inject({ method: 'GET', url: '/balcao/webchat/public/history', headers: H(v) })]) {
+      expect(r.body).not.toContain(v.token);
+    }
+  });
+
+  it('o widget lê todos os atributos documentados (data-org/lang/position/vlibras/color)', () => {
+    for (const a of ['data-org', 'data-lang', 'data-position', 'data-vlibras', 'data-color']) expect(WIDGET_JS).toContain(`'${a}'`);
+    expect(WIDGET_JS).toContain('sessionStorage'); // retomada
+  });
+
+  it('contraste AA: a cor do texto escolhida pelo widget sempre atinge 4,5:1 sobre qualquer cor de marca', () => {
+    // extrai lum()/ink() do próprio script e as executa
+    const fn = (name: string) => {
+      const m = new RegExp(`function ${name}\\([^)]*\\) \\{[^\\n]*\\}\\n`).exec(WIDGET_JS);
+      expect(m).not.toBeNull();
+      return m![0];
+    };
+    const ctx: any = {};
+    vm.createContext(ctx);
+    vm.runInContext(`${fn('lum')}${fn('ink')}`, ctx);
+    const ratio = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    for (let i = 0; i < 400; i++) {
+      const hex = '#' + crypto.randomBytes(3).toString('hex');
+      const ink = ctx.ink(hex) as string;
+      expect(['#ffffff', '#000000']).toContain(ink);
+      expect(ratio(ctx.lum(hex), ctx.lum(ink))).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});

@@ -7,7 +7,7 @@ import { estimateTokens } from './text';
  *
  * Variáveis de ambiente (documentadas em docs/balcao/api-ai.md):
  *   BV_LLM_MODEL_FAST    modelo barato/rápido (chatbot, sugestão ao atendente)      padrão claude-haiku-4-5
- *   BV_LLM_MODEL_STRONG  modelo maior (curadoria, resumos)                          padrão claude-sonnet-5
+ *   BV_LLM_MODEL_STRONG  modelo maior (propostas da curadoria)                        padrão claude-sonnet-5
  *   BV_LLM_MODEL_FAST_OPENAI / _GROQ / _GEMINI e BV_LLM_MODEL_STRONG_* — modelos dos provedores de reserva
  *   BV_LLM_DISABLED=1    desliga o LLM (o bot escala tudo para humanos)
  */

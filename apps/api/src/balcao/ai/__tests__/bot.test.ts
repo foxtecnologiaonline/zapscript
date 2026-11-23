@@ -1,5 +1,5 @@
 import { prisma } from '../../../lib/prisma';
-import { clearBvEventHandlers } from '../../core/events';
+import { clearBvEventHandlers, emitBvEvent } from '../../core/events';
 import { clearChannelSenders, registerChannelSender } from '../../core/channels';
 import { assignConversation, closeConversation } from '../../core/conversations';
 import { listMessages } from '../../core/messages';
@@ -7,7 +7,7 @@ import { clearBotTools, registerBotTool } from '../../core/tools';
 import { getUsage } from '../../core/usage';
 import { authHeader, makeOrg, makeUser } from '../../core/testing';
 import { setLlmClient } from '../llm';
-import { processInbound, startAiEngine, stopAiEngine, sweepIdleBotConversations } from '../bot';
+import { resumeAfterIdentity, processInbound, startAiEngine, stopAiEngine, sweepIdleBotConversations } from '../bot';
 import { handleAgentAssist, lastSuggestion } from '../assist';
 import { buildAiApp, CERTIDAO, FakeLlm, getConv, groundedBot, ref, say, seedApproved } from './helpers';
 
@@ -228,6 +228,55 @@ describe('balcao/ai — ferramentas do bot e identidade', () => {
     expect(await processInbound(m.payload)).toMatchObject({ action: 'TOOL' });
     expect((await getConv(m.conversationId)).status).toBe('WAITING');
     expect(await prisma.bvConversationEvent.findFirst({ where: { conversationId: m.conversationId, type: 'ESCALATED' } }).then((e) => (e!.data as any).reason)).toBe('TOOL_ERROR');
+  });
+});
+
+describe('balcao/ai — identity.verified retoma o atendimento', () => {
+  const tool = (calls: any[]) => ({
+    name: 'eproc.consultar_processo', description: 'Consulta o andamento de um processo', inputSchema: { type: 'object' }, minIdentityLevel: 'ouro' as const,
+    handler: async (_ctx: any, input: any) => { calls.push(input); return { ok: true, message: `Processo ${input.numero}: concluso para despacho.` }; },
+  });
+  const toolLlm = () => JSON.stringify({ answer: '', confidence: 0.9, intent: 'consulta_processo', category: 'processos', needsHuman: false, usedArticleIds: [], toolCall: { name: 'eproc.consultar_processo', input: { numero: '[PROCESSO_1]' } } });
+
+  it('nível insuficiente só avisa; nível ouro (via barramento) reexecuta a ferramenta com a entrada original e sem novo LLM', async () => {
+    const org = (await progressive()).id;
+    const calls: any[] = []; registerBotTool(tool(calls)); llm.queue.push(toolLlm);
+    const m = await say(org, ref(), 'Qual o andamento do processo 0001234-56.2024.8.27.2729?');
+    expect(await processInbound(m.payload)).toMatchObject({ action: 'AUTH_REQUIRED' });
+    const conv = await getConv(m.conversationId);
+    // o evento guarda a entrada cifrada (sem o número em claro)
+    const ev = await prisma.bvConversationEvent.findFirstOrThrow({ where: { conversationId: m.conversationId, type: 'BOT_AUTH_REQUIRED' } });
+    expect(JSON.stringify(ev.data)).not.toContain('0001234-56');
+
+    await prisma.bvContact.update({ where: { id: conv.contactId }, data: { govbrLevel: 'prata' } });
+    expect(await resumeAfterIdentity({ orgId: org, conversationId: m.conversationId, contactId: conv.contactId, level: 'prata' })).toBe('INSUFFICIENT');
+    expect(calls).toHaveLength(0);
+    expect(bodies(m.conversationId).join('\n')).toMatch(/nível prata, mas essa consulta exige o nível ouro/);
+
+    startAiEngine({ llm });
+    await prisma.bvContact.update({ where: { id: conv.contactId }, data: { govbrLevel: 'ouro' } });
+    emitBvEvent('identity.verified', { orgId: org, conversationId: m.conversationId, contactId: conv.contactId, level: 'ouro' });
+    for (let i = 0; i < 50 && !calls.length; i++) await new Promise((r) => setTimeout(r, 100));
+    stopAiEngine();
+    expect(calls).toEqual([{ numero: '0001234-56.2024.8.27.2729' }]);
+    expect(bodies(m.conversationId).join('\n')).toContain('Processo 0001234-56.2024.8.27.2729: concluso para despacho.');
+    expect(llm.calls).toHaveLength(1);
+    // pedido consumido: nova verificação apenas pergunta como ajudar (não reexecuta)
+    expect(await resumeAfterIdentity({ orgId: org, conversationId: m.conversationId, contactId: conv.contactId, level: 'ouro' })).toBe('FOLLOWUP');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('sem pedido pendente: avisa o próximo passo; conversa fora de BOT ou modo ASSISTED: nada', async () => {
+    const org = (await progressive()).id;
+    const m = await say(org, ref(), 'Olá');
+    const p = { orgId: org, conversationId: m.conversationId, contactId: (await getConv(m.conversationId)).contactId, level: 'bronze' as const };
+    expect(await resumeAfterIdentity(p)).toBe('FOLLOWUP');
+    expect(bodies(m.conversationId).join('\n')).toMatch(/Identidade confirmada, obrigado/);
+    await prisma.bvConversation.update({ where: { id: m.conversationId }, data: { status: 'WAITING' } });
+    expect(await resumeAfterIdentity(p)).toBeNull();
+    const assisted = (await makeOrg({ ai: { enabled: true, mode: 'ASSISTED' } })).id;
+    const a = await say(assisted, ref(), 'Olá');
+    expect(await resumeAfterIdentity({ ...p, orgId: assisted, conversationId: a.conversationId })).toBeNull();
   });
 });
 

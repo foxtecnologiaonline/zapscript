@@ -6,7 +6,7 @@ import { listMessages, readBody } from '../core/messages';
 import { getOrgSettings, type BvOrgSettings } from '../core/settings';
 import { getBotTool, identitySatisfies, listBotTools, type BotTool, type BotToolContext } from '../core/tools';
 import { callJson } from './llmcall';
-import { encryptField } from '../core/crypto';
+import { decryptJson, encryptField, encryptJson } from '../core/crypto';
 import { isGreetingOnly, matchesEscalationKeyword, negativeSentimentScore, resolutionSignal, wantsHuman } from './detect';
 import { getLlmClient, type LlmClient } from './llm';
 import { markUsed, recordArticleFeedback } from './kb';
@@ -237,7 +237,8 @@ export async function applyAnalysis(c: ApplyCtx, a: Analysis): Promise<void> {
       }
       const text = `Para fazer essa consulta preciso confirmar sua identidade pelo GOV.BR (nível ${need}).${link || ' Entre com sua conta GOV.BR ou, se preferir, peça para falar com um atendente.'}`;
       await botSay(c, text, meta('AUTH_REQUIRED'));
-      await addConversationEvent(orgId, conversationId, 'BOT_AUTH_REQUIRED', null, { tool: t.name, need, have: c.identityLevel });
+      // a entrada (pode ter PII reidratada) fica cifrada: serve para retomar a consulta quando `identity.verified` chegar
+      await addConversationEvent(orgId, conversationId, 'BOT_AUTH_REQUIRED', null, { tool: t.name, need, have: c.identityLevel, inputEnc: encryptJson(t.input) });
       return;
     }
     case 'TOOL': {
@@ -333,6 +334,48 @@ async function processInboundNow(p: BvEventMap['message.inbound'], opts: { llm?:
   return analysis;
 }
 
+// ── Identidade verificada (GOV.BR) → retomar o atendimento ───────────────────
+
+export const IDENTITY_OK_FOLLOWUP = 'Identidade confirmada, obrigado! Como posso ajudar?';
+const RESUME_BLOCKERS = ['BOT_REPLY', 'BOT_TOOL', 'BOT_IDENTITY_RESUMED', 'ESCALATED'];
+
+/**
+ * `identity.verified`: se a conversa ainda está em BOT (modo PROGRESSIVE), retoma o atendimento — reexecuta a
+ * ferramenta que exigiu o nível de identidade (se o nível agora basta) ou avisa o próximo passo. No modo ASSISTED
+ * o bot nunca escreve ao cidadão, então nada é feito.
+ */
+export async function resumeAfterIdentity(p: BvEventMap['identity.verified']): Promise<'TOOL' | 'INSUFFICIENT' | 'FOLLOWUP' | null> {
+  return serialize(p.conversationId, async () => {
+    const settings = await getOrgSettings(p.orgId);
+    if (!settings.ai.enabled || settings.ai.mode !== 'PROGRESSIVE') return null;
+    const conv = await prisma.bvConversation.findFirst({ where: { id: p.conversationId, orgId: p.orgId }, include: { contact: { select: { govbrLevel: true } } } });
+    if (!conv || conv.status !== 'BOT') return null;
+    const level = identityLevelOf({ ...(conv.metadata as any ?? {}), identityLevel: p.level }, conv.contact.govbrLevel);
+    const lastIn = await prisma.bvMessage.findFirst({ where: { conversationId: conv.id, direction: 'IN' }, orderBy: { createdAt: 'desc' }, select: { id: true } });
+    const ctx: ApplyCtx = { orgId: p.orgId, conversationId: conv.id, messageId: lastIn?.id ?? '', channel: conv.channel, contactId: conv.contactId, settings, identityLevel: level, welcomed: true };
+
+    // pedido pendente = último BOT_AUTH_REQUIRED sem resposta/ferramenta/escalonamento depois dele
+    const req = await prisma.bvConversationEvent.findFirst({ where: { conversationId: conv.id, type: 'BOT_AUTH_REQUIRED' }, orderBy: { createdAt: 'desc' } });
+    const done = req ? await prisma.bvConversationEvent.count({ where: { conversationId: conv.id, type: { in: RESUME_BLOCKERS }, createdAt: { gt: req.createdAt } } }) : 0;
+    const d = (req?.data ?? {}) as any;
+    const tool = req && !done ? getBotTool(String(d.tool ?? '')) : undefined;
+    if (!req || done || !tool || typeof d.inputEnc !== 'string') {
+      await botSay(ctx, IDENTITY_OK_FOLLOWUP, { kind: 'IDENTITY_FOLLOWUP', mode: 'PROGRESSIVE' });
+      await addConversationEvent(p.orgId, conv.id, 'BOT_IDENTITY_RESUMED', null, { outcome: 'FOLLOWUP', level });
+      return 'FOLLOWUP' as const;
+    }
+    if (!identitySatisfies(level, tool.minIdentityLevel)) {
+      await botSay(ctx, `Sua identidade foi confirmada no nível ${level ?? 'bronze'}, mas essa consulta exige o nível ${tool.minIdentityLevel}. Se preferir, peça para falar com um atendente.`, { kind: 'AUTH_REQUIRED', mode: 'PROGRESSIVE' });
+      // não bloqueia: uma nova verificação em nível maior ainda retoma a consulta pendente
+      await addConversationEvent(p.orgId, conv.id, 'BOT_IDENTITY_INSUFFICIENT', null, { level, need: tool.minIdentityLevel });
+      return 'INSUFFICIENT' as const;
+    }
+    await addConversationEvent(p.orgId, conv.id, 'BOT_IDENTITY_RESUMED', null, { outcome: 'TOOL', tool: tool.name, level });
+    await applyAnalysis(ctx, { action: 'TOOL', mode: 'PROGRESSIVE', articles: [], usedArticleIds: [], automatable: true, tool: { name: tool.name, input: decryptJson(d.inputEnc), minIdentityLevel: tool.minIdentityLevel } });
+    return 'TOOL' as const;
+  });
+}
+
 // ── Varredura de conversas inativas (IQA) ────────────────────────────────────
 
 /**
@@ -380,6 +423,9 @@ export function startAiEngine(opts: { llm?: LlmClient } = {}): void {
   unsub.push(onBvEvent('message.inbound', async (p) => {
     if (p.status === 'BOT') await processInbound(p, opts).catch((err) => logger.error({ err: err?.message, conversationId: p.conversationId }, '[balcao.ai] bot falhou'));
     else if (p.status === 'ACTIVE') await handleAgentAssist(p, opts).catch((err) => logger.error({ err: err?.message, conversationId: p.conversationId }, '[balcao.ai] assistência falhou'));
+  }));
+  unsub.push(onBvEvent('identity.verified', async (p) => {
+    await resumeAfterIdentity(p).catch((err) => logger.error({ err: err?.message, conversationId: p.conversationId }, '[balcao.ai] retomada pós-identidade falhou'));
   }));
 }
 export function stopAiEngine(): void { while (unsub.length) unsub.pop()!(); }
