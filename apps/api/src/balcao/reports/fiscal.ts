@@ -179,7 +179,15 @@ export async function dashboard(orgId: string, now = new Date()) {
  * Para cada cota: se o consumo cruzou alertAtPct ou 100%, cria UMA notificação por usuário FISCAL/ADMIN por
  * (cota, período corrente, limiar). Idempotente: a chave de deduplicação fica em BvNotification.data.dedupKey.
  */
-export async function runQuotaAlerts(orgId?: string, now = new Date()): Promise<{ created: number }> {
+let alertsChain: Promise<unknown> = Promise.resolve();
+/** Serializa execuções no mesmo processo (a verificação de duplicidade é leitura + criação); entre instâncias vale o lock do job. */
+export function runQuotaAlerts(orgId?: string, now = new Date()): Promise<{ created: number }> {
+  const run = alertsChain.catch(() => undefined).then(() => runQuotaAlertsOnce(orgId, now));
+  alertsChain = run;
+  return run;
+}
+
+async function runQuotaAlertsOnce(orgId?: string, now = new Date()): Promise<{ created: number }> {
   const quotas = await prisma.bvQuota.findMany({ where: orgId ? { orgId } : {}, take: 5000 });
   let created = 0;
   const recipientsCache = new Map<string, string[]>();

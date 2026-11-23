@@ -184,6 +184,8 @@ describe('whatsapp — entrada', () => {
     expect(mapInboundMessage({ type: 'interactive', interactive: { type: 'list_reply', list_reply: { id: 'l1', title: 'Certidões' } } })).toMatchObject({ body: 'Certidões' });
     expect(mapInboundMessage({ type: 'button', button: { text: 'Confirmar', payload: 'ok' } })).toMatchObject({ body: 'Confirmar' });
     expect(mapInboundMessage({ type: 'reaction', reaction: { emoji: '👍' } })).toBe('ignore');
+    // Flows (nfm_reply) e respostas sem título nunca geram corpo vazio
+    expect(mapInboundMessage({ type: 'interactive', interactive: { type: 'nfm_reply', nfm_reply: { name: 'flow', response_json: '{}' } } })).toMatchObject({ kind: 'TEXT', body: '[Resposta interativa recebida]' });
     expect(mapInboundMessage({ type: 'sticker', sticker: { id: 'm1', mime_type: 'image/webp' } })).toMatchObject({ kind: 'IMAGE' });
 
     const ctx = await setup();

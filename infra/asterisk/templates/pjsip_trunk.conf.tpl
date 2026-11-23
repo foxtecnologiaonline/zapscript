@@ -1,7 +1,7 @@
 ; ============================================================================================
 ; Tronco SIP com a telefonia VoIP do TJTO (entroncamento SIP — TR 1.1.3.1.15.2).
 ; TEMPLATE: renderizado por render.js a partir das variáveis de ambiente (nenhum segredo real aqui).
-;   BV_TRUNK_HOST       (obrigatório) IP/host do SBC/PABX do TJTO
+;   BV_TRUNK_HOST       IP/host do SBC/PABX do TJTO. VAZIO = sem tronco (bancada/PoC só com softphones)
 ;   BV_TRUNK_PORT       porta SIP (padrão 5060)
 ;   BV_TRUNK_TRANSPORT  transport-udp | transport-tcp | transport-tls (padrão transport-udp)
 ;   BV_TRUNK_AUTH       registration | userpass | ip   (padrão ip)
@@ -11,6 +11,7 @@
 ;   BV_TRUNK_FROM_USER / BV_TRUNK_FROM_DOMAIN   identidade no From
 ; ============================================================================================
 
+;#if BV_TRUNK_HOST
 ;#if BV_TRUNK_AUTH=registration
 [tjto-trunk-reg]
 type=registration
@@ -71,5 +72,7 @@ type=identify
 endpoint=tjto-trunk
 match={{BV_TRUNK_IPS}}
 ;#endif
+;#endif
+
 ; Cabeçalhos X-* (ex.: X-URA-Option da URA 0800) chegam ao dialplan e são expostos ao ARI
 ; como variáveis BV_X_* (ver extensions.conf e channelvars em ari.conf).

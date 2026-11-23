@@ -122,7 +122,8 @@ export function mapInboundMessage(m: any): Mapped | 'ignore' {
       const i = m.interactive ?? {};
       const r = i.button_reply ?? i.list_reply ?? {};
       wa.interactive = { type: i.type, id: r.id, title: r.title, description: r.description };
-      return { kind: 'TEXT', body: String(r.title ?? ''), wa };
+      // nfm_reply (WhatsApp Flows) e variantes sem título: nunca ingerir corpo vazio.
+      return { kind: 'TEXT', body: r.title ? String(r.title) : '[Resposta interativa recebida]', wa };
     }
     case 'button': // resposta rápida de template
       wa.button = { payload: m.button?.payload };

@@ -109,6 +109,12 @@ describe('reports/util — funções puras', () => {
     expect(csv.startsWith('﻿Coluna A;B\r\n')).toBe(true);
     expect(csv).toContain(`"'=HYPERLINK(""x"")";2`);
   });
+  it('CSV de máquina (BI): ponto decimal e booleanos true/false; CSV humano: vírgula e sim/não', () => {
+    expect(csvCell(true)).toBe('sim'); expect(csvCell(false)).toBe('não');
+    expect(csvCell(true, false)).toBe('true'); expect(csvCell(false, false)).toBe('false');
+    expect(csvCell(1.5, false)).toBe('1.5');
+    expect(toCsv([{ key: 'ok', label: 'ok' }, { key: 'n', label: 'n' }], [{ ok: true, n: 0.25 }], { decimalComma: false, header: 'key' })).toBe('﻿ok;n\r\ntrue;0.25\r\n');
+  });
 });
 
 describe('reports — métricas com valores conhecidos', () => {
@@ -420,8 +426,13 @@ describe('reports — painel do fiscal, cotas e alertas', () => {
     await qty(1000);
     expect((await runQuotaAlerts(wa.orgId)).created).toBe(2); // 100%
     expect((await runQuotaAlerts(wa.orgId)).created).toBe(0);
+    // execuções concorrentes (ex.: job + chamada manual) também não duplicam no próximo limiar
+    await prisma.bvQuota.create({ data: { orgId: wa.orgId, item: 'WA_UTILITY', period: 'DAY', limit: 10n, alertAtPct: 50, action: 'ALERT' } });
+    await prisma.bvUsageDaily.upsert({ where: { orgId_day_item: { orgId: wa.orgId, day: today, item: 'WA_UTILITY' } }, create: { orgId: wa.orgId, day: today, item: 'WA_UTILITY', quantity: 6n }, update: { quantity: 6n } });
+    const par = await Promise.all([runQuotaAlerts(wa.orgId), runQuotaAlerts(wa.orgId), runQuotaAlerts(wa.orgId)]);
+    expect(par.reduce((n, r) => n + r.created, 0)).toBe(2); // FISCAL + ADMIN, uma vez só
     const notes = await prisma.bvNotification.findMany({ where: { orgId: wa.orgId, userId: wa.fiscal.id } });
-    expect(notes.map((n) => (n.data as any).level).sort()).toEqual(['ALERT', 'LIMIT']);
+    expect(notes.map((n) => (n.data as any).level).sort()).toEqual(['ALERT', 'ALERT', 'LIMIT']); // WA_SERVICE: ALERT+LIMIT; WA_UTILITY: ALERT
     expect(await prisma.bvNotification.count({ where: { orgId: wa.orgId, userId: wa.sup.id } })).toBe(0);
     // isolamento: outro órgão não recebe nada
     expect(await prisma.bvNotification.count({ where: { orgId: w.orgId, type: 'QUOTA_ALERT' } })).toBe(0);

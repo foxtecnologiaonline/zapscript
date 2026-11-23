@@ -27,9 +27,33 @@ const keyBelongsToOrg = (orgId: string, key: unknown): key is string => typeof k
 /** `***1234`: preserva só os 4 últimos dígitos. Idempotente. */
 export const maskNumber = (n: string): string => (n.startsWith('***') ? n : `***${n.replace(/\D/g, '').slice(-4)}`);
 
+/**
+ * Sugestões de IA (BvConversationEvent AI_SUGGESTION) guardam texto cifrado derivado da conversa em `data.textEnc`.
+ * Remove o texto (o evento fica, sem conteúdo, para métricas). Usado na retenção (`before`) e na anonimização (`conversationIds`).
+ */
+export async function scrubAiSuggestions(orgId: string, scope: { before?: Date; conversationIds?: string[] }, batchSize = 200, maxBatches = 1000): Promise<number> {
+  const where: Prisma.BvConversationEventWhereInput = {
+    orgId, type: 'AI_SUGGESTION', data: { path: ['textEnc'], string_starts_with: 'bv1.' },
+    ...(scope.before ? { createdAt: { lt: scope.before } } : {}), ...(scope.conversationIds ? { conversationId: { in: scope.conversationIds } } : {}),
+  };
+  let n = 0;
+  for (let b = 0; b < maxBatches; b++) {
+    const rows = await prisma.bvConversationEvent.findMany({ where, select: { id: true, data: true }, take: batchSize });
+    if (!rows.length) break;
+    for (const r of rows) {
+      const { textEnc: _t, ...rest } = (r.data ?? {}) as Record<string, unknown>;
+      void _t;
+      await prisma.bvConversationEvent.update({ where: { id: r.id }, data: { data: { ...rest, scrubbed: true } as any } });
+      n++;
+    }
+    if (rows.length < batchSize) break;
+  }
+  return n;
+}
+
 async function purgeMessages(orgId: string, cutoff: Date, dry: boolean, batchSize: number, maxBatches: number) {
   const where: Prisma.BvMessageWhereInput = { orgId, createdAt: { lt: cutoff }, OR: [{ body: { not: null } }, { attachments: { not: Prisma.DbNull } }] };
-  if (dry) return { candidates: await prisma.bvMessage.count({ where }), purged: 0, more: false, files: 0 };
+  if (dry) return { candidates: await prisma.bvMessage.count({ where }), purged: 0, more: false, files: 0, suggestions: 0 };
   let purged = 0; let files = 0; let more = false;
   for (let b = 0; b < maxBatches; b++) {
     const rows = await prisma.bvMessage.findMany({ where, select: { id: true, attachments: true }, orderBy: { createdAt: 'asc' }, take: batchSize });
@@ -44,7 +68,8 @@ async function purgeMessages(orgId: string, cutoff: Date, dry: boolean, batchSiz
     if (rows.length < batchSize) break;
     if (b === maxBatches - 1) more = true;
   }
-  return { candidates: undefined, purged, more, files };
+  const suggestions = await scrubAiSuggestions(orgId, { before: cutoff }, batchSize, maxBatches);
+  return { candidates: undefined, purged, more, files, suggestions };
 }
 
 async function purgeRecordings(orgId: string, cutoff: Date, dry: boolean, batchSize: number, maxBatches: number) {
@@ -121,7 +146,7 @@ export async function runRetentionForOrg(orgId: string, opts: RetentionOptions =
     if (p.days === null) { kinds.push({ kind: p.kind, cutoff: null, purged: 0, skipped: 'prazo não configurado', more: false }); continue; }
     if (p.held) { kinds.push({ kind: p.kind, cutoff: null, purged: 0, skipped: 'guarda legal ativa', more: false }); continue; }
     const cutoff = new Date(now.getTime() - p.days * DAY_MS);
-    let res: { candidates?: number; purged: number; more: boolean; files: number; from?: Date };
+    let res: { candidates?: number; purged: number; more: boolean; files: number; from?: Date; suggestions?: number };
     try {
       res = p.kind === 'MESSAGES' ? await purgeMessages(orgId, cutoff, dry, batchSize, maxBatches)
         : p.kind === 'RECORDINGS' ? await purgeRecordings(orgId, cutoff, dry, batchSize, maxBatches)
@@ -137,7 +162,7 @@ export async function runRetentionForOrg(orgId: string, opts: RetentionOptions =
       if (res.purged > 0) {
         await audit({
           orgId, actorType: 'SYSTEM', action: `retention.${p.kind.toLowerCase()}`, entityType: 'retention',
-          meta: { cutoff: cutoff.toISOString(), purged: res.purged, files: res.files, ...(res.from ? { oldestPurged: res.from.toISOString() } : {}), more: res.more },
+          meta: { cutoff: cutoff.toISOString(), purged: res.purged, files: res.files, ...(res.suggestions ? { aiSuggestionsScrubbed: res.suggestions } : {}), ...(res.from ? { oldestPurged: res.from.toISOString() } : {}), more: res.more },
         });
       }
     }

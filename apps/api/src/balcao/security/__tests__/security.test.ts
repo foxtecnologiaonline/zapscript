@@ -576,3 +576,54 @@ describe('security — postura e incidentes', () => {
     await setIntegrationStatus; // referência para manter import usado em tipos
   });
 });
+
+describe('security — sugestões de IA (texto cifrado no JSON do evento)', () => {
+  const seedSuggestion = (orgId: string, conversationId: string, text: string, createdAt = new Date()) =>
+    prisma.bvConversationEvent.create({ data: { orgId, conversationId, type: 'AI_SUGGESTION', createdAt, data: { kind: 'TRIAGE', textEnc: encryptField(text), confidence: 0.9 } } });
+
+  it('rotação recifra, exportação decifra, anonimização e retenção removem o texto', async () => {
+    const saved = { keys: process.env.BV_FIELD_KEYS, cur: process.env.BV_FIELD_KEY_CURRENT };
+    try {
+      const kA = crypto.randomBytes(32).toString('hex'); const kB = crypto.randomBytes(32).toString('hex');
+      process.env.BV_FIELD_KEYS = JSON.stringify({ A: kA, B: kB }); process.env.BV_FIELD_KEY_CURRENT = 'A';
+      const org = await makeOrg({ retention: { messagesDays: 100, recordingsDays: 100, auditDays: 1825, logsDays: 90 } });
+      const s = await seedSubject(org.id);
+      const ev = await seedSuggestion(org.id, s.conv.id, 'Sugestão: informe o número do processo');
+      expect((await keyStatus(org.id)).usage.find((u) => u.table === 'BvConversationEvent')!.byKid).toEqual({ A: 1 });
+
+      process.env.BV_FIELD_KEY_CURRENT = 'B';
+      const r = await rotateFieldKeys({ orgId: org.id });
+      expect(r.tables.find((t) => t.table === 'BvConversationEvent')!.rotated).toBe(1);
+      expect(r.done).toBe(true);
+      process.env.BV_FIELD_KEYS = JSON.stringify({ B: kB }); // A aposentada
+      const after = await prisma.bvConversationEvent.findUniqueOrThrow({ where: { id: ev.id } });
+      expect(decryptField((after.data as any).textEnc)).toBe('Sugestão: informe o número do processo');
+      expect((await rotateFieldKeys({ orgId: org.id })).rotated).toBe(0);
+
+      // exportação integral: decifrado, sem o campo cifrado
+      const job = await prisma.bvExportJob.create({ data: { orgId: org.id, type: 'FULL_EXPORT', format: 'JSON', params: { includeFiles: false } as any } });
+      expect((await runFullExport(job.id))!.status).toBe('DONE');
+      const files = readTar(zlib.gunzipSync(await getObjectBuffer((await prisma.bvExportJob.findUniqueOrThrow({ where: { id: job.id } })).fileKey!)));
+      const evs = JSON.parse(files.get('data/conversation_events.json')!.toString()).filter((e: any) => e.type === 'AI_SUGGESTION');
+      expect(evs).toHaveLength(1);
+      expect(evs[0].data.text).toBe('Sugestão: informe o número do processo'); expect(evs[0].data.textEnc).toBeUndefined();
+
+      // retenção: sugestão antiga perde o texto; a recente permanece
+      const old = await seedSuggestion(org.id, s.conv.id, 'antiga', daysAgo(200));
+      await runRetentionForOrg(org.id);
+      expect(((await prisma.bvConversationEvent.findUniqueOrThrow({ where: { id: old.id } })).data as any).textEnc).toBeUndefined();
+      expect(((await prisma.bvConversationEvent.findUniqueOrThrow({ where: { id: ev.id } })).data as any).textEnc).toBeDefined();
+
+      // anonimização do titular remove o restante
+      const sup = await makeUser(org.id, 'SUPERVISOR');
+      const id = (await app.inject({ method: 'POST', url: '/balcao/security/dsr', headers: H(sup), payload: { contactId: s.contact.id, type: 'ANONYMIZE' } })).json().id;
+      const res = await app.inject({ method: 'POST', url: `/balcao/security/dsr/${id}/process`, headers: H(sup), payload: {} });
+      expect(res.json().report.aiSuggestionsScrubbed).toBe(1);
+      const scrubbed = (await prisma.bvConversationEvent.findUniqueOrThrow({ where: { id: ev.id } })).data as any;
+      expect(scrubbed.textEnc).toBeUndefined(); expect(scrubbed.scrubbed).toBe(true); expect(scrubbed.confidence).toBe(0.9);
+    } finally {
+      if (saved.keys === undefined) delete process.env.BV_FIELD_KEYS; else process.env.BV_FIELD_KEYS = saved.keys;
+      if (saved.cur === undefined) delete process.env.BV_FIELD_KEY_CURRENT; else process.env.BV_FIELD_KEY_CURRENT = saved.cur;
+    }
+  });
+});

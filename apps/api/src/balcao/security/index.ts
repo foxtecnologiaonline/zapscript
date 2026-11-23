@@ -170,7 +170,8 @@ export default async function plugin(app: FastifyInstance): Promise<void> {
     if (j.status !== 'DONE' || !j.fileKey) return sendError(reply, 409, 'export.not_ready', 'Exportação não está pronta ou expirou');
     const st = await statObject(j.fileKey);
     if (!st) return sendError(reply, 404, 'export.file_missing', 'Arquivo não encontrado no storage');
-    if (!req.headers.range || req.headers.range.startsWith('bytes=0-')) await auditReq(req, 'security.export.download', { entityType: 'export', entityId: j.id, meta: { format: j.format, bytes: st.size } });
+    // toda requisição é auditada (inclusive cada pedaço de um download retomado por Range)
+    await auditReq(req, 'security.export.download', { entityType: 'export', entityId: j.id, meta: { format: j.format, bytes: st.size, range: req.headers.range ?? null } });
     return sendFile(req, reply, j.fileKey, st.size, 'application/gzip', `balcao-export-${j.id}.tar.gz`, j.sha256);
   });
 

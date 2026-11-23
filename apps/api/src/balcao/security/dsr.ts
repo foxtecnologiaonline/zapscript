@@ -4,7 +4,7 @@ import { audit } from '../core/audit';
 import { decryptField, encryptField } from '../core/crypto';
 import { deleteObject, newKey, putObject } from '../core/storage';
 import { activeLegalHold, getSecuritySettings } from './config';
-import { maskNumber } from './retention';
+import { maskNumber, scrubAiSuggestions } from './retention';
 
 /**
  * Direitos do titular (LGPD art. 18): acesso/exportação, anonimização e exclusão.
@@ -115,7 +115,7 @@ export async function exportSubjectData(orgId: string, contactId: string, actorI
 export interface ErasureReport {
   contacts: number; messagesRedacted: number; attachmentsRemoved: number; recordingsRemoved: number; callsMasked: number;
   identitiesRemoved: number; webchatSessionsScrubbed: number; dsrExportsRemoved: number; conversationsScrubbed: number;
-  conversationsDeleted?: number; messagesDeleted?: number; callsDeleted?: number; tasksUnlinked?: number;
+  aiSuggestionsScrubbed?: number; conversationsDeleted?: number; messagesDeleted?: number; callsDeleted?: number; tasksUnlinked?: number;
   alreadyDone?: boolean; retained: string[];
 }
 const emptyReport = (): ErasureReport => ({
@@ -168,6 +168,9 @@ export async function anonymizeContact(orgId: string, contactId: string, opts: {
       cursor = batch[batch.length - 1].id;
     }
   }
+
+  // 1b) sugestões de IA (texto derivado da conversa, cifrado no JSON do evento)
+  rep.aiSuggestionsScrubbed = await scrubAiSuggestions(orgId, { conversationIds });
 
   // 2) chamadas: gravação removida, números mascarados
   const calls = await prisma.bvCall.findMany({ where: { orgId, conversationId: { in: conversationIds } }, select: { id: true, recordingKey: true, fromNumber: true, toNumber: true } });

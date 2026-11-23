@@ -216,7 +216,7 @@ export function csvCell(v: unknown, decimalComma = true): string {
   let s: string;
   if (typeof v === 'number') s = Number.isFinite(v) ? (decimalComma ? String(v).replace('.', ',') : String(v)) : '';
   else if (typeof v === 'bigint') s = v.toString();
-  else if (typeof v === 'boolean') s = v ? 'sim' : 'não';
+  else if (typeof v === 'boolean') s = decimalComma ? (v ? 'sim' : 'não') : (v ? 'true' : 'false'); // CSV humano em português; CSV de máquina (BI) em true/false
   else if (v instanceof Date) s = v.toISOString();
   else if (typeof v === 'object') s = JSON.stringify(v);
   else s = String(v);

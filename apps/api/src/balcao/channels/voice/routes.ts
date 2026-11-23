@@ -58,7 +58,7 @@ export default async function registerRoutes(app: FastifyInstance): Promise<void
   const listQuery = z.object({
     from: z.coerce.date().optional(), to: z.coerce.date().optional(), number: z.string().max(30).optional(), agentUserId: z.string().max(64).optional(),
     status: z.enum(['RINGING', 'IVR', 'QUEUED', 'ACTIVE', 'ENDED', 'ABANDONED', 'FAILED']).optional(), direction: z.enum(['IN', 'OUT']).optional(),
-    protocol: z.string().max(40).optional(), minDuration: z.coerce.number().int().min(0).optional(), maxDuration: z.coerce.number().int().min(0).optional(),
+    protocol: z.string().max(40).optional(), hasRecording: z.enum(['true', 'false']).optional(), minDuration: z.coerce.number().int().min(0).optional(), maxDuration: z.coerce.number().int().min(0).optional(),
     limit: z.coerce.number().int().min(1).max(200).default(50), cursor: z.string().max(64).optional(),
   });
 
@@ -71,6 +71,7 @@ export default async function registerRoutes(app: FastifyInstance): Promise<void
     if (q.status) where.status = q.status;
     if (q.direction) where.direction = q.direction;
     if (q.number) { const d = q.number.replace(/[^\d+*#]/g, ''); if (d) where.OR = [{ fromNumber: { contains: d } }, { toNumber: { contains: d } }]; }
+    if (q.hasRecording) where.recordingKey = q.hasRecording === 'true' ? { not: null } : null;
     if (q.protocol) where.conversation = { protocol: { contains: q.protocol, mode: 'insensitive' } };
     if (q.minDuration != null || q.maxDuration != null) where.durationSec = { ...(q.minDuration != null ? { gte: q.minDuration } : {}), ...(q.maxDuration != null ? { lte: q.maxDuration } : {}) };
     const rows = await prisma.bvCall.findMany({
@@ -83,7 +84,7 @@ export default async function registerRoutes(app: FastifyInstance): Promise<void
 
   async function loadCall(req: any, reply: any, id: string) {
     const ctx = req.bv!;
-    const call = await prisma.bvCall.findFirst({ where: { id, orgId: ctx.orgId }, include: { conversation: { select: { protocol: true } } } });
+    const call = await prisma.bvCall.findFirst({ where: { id, orgId: ctx.orgId }, include: { conversation: { select: { protocol: true, metadata: true } } } });
     if (!call || (!can(ctx.role, 'conversation:read_all') && call.agentUserId !== ctx.userId)) { sendError(reply, 404, 'call.not_found', 'Chamada não encontrada'); return null; }
     return call;
   }
@@ -91,7 +92,28 @@ export default async function registerRoutes(app: FastifyInstance): Promise<void
   app.get('/calls/:id', { preHandler: guard('conversation:read') }, async (req, reply) => {
     const p = parse(idParam, req.params, reply); if (!p) return;
     const call = await loadCall(req, reply, p.id); if (!call) return;
-    return callDto(call);
+    // metadados da conversa: cabeçalhos SIP X-* da URA 0800, DID, transbordo e resultado da URA (sem dados sensíveis)
+    const meta = ((call as any).conversation?.metadata ?? {}) as { voice?: Record<string, any>; ivr?: Record<string, any> };
+    const v = meta.voice ?? {}; const i = meta.ivr ?? {};
+    return {
+      ...callDto(call),
+      voice: { did: v.did ?? call.toNumber, headers: v.headers ?? {}, flow: v.flow ?? null, transferredTo: v.transferredTo ?? null, transferredAt: v.transferredAt ?? null, simulated: v.simulated === true, hasUraRecording: !!v.uraRecording },
+      ivr: { lang: i.lang ?? null, category: i.category ?? null, queue: i.queue ?? null, outcome: i.outcome ?? null, vars: i.vars ?? {}, sensitiveCollected: i.sensitiveCollected ?? [] },
+    };
+  });
+
+  // Cobertura de gravação (TR: 100% das chamadas): chamadas atendidas pela plataforma × com arquivo de gravação.
+  app.get('/recording/coverage', { preHandler: guard('report:read') }, async (req, reply) => {
+    const q = parse(z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() }), req.query, reply); if (!q) return;
+    const base: Prisma.BvCallWhereInput = {
+      orgId: req.bv!.orgId, endedAt: { not: null },
+      // gravável = a plataforma atendeu (URA/fila) ou houve ligação estabelecida; originações que nunca atenderam não têm áudio
+      OR: [{ direction: 'IN', status: { in: ['ENDED', 'ABANDONED'] } }, { answeredAt: { not: null } }],
+      ...(q.from || q.to ? { startedAt: { ...(q.from ? { gte: q.from } : {}), ...(q.to ? { lte: q.to } : {}) } } : {}),
+    };
+    const [total, withRecording] = await Promise.all([prisma.bvCall.count({ where: base }), prisma.bvCall.count({ where: { ...base, recordingKey: { not: null } } })]);
+    const missing = await prisma.bvCall.findMany({ where: { ...base, recordingKey: null }, select: { id: true, startedAt: true, endReason: true }, orderBy: { startedAt: 'desc' }, take: 50 });
+    return { total, withRecording, withoutRecording: total - withRecording, coveragePct: total ? Math.round((withRecording / total) * 10000) / 100 : 100, recentMissing: missing };
   });
 
   const recQuery = z.object({ part: z.enum(['main', 'ura']).default('main'), download: z.coerce.boolean().optional() });
@@ -279,6 +301,8 @@ export default async function registerRoutes(app: FastifyInstance): Promise<void
     const row = await saveIntegration(orgId, 'SIP_TRUNK', next, { enabled: b.enabled });
     await recordConfigVersion(orgId, 'SIP_TRUNK', row.id, maskSecrets(next), req.bv!.userId);
     await auditReq(req, 'config.update', { entityType: 'SIP_TRUNK', entityId: row.id, before: cur ? maskSecrets(cur.config) : undefined, after: maskSecrets(next) });
+    // ARI informado só pela integração (sem BV_ARI_URL): conecta agora, sem reiniciar a API. Mudança de credencial exige reinício.
+    if (voiceEnabled() && !getAriController()) { const { startVoice } = await import('./index'); void startVoice().catch((err) => logger.warn({ err: err?.message }, '[balcao/voice] start após PUT /config falhou')); }
     return { ok: true, config: maskSecrets(next) };
   });
 

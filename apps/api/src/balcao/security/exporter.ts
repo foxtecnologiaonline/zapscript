@@ -43,6 +43,15 @@ export function redactConfig(v: unknown, depth = 0): unknown {
 
 const safeBody = (b: string | null) => { try { return b ? decryptField(b) : null; } catch { return '[ilegível: chave de campo ausente]'; } };
 
+/** Sugestões de IA guardam o texto cifrado em data.textEnc: exporta decifrado em data.text (sem o campo cifrado). */
+function decryptEventData(r: any) {
+  const d = r.data;
+  if (!d || typeof d !== 'object' || typeof d.textEnc !== 'string') return r;
+  const { textEnc, ...rest } = d;
+  let text: string; try { text = decryptField(textEnc); } catch { text = '[ilegível: chave de campo ausente]'; }
+  return { ...r, data: { ...rest, text } };
+}
+
 export const ENTITIES: EntitySpec[] = [
   { name: 'org', model: 'BvOrg', where: (o) => ({ id: o }) },
   { name: 'users', model: 'BvUser', where: orgWhere, exclude: ['passwordHash', 'totpSecretEnc'] },
@@ -60,7 +69,7 @@ export const ENTITIES: EntitySpec[] = [
   { name: 'contacts', model: 'BvContact', where: orgWhere, exclude: ['documentEnc', 'documentHash'], extra: [{ name: 'document', type: 'String' }] },
   { name: 'contact_identities', model: 'BvContactIdentity', where: orgWhere },
   { name: 'conversations', model: 'BvConversation', where: orgWhere },
-  { name: 'conversation_events', model: 'BvConversationEvent', where: orgWhere },
+  { name: 'conversation_events', model: 'BvConversationEvent', where: orgWhere, transform: (r) => decryptEventData(r) },
   { name: 'messages', model: 'BvMessage', where: orgWhere, transform: (r) => ({ ...r, body: safeBody(r.body) }) },
   { name: 'calls', model: 'BvCall', where: orgWhere },
   { name: 'tasks', model: 'BvTask', where: orgWhere },
