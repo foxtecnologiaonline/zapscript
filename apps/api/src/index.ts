@@ -22,6 +22,8 @@ import { startLifecycleWhatsapp } from './services/lifecycle-whatsapp';
 import { startOnboardingNudge } from './services/onboarding-nudge';
 import { startCopilotoUnreadSweep } from './services/copiloto-backfill';
 import { purgeExpiredRefreshTokens } from './lib/refreshToken';
+import { attachBalcaoSockets } from './balcao/core/realtime';
+import { startBalcaoJobs, runBalcaoStartHooks } from './balcao/core/scheduler';
 
 // ── Inicializar Sentry ────────────────────────────────────
 if (process.env.SENTRY_DSN) {
@@ -152,6 +154,9 @@ io.use((socket: Socket, next: (err?: Error) => void) => {
   }
 });
 
+// Namespace /bv (equipe do Balcão) — auth própria com JWT do Balcão; não passa pelo io.use acima.
+attachBalcaoSockets(io);
+
 io.on('connection', (socket: Socket) => {
   socket.on('join', ({ userId }: { userId: string }) => {
     // Valida que userId do socket = userId solicitado
@@ -183,11 +188,17 @@ io.on('connection', (socket: Socket) => {
   });
 });
 
-app.register(cors, {
-  origin: allowedOrigins,
-  // Sem credentials: auth é 100% Bearer token (localStorage), nunca cookie —
-  // manter credentials:true só ampliaria a superfície de CSRF sem necessidade.
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+// Sem credentials: auth é 100% Bearer token (localStorage), nunca cookie —
+// manter credentials:true só ampliaria a superfície de CSRF sem necessidade.
+// Exceção: a API pública do widget do Balcão Virtual (embutido em sites de terceiros) reflete a Origin;
+// a restrição real é a lista de origens permitidas do órgão, validada na própria rota + token do visitante.
+app.register(cors, () => (req: { url?: string }, cb: (err: Error | null, opts?: any) => void) => {
+  const url = req.url || '';
+  const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
+  if (url.startsWith('/balcao/webchat/public') || url.startsWith('/balcao/webchat/widget')) {
+    return cb(null, { origin: true, methods, allowedHeaders: ['Content-Type', 'Authorization', 'X-Visitor-Token'] });
+  }
+  cb(null, { origin: allowedOrigins, methods });
 });
 app.register(helmet, {
   contentSecurityPolicy: {
@@ -370,6 +381,9 @@ app.register(import('./routes/evolution-webhook'), { prefix: '/webhook/evolution
 // ── Agente de Suporte — WhatsApp Business (Meta Cloud API) ──────────────────
 // Número de atendimento ao cliente; mensagens → fila de aprovação no painel
 app.register(import('./routes/suporte-whatsapp'), { prefix: '/webhook/suporte/whatsapp' });
+
+// ── Balcão Virtual (plataforma omnichannel — TJTO) ──────────────────────────
+app.register(import('./balcao'), { prefix: '/balcao' });
 if (process.env.WHATSAPP_API_TOKEN) {
   app.log.info('✅ WhatsApp Cloud API webhook registrado com token');
 } else {
@@ -1448,6 +1462,10 @@ async function start() {
     logger.info('[Startup] app.listen concluído — boot completo');
     app.log.info('[Startup] app.listen concluído — boot completo');
     clearTimeout(bootWatchdog);
+
+    // ── Balcão Virtual: jobs periódicos (SLA, e-mail, retenção…) e conexões de canal (ARI, IMAP) ──
+    startBalcaoJobs();
+    void runBalcaoStartHooks();
 
     // ── Sync automático Evolution API — re-aplica webhooks e auto-reconecta ──
     // Roda em background. Sem o isolamento destrutivo do Z-API — cada instância

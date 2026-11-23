@@ -2037,3 +2037,728 @@ model InboundMessage {
   @@index([userId, receivedAt(sort: Desc)])
   @@index([numberId, receivedAt(sort: Desc)])
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  BALCÃO VIRTUAL — plataforma omnichannel (módulo `balcao`)
+//  Todas as tabelas têm prefixo Bv e orgId (multi-órgão). Código em
+//  apps/api/src/balcao. Decisões: docs/balcao/DECISOES.md
+// ═══════════════════════════════════════════════════════════════════════════
+
+model BvOrg {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  // BvOrgSettings (ver apps/api/src/balcao/core/settings.ts): fuso, horário comercial,
+  // feriados, retenção, aviso de gravação, bot, SLA padrão, etc.
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         BvUser[]
+  queues        BvQueue[]
+  contacts      BvContact[]
+  conversations BvConversation[]
+  tasks         BvTask[]
+  kbArticles    BvKbArticle[]
+}
+
+model BvSector {
+  id        String   @id @default(cuid())
+  orgId     String
+  name      String
+  email     String? // caixa do setor (notificações)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([orgId, name])
+  @@index([orgId])
+}
+
+// Usuário interno (atendente, supervisor, admin, fiscal). Login nominal próprio, separado do `User` do SaaS.
+model BvUser {
+  id                 String    @id @default(cuid())
+  orgId              String
+  email              String
+  name               String
+  passwordHash       String?
+  role               String    @default("ATENDENTE") // ATENDENTE | SUPERVISOR | ADMIN | FISCAL
+  active             Boolean   @default(true)
+  sectorId           String?
+  skills             String[]  @default([])
+  maxConcurrent      Int       @default(3)
+  presence           String    @default("OFFLINE") // OFFLINE | ONLINE | AWAY | BUSY
+  presenceAt         DateTime?
+  sipExtension       String?
+  totpSecretEnc      String? // AES-GCM (core/crypto)
+  totpEnabled        Boolean   @default(false)
+  mustChangePassword Boolean   @default(false)
+  oidcSub            String? // vínculo com o IdP (TJTO / gov.br)
+  failedLogins       Int       @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  org      BvOrg            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sessions BvSession[]
+  assigned BvConversation[] @relation("BvConvAssignee")
+
+  @@unique([orgId, email])
+  @@unique([orgId, sipExtension])
+  @@index([orgId, role, active])
+  @@index([orgId, presence])
+}
+
+model BvSession {
+  id          String    @id @default(cuid())
+  userId      String
+  refreshHash String    @unique
+  ip          String?
+  userAgent   String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user BvUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Token de API (BI / integrações) com escopos, armazenado só como hash.
+model BvApiToken {
+  id          String    @id @default(cuid())
+  orgId       String
+  name        String
+  tokenHash   String    @unique
+  scopes      String[]  @default([])
+  createdById String?
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([orgId])
+}
+
+model BvQueue {
+  id                  String   @id @default(cuid())
+  orgId               String
+  name                String
+  slug                String
+  categories          String[] @default([]) // categorias de demanda atendidas
+  channels            String[] @default([]) // vazio = todos
+  requiredSkills      String[] @default([])
+  priority            Int      @default(0) // maior = atendida antes
+  strategy            String   @default("LEAST_BUSY") // LEAST_BUSY | ROUND_ROBIN | LONGEST_IDLE
+  slaFirstResponseSec Int      @default(300)
+  slaResolutionSec    Int?
+  maxWaitSec          Int? // acima disso: overflow
+  overflowQueueId     String?
+  businessHours       Json? // sobrescreve o horário do órgão
+  sectorId            String?
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  org           BvOrg            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members       BvQueueMember[]
+  conversations BvConversation[]
+
+  @@unique([orgId, slug])
+  @@index([orgId, active])
+}
+
+model BvQueueMember {
+  queueId String
+  userId  String
+
+  queue BvQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+
+  @@id([queueId, userId])
+  @@index([userId])
+}
+
+// Regras de roteamento avaliadas em ordem de `position`: primeira que casar define fila/prioridade.
+model BvRoutingRule {
+  id         String   @id @default(cuid())
+  orgId      String
+  name       String
+  position   Int      @default(0)
+  active     Boolean  @default(true)
+  // { channels?:[], contactCategories?:[], categories?:[], intents?:[], outsideHours?:bool, minWaitSec?, weekdays?:[] }
+  conditions Json     @default("{}")
+  // { queueId, priorityBoost?, setCategory? }
+  action     Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([orgId, active, position])
+}
+
+model BvHoliday {
+  id    String   @id @default(cuid())
+  orgId String
+  day   DateTime @db.Date
+  name  String
+
+  @@unique([orgId, day])
+}
+
+// Respostas prontas do atendente.
+model BvCannedResponse {
+  id        String   @id @default(cuid())
+  orgId     String
+  shortcut  String
+  title     String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@unique([orgId, shortcut])
+}
+
+// Cidadão / jurisdicionado — identidade única entre canais.
+model BvContact {
+  id                 String    @id @default(cuid())
+  orgId              String
+  name               String?
+  email              String?
+  phone              String? // E.164
+  documentEnc        String? // CPF/CNPJ cifrado
+  documentHash       String? // blind index (HMAC)
+  category           String    @default("CIDADAO") // CIDADAO | ADVOGADO | SERVIDOR | MP | DEFENSORIA | OUTRO
+  govbrSub           String?
+  govbrLevel         String? // bronze | prata | ouro
+  identityVerifiedAt DateTime?
+  tags               String[]  @default([])
+  mergedIntoId       String?
+  anonymizedAt       DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  org           BvOrg               @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  identities    BvContactIdentity[]
+  conversations BvConversation[]
+
+  @@unique([orgId, documentHash])
+  @@unique([orgId, govbrSub])
+  @@index([orgId, email])
+  @@index([orgId, phone])
+}
+
+model BvContactIdentity {
+  id         String   @id @default(cuid())
+  orgId      String
+  contactId  String
+  channel    String // WHATSAPP | WEBCHAT | EMAIL | VOICE
+  externalId String // wa_id, e-mail normalizado, visitor id, número E.164
+  createdAt  DateTime @default(now())
+
+  contact BvContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, channel, externalId])
+  @@index([contactId])
+}
+
+model BvConversation {
+  id                    String    @id @default(cuid())
+  orgId                 String
+  protocol              String // ex.: BV-2026-000123
+  channel               String // WHATSAPP | WEBCHAT | EMAIL | VOICE
+  contactId             String
+  queueId               String?
+  assignedUserId        String?
+  status                String    @default("BOT") // BOT | WAITING | ACTIVE | CLOSED
+  priority              Int       @default(0)
+  category              String?
+  intent                String?
+  subject               String?
+  language              String    @default("pt-BR")
+  channelRef            String? // wa_id | visitorSessionId | thread root Message-ID | callId
+  startedAt             DateTime  @default(now())
+  queuedAt              DateTime?
+  assignedAt            DateTime?
+  firstResponseAt       DateTime? // 1ª resposta HUMANA (TME)
+  closedAt              DateTime?
+  closeReason           String? // RESOLVED | ABANDONED | TRANSFERRED_OUT | SPAM | TIMEOUT
+  botHandled            Boolean   @default(false)
+  resolvedByBot         Boolean   @default(false)
+  firstContactResolved  Boolean?
+  automatable           Boolean   @default(false) // classificada como automatizável (IQA)
+  slaFirstResponseDueAt DateTime?
+  slaResolutionDueAt    DateTime?
+  slaBreached           Boolean   @default(false)
+  csatScore             Int? // NPS 0–10
+  csatComment           String?
+  csatAt                DateTime?
+  transferCount         Int       @default(0)
+  lastMessageAt         DateTime?
+  lastInboundAt         DateTime? // janela de 24h do WhatsApp
+  unreadForAgent        Int       @default(0)
+  metadata              Json      @default("{}")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  org      BvOrg                 @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contact  BvContact             @relation(fields: [contactId], references: [id])
+  queue    BvQueue?              @relation(fields: [queueId], references: [id], onDelete: SetNull)
+  assignee BvUser?               @relation("BvConvAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  messages BvMessage[]
+  events   BvConversationEvent[]
+  calls    BvCall[]
+  tasks    BvTask[]
+
+  @@unique([orgId, protocol])
+  @@index([orgId, status, queueId, queuedAt])
+  @@index([orgId, assignedUserId, status])
+  @@index([orgId, channel, channelRef])
+  @@index([orgId, closedAt])
+  @@index([orgId, startedAt])
+  @@index([contactId, startedAt])
+}
+
+model BvMessage {
+  id               String   @id @default(cuid())
+  orgId            String
+  conversationId   String
+  direction        String // IN | OUT | INTERNAL
+  senderType       String // CONTACT | BOT | AGENT | SYSTEM
+  senderUserId     String?
+  kind             String   @default("TEXT") // TEXT | IMAGE | AUDIO | VIDEO | DOCUMENT | TEMPLATE | NOTE | EVENT
+  body             String? // cifrado em repouso (core/messages) — nunca ler direto fora do core
+  attachments      Json? // [{ key, name, mime, size, sha256 }] em core/storage
+  channelMessageId String?
+  channelMeta      Json? // e-mail: messageId/inReplyTo/references/subject/cc; wa: category etc.
+  status           String   @default("SENT") // QUEUED | SENT | DELIVERED | READ | FAILED
+  errorCode        String?
+  aiMeta           Json? // { intent, confidence, kbArticleIds, model }
+  createdAt        DateTime @default(now())
+
+  conversation BvConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, channelMessageId])
+  @@index([conversationId, createdAt])
+  @@index([orgId, createdAt])
+}
+
+model BvConversationEvent {
+  id             String   @id @default(cuid())
+  orgId          String
+  conversationId String
+  type           String // CREATED | BOT_REPLY | ESCALATED | QUEUED | ASSIGNED | TRANSFERRED | FIRST_RESPONSE | CLOSED | REOPENED | SLA_BREACH | CSAT | NOTE
+  actorUserId    String?
+  data           Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  conversation BvConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([orgId, type, createdAt])
+}
+
+model BvCall {
+  id                 String    @id @default(cuid())
+  orgId              String
+  conversationId     String?
+  direction          String // IN | OUT
+  fromNumber         String
+  toNumber           String
+  sipCallId          String?
+  ariChannelId       String?
+  status             String    @default("RINGING") // RINGING | IVR | QUEUED | ACTIVE | ENDED | ABANDONED | FAILED
+  ivrFlowId          String?
+  ivrPath            Json? // trilha de opções escolhidas
+  agentUserId        String?
+  startedAt          DateTime  @default(now())
+  answeredAt         DateTime?
+  endedAt            DateTime?
+  durationSec        Int?
+  recordingKey       String? // core/storage
+  recordingSha256    String?
+  recordingSizeBytes BigInt?
+  recordingNotified  Boolean   @default(false) // aviso de gravação tocado
+  endReason          String?
+  createdAt          DateTime  @default(now())
+
+  conversation BvConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, startedAt])
+  @@index([conversationId])
+  @@index([orgId, sipCallId])
+}
+
+// Árvore de URA versionada: editar = nova versão em DRAFT; publicar troca a ACTIVE atomicamente (sem parar o serviço).
+model BvIvrFlow {
+  id          String    @id @default(cuid())
+  orgId       String
+  name        String
+  version     Int       @default(1)
+  status      String    @default("DRAFT") // DRAFT | ACTIVE | ARCHIVED
+  language    String    @default("pt-BR")
+  definition  Json // { start, nodes:{ id:{type, prompt:{text,audioKey?,lang?}, options:{...}, ...} } }
+  createdById String?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([orgId, name, version])
+  @@index([orgId, status])
+}
+
+// ── Base de conhecimento e curadoria ──
+model BvKbArticle {
+  id                    String                   @id @default(cuid())
+  orgId                 String
+  title                 String
+  question              String
+  answer                String
+  category              String?
+  tags                  String[]                 @default([])
+  language              String                   @default("pt-BR")
+  status                String                   @default("DRAFT") // DRAFT | PENDING_REVIEW | APPROVED | REJECTED | ARCHIVED
+  version               Int                      @default(1)
+  source                String                   @default("MANUAL") // MANUAL | CURATORSHIP | IMPORT
+  sourceConversationIds String[]                 @default([])
+  authorId              String?
+  approvedById          String?
+  approvedAt            DateTime?
+  rejectedReason        String?
+  nextReviewAt          DateTime?
+  useCount              Int                      @default(0)
+  helpfulCount          Int                      @default(0)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  // coluna GERADA (migration SQL): to_tsvector('portuguese', title||question||answer||tags) + índice GIN
+  search                Unsupported("tsvector")?
+
+  org      BvOrg                @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  versions BvKbArticleVersion[]
+
+  @@index([orgId, status])
+}
+
+model BvKbArticleVersion {
+  id          String   @id @default(cuid())
+  articleId   String
+  version     Int
+  snapshot    Json
+  changedById String?
+  createdAt   DateTime @default(now())
+
+  article BvKbArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, version])
+}
+
+// Sugestões geradas pela curadoria (lacunas, ambiguidades, novas interações).
+model BvKbSuggestion {
+  id             String    @id @default(cuid())
+  orgId          String
+  type           String // NEW_ARTICLE | AMBIGUITY | GAP | IMPROVE
+  question       String
+  proposedAnswer String?
+  evidence       Json      @default("{}") // { conversationIds, count, sampleMessages }
+  status         String    @default("OPEN") // OPEN | ACCEPTED | DISMISSED
+  articleId      String?
+  resolvedById   String?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([orgId, status])
+}
+
+// ── Tarefas internas / demandas / service desk (item 8.2.8 do TR) ──
+model BvTask {
+  id                 String    @id @default(cuid())
+  orgId              String
+  code               String // TAR-000123
+  kind               String    @default("INTERNAL") // INTERNAL | DEMAND | SERVICE_REQUEST
+  title              String
+  description        String?
+  status             String    @default("OPEN") // OPEN | IN_PROGRESS | WAITING | DONE | CANCELLED
+  priority           String    @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
+  origin             String    @default("AGENT") // CHATBOT | AGENT | BACKOFFICE | SYSTEM
+  sectorId           String?
+  assigneeId         String?
+  creatorId          String?
+  conversationId     String?
+  contactId          String?
+  dueAt              DateTime?
+  completedAt        DateTime?
+  notifyOnClose      Boolean   @default(false)
+  notifyChannel      String? // EMAIL | WHATSAPP
+  closeNoticeSentAt  DateTime?
+  supportLevel       String? // L1 | L2 | L3 | L4 (service request → ANS ISA1..ISA4)
+  respondedAt        DateTime?
+  slaResponseDueAt   DateTime?
+  slaResolutionDueAt DateTime?
+  externalRef        String? // chave Jira
+  tags               String[]  @default([])
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  org          BvOrg           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  conversation BvConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  comments     BvTaskComment[]
+  history      BvTaskHistory[]
+
+  @@unique([orgId, code])
+  @@index([orgId, status, priority])
+  @@index([orgId, assigneeId, status])
+  @@index([orgId, sectorId, status])
+  @@index([orgId, kind, createdAt])
+}
+
+model BvTaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  body      String
+  internal  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  task BvTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
+model BvTaskHistory {
+  id        String   @id @default(cuid())
+  taskId    String
+  actorId   String?
+  field     String
+  fromValue String?
+  toValue   String?
+  createdAt DateTime @default(now())
+
+  task BvTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
+// ── Auditoria (append-only: UPDATE bloqueado por trigger na migration) ──
+model BvAuditLog {
+  id         String   @id @default(cuid())
+  orgId      String
+  actorType  String   @default("USER") // USER | SYSTEM | CONTACT | INTEGRATION
+  actorId    String?
+  action     String // ex.: auth.login, conversation.read, user.create, config.update
+  entityType String?
+  entityId   String?
+  before     Json?
+  after      Json?
+  meta       Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([orgId, createdAt])
+  @@index([orgId, entityType, entityId])
+  @@index([orgId, actorId, createdAt])
+  @@index([orgId, action, createdAt])
+}
+
+// Histórico versionado de configurações (filas, regras, URA, settings…).
+model BvConfigVersion {
+  id          String   @id @default(cuid())
+  orgId       String
+  entityType  String
+  entityId    String
+  version     Int
+  snapshot    Json
+  changedById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([entityType, entityId, version])
+  @@index([orgId, entityType, createdAt])
+}
+
+// ── Consumo e cotas (painel do fiscal; itens 7–11 do TR) ──
+model BvUsageDaily {
+  id       String   @id @default(cuid())
+  orgId    String
+  day      DateTime @db.Date
+  item     String // WA_SERVICE | WA_UTILITY | WA_MARKETING | VOICE_MINUTES | VOICE_PEAK_CHANNELS | STORAGE_BYTES | EMAIL_OUT | EMAIL_IN | WEBCHAT_MSG | AI_TOKENS | AI_CALLS
+  quantity BigInt   @default(0)
+
+  @@unique([orgId, day, item])
+  @@index([orgId, item, day])
+}
+
+model BvQuota {
+  id          String   @id @default(cuid())
+  orgId       String
+  item        String
+  period      String // DAY | MONTH
+  limit       BigInt
+  action      String   @default("ALERT") // ALERT | BLOCK
+  alertAtPct  Int      @default(80)
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([orgId, item, period])
+}
+
+// Contador atômico (protocolos, códigos de tarefa).
+model BvCounter {
+  orgId String
+  name  String // ex.: protocol:2026, task
+  value Int    @default(0)
+
+  @@id([orgId, name])
+}
+
+// ── Integrações e canais (credenciais cifradas) ──
+model BvIntegration {
+  id          String    @id @default(cuid())
+  orgId       String
+  type        String // WHATSAPP | EMAIL_IMAP | SIP_TRUNK | EPROC | GOVBR | OIDC_TJTO | GOOGLE_WORKSPACE | JIRA | URA_0800 | LLM
+  name        String    @default("default")
+  enabled     Boolean   @default(false)
+  configEnc   String? // AES-GCM(JSON)
+  status      String    @default("UNCONFIGURED") // UNCONFIGURED | OK | ERROR
+  lastCheckAt DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([orgId, type, name])
+}
+
+model BvIntegrationLog {
+  id         String   @id @default(cuid())
+  orgId      String
+  type       String
+  operation  String
+  ok         Boolean
+  durationMs Int?
+  error      String?
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([orgId, type, createdAt])
+}
+
+// ── Canais ──
+model BvWebchatSession {
+  id             String    @id @default(cuid())
+  orgId          String
+  tokenHash      String    @unique
+  contactId      String?
+  conversationId String?
+  origin         String?
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  endedAt        DateTime?
+
+  @@index([orgId, conversationId])
+}
+
+model BvMailbox {
+  id           String    @id @default(cuid())
+  orgId        String
+  address      String
+  folder       String    @default("INBOX")
+  uidValidity  BigInt?
+  lastUid      BigInt    @default(0)
+  lastPolledAt DateTime?
+  lastError    String?
+  enabled      Boolean   @default(true)
+
+  @@unique([orgId, address])
+}
+
+model BvWaTemplate {
+  id             String   @id @default(cuid())
+  orgId          String
+  name           String
+  language       String   @default("pt_BR")
+  category       String // UTILITY | MARKETING | AUTHENTICATION
+  components     Json
+  status         String   @default("DRAFT") // DRAFT | PENDING | APPROVED | REJECTED
+  metaTemplateId String?
+  rejectedReason String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([orgId, name, language])
+}
+
+// ── Relatórios e exportações ──
+model BvReportSchedule {
+  id          String    @id @default(cuid())
+  orgId       String
+  name        String
+  reportType  String
+  params      Json      @default("{}")
+  frequency   String // DAILY | WEEKLY | MONTHLY
+  format      String    @default("CSV") // CSV | JSON
+  recipients  String[]  @default([])
+  active      Boolean   @default(true)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([active, nextRunAt])
+}
+
+model BvExportJob {
+  id          String    @id @default(cuid())
+  orgId       String
+  type        String // REPORT | FULL_EXPORT | DSAR
+  format      String    @default("JSON") // CSV | JSON | XML | SQL
+  params      Json      @default("{}")
+  status      String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED
+  fileKey     String?
+  sha256      String?
+  sizeBytes   BigInt?
+  error       String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  expiresAt   DateTime?
+
+  @@index([orgId, createdAt])
+}
+
+// ── LGPD ──
+model BvDataSubjectRequest {
+  id          String    @id @default(cuid())
+  orgId       String
+  contactId   String
+  type        String // ACCESS | EXPORT | DELETE | ANONYMIZE
+  status      String    @default("OPEN") // OPEN | DONE | REJECTED
+  note        String?
+  handledById String?
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([orgId, status])
+}
+
+model BvRetentionRun {
+  id        String   @id @default(cuid())
+  orgId     String
+  kind      String // MESSAGES | RECORDINGS | AUDIT | LOGS
+  purged    Int      @default(0)
+  cutoff    DateTime
+  createdAt DateTime @default(now())
+
+  @@index([orgId, createdAt])
+}
+
+// Notificações internas para o console (SLA estourado, nova atribuição, etc.).
+model BvNotification {
+  id        String    @id @default(cuid())
+  orgId     String
+  userId    String
+  type      String
+  title     String
+  body      String?
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt, createdAt])
+}
