@@ -1,0 +1,64 @@
+# ──────────────────────────────────────────────────────────────────────────────────────────────────
+# Asterisk do Balcão Virtual (voz) — Vultr, ao lado do compose da API.
+#
+#   cd infra/asterisk
+#   cp asterisk.env.example asterisk.env      # preencha (segredos NÃO vão para o git)
+#   docker compose -f docker-compose.asterisk.yml --env-file asterisk.env up -d --build
+#
+# Rede: `zapscript` (a mesma da API) como rede EXTERNA, para a API alcançar o ARI em http://asterisk:8088.
+# Descubra o nome real com `docker inspect zapscript-api --format '{{json .NetworkSettings.Networks}}'` e
+# ajuste BV_DOCKER_NETWORK. A porta 8088 (ARI, texto puro) NUNCA é publicada no host.
+#
+# RTP: a faixa publicada deve ser IGUAL a BV_RTP_START..BV_RTP_END (rtp.conf). Cada chamada usa ~2–4 portas
+# UDP → 201 portas ≈ 50–100 chamadas simultâneas. Para centenas de canais prefira `network_mode: host`
+# (ver README, "Portas e firewall") — publicar milhares de portas UDP no Docker é lento.
+# ──────────────────────────────────────────────────────────────────────────────────────────────────
+services:
+  asterisk:
+    build:
+      context: .
+      args:
+        ASTERISK_VERSION: ${ASTERISK_VERSION:-20-current}
+        ASTERISK_UID: ${ASTERISK_UID:-1000}
+        CORE_SOUNDS_PT_URL: ${CORE_SOUNDS_PT_URL:-}
+    image: balcao-asterisk:20
+    container_name: balcao-asterisk
+    restart: unless-stopped
+    env_file: ${BV_ASTERISK_ENV_FILE:-asterisk.env}
+    ports:
+      - "5060:5060/udp"                 # SIP do tronco (restrinja no firewall aos IPs do TJTO)
+      - "5060:5060/tcp"
+      - "5061:5061/tcp"                 # SIP TLS (só se BV_TRUNK_TLS_CERT)
+      - "8089:8089/tcp"                 # WSS dos atendentes (WebRTC)
+      - "${BV_RTP_START:-10000}-${BV_RTP_END:-10200}:${BV_RTP_START:-10000}-${BV_RTP_END:-10200}/udp"
+    expose:
+      - "8088"                          # ARI/HTTP — somente rede Docker
+    volumes:
+      - asterisk-recordings:/var/spool/asterisk/recording   # a API lê (BV_ASTERISK_RECORDING_DIR) e move para o storage
+      - asterisk-sounds:/var/lib/asterisk/sounds/balcao     # a API escreve prompts/TTS (BV_ASTERISK_SOUNDS_DIR)
+      - ${BV_MOH_DIR:-./moh}:/var/lib/asterisk/moh:ro       # música de espera (wav/ulaw 8 kHz)
+      - ${BV_KEYS_DIR:-./keys}:/etc/asterisk/keys:ro        # fullchain.pem + privkey.pem do WSS (ver README)
+    networks:
+      - zapscript
+    healthcheck:
+      test: ["CMD-SHELL", "asterisk -rx 'core waitfullybooted' | grep -q 'fully booted'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+volumes:
+  asterisk-recordings:
+    name: balcao-asterisk-recordings
+  asterisk-sounds:
+    name: balcao-asterisk-sounds
+
+networks:
+  zapscript:
+    external: true
+    name: ${BV_DOCKER_NETWORK:-zapscript}

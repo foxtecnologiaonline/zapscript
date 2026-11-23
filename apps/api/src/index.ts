@@ -224,8 +224,15 @@ app.register(rateLimit, {
   // ficam corretos mesmo escalando para múltiplas instâncias (antes era em
   // memória — cada instância tinha sua própria contagem, diluindo o limite real).
   redis,
+  // Balcão Virtual: webhooks de provedor (Meta, e-mail por HTTP, Jira) e API pública do widget têm limitadores
+  // próprios (por sessão/IP/segredo); o teto global por IP penalizaria órgãos atrás de um mesmo NAT e a Meta.
   skip: (req: any) =>
     req.url.startsWith('/webhook/') ||
+    req.url.startsWith('/balcao/whatsapp/webhook') ||
+    req.url.startsWith('/balcao/webchat/public') ||
+    req.url.startsWith('/balcao/webchat/widget') ||
+    req.url.startsWith('/balcao/email/inbound') ||
+    req.url.startsWith('/balcao/integrations/jira/webhook') ||
     req.url === '/health',
   addHeaders: {
     'x-ratelimit-limit':     true,

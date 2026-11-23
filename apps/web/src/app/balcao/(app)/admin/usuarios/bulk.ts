@@ -28,7 +28,7 @@ export function parseCsv(text: string): string[][] {
   return rows.map((r) => r.map((x) => x.trim()));
 }
 
-const strip = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const strip = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const ROLE_ALIASES: Record<string, RoleKey> = {
   atendente: 'ATENDENTE', supervisor: 'SUPERVISOR', admin: 'ADMIN', administrador: 'ADMIN', fiscal: 'FISCAL', 'fiscal do contrato': 'FISCAL',
 };

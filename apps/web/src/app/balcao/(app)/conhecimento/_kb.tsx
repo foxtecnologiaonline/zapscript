@@ -3,10 +3,10 @@
  * Tipos e componentes compartilhados da base de conhecimento (console do atendente e curadoria).
  * Contratos: apps/api/src/balcao/ai/{routes,kb,curation}.ts.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bv } from '@/lib/balcao/api';
 import { fmtDateTime } from '@/lib/balcao/format';
-import { Badge } from '../../_ui/ui';
+import { Badge, Dialog } from '../../_ui/ui';
 
 export type ArticleStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'ARCHIVED';
 export type ArticleSource = 'MANUAL' | 'CURATORSHIP' | 'IMPORT';
@@ -111,4 +111,15 @@ export function DiffText({ before, after }: { before: string; after: string }) {
         : <del key={i} className="bg-bv-danger-soft text-bv-danger line-through"><span className="bv-sr-only">[removido: </span>{o.v}<span className="bv-sr-only">]</span></del>)}
     </p>
   );
+}
+
+/**
+ * Diálogo com `onClose` estável: o `Dialog` do kit refaz o foco no 1º campo a cada mudança da referência de `onClose`,
+ * o que atrapalharia a digitação em formulários dentro do diálogo.
+ */
+export function Modal(props: React.ComponentProps<typeof Dialog>) {
+  const ref = useRef(props.onClose);
+  ref.current = props.onClose;
+  const stable = useCallback(() => ref.current(), []);
+  return <Dialog {...props} onClose={stable} />;
 }

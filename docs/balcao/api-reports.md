@@ -80,7 +80,7 @@ Presets: `TODAY, YESTERDAY, LAST_7_DAYS, LAST_30_DAYS, MONTH_TO_DATE, PREVIOUS_W
 
 - Paginação **keyset** por (data, id); o cursor vem no header `x-next-cursor` (e `x-has-more`) e, em `format=json`, no corpo `{ dataset, count, nextCursor, data[] }`. Cursor vazio = fim. Cursor inválido → 400.
 - **Sem conteúdo de mensagem e sem PII**: apenas ids/códigos, datas ISO (UTC) e métricas (`tmeSec`, `tmaSec`…). Não saem nome, e-mail, telefone/número de chamada, assunto, comentário de NPS, `channelRef`, título/descrição de tarefa.
-- CSV de exportação: BOM, `;`, cabeçalho = nome estável do campo, **ponto** decimal (máquina). Cada leitura é auditada (`report.export`).
+- CSV de exportação: BOM, `;`, cabeçalho = nome estável do campo, **ponto** decimal e booleanos `true`/`false` (máquina; os CSV "humanos" usam vírgula e `sim`/`não`). Cada leitura é auditada (`report.export`).
 - Token: criado por quem administra (tabela `BvApiToken`, só o hash é guardado) com `scopes: ["report:read"]`. Um token com só esse escopo **lê** `/reports/*` (GET e `POST /reports/custom`), mas recebe 403 em `/fiscal/*`, `POST /reports/saved|monthly` e cotas (escopos `fiscal:read`, `report:export`, `quota:manage` são separados).
 
 ### Power BI
@@ -98,7 +98,7 @@ Sem driver nativo: use um script/ETL (ou o conector HTTP/“Workflows” da sua 
 - Itens: `WA_SERVICE` = item 7, `WA_UTILITY` = 8, `WA_MARKETING` = 9, `STORAGE_BYTES` = 10, `VOICE_MINUTES`/`VOICE_PEAK_CHANNELS` = 11, `EMAIL_IN/OUT`, `WEBCHAT_MSG`, `AI_CALLS`, `AI_TOKENS`.
 - **Valores unitários estimados** (R$) — padrões do TR: item 7 = 0,11/conversa; item 8 = 0,11; item 9 = 0,46; item 10 = 493/TB·mês (TB = 10¹² bytes, sobre o máximo do mês); item 11 = 365/canal·mês (sobre o pico de canais do mês). Sobrescreva em `org.settings.billing.unitPrices`, ex.: `{ "WA_UTILITY": 0.2, "STORAGE_TB_MONTH": 500, "VOICE_CHANNEL_MONTH": 400, "LICENSE_ATENDENTE": 80, "EMAIL_OUT": 0.001 }` (chave = nome do item; licenças opcionais). São **estimativas**, não fatura.
 - **Cotas** (`quota:manage` para escrever): `GET /fiscal/quotas` (com status atual via `core/usage.checkQuota`), `POST /fiscal/quotas {item, period: DAY|MONTH, limit, action: ALERT|BLOCK, alertAtPct}` (upsert por item+período; 201 criar / 200 atualizar), `PUT /fiscal/quotas/:id`, `DELETE /fiscal/quotas/:id`. Cada mudança é auditada (`quota.create|update|delete`) e versionada (`recordConfigVersion`, entidade `quota`). `BLOCK` só tem efeito para quem chama `assertQuota` (core).
-- **Job `balcao.fiscal.alerts`** (60 s): ao cruzar `alertAtPct` e 100% cria `BvNotification` (`type = QUOTA_ALERT`) para cada usuário FISCAL/ADMIN ativo, com `data.dedupKey = quota:<id>:<período>:<ALERT|LIMIT>` — **uma vez por cota/período/limiar** (dia `YYYY-MM-DD` ou mês `YYYY-MM`), e emite o evento de socket `notification` ao usuário.
+- **Job `balcao.fiscal.alerts`** (60 s): ao cruzar `alertAtPct` e 100% cria `BvNotification` (`type = QUOTA_ALERT`) para cada usuário FISCAL/ADMIN ativo, com `data.dedupKey = quota:<id>:<período>:<ALERT|LIMIT>` — **uma vez por cota/período/limiar** (dia `YYYY-MM-DD` ou mês `YYYY-MM`), e emite o evento de socket `notification` ao usuário. Execuções no mesmo processo são serializadas (testado com 3 chamadas concorrentes); entre instâncias vale o lock Redis do job.
 - **Job `balcao.fiscal.storage`** (6 h, ao subir): soma o tamanho dos arquivos sob `<BV_STORAGE_DIR>/<orgId>/` (sem seguir symlinks; limite de `BV_STORAGE_SCAN_MAX` entradas e 120 s — se estourar, **não** grava o gauge) e grava `setUsageGauge(STORAGE_BYTES)`. Se não existir a pasta `recordings` no disco (backend S3), soma `BvCall.recordingSizeBytes`.
 
 ## 6. Permissões, auditoria e variáveis
@@ -121,6 +121,8 @@ Settings do órgão lidos (JSON bruto, fora do tipo `BvOrgSettings`): `contract.
 
 Todas as consultas usam os índices `(orgId, startedAt)` etc. e uma única passada agregada (`FILTER` + `percentile_cont`). Medido no teste: `GET /reports/overview?compare=true` com 20 mil conversas em um órgão → ~150 ms.
 
+Testes: `npx jest --runInBand src/balcao/reports` — 32 casos (funções puras, métricas com valores conhecidos, allowlist do relatório personalizado, token de API/BI, painel do fiscal, agendamento idempotente concorrente, relatório mensal, isolamento entre órgãos e volume).
+
 ## 8. Não verificado
 
 - Leitura do Power BI/Metabase **reais** (roteiros acima não foram executados contra as ferramentas).
@@ -129,6 +131,8 @@ Todas as consultas usam os índices `(orgId, startedAt)` etc. e uma única passa
 - "Tempo online" por presença: não existe histórico de presença; usa-se tempo em atendimento. Atribuição por atendente usa `assignedUserId` atual (transferências não repartem o tempo).
 - Preços unitários e a definição de TB (10¹²) vêm do TR/estimativa; consumo usa dias UTC de `BvUsageDaily`, não o fuso do órgão.
 - Cotas `BLOCK`: a aplicação do bloqueio depende de cada canal chamar `assertQuota` (core); esta frente só administra e alerta.
-- Alertas de cota são periódicos (60 s), não instantâneos no `recordUsage`.
+- Alertas de cota são periódicos (60 s), não instantâneos no `recordUsage`; a deduplicação é leitura + criação (sem índice único, pois não se altera o schema) — sem o lock do job, duas **instâncias** simultâneas poderiam duplicar um alerta.
+- Agendamento: a ocorrência é reivindicada antes de gerar o arquivo; se o processo morrer entre a reivindicação e a geração, aquela ocorrência não é refeita (a próxima segue normalmente; use `POST /reports/saved/:id/run`).
+- Tarefas exportadas para BI incluem `tags` (texto livre do órgão): revise se podem conter dado pessoal.
 - Emissão `report:realtime` por socket e jobs agendados com Redis/réplicas múltiplas: testados só unitariamente (sem Socket.IO/Redis em execução multi-instância).
 - Medição de armazenamento em volume real (milhões de arquivos) e em backend S3.

@@ -9,6 +9,7 @@
 ;   BV_TRUNK_IPS        IPs de origem aceitos (identify), separados por vírgula (obrigatório em modo ip)
 ;   BV_TRUNK_CODECS     ulaw,alaw,opus (padrão ulaw,alaw)
 ;   BV_TRUNK_FROM_USER / BV_TRUNK_FROM_DOMAIN   identidade no From
+;   BV_LANGUAGE         idioma dos sons (ex.: pt_BR) — opcional
 ; ============================================================================================
 
 ;#if BV_TRUNK_HOST
@@ -47,6 +48,10 @@ rtp_symmetric=yes
 force_rport=yes
 rewrite_contact=yes
 trust_id_inbound=yes
+;#if BV_LANGUAGE
+; idioma dos sons do Asterisk (digits:/characters: do protocolo) — só use se o pacote de sons desse idioma estiver instalado
+language={{BV_LANGUAGE}}
+;#endif
 trust_id_outbound=yes
 send_pai=yes
 from_user={{BV_TRUNK_FROM_USER|balcao}}
