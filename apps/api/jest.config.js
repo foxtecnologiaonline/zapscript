@@ -10,6 +10,7 @@ module.exports = {
   // indefinidamente e travam a saída do Jest. forceExit garante que o processo
   // encerra assim que os testes terminam, mesmo com esses handles ainda abertos.
   forceExit: true,
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
     '^@zapscript/database$': '<rootDir>/../../packages/database/src',
   },

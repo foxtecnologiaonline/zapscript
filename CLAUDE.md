@@ -65,6 +65,20 @@ na API/Worker.
 - Comando no servidor sem SSH: `ops.yml` com `action=custom_ssh` + `custom_command` (a saída
   vai para o log do job — nunca imprima `.env`, chaves ou dados de clientes).
 
+## Balcão Virtual (omnichannel — TJ-TO)
+
+Módulo dentro do monorepo: API em `apps/api/src/balcao`, telas em `apps/web/src/app/balcao` (rota `/balcao`), tabelas `Bv*` no
+Prisma. **Comece por `docs/balcao/README.md`** (como rodar, roteiro de PoC, matriz requisito → código → o que foi/não foi
+verificado) e `docs/balcao/ARQUITETURA.md` (decisões e contratos entre as frentes). Variáveis `BV_*`: `docs/balcao/ENV.md`.
+
+- Roda **no mesmo processo da API** (jobs periódicos com lock em Redis, controlador ARI de voz, poller IMAP): não há serviço novo
+  no `ops.yml`. O **Asterisk** (voz) é um container à parte (`infra/asterisk`); HA/backup/DR em `infra/ha` e `infra/backup`.
+- Conteúdo de mensagens e credenciais são **cifrados em repouso**; só `core/messages.ts` lê/escreve `BvMessage.body`.
+- Testes: `cd apps/api && npx jest --runInBand src/balcao` (Postgres + Redis reais). Fluxo no navegador: `apps/api/scripts/balcao-e2e-smoke.js`.
+- O escudo (`lib/security-shield.ts`) **não conta 401 de `/balcao/`** (centenas de atendentes atrás do mesmo IP de NAT); o rate limit global
+  também isenta os webhooks do Balcão. Não reverta sem ler o comentário no código.
+- Simuladores de canal (`BV_DEV_SIMULATORS=1`) são só para demonstração — **nunca em produção**.
+
 ## Outras notas úteis
 
 - `ENCRYPTION_KEY`, `JWT_SECRET`, `INTERNAL_TOKEN`, `ADMIN_TOKEN` etc. vivem no

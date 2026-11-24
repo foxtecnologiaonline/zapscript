@@ -14,8 +14,13 @@ declare global {
 // mantém conexões abertas, elimina overhead de handshake por query, menor latência.
 // Só adicionamos pgbouncer=true se a URL usar a porta 6543 (transaction mode).
 function buildDatasourceUrl(): string | undefined {
-  const url = process.env.DATABASE_URL;
+  let url = process.env.DATABASE_URL;
   if (!url) return undefined;
+  // Testes: cada arquivo de teste cria o PRÓPRIO PrismaClient (módulos isolados pelo Jest). Com dezenas de suítes o pool
+  // padrão (cpus*2+1) esgota o max_connections=100 do Postgres — pool pequeno por cliente resolve.
+  if (process.env.NODE_ENV === 'test' && !/[?&]connection_limit=/.test(url)) {
+    url += `${url.includes('?') ? '&' : '?'}connection_limit=3`;
+  }
 
   // Session mode (porta 5432 no pooler ou direct): não precisa de pgbouncer=true
   const isSessionMode = !url.includes(':6543') && !url.includes('pgbouncer=true');
