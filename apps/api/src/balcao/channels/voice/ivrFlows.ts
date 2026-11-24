@@ -2,6 +2,7 @@ import type { BvIvrFlow } from '@prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { recordConfigVersion } from '../../core/configVersion';
 import { validateIvrDefinition, type IvrDefinition, type IvrIssue } from './ivr';
+import { loadUra0800 } from './ura0800';
 
 export class FlowError extends Error {
   constructor(public code: string, message: string, public status = 400, public details?: unknown) { super(message); }
@@ -64,11 +65,20 @@ export async function publishFlow(orgId: string, id: string, userId?: string | n
   return { flow: res.published, archivedId: res.archivedId, warnings: v.warnings };
 }
 
-/** Fluxo ACTIVE que atende o DID: dids explícitos → fluxo ACTIVE sem `dids` (padrão) → null. */
+/**
+ * Fluxo ACTIVE que atende o DID: mapeamento da integração URA_0800 (`dids[].flowName`) → `definition.dids` explícitos → fluxo ACTIVE
+ * sem `dids` (padrão) → null.
+ */
 export async function resolveFlowForDid(orgId: string, did: string | null | undefined): Promise<BvIvrFlow | null> {
   const active = await prisma.bvIvrFlow.findMany({ where: { orgId, status: 'ACTIVE' }, orderBy: { publishedAt: 'asc' } });
   const dids = (f: BvIvrFlow) => (((f.definition as any)?.dids ?? []) as string[]);
-  if (did) { const hit = active.find((f) => dids(f).includes(did)); if (hit) return hit; }
+  if (did) {
+    const mapped = (await loadUra0800(orgId))?.dids.find((d) => d.did === did);
+    const byName = mapped ? active.filter((f) => f.name === mapped.flowName) : [];
+    if (byName.length) return byName[byName.length - 1]; // versão publicada mais recente
+    const hit = active.find((f) => dids(f).includes(did));
+    if (hit) return hit;
+  }
   return active.find((f) => dids(f).length === 0) ?? null;
 }
 

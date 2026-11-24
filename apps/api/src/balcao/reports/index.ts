@@ -4,7 +4,7 @@ import { prisma } from '../../lib/prisma';
 import { auditReq } from '../core/audit';
 import { recordConfigVersion } from '../core/configVersion';
 import { guard, idParam, parse, sendError } from '../core/http';
-import { getOrgSettings } from '../core/settings';
+import { getOrgSettings, updateOrgSettings } from '../core/settings';
 import { getObjectBuffer } from '../core/storage';
 import { CHANNELS, USAGE_ITEMS } from '../core/types';
 import { columnsFor, customDefinitionSchema, definitionsCatalog, runCustom } from './custom';
@@ -12,7 +12,7 @@ import { DATASETS, CursorError, exportPage, type Dataset } from './export';
 import { consumption, dashboard, listQuotas, registerFiscalJobs } from './fiscal';
 import {
   AGENT_METRICS, GRANULARITIES, GRAN_DIM, METRICS, OVERVIEW_METRICS, TIMESERIES_METRICS, aggregate, agentsReport, compareKpis,
-  iqaByContractMonth, npsDistribution, npsSummary, overviewKpis, slaViolationList, type Filters,
+  IQA_DENOMINATORS, getIqaConfig, iqaByContractMonth, iqaDefinition, npsDistribution, npsSummary, overviewKpis, slaViolationList, type Filters,
 } from './metrics';
 import { MONTH_RE, generateMonthly } from './monthly';
 import { realtimeSnapshot, registerRealtimeEmitter } from './realtime';
@@ -146,12 +146,32 @@ export default async function plugin(app: FastifyInstance): Promise<void> {
     const orgId = req.bv!.orgId;
     const tz = await tzOf(orgId);
     const r = await iqaByContractMonth({ orgId, channel: q.channel, queueId: q.queueId, agentId: q.agentId, category: q.category }, tz, new Date(), q.startDate);
+    const goals = r.config.goals.map((g, i, a) => ({ fromMonth: g.fromMonth, months: i === a.length - 1 ? `${g.fromMonth}+` : g.fromMonth === a[i + 1].fromMonth - 1 ? `${g.fromMonth}` : `${g.fromMonth}–${a[i + 1].fromMonth - 1}`, goalPct: g.goalPct }));
     const payload = {
-      indicator: 'IQA (indicador 07)', definition: 'atendimentos via chatbot resolvidos no 1º contato e classificados como automatizáveis ÷ atendimentos via chatbot',
-      goals: [{ months: '1–3', goalPct: 40 }, { months: '4–6', goalPct: 60 }, { months: '7+', goalPct: 80 }], glosaBands: r.contract.bands, contract: { startDate: r.contract.startDate, source: r.contract.source }, months: r.months,
+      indicator: 'IQA (indicador 07)', definition: iqaDefinition(r.config.denominator), denominator: r.config.denominator,
+      goals, glosaBands: r.contract.bands, contract: { startDate: r.contract.startDate, source: r.contract.source }, months: r.months,
     };
-    const cols: CsvColumn[] = [['contractMonth', 'Mês de contrato'], ['from', 'Início'], ['to', 'Fim (exclusivo)'], ['botInvolved', 'Atendimentos via chatbot'], ['resolvedByBot', 'Resolvidos pelo bot'], ['firstContactResolved', 'Resolvidos no 1º contato'], ['automatable', 'Automatizáveis'], ['numerator', 'Numerador IQA'], ['value', 'IQA (%)'], ['goal', 'Meta (%)'], ['reachedGoal', 'Meta atingida'], ['gapPp', 'Distância da meta (p.p.)'], ['glosaPct', 'Glosa (%)']].map(([key, label]) => ({ key, label }));
+    const cols: CsvColumn[] = [['contractMonth', 'Mês de contrato'], ['from', 'Início'], ['to', 'Fim (exclusivo)'], ['botInvolved', 'Atendimentos via chatbot'], ['resolvedByBot', 'Resolvidos pelo bot'], ['firstContactResolved', 'Resolvidos no 1º contato'], ['automatable', 'Automatizáveis'], ['numerator', 'Numerador IQA'], ['denominator', 'Denominador IQA'], ['denominatorKind', 'Base do denominador'], ['value', 'IQA (%)'], ['goal', 'Meta (%)'], ['reachedGoal', 'Meta atingida'], ['gapPp', 'Distância da meta (p.p.)'], ['glosaPct', 'Glosa (%)']].map(([key, label]) => ({ key, label }));
     return respond(reply, q, 'iqa', payload, cols, r.months as any);
+  });
+
+  // Base de cálculo, metas por mês de contrato e faixas de glosa do IQA (settings.iqa). Só ADMIN altera.
+  app.get('/reports/iqa/config', { preHandler: read }, async (req) => getIqaConfig(req.bv!.orgId));
+  app.put('/reports/iqa/config', { preHandler: guard('org:manage') }, async (req, reply) => {
+    const b = parse(z.object({
+      denominator: z.enum(IQA_DENOMINATORS as [string, ...string[]]).optional(),
+      goals: z.array(z.object({ fromMonth: z.number().int().min(1).max(60), goalPct: z.number().min(0).max(100) }).strict()).min(1).max(12).nullable().optional(),
+      glosa: z.array(z.object({ maxGapPp: z.number().min(0).max(100).nullable(), glosaPct: z.number().min(0).max(100) }).strict()).min(1).max(10).nullable().optional(),
+    }).strict(), req.body, reply); if (!b) return;
+    if (b.goals && !b.goals.some((g) => g.fromMonth === 1)) return sendError(reply, 400, 'report.invalid_iqa_config', 'goals deve ter uma meta com fromMonth = 1');
+    if (b.glosa && b.glosa.filter((g) => g.maxGapPp == null).length !== 1) return sendError(reply, 400, 'report.invalid_iqa_config', 'glosa deve ter exatamente uma faixa final com maxGapPp = null');
+    const orgId = req.bv!.orgId;
+    const before = await getIqaConfig(orgId);
+    await updateOrgSettings(orgId, { iqa: b } as any);
+    const after = await getIqaConfig(orgId);
+    await auditReq(req, 'config.update', { entityType: 'iqa.config', entityId: orgId, before, after });
+    await recordConfigVersion(orgId, 'iqa.config', orgId, after, req.bv!.userId);
+    return after;
   });
 
   app.get('/reports/voice', { preHandler: read }, async (req, reply) => {

@@ -4,11 +4,13 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { auditReq } from '../../core/audit';
 import { recordConfigVersion } from '../../core/configVersion';
-import { guard, idParam, parse, sendError } from '../../core/http';
+import { bvAuth, guard, idParam, parse, sendError } from '../../core/http';
 import { getIntegration, logIntegration, maskSecrets, saveIntegration, setIntegrationStatus } from '../../core/integrations';
 import { can } from '../../core/permissions';
 import { getHolidays, getOrgSettings } from '../../core/settings';
 import { newKey, putObject } from '../../core/storage';
+import { maskNumber } from './dialPolicy';
+import { URA0800_DEFAULTS, testUra0800, ura0800Schema, type Ura0800Config } from './ura0800';
 import { getAriController } from './controller';
 import { DEFAULT_TRUNK, devSimulatorsEnabled, trunkConfigSchema, voiceEnabled, type TrunkConfig } from './config';
 import { FlowError, createDraft, deleteDraft, publishFlow, updateDraft } from './ivrFlows';
@@ -50,7 +52,7 @@ export default async function registerRoutes(app: FastifyInstance): Promise<void
   // ── status ────────────────────────────────────────────────────────────────────────────────────────
   app.get('/status', { preHandler: guard('conversation:monitor') }, async () => {
     const c = getAriController();
-    if (!c) return { enabled: voiceEnabled(), connected: false, started: false };
+    if (!c) return { enabled: voiceEnabled(), role: null, connected: false, started: false };
     return { ...c.status(), started: true };
   });
 
@@ -154,12 +156,19 @@ export default async function registerRoutes(app: FastifyInstance): Promise<void
     return (await ctl.hangup(req.bv!.orgId, p.id)) ? { ok: true } : sendError(reply, 404, 'call.not_found', 'Chamada não encontrada ou já encerrada');
   });
 
-  app.post('/calls/dial', { preHandler: guard('conversation:reply') }, async (req, reply) => {
+  // Permissão (conversation:reply), presença e limites são aplicados pela política de discagem do órgão (settings.voice.dial*) dentro do controlador.
+  app.post('/calls/dial', { preHandler: bvAuth }, async (req, reply) => {
     const b = parse(z.object({ number: z.string().regex(numberRe, 'número inválido') }), req.body, reply); if (!b) return;
     const ctl = getAriController(); if (!ctl) return sendError(reply, 503, 'voice.disabled', 'Telefonia desabilitada ou desconectada');
     const r = await ctl.dial(req.bv!.orgId, req.bv!.userId, b.number);
-    if (!r.ok) return sendError(reply, r.status ?? 400, r.code, r.message);
-    await auditReq(req, 'call.dial', { entityType: 'BvCall', entityId: r.callId });
+    const meta = { to: maskNumber(b.number) };
+    if (!r.ok) {
+      if (r.code === 'voice.dial_not_allowed' || r.code === 'voice.dial_limit' || r.code === 'voice.originate_failed') {
+        await auditReq(req, 'call.dial', { entityType: 'BvCall', entityId: 'denied', meta: { ...meta, outcome: r.code === 'voice.originate_failed' ? 'failed' : 'denied', code: r.code, reason: r.reason ?? null } });
+      }
+      return sendError(reply, r.status ?? 400, r.code, r.message, r.reason ? { reason: r.reason } : undefined);
+    }
+    await auditReq(req, 'call.dial', { entityType: 'BvCall', entityId: r.callId, meta: { ...meta, outcome: 'started' } });
     return reply.code(202).send({ callId: r.callId, conversationId: r.conversationId });
   });
 
@@ -326,6 +335,47 @@ export default async function registerRoutes(app: FastifyInstance): Promise<void
       await logIntegration(orgId, 'SIP_TRUNK', 'test', false, { durationMs: Date.now() - t0, error: err?.message });
       return reply.code(502).send({ ok: false, ari: { ok: false, error: err?.message ?? 'falha' } });
     }
+  });
+
+  // ── URA 0800 (integração URA_0800: DID → fluxo, cabeçalhos X-* → metadata, IPs de origem) ────────────────
+  const uraPut = z.object({ enabled: z.boolean().optional(), config: ura0800Schema });
+  const uraTest = z.object({
+    did: z.string().regex(numberRe).optional(),
+    headers: z.record(z.string().max(80), z.string().max(200)).optional(),
+    sourceIp: z.string().max(64).optional(),
+  });
+
+  app.get('/ura0800', { preHandler: guard('integration:manage') }, async (req) => {
+    const i = await getIntegration<Ura0800Config>(req.bv!.orgId, 'URA_0800');
+    return {
+      configured: !!i, enabled: i?.enabled ?? false, status: i?.status ?? 'UNCONFIGURED',
+      config: { dids: [], headerMap: {}, ...(i?.config ?? {}) }, defaults: URA0800_DEFAULTS,
+    };
+  });
+
+  app.put('/ura0800', { preHandler: guard('integration:manage') }, async (req, reply) => {
+    const b = parse(uraPut, req.body, reply); if (!b) return;
+    const orgId = req.bv!.orgId;
+    const cur = await getIntegration<Ura0800Config>(orgId, 'URA_0800');
+    const row = await saveIntegration(orgId, 'URA_0800', b.config, { enabled: b.enabled });
+    await recordConfigVersion(orgId, 'URA_0800', row.id, b.config, req.bv!.userId);
+    await auditReq(req, 'config.update', { entityType: 'URA_0800', entityId: row.id, before: cur?.config, after: b.config });
+    return { ok: true, enabled: row.enabled, config: b.config };
+  });
+
+  // Autoteste: confere DID → fluxo ACTIVE, extração dos cabeçalhos de um INVITE de teste e IP de origem. Não cria chamada.
+  app.post('/ura0800/test', { preHandler: guard('integration:manage') }, async (req, reply) => {
+    const b = parse(uraTest, req.body ?? {}, reply); if (!b) return;
+    const orgId = req.bv!.orgId;
+    const i = await getIntegration<Record<string, unknown>>(orgId, 'URA_0800');
+    if (!i) return sendError(reply, 404, 'ura0800.not_configured', 'Integração URA 0800 não configurada');
+    const parsed = ura0800Schema.safeParse(i.config);
+    if (!parsed.success) return sendError(reply, 422, 'ura0800.invalid_config', 'Configuração salva é inválida', parsed.error.issues.map((x) => ({ path: x.path.join('.'), message: x.message })));
+    const t0 = Date.now();
+    const result = await testUra0800(orgId, parsed.data, b);
+    await setIntegrationStatus(i.id, result.ok ? 'OK' : 'ERROR', result.ok ? null : result.warnings.join(' | ').slice(0, 500) || 'verificação falhou');
+    await logIntegration(orgId, 'URA_0800', 'test', result.ok, { durationMs: Date.now() - t0, error: result.ok ? undefined : result.warnings.join(' | ') });
+    return { ...result, enabled: i.enabled };
   });
 
   // ── simulador de desenvolvimento ─────────────────────────────────────────────────────────────────

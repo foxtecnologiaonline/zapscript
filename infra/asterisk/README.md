@@ -137,6 +137,10 @@ estado do endpoint do tronco (`online` = qualify OK).
 - **Cabeçalhos X-\*:** `X-URA-Option`, `X-URA-Id`, `X-Protocolo-0800` já viram variáveis `BV_X_*` no dialplan; outros nomes
   listados em `preserveHeaders` são lidos pela API (`PJSIP_HEADER`). Vão para `metadata.voice.headers` da conversa e podem escolher
   o ponto de entrada da URA (`entryByHeader`).
+- **URA 0800 configurável:** `PUT /balcao/voice/ura0800` (`dids[{did, flowName}]`, `headerMap`, `allowedSourceIps`) escolhe o fluxo por DID e lê os
+  cabeçalhos do `headerMap` (nomes do TJTO, ex.: `X-TJTO-URA-Opcao`) via `PJSIP_HEADER` — não precisam estar no dialplan. Para `allowedSourceIps` o
+  dialplan precisa expor `BV_SRC_ADDR` (`${CHANNEL(pjsip,remote_addr)}`, já em `extensions.conf`) e o `ari.conf` listá-lo em `channelvars`
+  (padrão do template; se você sobrescreveu `BV_ARI_CHANNELVARS`, acrescente `BV_SRC_ADDR`). Sem `BV_SRC_ADDR` a chamada é recusada quando há lista de IPs.
 - **Transbordo / click-to-call:** saem por `PJSIP/<número>@tjto-trunk`; `transferCallerId` decide se o TJTO vê o número original
   do cidadão ou o do tronco.
 

@@ -14,7 +14,7 @@ const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:mm');
 export const businessHoursSchema = z.partialRecord(z.enum(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']), z.array(z.tuple([hhmm, hhmm]).refine(([a, b]) => a < b, { message: 'Início deve ser anterior ao fim' })).max(6));
 const strs = z.array(z.string().trim().min(1).max(60)).max(50);
 
-const queueFields = {
+export const queueFields = {
   name: z.string().trim().min(1).max(120),
   slug: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{0,59}$/, 'Use letras minúsculas, números e hífen'),
   categories: strs, channels: z.array(z.enum(CHANNELS)).max(CHANNELS.length), requiredSkills: strs,
@@ -29,11 +29,12 @@ const queueFields = {
   active: z.boolean(),
 };
 const createSchema = z.strictObject({ ...queueFields, slug: queueFields.slug.optional() }).partial().required({ name: true }).extend({ memberIds: z.array(z.string().max(64)).max(500).optional() });
-const patchSchema = z.strictObject(queueFields).partial();
+export const queuePatchSchema = z.strictObject(queueFields).partial();
+const patchSchema = queuePatchSchema;
 
 const slugify = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'fila';
 
-const snapshot = (q: BvQueue, memberIds?: string[]) => ({ ...q, ...(memberIds ? { memberIds } : {}) });
+export const snapshot = (q: BvQueue, memberIds?: string[]) => ({ ...q, ...(memberIds ? { memberIds } : {}) });
 
 /** O overflow criaria ciclo (a fila `queueId` acabaria em si mesma)? Segue a cadeia a partir de `target`. */
 export async function overflowCreatesCycle(orgId: string, queueId: string | null, target: string): Promise<boolean> {
@@ -49,7 +50,7 @@ export async function overflowCreatesCycle(orgId: string, queueId: string | null
   return false;
 }
 
-async function validateOverflow(orgId: string, selfId: string | null, target: string | null | undefined) {
+export async function validateOverflow(orgId: string, selfId: string | null, target: string | null | undefined) {
   if (!target) return null;
   if (target === selfId) return 'A fila não pode ser o próprio overflow';
   const q = await prisma.bvQueue.findFirst({ where: { id: target, orgId }, select: { id: true } });

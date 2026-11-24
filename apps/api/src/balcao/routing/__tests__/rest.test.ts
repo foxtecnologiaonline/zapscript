@@ -334,14 +334,14 @@ describe('routing/REST — contatos e respostas prontas', () => {
     expect(d.raw.body).not.toContain('52998224725');
   });
 
-  it('respostas prontas: CRUD, atalho único por órgão, escrita só para gestão', async () => {
+  it('respostas prontas do órgão: CRUD, atalho único por órgão, escrita só para gestão', async () => {
     const orgId = await setup(); const org2 = await setup();
     const sup = await makeUser(orgId, 'SUPERVISOR'); const ag = await makeUser(orgId, 'ATENDENTE'); const sup2 = await makeUser(org2, 'SUPERVISOR');
     const c = await call(sup, 'POST', '/canned-responses', { shortcut: '/Bom-Dia', title: 'Saudação', body: 'Bom dia! Em que posso ajudar?' });
     expect(c.status).toBe(201); expect(c.json.item.shortcut).toBe('bom-dia');
     expect((await call(sup, 'POST', '/canned-responses', { shortcut: 'bom-dia', title: 'x', body: 'y' })).status).toBe(409);
     expect((await call(sup2, 'POST', '/canned-responses', { shortcut: 'bom-dia', title: 'x', body: 'y' })).status).toBe(201); // outro órgão pode repetir
-    expect((await call(ag, 'POST', '/canned-responses', { shortcut: 'z', title: 'x', body: 'y' })).status).toBe(403);
+    expect((await call(ag, 'POST', '/canned-responses', { shortcut: 'z', title: 'x', body: 'y', scope: 'ORG' })).status).toBe(403); // do órgão: só a gestão (as pessoais: ver gaps.test.ts)
     expect((await call(ag, 'GET', '/canned-responses?q=bom')).json.items).toHaveLength(1);
     expect((await call(sup, 'PATCH', `/canned-responses/${c.json.item.id}`, { body: 'Olá!' })).json.item.body).toBe('Olá!');
     expect((await call(sup2, 'PATCH', `/canned-responses/${c.json.item.id}`, { body: 'hack' })).status).toBe(404);

@@ -11,7 +11,8 @@ export const recordingDir = () => process.env.BV_ASTERISK_RECORDING_DIR || '/var
 export const agentRingMs = () => Math.max(1, Number(process.env.BV_AGENT_RING_SEC || 20)) * 1000;
 export const maxQueueMs = () => Math.max(10, Number(process.env.BV_VOICE_MAX_QUEUE_SEC || 1200)) * 1000;
 
-export interface AriConnection { url: string; username: string; password: string; app: string }
+/** `orgId`: órgão dono da conexão quando ela vem da integração SIP_TRUNK (escopo do lock de liderança do ARI). */
+export interface AriConnection { url: string; username: string; password: string; app: string; orgId?: string }
 
 export function ariFromEnv(): AriConnection | null {
   const url = process.env.BV_ARI_URL;
@@ -55,6 +56,12 @@ export async function loadTrunkConfig(orgId: string): Promise<TrunkConfig & type
   return { ...DEFAULT_TRUNK, ...((i?.config ?? {}) as TrunkConfig) } as any;
 }
 
+/** DIDs de uma config bruta de SIP_TRUNK/URA_0800 (aceita `string[]`, `{did, flowName}[]` e o legado `did`). */
+export function didsOf(raw: any): string[] {
+  const list: unknown[] = [...(Array.isArray(raw?.dids) ? raw.dids : []), ...(raw?.did ? [raw.did] : [])];
+  return list.map((d) => (typeof d === 'string' ? d : (d as any)?.did)).filter((d): d is string => typeof d === 'string');
+}
+
 /** Descobre o órgão dono de um DID: fluxos ACTIVE (definition.dids) → integrações SIP_TRUNK/URA_0800 → BV_VOICE_ORG_ID → único órgão com tronco. */
 export async function resolveOrgForDid(did: string | null | undefined): Promise<string | null> {
   if (did) {
@@ -65,8 +72,7 @@ export async function resolveOrgForDid(did: string | null | undefined): Promise<
   if (did) {
     for (const r of rows) {
       const i = await getIntegration<any>(r.orgId, r.type as any);
-      const dids: string[] = [...(i?.config?.dids ?? []), ...(i?.config?.did ? [i.config.did] : [])];
-      if (dids.includes(did)) return r.orgId;
+      if (didsOf(i?.config).includes(did)) return r.orgId;
     }
   }
   if (process.env.BV_VOICE_ORG_ID) return process.env.BV_VOICE_ORG_ID;
@@ -81,7 +87,7 @@ export async function loadAriConnection(): Promise<AriConnection | null> {
   const rows = await prisma.bvIntegration.findMany({ where: { type: 'SIP_TRUNK', enabled: true }, select: { orgId: true } });
   for (const r of rows) {
     const i = await getIntegration<TrunkConfig>(r.orgId, 'SIP_TRUNK');
-    if (i?.config?.ari) return { url: i.config.ari.url.replace(/\/+$/, ''), username: i.config.ari.username, password: i.config.ari.password, app: ariApp() };
+    if (i?.config?.ari) return { url: i.config.ari.url.replace(/\/+$/, ''), username: i.config.ari.username, password: i.config.ari.password, app: ariApp(), orgId: r.orgId };
   }
   return null;
 }

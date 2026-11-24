@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { pipeline } from 'stream/promises';
 import type { Readable } from 'stream';
+import { enforceScan, scanFile } from './antivirus';
 
 /**
  * Armazenamento de objetos (anexos, gravações, exportações). Implementação em disco local
@@ -28,7 +29,17 @@ export function newKey(orgId: string, kind: StorageKind, ext = ''): string {
 
 export interface StoredObject { key: string; size: number; sha256: string }
 
-export async function putObject(key: string, data: Buffer | Readable): Promise<StoredObject> {
+/** `scan: true` passa o arquivo pelo antivírus (ClamAV, se configurado) e REMOVE o objeto se recusado — use em anexos de cidadãos. */
+export async function putObject(key: string, data: Buffer | Readable, opts: { scan?: boolean } = {}): Promise<StoredObject> {
+  const stored = await writeObject(key, data);
+  if (opts.scan) {
+    try { enforceScan(await scanFile(resolveKey(key))); }
+    catch (err) { await fs.promises.rm(resolveKey(key), { force: true }); throw err; }
+  }
+  return stored;
+}
+
+async function writeObject(key: string, data: Buffer | Readable): Promise<StoredObject> {
   const full = resolveKey(key);
   await fs.promises.mkdir(path.dirname(full), { recursive: true });
   const hash = crypto.createHash('sha256');

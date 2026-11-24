@@ -23,7 +23,7 @@ export function parse<S extends z.ZodTypeAny>(schema: S, data: unknown, reply: F
   return null;
 }
 
-const userCache = new Map<string, { at: number; ctx: Omit<BvAuthContext, 'sessionId' | 'via'> | null }>();
+const userCache = new Map<string, { at: number; ctx: (Omit<BvAuthContext, 'sessionId' | 'via'> & { pending?: 'password' | 'mfa' }) | null }>();
 const USER_TTL_MS = 10_000;
 const sessionCache = new Map<string, { at: number; ok: boolean }>();
 export const clearAuthCache = () => { userCache.clear(); sessionCache.clear(); };
@@ -38,11 +38,15 @@ async function sessionActive(sid: string): Promise<boolean> {
   return ok;
 }
 
-async function loadUser(userId: string): Promise<Omit<BvAuthContext, 'sessionId' | 'via'> | null> {
+async function loadUser(userId: string): Promise<(Omit<BvAuthContext, 'sessionId' | 'via'> & { pending?: 'password' | 'mfa' }) | null> {
   const hit = userCache.get(userId);
   if (hit && Date.now() - hit.at < USER_TTL_MS) return hit.ctx;
-  const u = await prisma.bvUser.findUnique({ where: { id: userId }, select: { id: true, orgId: true, role: true, active: true, name: true, email: true } });
-  const ctx = u && u.active ? { userId: u.id, orgId: u.orgId, role: u.role as Role, name: u.name, email: u.email } : null;
+  const u = await prisma.bvUser.findUnique({ where: { id: userId }, select: { id: true, orgId: true, role: true, active: true, name: true, email: true, mustChangePassword: true, totpEnabled: true, org: { select: { settings: true } } } });
+  const requiredRoles: string[] = (u?.org?.settings as any)?.security?.requireMfaRoles ?? [];
+  const ctx = u && u.active ? {
+    userId: u.id, orgId: u.orgId, role: u.role as Role, name: u.name, email: u.email,
+    pending: u.mustChangePassword ? 'password' as const : (requiredRoles.includes(u.role) && !u.totpEnabled ? 'mfa' as const : undefined),
+  } : null;
   userCache.set(userId, { at: Date.now(), ctx });
   return ctx;
 }
@@ -69,7 +73,13 @@ export async function bvAuth(req: FastifyRequest, reply: FastifyReply) {
   const u = await loadUser(p.sub);
   if (!u) return sendError(reply, 401, 'auth.user_inactive', 'Usuário inativo');
   if (p.sid && !(await sessionActive(p.sid))) return sendError(reply, 401, 'auth.session_revoked', 'Sessão encerrada');
-  req.bv = { ...u, sessionId: p.sid, via: 'jwt' };
+  // Senha temporária ou MFA obrigatório pendente: só as rotas /auth/* (trocar senha, configurar MFA, /me, logout) funcionam.
+  if (u.pending && !req.url.startsWith('/balcao/auth/') && !req.url.startsWith('/auth/')) {
+    return sendError(reply, 403, u.pending === 'password' ? 'auth.password_change_required' : 'auth.mfa_setup_required',
+      u.pending === 'password' ? 'Troque a senha temporária para continuar.' : 'Ative a verificação em duas etapas para continuar.');
+  }
+  const { pending: _pending, ...ctx } = u;
+  req.bv = { ...ctx, sessionId: p.sid, via: 'jwt' };
 }
 
 /**

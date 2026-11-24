@@ -44,8 +44,8 @@ export function A11yToolbar() {
   const btn = 'min-h-[36px] min-w-[36px] rounded-md border border-bv-border bg-bv-surface px-2 text-sm hover:bg-bv-subtle';
   return (
     <div role="group" aria-label="Acessibilidade" className="flex items-center gap-1">
-      <button type="button" className={btn} aria-label="Diminuir fonte" disabled={idx === 0} onClick={() => set({ font: order[idx - 1] })}>A−</button>
-      <button type="button" className={btn} aria-label="Aumentar fonte" disabled={idx === order.length - 1} onClick={() => set({ font: order[idx + 1] })}>A+</button>
+      <button type="button" className={btn} aria-label="A−, diminuir o tamanho da fonte" disabled={idx === 0} onClick={() => set({ font: order[idx - 1] })}>A−</button>
+      <button type="button" className={btn} aria-label="A+, aumentar o tamanho da fonte" disabled={idx === order.length - 1} onClick={() => set({ font: order[idx + 1] })}>A+</button>
       <button type="button" className={btn} aria-pressed={prefs.contrast === 'high'} onClick={() => set({ contrast: prefs.contrast === 'high' ? 'normal' : 'high' })}>Alto contraste</button>
       <button type="button" className={btn} aria-pressed={prefs.libras} onClick={() => set({ libras: !prefs.libras })}>Libras</button>
     </div>

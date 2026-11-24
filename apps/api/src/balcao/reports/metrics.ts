@@ -29,7 +29,11 @@ export interface Filters {
 }
 
 export type MetricUnit = 'count' | 'seconds' | 'percent' | 'score';
-export interface MetricDef { key: string; label: string; unit: MetricUnit; description: string; sql: string }
+export interface MetricDef {
+  key: string; label: string; unit: MetricUnit; description: string; sql: string;
+  /** Métrica calculada em JS a partir de outras (não existe como expressão SQL). Hoje só `iqaRate` (fórmula única do IQA). */
+  derived?: boolean;
+}
 
 // ── Expressões base (segundos) ───────────────────────────────────────────────
 const TME = `EXTRACT(EPOCH FROM (c."firstResponseAt" - c."startedAt"))::float8`;
@@ -105,8 +109,13 @@ const CATALOG: MetricDef[] = [
   { key: 'csatAvg', label: 'Nota média (0–10)', unit: 'score', description: 'Média das notas de satisfação', sql: `ROUND((AVG(c."csatScore") FILTER (WHERE c."csatScore" IS NOT NULL))::numeric, 2)::float8` },
   { key: 'iqaCount', label: 'IQA — numerador', unit: 'count', description: 'Via chatbot ∧ resolvido pelo bot ∧ 1º contato ∧ automatizável', sql: cnt(IQA_NUM) },
   { key: 'automatable', label: 'Classificadas automatizáveis', unit: 'count', description: 'automatable = true', sql: cnt(`c."automatable"`) },
-  { key: 'iqaRate', label: 'IQA (%)', unit: 'percent', description: 'numerador ÷ atendimentos via chatbot', sql: pct(IQA_NUM, BOT_VIA) },
+  { key: 'iqaAutomatableBase', label: 'IQA — base automatizável', unit: 'count', description: 'Via chatbot ∧ automatizável (denominador quando settings.iqa.denominator = AUTOMATABLE)', sql: cnt(`${BOT_VIA} AND c."automatable"`) },
+  // Fórmula ÚNICA do IQA: computeIqa() (abaixo). Não existe expressão SQL de razão — aggregate() busca as contagens e calcula em JS.
+  { key: 'iqaRate', label: 'IQA (%)', unit: 'percent', description: 'IQA conforme settings.iqa.denominator (padrão: numerador ÷ atendimentos via chatbot)', sql: 'NULL', derived: true },
 ];
+
+/** Contagens de que a fórmula do IQA precisa (todas SQL). */
+const IQA_DEPS = ['iqaCount', 'botInvolved', 'iqaAutomatableBase'] as const;
 
 export const METRICS: Readonly<Record<string, MetricDef>> = Object.freeze(Object.fromEntries(CATALOG.map((m) => [m.key, m])));
 export const METRIC_KEYS = CATALOG.map((m) => m.key) as [string, ...string[]];
@@ -154,21 +163,33 @@ export type Row = Record<string, any>;
 export async function aggregate(f: Filters, dims: string[], metrics: string[], opts: AggregateOptions = {}): Promise<Row[]> {
   const tz = Prisma.sql`${validTz(f.period.timezone)}`;
   const dimDefs = dims.map((k) => { const d = DIMENSIONS[k]; if (!d) throw new Error(`dimensão desconhecida: ${k}`); return d; });
-  const metDefs = metrics.map((k) => { const m = METRICS[k]; if (!m) throw new Error(`métrica desconhecida: ${k}`); return m; });
+  for (const k of metrics) if (!METRICS[k]) throw new Error(`métrica desconhecida: ${k}`);
+  const wantsIqa = metrics.includes('iqaRate');
+  // `iqaRate` não é SQL: pede-se as contagens e computeIqa() resolve (mesma fórmula do /ai/stats e do /reports/iqa).
+  const sqlKeys = [...new Set([...metrics.filter((k) => !METRICS[k].derived), ...(wantsIqa ? IQA_DEPS : [])])];
   const selects: Prisma.Sql[] = [
     ...dimDefs.map((d) => Prisma.sql`${d.sql(tz)} AS ${Prisma.raw(`"${d.key}"`)}`),
-    ...metDefs.map((m) => Prisma.sql`${Prisma.raw(m.sql)} AS ${Prisma.raw(`"${m.key}"`)}`),
+    ...sqlKeys.map((k) => Prisma.sql`${Prisma.raw(METRICS[k].sql)} AS ${Prisma.raw(`"${k}"`)}`),
   ];
   const group = dimDefs.length ? Prisma.sql`GROUP BY ${Prisma.join(dimDefs.map((_, i) => Prisma.raw(String(i + 1))))}` : Prisma.empty;
   let order = Prisma.empty;
+  const ob = opts.orderBy && [...dims, ...metrics].includes(opts.orderBy.key) ? opts.orderBy : null;
+  const sortInJs = !!ob && !!METRICS[ob.key]?.derived;
   if (dimDefs.length) {
-    const ob = opts.orderBy && [...dims, ...metrics].includes(opts.orderBy.key) ? opts.orderBy : null;
-    if (ob) order = Prisma.sql`ORDER BY ${Prisma.raw(`"${ob.key}"`)} ${Prisma.raw(ob.dir === 'asc' ? 'ASC' : 'DESC')} NULLS LAST`;
-    else if (dimDefs.every((d) => d.time)) order = Prisma.sql`ORDER BY ${Prisma.join(dimDefs.map((_, i) => Prisma.raw(String(i + 1))))}`;
+    if (ob && !sortInJs) order = Prisma.sql`ORDER BY ${Prisma.raw(`"${ob.key}"`)} ${Prisma.raw(ob.dir === 'asc' ? 'ASC' : 'DESC')} NULLS LAST`;
+    else if (!ob && dimDefs.every((d) => d.time)) order = Prisma.sql`ORDER BY ${Prisma.join(dimDefs.map((_, i) => Prisma.raw(String(i + 1))))}`;
     else order = Prisma.sql`ORDER BY ${Prisma.raw('COUNT(*) DESC')}`;
   }
   const limit = dimDefs.length ? Prisma.sql`LIMIT ${Math.min(Math.max(opts.limit ?? 5000, 1), 10000)}` : Prisma.empty;
   const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`SELECT ${Prisma.join(selects)} FROM "BvConversation" c WHERE ${whereConv(f)} ${group} ${order} ${limit}`);
+  if (wantsIqa) {
+    const { denominator } = await getIqaConfig(f.orgId);
+    for (const r of rows) {
+      r.iqaRate = computeIqa({ numerator: r.iqaCount, botInvolved: r.botInvolved, automatableBase: r.iqaAutomatableBase }, denominator).value;
+      for (const k of IQA_DEPS) if (!metrics.includes(k)) delete r[k];
+    }
+    if (sortInJs && ob) rows.sort((a, b) => ((a[ob.key] ?? -Infinity) - (b[ob.key] ?? -Infinity)) * (ob.dir === 'asc' ? 1 : -1));
+  }
   return decorate(f.orgId, dims, rows);
 }
 
@@ -299,11 +320,74 @@ export async function agentsReport(f: Filters) {
 }
 
 // ── IQA (indicador 07) ───────────────────────────────────────────────────────
+/**
+ * DEFINIÇÃO ÚNICA (TR 18.1, indicador 07): "percentual de atendimentos via chatbot resolvidos no primeiro contato e
+ * classificados como automatizáveis".
+ *   numerador   = atendimentos via chatbot (botHandled ∨ resolvedByBot) com resolvedByBot ∧ firstContactResolved ∧ automatable
+ *   denominador = `settings.iqa.denominator`:
+ *       'ALL_BOT'      (padrão) todos os atendimentos via chatbot do período (leitura literal do edital);
+ *       'AUTOMATABLE'  só os via chatbot classificados como automatizáveis.
+ * `computeIqa` é a ÚNICA implementação da razão: `aggregate('iqaRate')`, `/reports/iqa`, o relatório mensal e `/ai/stats`
+ * (via `iqaForPeriod`) passam por ela. Conversas ainda abertas entram no denominador (ainda não "resolvidas").
+ */
+export type IqaDenominator = 'ALL_BOT' | 'AUTOMATABLE';
+export const IQA_DENOMINATORS: readonly IqaDenominator[] = ['ALL_BOT', 'AUTOMATABLE'];
+
+export interface IqaCounts { numerator: number; botInvolved: number; automatableBase: number }
+export interface IqaResult { numerator: number; denominator: number; denominatorKind: IqaDenominator; /** percentual 0–100 (2 casas) ou null sem base */ value: number | null }
+
+/** Função pura: contagens → IQA em %. Denominador 0 → `value: null`. */
+export function computeIqa(counts: IqaCounts, denominator: IqaDenominator = 'ALL_BOT'): IqaResult {
+  const den = denominator === 'AUTOMATABLE' ? counts.automatableBase : counts.botInvolved;
+  return { numerator: counts.numerator, denominator: den, denominatorKind: denominator, value: den > 0 ? round((100 * counts.numerator) / den, 2) : null };
+}
+
 export interface IqaGlosaBand { maxGapPp: number | null; glosaPct: number }
 export const DEFAULT_GLOSA_BANDS: IqaGlosaBand[] = [{ maxGapPp: 10, glosaPct: 10 }, { maxGapPp: 20, glosaPct: 15 }, { maxGapPp: null, glosaPct: 20 }];
+export interface IqaGoal { fromMonth: number; goalPct: number }
+export const DEFAULT_IQA_GOALS: IqaGoal[] = [{ fromMonth: 1, goalPct: 40 }, { fromMonth: 4, goalPct: 60 }, { fromMonth: 7, goalPct: 80 }];
+export interface IqaConfig { denominator: IqaDenominator; goals: IqaGoal[]; glosa: IqaGlosaBand[] }
+export const DEFAULT_IQA_CONFIG: IqaConfig = { denominator: 'ALL_BOT', goals: DEFAULT_IQA_GOALS, glosa: DEFAULT_GLOSA_BANDS };
 
-/** Meta do IQA por mês de contrato: 1–3 → 40%, 4–6 → 60%, a partir do 7º → 80%. */
-export const iqaGoal = (contractMonth: number): number => (contractMonth <= 3 ? 40 : contractMonth <= 6 ? 60 : 80);
+/** Normaliza (e valida) `settings.iqa` cru; qualquer parte inválida cai no padrão. `settings.contract.iqaGlosaBands` (legado) vale se `iqa.glosa` faltar. */
+export function normalizeIqaConfig(raw: any, legacyBands?: any): IqaConfig {
+  const iqa = raw && typeof raw === 'object' ? raw : {};
+  const bands = (src: any): IqaGlosaBand[] | null => {
+    if (!Array.isArray(src) || !src.length) return null;
+    const out = src.map((b) => ({ maxGapPp: b?.maxGapPp == null ? null : Number(b.maxGapPp), glosaPct: Number(b?.glosaPct) }));
+    if (out.some((b) => !Number.isFinite(b.glosaPct) || b.glosaPct < 0 || b.glosaPct > 100 || (b.maxGapPp != null && (!Number.isFinite(b.maxGapPp) || b.maxGapPp < 0)))) return null;
+    return out.sort((a, b) => (a.maxGapPp ?? Infinity) - (b.maxGapPp ?? Infinity));
+  };
+  const goals = (src: any): IqaGoal[] | null => {
+    if (!Array.isArray(src) || !src.length) return null;
+    const out = src.map((g) => ({ fromMonth: Number(g?.fromMonth), goalPct: Number(g?.goalPct) }));
+    if (out.some((g) => !Number.isInteger(g.fromMonth) || g.fromMonth < 1 || !Number.isFinite(g.goalPct) || g.goalPct < 0 || g.goalPct > 100)) return null;
+    out.sort((a, b) => a.fromMonth - b.fromMonth);
+    return out[0].fromMonth === 1 ? out : null; // precisa cobrir o mês 1
+  };
+  return {
+    denominator: IQA_DENOMINATORS.includes(iqa.denominator) ? iqa.denominator : 'ALL_BOT',
+    goals: goals(iqa.goals) ?? DEFAULT_IQA_GOALS,
+    glosa: bands(iqa.glosa) ?? bands(legacyBands) ?? DEFAULT_GLOSA_BANDS,
+  };
+}
+
+export const iqaDefinition = (d: IqaDenominator): string =>
+  `atendimentos via chatbot resolvidos no 1º contato e classificados como automatizáveis ÷ ${d === 'AUTOMATABLE' ? 'atendimentos via chatbot classificados como automatizáveis' : 'atendimentos via chatbot'}`;
+
+/** Lê `settings.iqa` do JSON BRUTO do órgão (sem cache; o tipo BvOrgSettings não o conhece). */
+export async function getIqaConfig(orgId: string): Promise<IqaConfig> {
+  const org = await prisma.bvOrg.findUnique({ where: { id: orgId }, select: { settings: true } });
+  const s = (org?.settings ?? {}) as any;
+  return normalizeIqaConfig(s.iqa, s.contract?.iqaGlosaBands);
+}
+
+/** Meta do IQA por mês de contrato (padrão: 1–3 → 40%, 4–6 → 60%, a partir do 7º → 80%; configurável em `settings.iqa.goals`). */
+export const iqaGoal = (contractMonth: number, goals: IqaGoal[] = DEFAULT_IQA_GOALS): number => {
+  let g = goals[0]?.goalPct ?? 40;
+  for (const x of goals) if (contractMonth >= x.fromMonth) g = x.goalPct;
+  return g;
+};
 
 /** Glosa conforme a distância (em pontos percentuais) abaixo da meta. 0 se a meta foi atingida. */
 export function iqaGlosa(value: number | null, goal: number, bands: IqaGlosaBand[] = DEFAULT_GLOSA_BANDS): number | null {
@@ -314,14 +398,24 @@ export function iqaGlosa(value: number | null, goal: number, bands: IqaGlosaBand
   return bands[bands.length - 1]?.glosaPct ?? 0;
 }
 
+export interface IqaPeriodResult extends IqaResult, IqaCounts { botResolved: number; firstContactResolved: number; automatable: number }
+
+/** IQA de um período/filtros: contagens (SQL) + `computeIqa` com a base configurada. Usado por /reports/iqa e /ai/stats. */
+export async function iqaForPeriod(f: Filters, config?: IqaConfig): Promise<IqaPeriodResult> {
+  const cfg = config ?? await getIqaConfig(f.orgId);
+  const row = (await aggregate(f, [], ['botInvolved', 'botResolved', 'fcrCount', 'automatable', 'iqaCount', 'iqaAutomatableBase']))[0];
+  const counts: IqaCounts = { numerator: row.iqaCount, botInvolved: row.botInvolved, automatableBase: row.iqaAutomatableBase };
+  return { ...counts, ...computeIqa(counts, cfg.denominator), botResolved: row.botResolved, firstContactResolved: row.fcrCount, automatable: row.automatable };
+}
+
 export interface ContractInfo { startDate: string; source: 'settings' | 'first_conversation' | 'none'; bands: IqaGlosaBand[]; hours: Record<string, number> | null }
 
-/** Lê `settings.contract` do JSON BRUTO do órgão (o tipo BvOrgSettings não o conhece). */
+/** Lê `settings.contract` do JSON BRUTO do órgão (o tipo BvOrgSettings não o conhece). `bands` = faixas de glosa efetivas (`settings.iqa.glosa`). */
 export async function getContractInfo(orgId: string, tz: string): Promise<ContractInfo> {
   const org = await prisma.bvOrg.findUnique({ where: { id: orgId }, select: { settings: true } });
-  const raw = ((org?.settings ?? {}) as any).contract ?? {};
-  const bands = Array.isArray(raw.iqaGlosaBands) && raw.iqaGlosaBands.length
-    ? (raw.iqaGlosaBands as any[]).map((b) => ({ maxGapPp: b.maxGapPp == null ? null : Number(b.maxGapPp), glosaPct: Number(b.glosaPct) })) : DEFAULT_GLOSA_BANDS;
+  const s = (org?.settings ?? {}) as any;
+  const raw = s.contract ?? {};
+  const bands = normalizeIqaConfig(s.iqa, raw.iqaGlosaBands).glosa;
   const hours = raw.hours && typeof raw.hours === 'object' ? (raw.hours as Record<string, number>) : null;
   if (typeof raw.startDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(raw.startDate)) return { startDate: raw.startDate.slice(0, 10), source: 'settings', bands, hours };
   const first = await prisma.bvConversation.findFirst({ where: { orgId }, orderBy: { startedAt: 'asc' }, select: { startedAt: true } });
@@ -331,7 +425,8 @@ export async function getContractInfo(orgId: string, tz: string): Promise<Contra
 
 export interface IqaMonth {
   contractMonth: number; from: string; to: string; botInvolved: number; resolvedByBot: number; firstContactResolved: number; automatable: number;
-  numerator: number; value: number | null; goal: number; reachedGoal: boolean | null; gapPp: number | null; glosaPct: number | null;
+  numerator: number; /** base efetiva do cálculo (depende de `denominatorKind`) */ denominator: number; denominatorKind: IqaDenominator;
+  value: number | null; goal: number; reachedGoal: boolean | null; gapPp: number | null; glosaPct: number | null;
   resolvedOfAutomatable: number | null;
 }
 
@@ -342,25 +437,25 @@ export function contractMonthRange(startDate: string, k: number, tz: string): { 
   return { from: zonedToUtc(a.y, a.m, a.d, 0, 0, tz), to: zonedToUtc(b.y, b.m, b.d, 0, 0, tz) };
 }
 
-export async function iqaByContractMonth(base: Omit<Filters, 'period'>, tz: string, upTo = new Date(), startOverride?: string): Promise<{ contract: ContractInfo; months: IqaMonth[] }> {
-  const contract = await getContractInfo(base.orgId, tz);
+export async function iqaByContractMonth(base: Omit<Filters, 'period'>, tz: string, upTo = new Date(), startOverride?: string): Promise<{ contract: ContractInfo; config: IqaConfig; months: IqaMonth[] }> {
+  const [contract, config] = await Promise.all([getContractInfo(base.orgId, tz), getIqaConfig(base.orgId)]);
   const start = startOverride ?? contract.startDate;
   const months: IqaMonth[] = [];
   for (let k = 1; k <= 60; k++) {
     const r = contractMonthRange(start, k, tz);
     if (r.from > upTo) break;
-    const row = (await aggregate({ ...base, period: { from: r.from, to: r.to, timezone: tz } }, [], ['botInvolved', 'botResolved', 'fcrCount', 'automatable', 'iqaCount', 'iqaRate']))[0];
-    const value = row.iqaRate as number | null;
-    const goal = iqaGoal(k);
+    const q = await iqaForPeriod({ ...base, period: { from: r.from, to: r.to, timezone: tz } }, config);
+    const goal = iqaGoal(k, config.goals);
     const ended = r.to <= upTo;
     months.push({
-      contractMonth: k, from: r.from.toISOString(), to: r.to.toISOString(), botInvolved: row.botInvolved, resolvedByBot: row.botResolved,
-      firstContactResolved: row.fcrCount, automatable: row.automatable, numerator: row.iqaCount, value, goal,
-      reachedGoal: value == null ? null : value >= goal, gapPp: value == null ? null : round(goal - value, 2),
+      contractMonth: k, from: r.from.toISOString(), to: r.to.toISOString(), botInvolved: q.botInvolved, resolvedByBot: q.botResolved,
+      firstContactResolved: q.firstContactResolved, automatable: q.automatable, numerator: q.numerator, denominator: q.denominator,
+      denominatorKind: q.denominatorKind, value: q.value, goal,
+      reachedGoal: q.value == null ? null : q.value >= goal, gapPp: q.value == null ? null : round(goal - q.value, 2),
       // glosa só é apurada em meses completos; mês corrente é parcial
-      glosaPct: ended ? iqaGlosa(value, goal, contract.bands) : null,
-      resolvedOfAutomatable: row.automatable ? round((100 * row.iqaCount) / row.automatable, 2) : null,
+      glosaPct: ended ? iqaGlosa(q.value, goal, config.glosa) : null,
+      resolvedOfAutomatable: q.automatable ? round((100 * q.numerator) / q.automatable, 2) : null,
     });
   }
-  return { contract: { ...contract, startDate: start }, months };
+  return { contract: { ...contract, startDate: start }, config, months };
 }

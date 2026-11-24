@@ -46,3 +46,11 @@ Detalhes e variáveis do container Asterisk: `infra/asterisk/README.md`.
 
 ## Integrações
 `BV_INT_RL_FORCE` (testes). Credenciais de e-Proc/GOV.BR/IdP/Google/Jira/WhatsApp/e-mail ficam cifradas no banco (`BvIntegration`), configuradas pelo painel — não por variável de ambiente.
+
+## Antivírus (opcional, anexos de cidadãos)
+`BV_CLAMAV_HOST` (+ `BV_CLAMAV_PORT`=3310) ou `BV_CLAMAV_SOCKET` ligam a varredura via ClamAV (clamd). `BV_CLAMAV_FAIL_MODE`: `closed` (padrão — se o
+antivírus não responder, o anexo é recusado) ou `open`. `BV_CLAMAV_TIMEOUT_MS` (30000). Sem essas variáveis a varredura fica desligada.
+
+## Limites de requisição
+`BV_RATE_LIMIT_PER_USER` (600/min): teto por **usuário autenticado** no `/balcao` (o restante do ZapScript segue 150/min por IP). Órgãos com centenas de
+atendentes atrás de um único IP (NAT) dependem disso — não troque por limite por IP.

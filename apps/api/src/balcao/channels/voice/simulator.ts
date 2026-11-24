@@ -3,6 +3,7 @@ import { assignConversation, closeConversation, escalateToHuman, openConversatio
 import { getHolidays, getOrgSettings } from '../../core/settings';
 import { newKey, putObject } from '../../core/storage';
 import { flowDefinition, resolveFlowForDid, FlowError } from './ivrFlows';
+import { entryOptionOf, loadUra0800 } from './ura0800';
 import { simulateIvr, type IvrResult } from './ivr';
 import { makeToneWav } from './wav';
 
@@ -26,7 +27,7 @@ export async function simulateCall(orgId: string, i: SimulateCallInput) {
   const call = await prisma.bvCall.create({ data: { orgId, direction: 'IN', fromNumber: i.from, toNumber: i.did, status: 'IVR', ivrFlowId: flow.id, startedAt, recordingNotified: true } });
   const { conversation } = await openConversation({
     orgId, channel: 'VOICE', channelRef: call.id, externalId: i.from, status: 'BOT',
-    metadata: { voice: { callId: call.id, did: i.did, simulated: true, headers: i.headers ?? {} }, ivr: { flowId: flow.id, lang: sim.lang, category: (out as any).category ?? null, queue: (out as any).queue ?? null, vars: sim.vars, outcome: out.action } },
+    metadata: { voice: { callId: call.id, did: i.did, simulated: true, headers: i.headers ?? {} }, ivr: { entryOption: entryOptionOf(await loadUra0800(orgId), i.headers ?? {}), flowId: flow.id, lang: sim.lang, category: (out as any).category ?? null, queue: (out as any).queue ?? null, vars: sim.vars, outcome: out.action } },
   });
   let agentUserId: string | null = null;
   let closeReason: 'RESOLVED' | 'ABANDONED' | 'TRANSFERRED_OUT' | null = null;

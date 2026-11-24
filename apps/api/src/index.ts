@@ -23,6 +23,7 @@ import { startOnboardingNudge } from './services/onboarding-nudge';
 import { startCopilotoUnreadSweep } from './services/copiloto-backfill';
 import { purgeExpiredRefreshTokens } from './lib/refreshToken';
 import { attachBalcaoSockets } from './balcao/core/realtime';
+import { verifyJwt as verifyBvJwt } from './balcao/core/jwt';
 import { startBalcaoJobs, runBalcaoStartHooks } from './balcao/core/scheduler';
 
 // ── Inicializar Sentry ────────────────────────────────────
@@ -217,8 +218,19 @@ app.register(jwt, { secret: process.env.JWT_SECRET! });
 // Rate limit global — webhooks são excluídos (Z-API pode enviar rajadas em instâncias com muitos números)
 // O cast para `as any` é necessário pois 'skip' está nos tipos do @fastify/rate-limit v10
 // mas ainda não foi exportado na definição TypeScript da versão instalada.
+// Balcão Virtual: centenas de atendentes saem do MESMO IP (NAT do órgão); limitar por IP derrubaria o órgão inteiro.
+// Com Bearer VÁLIDO do Balcão o limite é por usuário (token verificado — não dá para burlar forjando "sub"); sem token válido, por IP.
+const BALCAO_MAX_PER_USER = Number(process.env.BV_RATE_LIMIT_PER_USER || 600);
+function balcaoUserKey(req: any): string | null {
+  if (!req.url?.startsWith('/balcao/')) return null;
+  const h = req.headers?.authorization as string | undefined;
+  if (!h?.startsWith('Bearer ')) return null;
+  const p = verifyBvJwt(h.slice(7).trim(), 'access');
+  return p ? `bvuser:${p.sub}` : null;
+}
 app.register(rateLimit, {
-  max:        150,   // aumentado para 500 usuários simultâneos
+  max:        (req: any) => (balcaoUserKey(req) ? BALCAO_MAX_PER_USER : 150),   // 150/IP (aumentado p/ 500 usuários simultâneos); Balcão: por usuário
+  keyGenerator: (req: any) => balcaoUserKey(req) ?? req.ip,
   timeWindow: '1 minute',
   // Store compartilhado no Redis: os limites sobrevivem a restart/deploy e
   // ficam corretos mesmo escalando para múltiplas instâncias (antes era em
@@ -232,6 +244,7 @@ app.register(rateLimit, {
     req.url.startsWith('/balcao/webchat/public') ||
     req.url.startsWith('/balcao/webchat/widget') ||
     req.url.startsWith('/balcao/email/inbound') ||
+    req.url === '/balcao/health' ||
     req.url.startsWith('/balcao/integrations/jira/webhook') ||
     req.url === '/health',
   addHeaders: {
@@ -240,7 +253,10 @@ app.register(rateLimit, {
     'x-ratelimit-reset':     true,
     'retry-after':           true,
   },
+  // statusCode 429 explícito: sem ele o @fastify/rate-limit lança o objeto como erro genérico e o cliente recebe 500
+  // (o que também escondia o limite dos contadores do escudo, que só contam 401/429).
   errorResponseBuilder: (_req: any, context: any) => ({
+    statusCode: 429,
     error:      'Muitas requisições. Tente novamente em breve.',
     retryAfter: context.after,
   }),

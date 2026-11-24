@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { BvConversation, Prisma } from '@prisma/client';
 import path from 'path';
+import { logger } from '../../../lib/logger';
 import { z } from 'zod';
 import { prisma } from '../../../lib/prisma';
 import { auditReq } from '../../core/audit';
@@ -9,14 +10,17 @@ import {
 } from '../../core/conversations';
 import { getContactDocument, maskDocument } from '../../core/contacts';
 import { idParam, parse, sendError } from '../../core/http';
-import { listMessages, type Attachment } from '../../core/messages';
+import { AttachmentRejectedError } from '../../core/antivirus';
+import { ChannelSendError, getChannelSender } from '../../core/channels';
+import { emitBvEvent } from '../../core/events';
+import { toPlain, type Attachment } from '../../core/messages';
 import { agentLoad } from '../../core/presence';
-import { emitToUser } from '../../core/realtime';
+import { emitToConversation, emitToUser } from '../../core/realtime';
 import { getObjectStream, newKey, parseRange, putObject, statObject } from '../../core/storage';
-import { CLOSE_REASONS, CHANNELS } from '../../core/types';
+import { CLOSE_REASONS, CHANNELS, type Channel, type MessageKind } from '../../core/types';
 import { agentLockKey, convLockKey, withLock } from '../lock';
 import { emitConversationUpdated } from '../realtime';
-import { accessWhere, actor, decodeCursor, encodeCursor, guardUser, isSupervisor, notFound, qbool, serializeConversation } from './common';
+import { accessWhere, actor, decodeCursor, encodeCursor, guardUser, isSupervisor, isUniqueViolation, notFound, qbool, serializeConversation } from './common';
 
 const MAX_UPLOAD = 15 * 1024 * 1024;
 
@@ -119,6 +123,31 @@ const attachmentSchema = z.strictObject({
   key: z.string().min(1).max(300), name: z.string().min(1).max(200), mime: z.string().min(1).max(120), size: z.number().int().min(0).max(MAX_UPLOAD), sha256: z.string().max(64).optional(),
 });
 
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:?\d{2})?$/;
+const detailQuery = z.object({ before: z.string().trim().min(1).max(64).optional(), limit: z.coerce.number().int().min(1).max(200).default(100) });
+export const DEFAULT_HISTORY_LIMIT = 100;
+
+/**
+ * Página do histórico, da mais nova para trás: devolve até `limit` mensagens ANTES de `before` (data ISO ou id de mensagem),
+ * em ordem cronológica crescente. Desempate por id para não pular mensagens com o mesmo milissegundo.
+ * Único ponto aqui que lê BvMessage: o corpo continua sendo decifrado por `toPlain` do core/messages.
+ */
+async function messagePage(conversationId: string, orgId: string, before: string | undefined, limit: number) {
+  const where: Prisma.BvMessageWhereInput = { conversationId, orgId };
+  if (before) {
+    if (ISO_RE.test(before) && !Number.isNaN(Date.parse(before))) where.createdAt = { lt: new Date(before) };
+    else {
+      const ref = await prisma.bvMessage.findFirst({ where: { id: before, conversationId, orgId }, select: { createdAt: true, id: true } });
+      if (!ref) return null;
+      where.OR = [{ createdAt: { lt: ref.createdAt } }, { createdAt: ref.createdAt, id: { lt: ref.id } }];
+    }
+  }
+  const rows = await prisma.bvMessage.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit + 1 });
+  const hasMore = rows.length > limit;
+  const page = (hasMore ? rows.slice(0, limit) : rows).reverse();
+  return { messages: page.map(toPlain), hasMore, nextBefore: hasMore && page.length ? page[0].id : null };
+}
+
 export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   app.get('/conversations', { preHandler: guardUser('conversation:read') }, async (req, reply) => {
     const q = parse(listQuery, req.query, reply); if (!q) return;
@@ -127,16 +156,19 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/conversations/:id', { preHandler: guardUser('conversation:read') }, async (req, reply) => {
     const p = parse(idParam, req.params, reply); if (!p) return;
+    const dq = parse(detailQuery, req.query, reply); if (!dq) return;
     const conv = await loadAccessible(req, reply, p.id); if (!conv) return;
     const a = actor(req);
-    const [contact, messages, events, queue, assignee] = await Promise.all([
+    const history = await messagePage(conv.id, conv.orgId, dq.before, dq.limit);
+    if (!history) return sendError(reply, 400, 'messages.invalid_cursor', 'before deve ser uma data ISO ou o id de uma mensagem desta conversa');
+    const { messages } = history;
+    const [contact, events, queue, assignee] = await Promise.all([
       prisma.bvContact.findUnique({ where: { id: conv.contactId } }),
-      listMessages(conv.id, { limit: 200 }),
       prisma.bvConversationEvent.findMany({ where: { conversationId: conv.id }, orderBy: { createdAt: 'asc' }, take: 300 }),
       conv.queueId ? prisma.bvQueue.findUnique({ where: { id: conv.queueId }, select: { id: true, name: true } }) : null,
       conv.assignedUserId ? prisma.bvUser.findUnique({ where: { id: conv.assignedUserId }, select: { id: true, name: true } }) : null,
     ]);
-    await auditReq(req, 'conversation.read', { entityType: 'conversation', entityId: conv.id, meta: { protocol: conv.protocol } });
+    await auditReq(req, 'conversation.read', { entityType: 'conversation', entityId: conv.id, meta: { protocol: conv.protocol, ...(dq.before ? { olderPage: true } : {}) } });
     const doc = contact?.documentEnc ? getContactDocument(contact.documentEnc) : null;
     return {
       conversation: { ...serializeConversation(conv), queue, assignee },
@@ -148,6 +180,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         id: m.id, direction: m.direction, senderType: m.senderType, senderUserId: m.senderUserId, kind: m.kind, body: m.body,
         attachments: m.attachments, status: m.status, errorCode: m.errorCode, aiMeta: m.aiMeta, createdAt: m.createdAt,
       })),
+      hasMore: history.hasMore, nextBefore: history.nextBefore,
       events: events.map((e) => ({ id: e.id, type: e.type, actorUserId: e.actorUserId, data: e.data, createdAt: e.createdAt })),
       canReply: mayAct(a, conv) && conv.status !== 'CLOSED',
     };
@@ -174,6 +207,57 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       });
       return reply.code(201).send({ message: { ...message, channelMeta: undefined }, delivery: { status: message.status, error: error ?? null } });
     } catch (err) { return fail(reply, err); }
+  });
+
+  // ── reenvio de mensagem que falhou ───────────────────────────────────────────
+  // Reaproveita a MESMA mensagem (sem nova bolha): reenvia pelo remetente do canal registrado no core e atualiza o status.
+  app.post('/conversations/:id/messages/:messageId/resend', { preHandler: guardUser('conversation:reply') }, async (req, reply) => {
+    const p = parse(idParam.extend({ messageId: z.string().min(1).max(64) }), req.params, reply); if (!p) return;
+    const conv = await loadAccessible(req, reply, p.id); if (!conv) return;
+    const a = actor(req);
+    const row = await prisma.bvMessage.findFirst({ where: { id: p.messageId, conversationId: conv.id, orgId: a.orgId } });
+    if (!row) return notFound(reply, 'Mensagem');
+    if (row.direction !== 'OUT' || row.status !== 'FAILED') return sendError(reply, 409, 'message.not_resendable', 'Só mensagens enviadas ao cidadão que falharam podem ser reenviadas', { status: row.status, direction: row.direction });
+    if (!mayAct(a, conv) || !(isSupervisor(a) || row.senderUserId === a.userId)) return sendError(reply, 403, 'message.not_owner', 'Só o autor da mensagem (atendente responsável) ou a supervisão pode reenviar');
+    if (conv.status === 'CLOSED') return sendError(reply, 409, 'conversation.closed', 'Conversa encerrada');
+    const sender = getChannelSender(conv.channel as Channel);
+    const contact = await prisma.bvContact.findUniqueOrThrow({ where: { id: conv.contactId }, select: { id: true, name: true, email: true, phone: true } });
+    // Reivindica a mensagem de forma atômica (FAILED → QUEUED): dois cliques/abas simultâneos não reenviam duas vezes.
+    const claimed = await prisma.bvMessage.updateMany({ where: { id: row.id, status: 'FAILED' }, data: { status: 'QUEUED', errorCode: null } });
+    if (claimed.count === 0) return sendError(reply, 409, 'message.not_resendable', 'Mensagem já está sendo reenviada', { status: 'QUEUED' });
+    const msg = toPlain(row);
+    let status: 'QUEUED' | 'SENT' | 'FAILED' = 'FAILED';
+    let error: string | null = null;
+    let channelMessageId: string | null = row.channelMessageId;
+    let channelMeta: unknown = row.channelMeta;
+    if (!sender) error = 'channel.no_sender';
+    else {
+      try {
+        const res = await sender({
+          orgId: a.orgId,
+          conversation: { id: conv.id, channel: conv.channel as Channel, channelRef: conv.channelRef, protocol: conv.protocol, subject: conv.subject, lastInboundAt: conv.lastInboundAt, metadata: conv.metadata },
+          contact,
+          message: { id: msg.id, kind: msg.kind as MessageKind, body: msg.body, attachments: (msg.attachments as unknown as Attachment[] | null) ?? [], channelMeta: msg.channelMeta ?? null, senderType: msg.senderType },
+        });
+        status = res.status ?? 'SENT';
+        channelMessageId = res.channelMessageId ?? channelMessageId;
+        if (res.channelMeta) channelMeta = { ...((msg.channelMeta as object | null) ?? {}), ...(res.channelMeta as object) };
+      } catch (err) {
+        error = err instanceof ChannelSendError ? err.code : 'channel.send_failed';
+        logger.warn({ err: (err as Error)?.message, conversationId: conv.id, channel: conv.channel }, '[balcao/routing] falha ao reenviar mensagem ao canal');
+      }
+    }
+    let updated;
+    try {
+      updated = await prisma.bvMessage.update({ where: { id: row.id }, data: { status, errorCode: error, channelMessageId, channelMeta: (channelMeta ?? undefined) as never } });
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err; // channelMessageId repetido pelo provedor: mantém o id anterior
+      updated = await prisma.bvMessage.update({ where: { id: row.id }, data: { status, errorCode: error } });
+    }
+    await auditReq(req, 'conversation.message.resend', { entityType: 'conversation', entityId: conv.id, meta: { messageId: row.id, previousError: row.errorCode, status: updated.status, error } });
+    if (status !== 'FAILED') emitBvEvent('message.outbound', { orgId: a.orgId, conversationId: conv.id, messageId: row.id, channel: conv.channel, senderType: row.senderType });
+    emitToConversation(conv.id, 'message:status', { conversationId: conv.id, messageId: row.id, status: updated.status, errorCode: updated.errorCode });
+    return { message: { ...toPlain(updated), channelMeta: undefined }, delivery: { status: updated.status, error } };
   });
 
   app.post('/conversations/:id/notes', { preHandler: guardUser('conversation:reply') }, async (req, reply) => {
@@ -278,7 +362,13 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     if (buf.length === 0) return sendError(reply, 400, 'attachment.empty', 'Arquivo vazio');
     if (!magicOk(mime, buf)) return sendError(reply, 415, 'attachment.content_mismatch', 'Conteúdo não confere com o tipo informado');
     const name = safeName(file.filename);
-    const stored = await putObject(newKey(a.orgId, 'attachments', MIME_EXT[mime]), buf);
+    let stored;
+    try { stored = await putObject(newKey(a.orgId, 'attachments', MIME_EXT[mime]), buf, { scan: true }); } // antivírus (ClamAV) quando configurado; o core remove o arquivo recusado
+    catch (err) {
+      if (!(err instanceof AttachmentRejectedError)) throw err;
+      await auditReq(req, 'conversation.attachment.rejected', { entityType: 'conversation', entityId: conv.id, meta: { reason: err.reason, signature: err.signature, mime, size: buf.length } });
+      return sendError(reply, 422, 'attachment.rejected', err.message, { reason: err.reason });
+    }
     const descriptor = { key: stored.key, name, mime, size: stored.size, sha256: stored.sha256 };
     await addConversationEvent(a.orgId, conv.id, 'ATTACHMENT_UPLOADED', a.userId, descriptor);
     await auditReq(req, 'conversation.attachment.upload', { entityType: 'conversation', entityId: conv.id, meta: { key: stored.key, mime, size: stored.size } });

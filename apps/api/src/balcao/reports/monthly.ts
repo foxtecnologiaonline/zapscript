@@ -47,7 +47,7 @@ export async function buildMonthly(orgId: string, month: string, now = new Date(
     indicators: {
       nps: kpi[0].nps, npsResponses: kpi[0].npsResponses, csatAvg: kpi[0].csatAvg, tmeAvgSec: kpi[0].tmeAvg, tmeP90Sec: kpi[0].tmeP90, tmaAvgSec: kpi[0].tmaAvg, tmaP90Sec: kpi[0].tmaP90,
       tmrAvgSec: kpi[0].tmrAvg, fcrRate: kpi[0].fcrRate, slaRate: kpi[0].slaRate, slaViolations: kpi[0].slaViolations, botContainmentRate: kpi[0].botContainmentRate,
-      iqa: cm ? { contractMonth: cm.contractMonth, value: cm.value, goal: cm.goal, reachedGoal: cm.reachedGoal, glosaPct: cm.glosaPct, numerator: cm.numerator, base: cm.botInvolved } : { value: kpi[0].iqaRate, note: 'mês fora da vigência do contrato configurado' },
+      iqa: cm ? { contractMonth: cm.contractMonth, value: cm.value, goal: cm.goal, reachedGoal: cm.reachedGoal, glosaPct: cm.glosaPct, numerator: cm.numerator, base: cm.denominator, denominatorKind: cm.denominatorKind } : { value: kpi[0].iqaRate, note: 'mês fora da vigência do contrato configurado' },
     },
     serviceDesk: { createdByKind: kinds, completedInMonth: tasksDone },
     contractHours: contract.hours ?? {},

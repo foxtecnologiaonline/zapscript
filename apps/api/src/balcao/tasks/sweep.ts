@@ -3,11 +3,12 @@ import { prisma } from '../../lib/prisma';
 import { logger } from '../../lib/logger';
 import { emitBvEvent } from '../core/events';
 import { emitToSupervisors } from '../core/realtime';
-import { OPEN_STATUSES } from './model';
+import { pausedSince } from './model';
 import { notifyUsers, responsibleIds, supervisorIds } from './notifications';
 
 /**
  * Varredura periódica (`balcao.tasks.sweep`, ~60 s): vencimento próximo (24 h / 1 h), vencidas e violação de SLA.
+ * Tarefas em "Aguardando" (SLA pausado) são ignoradas até voltarem a andar.
  * Cada aviso é registrado UMA vez por tarefa em BvTaskHistory (campos `sys.*` ocultos; `sla.breach` visível), então
  * rodar o job várias vezes (ou em duas réplicas) não duplica notificações nem eventos `sla.breach`.
  */
@@ -28,7 +29,7 @@ export async function runTasksSweep(now = new Date()): Promise<SweepResult> {
   for (;;) {
     const tasks = await prisma.bvTask.findMany({
       where: {
-        status: { in: OPEN_STATUSES },
+        status: { in: ['OPEN', 'IN_PROGRESS'] }, // WAITING = SLA pausado: não vence nem viola
         OR: [{ dueAt: { lte: horizon } }, { slaResolutionDueAt: { lte: now } }, { slaResponseDueAt: { lte: now }, respondedAt: null }],
       },
       orderBy: { id: 'asc' }, take: BATCH, ...(lastId ? { cursor: { id: lastId }, skip: 1 } : {}),
@@ -55,6 +56,7 @@ async function sweepBatch(tasks: BvTask[], now: Date, out: SweepResult, sups: (o
   const seen = (taskId: string, field: string, value = '') => done.has(`${taskId}|${field}|${field === 'sla.breach' ? value : ''}`);
 
   for (const t of tasks) {
+    if (pausedSince(t)) continue; // defesa: pausa registrada em metadata
     try {
       const data = { taskId: t.id, code: t.code };
       const who = () => responsibleIds(t.orgId, t);

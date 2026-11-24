@@ -26,6 +26,8 @@ export async function startVoice(): Promise<AriController | null> {
 export default async function plugin(app: FastifyInstance): Promise<void> {
   await app.register(registerRoutes);
   onBalcaoStart(() => { void startVoice(); });
+  // Shutdown gracioso (SIGTERM → app.close): libera o lock de liderança do ARI para outra instância assumir sem esperar o TTL.
+  app.addHook('onClose', async () => { await getAriController()?.shutdown(); });
 
   // Higiene: chamadas "vivas" no banco sem controle (API reiniciada) são encerradas.
   registerJob('voice.stale-calls', { intervalMs: 5 * 60_000 }, async () => {

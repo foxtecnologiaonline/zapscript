@@ -50,7 +50,7 @@ const maxErrorRate = num('max-error-rate', 1);
 const p95Limit = num('p95-ms', 1000);
 
 interface Sample { ms: number; status: number }
-interface Report { name: string; total: number; ok: number; errors: number; errorRatePct: number; rps: number; seconds: number; minMs: number; meanMs: number; p50: number; p95: number; p99: number; maxMs: number; statuses: Record<string, number> }
+interface ScenarioReport { name: string; total: number; ok: number; errors: number; errorRatePct: number; rps: number; seconds: number; minMs: number; meanMs: number; p50: number; p95: number; p99: number; maxMs: number; statuses: Record<string, number> }
 
 async function timed(url: string, init: RequestInit = {}): Promise<{ sample: Sample; body?: any }> {
   const t0 = performance.now();
@@ -65,7 +65,7 @@ async function timed(url: string, init: RequestInit = {}): Promise<{ sample: Sam
 }
 
 const pct = (sorted: number[], p: number): number => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))] : 0);
-function summarize(name: string, samples: Sample[], seconds: number): Report {
+function summarize(name: string, samples: Sample[], seconds: number): ScenarioReport {
   const ms = samples.map((s) => s.ms).sort((a, b) => a - b);
   const ok = samples.filter((s) => s.status >= 200 && s.status < 400).length;
   const statuses: Record<string, number> = {};
@@ -78,7 +78,7 @@ function summarize(name: string, samples: Sample[], seconds: number): Report {
 }
 
 /** N trabalhadores em paralelo chamando `one()` até esgotar a contagem (ou o tempo). */
-async function run(name: string, one: () => Promise<Sample>): Promise<Report> {
+async function run(name: string, one: () => Promise<Sample>): Promise<ScenarioReport> {
   const samples: Sample[] = [];
   let started = 0;
   const t0 = performance.now();
@@ -95,7 +95,7 @@ async function run(name: string, one: () => Promise<Sample>): Promise<Report> {
 }
 
 async function main() {
-  const reports: Report[] = [];
+  const reports: ScenarioReport[] = [];
   const notes: string[] = [];
 
   reports.push(await run('GET /balcao/health', async () => (await timed(`${base}/balcao/health`)).sample));

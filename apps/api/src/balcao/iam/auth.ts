@@ -11,6 +11,7 @@ import { createSession, revokeSession, rotateSession, type SessionTokens } from 
 import type { Role } from '../core/types';
 import { dummyVerify, hashPasswordAsync, verifyPasswordAsync } from './passwordAsync';
 import { consumeTotpCode, hitLoginRateLimit } from './ratelimit';
+import { consumeRecoveryCode, generateRecoveryCodes, normalizeRecoveryCode } from './recovery';
 import { getRequireMfaRoles, normalizeEmail, userView } from './service';
 import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp';
 
@@ -24,7 +25,11 @@ const loginBody = z.object({
   password: z.string().min(1).max(200),
   orgSlug: z.string().trim().min(1).max(80).optional(),
 });
-const mfaLoginBody = z.object({ mfaToken: z.string().min(10).max(2000), code: z.string().trim().regex(/^\d{6}$/, 'Informe os 6 dígitos do código.') });
+const mfaLoginBody = z.object({
+  mfaToken: z.string().min(10).max(2000),
+  code: z.string().trim().regex(/^\d{6}$/, 'Informe os 6 dígitos do código.').optional(),
+  recoveryCode: z.string().trim().min(8).max(20).optional(),
+}).refine((b) => (b.code === undefined) !== (b.recoveryCode === undefined), { message: 'Informe code (6 dígitos) OU recoveryCode.' });
 const refreshBody = z.object({ refreshToken: z.string().min(10).max(500) });
 const logoutBody = z.object({ refreshToken: z.string().min(10).max(500).optional() }).optional();
 const passwordBody = z.object({ currentPassword: z.string().min(1).max(200), newPassword: z.string().min(1).max(200) });
@@ -63,11 +68,11 @@ async function sessionPayload(user: DbUser, tokens: SessionTokens) {
 }
 
 /** Conclui um login (senha OK e, se houver, MFA OK): zera contadores, cria sessão, audita. */
-async function completeLogin(req: FastifyRequest, reply: FastifyReply, user: DbUser, via: 'password' | 'mfa') {
+async function completeLogin(req: FastifyRequest, reply: FastifyReply, user: DbUser, via: 'password' | 'mfa' | 'recovery', extra: Record<string, unknown> = {}) {
   await prisma.bvUser.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() } });
   const tokens = await createSession(user, meta(req));
   await audit({ orgId: user.orgId, actorId: user.id, action: 'auth.login', entityType: 'user', entityId: user.id, meta: { via, sessionId: tokens.sessionId }, ...meta(req) });
-  return reply.send(await sessionPayload(user, tokens));
+  return reply.send({ ...(await sessionPayload(user, tokens)), ...extra });
 }
 
 /** Usuário humano autenticado (bloqueia token de API, que não tem usuário). */
@@ -157,12 +162,26 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     const locked = lockedRemainingSec(user);
     if (locked > 0) return sendLocked(reply, locked);
 
-    const valid = verifyTotp(decryptField(user.totpSecretEnc), body.code) && (await consumeTotpCode(user.id, body.code));
+    // 2º fator: código TOTP OU código de recuperação (uso único). Ambos contam para o mesmo lockout.
+    let recovery: { remaining: number } | null = null;
+    let valid = false;
+    if (body.recoveryCode !== undefined) {
+      const canonical = normalizeRecoveryCode(body.recoveryCode);
+      const r = canonical ? await consumeRecoveryCode(user.id, user.mfaRecoveryHashes ?? [], canonical) : { ok: false, remaining: 0 };
+      valid = r.ok;
+      if (r.ok) recovery = { remaining: r.remaining };
+    } else {
+      valid = verifyTotp(decryptField(user.totpSecretEnc), body.code!) && (await consumeTotpCode(user.id, body.code!));
+    }
     if (!valid) {
       const nowLocked = await registerFailure(user);
-      await audit({ orgId: user.orgId, actorId: user.id, action: 'auth.mfa_failed', entityType: 'user', entityId: user.id, ...meta(req) });
+      await audit({ orgId: user.orgId, actorId: user.id, action: 'auth.mfa_failed', entityType: 'user', entityId: user.id, meta: { method: body.recoveryCode !== undefined ? 'recovery' : 'totp' }, ...meta(req) });
       if (nowLocked) await audit({ orgId: user.orgId, actorId: user.id, action: 'auth.lockout', entityType: 'user', entityId: user.id, meta: { minutes: LOCK_MIN, step: 'mfa' }, ...meta(req) });
-      return sendError(reply, 401, 'auth.invalid_mfa_code', 'Código de verificação inválido.');
+      return sendError(reply, 401, body.recoveryCode !== undefined ? 'auth.invalid_recovery_code' : 'auth.invalid_mfa_code', body.recoveryCode !== undefined ? 'Código de recuperação inválido ou já utilizado.' : 'Código de verificação inválido.');
+    }
+    if (recovery) {
+      await audit({ orgId: user.orgId, actorId: user.id, action: 'auth.mfa_recovery_used', entityType: 'user', entityId: user.id, meta: { remaining: recovery.remaining }, ...meta(req) });
+      return completeLogin(req, reply, user, 'recovery', { recoveryCodesRemaining: recovery.remaining, ...(recovery.remaining <= 2 ? { recoveryCodesWarning: recovery.remaining === 0 ? 'Seus códigos de recuperação acabaram. Gere um novo conjunto.' : 'Poucos códigos de recuperação restantes. Gere um novo conjunto.' } : {}) });
     }
     return completeLogin(req, reply, user, 'mfa');
   });
@@ -212,6 +231,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       permissions: permissionsOf(u.role as Role),
       mustChangePassword: u.mustChangePassword,
       totpEnabled: u.totpEnabled,
+      recoveryCodesRemaining: u.totpEnabled ? (u.mfaRecoveryHashes ?? []).length : 0,
       mfaSetupRequired: !u.totpEnabled && requireMfa.includes(u.role as Role),
     });
   });
@@ -260,10 +280,13 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       await auditReq(req, 'auth.mfa_enable_failed', { entityType: 'user', entityId: u.id });
       return sendError(reply, 400, 'mfa.invalid_code', 'Código inválido. Confira o horário do dispositivo e tente de novo.');
     }
-    await prisma.bvUser.update({ where: { id: u.id }, data: { totpEnabled: true } });
+    const rc = generateRecoveryCodes();
+    await prisma.bvUser.update({ where: { id: u.id }, data: { totpEnabled: true, mfaRecoveryHashes: rc.hashes } });
     clearAuthCache();
-    await auditReq(req, 'auth.mfa_enable', { entityType: 'user', entityId: u.id });
-    return reply.send({ ok: true, totpEnabled: true });
+    await auditReq(req, 'auth.mfa_enable', { entityType: 'user', entityId: u.id, meta: { recoveryCodes: rc.codes.length } });
+    // Códigos em claro só nesta resposta (o banco guarda apenas o hash).
+    reply.header('cache-control', 'no-store');
+    return reply.send({ ok: true, totpEnabled: true, recoveryCodes: rc.codes, recoveryCodesRemaining: rc.codes.length });
   });
 
   app.post('/auth/mfa/disable', { preHandler: bvAuth }, async (req, reply) => {
@@ -278,9 +301,29 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       await auditReq(req, 'auth.mfa_disable_failed', { entityType: 'user', entityId: u.id });
       return sendError(reply, 403, 'auth.invalid_credentials', 'Senha ou código inválidos.');
     }
-    await prisma.bvUser.update({ where: { id: u.id }, data: { totpEnabled: false, totpSecretEnc: null } });
+    await prisma.bvUser.update({ where: { id: u.id }, data: { totpEnabled: false, totpSecretEnc: null, mfaRecoveryHashes: [] } });
     clearAuthCache();
     await auditReq(req, 'auth.mfa_disable', { entityType: 'user', entityId: u.id });
     return reply.send({ ok: true, totpEnabled: false });
+  });
+
+  // Novo conjunto de códigos de recuperação (invalida o anterior). Exige senha + código TOTP atual.
+  app.post('/auth/mfa/recovery-codes/regenerate', { preHandler: bvAuth }, async (req, reply) => {
+    const userId = requireHumanUser(req, reply); if (!userId) return;
+    const body = parse(disableBody, req.body, reply); if (!body) return;
+    const u = await prisma.bvUser.findFirst({ where: { id: userId, orgId: req.bv!.orgId } });
+    if (!u) return sendError(reply, 401, 'auth.user_inactive', 'Usuário inativo');
+    if (!u.totpEnabled || !u.totpSecretEnc) return sendError(reply, 409, 'mfa.not_enabled', 'A verificação em duas etapas não está ativa.');
+    const pwOk = await verifyPasswordAsync(body.password, u.passwordHash);
+    const codeOk = pwOk && verifyTotp(decryptField(u.totpSecretEnc), body.code) && (await consumeTotpCode(u.id, body.code));
+    if (!pwOk || !codeOk) {
+      await auditReq(req, 'auth.mfa_recovery_regenerate_failed', { entityType: 'user', entityId: u.id });
+      return sendError(reply, 403, 'auth.invalid_credentials', 'Senha ou código inválidos.');
+    }
+    const rc = generateRecoveryCodes();
+    await prisma.bvUser.update({ where: { id: u.id }, data: { mfaRecoveryHashes: rc.hashes } });
+    await auditReq(req, 'auth.mfa_recovery_regenerate', { entityType: 'user', entityId: u.id, meta: { recoveryCodes: rc.codes.length } });
+    reply.header('cache-control', 'no-store');
+    return reply.send({ ok: true, recoveryCodes: rc.codes, recoveryCodesRemaining: rc.codes.length });
   });
 }

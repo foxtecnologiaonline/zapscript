@@ -2,14 +2,19 @@ import crypto from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { logger } from '../../../lib/logger';
+import { redis } from '../../../services/queue';
 import { emitBvEvent, onBvEvent } from '../../core/events';
 import { addConversationEvent, closeConversation, escalateToHuman, openConversation } from '../../core/conversations';
 import { emitToSupervisors, emitToUser } from '../../core/realtime';
 import { getHolidays, getOrgSettings } from '../../core/settings';
 import { recordUsage, setUsageGauge } from '../../core/usage';
 import { setAgentPresence } from '../../core/presence';
+import type { Role as BvRole } from '../../core/types';
+import { checkDialPolicy } from './dialPolicy';
+import { AriLeaderLock, type LockRedis } from './leader';
+import { entryOptionOf, headersToCapture, loadUra0800, mapUraHeaders, parseSrcAddr, sourceIpAllowed } from './ura0800';
 import { AriError, AriEventStream, createAxiosAriHttp, type AriEvent, type AriHttp, type AriSocketFactory, type BackoffOptions } from './ari';
-import { agentRingMs, loadTrunkConfig, maxQueueMs, recordingDir, resolveOrgForDid, type TrunkConfig } from './config';
+import { agentRingMs, didsOf as uraDids, loadTrunkConfig, maxQueueMs, recordingDir, resolveOrgForDid, type TrunkConfig } from './config';
 import { flowDefinition, resolveFlowForDid } from './ivrFlows';
 import { IvrAborted, phrase, runIvr, type IvrIO, type IvrOutcome, type ResolvedIvrPrompt, type TrailEntry } from './ivr';
 import type { PromptProvider } from './prompts';
@@ -24,8 +29,12 @@ import { storeRecording } from './recordings';
 export type CallState = 'IVR' | 'QUEUED' | 'RINGING_AGENT' | 'ACTIVE' | 'ENDING';
 type Role = 'caller' | 'agent' | 'external';
 
+/** Lock de liderança do ARI (Redis). `false` desliga (instância única). Padrão: ligado, exceto em NODE_ENV=test e com BV_VOICE_LEADER_LOCK=off. */
+export interface LeaderLockSettings { redis?: LockRedis; key?: string; ttlMs?: number; renewMs?: number; retryMs?: number; instanceId?: string }
+
 export interface ControllerOptions {
-  connection: { url: string; username: string; password: string; app: string };
+  connection: { url: string; username: string; password: string; app: string; orgId?: string };
+  lock?: false | LeaderLockSettings;
   prompts: PromptProvider;
   http?: AriHttp;
   socketFactory?: AriSocketFactory;
@@ -109,7 +118,7 @@ class AriIvrIO implements IvrIO {
 }
 
 export interface ControllerStatus {
-  enabled: boolean; connected: boolean; app: string; url: string; reconnects: number; lastEventAt: string | null; lastError: string | null;
+  enabled: boolean; /** 'leader': controla o ARI; 'standby': aguardando assumir o lock (outra instância é a líder). */ role: 'leader' | 'standby'; connected: boolean; app: string; url: string; reconnects: number; lastEventAt: string | null; lastError: string | null;
   activeCalls: number; byState: Record<string, number>;
 }
 
@@ -122,10 +131,26 @@ export class AriController {
   private playbacks = new Map<string, () => void>();
   private offs: Array<() => void> = [];
   private started = false;
+  private active = false;
+  private lock: AriLeaderLock | null = null;
+  private dialing = new Set<string>();
 
   constructor(private o: ControllerOptions) {
     this.http = o.http ?? createAxiosAriHttp(o.connection);
   }
+
+  /** Chave do lock: escopo (órgão dono da conexão ARI, ou hash da URL) + app Stasis. */
+  get lockKey(): string {
+    const c = this.o.connection;
+    const scope = c.orgId ?? crypto.createHash('sha256').update(c.url.replace(/\/+$/, '')).digest('hex').slice(0, 16);
+    return this.o.lock && this.o.lock.key ? this.o.lock.key : `bv:voice:ari-leader:${scope}:${c.app}`;
+  }
+  private lockEnabled(): boolean {
+    if (this.o.lock === false) return false;
+    if (this.o.lock) return true;
+    return process.env.NODE_ENV !== 'test' && process.env.BV_VOICE_LEADER_LOCK !== 'off';
+  }
+  get role(): 'leader' | 'standby' { return this.active ? 'leader' : 'standby'; }
 
   private get ringMs() { return this.o.agentRingMs ?? agentRingMs(); }
   private get queueMs() { return this.o.maxQueueMs ?? maxQueueMs(); }
@@ -135,6 +160,19 @@ export class AriController {
   start() {
     if (this.started) return;
     this.started = true;
+    if (!this.lockEnabled()) { this.activate(); return; }
+    const l = typeof this.o.lock === 'object' ? this.o.lock : {};
+    this.lock = new AriLeaderLock({
+      redis: l.redis ?? (redis as unknown as LockRedis), key: this.lockKey, ttlMs: l.ttlMs, renewMs: l.renewMs, retryMs: l.retryMs, instanceId: l.instanceId,
+      onAcquire: () => this.activate(), onLose: () => this.deactivate(),
+    });
+    this.lock.start();
+  }
+
+  /** Passa a controlar o ARI (só o líder): handlers de eventos + WebSocket. */
+  private activate() {
+    if (this.active || !this.started) return;
+    this.active = true;
     this.offs.push(onBvEvent('conversation.assigned', (e) => this.onAssigned(e.orgId, e.conversationId, e.userId)));
     this.offs.push(onBvEvent('conversation.closed', (e) => this.onConversationClosed(e.orgId, e.conversationId, e.channel)));
     this.stream = new AriEventStream(this.o.connection, (ev) => { void this.onEvent(ev); }, {
@@ -144,18 +182,29 @@ export class AriController {
     this.stream.start();
   }
 
-  stop() {
-    this.started = false;
+  /** Deixa de controlar o ARI (perda do lock ou parada): desconecta e solta os handlers. */
+  private deactivate() {
+    this.active = false;
     this.stream?.stop(); this.stream = null;
     for (const off of this.offs.splice(0)) off();
     for (const s of this.sessions.values()) { clearTimeout(s.ringTimer); clearTimeout(s.queueTimer); clearTimeout(s.transferTimer); }
+  }
+
+  stop() { void this.shutdown(); }
+
+  /** Para o controlador e LIBERA o lock de liderança (aguardável: use no shutdown da API). */
+  async shutdown(): Promise<void> {
+    this.started = false;
+    this.deactivate();
+    await this.lock?.stop();
+    this.lock = null;
   }
 
   status(): ControllerStatus {
     const byState: Record<string, number> = {};
     for (const s of this.sessions.values()) byState[s.state] = (byState[s.state] ?? 0) + 1;
     return {
-      enabled: true, connected: this.stream?.connected ?? false, app: this.o.connection.app, url: this.o.connection.url,
+      enabled: true, role: this.role, connected: this.stream?.connected ?? false, app: this.o.connection.app, url: this.o.connection.url,
       reconnects: this.stream?.reconnects ?? 0, lastEventAt: this.stream?.lastEventAt?.toISOString() ?? null, lastError: this.stream?.lastError ?? null,
       activeCalls: this.sessions.size, byState,
     };
@@ -274,16 +323,30 @@ export class AriController {
     if (!orgId) { logger.warn({ did }, '[balcao/voice] chamada para DID sem órgão; recusada'); await this.ari('POST', `/channels/${ch.id}/answer`); await this.hangupChannel(ch.id, 'rejected'); return; }
 
     const cfg = await loadTrunkConfig(orgId);
+    const ura = await loadUra0800(orgId);
+    // URA 0800: se o órgão restringiu os IPs de origem, só chamadas vindas deles são atendidas (o dialplan expõe BV_SRC_ADDR)
+    if (ura?.allowedSourceIps?.length && uraDids(ura).includes(did)) {
+      const src = parseSrcAddr(ch.channelvars?.BV_SRC_ADDR);
+      if (!src || !sourceIpAllowed(ura.allowedSourceIps, src)) {
+        logger.warn({ did, src: src ?? 'desconhecido' }, '[balcao/voice] chamada 0800 de IP de origem não permitido; recusada');
+        await this.hangupChannel(ch.id, 'rejected');
+        return;
+      }
+    }
     const settings = await getOrgSettings(orgId);
     const callId = `c${crypto.randomBytes(11).toString('hex')}`;
     const anonymous = ANON.test(number);
     const startedAt = new Date();
     await prisma.bvCall.create({ data: { id: callId, orgId, direction: 'IN', fromNumber: anonymous ? 'anonimo' : number, toNumber: did, ariChannelId: ch.id, status: 'RINGING', startedAt } });
-    const headers = await this.readHeaders(ch, cfg.preserveHeaders ?? []);
+    const headers = await this.readHeaders(ch, headersToCapture(ura, cfg));
     const flowRow = await resolveFlowForDid(orgId, did);
+    const entryOption = entryOptionOf(ura, headers);
     const { conversation } = await openConversation({
       orgId, channel: 'VOICE', channelRef: callId, externalId: anonymous ? `anonimo:${callId}` : number, status: 'BOT',
-      metadata: { voice: { callId, did, headers, flow: flowRow ? { id: flowRow.id, name: flowRow.name, version: flowRow.version } : null } },
+      metadata: {
+        voice: { callId, did, headers, flow: flowRow ? { id: flowRow.id, name: flowRow.name, version: flowRow.version } : null, ...(ura ? { ura0800: { headers: mapUraHeaders(ura, headers) } } : {}) },
+        ...(entryOption != null ? { ivr: { entryOption } } : {}),
+      },
     });
     await prisma.bvCall.update({ where: { id: callId }, data: { conversationId: conversation.id, ivrFlowId: flowRow?.id ?? null } });
 
@@ -699,12 +762,25 @@ export class AriController {
     this.toSocket(s, 'call:active', { agentUserId: s.agentUserId });
   }
 
-  /** Click-to-call: toca o ramal do atendente e, ao atender, disca `number` pelo tronco. */
-  async dial(orgId: string, userId: string, number: string): Promise<{ ok: true; callId: string; conversationId: string } | { ok: false; code: string; message: string; status?: number }> {
+  /**
+   * Click-to-call: toca o ramal do atendente e, ao atender, disca `number` pelo tronco.
+   * Política por órgão (dialPolicy.ts): prefixos/número permitidos, limite diário por atendente e (padrão) permissão + presença ONLINE.
+   * Códigos estáveis: `voice.dial_not_allowed` (403) e `voice.dial_limit` (429); `voice.standby` (503) se esta instância não é a líder do ARI.
+   */
+  async dial(orgId: string, userId: string, number: string): Promise<{ ok: true; callId: string; conversationId: string } | { ok: false; code: string; message: string; status?: number; reason?: string }> {
     if (!/^\+?[0-9*#]{2,20}$/.test(number)) return { ok: false, code: 'validation.number', message: 'Número inválido', status: 400 };
-    const user = await prisma.bvUser.findFirst({ where: { id: userId, orgId, active: true }, select: { sipExtension: true } });
+    if (!this.active) return { ok: false, code: 'voice.standby', message: 'Esta instância não controla a telefonia (standby)', status: 503 };
+    if (this.dialing.has(userId)) return { ok: false, code: 'voice.busy', message: 'Você já tem uma ligação em andamento', status: 409 };
+    this.dialing.add(userId); // exclusão mútua: duas discagens simultâneas do mesmo atendente não furam o limite diário
+    try { return await this.dialLocked(orgId, userId, number); } finally { this.dialing.delete(userId); }
+  }
+
+  private async dialLocked(orgId: string, userId: string, number: string): ReturnType<AriController['dial']> {
+    const user = await prisma.bvUser.findFirst({ where: { id: userId, orgId, active: true }, select: { sipExtension: true, role: true, presence: true } });
     if (!user?.sipExtension) return { ok: false, code: 'voice.no_extension', message: 'Seu usuário não tem ramal SIP configurado', status: 409 };
     if ([...this.sessions.values()].some((x) => x.agentUserId === userId && x.direction === 'OUT')) return { ok: false, code: 'voice.busy', message: 'Você já tem uma ligação em andamento', status: 409 };
+    const decision = await checkDialPolicy({ orgId, userId, role: user.role as BvRole, presence: user.presence, number });
+    if (!decision.ok) return { ok: false, code: decision.code, message: decision.message, status: decision.status, reason: decision.reason };
     const cfg = await loadTrunkConfig(orgId);
     const settings = await getOrgSettings(orgId);
     const callId = `c${crypto.randomBytes(11).toString('hex')}`;

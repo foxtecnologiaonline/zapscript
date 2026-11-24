@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { auditReq } from '../../core/audit';
 import { addConversationEvent, assignConversation, ConversationError } from '../../core/conversations';
@@ -14,12 +15,36 @@ import { qbool } from './common';
 
 const HANDLER_ROLES = ['ATENDENTE', 'SUPERVISOR', 'ADMIN'];
 
+/** Janela padrão (minutos) do indicador "SLA em risco": `?slaRiskMin=` > `BV_ROUTING_SLA_RISK_MIN` > 10. */
+export const defaultSlaRiskMin = (): number => {
+  const n = Number(process.env.BV_ROUTING_SLA_RISK_MIN);
+  return Number.isFinite(n) && n >= 1 ? Math.min(1440, Math.floor(n)) : 10;
+};
+
+/**
+ * Conversas abertas (WAITING/ACTIVE) cujo prazo de 1ª resposta (ainda sem resposta humana) ou de resolução vence em até `minutes` minutos
+ * e que ainda NÃO foram marcadas como violadas daquele tipo (o sweep marca em ≤ 15 s; as já violadas ficam em `slaBreaches`).
+ * Uma conversa conta uma vez, mesmo com os dois prazos próximos. Agrupado por fila (`null` = sem fila). Calculado no servidor.
+ */
+export async function slaAtRiskByQueue(orgId: string, minutes: number, now = new Date()): Promise<Map<string | null, number>> {
+  const limit = new Date(now.getTime() + minutes * 60_000).toISOString();
+  const rows = await prisma.$queryRaw<Array<{ queueId: string | null; n: number }>>(Prisma.sql`
+    SELECT "queueId", COUNT(*)::int AS n FROM "BvConversation"
+    WHERE "orgId" = ${orgId} AND status IN ('WAITING', 'ACTIVE') AND (
+      ("slaFirstResponseDueAt" <= ${limit}::timestamp AND "firstResponseAt" IS NULL AND NOT (COALESCE(metadata->'routing'->'breached', '[]'::jsonb) @> to_jsonb('FIRST_RESPONSE'::text)))
+      OR ("slaResolutionDueAt" <= ${limit}::timestamp AND NOT (COALESCE(metadata->'routing'->'breached', '[]'::jsonb) @> to_jsonb('RESOLUTION'::text)))
+    )
+    GROUP BY "queueId"`);
+  return new Map(rows.map((r) => [r.queueId, Number(r.n)]));
+}
+
 export async function supervisorRoutes(app: FastifyInstance): Promise<void> {
   /** Instantâneo em tempo real: por fila, por agente e conversas violando SLA. */
-  app.get('/supervisor/overview', { preHandler: guardUser('conversation:monitor') }, async (req) => {
+  app.get('/supervisor/overview', { preHandler: guardUser('conversation:monitor') }, async (req, reply) => {
+    const rq = parse(z.object({ slaRiskMin: z.coerce.number().int().min(1).max(1440).default(defaultSlaRiskMin()) }), req.query, reply); if (!rq) return;
     const a = actor(req);
     const now = Date.now();
-    const [queues, waiting, active, bot, users, members, breached] = await Promise.all([
+    const [queues, waiting, active, bot, users, members, breached, atRisk] = await Promise.all([
       prisma.bvQueue.findMany({ where: { orgId: a.orgId, active: true }, orderBy: [{ priority: 'desc' }, { name: 'asc' }], select: { id: true, name: true, slug: true, priority: true, maxWaitSec: true } }),
       prisma.bvConversation.groupBy({ by: ['queueId'], where: { orgId: a.orgId, status: 'WAITING' }, _count: { _all: true }, _min: { queuedAt: true } }),
       prisma.bvConversation.groupBy({ by: ['queueId'], where: { orgId: a.orgId, status: 'ACTIVE' }, _count: { _all: true } }),
@@ -30,6 +55,7 @@ export async function supervisorRoutes(app: FastifyInstance): Promise<void> {
         where: { orgId: a.orgId, slaBreached: true, status: { in: ['WAITING', 'ACTIVE'] } }, orderBy: { startedAt: 'asc' }, take: 100,
         select: { id: true, protocol: true, channel: true, status: true, queueId: true, assignedUserId: true, startedAt: true, queuedAt: true, slaFirstResponseDueAt: true, slaResolutionDueAt: true, priority: true },
       }),
+      slaAtRiskByQueue(a.orgId, rq.slaRiskMin, new Date(now)),
     ]);
     const loads = await agentLoads(a.orgId, users.map((u) => u.id));
     const activeConvs = await prisma.bvConversation.findMany({
@@ -55,15 +81,18 @@ export async function supervisorRoutes(app: FastifyInstance): Promise<void> {
           agentsBusy: online.filter((u) => u.presence === 'BUSY' || (loads.get(u.id) ?? 0) >= u.maxConcurrent).length,
           agentsAvailable: online.filter((u) => u.presence === 'ONLINE' && (loads.get(u.id) ?? 0) < u.maxConcurrent).length,
           maxWaitSec: q.maxWaitSec,
+          slaAtRisk: atRisk.get(q.id) ?? 0,
         };
       })
-      .filter((q) => q.queueId !== null || q.waiting > 0 || q.active > 0);
+      .filter((q) => q.queueId !== null || q.waiting > 0 || q.active > 0 || q.slaAtRisk > 0);
 
     return {
       generatedAt: new Date(now).toISOString(),
+      slaRiskMin: rq.slaRiskMin,
       totals: {
         waiting: queueRows.reduce((s, q) => s + q.waiting, 0), active: queueRows.reduce((s, q) => s + q.active, 0), bot,
         agentsOnline: users.filter((u) => u.presence === 'ONLINE').length, slaBreached: breached.length,
+        slaAtRisk: [...atRisk.values()].reduce((s, n) => s + n, 0),
       },
       queues: queueRows,
       agents: users.map((u) => ({

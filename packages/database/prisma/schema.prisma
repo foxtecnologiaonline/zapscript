@@ -2091,6 +2091,7 @@ model BvUser {
   presenceAt         DateTime?
   sipExtension       String?
   totpSecretEnc      String? // AES-GCM (core/crypto)
+  mfaRecoveryHashes  String[]  @default([]) // sha256 dos códigos de recuperação ainda não usados
   totpEnabled        Boolean   @default(false)
   mustChangePassword Boolean   @default(false)
   oidcSub            String? // vínculo com o IdP (TJTO / gov.br)
@@ -2208,12 +2209,14 @@ model BvHoliday {
 model BvCannedResponse {
   id        String   @id @default(cuid())
   orgId     String
+  ownerId   String? // null = resposta do órgão (compartilhada); preenchido = pessoal do atendente
   shortcut  String
   title     String
   body      String
   createdAt DateTime @default(now())
 
-  @@unique([orgId, shortcut])
+  @@unique([orgId, ownerId, shortcut])
+  @@index([orgId, ownerId])
 }
 
 // Cidadão / jurisdicionado — identidade única entre canais.

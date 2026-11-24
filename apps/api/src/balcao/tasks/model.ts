@@ -1,7 +1,7 @@
 import type { BvTask } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { can, type Permission } from '../core/permissions';
-import { addBusinessSeconds, getHolidays, getOrgSettings, type BvOrgSettings } from '../core/settings';
+import { addBusinessSeconds, getHolidays, getOrgSettings, localParts, type BvOrgSettings } from '../core/settings';
 import type { Role } from '../core/types';
 
 /** Constantes, máquina de estados, controle de acesso e cálculo de SLA das tarefas (sem I/O de rede). */
@@ -206,4 +206,46 @@ export function histValue(v: unknown): string | null {
   if (v instanceof Date) return v.toISOString();
   if (Array.isArray(v)) return v.join(',');
   return String(v).slice(0, 500);
+}
+
+// ── Pausa do SLA em "Aguardando" ─────────────────────────────────────────────
+// Ao entrar em WAITING grava-se `metadata.slaPause = { since }`; ao sair, os prazos andam o tempo ÚTIL pausado e o total
+// fica em `metadata.slaPausedSec`. Tudo no Json `BvTask.metadata` (sem coluna nova).
+export const asMeta = (m: unknown): Record<string, any> => (m && typeof m === 'object' && !Array.isArray(m) ? { ...(m as Record<string, any>) } : {});
+
+/** Instante em que a pausa começou, ou null se o SLA corre. */
+export function pausedSince(t: { metadata?: unknown }): Date | null {
+  const since = asMeta(t.metadata).slaPause?.since;
+  const d = typeof since === 'string' ? new Date(since) : null;
+  return d && !Number.isNaN(d.getTime()) ? d : null;
+}
+
+const hhmm = (s: string) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+
+/**
+ * Segundos de tempo ÚTIL (janelas de `businessHours` do órgão, sem feriados) em [from, to). Anda por janelas, não por
+ * minuto: custo proporcional ao nº de dias, não de minutos.
+ */
+export function businessSecondsBetween(
+  settings: Pick<BvOrgSettings, 'timezone' | 'businessHours'>, from: Date, to: Date, holidays: Set<string> = new Set(),
+): number {
+  let cursor = from.getTime(); const end = to.getTime();
+  let total = 0;
+  while (cursor < end) {
+    const p = localParts(new Date(cursor), settings.timezone);
+    const intoMin = cursor % 60_000;
+    let boundary = cursor + (1440 - p.minutes) * 60_000 - intoMin; // fim do dia local
+    let inside = false;
+    if (!holidays.has(p.ymd)) {
+      for (const [a, b] of settings.businessHours[p.day] ?? []) {
+        const am = hhmm(a), bm = hhmm(b);
+        if (p.minutes >= am && p.minutes < bm) { inside = true; boundary = Math.min(boundary, cursor + (bm - p.minutes) * 60_000 - intoMin); }
+        else if (p.minutes < am) boundary = Math.min(boundary, cursor + (am - p.minutes) * 60_000 - intoMin);
+      }
+    }
+    const next = Math.min(boundary, end);
+    if (inside) total += next - cursor;
+    cursor = next;
+  }
+  return Math.round(total / 1000);
 }

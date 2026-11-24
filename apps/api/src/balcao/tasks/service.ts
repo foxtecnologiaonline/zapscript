@@ -4,13 +4,14 @@ import { logger } from '../../lib/logger';
 import { nextTaskCode } from '../core/counters';
 import { addConversationEvent, canAccessConversation, sendMessage } from '../core/conversations';
 import { emitBvEvent } from '../core/events';
-import { getOrgSettings } from '../core/settings';
+import { addBusinessSeconds, getHolidays, getOrgSettings } from '../core/settings';
 import type { BvAuthContext } from '../core/types';
 import {
-  actorHas, canEditTask, canViewTask, computeSla, histValue, isClosed, isValidTransition, levelFromPriority, OPEN_STATUSES, scopeOf,
+  actorHas, asMeta, businessSecondsBetween, canEditTask, canViewTask, computeSla, getTasksConfig, histValue, isClosed, pausedSince, isValidTransition, levelFromPriority, OPEN_STATUSES, scopeOf,
   SYSTEM_ACTOR, TaskError, visibilityWhere, type Actor, type Kind, type Level, type Origin, type Priority, type Status,
 } from './model';
 import { notifyUsers, sectorUserIds, supervisorIds } from './notifications';
+import { openComment, openHistory, openTask, openText, sealHistory, sealText } from './content';
 
 /** Regras de negócio das tarefas. As rotas (routes.ts), o bot e o job de varredura só chamam daqui. */
 
@@ -25,8 +26,9 @@ async function sendMail(to: string, subject: string, html: string): Promise<void
 }
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 
+/** Linha de histórico. Campos de texto livre (description, resolution) são gravados cifrados (content.ts). */
 const hist = (taskId: string, actorId: string | null, field: string, from: unknown, to: unknown): Prisma.BvTaskHistoryCreateManyInput =>
-  ({ taskId, actorId, field, fromValue: histValue(from), toValue: histValue(to) });
+  ({ taskId, actorId, field, fromValue: sealHistory(field, histValue(from)), toValue: sealHistory(field, histValue(to)) });
 
 // ── Criação ───────────────────────────────────────────────────────────────────
 export interface CreateTaskInput {
@@ -98,7 +100,7 @@ export async function createTask(orgId: string, actor: Actor, input: CreateTaskI
   const code = await nextTaskCode(orgId);
   const task = await prisma.bvTask.create({
     data: {
-      orgId, code, kind, title: input.title.trim(), description: input.description ?? null, priority, origin,
+      orgId, code, kind, title: input.title.trim(), description: sealText(input.description), priority, origin,
       sectorId: input.sectorId ?? null, assigneeId: input.assigneeId ?? null, creatorId: actor.userId,
       conversationId: conversation?.id ?? null, contactId, dueAt, notifyOnClose: input.notifyOnClose ?? false,
       notifyChannel: input.notifyChannel ?? null, supportLevel, tags: [...new Set(input.tags ?? [])],
@@ -116,7 +118,7 @@ export async function createTask(orgId: string, actor: Actor, input: CreateTaskI
   if (conversation) await addConversationEvent(orgId, conversation.id, 'TASK_CREATED', actor.userId, { taskId: task.id, code }).catch(() => undefined);
   await notifyAssignment(orgId, task, actor.userId, null);
   emitBvEvent('task.created', { orgId, taskId: task.id });
-  return task;
+  return openTask(task);
 }
 
 /** Avisa o novo responsável (ou a caixa do setor / supervisores, se for demanda do bot sem destino). */
@@ -164,7 +166,7 @@ export async function createTaskFromBot(
   const existing = await prisma.bvTask.findFirst({
     where: { orgId, conversationId: input.conversationId, origin: 'CHATBOT', title, status: { in: OPEN_STATUSES } },
   });
-  if (existing) return { ...existing, duplicate: true };
+  if (existing) return { ...openTask(existing), duplicate: true };
   let sectorId: string | null = null;
   const category = input.category?.trim();
   if (category) {
@@ -197,7 +199,7 @@ export function buildWhere(actor: Actor, f: TaskFilters, now = new Date()): Pris
   if (f.conversationId) and.push({ conversationId: f.conversationId });
   if (f.contactId) and.push({ contactId: f.contactId });
   if (f.tag) and.push({ tags: { has: f.tag } });
-  if (f.overdue) and.push({ dueAt: { lt: now }, status: { in: OPEN_STATUSES } });
+  if (f.overdue) and.push({ dueAt: { lt: now }, status: { in: ['OPEN', 'IN_PROGRESS'] } }); // em "Aguardando" o SLA está pausado
   if (f.mine) and.push({ assigneeId: actor.userId ?? '__none__' });
   if (f.createdByMe) and.push({ creatorId: actor.userId ?? '__none__' });
   if (f.unassigned) and.push({ assigneeId: null });
@@ -216,18 +218,59 @@ function decodeCursor(c?: string): { createdAt: Date; id: string } | null {
   } catch { return null; }
 }
 
-/** Resumo de SLA calculado (não persistido). */
+/**
+ * Resumo de SLA calculado (não persistido). Em pausa ("Aguardando") o relógio fica congelado no instante da pausa:
+ * nada vence nem é violado enquanto a tarefa espera.
+ */
 export function slaState(t: BvTask, now = new Date()) {
   const closed = isClosed(t.status);
-  const respondedOrNow = t.respondedAt ?? (closed ? t.completedAt : null) ?? now;
-  const endOrNow = t.completedAt ?? now;
+  const since = pausedSince(t);
+  const ref = since ?? now;
+  const respondedOrNow = t.respondedAt ?? (closed ? t.completedAt : null) ?? ref;
+  const endOrNow = t.completedAt ?? ref;
   return {
     responseDueAt: t.slaResponseDueAt, resolutionDueAt: t.slaResolutionDueAt,
     responseBreached: !!t.slaResponseDueAt && respondedOrNow > t.slaResponseDueAt,
     resolutionBreached: !!t.slaResolutionDueAt && t.status !== 'CANCELLED' && endOrNow > t.slaResolutionDueAt,
-    overdue: !!t.dueAt && !closed && t.dueAt < now,
-    remainingSec: t.slaResolutionDueAt && !closed ? Math.round((t.slaResolutionDueAt.getTime() - now.getTime()) / 1000) : null,
+    overdue: !!t.dueAt && !closed && t.dueAt < ref,
+    remainingSec: t.slaResolutionDueAt && !closed ? Math.round((t.slaResolutionDueAt.getTime() - ref.getTime()) / 1000) : null,
+    paused: !!since, pausedAt: since,
   };
+}
+
+/** Saída de "Aguardando": novos prazos = prazos + tempo útil pausado (corrido, se a regra ANS não for em horário útil). */
+async function resumeSla(orgId: string, task: BvTask, now: Date): Promise<{ data: Record<string, unknown>; pausedSec: number } | null> {
+  const since = pausedSince(task);
+  if (!since) return null;
+  const { cfg, settings } = await getTasksConfig(orgId);
+  const holidays = await getHolidays(orgId);
+  const business = task.kind === 'SERVICE_REQUEST' ? (cfg.ans[(task.supportLevel as Level) || levelFromPriority(task.priority)]?.business ?? true) : true;
+  const pausedSec = business ? businessSecondsBetween(settings, since, now, holidays) : Math.max(0, Math.floor((now.getTime() - since.getTime()) / 1000));
+  const push = (d: Date | null) => (d && pausedSec > 0 ? (business ? addBusinessSeconds(settings, d, pausedSec, holidays) : new Date(d.getTime() + pausedSec * 1000)) : d);
+  const meta = asMeta(task.metadata); delete meta.slaPause;
+  meta.slaPausedSec = (Number(meta.slaPausedSec) || 0) + pausedSec;
+  const resolution = push(task.slaResolutionDueAt);
+  const data: Record<string, unknown> = {
+    metadata: meta, slaResolutionDueAt: resolution,
+    // resposta já dada não pode "virar no prazo" por causa da pausa: só empurra se ainda não houve resposta
+    slaResponseDueAt: task.respondedAt ? task.slaResponseDueAt : push(task.slaResponseDueAt),
+  };
+  // SERVICE_REQUEST/DEMAND: `dueAt` acompanha o prazo de resolução
+  if (task.dueAt && task.slaResolutionDueAt && task.dueAt.getTime() === task.slaResolutionDueAt.getTime()) data.dueAt = resolution;
+  return { data, pausedSec };
+}
+
+/** `updateTask` recalcula o SLA a partir de createdAt: soma de volta o tempo útil já pausado (metadata.slaPausedSec). */
+async function keepPausedTime(orgId: string, task: BvTask, data: Record<string, any>): Promise<void> {
+  const sec = Number(asMeta(task.metadata).slaPausedSec) || 0;
+  if (sec <= 0) return;
+  const { settings } = await getTasksConfig(orgId);
+  const holidays = await getHolidays(orgId);
+  const push = (d: Date | null | undefined) => (d ? addBusinessSeconds(settings, d, sec, holidays) : d);
+  const before = data.slaResolutionDueAt as Date | null | undefined;
+  data.slaResolutionDueAt = push(before);
+  if (!task.respondedAt) data.slaResponseDueAt = push(data.slaResponseDueAt);
+  if (data.dueAt instanceof Date && before && data.dueAt.getTime() === before.getTime()) data.dueAt = data.slaResolutionDueAt;
 }
 
 async function names(orgId: string, users: Array<string | null>, sectors: Array<string | null>) {
@@ -244,8 +287,8 @@ export async function serializeTasks(orgId: string, tasks: BvTask[]) {
   const n = await names(orgId, tasks.flatMap((t) => [t.assigneeId, t.creatorId]), tasks.map((t) => t.sectorId));
   const now = new Date();
   const ref = (id: string | null, m: Map<string, string>) => (id ? { id, name: m.get(id) ?? null } : null);
-  return tasks.map((t) => ({
-    ...t, assignee: ref(t.assigneeId, n.users), creator: ref(t.creatorId, n.users), sector: ref(t.sectorId, n.sectors), sla: slaState(t, now),
+  return tasks.map(openTask).map((t) => ({
+    ...t, slaPaused: !!pausedSince(t), slaPausedAt: pausedSince(t), assignee: ref(t.assigneeId, n.users), creator: ref(t.creatorId, n.users), sector: ref(t.sectorId, n.sectors), sla: slaState(t, now),
   }));
 }
 
@@ -279,7 +322,7 @@ export async function getTaskRow(orgId: string, actor: Actor, id: string): Promi
   const t = await prisma.bvTask.findFirst({ where: { id, orgId } });
   // Tarefa de que o ator não pode ver responde 404 (não revela a existência).
   if (!t || !canViewTask(actor, t)) throw new TaskError('task.not_found', 'Tarefa não encontrada', 404);
-  return t;
+  return openTask(t);
 }
 
 export async function getTaskDetail(orgId: string, actor: Actor, id: string) {
@@ -296,8 +339,8 @@ export async function getTaskDetail(orgId: string, actor: Actor, id: string) {
   const rating = [...history].reverse().find((h) => h.field === 'rating');
   return {
     ...ser, conversation, contact, rating: rating ? Number(rating.toValue) : null,
-    comments: comments.map((c) => ({ ...c, user: { id: c.userId, name: n.users.get(c.userId) ?? null } })),
-    history: history.map((h) => ({ ...h, actor: h.actorId ? { id: h.actorId, name: n.users.get(h.actorId) ?? null } : null })),
+    comments: comments.map(openComment).map((c) => ({ ...c, user: { id: c.userId, name: n.users.get(c.userId) ?? null } })),
+    history: history.map(openHistory).map((h) => ({ ...h, actor: h.actorId ? { id: h.actorId, name: n.users.get(h.actorId) ?? null } : null })),
     permissions: { canEdit: canEditTask(actor, t), canReopen: actorHas(actor, 'task:manage'), canRate: t.kind === 'SERVICE_REQUEST' && scopeOf(actor) !== 'agent' },
   };
 }
@@ -346,11 +389,14 @@ export async function updateTask(orgId: string, actor: Actor, id: string, patch:
     // SR: o prazo contratual (ANS) acompanha nível/prioridade; `dueAt` só muda se o usuário informou.
     if (merged.kind === 'SERVICE_REQUEST' && !('dueAt' in data) && ('priority' in data || 'supportLevel' in data)) data.dueAt = sla.slaResolutionDueAt;
   }
+  if ('description' in data) (data as any).description = sealText(data.description as string | null);
+  // SLA recalculado a partir de createdAt: devolve o tempo útil já pausado em "Aguardando" (acumulado em metadata)
+  if (slaRelevant) await keepPausedTime(orgId, task, data);
   const [updated] = await prisma.$transaction([
     prisma.bvTask.update({ where: { id: task.id }, data }),
     prisma.bvTaskHistory.createMany({ data: rows }),
   ]);
-  return updated;
+  return openTask(updated);
 }
 
 // ── Atribuição ────────────────────────────────────────────────────────────────
@@ -371,7 +417,7 @@ export async function assignTask(orgId: string, actor: Actor, id: string, body: 
     prisma.bvTaskHistory.createMany({ data: rows }),
   ]);
   await notifyAssignment(orgId, updated, actor.userId, { assigneeId: task.assigneeId, sectorId: task.sectorId });
-  return updated;
+  return openTask(updated);
 }
 
 /** "Assumir": pega para si uma tarefa visível e sem responsável (caixa do setor / caixa geral). */
@@ -382,11 +428,11 @@ export async function claimTask(orgId: string, actor: Actor, id: string): Promis
   const r = await prisma.bvTask.updateMany({ where: { id: task.id, orgId, assigneeId: null }, data: { assigneeId: actor.userId } });
   if (r.count === 0) throw new TaskError('task.already_assigned', 'A tarefa já tem responsável', 409);
   await prisma.bvTaskHistory.create({ data: hist(task.id, actor.userId, 'assigneeId', null, actor.userId) });
-  return prisma.bvTask.findFirstOrThrow({ where: { id: task.id, orgId } });
+  return openTask(await prisma.bvTask.findFirstOrThrow({ where: { id: task.id, orgId } }));
 }
 
 // ── Máquina de estados ────────────────────────────────────────────────────────
-export async function changeStatus(orgId: string, actor: Actor, id: string, to: Status, opts: { resolution?: string | null } = {}): Promise<BvTask> {
+export async function changeStatus(orgId: string, actor: Actor, id: string, to: Status, opts: { resolution?: string | null; /** relógio injetável (testes) */ now?: Date } = {}): Promise<BvTask> {
   const task = await getTaskRow(orgId, actor, id);
   if (!canEditTask(actor, task)) throw new TaskError('task.forbidden', 'Sem permissão para alterar esta tarefa', 403);
   const from = task.status as Status;
@@ -394,7 +440,7 @@ export async function changeStatus(orgId: string, actor: Actor, id: string, to: 
   if (isClosed(from) && !actorHas(actor, 'task:manage')) throw new TaskError('task.reopen_forbidden', 'Reabrir tarefa exige permissão task:manage', 403);
   if (scopeOf(actor) === 'fiscal' && to !== 'CANCELLED') throw new TaskError('task.forbidden', 'O perfil Fiscal só pode cancelar as suas solicitações', 403);
 
-  const now = new Date();
+  const now = opts.now ?? new Date();
   const data: Prisma.BvTaskUncheckedUpdateManyInput = { status: to };
   const rows: Prisma.BvTaskHistoryCreateManyInput[] = [hist(task.id, actor.userId, 'status', from, to)];
   if (!task.respondedAt && to !== 'OPEN' && to !== 'CANCELLED') data.respondedAt = now;
@@ -405,12 +451,20 @@ export async function changeStatus(orgId: string, actor: Actor, id: string, to: 
   }
   const resolution = isClosed(to) ? opts.resolution?.trim() || null : null;
   if (resolution) rows.push(hist(task.id, actor.userId, 'resolution', null, resolution));
+  // SLA pausa em "Aguardando": entrar registra o instante; sair empurra os prazos pelo tempo ÚTIL pausado
+  if (to === 'WAITING' && from !== 'WAITING') {
+    data.metadata = { ...asMeta(task.metadata), slaPause: { since: now.toISOString() } };
+    rows.push(hist(task.id, actor.userId, 'sla.pause', null, now));
+  } else if (from === 'WAITING') {
+    const r = await resumeSla(orgId, task, now);
+    if (r) { Object.assign(data, r.data); rows.push(hist(task.id, actor.userId, 'sla.resume', null, `+${r.pausedSec}s`)); }
+  }
 
   // Guarda otimista: duas requisições simultâneas não fecham (nem notificam) duas vezes.
   const r = await prisma.bvTask.updateMany({ where: { id: task.id, orgId, status: from }, data });
   if (r.count === 0) throw new TaskError('task.conflict', 'A tarefa foi alterada por outra pessoa; recarregue', 409);
   await prisma.bvTaskHistory.createMany({ data: rows });
-  if (resolution) await prisma.bvTaskComment.create({ data: { taskId: task.id, userId: actor.userId ?? 'system', body: resolution, internal: false } });
+  if (resolution) await prisma.bvTaskComment.create({ data: { taskId: task.id, userId: actor.userId ?? 'system', body: sealText(resolution)!, internal: false } });
 
   const updated = await prisma.bvTask.findFirstOrThrow({ where: { id: task.id, orgId } });
   if (isClosed(to)) {
@@ -419,9 +473,9 @@ export async function changeStatus(orgId: string, actor: Actor, id: string, to: 
     }
     await notifyContact(orgId, task.id).catch((err) => logger.error({ err: err?.message, taskId: task.id }, '[balcao/tasks] notifyContact falhou'));
     emitBvEvent('task.closed', { orgId, taskId: task.id });
-    return prisma.bvTask.findFirstOrThrow({ where: { id: task.id, orgId } });
+    return openTask(await prisma.bvTask.findFirstOrThrow({ where: { id: task.id, orgId } }));
   }
-  return updated;
+  return openTask(updated);
 }
 
 // ── Notificação de encerramento ao cidadão ────────────────────────────────────
@@ -467,7 +521,7 @@ export async function notifyContact(orgId: string, taskId: string, now = new Dat
   const done = task.status === 'DONE';
   const text = [
     `Atualização da sua solicitação${conv ? ` (protocolo ${conv.protocol})` : ''}: a tarefa ${task.code} - ${task.title} foi ${done ? 'concluída' : 'encerrada sem execução (cancelada)'}.`,
-    resolutionRow?.toValue ? `Resultado: ${resolutionRow.toValue}` : null,
+    resolutionRow?.toValue ? `Resultado: ${openText(resolutionRow.toValue)}` : null,
   ].filter(Boolean).join('\n');
 
   const reasons: string[] = [];
@@ -526,7 +580,7 @@ export async function addComment(orgId: string, actor: Actor, id: string, input:
   if (!actorHas(actor, 'task:write')) throw new TaskError('task.forbidden', 'Sem permissão para comentar', 403);
   const fiscal = scopeOf(actor) === 'fiscal';
   const internal = fiscal ? false : (input.internal ?? true); // o Fiscal é o solicitante: nunca escreve nota interna
-  const comment = await prisma.bvTaskComment.create({ data: { taskId: task.id, userId: actor.userId ?? 'system', body: input.body, internal } });
+  const comment = openComment(await prisma.bvTaskComment.create({ data: { taskId: task.id, userId: actor.userId ?? 'system', body: sealText(input.body)!, internal } }));
 
   if (!task.respondedAt && !internal && !fiscal && actor.userId && actor.userId !== task.creatorId) {
     await prisma.bvTask.updateMany({ where: { id: task.id, orgId, respondedAt: null }, data: { respondedAt: comment.createdAt } });
@@ -549,7 +603,7 @@ export async function listComments(orgId: string, actor: Actor, id: string) {
   const task = await getTaskRow(orgId, actor, id);
   const comments = await prisma.bvTaskComment.findMany({ where: { taskId: task.id, ...(scopeOf(actor) === 'fiscal' ? { internal: false } : {}) }, orderBy: { createdAt: 'asc' }, take: 500 });
   const n = await names(orgId, comments.map((c) => c.userId), []);
-  return comments.map((c) => ({ ...c, user: { id: c.userId, name: n.users.get(c.userId) ?? null } }));
+  return comments.map(openComment).map((c) => ({ ...c, user: { id: c.userId, name: n.users.get(c.userId) ?? null } }));
 }
 
 // ── Avaliação (IR) ────────────────────────────────────────────────────────────
@@ -561,6 +615,6 @@ export async function rateTask(orgId: string, actor: Actor, id: string, input: {
   if (task.status !== 'DONE') throw new TaskError('task.rating_requires_done', 'A avaliação só é possível após a conclusão', 409);
   const prev = await prisma.bvTaskHistory.findFirst({ where: { taskId: task.id, field: 'rating' }, orderBy: { createdAt: 'desc' } });
   await prisma.bvTaskHistory.create({ data: hist(task.id, actor.userId, 'rating', prev?.toValue ?? null, String(input.score)) });
-  if (input.comment?.trim()) await prisma.bvTaskComment.create({ data: { taskId: task.id, userId: actor.userId ?? 'system', body: `Avaliação (nota ${input.score}/10): ${input.comment.trim()}`, internal: false } });
+  if (input.comment?.trim()) await prisma.bvTaskComment.create({ data: { taskId: task.id, userId: actor.userId ?? 'system', body: sealText(`Avaliação (nota ${input.score}/10): ${input.comment.trim()}`)!, internal: false } });
   return { taskId: task.id, score: input.score };
 }

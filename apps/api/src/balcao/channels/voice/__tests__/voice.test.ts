@@ -451,7 +451,7 @@ describe('voice — configuração do tronco SIP e status (com ARI simulado)', (
     expect((await post('/calls/dial', { number: '6332180000' })).statusCode).toBe(503);
     expect((await post('/calls/dial', { number: 'abc' })).statusCode).toBe(400);
 
-    await prisma.bvUser.update({ where: { id: w.agent.id }, data: { sipExtension: `20${crypto.randomInt(10, 99)}` } });
+    await prisma.bvUser.update({ where: { id: w.agent.id }, data: { sipExtension: `20${crypto.randomInt(10, 99)}`, presence: 'ONLINE' } }); // a política de discagem exige ONLINE
     await saveIntegration(w.orgId, 'SIP_TRUNK', { trunkEndpoint: 'tjto-trunk' });
     const fake = new FakeAri(); await fake.start();
     const prompts: PromptProvider = { resolve: async () => ({ media: ['sound:x'], source: 'tts' as const }) };

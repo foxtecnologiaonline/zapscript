@@ -11,10 +11,11 @@ import { conversationRoutes } from './routes/conversations';
 import { queueRoutes } from './routes/queues';
 import { ruleRoutes } from './routes/rules';
 import { supervisorRoutes } from './routes/supervisor';
+import { versionRoutes } from './routes/versions';
 
 /**
  * Frente routing — roteamento (ACD), caixa de entrada, filas, supervisão, contatos e respostas prontas.
- * Rotas: /conversations, /queues, /routing-rules, /supervisor, /contacts, /agents, /canned-responses
+ * Rotas: /conversations, /queues (+ /versions), /routing-rules (+ /versions), /supervisor, /contacts, /agents, /canned-responses
  * (sob /balcao). Documentação: docs/balcao/api-routing.md.
  */
 export default async function plugin(app: FastifyInstance): Promise<void> {
@@ -35,6 +36,7 @@ export default async function plugin(app: FastifyInstance): Promise<void> {
   await conversationRoutes(app);
   await queueRoutes(app);
   await ruleRoutes(app);
+  await versionRoutes(app);
   await agentRoutes(app);
   await supervisorRoutes(app);
   await contactRoutes(app);

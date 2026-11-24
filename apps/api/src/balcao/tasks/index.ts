@@ -5,9 +5,12 @@ import { TaskError, type Priority } from './model';
 import routes from './routes';
 import { createTaskFromBot } from './service';
 import { runTasksSweep } from './sweep';
+import { encryptExistingTaskText } from './content';
 
 export { createTaskFromBot, createTask, createTaskFromConversation, changeStatus, assignTask, notifyContact, setTaskMailer } from './service';
 export { runTasksSweep } from './sweep';
+// Conteúdo cifrado em repouso: integrações que leem BvTask/BvTaskComment direto DEVEM passar por openTask/openComment.
+export { encryptExistingTaskText, openTask, openComment, openText, sealText } from './content';
 export { notifyUsers } from './notifications';
 
 /** Ferramenta do chatbot: abre uma demanda (origin CHATBOT) a partir da conversa e devolve o código. */
@@ -48,6 +51,8 @@ export function registerTasksBotTool(): void {
 export function registerTasksRuntime(): void {
   registerTasksBotTool();
   registerJob('balcao.tasks.sweep', { intervalMs: 60_000, lockTtlSec: 55 }, async () => { await runTasksSweep(); });
+  // migração idempotente: cifra descrição/comentários/histórico gravados antes da cifra em repouso (sem custo quando nada resta)
+  registerJob('balcao.tasks.encrypt_existing', { intervalMs: 6 * 3600_000, lockTtlSec: 1800, runOnStart: true }, async () => { await encryptExistingTaskText(); });
 }
 
 /** Plugin da frente — registrado em balcao/index.ts (prefixo /balcao/tasks). */

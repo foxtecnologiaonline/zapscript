@@ -212,7 +212,7 @@ export default async function adminUsersRoutes(app: FastifyInstance): Promise<vo
 
   app.post('/admin/users/:id/reset-mfa', { preHandler: guard('user:manage') }, route(async (req, reply) => {
     const target = await loadTarget(req, reply); if (!target) return;
-    const after = await prisma.bvUser.update({ where: { id: target.id }, data: { totpEnabled: false, totpSecretEnc: null } });
+    const after = await prisma.bvUser.update({ where: { id: target.id }, data: { totpEnabled: false, totpSecretEnc: null, mfaRecoveryHashes: [] } });
     await revokeAllSessions(target.id);
     await auditReq(req, 'user.reset_mfa', { entityType: 'user', entityId: target.id, before: { totpEnabled: target.totpEnabled }, after: { totpEnabled: false } });
     return reply.send(userView(after));
