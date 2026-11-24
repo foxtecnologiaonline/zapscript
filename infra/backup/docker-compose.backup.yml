@@ -1,0 +1,59 @@
+# Backup cifrado + teste de restauração do Balcão Virtual — complemento do compose de produção (Vultr).
+#
+#   cp backup.env.example /etc/zapscript/backup.env   # preencher; chmod 600
+#   docker compose -f docker-compose.backup.yml build
+#   docker compose -f docker-compose.backup.yml up -d backup                       # agendador diário
+#   docker compose -f docker-compose.backup.yml run --rm -e BV_BACKUP_RUN_NOW=1 backup /opt/backup/pg-backup.sh   # uma vez
+#   docker compose -f docker-compose.backup.yml --profile restore-test run --rm restore-test                      # prova de restauração
+#
+# A API enxerga o status montando $BV_BACKUP_DIR (somente leitura) e definindo
+#   BV_BACKUP_STATUS_FILE=/var/backups/zapscript/status.json   (ver infra/backup/README.md)
+# Rede: use a MESMA rede do compose de produção para alcançar o Postgres (nome via BV_DOCKER_NETWORK).
+
+services:
+  backup:
+    build: { context: ., dockerfile: Dockerfile.backup, args: { PG_MAJOR: "${BV_PG_MAJOR:-16}" } }
+    image: zapscript-backup:local
+    container_name: zapscript-backup
+    restart: unless-stopped
+    env_file: ${BV_BACKUP_ENV_FILE:-/etc/zapscript/backup.env}
+    environment:
+      BV_BACKUP_DIR: /var/backups/zapscript
+      BV_STORAGE_DIR: /var/lib/zapscript/bv-storage
+      BV_BACKUP_KEY_FILE: ${BV_BACKUP_KEY_FILE_IN_CONTAINER:-/run/secrets/backup/backup.key}
+    volumes:
+      - ${BV_BACKUP_HOST_DIR:-/var/backups/zapscript}:/var/backups/zapscript
+      - ${BV_STORAGE_HOST_DIR:-/var/lib/zapscript/bv-storage}:/var/lib/zapscript/bv-storage:ro
+      - ${BV_BACKUP_SECRETS_DIR:-/etc/zapscript/backup}:/run/secrets/backup:ro   # chave de cifra (fora do repositório)
+    networks: [zapscript]
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
+
+  # Postgres descartável para o teste de restauração (dados em tmpfs, some ao parar).
+  pg-scratch:
+    profiles: [restore-test]
+    image: postgres:${BV_PG_MAJOR:-16}-alpine
+    environment: { POSTGRES_USER: scratch, POSTGRES_PASSWORD: scratch, POSTGRES_DB: postgres }
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U scratch"], interval: 3s, timeout: 3s, retries: 30 }
+    networks: [zapscript]
+
+  restore-test:
+    profiles: [restore-test]
+    image: zapscript-backup:local
+    depends_on: { pg-scratch: { condition: service_healthy } }
+    env_file: ${BV_BACKUP_ENV_FILE:-/etc/zapscript/backup.env}
+    environment:
+      BV_BACKUP_DIR: /var/backups/zapscript
+      BV_RESTORE_PG_URL: postgresql://scratch:scratch@pg-scratch:5432/postgres
+      BV_BACKUP_KEY_FILE: ${BV_BACKUP_KEY_FILE_IN_CONTAINER:-/run/secrets/backup/backup.key}
+      BV_BACKUP_AGE_IDENTITY_FILE: ${BV_BACKUP_AGE_IDENTITY_IN_CONTAINER:-/run/secrets/backup/age-identity.key}
+    volumes:
+      - ${BV_BACKUP_HOST_DIR:-/var/backups/zapscript}:/var/backups/zapscript
+      - ${BV_BACKUP_SECRETS_DIR:-/etc/zapscript/backup}:/run/secrets/backup:ro
+    command: ["/opt/backup/pg-restore-test.sh", "--storage"]
+    networks: [zapscript]
+
+networks:
+  zapscript:
+    external: true
+    name: ${BV_DOCKER_NETWORK:-zapscript_zapscript}   # confirme com `docker network ls` no servidor

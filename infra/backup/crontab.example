@@ -1,0 +1,10 @@
+# /etc/cron.d/zapscript-backup — alternativa ao agendador do container (use UM dos dois).
+# Formato cron.d: min hora dia mês dow usuário comando.  Horários em UTC (03:15 UTC = 00:15 Brasília).
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+BV_BACKUP_ENV=/etc/zapscript/backup.env
+
+15 3 * * *  root  set -a; . "$BV_BACKUP_ENV"; set +a; /opt/zapscript/infra/backup/pg-backup.sh      >> /var/log/zapscript-backup.log 2>&1
+45 3 * * *  root  set -a; . "$BV_BACKUP_ENV"; set +a; /opt/zapscript/infra/backup/storage-backup.sh >> /var/log/zapscript-backup.log 2>&1
+# Teste de restauração mensal (dia 2, 05:00 UTC) em Postgres descartável — grava o RTO medido no status.json
+0 5 2 * *   root  cd /opt/zapscript/infra/backup && docker compose -f docker-compose.backup.yml --profile restore-test run --rm restore-test >> /var/log/zapscript-backup.log 2>&1

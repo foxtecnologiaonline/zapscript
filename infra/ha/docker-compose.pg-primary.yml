@@ -1,0 +1,40 @@
+# PostgreSQL PRIMÁRIO (site principal). Standby em outra zona/região: docker-compose.pg-standby.yml (outro host).
+#   docker compose --env-file /opt/zapscript/ha.env -f docker-compose.pg-primary.yml up -d --build
+# Pré-requisitos no host (arquivos fora do repositório):
+#   /etc/zapscript/pg/postgresql.conf   ← postgres/postgresql.conf.example
+#   /etc/zapscript/pg/pg_hba.conf       ← postgres/pg_hba.conf.example
+#   /etc/zapscript/pg/tls/{server.crt,server.key,ca.crt}   (key: dono 999:999, modo 600)
+#   /etc/zapscript/pg/pgbackrest.env    PGBACKREST_REPO1_CIPHER_PASS, PGBACKREST_REPO1_S3_KEY, PGBACKREST_REPO1_S3_KEY_SECRET (600)
+# Depois de subir: docker exec zapscript-pg-primary pgbackrest --stanza=bv stanza-create && ... backup --type=full
+# MIGRAÇÃO: hoje o banco de produção é o Supabase (ver docs/balcao/INFRA-BR-CERTIFICACOES.md). Para residência no Brasil
+# e controle de WAL/réplica, migrar com pg_dump/pg_restore (infra/backup) e trocar DATABASE_URL/DIRECT_URL.
+services:
+  postgres:
+    build: { context: ./postgres, args: { PG_MAJOR: "${BV_PG_MAJOR:-16}" } }
+    image: zapscript-postgres-ha:${BV_PG_MAJOR:-16}
+    container_name: zapscript-pg-primary
+    restart: unless-stopped
+    shm_size: 1g
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zapscript}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-zapscript}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:?defina REPLICATION_PASSWORD}
+      BACKUP_RO_PASSWORD: ${BACKUP_RO_PASSWORD:-}
+    env_file: /etc/zapscript/pg/pgbackrest.env
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    ports: ["${PG_BIND_ADDR:-127.0.0.1}:5432:5432"]   # exponha só no IP privado/VPN usado pelo standby (nunca 0.0.0.0 na Internet)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - /etc/zapscript/pg/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - /etc/zapscript/pg/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - /etc/zapscript/pg/tls:/etc/postgresql/tls:ro
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"], interval: 10s, timeout: 5s, retries: 6, start_period: 30s }
+    networks: [zapscript]
+    logging: { driver: json-file, options: { max-size: "50m", max-file: "5" } }
+volumes:
+  pgdata:
+networks:
+  zapscript:
+    name: ${BV_DOCKER_NETWORK:-zapscript_zapscript}

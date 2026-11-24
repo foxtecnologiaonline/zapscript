@@ -62,7 +62,10 @@ setup_crypto() {
     local mode size; mode="$(stat -c '%a' "$BV_BACKUP_KEY_FILE")"; size="$(stat -c '%s' "$BV_BACKUP_KEY_FILE")"
     [ $(( 8#$mode & 8#077 )) -eq 0 ] || die "BV_BACKUP_KEY_FILE com permissão aberta ($mode); use chmod 600"
     [ "$size" -ge 32 ] || die "BV_BACKUP_KEY_FILE curta demais (< 32 bytes); gere com: openssl rand -base64 48 > arquivo"
-    case "$(readlink -f "$BV_BACKUP_KEY_FILE")" in "$(readlink -f "$LIB_DIR/../..")"/*) die "a chave não pode ficar dentro do repositório";; esac
+    local repo; repo="$(readlink -f "$LIB_DIR/../..")"
+    if [ -e "$repo/.git" ] && [ "$repo" != "/" ]; then
+      case "$(readlink -f "$BV_BACKUP_KEY_FILE")" in "$repo"/*) die "a chave não pode ficar dentro do repositório";; esac
+    fi
   else
     die "sem criptografia configurada: defina BV_BACKUP_AGE_RECIPIENT (preferido) ou BV_BACKUP_KEY_FILE — backup em claro é recusado"
   fi
@@ -126,7 +129,7 @@ prune_tier() { # $1=diretório $2=manter(N) — mantém os N mais recentes (o no
     n=$((n+1))
     if [ "$n" -le "$keep" ]; then continue; fi
     rm -f -- "${dir:?}/${f:?}" "${dir:?}/${f:?}.sha256" "${dir:?}/${f:?}.meta.json"
-  done < <(cd "$dir" && { ls -1 2>/dev/null || true; } | { grep -Ev '\.(sha256|meta\.json|partial)$' || true; } | sort -r)
+  done < <(cd "$dir" && { ls -1 2>/dev/null || true; } | { grep -E '\.(age|enc)$' || true; } | sort -r)
 }
 rotate_category() { # $1=categoria
   prune_tier "$BV_BACKUP_DIR/$1/daily" "$BV_BACKUP_KEEP_DAILY"
@@ -134,7 +137,7 @@ rotate_category() { # $1=categoria
   prune_tier "$BV_BACKUP_DIR/$1/monthly" "$BV_BACKUP_KEEP_MONTHLY"
 }
 latest_backup() { # $1=categoria → caminho do mais recente em daily/
-  (cd "$BV_BACKUP_DIR/$1/daily" 2>/dev/null && { ls -1 2>/dev/null || true; } | { grep -Ev '\.(sha256|meta\.json|partial)$' || true; } | sort -r | sed -n "1s|^|$BV_BACKUP_DIR/$1/daily/|p") || true
+  (cd "$BV_BACKUP_DIR/$1/daily" 2>/dev/null && { ls -1 2>/dev/null || true; } | { grep -E '\.(age|enc)$' || true; } | sort -r | sed -n "1s|^|$BV_BACKUP_DIR/$1/daily/|p") || true
 }
 
 # ── Cópia externa (S3-compatível em região no Brasil) ──────────────────────────

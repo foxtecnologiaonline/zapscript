@@ -1,0 +1,27 @@
+# PostgreSQL STANDBY (hot standby) em OUTRA zona/região do Brasil — réplica geográfica para DR.
+#   PRIMARY_HOST=<IP/DNS privado do primário> REPLICATION_PASSWORD=... docker compose -f docker-compose.pg-standby.yml up -d --build
+# Arquivos no host: /etc/zapscript/pg/{postgresql.conf (o mesmo do primário), tls/ca.crt, pgbackrest.env}.
+# O standby aceita leituras (relatórios pesados podem apontar para ele) e é PROMOVIDO manualmente no failover
+# (RUNBOOK-failover.md). Failover automático exige Patroni/repmgr + 3º nó de decisão — fora deste template.
+services:
+  postgres:
+    build: { context: ./postgres, args: { PG_MAJOR: "${BV_PG_MAJOR:-16}" } }
+    image: zapscript-postgres-ha:${BV_PG_MAJOR:-16}
+    container_name: zapscript-pg-standby
+    restart: unless-stopped
+    shm_size: 1g
+    entrypoint: ["/usr/local/bin/standby-entrypoint.sh"]
+    environment:
+      PRIMARY_HOST: ${PRIMARY_HOST:?defina PRIMARY_HOST}
+      PRIMARY_PORT: ${PRIMARY_PORT:-5432}
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:?defina REPLICATION_PASSWORD}
+    env_file: /etc/zapscript/pg/pgbackrest.env
+    ports: ["${PG_BIND_ADDR:-127.0.0.1}:5432:5432"]
+    volumes:
+      - pgdata_standby:/var/lib/postgresql/data
+      - /etc/zapscript/pg/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - /etc/zapscript/pg/tls:/etc/postgresql/tls:ro
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres"], interval: 10s, timeout: 5s, retries: 6, start_period: 60s }
+    logging: { driver: json-file, options: { max-size: "50m", max-file: "5" } }
+volumes:
+  pgdata_standby:

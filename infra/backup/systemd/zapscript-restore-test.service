@@ -1,0 +1,10 @@
+[Unit]
+Description=ZapScript/Balcao - teste de restauracao do backup (Postgres descartavel)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/zapscript/infra/backup
+ExecStart=/usr/bin/docker compose -f docker-compose.backup.yml --profile restore-test run --rm restore-test
+ExecStopPost=/usr/bin/docker compose -f docker-compose.backup.yml --profile restore-test down --remove-orphans

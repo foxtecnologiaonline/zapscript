@@ -1,0 +1,12 @@
+# Imagem utilitária de backup/restauração (pg_dump/pg_restore + age + openssl + aws/rclone). Contém apenas os scripts
+# desta pasta — sem segredos. Construir no servidor:  docker compose -f docker-compose.backup.yml build
+ARG PG_MAJOR=16
+FROM postgres:${PG_MAJOR}-alpine
+# O pg_dump precisa ser da MESMA versão major (ou maior) que o servidor de origem: ajuste PG_MAJOR.
+RUN apk add --no-cache bash coreutils findutils util-linux tar gzip openssl age curl rclone aws-cli
+COPY lib.sh pg-backup.sh storage-backup.sh pg-restore-test.sh scheduler.sh /opt/backup/
+RUN chmod 0755 /opt/backup/*.sh
+USER root
+WORKDIR /opt/backup
+ENTRYPOINT []
+CMD ["/opt/backup/scheduler.sh"]

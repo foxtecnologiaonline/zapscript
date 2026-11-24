@@ -1,0 +1,27 @@
+# /etc/pgbackrest/pgbackrest.conf — repositório S3-compatível EM REGIÃO DO BRASIL, cifrado no cliente.
+# A senha de cifra NÃO fica aqui: exporte PGBACKREST_REPO1_CIPHER_PASS (e as chaves S3) no ambiente do contêiner
+# (docker secret / env_file 600). Guarde uma cópia da senha FORA da infraestrutura (sem ela o repositório é ilegível).
+[global]
+repo1-type=s3
+repo1-s3-endpoint=s3.EXEMPLO-BR.example.com        # endpoint do provedor com região no Brasil (confirmar)
+repo1-s3-bucket=zapscript-pgbackrest-br
+repo1-s3-region=sa-east-1                          # ajuste ao provedor
+repo1-s3-uri-style=path
+repo1-path=/bv
+repo1-cipher-type=aes-256-cbc
+# repo1-cipher-pass -> PGBACKREST_REPO1_CIPHER_PASS
+# repo1-s3-key / repo1-s3-key-secret -> PGBACKREST_REPO1_S3_KEY / PGBACKREST_REPO1_S3_KEY_SECRET
+repo1-retention-full=2
+repo1-retention-diff=6
+repo1-retention-archive=2
+archive-async=y
+spool-path=/var/spool/pgbackrest
+compress-type=zst
+compress-level=3
+start-fast=y
+log-level-console=warn
+log-level-file=info
+log-path=/var/log/pgbackrest
+
+[bv]
+pg1-path=/var/lib/postgresql/data

@@ -1,0 +1,49 @@
+# postgresql.conf — PRIMÁRIO do Balcão Virtual (streaming replication + arquivamento de WAL cifrado).
+# Ajuste memória ao tamanho da VM. Montado em /etc/postgresql/postgresql.conf (docker-compose.pg-primary.yml).
+
+listen_addresses = '*'
+port = 5432
+max_connections = 200                    # a API usa pool; pgbouncer à frente se passar de ~150
+
+# ── Criptografia em trânsito ───────────────────────────────────────────────
+ssl = on
+ssl_cert_file = '/etc/postgresql/tls/server.crt'
+ssl_key_file  = '/etc/postgresql/tls/server.key'
+ssl_min_protocol_version = 'TLSv1.2'
+password_encryption = scram-sha-256
+
+# ── Memória (exemplo p/ 8 GB de RAM) ───────────────────────────────────────
+shared_buffers = 2GB
+effective_cache_size = 6GB
+work_mem = 16MB
+maintenance_work_mem = 512MB
+
+# ── Replicação em streaming + WAL ──────────────────────────────────────────
+wal_level = replica
+max_wal_senders = 10
+max_replication_slots = 10
+wal_keep_size = '2GB'                    # folga para standby que atrasa; o slot garante o restante
+wal_compression = on
+hot_standby = on
+hot_standby_feedback = on
+track_commit_timestamp = off
+# RPO ≈ 0 dentro do par primário↔standby síncrono (custo: latência de commit e COMMITs bloqueiam se o standby cair —
+# use ANY 1 com 2 standbys para não perder disponibilidade). Padrão assíncrono: RPO = atraso de replicação (segundos).
+synchronous_commit = on
+synchronous_standby_names = ''           # exemplo: 'ANY 1 (bv_standby1, bv_standby2)'
+
+# ── Arquivamento contínuo (PITR e DR) — pgBackRest cifra o repositório (aes-256-cbc) ─
+archive_mode = on
+archive_command = 'pgbackrest --stanza=bv archive-push %p'
+archive_timeout = 60                     # força troca de segmento: limita o RPO do arquivamento a ~60 s
+
+# ── Auditoria operacional (sem dados de negócio) ───────────────────────────
+log_connections = on
+log_disconnections = on
+log_checkpoints = on
+log_lock_waits = on
+log_min_duration_statement = 1000
+log_line_prefix = '%m [%p] %q%u@%d '
+log_timezone = 'America/Sao_Paulo'
+timezone = 'UTC'
+hba_file = '/etc/postgresql/pg_hba.conf'

@@ -1,0 +1,14 @@
+[Unit]
+Description=ZapScript/Balcao - backup cifrado do PostgreSQL
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/zapscript/backup.env
+ExecStart=/opt/zapscript/infra/backup/pg-backup.sh
+# Saída 3 (backup local ok, cópia externa falhou) deixa a unit "failed" — monitore com OnFailure=
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=true
+ProtectHome=true

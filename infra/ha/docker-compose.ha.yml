@@ -1,0 +1,125 @@
+# Balcão Virtual — camada de aplicação em alta disponibilidade (site primário, Vultr São Paulo ou equivalente no Brasil).
+#
+#   2 réplicas da API (api1/api2) atrás do nginx do host (nginx/balcao.conf) + worker + Redis primário/réplica com
+#   Sentinel (failover) e HAProxy roteando sempre para o master. Postgres: docker-compose.pg-primary.yml (mesmo host)
+#   e docker-compose.pg-standby.yml (OUTRA zona/região do Brasil). Ver README.md.
+#
+# Uso:
+#   cp env.ha.example /opt/zapscript/ha.env   # REDIS_PASSWORD etc. (chmod 600)
+#   docker compose --env-file /opt/zapscript/ha.env -f docker-compose.ha.yml up -d
+#   ./scripts/rolling-restart.sh              # deploy sem indisponibilidade (uma réplica por vez)
+#
+# As imagens são as MESMAS que o ops.yml builda no servidor (tag ghcr.io/foxtecnologiaonline/zapscript-*:latest, só local).
+# ATENÇÃO — o ops.yml hoje faz `docker compose up -d api` / `worker` no /root/docker-compose.zapscript.yml: com este
+# arquivo os serviços chamam-se api1/api2; ajuste o ops.yml (fora do escopo desta frente) ou use scripts/rolling-restart.sh.
+
+x-api: &api
+  image: ${BV_API_IMAGE:-ghcr.io/foxtecnologiaonline/zapscript-api:latest}
+  pull_policy: never                    # build local pelo ops.yml; nada é puxado de registry
+  restart: unless-stopped
+  env_file: ${BV_ENV_FILE:-/opt/zapscript/.env}
+  stop_grace_period: 30s
+  networks: [zapscript]
+  depends_on:
+    redis-proxy: { condition: service_started }
+  environment: &api-env
+    NODE_ENV: production
+    PORT: "3001"
+    # Redis sempre via HAProxy (aponta para o master atual)
+    REDIS_URL: redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD}@redis-proxy:6379
+    # Estado do backup lido pela postura de segurança (GET /balcao/security/posture)
+    BV_BACKUP_STATUS_FILE: /var/backups/zapscript/status.json
+    BV_STORAGE_DIR: /var/lib/zapscript/bv-storage
+    BV_DATA_RESIDENCY: ${BV_DATA_RESIDENCY:-}     # declarar BR só após confirmar banco/storage/backup/LLM no Brasil
+  volumes:
+    - ${BV_STORAGE_HOST_DIR:-/var/lib/zapscript/bv-storage}:/var/lib/zapscript/bv-storage   # compartilhado pelas réplicas (mesmo host)
+    - ${BV_BACKUP_HOST_DIR:-/var/backups/zapscript}:/var/backups/zapscript:ro
+  healthcheck:
+    test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health',(r)=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+    interval: 15s
+    timeout: 5s
+    retries: 3
+    start_period: 40s
+  logging: { driver: json-file, options: { max-size: "50m", max-file: "5" } }
+
+services:
+  api1:
+    <<: *api
+    container_name: zapscript-api1
+    ports: ["127.0.0.1:3001:3001"]
+
+  api2:
+    <<: *api
+    container_name: zapscript-api2
+    ports: ["127.0.0.1:3002:3001"]
+    # Descomente para uma terceira réplica (e inclua 127.0.0.1:3003 nos upstreams do nginx):
+    # api3: { <<: *api, container_name: zapscript-api3, ports: ["127.0.0.1:3003:3001"] }
+
+  worker:
+    image: ${BV_WORKER_IMAGE:-ghcr.io/foxtecnologiaonline/zapscript-worker:latest}
+    pull_policy: never
+    container_name: zapscript-worker
+    restart: unless-stopped
+    env_file: ${BV_ENV_FILE:-/opt/zapscript/.env}
+    environment:
+      API_URL: http://api1:3001
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis-proxy:6379
+    depends_on:
+      api1: { condition: service_healthy }
+    networks: [zapscript]
+    logging: { driver: json-file, options: { max-size: "50m", max-file: "3" } }
+
+  # ── Redis: master + réplica, Sentinel (decide o failover) e HAProxy (roteia para o master) ──────────────
+  # noeviction é obrigatório para o BullMQ; AOF everysec limita a perda a ~1 s.
+  redis-master:
+    image: redis:7-alpine
+    container_name: zapscript-redis-master
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD}", "--masterauth", "${REDIS_PASSWORD}"]
+    volumes: ["./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro", "redis_master:/data"]
+    healthcheck: { test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"], interval: 10s, timeout: 3s, retries: 3 }
+    environment: { REDIS_PASSWORD: "${REDIS_PASSWORD}" }
+    networks: [zapscript]
+
+  redis-replica:
+    image: redis:7-alpine
+    container_name: zapscript-redis-replica
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD}", "--masterauth", "${REDIS_PASSWORD}", "--replicaof", "redis-master", "6379"]
+    volumes: ["./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro", "redis_replica:/data"]
+    depends_on: [redis-master]
+    networks: [zapscript]
+
+  # 3 sentinelas (quorum 2). No mesmo host elas só protegem contra falha de processo/contêiner; para tolerar a perda
+  # de uma ZONA, rode 1 sentinela em cada uma de 3 zonas (ver README.md).
+  sentinel-1: &sentinel
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment: { REDIS_PASSWORD: "${REDIS_PASSWORD}" }
+    command:
+      - sh
+      - -c
+      - |
+        printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel announce-hostnames yes\nsentinel monitor bvmaster redis-master 6379 2\nsentinel auth-pass bvmaster %s\nsentinel down-after-milliseconds bvmaster 5000\nsentinel failover-timeout bvmaster 30000\nsentinel parallel-syncs bvmaster 1\nrequirepass %s\n' "$$REDIS_PASSWORD" "$$REDIS_PASSWORD" > /tmp/sentinel.conf
+        exec redis-sentinel /tmp/sentinel.conf
+    depends_on: [redis-master, redis-replica]
+    networks: [zapscript]
+  sentinel-2: { <<: *sentinel }
+  sentinel-3: { <<: *sentinel }
+
+  redis-proxy:
+    image: haproxy:2.9-alpine
+    container_name: zapscript-redis-proxy
+    restart: unless-stopped
+    environment: { REDIS_PASSWORD: "${REDIS_PASSWORD}" }
+    volumes: ["./haproxy/redis-master.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro"]
+    depends_on: [redis-master, redis-replica]
+    networks: [zapscript]
+
+volumes:
+  redis_master:
+  redis_replica:
+
+networks:
+  zapscript:
+    name: ${BV_DOCKER_NETWORK:-zapscript_zapscript}

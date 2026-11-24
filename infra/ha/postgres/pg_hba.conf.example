@@ -1,0 +1,11 @@
+# pg_hba.conf — PRIMÁRIO. Regras avaliadas de cima para baixo; nada em claro (hostnossl → reject).
+# Ajuste os CIDRs: APP = rede Docker da API/worker; STANDBY = IP/CIDR da outra zona/região; BACKUP = host de backup.
+# TYPE      DATABASE        USER            ADDRESS                 METHOD
+local       all             postgres                                peer
+local       all             all                                     scram-sha-256
+hostssl     all             all             172.16.0.0/12           scram-sha-256     # APP (rede Docker)
+hostssl     all             backup_ro       10.0.0.0/8              scram-sha-256     # pg-backup.sh (usuário só-leitura)
+hostssl     replication     replicator      203.0.113.0/24          scram-sha-256     # STANDBY em outra zona/região (EXEMPLO)
+hostnossl   all             all             0.0.0.0/0               reject
+hostnossl   all             all             ::/0                    reject
+host        all             all             0.0.0.0/0               reject

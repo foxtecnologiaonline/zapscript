@@ -21,12 +21,13 @@ export function ReviewQueue({ categories, onCount }: { categories: string[]; onC
     setError(null);
     try {
       const r = await bv.get<KbListResponse>('/kb/articles', { status: 'PENDING_REVIEW', limit: 50, cursor: after });
-      setItems((cur) => { const next = after ? [...cur, ...r.items] : r.items; onCount?.(next.length); return next; });
+      setItems((cur) => (after ? [...cur, ...r.items] : r.items));
       setCursor(r.nextCursor);
     } catch (e) { setError(errMsg(e, 'Não foi possível carregar a fila de revisão.')); }
     finally { setLoading(false); setMore(false); }
-  }, [onCount]);
+  }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (!loading) onCount?.(items.length); }, [items, loading, onCount]);
 
   return (
     <div className="flex flex-col gap-3">

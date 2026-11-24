@@ -1,0 +1,12 @@
+[Unit]
+Description=ZapScript/Balcao - backup cifrado do storage (anexos e gravacoes)
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/zapscript/backup.env
+ExecStart=/opt/zapscript/infra/backup/storage-backup.sh
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=true
+ProtectHome=true
