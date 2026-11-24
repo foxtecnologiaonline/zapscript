@@ -1,15 +1,16 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
-import { auditReq } from '../core/audit';
+import { audit, auditReq } from '../core/audit';
 import { recordConfigVersion } from '../core/configVersion';
-import { guard, idParam, parse, sendError } from '../core/http';
+import { bvAuth, guard, idParam, parse, requirePerm, sendError } from '../core/http';
 import { runExclusive } from '../core/scheduler';
 import { getOrgSettings, updateOrgSettings } from '../core/settings';
 import { getObjectStream, parseRange, statObject } from '../core/storage';
 import { activeLegalHold, getSecuritySettings } from './config';
 import { DSR_TYPES, DsrError, openDsr, parseNote, processDsr, rejectDsr } from './dsr';
 import { createFullExportJob, runFullExport } from './exporter';
+import { consumeExportLink, EXPORT_LINK_TTL_SEC, issueExportLink } from './exportLink';
 import { createIncident, getIncident, listIncidents, updateIncident } from './incidents';
 import { guardAny } from './guards';
 import { keyStatus, rotateFieldKeys } from './keys';
@@ -162,17 +163,53 @@ export default async function plugin(app: FastifyInstance): Promise<void> {
     const j = await prisma.bvExportJob.findFirst({ where: { id: p.id, orgId: req.bv!.orgId, type: 'FULL_EXPORT' } });
     return j ? jobView(j) : sendError(reply, 404, 'export.not_found', 'Exportação não encontrada');
   });
-  app.get('/exports/:id/download', { preHandler: guard('security:manage') }, async (req, reply) => {
+  /**
+   * Download: (a) autenticado (`Authorization` + security:manage), como antes; ou (b) `?dl=<token>` de uso único emitido por
+   * POST /exports/:id/link, SEM Authorization (o navegador baixa direto, sem carregar o arquivo em memória). Token inválido,
+   * expirado, já usado ou de outra exportação → 401 `export.link_invalid`.
+   */
+  const authOrLink = async (req: FastifyRequest, reply: FastifyReply) => {
+    const dl = (req.query as { dl?: unknown } | undefined)?.dl;
+    if (dl === undefined) {
+      await bvAuth(req, reply);
+      if (reply.sent) return;
+      return requirePerm('security:manage')(req, reply);
+    }
+    const jobId = (req.params as { id?: string }).id;
+    const grant = typeof dl === 'string' ? await consumeExportLink(dl) : null;
+    if (!grant || grant.jobId !== jobId) return sendError(reply, 401, 'export.link_invalid', 'Link inválido, expirado ou já utilizado');
+    (req as any).exportGrant = grant;
+  };
+  app.get('/exports/:id/download', { preHandler: authOrLink }, async (req, reply) => {
     const p = parse(idParam, req.params, reply); if (!p) return;
-    const orgId = req.bv!.orgId;
+    const grant = (req as any).exportGrant as { orgId: string; userId: string } | undefined;
+    const orgId = grant?.orgId ?? req.bv!.orgId;
     const j = await prisma.bvExportJob.findFirst({ where: { id: p.id, orgId, type: 'FULL_EXPORT' } });
     if (!j) return sendError(reply, 404, 'export.not_found', 'Exportação não encontrada');
     if (j.status !== 'DONE' || !j.fileKey) return sendError(reply, 409, 'export.not_ready', 'Exportação não está pronta ou expirou');
     const st = await statObject(j.fileKey);
     if (!st) return sendError(reply, 404, 'export.file_missing', 'Arquivo não encontrado no storage');
     // toda requisição é auditada (inclusive cada pedaço de um download retomado por Range)
-    await auditReq(req, 'security.export.download', { entityType: 'export', entityId: j.id, meta: { format: j.format, bytes: st.size, range: req.headers.range ?? null } });
+    const meta = { format: j.format, bytes: st.size, range: req.headers.range ?? null };
+    if (grant) await audit({ orgId, actorId: grant.userId, action: 'security.export.download', entityType: 'export', entityId: j.id, ip: req.ip, userAgent: req.headers['user-agent'], meta: { ...meta, via: 'one-time-link' } });
+    else await auditReq(req, 'security.export.download', { entityType: 'export', entityId: j.id, meta });
+    if (grant) reply.header('Referrer-Policy', 'no-referrer');
     return sendFile(req, reply, j.fileKey, st.size, 'application/gzip', `balcao-export-${j.id}.tar.gz`, j.sha256);
+  });
+
+  /** Emite o link de uso único (60 s) para baixar a exportação sem header Authorization. */
+  app.post('/exports/:id/link', { preHandler: guard('security:manage') }, async (req, reply) => {
+    const p = parse(idParam, req.params, reply); if (!p) return;
+    const orgId = req.bv!.orgId;
+    const j = await prisma.bvExportJob.findFirst({ where: { id: p.id, orgId, type: 'FULL_EXPORT' } });
+    if (!j) return sendError(reply, 404, 'export.not_found', 'Exportação não encontrada');
+    if (j.status !== 'DONE' || !j.fileKey) return sendError(reply, 409, 'export.not_ready', 'Exportação não está pronta ou expirou');
+    let issued: Awaited<ReturnType<typeof issueExportLink>>;
+    try { issued = await issueExportLink({ orgId, jobId: j.id, userId: req.bv!.userId }); } catch { return sendError(reply, 503, 'export.link_unavailable', 'Não foi possível emitir o link agora; tente novamente'); }
+    const base = (process.env.BV_PUBLIC_API_URL || `${req.protocol}://${req.hostname}`).replace(/\/+$/, '');
+    await auditReq(req, 'security.export.link', { entityType: 'export', entityId: j.id, meta: { ttlSec: EXPORT_LINK_TTL_SEC } }); // o token nunca vai para a auditoria
+    reply.header('Cache-Control', 'no-store');
+    return { url: `${base}/balcao/security/exports/${j.id}/download?dl=${encodeURIComponent(issued.token)}`, expiresAt: issued.expiresAt.toISOString() };
   });
 
   // ── Postura e incidentes ────────────────────────────────────────────────────

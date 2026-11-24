@@ -6,11 +6,14 @@ import { registerJob, runExclusive } from '../core/scheduler';
 import { getOrgSettings } from '../core/settings';
 import { deleteObject } from '../core/storage';
 import { activeLegalHold, DAY_MS, getSecuritySettings, minAuditDays } from './config';
+import { ENC_HISTORY_FIELDS } from '../tasks/content';
 
 /**
  * Política de retenção por órgão (settings.retention), aplicada em lotes pequenos e retomáveis:
  *  - MESSAGES    mensagens além de `messagesDays`: corpo, anexos (arquivos no storage) e metadados do canal são
  *                removidos; a linha permanece (data, direção, status) para manter os agregados dos relatórios.
+ *                O mesmo prazo vale para o TEXTO das tarefas ENCERRADAS (descrição, comentários, histórico de
+ *                descrição/resolução): o texto sai, a tarefa e o título ficam (métricas de ISA/IOSA/IR).
  *  - RECORDINGS  chamadas além de `recordingsDays`: gravação removida do storage e números mascarados.
  *  - LOGS        BvIntegrationLog além de `logsDays`.
  *  - AUDIT       trilha de auditoria somente além de max(`auditDays`, BV_AUDIT_MIN_DAYS).
@@ -18,7 +21,7 @@ import { activeLegalHold, DAY_MS, getSecuritySettings, minAuditDays } from './co
  * BvRetentionRun por tipo e uma entrada de auditoria. `dryRun` só conta.
  */
 export type RetentionKind = 'MESSAGES' | 'RECORDINGS' | 'LOGS' | 'AUDIT';
-export interface RetentionKindResult { kind: RetentionKind; cutoff: string | null; candidates?: number; purged: number; skipped?: string; more: boolean }
+export interface RetentionKindResult { kind: RetentionKind; cutoff: string | null; candidates?: number; purged: number; skipped?: string; more: boolean; /** MESSAGES: tarefas encerradas cujo texto foi removido (em dryRun, candidatas) */ tasks?: number }
 export interface RetentionResult { orgId: string; dryRun: boolean; legalHold: boolean; kinds: RetentionKindResult[] }
 export interface RetentionOptions { dryRun?: boolean; batchSize?: number; maxBatches?: number; now?: Date }
 
@@ -51,9 +54,35 @@ export async function scrubAiSuggestions(orgId: string, scope: { before?: Date; 
   return n;
 }
 
+export const TASK_RETENTION_MARKER = '[texto removido pela política de retenção]';
+
+/**
+ * Remove o texto livre de tarefas: descrição (→ `descriptionTo`), corpo dos comentários (→ `marker`) e valores de histórico
+ * de `description`/`resolution` (→ null). Título e metadados ficam. Idempotente (só toca o que ainda tem texto).
+ * Usado pela retenção (tarefas encerradas antigas) e pelo atendimento de DSR (tarefas do titular).
+ */
+export async function scrubTaskText(orgId: string, where: Prisma.BvTaskWhereInput, marker: string, descriptionTo: string | null): Promise<{ tasks: number; comments: number; history: number }> {
+  const taskScope: Prisma.BvTaskWhereInput = { orgId, AND: [where] };
+  const tasks = await prisma.bvTask.updateMany({ where: { ...taskScope, description: descriptionTo === null ? { not: null } : { not: descriptionTo } }, data: { description: descriptionTo } });
+  const comments = await prisma.bvTaskComment.updateMany({ where: { task: taskScope, NOT: { body: marker } }, data: { body: marker } });
+  const history = await prisma.bvTaskHistory.updateMany({
+    where: { task: taskScope, field: { in: [...ENC_HISTORY_FIELDS] }, OR: [{ fromValue: { not: null } }, { toValue: { not: null } }] }, data: { fromValue: null, toValue: null },
+  });
+  return { tasks: tasks.count, comments: comments.count, history: history.count };
+}
+
+async function purgeTaskText(orgId: string, cutoff: Date, dry: boolean): Promise<number> {
+  const where: Prisma.BvTaskWhereInput = { createdAt: { lt: cutoff }, status: { in: ['DONE', 'CANCELLED'] } };
+  if (dry) {
+    return prisma.bvTask.count({ where: { orgId, AND: [where], OR: [{ description: { not: null } }, { comments: { some: { NOT: { body: TASK_RETENTION_MARKER } } } }] } });
+  }
+  const r = await scrubTaskText(orgId, where, TASK_RETENTION_MARKER, null);
+  return r.tasks + r.comments + r.history;
+}
+
 async function purgeMessages(orgId: string, cutoff: Date, dry: boolean, batchSize: number, maxBatches: number) {
   const where: Prisma.BvMessageWhereInput = { orgId, createdAt: { lt: cutoff }, OR: [{ body: { not: null } }, { attachments: { not: Prisma.DbNull } }] };
-  if (dry) return { candidates: await prisma.bvMessage.count({ where }), purged: 0, more: false, files: 0, suggestions: 0 };
+  if (dry) return { candidates: await prisma.bvMessage.count({ where }), purged: 0, more: false, files: 0, suggestions: 0, tasks: await purgeTaskText(orgId, cutoff, true) };
   let purged = 0; let files = 0; let more = false;
   for (let b = 0; b < maxBatches; b++) {
     const rows = await prisma.bvMessage.findMany({ where, select: { id: true, attachments: true }, orderBy: { createdAt: 'asc' }, take: batchSize });
@@ -69,7 +98,8 @@ async function purgeMessages(orgId: string, cutoff: Date, dry: boolean, batchSiz
     if (b === maxBatches - 1) more = true;
   }
   const suggestions = await scrubAiSuggestions(orgId, { before: cutoff }, batchSize, maxBatches);
-  return { candidates: undefined, purged, more, files, suggestions };
+  const tasks = await purgeTaskText(orgId, cutoff, false);
+  return { candidates: undefined, purged, more, files, suggestions, tasks };
 }
 
 async function purgeRecordings(orgId: string, cutoff: Date, dry: boolean, batchSize: number, maxBatches: number) {
@@ -146,7 +176,7 @@ export async function runRetentionForOrg(orgId: string, opts: RetentionOptions =
     if (p.days === null) { kinds.push({ kind: p.kind, cutoff: null, purged: 0, skipped: 'prazo não configurado', more: false }); continue; }
     if (p.held) { kinds.push({ kind: p.kind, cutoff: null, purged: 0, skipped: 'guarda legal ativa', more: false }); continue; }
     const cutoff = new Date(now.getTime() - p.days * DAY_MS);
-    let res: { candidates?: number; purged: number; more: boolean; files: number; from?: Date; suggestions?: number };
+    let res: { candidates?: number; purged: number; more: boolean; files: number; from?: Date; suggestions?: number; tasks?: number };
     try {
       res = p.kind === 'MESSAGES' ? await purgeMessages(orgId, cutoff, dry, batchSize, maxBatches)
         : p.kind === 'RECORDINGS' ? await purgeRecordings(orgId, cutoff, dry, batchSize, maxBatches)
@@ -156,13 +186,13 @@ export async function runRetentionForOrg(orgId: string, opts: RetentionOptions =
       kinds.push({ kind: p.kind, cutoff: cutoff.toISOString(), purged: 0, skipped: 'erro: ' + String(err?.message ?? err).slice(0, 120), more: false });
       continue;
     }
-    kinds.push({ kind: p.kind, cutoff: cutoff.toISOString(), ...(dry ? { candidates: res.candidates } : {}), purged: res.purged, more: res.more });
+    kinds.push({ kind: p.kind, cutoff: cutoff.toISOString(), ...(dry ? { candidates: res.candidates } : {}), purged: res.purged, more: res.more, ...(res.tasks != null ? { tasks: res.tasks } : {}) });
     if (!dry) {
       await prisma.bvRetentionRun.create({ data: { orgId, kind: p.kind, purged: res.purged, cutoff } });
-      if (res.purged > 0) {
+      if (res.purged > 0 || res.tasks) {
         await audit({
           orgId, actorType: 'SYSTEM', action: `retention.${p.kind.toLowerCase()}`, entityType: 'retention',
-          meta: { cutoff: cutoff.toISOString(), purged: res.purged, files: res.files, ...(res.suggestions ? { aiSuggestionsScrubbed: res.suggestions } : {}), ...(res.from ? { oldestPurged: res.from.toISOString() } : {}), more: res.more },
+          meta: { cutoff: cutoff.toISOString(), purged: res.purged, files: res.files, ...(res.suggestions ? { aiSuggestionsScrubbed: res.suggestions } : {}), ...(res.tasks ? { taskTextScrubbed: res.tasks } : {}), ...(res.from ? { oldestPurged: res.from.toISOString() } : {}), more: res.more },
         });
       }
     }

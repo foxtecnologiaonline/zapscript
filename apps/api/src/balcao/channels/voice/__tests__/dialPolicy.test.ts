@@ -1,7 +1,6 @@
 process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key-12345678901234567890';
 
-import crypto from 'crypto';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../../../lib/prisma';
 import { clearBvEventHandlers } from '../../../core/events';
@@ -74,12 +73,13 @@ describe('discagem restrita — avaliação do número (sem I/O)', () => {
 });
 
 // ── Controlador + rota, com ARI simulado ────────────────────────────────────────────────────────────
+let extSeq = 3000;
 async function setup(voice?: Record<string, unknown>) {
   const org = await makeOrg({ ai: { enabled: false }, ...(voice ? { voice } : {}) });
   const orgId = org.id;
   const mk = async (role: 'ATENDENTE' | 'FISCAL' | 'SUPERVISOR', presence = 'ONLINE') => {
     const u = await makeUser(orgId, role, { presence });
-    return prisma.bvUser.update({ where: { id: u.id }, data: { sipExtension: `30${crypto.randomInt(10, 99)}` } });
+    return prisma.bvUser.update({ where: { id: u.id }, data: { sipExtension: String(++extSeq) } });
   };
   const agent = await mk('ATENDENTE');
   await saveIntegration(orgId, 'SIP_TRUNK', { trunkEndpoint: 'tjto-trunk' });

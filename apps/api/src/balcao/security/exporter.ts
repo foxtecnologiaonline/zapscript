@@ -8,6 +8,7 @@ import { prisma } from '../../lib/prisma';
 import { logger } from '../../lib/logger';
 import { audit } from '../core/audit';
 import { decryptField, decryptJson } from '../core/crypto';
+import { isFreeTextField } from '../tasks/content';
 import { runExclusive, registerJob } from '../core/scheduler';
 import { deleteObject, getObjectStream, newKey, putObject, statObject, storageRoot } from '../core/storage';
 import { FORMAT_EXT, makeFormatter, type ColumnDef, type ExportFormat } from './formats';
@@ -72,9 +73,10 @@ export const ENTITIES: EntitySpec[] = [
   { name: 'conversation_events', model: 'BvConversationEvent', where: orgWhere, transform: (r) => decryptEventData(r) },
   { name: 'messages', model: 'BvMessage', where: orgWhere, transform: (r) => ({ ...r, body: safeBody(r.body) }) },
   { name: 'calls', model: 'BvCall', where: orgWhere },
-  { name: 'tasks', model: 'BvTask', where: orgWhere },
-  { name: 'task_comments', model: 'BvTaskComment', where: bySlot('task') },
-  { name: 'task_history', model: 'BvTaskHistory', where: bySlot('task') },
+  // texto de tarefas é cifrado em repouso (tasks/content.ts): a exportação sai DECIFRADA
+  { name: 'tasks', model: 'BvTask', where: orgWhere, transform: (r) => ({ ...r, description: safeBody(r.description) }) },
+  { name: 'task_comments', model: 'BvTaskComment', where: bySlot('task'), transform: (r) => ({ ...r, body: safeBody(r.body) }) },
+  { name: 'task_history', model: 'BvTaskHistory', where: bySlot('task'), transform: (r) => (isFreeTextField(r.field) ? { ...r, fromValue: safeBody(r.fromValue), toValue: safeBody(r.toValue) } : r) },
   { name: 'audit_log', model: 'BvAuditLog', where: orgWhere },
   { name: 'usage_daily', model: 'BvUsageDaily', where: orgWhere },
   { name: 'quotas', model: 'BvQuota', where: orgWhere },

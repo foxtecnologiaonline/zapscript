@@ -71,6 +71,18 @@ export default async function plugin(app: FastifyInstance): Promise<void> {
   // ── Catálogo e relatórios padrão ───────────────────────────────────────────
   app.get('/reports/definitions', { preHandler: read }, async () => definitionsCatalog());
 
+  /** Opções para os selects de filtro do Painel do Fiscal (que não tem conversation:read para listar filas/atendentes). Sem e-mail. */
+  app.get('/reports/filters', { preHandler: read }, async (req, reply) => {
+    const q = parse(z.object({ includeInactive: z.enum(['true', 'false', '1', '0']).optional() }), req.query, reply); if (!q) return;
+    const orgId = req.bv!.orgId;
+    const all = q.includeInactive === 'true' || q.includeInactive === '1';
+    const [queues, agents] = await Promise.all([
+      prisma.bvQueue.findMany({ where: { orgId, ...(all ? {} : { active: true }) }, select: { id: true, name: true, active: true }, orderBy: { name: 'asc' }, take: 500 }),
+      prisma.bvUser.findMany({ where: { orgId, role: { in: ['ATENDENTE', 'SUPERVISOR'] }, ...(all ? {} : { active: true }) }, select: { id: true, name: true, active: true }, orderBy: { name: 'asc' }, take: 2000 }),
+    ]);
+    return { queues, agents };
+  });
+
   app.get('/reports/overview', { preHandler: read }, async (req, reply) => {
     const c = await context(req, reply); if (!c) return;
     const [kpis, byChannel, byHour] = await Promise.all([

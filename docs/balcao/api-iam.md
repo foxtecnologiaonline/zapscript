@@ -15,20 +15,22 @@ Código: `apps/api/src/balcao/iam`; CLIs: `apps/api/src/balcao/cli`. Prefixo fin
 | Método e caminho | Perm. | Corpo | Resposta |
 |---|---|---|---|
 | `POST /auth/login` | pública | `{email, password, orgSlug?}` | `200 {accessToken, refreshToken, expiresIn, user{id,orgId,name,email,role}, mustChangePassword, mfaSetupRequired, totpEnabled}` ou, com MFA, `200 {mfaRequired:true, mfaToken, expiresIn:300}` |
-| `POST /auth/login/mfa` | pública | `{mfaToken, code}` (6 dígitos) | mesma sessão do login |
+| `POST /auth/login/mfa` | pública | `{mfaToken, code}` (6 dígitos) **ou** `{mfaToken, recoveryCode}` (`XXXX-XXXX`, com/sem hífen, maiúsculas ou minúsculas); exatamente um dos dois (senão `400`) | mesma sessão do login. Com `recoveryCode`: acrescenta `recoveryCodesRemaining` e, se ≤ 2, `recoveryCodesWarning`. Código inválido/já usado → `401 auth.invalid_recovery_code` |
 | `POST /auth/refresh` | pública | `{refreshToken}` | nova sessão (rotação; token antigo deixa de valer) |
 | `POST /auth/logout` | opcional | `{refreshToken?}` (ou Bearer) | `{ok:true}` |
-| `GET /auth/me` | sessão | — | `{user{…,orgName,orgSlug,sectorId,skills,sipExtension…}, permissions[], mustChangePassword, totpEnabled, mfaSetupRequired}` |
+| `GET /auth/me` | sessão | — | `{user{…,orgName,orgSlug,sectorId,skills,sipExtension…}, permissions[], mustChangePassword, totpEnabled, recoveryCodesRemaining (0 sem MFA), mfaSetupRequired}` |
 | `POST /auth/password` | sessão | `{currentPassword, newPassword}` | `{ok, otherSessionsRevoked}`; revoga as demais sessões; limpa `mustChangePassword` |
 | `POST /auth/mfa/setup` | sessão | — | `{secret (base32), otpauthUrl, digits, period, algorithm}`; segredo guardado cifrado, ainda desabilitado |
-| `POST /auth/mfa/enable` | sessão | `{code}` | `{ok, totpEnabled:true}` |
-| `POST /auth/mfa/disable` | sessão | `{password, code}` | `{ok, totpEnabled:false}` |
+| `POST /auth/mfa/enable` | sessão | `{code}` | `{ok, totpEnabled:true, recoveryCodes:[10 × "XXXX-XXXX"], recoveryCodesRemaining:10}` — **os códigos só aparecem aqui** (`Cache-Control: no-store`); o front deve exigir que o usuário os guarde |
+| `POST /auth/mfa/recovery-codes/regenerate` | sessão | `{password, code}` (senha + TOTP atual) | `{ok, recoveryCodes[10], recoveryCodesRemaining:10}` (`no-store`); invalida o conjunto anterior (inclusive os não usados). `409 mfa.not_enabled`; `403 auth.invalid_credentials` |
+| `POST /auth/mfa/disable` | sessão | `{password, code}` | `{ok, totpEnabled:false}` (apaga também os códigos de recuperação) |
 
 Regras:
 - Erro de credencial é sempre `401 auth.invalid_credentials` / "E-mail ou senha inválidos." (usuário inexistente, inativo ou senha errada). E-mail presente em mais de um órgão sem `orgSlug` → `409 auth.org_required` (só depois de a senha conferir em algum deles; `details.orgs` lista os candidatos).
 - 5 falhas (senha ou código MFA) → conta bloqueada por 15 min (`423 auth.locked`, header `Retry-After`), mesmo com a senha correta. O contador só zera após login completo.
 - Rate limit por IP + órgão: 20 tentativas/10 min → `429 auth.rate_limited` (Redis; sem Redis não bloqueia).
 - Código TOTP já usado não é aceito de novo (anti-replay, 90 s).
+- **Códigos de recuperação** (`recovery.ts`): 10 por conjunto, formato `XXXX-XXXX`, alfabeto de 32 símbolos sem ambiguidade (sem I, O, 0, 1; 40 bits cada). No banco só o `sha256` (`hashToken("mfa-recovery:<código>")`) em `BvUser.mfaRecoveryHashes`. Uso único e atômico (`UPDATE … array_remove … RETURNING`, seguro contra corrida), comparação em tempo constante contra todos os hashes. Falha de `recoveryCode` conta para o mesmo lockout do TOTP (5 → `423 auth.locked`; com a conta bloqueada nada é consumido). Uso audita `auth.mfa_recovery_used` (`meta.remaining`, nunca o código). `reset-mfa` do admin e `mfa/disable` limpam os hashes.
 - Reuso de refresh token já rotacionado/revogado → `401` e **todas** as sessões do usuário são revogadas (`auth.refresh_reuse` auditado).
 - `security.requireMfaRoles` (settings do órgão): perfil listado sem MFA ativo recebe `mfaSetupRequired:true` (login e `/me`). **O backend não bloqueia as demais rotas** — o front deve forçar o fluxo de setup.
 - `mustChangePassword:true` (senha temporária) idem: sinalizado, o front deve forçar `/auth/password`.
@@ -59,7 +61,7 @@ Permissão entre parênteses. `:id` sempre do próprio órgão.
 
 **Auditoria** (`audit:read`) — `GET /admin/audit?actorId=&action=&entityType=&entityId=&from=&to=&limit=&cursor=&format=`. `action` exato ou prefixo com `*` (`user.*`). JSON: `{items[{…,actorName}],nextCursor}` (mais recentes primeiro). `format=csv` exporta (até 50 000 linhas, `X-Truncated: true` se cortar) e audita `audit.export`.
 
-Ações auditadas: `auth.login|login_failed|login_blocked|lockout|mfa_failed|logout|refresh_reuse|password_change(_failed)|mfa_setup|mfa_enable|mfa_disable(_failed)`, `org.update`, `sector.*`, `user.create|update|deactivate|activate|reset_password|reset_mfa|unlock|bulk_create`, `holiday.*`, `apitoken.create|revoke`, `audit.export`. Senhas, segredos e tokens nunca entram em `before/after/meta`.
+Ações auditadas: `auth.login|login_failed|login_blocked|lockout|mfa_failed (meta.method totp|recovery)|mfa_recovery_used|mfa_recovery_regenerate(_failed)|logout|refresh_reuse|password_change(_failed)|mfa_setup|mfa_enable|mfa_disable(_failed)`, `org.update`, `sector.*`, `user.create|update|deactivate|activate|reset_password|reset_mfa|unlock|bulk_create`, `holiday.*`, `apitoken.create|revoke`, `audit.export`. Senhas, segredos e tokens nunca entram em `before/after/meta`.
 
 ## Variáveis de ambiente
 
@@ -84,7 +86,7 @@ Usuários demo: `admin|supervisor|atendente1..3|fiscal@demo.balcao.local`. Sem `
 
 ## Testes
 
-`source <scratchpad>/bv-env.sh && cd apps/api && npx jest --runInBand src/balcao/iam` (25 testes: login/lockout/rate limit/MFA/refresh+reuso/logout/senha/RBAC/usuários/corrida do último admin/bulk/token de API/auditoria/org/feriados/isolamento/CLIs). Exige Postgres e Redis locais.
+`source <scratchpad>/bv-env.sh && cd apps/api && npx jest --runInBand src/balcao/iam` (34 testes, incluindo `mfa-recovery.test.ts` — geração/unicidade, hash no banco, uso único e concorrente, reuso recusado, regeneração invalida os antigos, lockout, disable/reset-mfa limpam —; login/lockout/rate limit/MFA/refresh+reuso/logout/senha/RBAC/usuários/corrida do último admin/bulk/token de API/auditoria/org/feriados/isolamento/CLIs). Exige Postgres e Redis locais.
 
 ## Não verificado
 
@@ -95,5 +97,6 @@ Usuários demo: `admin|supervisor|atendente1..3|fiscal@demo.balcao.local`. Sem `
 - Carga: cadastro em massa de 500 linhas foi testado com ~120 linhas (scrypt assíncrono, concorrência 8); não houve teste de carga de ~290 logins simultâneos.
 - Rate limit de login fail-open sem Redis (por projeto); bloqueio por conta continua valendo.
 - Execução dos CLIs em produção (Vultr/Supabase) — rodados apenas contra o Postgres local.
-- Sem códigos de recuperação de MFA: perda do dispositivo exige `reset-mfa` por um ADMIN.
+- Códigos de recuperação: 40 bits de entropia por código, protegidos só pelo lockout (5 falhas → 15 min) e pelo rate limit por IP (fail-open sem Redis); não há expiração do conjunto nem aviso por e-mail ao usar um código. Sem código nem dispositivo, a recuperação continua sendo `reset-mfa` por um ADMIN. A exibição/impressão dos códigos e a obrigação de o usuário guardá-los são do front.
+- Migração `20261124_balcao_virtual_3` (`mfaRecoveryHashes`) aplicada só ao Postgres local; usuários que já tinham MFA ativo ficam com 0 códigos (gerar via `regenerate`).
 - OIDC/gov.br: fora desta frente (integrations).

@@ -2,9 +2,10 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { audit } from '../core/audit';
 import { decryptField, encryptField } from '../core/crypto';
+import { openText } from '../tasks/content';
 import { deleteObject, newKey, putObject } from '../core/storage';
 import { activeLegalHold, getSecuritySettings } from './config';
-import { maskNumber, scrubAiSuggestions } from './retention';
+import { maskNumber, scrubAiSuggestions, scrubTaskText } from './retention';
 
 /**
  * Direitos do titular (LGPD art. 18): acesso/exportação, anonimização e exclusão.
@@ -46,6 +47,8 @@ async function subjectScope(orgId: string, contactId: string) {
 }
 
 // ── Exportação dos dados do titular ───────────────────────────────────────────
+
+const safeOpen = (v: string | null) => { try { return openText(v); } catch { return '[ilegível: chave de campo ausente]'; } };
 
 export async function buildSubjectExport(orgId: string, contactId: string): Promise<Record<string, unknown> | null> {
   const scope = await subjectScope(orgId, contactId);
@@ -90,7 +93,7 @@ export async function buildSubjectExport(orgId: string, contactId: string): Prom
       closeReason: c.closeReason, csatScore: c.csatScore, csatComment: c.csatComment, messages: byConv.get(c.id) ?? [],
     })),
     calls: calls.map((c) => ({ direction: c.direction, from: c.fromNumber, to: c.toNumber, startedAt: c.startedAt, endedAt: c.endedAt, durationSec: c.durationSec, hasRecording: !!c.recordingKey })),
-    tasks, webchatSessions: webchat, consents,
+    tasks: tasks.map((t) => ({ ...t, description: safeOpen(t.description) })), webchatSessions: webchat, consents,
   };
 }
 
@@ -115,7 +118,7 @@ export async function exportSubjectData(orgId: string, contactId: string, actorI
 export interface ErasureReport {
   contacts: number; messagesRedacted: number; attachmentsRemoved: number; recordingsRemoved: number; callsMasked: number;
   identitiesRemoved: number; webchatSessionsScrubbed: number; dsrExportsRemoved: number; conversationsScrubbed: number;
-  aiSuggestionsScrubbed?: number; conversationsDeleted?: number; messagesDeleted?: number; callsDeleted?: number; tasksUnlinked?: number;
+  aiSuggestionsScrubbed?: number; tasksScrubbed?: number; conversationsDeleted?: number; messagesDeleted?: number; callsDeleted?: number; tasksUnlinked?: number;
   alreadyDone?: boolean; retained: string[];
 }
 const emptyReport = (): ErasureReport => ({
@@ -172,6 +175,10 @@ export async function anonymizeContact(orgId: string, contactId: string, opts: {
   // 1b) sugestões de IA (texto derivado da conversa, cifrado no JSON do evento)
   rep.aiSuggestionsScrubbed = await scrubAiSuggestions(orgId, { conversationIds });
 
+  // 1c) tarefas do titular: descrição, comentários e histórico de texto livre → marcador (título e métricas ficam)
+  const ts = await scrubTaskText(orgId, { OR: [{ contactId: { in: contactIds } }, { conversationId: { in: conversationIds } }] }, ANON_MARKER, ANON_MARKER);
+  rep.tasksScrubbed = ts.tasks + ts.comments + ts.history;
+
   // 2) chamadas: gravação removida, números mascarados
   const calls = await prisma.bvCall.findMany({ where: { orgId, conversationId: { in: conversationIds } }, select: { id: true, recordingKey: true, fromNumber: true, toNumber: true } });
   for (const c of calls) {
@@ -204,11 +211,16 @@ export async function anonymizeContact(orgId: string, contactId: string, opts: {
 
 export async function deleteContactData(orgId: string, contactId: string): Promise<ErasureReport> {
   const rep = emptyReport();
-  rep.retained = ['Trilha de auditoria (obrigação legal; nunca contém o conteúdo das mensagens)', 'Tarefas internas (desvinculadas do titular; texto livre não é alterado)'];
+  rep.retained = ['Trilha de auditoria (obrigação legal; nunca contém o conteúdo das mensagens)', 'Tarefas (desvinculadas do titular; descrição, comentários e histórico de texto livre removidos; o título é mantido)'];
   const scope = await subjectScope(orgId, contactId);
   if (!scope) { rep.alreadyDone = true; return rep; }
   const { contactIds, conversationIds } = scope;
 
+  // texto das tarefas do titular primeiro (reexecução conclui o que faltar)
+  {
+    const ts = await scrubTaskText(orgId, { OR: [{ contactId: { in: contactIds } }, { conversationId: { in: conversationIds } }] }, ANON_MARKER, ANON_MARKER);
+    rep.tasksScrubbed = ts.tasks + ts.comments + ts.history;
+  }
   // arquivos primeiro (reexecução conclui o que faltar)
   const msgs = await prisma.bvMessage.findMany({ where: { orgId, conversationId: { in: conversationIds }, attachments: { not: Prisma.DbNull } }, select: { attachments: true } });
   for (const m of msgs) for (const k of attachmentKeys(orgId, m.attachments)) { await deleteObject(k).catch(() => undefined); rep.attachmentsRemoved++; }

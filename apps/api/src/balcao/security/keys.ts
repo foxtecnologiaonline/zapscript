@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { decryptField, isEncrypted, encryptField } from '../core/crypto';
+import { ENC_HISTORY_FIELDS } from '../tasks/content';
 
 /**
  * Rotação de chaves de campo (core/crypto): recifra, em lotes, as colunas cifradas com a chave ATUAL
@@ -11,6 +12,10 @@ export interface FieldColumn {
   table: string; model: string; column: string; delegate: string;
   /** Coluna Json que guarda o valor cifrado em `data[path]` (apenas linhas com `type`). Ex.: BvConversationEvent AI_SUGGESTION. */
   json?: { path: string; type: string };
+  /** Tabela sem `orgId` próprio: o órgão vem de `task.orgId` (BvTaskComment, BvTaskHistory). */
+  viaTask?: boolean;
+  /** Só linhas cujo `field` está na lista (BvTaskHistory: só description/resolution carregam texto livre). */
+  fieldIn?: readonly string[];
 }
 
 export const FIELD_COLUMNS: FieldColumn[] = [
@@ -20,6 +25,11 @@ export const FIELD_COLUMNS: FieldColumn[] = [
   { table: 'BvIntegration', model: 'bvIntegration', column: 'configEnc', delegate: 'bvIntegration' },
   // sugestões de IA (ai/bot.ts e ai/assist.ts) guardam o texto cifrado dentro do JSON do evento
   { table: 'BvConversationEvent', model: 'bvConversationEvent', column: 'data', delegate: 'bvConversationEvent', json: { path: 'textEnc', type: 'AI_SUGGESTION' } },
+  // tarefas: descrição, comentários e histórico de texto livre (tasks/content.ts). O título fica em claro (busca).
+  { table: 'BvTask', model: 'bvTask', column: 'description', delegate: 'bvTask' },
+  { table: 'BvTaskComment', model: 'bvTaskComment', column: 'body', delegate: 'bvTaskComment', viaTask: true },
+  { table: 'BvTaskHistory', model: 'bvTaskHistory', column: 'fromValue', delegate: 'bvTaskHistory', viaTask: true, fieldIn: ENC_HISTORY_FIELDS },
+  { table: 'BvTaskHistory', model: 'bvTaskHistory', column: 'toValue', delegate: 'bvTaskHistory', viaTask: true, fieldIn: ENC_HISTORY_FIELDS },
 ];
 
 /** kid da chave atual conforme o ambiente (mesma regra de core/crypto.ts, sem expor o material). */
@@ -32,12 +42,13 @@ export interface RotateOptions { orgId?: string; batchSize?: number; maxRows?: n
 export interface RotateTableResult { table: string; column: string; rotated: number; skipped: number; failed: number; remaining: number }
 export interface RotateResult { currentKid: string; tables: RotateTableResult[]; rotated: number; failed: number; remaining: number; done: boolean }
 
+const orgFilter = (c: FieldColumn, orgId?: string): any => (!orgId ? {} : c.viaTask ? { task: { orgId } } : { orgId });
 const notCurrent = (c: FieldColumn, kid: string, orgId?: string): any => c.json
   ? {
-    ...(orgId ? { orgId } : {}), type: c.json.type,
+    ...orgFilter(c, orgId), type: c.json.type,
     NOT: { data: { path: [c.json.path], string_starts_with: `bv1.${kid}.` } },
   }
-  : { ...(orgId ? { orgId } : {}), [c.column]: { not: null }, NOT: { [c.column]: { startsWith: `bv1.${kid}.` } } };
+  : { ...orgFilter(c, orgId), ...(c.fieldIn ? { field: { in: [...c.fieldIn] } } : {}), [c.column]: { not: null }, NOT: { [c.column]: { startsWith: `bv1.${kid}.` } } };
 
 /** Valor cifrado da linha (coluna texto ou chave dentro do JSON) e o `data` que o substitui. */
 const readEnc = (c: FieldColumn, row: any): string | null => { const v = c.json ? row.data?.[c.json.path] : row[c.column]; return typeof v === 'string' ? v : null; };
@@ -90,12 +101,13 @@ export interface KeyUsage { table: string; column: string; byKid: Record<string,
 export async function keyStatus(orgId?: string): Promise<{ currentKid: string; knownKids: string[]; usage: KeyUsage[] }> {
   const usage: KeyUsage[] = [];
   for (const c of FIELD_COLUMNS) {
-    const filter = orgId ? Prisma.sql`AND "orgId" = ${orgId}` : Prisma.empty;
+    const filter = !orgId ? Prisma.empty : c.viaTask ? Prisma.sql`AND "taskId" IN (SELECT "id" FROM "BvTask" WHERE "orgId" = ${orgId})` : Prisma.sql`AND "orgId" = ${orgId}`;
+    const fieldFilter = c.fieldIn ? Prisma.sql`AND "field" IN (${Prisma.join([...c.fieldIn])})` : Prisma.empty;
     const expr = Prisma.raw(c.json ? `("${c.column}"->>'${c.json.path}')` : `"${c.column}"`);
     const typeFilter = c.json ? Prisma.sql`AND "type" = ${c.json.type}` : Prisma.empty;
     const rows = await prisma.$queryRaw<Array<{ kid: string | null; n: bigint }>>(Prisma.sql`
       SELECT CASE WHEN ${expr} LIKE 'bv1.%' THEN split_part(${expr}, '.', 2) ELSE '_plain' END AS kid, count(*) AS n
-      FROM ${Prisma.raw(`"${c.table}"`)} WHERE ${expr} IS NOT NULL ${typeFilter} ${filter} GROUP BY 1`);
+      FROM ${Prisma.raw(`"${c.table}"`)} WHERE ${expr} IS NOT NULL ${typeFilter} ${fieldFilter} ${filter} GROUP BY 1`);
     const byKid: Record<string, number> = {};
     let plaintext = 0; let total = 0;
     for (const r of rows) {

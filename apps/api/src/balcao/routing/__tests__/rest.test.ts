@@ -8,6 +8,8 @@ import { unregisterRoutingHandlers } from '../handlers';
 import { validDocument } from '../routes/contacts';
 import { installSenders, makeQueue, onlineAgent, removeSenders, setup, waitingConv } from './helpers';
 
+jest.setTimeout(60_000); // 1ª execução compila o módulo inteiro (beforeAll pode passar de 5 s)
+
 let app: FastifyInstance;
 beforeAll(async () => { installSenders(); app = await buildBalcaoTestApp(); unregisterRoutingHandlers(); });
 afterAll(async () => { await app.close(); removeSenders(); clearBvEventHandlers(); });
