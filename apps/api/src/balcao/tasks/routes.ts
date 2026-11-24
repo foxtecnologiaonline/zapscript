@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { prisma } from '../../lib/prisma';
 import { auditReq } from '../core/audit';
 import { ConversationError } from '../core/conversations';
 import { guard, idParam, parse, sendError } from '../core/http';
@@ -102,6 +103,10 @@ function range(q: z.infer<typeof rangeQuery>) {
 
 export default async function routes(app: FastifyInstance): Promise<void> {
   // ── Notificações do usuário (rotas estáticas, antes de /:id) ───────────────
+  // Setores ativos (para atribuir tarefas) — sem exigir permissão de gestão de usuários.
+  app.get('/sectors', { preHandler: guard('task:read') }, async (req) => ({
+    items: await prisma.bvSector.findMany({ where: { orgId: req.bv!.orgId, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 500 }),
+  }));
   app.get('/notifications', { preHandler: guard('task:read') }, async (req, reply) => {
     const q = parse(z.object({ unread: bool.optional(), limit: z.coerce.number().int().min(1).max(100).default(30), cursor: z.string().max(64).optional() }), req.query, reply);
     if (!q) return;

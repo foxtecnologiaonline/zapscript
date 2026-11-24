@@ -551,7 +551,7 @@ export default function Softphone() {
               {call.protocol && <p className="text-sm">Protocolo: <strong>{call.protocol}</strong></p>}
               {call.uraSummary && call.uraSummary.length > 0 && <p className="text-sm">Escolhas na URA: {call.uraSummary.join(' → ')}</p>}
               {call.transferredTo && <p className="text-sm">Transferida para {pretty(call.transferredTo)}.</p>}
-              {call.conversationId && <p className="mt-1 text-sm"><a className="underline" href={`/balcao/atendimento?conversa=${encodeURIComponent(call.conversationId)}`}>Abrir o atendimento desta chamada</a></p>}
+              {call.conversationId && <p className="mt-1 text-sm"><a className="underline" href={`/balcao/atendimento/${encodeURIComponent(call.conversationId)}`}>Abrir o atendimento desta chamada</a></p>}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <Button variant="secondary" aria-pressed={muted} onClick={toggleMute}>{muted ? 'Ativar microfone' : 'Silenciar'}</Button>

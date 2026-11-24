@@ -35,6 +35,17 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     return { items };
   });
 
+  // Diretório enxuto para o atendente escolher o destino de uma transferência (sem e-mail/dados de gestão).
+  app.get('/agents/directory', { preHandler: guardUser('conversation:transfer') }, async (req) => {
+    const a = actor(req);
+    const users = await prisma.bvUser.findMany({
+      where: { orgId: a.orgId, active: true, role: { in: HANDLER_ROLES }, id: { not: a.userId } },
+      select: { id: true, name: true, presence: true, maxConcurrent: true, skills: true, sectorId: true }, orderBy: { name: 'asc' }, take: 1000,
+    });
+    const loads = await agentLoads(a.orgId, users.map((u) => u.id));
+    return { items: users.map((u) => ({ ...u, load: loads.get(u.id) ?? 0 })) };
+  });
+
   app.get('/agents/me', { preHandler: guardUser('conversation:read') }, async (req) => {
     const a = actor(req);
     const u = await prisma.bvUser.findUniqueOrThrow({ where: { id: a.userId }, select: { id: true, name: true, presence: true, presenceAt: true, maxConcurrent: true, skills: true } });

@@ -270,8 +270,8 @@ no README da pasta.
 **A. Sem Asterisk (qualquer máquina de desenvolvimento)** — valida URA, protocolo, busca e reprodução:
 
 1. `BV_DEV_SIMULATORS=1` na API; entre como ADMIN/SUPERVISOR.
-2. `POST /ivr/flows` com o exemplo da §4 → `POST /ivr/flows/:id/simulate` com `{"inputs":["1","~1","1234567#","1"],"at":"2026-03-10T15:00:00Z"}` (terça, horário comercial) até a trilha chegar em `queue`.
-3. `POST /ivr/flows/:id/publish` e `POST /dev/simulate-call` (sem `at`: usa a hora atual — fora do expediente o exemplo cai em `fechado`) `{ "from":"63999990000", "did":"08006320000", "inputs":["1","~1","1234567#","1"], "agentUserId":"<id>" }`.
+2. `POST /ivr/flows` com o exemplo da §4 → `POST /ivr/flows/:id/simulate` com `{"inputs":["1","~5","~1","1234567#","1"],"at":"2026-03-10T15:00:00Z"}` (terça, horário comercial) até a trilha chegar em `queue` (`~5` é digitado durante o aviso *force-play* e descartado; `~1` interrompe o menu — cut-thru).
+3. `POST /ivr/flows/:id/publish` e `POST /dev/simulate-call` (sem `at`: usa a hora atual — fora do expediente o exemplo cai em `fechado`) `{ "from":"63999990000", "did":"08006320000", "inputs":["1","~5","~1","1234567#","1"], "agentUserId":"<id>" }`.
 4. `GET /calls?protocol=<BV-…>` encontra a chamada; `GET /calls/:id/recording` com `Range: bytes=0-43` devolve 206; `/recording/meta?verify=true` → `integrityOk:true`;
    `/recording/coverage` mostra 100 %; a trilha de auditoria registra `recording.listen`.
 

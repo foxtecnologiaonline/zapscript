@@ -293,7 +293,7 @@ describe('voice — documentação', () => {
     const w = await world();
     const r = await app.inject({
       method: 'POST', url: '/balcao/voice/ivr/flows/' + (await app.inject({ method: 'POST', url: '/balcao/voice/ivr/flows', headers: w.hs, payload: { name: 'doc', definition: def } })).json().id + '/simulate',
-      headers: w.hs, payload: { inputs: ['1', '~1', '1234567#', '1'], at: '2026-03-10T15:00:00Z' },
+      headers: w.hs, payload: { inputs: ['1', '~5', '~1', '1234567#', '1'], at: '2026-03-10T15:00:00Z' },
     });
     expect(r.statusCode).toBe(200);
     expect(r.json().validation).toMatchObject({ ok: true, errors: [] });

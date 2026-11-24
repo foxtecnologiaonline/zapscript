@@ -1,9 +1,9 @@
 'use client';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { fmtAgo, fmtDuration, STATUS_LABEL, CHANNEL_LABEL } from '@/lib/balcao/format';
 import { Badge, Banner, Button, LoadMore, Select, Spinner, TextField, cx } from '../../_ui/ui';
 import { ChannelTag } from './Icons';
-import { matchesSearch, priorityLabel, slaInfo, sortConversations, waitSeconds, type ListFilters } from './lib';
+import { priorityLabel, slaInfo, waitSeconds, type ListFilters } from './lib';
 import type { ConvListItem, SortMode, TabId } from './types';
 
 const SORT_LABEL: Record<SortMode, string> = { priority: 'Prioridade', wait: 'Maior tempo de espera', recent: 'Mais recentes' };
@@ -22,7 +22,7 @@ export function ConversationList(p: Props) {
   const [roving, setRoving] = useState<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const shown = useMemo(() => sortConversations(p.items.filter((c) => matchesSearch(c, p.filters.text)), p.filters.sort), [p.items, p.filters.text, p.filters.sort]);
+  const shown = p.items; // já filtrada e ordenada pelo console
   const rovingId = shown.some((c) => c.id === roving) ? roving : shown.some((c) => c.id === p.selectedId) ? p.selectedId : shown[0]?.id ?? null;
 
   const onTabKey = (e: React.KeyboardEvent, i: number) => {

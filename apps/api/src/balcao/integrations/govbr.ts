@@ -9,6 +9,7 @@ import { getIntegration } from '../core/integrations';
 import { mergeContacts, normalizeDocument, setContactDocument } from '../core/contacts';
 import { sendMessage } from '../core/conversations';
 import { emitBvEvent } from '../core/events';
+import { guard, parse as parseBody, sendError } from '../core/http';
 import { registerBotTool } from '../core/tools';
 import {
   buildAuthorizeUrl, exchangeCode, hitLimit, htmlPage, logged, newPkce, publicBaseUrl, putOnce, SECURITY_HEADERS, takeOnce, verifyIdToken,
@@ -142,6 +143,16 @@ function page(reply: FastifyReply, status: number, title: string, message: strin
 const errorPage = (reply: FastifyReply, status = 400) => page(reply, status, 'Não foi possível confirmar sua identidade', 'O link expirou, já foi usado ou houve um problema na autenticação. Volte ao atendimento e peça um novo link.', 'error');
 
 export function registerGovbrRoutes(app: FastifyInstance, deps: Deps = {}): void {
+  // Console do atendente: gera o link assinado de login GOV.BR para enviar ao cidadão desta conversa.
+  app.post('/govbr/link', { preHandler: guard('conversation:reply') }, async (req, reply) => {
+    const b = parseBody(z.object({ conversationId: z.string().min(1).max(64) }), req.body, reply); if (!b) return;
+    try {
+      return { url: await buildGovbrLoginUrl(req.bv!.orgId, b.conversationId) };
+    } catch (err: any) {
+      return sendError(reply, 400, 'govbr.link_unavailable', 'Não foi possível gerar o link do GOV.BR (integração não configurada ou conversa inválida).');
+    }
+  });
+
   app.get('/govbr/authorize', async (req, reply) => {
     if (!(await hitLimit('govbr-auth', req.ip, 30, 600))) return page(reply, 429, 'Muitas tentativas', 'Aguarde alguns minutos e tente novamente.', 'error');
     const q = authorizeQuery.safeParse(req.query);

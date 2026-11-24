@@ -200,6 +200,9 @@ export function Tabs({ tabs, label }: { tabs: Array<{ id: string; title: string;
 export function Dialog({ open, onClose, title, children, footer, size = 'md' }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; footer?: React.ReactNode; size?: 'sm' | 'md' | 'lg' }) {
   const ref = useRef<HTMLDivElement>(null);
   const tid = useId();
+  // onClose em ref: se o chamador passar uma função nova a cada render, o efeito de foco NÃO reinicia (não rouba o foco).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
@@ -207,7 +210,7 @@ export function Dialog({ open, onClose, title, children, footer, size = 'md' }: 
     const focusables = () => Array.from(node.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'));
     (focusables()[0] ?? node).focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+      if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); }
       if (e.key !== 'Tab') return;
       const f = focusables(); if (!f.length) return;
       const first = f[0], last = f[f.length - 1];
@@ -216,7 +219,7 @@ export function Dialog({ open, onClose, title, children, footer, size = 'md' }: 
     };
     node.addEventListener('keydown', onKey);
     return () => { node.removeEventListener('keydown', onKey); prev?.focus?.(); };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>

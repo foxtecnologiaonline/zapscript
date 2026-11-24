@@ -5,7 +5,7 @@ import { BvApiError, errMsg } from '@/lib/balcao/api';
 import { fmtDate, fmtDateTime, maskPhone, CHANNEL_LABEL, STATUS_LABEL, PRIORITY_LABEL } from '@/lib/balcao/format';
 import { useBvSession } from '@/lib/balcao/session';
 import { Badge, Banner, Button, Card, Spinner, TextField, useToast } from '../../_ui/ui';
-import { GOVBR_DRAFT, IDENTITY_LABEL, POLO_LABEL, TASK_STATUS_LABEL, formatCnj, processoText, validCnj } from './lib';
+import { GOVBR_DRAFT, GOVBR_PLACEHOLDER, IDENTITY_LABEL, POLO_LABEL, TASK_STATUS_LABEL, formatCnj, processoText, validCnj } from './lib';
 import { api } from './service';
 import type { ComposerHandle, ContactBrief, ContactDetail, KbHit, ProcessoResumo, TaskRow } from './types';
 
@@ -29,7 +29,7 @@ export function CitizenPanel(p: Props) {
   return (
     <div className="flex flex-col gap-3">
       <h2 className="bv-sr-only">Painel do cidadão</h2>
-      <CitizenData contact={p.contact} detail={detail} composer={p.composer} canReply={p.canReply} />
+      <CitizenData contact={p.contact} detail={detail} composer={p.composer} canReply={p.canReply} conversationId={p.conversationId} />
       {allowed && <History detail={detail} err={err} onRetry={load} conversationId={p.conversationId} onOpenConversation={p.onOpenConversation} />}
       <Eproc composer={p.composer} canReply={p.canReply} />
       {can('kb:read') && <Kb composer={p.composer} canReply={p.canReply} />}
@@ -40,7 +40,15 @@ export function CitizenPanel(p: Props) {
 
 const IDENT_TONE: Record<string, 'success' | 'primary' | 'warning' | 'neutral'> = { ouro: 'success', prata: 'primary', bronze: 'warning' };
 
-function CitizenData({ contact, detail, composer, canReply }: { contact: ContactBrief | null; detail: ContactDetail | null; composer: React.RefObject<ComposerHandle>; canReply: boolean }) {
+function CitizenData({ contact, detail, composer, canReply, conversationId }: { contact: ContactBrief | null; detail: ContactDetail | null; composer: React.RefObject<ComposerHandle>; canReply: boolean; conversationId: string }) {
+  const toast = useToast();
+  const [linkBusy, setLinkBusy] = useState(false);
+  const requestLogin = async () => {
+    setLinkBusy(true);
+    try { const { url } = await api.govbrLink(conversationId); composer.current?.insert(GOVBR_DRAFT.replace(GOVBR_PLACEHOLDER, url), 'reply'); }
+    catch (e) { toast.error(errMsg(e, 'Não foi possível gerar o link do GOV.BR. Verifique se a integração está configurada.')); }
+    finally { setLinkBusy(false); }
+  };
   const level = detail?.contact.govbrLevel ?? null;
   const verified = detail?.contact.identityVerifiedAt ?? contact?.identityVerifiedAt ?? null;
   return (
@@ -63,8 +71,8 @@ function CitizenData({ contact, detail, composer, canReply }: { contact: Contact
         </p>
         {level !== 'ouro' && canReply && (
           <div className="mt-2">
-            <Button size="sm" variant="secondary" onClick={() => composer.current?.insert(GOVBR_DRAFT, 'reply')}>Solicitar login GOV.BR</Button>
-            <p className="mt-1 text-xs text-bv-muted">Insere uma mensagem pronta no campo de resposta. O link assinado do GOV.BR ainda não é gerado pelo console: substitua o marcador antes de enviar.</p>
+            <Button size="sm" variant="secondary" loading={linkBusy} onClick={() => void requestLogin()}>Solicitar login GOV.BR</Button>
+            <p className="mt-1 text-xs text-bv-muted">Gera um link assinado (válido por 30 minutos) e insere a mensagem pronta no campo de resposta para você revisar e enviar.</p>
           </div>
         )}
       </div>

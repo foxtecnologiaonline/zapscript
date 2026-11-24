@@ -185,7 +185,7 @@ function CallDetail({ call, agentName, onClose }: { call: CallRow; agentName: st
           <div><dt className="text-bv-muted">Atendente</dt><dd>{agentName}</dd></div>
           <div><dt className="text-bv-muted">Protocolo</dt><dd>{full.protocol ?? '—'}</dd></div>
           <div><dt className="text-bv-muted">Aviso de gravação ao chamador</dt><dd>{full.recordingNotified ? 'Informado' : 'Não informado'}</dd></div>
-          <div><dt className="text-bv-muted">Atendimento</dt><dd>{full.conversationId ? <a className="text-bv-primary underline" href={`/balcao/atendimento?conversa=${encodeURIComponent(full.conversationId)}`}>Abrir conversa vinculada</a> : '—'}</dd></div>
+          <div><dt className="text-bv-muted">Atendimento</dt><dd>{full.conversationId ? <a className="text-bv-primary underline" href={`/balcao/atendimento/${encodeURIComponent(full.conversationId)}`}>Abrir conversa vinculada</a> : '—'}</dd></div>
         </dl>
 
         <section aria-labelledby="cd-line"><h3 id="cd-line" className="mb-1 font-semibold">Linha do tempo</h3>

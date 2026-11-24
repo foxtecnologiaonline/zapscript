@@ -27,10 +27,15 @@ export const api = {
 
   listCanned: () => bv.get<{ items: CannedResponse[] }>('/canned-responses'),
   listQueues: () => bv.get<{ items: QueueRow[] }>('/queues'),
-  /** Exige conversation:monitor (supervisão). */
-  listAgents: () => bv.get<{ items: AgentRow[] }>('/agents'),
-  /** Exige user:manage ou queue:manage; atendente comum recebe 403 (campo some do diálogo). */
-  listSectors: () => bv.get<{ items: SectorRow[] }>('/admin/sectors', { active: 'true' }),
+  /** Diretório enxuto para transferência (perm conversation:transfer — atendente comum pode). */
+  listAgents: async () => {
+    const r = await bv.get<{ items: Array<Omit<AgentRow, 'role'>> }>('/agents/directory');
+    return { items: r.items.map((a) => ({ ...a, role: 'ATENDENTE' })) as AgentRow[] };
+  },
+  /** Setores ativos para atribuir tarefas (perm task:read). */
+  listSectors: () => bv.get<{ items: SectorRow[] }>('/tasks/sectors'),
+  /** Link assinado de login GOV.BR (válido por 30 min) para enviar ao cidadão desta conversa. */
+  govbrLink: (conversationId: string) => bv.post<{ url: string }>('/integrations/govbr/link', { conversationId }),
 
   aiSuggest: (conversationId: string) => bv.post<Suggestion>('/ai/suggest', { conversationId }),
   aiSummarize: (conversationId: string) => bv.post<AiSummary>('/ai/summarize', { conversationId }),
