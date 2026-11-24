@@ -8,23 +8,23 @@ import { Badge, Banner, Button, Card, Checkbox, ConfirmDialog, EmptyState, PageH
 import { StateGate, useApi } from '../relatorios/lib';
 import { AssignDialog, Elapsed, MonitorDialog, PresenceBadge, Since, beep, ensureAudio, fmtClock } from './parts';
 
-interface Queue { queueId: string | null; name: string; waiting: number; longestWaitSec: number; active: number; agentsOnline: number; agentsBusy: number; agentsAvailable: number; maxWaitSec: number | null }
+interface Queue { queueId: string | null; name: string; waiting: number; longestWaitSec: number; active: number; agentsOnline: number; agentsBusy: number; agentsAvailable: number; maxWaitSec: number | null; slaAtRisk: number }
 interface Agent { userId: string; name: string; role: string; presence: string; presenceAt: string | null; load: number; maxConcurrent: number; conversations: Array<{ id: string; protocol: string; channel: string; startedAt: string; slaBreached: boolean; unreadForAgent: number }> }
-interface Overview { generatedAt: string; totals: { waiting: number; active: number; bot: number; agentsOnline: number; slaBreached: number }; queues: Queue[]; agents: Agent[]; slaBreaches: any[] }
+interface Overview { generatedAt: string; slaRiskMin: number; totals: { waiting: number; active: number; bot: number; agentsOnline: number; slaBreached: number; slaAtRisk: number }; queues: Queue[]; agents: Agent[]; slaBreaches: any[] }
 
-const RISK_SEC = 120;       // "SLA em risco": 1ª resposta vence em até 2 min
+const DEFAULT_RISK_MIN = 10; // padrão do servidor (BV_ROUTING_SLA_RISK_MIN); o valor efetivo vem em `slaRiskMin`
 const LONG_WAIT_SEC = 300;  // espera longa quando a fila não define limite
 const POLL_MS = 15_000;
 
 type Kind = 'breached' | 'risk' | 'long';
 interface Crit { c: any; kind: Kind | null; detail: string; waitBase: number | null }
 
-function classify(c: any, now: number, maxWait: Map<string | null, number | null>): Crit {
+function classify(c: any, now: number, maxWait: Map<string | null, number | null>, riskMin: number): Crit {
   const waiting = c.status === 'WAITING';
   const due = c.slaFirstResponseDueAt ? Date.parse(c.slaFirstResponseDueAt) : null;
   const noReply = !c.firstResponseAt;
   if (c.slaBreached || (noReply && due != null && due < now && (waiting || c.status === 'ACTIVE'))) return { c, kind: 'breached', detail: due ? `Prazo de 1ª resposta venceu há ${fmtDuration(Math.max(0, (now - due) / 1000))}` : 'SLA violado', waitBase: c.waitSec };
-  if (noReply && due != null && due - now <= RISK_SEC * 1000) return { c, kind: 'risk', detail: `1ª resposta vence em ${fmtDuration(Math.max(0, (due - now) / 1000))}`, waitBase: c.waitSec };
+  if (noReply && due != null && due - now <= riskMin * 60_000) return { c, kind: 'risk', detail: `1ª resposta vence em ${fmtDuration(Math.max(0, (due - now) / 1000))}`, waitBase: c.waitSec };
   const limit = maxWait.get(c.queueId ?? null) ?? LONG_WAIT_SEC;
   if (waiting && c.waitSec != null && c.waitSec >= (limit || LONG_WAIT_SEC)) return { c, kind: 'long', detail: `Espera acima de ${fmtDuration(limit || LONG_WAIT_SEC)}`, waitBase: c.waitSec };
   return { c, kind: null, detail: '', waitBase: c.waitSec };
@@ -39,7 +39,12 @@ export default function SupervisorPage() {
   const { can, token } = useBvSession();
   const toast = useToast();
   const allowed = can('conversation:monitor');
-  const ov = useApi<Overview>(allowed ? '/supervisor/overview' : null, undefined, { pollMs: POLL_MS });
+  // limite do "SLA em risco" (minutos): o servidor calcula `slaAtRisk` (por fila e total) com este valor; vazio = padrão do servidor
+  const [riskMin, setRiskMin] = useState<number | null>(null);
+  const [riskInput, setRiskInput] = useState('');
+  const [riskErr, setRiskErr] = useState<string | null>(null);
+  const [riskMsg, setRiskMsg] = useState('');
+  const ov = useApi<Overview>(allowed ? '/supervisor/overview' : null, riskMin != null ? { slaRiskMin: riskMin } : undefined, { pollMs: POLL_MS });
   const cv = useApi<{ items: any[] }>(allowed ? '/supervisor/conversations' : null, { status: 'WAITING,ACTIVE', sort: 'priority', limit: 100 }, { pollMs: POLL_MS });
 
   // ── tempo real ──
@@ -71,20 +76,29 @@ export default function SupervisorPage() {
   useEffect(() => { setNow(Date.now()); }, [ov.updatedAt, cv.updatedAt]);
 
   const o = ov.data;
+  const effRisk = o?.slaRiskMin ?? riskMin ?? DEFAULT_RISK_MIN;
+  useEffect(() => { if (o?.slaRiskMin != null) setRiskInput((cur) => (cur === '' ? String(o.slaRiskMin) : cur)); }, [o?.slaRiskMin]);
+  const applyRisk = (e: React.FormEvent) => {
+    e.preventDefault();
+    const n = Number(riskInput.trim());
+    if (riskInput.trim() === '' || !Number.isInteger(n) || n < 1 || n > 1440) { setRiskErr('Informe um número inteiro de minutos entre 1 e 1440.'); return; }
+    setRiskErr(null); setRiskMin(n); setRiskMsg(`Limite de SLA em risco ajustado para ${n} min. Atualizando os dados.`);
+  };
   const maxWait = useMemo(() => new Map<string | null, number | null>((o?.queues ?? []).map((q) => [q.queueId, q.maxWaitSec])), [o]);
   const crit = useMemo(() => {
     const items = new Map<string, any>((cv.data?.items ?? []).map((c) => [c.id, c]));
     for (const b of o?.slaBreaches ?? []) if (!items.has(b.id)) items.set(b.id, { ...b, firstResponseAt: null, slaBreached: true, contact: null, queue: o?.queues.find((q) => q.queueId === b.queueId) ? { id: b.queueId, name: o!.queues.find((q) => q.queueId === b.queueId)!.name } : null, assignee: b.assignedUserId ? { id: b.assignedUserId, name: o?.agents.find((a) => a.userId === b.assignedUserId)?.name ?? '—' } : null, waitSec: b.status === 'WAITING' && b.queuedAt ? Math.max(0, (now - Date.parse(b.queuedAt)) / 1000) : null });
-    return [...items.values()].map((c) => classify(c, now, maxWait));
-  }, [cv.data, o, now, maxWait]);
+    return [...items.values()].map((c) => classify(c, now, maxWait, effRisk));
+  }, [cv.data, o, now, maxWait, effRisk]);
   const critical = useMemo(() => crit.filter((x) => x.kind).sort((a, b) => KIND_RANK[a.kind!] - KIND_RANK[b.kind!] || (b.c.waitSec ?? 0) - (a.c.waitSec ?? 0)), [crit]);
-  const riskByQueue = useMemo(() => { const m = new Map<string | null, { risk: number; breached: number }>(); for (const x of crit) { if (!x.kind) continue; const k = x.c.queueId ?? null; const cur = m.get(k) ?? { risk: 0, breached: 0 }; if (x.kind === 'breached') cur.breached++; else if (x.kind === 'risk') cur.risk++; m.set(k, cur); } return m; }, [crit]);
+  // violações por fila: contadas no cliente a partir da lista de conversas (até 100); o RISCO vem do servidor (`queues[].slaAtRisk`)
+  const breachedByQueue = useMemo(() => { const m = new Map<string | null, number>(); for (const x of crit) { if (x.kind !== 'breached') continue; const k = x.c.queueId ?? null; m.set(k, (m.get(k) ?? 0) + 1); } return m; }, [crit]);
 
   // ── resumo anunciado a leitores de tela (educado, no máximo a cada 20 s, só quando muda) ──
   const [announce, setAnnounce] = useState('');
   const lastAnn = useRef({ at: 0, text: '' });
   const annT = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const summary = o ? `Em espera: ${o.totals.waiting}. Em atendimento: ${o.totals.active}. SLA violado: ${o.totals.slaBreached}. Atendentes disponíveis: ${o.totals.agentsOnline}.` : '';
+  const summary = o ? `Em espera: ${o.totals.waiting}. Em atendimento: ${o.totals.active}. SLA violado: ${o.totals.slaBreached}. SLA em risco: ${o.totals.slaAtRisk}. Atendentes disponíveis: ${o.totals.agentsOnline}.` : '';
   useEffect(() => {
     if (!summary || summary === lastAnn.current.text) return;
     const wait = Math.max(0, 20_000 - (Date.now() - lastAnn.current.at));
@@ -127,9 +141,9 @@ export default function SupervisorPage() {
   const longest = Math.max(0, ...(o?.queues ?? []).map((q) => q.longestWaitSec));
   const at = ov.updatedAt;
   const queueStatus = (q: Queue) => {
-    const r = riskByQueue.get(q.queueId) ?? { risk: 0, breached: 0 };
-    if (r.breached > 0 || (q.maxWaitSec && q.longestWaitSec > q.maxWaitSec)) return <Badge tone="danger">✖ Crítica</Badge>;
-    if (r.risk > 0 || q.waiting > 0 && q.agentsAvailable === 0) return <Badge tone="warning">▲ Atenção</Badge>;
+    const breached = breachedByQueue.get(q.queueId) ?? 0;
+    if (breached > 0 || (q.maxWaitSec && q.longestWaitSec > q.maxWaitSec)) return <Badge tone="danger">✖ Crítica</Badge>;
+    if (q.slaAtRisk > 0 || q.waiting > 0 && q.agentsAvailable === 0) return <Badge tone="warning">▲ Atenção</Badge>;
     return <Badge tone="success">✔ Normal</Badge>;
   };
 
@@ -147,12 +161,18 @@ export default function SupervisorPage() {
         {o && (
           <div className="flex flex-col gap-4">
             {o.totals.slaBreached > 0 && <div className="rounded-md border border-bv-danger bg-bv-danger-soft px-3 py-2 text-sm text-bv-danger"><strong className="block">✖ {o.totals.slaBreached} conversa(s) com SLA violado</strong>Veja a lista de conversas críticas abaixo e assuma ou atribua a um atendente.</div>}
-            <section aria-label="Totais" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <form onSubmit={applyRisk} noValidate aria-label="Limite de SLA em risco" className="flex flex-wrap items-end gap-3">
+              <div className="w-56"><TextField label="Limite de SLA em risco (minutos)" type="number" inputMode="numeric" min={1} max={1440} value={riskInput} onChange={(e) => setRiskInput(e.target.value)} error={riskErr} hint="De 1 a 1440. Padrão do servidor: 10." /></div>
+              <Button type="submit" variant="secondary">Aplicar limite</Button>
+              <span role="status" aria-live="polite" className="bv-sr-only">{riskMsg}</span>
+            </form>
+            <section aria-label="Totais" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
               <StatCard label="Em espera" value={fmtNumber(o.totals.waiting)} tone={o.totals.waiting > 0 ? 'warning' : 'neutral'} />
               <StatCard label="Maior espera" value={<Elapsed baseSec={o.totals.waiting ? longest : 0} at={at} />} tone={longest >= LONG_WAIT_SEC ? 'danger' : 'neutral'} />
               <StatCard label="Em atendimento" value={fmtNumber(o.totals.active)} />
               <StatCard label="Com o assistente (IA)" value={fmtNumber(o.totals.bot)} />
               <StatCard label="Atendentes disponíveis" value={fmtNumber(o.totals.agentsOnline)} />
+              <StatCard label="SLA em risco" value={fmtNumber(o.totals.slaAtRisk)} tone={o.totals.slaAtRisk > 0 ? 'warning' : 'success'} hint={`Prazo vence em até ${o.slaRiskMin} min`} />
               <StatCard label="SLA violado" value={fmtNumber(o.totals.slaBreached)} tone={o.totals.slaBreached > 0 ? 'danger' : 'success'} hint={o.totals.slaBreached > 0 ? 'Requer ação' : 'Nenhuma violação aberta'} />
             </section>
 
@@ -164,7 +184,7 @@ export default function SupervisorPage() {
                     <thead className="bg-bv-subtle"><tr>{['Fila', 'Situação', 'Em espera', 'Maior espera', 'Em atendimento', 'Atendentes (disp./ocup./online)', 'SLA em risco', 'SLA violado'].map((h) => <th key={h} scope="col" className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
                     <tbody>
                       {o.queues.map((q) => {
-                        const r = riskByQueue.get(q.queueId) ?? { risk: 0, breached: 0 };
+                        const breached = breachedByQueue.get(q.queueId) ?? 0;
                         return (
                           <tr key={q.queueId ?? 'none'} className="border-t border-bv-border">
                             <th scope="row" className="px-3 py-2 text-left font-medium">{q.name}</th>
@@ -173,8 +193,8 @@ export default function SupervisorPage() {
                             <td className="px-3 py-2 tabular-nums">{q.waiting ? <Elapsed baseSec={q.longestWaitSec} at={at} /> : '—'}{q.maxWaitSec && q.longestWaitSec > q.maxWaitSec ? <> <Badge tone="danger">acima do limite de {fmtDuration(q.maxWaitSec)}</Badge></> : null}</td>
                             <td className="px-3 py-2 tabular-nums">{fmtNumber(q.active)}</td>
                             <td className="px-3 py-2 tabular-nums">{q.agentsAvailable} / {q.agentsBusy} / {q.agentsOnline}</td>
-                            <td className="px-3 py-2 tabular-nums">{r.risk}</td>
-                            <td className="px-3 py-2 tabular-nums">{r.breached}</td>
+                            <td className="px-3 py-2 tabular-nums">{fmtNumber(q.slaAtRisk)}</td>
+                            <td className="px-3 py-2 tabular-nums">{breached}</td>
                           </tr>
                         );
                       })}
@@ -182,7 +202,7 @@ export default function SupervisorPage() {
                   </table>
                 </div>
               )}
-              <p className="mt-2 text-xs text-bv-muted">“SLA em risco”: 1ª resposta vence em até {RISK_SEC / 60} min. Contagens de risco/violação consideram as 100 conversas mais prioritárias. Disponível = disponível e abaixo da capacidade; ocupado = ocupado ou na capacidade máxima.</p>
+              <p className="mt-2 text-xs text-bv-muted">“SLA em risco”: conversas em espera ou em atendimento cuja 1ª resposta ou resolução vence em até {o.slaRiskMin} min e ainda não foi violada (calculado pelo servidor; não considera horário útil). “SLA violado” por fila considera as 100 conversas mais prioritárias. Disponível = disponível e abaixo da capacidade; ocupado = ocupado ou na capacidade máxima.</p>
             </Card>
 
             <Card title="Conversas críticas" actions={<span className="text-sm text-bv-muted">{critical.length} crítica(s)</span>}>

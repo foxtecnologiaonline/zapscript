@@ -144,7 +144,7 @@ export default async function registerRoutes(app: FastifyInstance): Promise<void
     const ctl = getAriController(); if (!ctl) return sendError(reply, 503, 'voice.disabled', 'Telefonia desabilitada ou desconectada');
     const call = await loadCall(req, reply, p.id); if (!call) return;
     const r = await ctl.transferCall(req.bv!.orgId, p.id, b.number);
-    if (!r.ok) return sendError(reply, r.code === 'call.not_found' ? 404 : 409, r.code, r.message);
+    if (!r.ok) return sendError(reply, r.code === 'call.not_found' ? 404 : r.code === 'voice.transfer_not_allowed' ? 403 : 409, r.code, r.message);
     await auditReq(req, 'call.transfer', { entityType: 'BvCall', entityId: p.id, meta: { toLast4: b.number.slice(-4) } });
     return reply.code(202).send({ ok: true });
   });

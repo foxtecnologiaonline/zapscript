@@ -39,11 +39,18 @@ export interface ConvDetail {
   conversation: ConvCore & { queue: { id: string; name: string } | null; assignee: { id: string; name: string } | null };
   contact: ContactBrief | null;
   messages: ChatMessage[];
+  /** Há mensagens mais antigas que as carregadas? `nextBefore` = id da mais antiga carregada (cursor da página anterior). */
+  hasMore?: boolean; nextBefore?: string | null;
   events: ConvEvent[];
   canReply: boolean;
 }
 
-export interface CannedResponse { id: string; shortcut: string; title: string; body: string }
+export type CannedScope = 'ORG' | 'PERSONAL';
+export interface CannedResponse {
+  id: string; shortcut: string; title: string; body: string;
+  /** Ausente em respostas antigas: tratado como do órgão. */
+  scope?: CannedScope; ownerId?: string | null; shadowsOrg?: boolean; shadowed?: boolean;
+}
 export interface Suggestion { suggestion: string; confidence: number; articles: Array<{ id: string; title: string }>; model?: string; conversationId: string; messageId?: string }
 export interface StoredSuggestion { kind: string; suggestion: string; intent: string | null; category: string | null; confidence: number | null; articleIds: string[]; at: string }
 export interface AiSummary { summary: string; intent: string | null; pending: string[]; keyFacts: string[]; model: string }

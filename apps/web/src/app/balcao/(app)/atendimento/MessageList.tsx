@@ -11,7 +11,7 @@ import type { Attachment, ChatMessage, ConvEvent } from './types';
 interface Props {
   conversationId: string; messages: ChatMessage[]; events: ConvEvent[]; meId: string;
   contactName: string | null; assignee: { id: string; name: string } | null;
-  typing: boolean; truncated: boolean;
+  typing: boolean; hasMore: boolean; loadingOlder: boolean; onLoadOlder: () => void;
   onPreview: (conversationId: string, att: Attachment) => void;
   onResend: (m: ChatMessage) => void; resendingId: string | null;
   onOpenTemplate: (() => void) | null;
@@ -24,6 +24,8 @@ export function MessageList(p: Props) {
   const lastKey = useRef<string | null>(null);
   const lastConv = useRef<string | null>(null);
   const [below, setBelow] = useState(0);
+  // posição antes de carregar mensagens anteriores (para manter a rolagem e o foco no mesmo ponto da leitura)
+  const older = useRef<{ top: number; height: number; firstId: string | undefined } | null>(null);
 
   const timeline = useMemo(() => buildTimeline(p.messages, p.events, p.meId, (iso) => fmtDate(iso)), [p.messages, p.events, p.meId]);
 
@@ -40,6 +42,22 @@ export function MessageList(p: Props) {
       else if (tail?.type === 'message' && tail.m.direction === 'IN') setBelow((n) => n + 1);
     }
   }, [timeline, p.conversationId]);
+
+  const loadOlder = () => {
+    const el = box.current; if (!el) return;
+    older.current = { top: el.scrollTop, height: el.scrollHeight, firstId: p.messages[0]?.id };
+    p.onLoadOlder();
+  };
+  useLayoutEffect(() => {
+    const snap = older.current; const el = box.current; if (!snap || !el) return;
+    if (p.messages[0]?.id !== snap.firstId) {
+      // páginas antigas entraram no topo: compensa a altura nova e devolve o foco à mensagem que o atendente estava lendo
+      older.current = null; stick.current = false;
+      el.scrollTop = snap.top + (el.scrollHeight - snap.height);
+      const prev = snap.firstId ? Array.from(el.querySelectorAll<HTMLElement>('[data-msg-id]')).find((n) => n.dataset.msgId === snap.firstId) : null;
+      (prev ?? el).focus({ preventScroll: true });
+    } else if (!p.loadingOlder) older.current = null; // falhou: nada mudou
+  }, [p.messages, p.loadingOlder]);
 
   // anexos/imagens carregam depois e aumentam a altura: mantém no fim se já estava
   useEffect(() => {
@@ -60,7 +78,11 @@ export function MessageList(p: Props) {
     <div className="relative min-h-0 flex-1">
       <div ref={box} onScroll={onScroll} tabIndex={0} role="region" aria-label="Histórico da conversa" className="h-full overflow-y-auto px-3 py-3">
         <div>
-          {p.truncated && <p className="mb-3 text-center text-xs text-bv-muted">Exibindo as últimas 200 mensagens da conversa.</p>}
+          {p.hasMore && (
+            <div className="mb-3 text-center">
+              <Button variant="secondary" size="sm" loading={p.loadingOlder} onClick={loadOlder}>Carregar mensagens anteriores</Button>
+            </div>
+          )}
           {timeline.length === 0 ? <p className="py-8 text-center text-sm text-bv-muted">Ainda não há mensagens nesta conversa.</p> : (
             <ol className="flex flex-col gap-3">
               {timeline.map((it) => <TimelineRow key={it.key} it={it} {...p} />)}
@@ -94,7 +116,7 @@ const Bubble = React.memo(function Bubble({ m, conversationId, meId, contactName
 
   if (!note && (m.senderType === 'SYSTEM' || m.kind === 'EVENT')) {
     return (
-      <li className="text-center">
+      <li className="text-center" data-msg-id={m.id} tabIndex={-1}>
         <span className="inline-block max-w-[90%] whitespace-pre-wrap break-words rounded-lg bg-bv-subtle px-3 py-1 text-xs text-bv-muted">
           <span className="font-semibold">Sistema:</span> {m.body} · <time dateTime={m.createdAt}>{fmtTime(m.createdAt)}</time>
         </span>
@@ -112,7 +134,7 @@ const Bubble = React.memo(function Bubble({ m, conversationId, meId, contactName
 
   return (
     <li className={cx('flex', incoming ? 'justify-start' : 'justify-end')}>
-      <article aria-label={`${label}, ${fmtTime(m.createdAt)}`} className={cx('max-w-[85%] rounded-lg px-3 py-2 text-sm', style)}>
+      <article data-msg-id={m.id} tabIndex={-1} aria-label={`${label}, ${fmtTime(m.createdAt)}`} className={cx('max-w-[85%] rounded-lg px-3 py-2 text-sm', style)}>
         <header className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
           {note && <span className="inline-flex items-center gap-1 font-semibold text-bv-warning"><LockIcon />Nota interna</span>}
           {m.senderType === 'BOT' && !note && <span className="inline-flex items-center gap-1 font-semibold text-bv-muted"><RobotIcon /></span>}

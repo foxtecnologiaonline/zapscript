@@ -1,6 +1,6 @@
 import {
-  applyUpdate, buildListQuery, buildTemplateParams, buildTimeline, deliveryInfo, failedOutsideWindow, filterCanned, findSlashToken, formatCnj,
-  looksLikeProtocol, matchesSearch, neighborId, replaceRange, slaInfo, sortConversations, templateInfo, upsertMessage, validCnj, waitSeconds, windowExpired,
+  applyUpdate, attachmentRejectedMessage, buildListQuery, buildTemplateParams, buildTimeline, deliveryInfo, failedOutsideWindow, filterCanned, findSlashToken, formatCnj,
+  looksLikeProtocol, matchesSearch, mergeDetailMessages, neighborId, normalizeShortcut, prependMessages, replaceRange, resendErrorMessage, shortcutError, slaInfo, statusAnnouncement, sortConversations, templateInfo, upsertMessage, validCnj, waitSeconds, windowExpired,
 } from '../lib';
 import type { ChatMessage, ConvListItem } from '../types';
 
@@ -135,6 +135,24 @@ describe('respostas prontas', () => {
     expect(filterCanned(items, '').length).toBe(3);
     expect(filterCanned(items, 'zzz')).toEqual([]);
   });
+  it('filterCanned lista pessoais primeiro e oculta a do órgão sobrescrita', () => {
+    const items = [
+      { id: 'o1', shortcut: 'ola', title: 'Saudação', body: 'org', scope: 'ORG' as const },
+      { id: 'p1', shortcut: 'ola', title: 'Minha saudação', body: 'pessoal', scope: 'PERSONAL' as const, shadowsOrg: true },
+      { id: 'o2', shortcut: 'olhar', title: 'Olhar', body: 'org', scope: 'ORG' as const },
+      { id: 'o3', shortcut: 'ola', title: 'Saudação (sobrescrita)', body: 'org', scope: 'ORG' as const, shadowed: true },
+    ];
+    expect(filterCanned(items, '').map((c) => c.id)).toEqual(['p1', 'o1', 'o2']);
+    expect(filterCanned(items, 'ol').map((c) => c.id)).toEqual(['p1', 'o1', 'o2']);
+  });
+  it('atalho: normaliza e valida', () => {
+    expect(normalizeShortcut(' /Prazo ')).toBe('prazo');
+    expect(shortcutError('prazo-1')).toBeNull();
+    expect(shortcutError('')).not.toBeNull();
+    expect(shortcutError('com espaço')).not.toBeNull();
+    expect(shortcutError('ação')).not.toBeNull();
+    expect(shortcutError('a'.repeat(33))).not.toBeNull();
+  });
   it('replaceRange', () => {
     expect(replaceRange('Olá /ola agora', 4, 8, 'Bom dia')).toEqual({ text: 'Olá Bom dia agora', caret: 11 });
   });
@@ -167,5 +185,38 @@ describe('modelos do WhatsApp', () => {
     expect(buildTemplateParams(templateInfo([{ type: 'BODY', text: 'a {{1}} b {{2}} c' }]), [], [' x ', 'y'])).toEqual(['x', 'y']);
     expect(buildTemplateParams(templateInfo(comps), ['Ana'], ['1', '2'])).toEqual({ header: ['Ana'], body: ['1', '2'] });
     expect(buildTemplateParams(templateInfo([{ type: 'BODY', text: 'sem variáveis' }]), [], [])).toBeUndefined();
+  });
+});
+
+describe('reenvio, anexos recusados e histórico', () => {
+  it('mensagens de erro do reenvio', () => {
+    expect(resendErrorMessage(409, 'message.not_resendable', 'x')).toMatch(/não pode mais ser reenviada/);
+    expect(resendErrorMessage(409, 'conversation.closed', 'x')).toMatch(/encerrada/);
+    expect(resendErrorMessage(403, 'message.not_owner', 'x')).toMatch(/autor/);
+    expect(resendErrorMessage(500, 'http.500', 'falha')).toBe('falha');
+  });
+  it('anexo recusado', () => {
+    expect(attachmentRejectedMessage({ reason: 'infected' })).toBe('O arquivo foi recusado pelo antivírus.');
+    expect(attachmentRejectedMessage({ reason: 'scan_unavailable' })).toBe('Não foi possível verificar o arquivo agora; tente novamente.');
+    expect(attachmentRejectedMessage(undefined)).toMatch(/recusado/);
+  });
+  it('mantém mensagens antigas já carregadas ao atualizar a página mais recente', () => {
+    const old = { messages: [msg({ id: 'a', createdAt: iso(500) }), msg({ id: 'b', createdAt: iso(400) }), msg({ id: 'c', createdAt: iso(300) })], hasMore: false, nextBefore: null };
+    const fresh = { messages: [msg({ id: 'c', createdAt: iso(300), status: 'DELIVERED' }), msg({ id: 'd', createdAt: iso(100) })], hasMore: true, nextBefore: 'c' };
+    const r = mergeDetailMessages(old, fresh);
+    expect(r.messages.map((m) => m.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(r.messages[2].status).toBe('DELIVERED');
+    expect(r.hasMore).toBe(false); // o cursor continua o da mais antiga carregada
+    expect(mergeDetailMessages(null, fresh)).toEqual({ messages: fresh.messages, hasMore: true, nextBefore: 'c' });
+  });
+  it('prependMessages não repete ids', () => {
+    const list = [msg({ id: 'b', createdAt: iso(400) })];
+    expect(prependMessages(list, [msg({ id: 'a', createdAt: iso(500) }), msg({ id: 'b', createdAt: iso(400) })]).map((m) => m.id)).toEqual(['a', 'b']);
+  });
+  it('anúncio de status', () => {
+    expect(statusAnnouncement('SENT', 'SENT', null)).toBeNull();
+    expect(statusAnnouncement('QUEUED', 'FAILED', 'whatsapp.outside_window')).toMatch(/Falha no envio/);
+    expect(statusAnnouncement('FAILED', 'SENT', null)).toMatch(/reenviada/);
+    expect(statusAnnouncement('QUEUED', 'SENT', null)).toBeNull();
   });
 });

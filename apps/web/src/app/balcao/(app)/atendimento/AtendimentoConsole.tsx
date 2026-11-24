@@ -12,7 +12,7 @@ import { ConversationView, type ViewAction } from './ConversationView';
 import { CloseDialog, HelpDialog, PreviewDialog, SummaryDialog, TaskDialog, TemplateDialog, TransferDialog } from './Dialogs';
 import { isTypingTarget, useAnnouncer, useConversationRoom, useDebouncedCallback, useNow } from './hooks';
 import {
-  DEFAULT_SORT, applyUpdate, attachmentPath, buildListQuery, canPreview, looksLikeProtocol, matchesSearch, neighborId, preview, sortConversations, upsertMessage, type ListFilters,
+  DEFAULT_SORT, applyUpdate, attachmentPath, buildListQuery, canPreview, looksLikeProtocol, matchesSearch, neighborId, preview, sortConversations, mergeDetailMessages, prependMessages, statusAnnouncement, upsertMessage, type ListFilters,
 } from './lib';
 import { api } from './service';
 import type { Attachment, CannedResponse, ChatMessage, ComposerHandle, ConvCore, ConvDetail, ConvListItem, Suggestion, TabId } from './types';
@@ -52,6 +52,7 @@ export default function AtendimentoConsole() {
   const [detail, setDetail] = useState<ConvDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [typingId, setTypingId] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
   const [suggestionBusy, setSuggestionBusy] = useState(false);
@@ -119,7 +120,9 @@ export default function AtendimentoConsole() {
     try {
       const d = await api.getConversation(id);
       if (seq !== detailSeq.current) return;
-      setDetail(d); setDetailError(null);
+      // atualização silenciosa traz só a página mais recente: mantém as mensagens antigas já carregadas
+      setDetail((cur) => (opts.silent && cur && cur.conversation.id === d.conversation.id ? { ...d, ...mergeDetailMessages(cur, d) } : d));
+      setDetailError(null);
       if (d.conversation.unreadForAgent > 0) markRead(id);
       if (!opts.silent) {
         const lastOut = [...d.messages].reverse().find((m) => m.direction === 'OUT' && m.senderType === 'AGENT');
@@ -138,12 +141,27 @@ export default function AtendimentoConsole() {
   }, [markRead]);
 
   useEffect(() => {
-    setSuggestion(null);
+    setSuggestion(null); setLoadingOlder(false);
     if (!selectedId) { detailSeq.current++; setDetail(null); setDetailError(null); return; }
     setDetail(null);
     void loadDetail(selectedId);
   }, [selectedId, loadDetail]);
   useConversationRoom(token, selectedId);
+
+  /** "Carregar mensagens anteriores": página anterior pelo cursor `nextBefore`. */
+  const loadOlder = useCallback(async () => {
+    const d = detailRef.current; const id = d?.conversation.id;
+    if (!d || !id || !d.hasMore || !d.nextBefore || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const r = await api.getConversation(id, { before: d.nextBefore });
+      if (selectedRef.current !== id) return;
+      const known = new Set(d.messages.map((m) => m.id));
+      const added = r.messages.filter((m) => !known.has(m.id)).length;
+      setDetail((cur) => (cur && cur.conversation.id === id ? { ...cur, messages: prependMessages(cur.messages, r.messages), hasMore: !!r.hasMore, nextBefore: r.nextBefore ?? null } : cur));
+      announce(added === 0 ? 'Não há mensagens anteriores.' : `${added} ${added === 1 ? 'mensagem anterior carregada' : 'mensagens anteriores carregadas'}${r.hasMore ? '' : '. Início da conversa.'}`);
+    } catch (e) { toast.error(errMsg(e, 'Não foi possível carregar as mensagens anteriores.')); } finally { setLoadingOlder(false); }
+  }, [announce, loadingOlder, toast]);
 
   // foco no cabeçalho da conversa depois de abrir por clique/Enter (não em J/K)
   useEffect(() => {
@@ -262,6 +280,9 @@ export default function AtendimentoConsole() {
     },
     'message:status': (p: any) => {
       if (p?.conversationId !== selectedRef.current) return;
+      const prev = detailRef.current?.messages.find((m) => m.id === p.messageId)?.status;
+      const say = statusAnnouncement(prev, p.status, p.errorCode ?? null);
+      if (say) announce(say);
       setDetail((d) => (d ? { ...d, messages: d.messages.map((m) => (m.id === p.messageId ? { ...m, status: p.status, errorCode: p.errorCode ?? null } : m)) } : d));
     },
     'message:attachments': (p: any) => {
@@ -350,7 +371,8 @@ export default function AtendimentoConsole() {
             meId={meId} token={token} now={now} typing={!!conv && typingId === conv.id}
             onPickup={() => conv && void pickup(conv.id)} picking={!!conv && pickingId === conv.id} onBack={() => setView('list')} onAction={act}
             onPreview={(cid, att) => void openPreview(cid, att)} onSent={onSent} composerRef={composerRef} headingRef={headingRef}
-            canned={canned} cannedLoading={cannedLoading} onNeedCanned={needCanned}
+            canned={canned} cannedLoading={cannedLoading} onNeedCanned={needCanned} onCannedChanged={needCanned}
+            loadingOlder={loadingOlder} onLoadOlder={() => void loadOlder()} onRefresh={() => selectedId && void loadDetail(selectedId, { silent: true })}
             suggestion={suggestion && conv && suggestion.conversationId === conv.id ? suggestion : null} suggestionBusy={suggestionBusy} onSuggest={() => void suggest()} onDismissSuggestion={() => setSuggestion(null)} />
         </section>
 
@@ -367,7 +389,7 @@ export default function AtendimentoConsole() {
       {dialog === 'help' && <HelpDialog onClose={closeDialog} />}
       {dialog === 'transfer' && conv && <TransferDialog conversationId={conv.id} currentQueueId={conv.queueId} meId={meId} canPickAgent={can('conversation:monitor')} onClose={closeDialog} onDone={afterChange} />}
       {dialog === 'close' && conv && <CloseDialog conversationId={conv.id} protocol={conv.protocol} onClose={closeDialog} onDone={afterChange} />}
-      {dialog === 'task' && conv && <TaskDialog conversationId={conv.id} defaultTitle={conv.subject ?? ''} canListSectors={can('user:manage') || can('queue:manage')} ownSectorId={me.user.sectorId} onClose={closeDialog} onDone={() => setTasksVersion((v) => v + 1)} />}
+      {dialog === 'task' && conv && <TaskDialog conversationId={conv.id} defaultTitle={conv.subject ?? ''} canListSectors={can('task:read')} ownSectorId={me.user.sectorId} onClose={closeDialog} onDone={() => setTasksVersion((v) => v + 1)} />}
       {dialog === 'summary' && conv && <SummaryDialog conversationId={conv.id} canNote onClose={closeDialog} onInsertNote={(t) => composerRef.current?.insert(t, 'note')} />}
       {dialog === 'template' && conv && <TemplateDialog conversationId={conv.id} onClose={closeDialog} onDone={() => void loadDetail(conv.id, { silent: true })} />}
       {previewing && <PreviewDialog name={previewing.name} mime={previewing.mime} url={previewing.url} onClose={closePreview} />}

@@ -1,16 +1,18 @@
 'use client';
 import React, { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useBvSession, type LoginResult } from '@/lib/balcao/session';
-import { errMsg, BvApiError, API_ORIGIN } from '@/lib/balcao/api';
+import { useBvSession, type LoginResult, type MeResponse } from '@/lib/balcao/session';
+import { bv, errMsg, BvApiError, API_ORIGIN, storeSession, type SessionTokens } from '@/lib/balcao/api';
 import { HOME_BY_ROLE } from '@/lib/balcao/nav';
 import { A11yToolbar } from '@/lib/balcao/a11y';
-import { Banner, Button, TextField, Select } from '../_ui/ui';
+import { Banner, Button, TextField, Select, useToast } from '../_ui/ui';
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const { login, loginMfa } = useBvSession();
+  const { login, loginMfa, reload } = useBvSession();
+  const toast = useToast();
+  const [useRecovery, setUseRecovery] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
@@ -29,12 +31,27 @@ function LoginForm() {
     else { setOrgs(r.orgs); setError('Seu e-mail existe em mais de um órgão. Selecione o órgão para continuar.'); }
   };
 
+  /** Passo 2 com código de recuperação: a resposta traz o aviso de códigos restantes, exibido como toast depois de entrar. */
+  const loginWithRecovery = async (token: string, recoveryCode: string) => {
+    const r = await bv.anon.post<SessionTokens & { recoveryCodesRemaining?: number; recoveryCodesWarning?: string }>('/auth/login/mfa', { mfaToken: token, recoveryCode });
+    storeSession(r);
+    const me = await bv.get<MeResponse>('/auth/me');
+    await reload();
+    if (r.recoveryCodesWarning) toast.info(r.recoveryCodesWarning);
+    else if (typeof r.recoveryCodesRemaining === 'number') toast.info(`Você entrou com um código de recuperação. Restam ${r.recoveryCodesRemaining} ${r.recoveryCodesRemaining === 1 ? 'código' : 'códigos'}.`);
+    done({ kind: 'ok', me });
+  };
+
+  const switchMode = (rec: boolean) => { setUseRecovery(rec); setCode(''); setError(null); };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError(null);
     try {
-      done(mfaToken ? await loginMfa(mfaToken, code.trim()) : await login(email.trim(), password, orgSlug || undefined));
+      if (mfaToken && useRecovery) await loginWithRecovery(mfaToken, code.trim());
+      else done(mfaToken ? await loginMfa(mfaToken, code.trim()) : await login(email.trim(), password, orgSlug || undefined));
     } catch (err) {
-      if (err instanceof BvApiError && err.code === 'auth.locked') setError('Conta bloqueada temporariamente por tentativas inválidas. Tente novamente em alguns minutos.');
+      if (err instanceof BvApiError && err.code === 'auth.invalid_recovery_code') setError('Código de recuperação inválido ou já utilizado. Confira o código (formato XXXX-XXXX) e tente novamente; cada código vale uma única vez.');
+      else if (err instanceof BvApiError && err.code === 'auth.locked') setError('Conta bloqueada temporariamente por tentativas inválidas. Tente novamente em alguns minutos.');
       else if (err instanceof BvApiError && err.code === 'auth.rate_limited') setError('Muitas tentativas. Aguarde alguns minutos.');
       else setError(errMsg(err, 'Não foi possível entrar.'));
       if (mfaToken && err instanceof BvApiError && err.status === 401) setCode('');
@@ -61,12 +78,16 @@ function LoginForm() {
                 </Select>
               )}
             </>
+          ) : useRecovery ? (
+            <TextField label="Código de recuperação" hint="Um dos códigos XXXX-XXXX guardados quando você ativou a verificação em duas etapas. Cada código vale uma única vez." autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={9} required value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))} />
           ) : (
             <TextField label="Código do aplicativo autenticador" hint="6 dígitos, do Google Authenticator, Authy ou similar." inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
           )}
           {error && <Banner tone="danger">{error}</Banner>}
           <Button type="submit" loading={busy}>{mfaToken ? 'Verificar' : 'Entrar'}</Button>
-          {mfaToken && <Button variant="ghost" onClick={() => { setMfaToken(null); setCode(''); setError(null); }}>Voltar</Button>}
+          {mfaToken && <Button variant="ghost" onClick={() => switchMode(!useRecovery)}>{useRecovery ? 'Usar o código do aplicativo' : 'Usar código de recuperação'}</Button>}
+          {mfaToken && <Button variant="ghost" onClick={() => { setMfaToken(null); setUseRecovery(false); setCode(''); setError(null); }}>Voltar</Button>}
         </form>
         {!mfaToken && (
           <details className="mt-4 border-t border-bv-border pt-3">

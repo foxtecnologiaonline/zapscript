@@ -10,7 +10,7 @@ import { getHolidays, getOrgSettings } from '../../core/settings';
 import { recordUsage, setUsageGauge } from '../../core/usage';
 import { setAgentPresence } from '../../core/presence';
 import type { Role as BvRole } from '../../core/types';
-import { checkDialPolicy } from './dialPolicy';
+import { checkDialPolicy, evaluateNumber, loadDialPolicy } from './dialPolicy';
 import { AriLeaderLock, type LockRedis } from './leader';
 import { entryOptionOf, headersToCapture, loadUra0800, mapUraHeaders, parseSrcAddr, sourceIpAllowed } from './ura0800';
 import { AriError, AriEventStream, createAxiosAriHttp, type AriEvent, type AriHttp, type AriSocketFactory, type BackoffOptions } from './ari';
@@ -679,6 +679,8 @@ export class AriController {
     if (s.state !== 'ACTIVE' || !s.bridgeId) return { ok: false, code: 'call.not_active', message: 'A chamada não está em atendimento' };
     if (s.transferTarget) return { ok: false, code: 'call.transfer_in_progress', message: 'Já existe um transbordo em andamento' };
     if (!/^\+?[0-9*#]{2,20}$/.test(number)) return { ok: false, code: 'validation.number', message: 'Número inválido' };
+    const allowed = await this.transferAllowed(orgId, number);
+    if (!allowed.ok) return { ok: false, code: 'voice.transfer_not_allowed', message: 'Destino não permitido pela política de discagem do órgão' };
     s.transferTarget = number;
     const channelId = `t-${s.callId}-${rid().slice(0, 4)}`;
     this.register(s, channelId, 'external');
@@ -714,7 +716,22 @@ export class AriController {
   }
 
   /** Transferência vinda da URA (nó transfer): liga o chamador direto ao destino pelo tronco. */
+  /** Política de destino do transbordo: ramais internos (≤ 6 dígitos, sem +) passam; números externos seguem a política de discagem do órgão (sem premium/serviço/internacional fora da lista). */
+  private async transferAllowed(orgId: string, number: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+    if (/^[0-9]{2,6}$/.test(number)) return { ok: true };
+    try {
+      const verdict = evaluateNumber(await loadDialPolicy(orgId), number);
+      return verdict.ok ? { ok: true } : { ok: false, reason: verdict.reason };
+    } catch { return { ok: false, reason: 'policy_error' }; }
+  }
+
   private async ivrTransfer(s: Session, number: string) {
+    const allowed = await this.transferAllowed(s.orgId, number);
+    if (!allowed.ok) {
+      logger.warn({ reason: allowed.reason, callId: s.callId }, '[balcao/voice] destino de transferência da URA recusado pela política');
+      await this.endCall(s, { reason: 'TRANSFER_NOT_ALLOWED', status: 'FAILED' });
+      return;
+    }
     s.transferTarget = number;
     const channelId = `t-${s.callId}-${rid().slice(0, 4)}`;
     this.register(s, channelId, 'external');

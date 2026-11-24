@@ -5,6 +5,7 @@ import { CHANNEL_LABEL, fmtDuration } from '@/lib/balcao/format';
 import { Badge, Button, ConfirmDialog, DataTable, useToast, type Column } from '../../../_ui/ui';
 import { ErrorBox, Loading, useLoad } from '../usuarios/_shared';
 import QueueForm from './QueueForm';
+import VersionHistory from './VersionHistory';
 import { STRATEGY_LABEL, type Agent, type Queue } from './types';
 
 export default function QueuesTab() {
@@ -15,6 +16,8 @@ export default function QueuesTab() {
   const [form, setForm] = useState<{ queue: Queue | null; members: string[] } | null>(null);
   const [del, setDel] = useState<Queue | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
+  const [hist, setHist] = useState<Queue | null>(null);
+  const closeHist = useCallback(() => setHist(null), []);
   const closeForm = useCallback(() => setForm(null), []);
   const closeDel = useCallback(() => setDel(null), []);
 
@@ -54,6 +57,7 @@ export default function QueuesTab() {
         <div className="flex flex-wrap gap-1">
           <Button size="sm" variant="secondary" loading={opening === q.id} aria-label={`Editar fila ${q.name}`} onClick={() => void openForm(q)}>Editar</Button>
           <Button size="sm" variant="secondary" aria-label={`${q.active ? 'Desativar' : 'Ativar'} fila ${q.name}`} onClick={() => void toggle(q)}>{q.active ? 'Desativar' : 'Ativar'}</Button>
+          <Button size="sm" variant="secondary" aria-label={`Histórico de versões da fila ${q.name}`} onClick={() => setHist(q)}>Histórico</Button>
           <Button size="sm" variant="secondary" aria-label={`Excluir fila ${q.name}`} onClick={() => setDel(q)}>Excluir</Button>
         </div>
       ),
@@ -66,6 +70,7 @@ export default function QueuesTab() {
       {queues.error ? <ErrorBox message={queues.error} onRetry={queues.reload} /> : queues.loading && !queues.data ? <Loading label="Carregando filas" />
         : <DataTable caption="Filas de atendimento" columns={columns} rows={queues.data ?? []} rowKey={(q) => q.id} empty="Nenhuma fila cadastrada." />}
       {form && <QueueForm key={form.queue?.id ?? 'nova'} queue={form.queue} queues={queues.data ?? []} sectors={sectors.data ?? []} agents={agents.data ?? []} initialMembers={form.members} onClose={closeForm} onSaved={queues.reload} />}
+      {hist && <VersionHistory kind="queue" id={hist.id} name={hist.name} names={{ ...Object.fromEntries((sectors.data ?? []).map((s) => [s.id, s.name])), ...Object.fromEntries((queues.data ?? []).map((x) => [x.id, x.name])) }} onClose={closeHist} onRestored={queues.reload} />}
       {del && <ConfirmDialog open danger title="Excluir fila" confirmLabel="Excluir" message={`Excluir a fila "${del.name}"? Se houver conversas abertas, transbordos ou regras apontando para ela, a exclusão será recusada; nesse caso desative-a.`} onConfirm={remove} onClose={closeDel} />}
     </div>
   );

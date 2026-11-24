@@ -20,6 +20,7 @@ export interface SessionTokens { accessToken: string; refreshToken: string; expi
 export function storeSession(t: SessionTokens) {
   const s = ls(); if (!s) return;
   s.setItem(K_ACCESS, t.accessToken); s.setItem(K_REFRESH, t.refreshToken); s.setItem(K_EXP, String(Date.now() + t.expiresIn * 1000));
+  pendingRedirected = false;
   listeners.forEach((fn) => fn(t.accessToken));
 }
 export function clearSession() {
@@ -27,6 +28,7 @@ export function clearSession() {
   s.removeItem(K_ACCESS); s.removeItem(K_REFRESH); s.removeItem(K_EXP);
   listeners.forEach((fn) => fn(null));
 }
+let pendingRedirected = false;
 const listeners = new Set<(token: string | null) => void>();
 /** Notifica quando o access token muda (login, refresh, logout). */
 export function onTokenChange(fn: (token: string | null) => void) { listeners.add(fn); return () => { listeners.delete(fn); }; }
@@ -96,7 +98,16 @@ async function request<T>(method: string, path: string, opts: { body?: unknown; 
     if (await refreshSession()) res = await rawFetch(path + qs(opts.query), init());
     else { clearSession(); if (typeof window !== 'undefined' && !location.pathname.startsWith('/balcao/login')) location.href = '/balcao/login?sessao=expirada'; }
   }
-  if (!res.ok) throw await toError(res);
+  if (!res.ok) {
+    const err = await toError(res);
+    // Backend bloqueia tudo fora de /auth/* enquanto houver troca de senha ou ativação de MFA pendente: leva à página da conta (uma vez, sem laço).
+    if (err.status === 403 && (err.code === 'auth.password_change_required' || err.code === 'auth.mfa_setup_required') && !path.startsWith('/auth/')
+      && typeof window !== 'undefined' && !pendingRedirected && !location.pathname.startsWith('/balcao/conta')) {
+      pendingRedirected = true;
+      location.href = '/balcao/conta';
+    }
+    throw err;
+  }
   if (opts.raw) return res as unknown as T;
   if (res.status === 204) return undefined as T;
   const ct = res.headers.get('content-type') ?? '';
@@ -129,4 +140,14 @@ export const bv = {
 /** Mensagem amigável a partir de qualquer erro. */
 export function errMsg(e: unknown, fallback = 'Não foi possível concluir a operação.'): string {
   return e instanceof BvApiError ? e.message : e instanceof Error ? e.message : fallback;
+}
+
+/** Mensagem + detalhes de validação (`validation.failed` → "campo: motivo"), para formulários. */
+export function errMsgDetailed(e: unknown, fallback?: string): string {
+  const base = errMsg(e, fallback);
+  if (e instanceof BvApiError && e.code === 'validation.failed' && Array.isArray(e.details)) {
+    const lines = (e.details as Array<{ path?: string; message?: string }>).filter((d) => d?.message).map((d) => (d.path ? `${d.path}: ${d.message}` : String(d.message)));
+    if (lines.length) return `${base} — ${lines.join('; ')}`;
+  }
+  return base;
 }

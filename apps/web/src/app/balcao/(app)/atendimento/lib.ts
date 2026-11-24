@@ -265,15 +265,80 @@ export function findSlashToken(text: string, caret: number): SlashToken | null {
   const start = before.length - m[2].length - 1;
   return { start, end: caret, query: m[2].toLowerCase() };
 }
+/** Selo textual do escopo da resposta pronta (nunca só cor). Sem `scope` (API antiga) = do órgão. */
+export const cannedScopeLabel = (c: Pick<CannedResponse, 'scope'>): 'Minha' | 'Órgão' => (c.scope === 'PERSONAL' ? 'Minha' : 'Órgão');
+/** Pessoais primeiro, preservando a ordem relativa (o servidor já ordena por atalho dentro de cada grupo). */
+const personalFirst = (items: CannedResponse[]) => [...items.filter((c) => c.scope === 'PERSONAL'), ...items.filter((c) => c.scope !== 'PERSONAL')];
 export function filterCanned(items: CannedResponse[], query: string, limit = 8): CannedResponse[] {
   const q = norm(query);
-  if (!q) return items.slice(0, limit);
-  const starts = items.filter((c) => c.shortcut.toLowerCase().startsWith(q));
-  const rest = items.filter((c) => !starts.includes(c) && (c.shortcut.toLowerCase().includes(q) || norm(c.title).includes(q)));
-  return [...starts, ...rest].slice(0, limit);
+  const visible = items.filter((c) => !c.shadowed); // a do órgão sobrescrita por uma pessoal de mesmo atalho não aparece
+  if (!q) return personalFirst(visible).slice(0, limit);
+  const starts = visible.filter((c) => c.shortcut.toLowerCase().startsWith(q));
+  const rest = visible.filter((c) => !starts.includes(c) && (c.shortcut.toLowerCase().includes(q) || norm(c.title).includes(q)));
+  return [...personalFirst(starts), ...personalFirst(rest)].slice(0, limit);
 }
+
+/** Atalho como o servidor normaliza: sem "/" inicial, minúsculo. */
+export const normalizeShortcut = (s: string) => s.trim().replace(/^\/+/, '').toLowerCase();
+/** Mensagem de erro do atalho (ou null se válido). */
+export function shortcutError(s: string): string | null {
+  const v = normalizeShortcut(s);
+  if (!v) return 'Informe o atalho.';
+  if (!/^[a-z0-9_-]{1,32}$/.test(v)) return 'Use de 1 a 32 letras (sem acento), números, _ ou -, sem espaços.';
+  return null;
+}
+
 export function replaceRange(text: string, start: number, end: number, insertion: string): { text: string; caret: number } {
   return { text: text.slice(0, start) + insertion + text.slice(end), caret: start + insertion.length };
+}
+
+// ── Reenvio, anexos recusados e histórico paginado ───────────────────────────
+/** Erro de POST …/messages/:id/resend → texto claro em português. */
+export function resendErrorMessage(status: number, code: string, fallback: string): string {
+  if (code === 'message.not_resendable') return 'Esta mensagem não pode mais ser reenviada: ela já foi enviada ou outro reenvio está em andamento.';
+  if (code === 'conversation.closed') return 'A conversa foi encerrada; não é possível reenviar mensagens.';
+  if (code === 'message.not_owner' || (status === 403 && code === 'auth.forbidden')) return 'Só o autor da mensagem (ou a supervisão) pode reenviá-la.';
+  if (status === 404) return 'A mensagem não foi encontrada nesta conversa.';
+  return fallback;
+}
+
+/** `details.reason` de 422 attachment.rejected. */
+export function attachmentRejectedMessage(details: unknown): string {
+  const reason = (details as { reason?: string } | null | undefined)?.reason;
+  if (reason === 'infected') return 'O arquivo foi recusado pelo antivírus.';
+  if (reason === 'scan_unavailable') return 'Não foi possível verificar o arquivo agora; tente novamente.';
+  return 'O arquivo foi recusado na verificação de segurança.';
+}
+
+/**
+ * Atualização silenciosa da conversa devolve só a página mais recente. Se o atendente já carregou mensagens mais
+ * antigas, elas são mantidas (e o cursor `nextBefore` continua o da mais antiga carregada).
+ */
+export function mergeDetailMessages(
+  old: { messages: ChatMessage[]; hasMore?: boolean; nextBefore?: string | null } | null,
+  fresh: { messages: ChatMessage[]; hasMore?: boolean; nextBefore?: string | null },
+): { messages: ChatMessage[]; hasMore: boolean; nextBefore: string | null } {
+  const page = { messages: fresh.messages, hasMore: !!fresh.hasMore, nextBefore: fresh.nextBefore ?? null };
+  if (!old || !old.messages.length || !fresh.messages.length) return page;
+  const firstFresh = Date.parse(fresh.messages[0].createdAt);
+  const ids = new Set(fresh.messages.map((m) => m.id));
+  const older = old.messages.filter((m) => !ids.has(m.id) && Date.parse(m.createdAt) <= firstFresh);
+  if (!older.length) return page;
+  return { messages: [...older, ...fresh.messages], hasMore: !!old.hasMore, nextBefore: old.nextBefore ?? null };
+}
+
+/** Junta uma página mais antiga à frente da lista, sem repetir ids. */
+export function prependMessages(list: ChatMessage[], older: ChatMessage[]): ChatMessage[] {
+  const ids = new Set(list.map((m) => m.id));
+  return [...older.filter((m) => !ids.has(m.id)), ...list];
+}
+
+/** Texto para leitor de tela quando o status de uma mensagem enviada muda (null = não anunciar). */
+export function statusAnnouncement(prev: MsgStatus | undefined, next: MsgStatus, errorCode: string | null): string | null {
+  if (prev === next) return null;
+  if (next === 'FAILED') return `Falha no envio de uma mensagem: ${errorLabel(errorCode)}.`;
+  if (prev === 'FAILED' && (next === 'SENT' || next === 'DELIVERED' || next === 'READ')) return `Mensagem reenviada com sucesso (${deliveryInfo(next, null).label.toLowerCase()}).`;
+  return null;
 }
 
 // ── CNJ (e-Proc) ─────────────────────────────────────────────────────────────

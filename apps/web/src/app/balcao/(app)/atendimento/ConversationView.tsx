@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-import { errMsg } from '@/lib/balcao/api';
+import { BvApiError, errMsg } from '@/lib/balcao/api';
 import { fmtDateTime, STATUS_LABEL } from '@/lib/balcao/format';
 import { useBvSession } from '@/lib/balcao/session';
 import { Badge, Banner, Button, EmptyState, Spinner, useToast } from '../../_ui/ui';
@@ -8,7 +8,7 @@ import { Composer } from './Composer';
 import { BackIcon } from './Icons';
 import { ChannelTag } from './Icons';
 import { MessageList } from './MessageList';
-import { failedOutsideWindow, priorityLabel, slaInfo, windowExpired } from './lib';
+import { failedOutsideWindow, priorityLabel, resendErrorMessage, slaInfo, windowExpired } from './lib';
 import { api } from './service';
 import type { Attachment, CannedResponse, ChatMessage, ComposerHandle, ConvDetail, Suggestion } from './types';
 
@@ -21,7 +21,8 @@ interface Props {
   onPreview: (conversationId: string, att: Attachment) => void;
   onSent: (m: ChatMessage, delivery: { status: string; error: string | null } | null) => void;
   composerRef: React.Ref<ComposerHandle>; headingRef: React.RefObject<HTMLHeadingElement>;
-  canned: CannedResponse[] | null; cannedLoading: boolean; onNeedCanned: () => void;
+  canned: CannedResponse[] | null; cannedLoading: boolean; onNeedCanned: () => void; onCannedChanged: () => void;
+  loadingOlder: boolean; onLoadOlder: () => void; onRefresh: () => void;
   suggestion: Suggestion | null; suggestionBusy: boolean; onSuggest: () => void; onDismissSuggestion: () => void;
 }
 
@@ -57,13 +58,19 @@ export function ConversationView(p: Props) {
   const canPickup = canReplyPerm && c.status === 'WAITING' && !c.assignedUserId;
   const canTemplate = canReplyPerm && c.channel === 'WHATSAPP' && p.detail.canReply;
 
+  /** Reenvia a MESMA mensagem (POST …/resend): a bolha existente é atualizada, não surge outra. */
   const resend = async (m: ChatMessage) => {
     setResendingId(m.id);
     try {
-      const r = await api.sendMessage(c.id, { ...(m.body ? { text: m.body } : {}), ...(m.attachments?.length ? { attachments: m.attachments } : {}) });
+      const r = await api.resendMessage(c.id, m.id);
       p.onSent(r.message, r.delivery);
       if (r.delivery.error) toast.error('O reenvio também falhou. Veja o motivo na mensagem.'); else toast.success('Mensagem reenviada.');
-    } catch (e) { toast.error(errMsg(e, 'Não foi possível reenviar.')); } finally { setResendingId(null); }
+    } catch (e) {
+      const status = e instanceof BvApiError ? e.status : 0; const code = e instanceof BvApiError ? e.code : '';
+      toast.error(resendErrorMessage(status, code, errMsg(e, 'Não foi possível reenviar.')));
+      // 409: o estado da mensagem mudou no servidor (já enviada / conversa encerrada) — atualiza a tela
+      if (status === 409) p.onRefresh();
+    } finally { setResendingId(null); }
   };
 
   return (
@@ -102,7 +109,7 @@ export function ConversationView(p: Props) {
       {p.error && <div className="p-2"><Banner tone="warning" title="Não foi possível atualizar a conversa">{p.error}</Banner></div>}
 
       <MessageList conversationId={c.id} messages={p.detail.messages} events={p.detail.events} meId={p.meId} contactName={contact?.name ?? null} assignee={c.assignee}
-        typing={p.typing} truncated={p.detail.messages.length >= 200} onPreview={p.onPreview} onResend={(m) => void resend(m)} resendingId={resendingId}
+        typing={p.typing} hasMore={!!p.detail.hasMore} loadingOlder={p.loadingOlder} onLoadOlder={p.onLoadOlder} onPreview={p.onPreview} onResend={(m) => void resend(m)} resendingId={resendingId}
         onOpenTemplate={canTemplate ? () => p.onAction('template') : null} />
 
       {closed ? (
@@ -115,7 +122,7 @@ export function ConversationView(p: Props) {
           {canReplyPerm ? (
             <Composer key={c.id} conversationId={c.id} channel={c.channel} token={p.token}
               canReply={p.detail.canReply} canNote canAi={can('conversation:reply')} waWindowClosed={waClosed} canTemplate={canTemplate} onOpenTemplate={() => p.onAction('template')}
-              canned={p.canned} cannedLoading={p.cannedLoading} onNeedCanned={p.onNeedCanned}
+              canned={p.canned} cannedLoading={p.cannedLoading} onNeedCanned={p.onNeedCanned} onCannedChanged={p.onCannedChanged}
               suggestion={p.suggestion} suggestionBusy={p.suggestionBusy} onSuggest={p.onSuggest} onDismissSuggestion={p.onDismissSuggestion}
               onSent={p.onSent} handleRef={p.composerRef} />
           ) : <div className="border-t border-bv-border p-3 text-sm text-bv-muted">Seu perfil não pode responder conversas.</div>}

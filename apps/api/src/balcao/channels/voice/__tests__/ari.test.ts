@@ -252,6 +252,21 @@ describe('voice/ARI — chamada recebida de ponta a ponta', () => {
     expect(done.endReason).toBe('TRANSFER_REMOTE_HANGUP');
   });
 
+  it('transbordo respeita a política de discagem: premium/serviço/internacional recusados; ramal e fixo nacional passam', async () => {
+    ctx = await setup(); const c = ctx;
+    autoRoute(c);
+    await dialAndChoose(c, 'ch-pol', '63999990010', '1');
+    const ag = await c.fake.waitFor(() => c.fake.originated()[0], 'toque');
+    c.fake.answerOriginated(ag.id);
+    const call = await c.fake.waitFor(async () => { const x = await c.callOf('ch-pol'); return x?.status === 'ACTIVE' ? x : null; }, 'ativa');
+    for (const bad of ['09001234567', '03001234567', '*123', '+12025550100']) {
+      const r = await c.ctl.transferCall(c.orgId, call.id, bad);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(['voice.transfer_not_allowed', 'validation.number']).toContain(r.code);
+    }
+    expect((await c.ctl.transferCall(c.orgId, call.id, '6332182000')).ok).toBe(true); // fixo nacional
+  });
+
   it('transbordo que não completa devolve o controle ao atendente (chamada continua)', async () => {
     ctx = await setup(); const c = ctx;
     autoRoute(c);

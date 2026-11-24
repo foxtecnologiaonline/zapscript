@@ -1,5 +1,5 @@
 'use client';
-/** Abas de relatórios padrão: visão geral, séries, atendentes, filas, canais, NPS, SLA, IQA, voz e service desk. */
+/** Abas de relatórios padrão: visão geral, séries, atendentes, filas, canais, NPS, SLA, voz e service desk (o IQA fica em ./iqa). */
 import React, { useMemo, useState } from 'react';
 import { useBvSession } from '@/lib/balcao/session';
 import { CHANNEL_LABEL, fmtBytes, fmtDateTime, fmtNumber, fmtPercent, PRESENCE_LABEL } from '@/lib/balcao/format';
@@ -361,44 +361,6 @@ export function SlaTab({ q, names }: TabProps) {
         </div>
       )}
     </StateGate>
-  );
-}
-
-// ── IQA ──────────────────────────────────────────────────────────────────────
-export function IqaTab({ q }: TabProps) {
-  const [start, setStart] = useState('');
-  const iq = { channel: q.channel, queueId: q.queueId, agentId: q.agentId, startDate: start || undefined };
-  const { data, loading, error, reload } = useApi<any>('/reports/iqa', iq);
-  const months: any[] = data?.months ?? [];
-  const bands: any[] = data?.glosaBands ?? [];
-  const status = (m: any) => (m.value == null ? <Badge>Sem dados</Badge> : m.reachedGoal ? <Badge tone="success">✔ Meta atingida</Badge> : <Badge tone="danger">✖ Abaixo da meta</Badge>);
-  const labels = months.map((m) => `Mês ${m.contractMonth}`);
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="max-w-xs"><TextField label="Início do contrato (opcional)" type="date" value={start} onChange={(e) => setStart(e.target.value)} hint="Em branco: usa a data configurada para o órgão." /></div>
-      <StateGate loading={loading} error={error} data={data} onRetry={reload}>
-        {data && (
-          <div className="flex flex-col gap-4">
-            <Toolbar><DownloadButton path="/reports/iqa" filename="iqa.csv" query={{ ...iq, format: 'csv' }} /></Toolbar>
-            <Banner tone="primary" title={data.indicator}>{data.definition}. Metas: {(data.goals ?? []).map((g: any) => `meses ${g.months} → ${g.goalPct}%`).join('; ')}. Meses de contrato começam em {fmtYmd(data.contract?.startDate)}{data.contract?.source !== 'settings' ? ' (data inferida da 1ª conversa; configure o início do contrato nas configurações do órgão)' : ''}.</Banner>
-            <ChartFrame title="IQA por mês de contrato" summary={months.length ? `${months.length} mês(es) de contrato. Último: ${labels[months.length - 1]} com ${fmtUnit('percent', months[months.length - 1].value)} (meta ${months[months.length - 1].goal}%).` : 'Sem meses de contrato apurados.'}
-              table={<DataTable caption="IQA por mês de contrato" rows={months} rowKey={(m) => String(m.contractMonth)} empty="Sem meses de contrato apurados." columns={[
-                { key: 'm', header: 'Mês de contrato', render: (m) => `Mês ${m.contractMonth}` }, { key: 'p', header: 'Período', render: (m) => `${fmtYmd(m.from.slice(0, 10))} a ${fmtYmd(addDays(m.to.slice(0, 10), -1))}` },
-                { key: 'b', header: 'Via chatbot', render: (m) => fmtNumber(m.botInvolved) }, { key: 'n', header: 'Numerador', render: (m) => fmtNumber(m.numerator) },
-                { key: 'v', header: 'IQA', render: (m) => fmtUnit('percent', m.value) }, { key: 'g', header: 'Meta', render: (m) => `${m.goal}%` }, { key: 's', header: 'Situação', render: status },
-                { key: 'gap', header: 'Distância da meta', render: (m) => (m.gapPp == null ? '—' : m.gapPp <= 0 ? 'Meta superada' : `${fmtNumber(m.gapPp, 1)} p.p. abaixo`) },
-                { key: 'gl', header: 'Faixa de glosa', render: (m) => (m.glosaPct == null ? (m.value == null ? '—' : 'Mês em andamento') : `${m.glosaPct}%`) }]} />}>
-              <LineChart title="IQA e meta por mês de contrato" desc={months.map((m, i) => `${labels[i]}: IQA ${fmtUnit('percent', m.value)}, meta ${m.goal}%`).join('; ')} labels={labels}
-                series={[{ name: 'IQA (%)', values: months.map((m) => num(m.value)) }, { name: 'Meta (%)', values: months.map((m) => m.goal) }]} yFmt={(n) => `${fmtNumber(n, 0)}%`} yMax={100} />
-            </ChartFrame>
-            <Card title="Faixas de glosa aplicadas">
-              <ul className="list-disc pl-5 text-sm">{bands.map((b: any, i: number) => <li key={i}>{b.maxGapPp == null ? `Mais de ${bands[i - 1]?.maxGapPp ?? 0} p.p. abaixo da meta` : `Até ${b.maxGapPp} p.p. abaixo da meta`}: glosa de {b.glosaPct}%.</li>)}</ul>
-              <Note>Glosa apurada apenas em mês encerrado; meta atingida = 0%. Interpretação adotada pelo sistema — confirmar com o contrato.</Note>
-            </Card>
-          </div>
-        )}
-      </StateGate>
-    </div>
   );
 }
 

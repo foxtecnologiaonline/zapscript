@@ -5,9 +5,9 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { bv, errMsg } from '@/lib/balcao/api';
 import { useBvSession } from '@/lib/balcao/session';
-import { PRIORITY_LABEL, fmtDateTime } from '@/lib/balcao/format';
+import { PRIORITY_LABEL, fmtDateTime, fmtDuration } from '@/lib/balcao/format';
 import { Badge, Banner, Button, Card, Checkbox, Dialog, EmptyState, PageHeader, Select, Spinner, TextArea, TextField, useToast } from '../../../_ui/ui';
-import { DueInfo, FIELD_LABEL, KIND_LABEL, LEVEL_LABEL, MoveButtons, ORIGIN_LABEL, PriorityBadge, STATUS_LABEL, StatusBadge, StatusDialog, dtLocalToIso, useLookups, type Status, type TaskDetail } from '../common';
+import { DueInfo, FIELD_LABEL, KIND_LABEL, LEVEL_LABEL, MoveButtons, ORIGIN_LABEL, PriorityBadge, STATUS_LABEL, SlaPausedBadge, StatusBadge, StatusDialog, dtLocalToIso, useLookups, type Status, type TaskDetail } from '../common';
 
 const toLocalInput = (iso: string | null) => { if (!iso) return ''; const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 
@@ -43,6 +43,8 @@ export default function TarefaDetalhe() {
     if (field === 'status') return STATUS_LABEL[v as Status] ?? v;
     if (field === 'priority') return PRIORITY_LABEL[v] ?? v;
     if (field === 'dueAt' || field === 'respondedAt' || field === 'completedAt') return fmtDateTime(v);
+    if (field === 'sla.pause') return fmtDateTime(v);
+    if (field === 'sla.resume') { const m = /^\+(\d+)s$/.exec(v); return m ? `prazo estendido em ${fmtDuration(Number(m[1]))} (tempo pausado)` : v; }
     if (field === 'notifyOnClose') return v === 'true' ? 'Sim' : 'Não';
     return v.length > 200 ? `${v.slice(0, 200)}…` : v;
   };
@@ -67,13 +69,13 @@ export default function TarefaDetalhe() {
 
       <Card title="Resumo">
         <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-          <div><dt className="text-bv-muted">Situação</dt><dd><StatusBadge s={t.status} /></dd></div>
+          <div><dt className="text-bv-muted">Situação</dt><dd><StatusBadge s={t.status} /> <SlaPausedBadge t={t} /></dd></div>
           <div><dt className="text-bv-muted">Responsável</dt><dd>{t.assignee?.name ?? 'Sem responsável'}</dd></div>
           <div><dt className="text-bv-muted">Setor</dt><dd>{t.sector?.name ?? '—'}</dd></div>
           <div><dt className="text-bv-muted">Origem</dt><dd>{ORIGIN_LABEL[t.origin] ?? t.origin}</dd></div>
           <div><dt className="text-bv-muted">Prazo e SLA</dt><dd><DueInfo t={t} /></dd></div>
           <div><dt className="text-bv-muted">Prazo de resposta (SLA)</dt><dd>{t.sla.responseDueAt ? fmtDateTime(t.sla.responseDueAt) : '—'}{t.sla.responseBreached ? <> <Badge tone="warning">Violado</Badge></> : null}{t.respondedAt ? ` · respondida em ${fmtDateTime(t.respondedAt)}` : ''}</dd></div>
-          <div><dt className="text-bv-muted">Prazo de resolução (SLA)</dt><dd>{t.sla.resolutionDueAt ? fmtDateTime(t.sla.resolutionDueAt) : '—'}{t.sla.resolutionBreached ? <> <Badge tone="danger">Violado</Badge></> : null}</dd></div>
+          <div><dt className="text-bv-muted">Prazo de resolução (SLA)</dt><dd>{t.sla.resolutionDueAt ? fmtDateTime(t.sla.resolutionDueAt) : '—'}{t.sla.resolutionBreached ? <> <Badge tone="danger">Violado</Badge></> : null}{t.status === 'WAITING' && (t.slaPaused || t.sla.paused) ? <span className="block text-xs text-bv-muted">Contagem parada enquanto a tarefa aguarda; o prazo é estendido pelo tempo pausado ao retomar.</span> : null}</dd></div>
           {t.supportLevel && <div><dt className="text-bv-muted">Nível de suporte (ANS)</dt><dd>{LEVEL_LABEL[t.supportLevel]}</dd></div>}
           {t.completedAt && <div><dt className="text-bv-muted">Concluída em</dt><dd>{fmtDateTime(t.completedAt)}</dd></div>}
           {t.externalRef && <div><dt className="text-bv-muted">Referência externa</dt><dd>{t.externalRef}</dd></div>}

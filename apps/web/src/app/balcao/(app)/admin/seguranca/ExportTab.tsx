@@ -1,9 +1,10 @@
 'use client';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { bv, errMsg } from '@/lib/balcao/api';
+import { bv } from '@/lib/balcao/api';
 import { fmtBytes, fmtDateTime, fmtNumber } from '@/lib/balcao/format';
 import { Badge, Banner, Button, Card, Checkbox, DataTable, Dialog, Select, useToast, type Column } from '../../../_ui/ui';
 import { ErrorBox, Loading, Unavailable, copyText, errFull, hasCode, useLoad } from '../usuarios/_shared';
+import ExportLinkDialog from './ExportLinkDialog';
 
 type Fmt = 'JSON' | 'CSV' | 'XML' | 'SQL';
 interface Job {
@@ -40,21 +41,17 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
 }
 
 export default function ExportTab() {
-  const toast = useToast();
   const { data, error, loading, unavailable, reload } = useLoad(() => bv.get<{ items: Job[] }>('/security/exports').then((r) => r.items), []);
   const [creating, setCreating] = useState(false);
-  const [dl, setDl] = useState<string | null>(null);
+  const [linkJob, setLinkJob] = useState<Job | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const close = useCallback(() => setCreating(false), []);
+  const closeLink = useCallback(() => setLinkJob(null), []);
   const running = (data ?? []).some((j) => j.status === 'PENDING' || j.status === 'RUNNING');
   const reloadRef = useRef(reload); reloadRef.current = reload;
   useEffect(() => { if (!running) return; const t = setInterval(() => reloadRef.current(), 4000); return () => clearInterval(t); }, [running]);
   if (unavailable) return <Unavailable what="A exportação final de contrato" />;
 
-  const download = async (j: Job) => {
-    setDl(j.id);
-    try { await bv.download(`/security/exports/${j.id}/download`, `balcao-export-${j.id}.tar.gz`); toast.success('Download iniciado.'); } catch (e) { toast.error(errMsg(e)); } finally { setDl(null); }
-  };
   const copySha = async (j: Job) => { if (j.sha256 && (await copyText(j.sha256))) { setCopied(j.id); setTimeout(() => setCopied(null), 3000); } };
 
   const cols: Column<Job>[] = [
@@ -77,7 +74,7 @@ export default function ExportTab() {
     {
       key: 'a', header: 'Ações', render: (j) => j.downloadable ? (
         <div className="flex flex-wrap items-center gap-1">
-          <Button size="sm" loading={dl === j.id} aria-label={`Baixar exportação de ${fmtDateTime(j.createdAt)}`} onClick={() => void download(j)}>Baixar</Button>
+          <Button size="sm" aria-label={`Baixar exportação de ${fmtDateTime(j.createdAt)}`} onClick={() => setLinkJob(j)}>Baixar</Button>
           {j.sha256 && <Button size="sm" variant="secondary" aria-label="Copiar SHA-256 do pacote" onClick={() => void copySha(j)}>{copied === j.id ? 'Copiado' : 'Copiar SHA-256'}</Button>}
         </div>
       ) : '—',
@@ -90,7 +87,8 @@ export default function ExportTab() {
       {running && <Banner tone="primary" title="Exportação em andamento">A lista é atualizada automaticamente a cada poucos segundos.</Banner>}
       {error ? <ErrorBox message={error} onRetry={reload} /> : loading && !data ? <Loading label="Carregando exportações" />
         : <DataTable caption="Exportações integrais" columns={cols} rows={data ?? []} rowKey={(j) => j.id} empty="Nenhuma exportação solicitada." />}
-      <Card title="Conferência de integridade"><p className="text-sm">Depois do download, confira a soma SHA-256 do arquivo (<code>sha256sum balcao-export-….tar.gz</code>) com o valor exibido acima. O <code>manifest.json</code> dentro do pacote lista a soma de cada arquivo interno.</p></Card>
+      <Card title="Conferência de integridade"><p className="text-sm">O download usa um link de uso único, válido por 60 segundos, gerado ao clicar em “Baixar”. Depois do download, confira a soma SHA-256 do arquivo (<code>sha256sum balcao-export-….tar.gz</code>) com o valor exibido acima. O <code>manifest.json</code> dentro do pacote lista a soma de cada arquivo interno.</p></Card>
+      {linkJob && <ExportLinkDialog job={linkJob} onClose={closeLink} />}
       {creating && <CreateDialog onClose={close} onCreated={reload} />}
     </div>
   );

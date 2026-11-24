@@ -1,10 +1,11 @@
 'use client';
 import React, { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { errMsg } from '@/lib/balcao/api';
+import { BvApiError, errMsg } from '@/lib/balcao/api';
 import { emitSocket } from '@/lib/balcao/socket';
 import { Badge, Banner, Button, Spinner, cx, useToast } from '../../_ui/ui';
 import { ClipIcon, LockIcon, SparkIcon } from './Icons';
-import { GOVBR_PLACEHOLDER, filterCanned, findSlashToken, humanSize, replaceRange } from './lib';
+import { CannedDialog } from './Dialogs';
+import { GOVBR_PLACEHOLDER, attachmentRejectedMessage, cannedScopeLabel, filterCanned, findSlashToken, humanSize, replaceRange } from './lib';
 import { api } from './service';
 import type { Attachment, CannedResponse, ChatMessage, Channel, ComposerHandle, Suggestion } from './types';
 
@@ -22,7 +23,7 @@ interface Props {
   /** Pode enviar ao cidadão (responsável ou supervisão, conversa aberta). */
   canReply: boolean; canNote: boolean; canAi: boolean;
   waWindowClosed: boolean; canTemplate: boolean; onOpenTemplate: () => void;
-  canned: CannedResponse[] | null; cannedLoading: boolean; onNeedCanned: () => void;
+  canned: CannedResponse[] | null; cannedLoading: boolean; onNeedCanned: () => void; onCannedChanged: () => void;
   suggestion: Suggestion | null; suggestionBusy: boolean; onSuggest: () => void; onDismissSuggestion: () => void;
   onSent: (m: ChatMessage, delivery: { status: string; error: string | null } | null) => void;
   handleRef: React.Ref<ComposerHandle>;
@@ -41,6 +42,7 @@ export function Composer(p: Props) {
   const [caret, setCaret] = useState(0);
   const [active, setActive] = useState(0);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+  const [cannedOpen, setCannedOpen] = useState(false);
   const typingAt = useRef(0);
 
   const noteMode = note || !p.canReply;
@@ -96,7 +98,8 @@ export function Composer(p: Props) {
         const r = await api.uploadAttachment(p.conversationId, file);
         setPending((l) => l.map((x) => (x.uid === id ? { ...x, state: 'ready', att: r.attachment } : x)));
       } catch (e) {
-        setPending((l) => l.map((x) => (x.uid === id ? { ...x, state: 'error', error: errMsg(e, 'Falha no envio do arquivo.') } : x)));
+        const error = e instanceof BvApiError && e.status === 422 && e.code === 'attachment.rejected' ? attachmentRejectedMessage(e.details) : errMsg(e, 'Falha no envio do arquivo.');
+        setPending((l) => l.map((x) => (x.uid === id ? { ...x, state: 'error', error } : x)));
       }
     }
     if (files.current) files.current.value = '';
@@ -200,7 +203,8 @@ export function Composer(p: Props) {
                     {matches.map((c, i) => (
                       <li key={c.id} id={`${listId}-${i}`} role="option" aria-selected={i === active} onMouseDown={(e) => { e.preventDefault(); pick(c); }} onMouseEnter={() => setActive(i)}
                         className={cx('cursor-pointer border-b border-bv-border px-3 py-2 text-sm last:border-0', i === active && 'bg-bv-primary-soft')}>
-                        <span className="font-mono font-semibold">/{c.shortcut}</span> <span className="font-medium">{c.title}</span>
+                        <span className="font-mono font-semibold">/{c.shortcut}</span> <span className="font-medium">{c.title}</span>{' '}
+                        <Badge tone={c.scope === 'PERSONAL' ? 'primary' : 'neutral'}>{cannedScopeLabel(c)}</Badge>
                         <span className="block truncate text-xs text-bv-muted">{c.body}</span>
                       </li>
                     ))}
@@ -238,9 +242,11 @@ export function Composer(p: Props) {
         <input ref={files} type="file" multiple accept={ACCEPT} className="hidden" tabIndex={-1} aria-hidden="true" onChange={(e) => void upload(e.target.files)} />
         <Button variant="secondary" size="sm" disabled={noteMode || !p.canReply} onClick={() => files.current?.click()} aria-label="Anexar arquivo (até 15 MB)"><ClipIcon />Anexar</Button>
         <Button variant="secondary" size="sm" disabled={!p.canNote} onClick={insertSlash}>Respostas prontas</Button>
+        <Button variant="secondary" size="sm" onClick={() => setCannedOpen(true)}>Minhas respostas prontas</Button>
         {p.canAi && p.canReply && <Button variant="secondary" size="sm" loading={p.suggestionBusy} onClick={p.onSuggest}><SparkIcon />Sugerir resposta (IA)</Button>}
         <Button className="ml-auto" loading={sending} disabled={!canSend} onClick={() => void send()}>{noteMode ? 'Salvar nota' : 'Enviar'}</Button>
       </div>
+      {cannedOpen && <CannedDialog onClose={() => setCannedOpen(false)} onChanged={p.onCannedChanged} />}
     </div>
   );
 }

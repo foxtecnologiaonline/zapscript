@@ -11,7 +11,11 @@ const cid = (id: string) => encodeURIComponent(id);
 
 export const api = {
   listConversations: (q: Q) => bv.get<ConvListResponse>('/conversations', q),
-  getConversation: (id: string) => bv.get<ConvDetail>(`/conversations/${cid(id)}`),
+  /** `before` (id da mensagem mais antiga carregada) pagina para trás; `limit` 1–200 (padrão do servidor: 100). */
+  getConversation: (id: string, opts: { before?: string; limit?: number } = {}) => bv.get<ConvDetail>(`/conversations/${cid(id)}`, opts),
+  /** Reenvia a MESMA mensagem (mesmo id; sem nova bolha). 409 message.not_resendable|conversation.closed, 403 message.not_owner. */
+  resendMessage: (id: string, messageId: string) =>
+    bv.post<{ message: ChatMessage; delivery: { status: string; error: string | null } }>(`/conversations/${cid(id)}/messages/${cid(messageId)}/resend`),
   markRead: (id: string) => bv.post<{ ok: true }>(`/conversations/${cid(id)}/read`),
   pickup: (id: string) => bv.post<{ conversation: ConvCore }>(`/conversations/${cid(id)}/pickup`),
   sendMessage: (id: string, body: { text?: string; attachments?: Attachment[] }) =>
@@ -26,6 +30,9 @@ export const api = {
   close: (id: string, reason: string) => bv.post<{ conversation: ConvCore }>(`/conversations/${cid(id)}/close`, { reason }),
 
   listCanned: () => bv.get<{ items: CannedResponse[] }>('/canned-responses'),
+  createCanned: (body: { shortcut: string; title: string; body: string; scope?: 'PERSONAL' | 'ORG' }) => bv.post<{ item: CannedResponse }>('/canned-responses', body),
+  updateCanned: (id: string, body: { shortcut?: string; title?: string; body?: string }) => bv.patch<{ item: CannedResponse }>(`/canned-responses/${cid(id)}`, body),
+  deleteCanned: (id: string) => bv.del<void>(`/canned-responses/${cid(id)}`),
   listQueues: () => bv.get<{ items: QueueRow[] }>('/queues'),
   /** Diretório enxuto para transferência (perm conversation:transfer — atendente comum pode). */
   listAgents: async () => {

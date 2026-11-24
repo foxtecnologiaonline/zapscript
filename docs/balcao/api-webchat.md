@@ -37,7 +37,7 @@ API JS para o site hospedeiro: `window.BalcaoVirtual.open()`, `.close()`, `.vers
 
 ### Recursos do widget
 
-- **Isolamento**: Shadow DOM (CSS do site não vaza para o chat e vice-versa); sem dependências; ~30 KB (teste limita a 32 KB).
+- **Isolamento**: Shadow DOM (CSS do site não vaza para o chat e vice-versa); sem dependências; ~33 KB na v1.1.0 (teste limita a 40 KB).
 - **Acessibilidade**: painel `role="dialog"` `aria-modal` com rótulo; **foco preso** (Tab/Shift+Tab) e retorno do foco ao botão ao fechar;
   **Esc** fecha; região de mensagens `role="log"` `aria-live="polite"` (focável por teclado); status `role="status"` e erros `role="alert"`;
   todos os campos com `<label>`; alvos de toque ≥ 44 px; foco visível; escala de NPS em `fieldset/legend` + radios (teclado/leitor de tela);
@@ -49,6 +49,12 @@ API JS para o site hospedeiro: `window.BalcaoVirtual.open()`, `.close()`, `.vers
 - **Fora do horário** (`open=false` em `/public/config`): aviso `offlineMessage` e os botões passam a "Deixar mensagem" — a mensagem é registrada e vai para a fila.
 - **Falar com atendente humano**, **anexos** (imagem/PDF, pré-visualização de imagens), **atendimento por vídeo** (Jitsi), **encerrar** (com confirmação)
   e **NPS 0–10** (+ comentário opcional) ao final.
+- **Legendas** (v1.1.0): botão **"Legendas"** (`aria-pressed`) no grupo de ações. Ligado, exibe as legendas do atendente (evento `caption`) numa região
+  `role="log"` `aria-live="polite"` (só frases **finais** são anunciadas; trechos parciais aparecem numa linha fora da região viva) e, se o navegador tiver
+  `window.SpeechRecognition || window.webkitSpeechRecognition`, captura a fala do visitante (`lang = pt-BR`, contínua, com parciais) e a envia por `POST /public/caption`
+  (parciais a cada ≥ 400 ms; frases finais sempre). **A captura depende de Chrome/Edge e de permissão de microfone**; o reconhecimento é feito pelo navegador, que pode enviar o
+  áudio ao fornecedor dele (o widget avisa). Sem suporte ou com microfone negado o widget **degrada**: mostra o aviso e continua exibindo as legendas do atendente.
+  Desliga sozinho ao encerrar/expirar a conversa. **Relé efêmero: nenhum texto de legenda é gravado** (ver §4.1).
 - **Tempo real**: Socket.IO mínimo embutido (Engine.IO v4 sobre WebSocket) com reconexão exponencial e fallback para polling.
 
 ## 2. API pública (`/balcao/webchat/public/*`)
@@ -64,8 +70,9 @@ real é a **lista de origens do órgão** (§3). Rotas com token exigem `X-Visit
 | `POST /public/messages` | token | `{text, clientMsgId?}` → **201** `{message, state, duplicate, csat}`. `clientMsgId` (8–64 `[A-Za-z0-9_-]`) torna o reenvio idempotente. Cria/reabre a conversa (bot ou fila, conforme `settings.ai.enabled`) |
 | `GET /public/messages?since=<ISO>&limit=` | token | **Polling**: só mensagens **destinadas ao visitante** (bot/atendente/sistema). `since` é inclusivo (o cliente deduplica por `id`); sem `since` devolve as últimas `limit` (≤ 100). → `{messages[], state, serverTime}` |
 | `GET /public/history` | token | últimas 100 mensagens (visitante + atendimento), para retomada |
-| `POST /public/attachments` | token | `multipart/form-data` (`file`, `text?` legenda) → **201** `{message, state}`. PNG/JPEG/WEBP/GIF/PDF, limite `BV_WEBCHAT_MAX_ATTACHMENT_MB` (5); o tipo é validado pelos **bytes iniciais** (não pelo Content-Type) |
+| `POST /public/attachments` | token | `multipart/form-data` (`file`, `text?` legenda) → **201** `{message, state}` · **422 `attachment.rejected`** (ClamAV opcional: `putObject(…, {scan:true})`). PNG/JPEG/WEBP/GIF/PDF, limite `BV_WEBCHAT_MAX_ATTACHMENT_MB` (5); o tipo é validado pelos **bytes iniciais** (não pelo Content-Type) |
 | `GET /public/attachments/:messageId/:index` | token | baixa anexo da conversa **da própria sessão** (imagem inline; demais como download; `CSP: sandbox`, `nosniff`, `no-store`) |
+| `POST /public/caption` | token | `{ text (1–1000, truncado a 500 após limpeza), final?: boolean=false }` → **204**. Relé da legenda do visitante à equipe (§4.1). 400 `validation.failed`/`webchat.empty_message` · 409 `webchat.no_conversation` (sem conversa iniciada) / `webchat.conversation_closed` · 429 `webchat.rate_limited` (`BV_WEBCHAT_RL_CAPTION`) |
 | `POST /public/typing` | token | 204. Avisa o atendente que o visitante está digitando (o socket faz o mesmo) |
 | `POST /public/human` | token | cria a conversa se preciso e **escala para a fila humana** → `{state}` |
 | `POST /public/video` | token | escala para a fila e cria a sala Jitsi → **201** `{url, room, state}`; o link também vai como mensagem de sistema (visível ao atendente) |
@@ -81,6 +88,7 @@ Mensagem pública = `{id, from: visitor|bot|agent|system, kind, text, attachment
 
 `webchat.org_not_found` 404 · `webchat.origin_not_allowed` 403 · `webchat.session_invalid` 401 (mesma resposta para token ausente, malformado, desconhecido, encerrado ou expirado — sem enumeração) ·
 `webchat.rate_limited` 429 (+ `Retry-After`) · `webchat.empty_message` 400 · `webchat.message_too_long` 413 · `webchat.quota_exceeded` 429 (cota `BLOCK` de `WEBCHAT_MSG`) ·
+**`attachment.rejected` 422** (antivírus recusou o arquivo; `error.details.reason` = `infected` \| `scan_unavailable`; nada é gravado nem vira mensagem) ·
 `webchat.attachment_too_large` 413 · `webchat.attachment_type` 415 · `webchat.attachment_missing`/`attachment_empty` 400 · `webchat.attachments_disabled` / `human_disabled` / `video_disabled` 403 ·
 `webchat.conversation_closed` 409 · `webchat.csat_not_available` / `csat_already` 409 · `webchat.not_found` 404 · `webchat.internal` 500 · `validation.failed` 400.
 
@@ -101,6 +109,7 @@ Mensagem pública = `{id, from: visitor|bot|agent|system, kind, text, attachment
 | `BV_WEBCHAT_RL_ATTACH` | 6 | anexos por sessão |
 | `BV_WEBCHAT_RL_POLL` | 120 | leituras (polling/histórico/download) por sessão |
 | `BV_WEBCHAT_RL_TYPING` | 60 | "digitando" |
+| `BV_WEBCHAT_RL_CAPTION` | 240 | trechos de legenda por minuto, por sessão (visitante) e por atendente |
 | `BV_WEBCHAT_RL_ACTION` | 30 | human/csat/end/video/identify |
 
 - Entrada em texto puro: remove controles C0/C1, BOM e caracteres bidi de sobreposição; nomes de arquivo saneados. Uma conversa por sessão (exclusão mútua local evita duas conversas para mensagens simultâneas).
@@ -119,7 +128,24 @@ sessões que expiram com o socket aberto são desconectadas pela varredura (5 mi
 | `typing` | servidor → visitante | `{from:'agent'}` |
 | `csat:request` | servidor → visitante | `{conversationId, prompt}` (após encerramento `RESOLVED` com NPS habilitado) |
 | `conversation:closed` | servidor → visitante | `{conversationId}` |
+| `caption` | servidor → visitante | `{conversationId, from:'AGENT', text, final}` (legenda do atendente; relé efêmero, §4.1) |
 | `typing` | visitante → servidor | (sem payload; repassado à equipe como `typing {conversationId, from:'CONTACT'}` no namespace `/bv`) |
+
+### 4.1 Legendas em tempo real (videochamada / chat de vídeo)
+
+Relé **efêmero** entre as duas pontas; o texto passa só pela memória do processo e **não é gravado** (nem em `BvMessage`, eventos, auditoria, uso ou log). Quem não estiver conectado
+por Socket.IO no instante simplesmente não recebe aquele trecho (não há reenvio nem polling). Payload do evento `caption` (igual nos dois sentidos):
+`{ conversationId, from: 'VISITOR' | 'AGENT', text, final }` — `final:false` = parcial (substitui o parcial anterior do mesmo falante); `final:true` = frase concluída. Não há eco ao emissor.
+
+| Sentido | Como enviar | Como receber |
+|---|---|---|
+| visitante → atendente | `POST /balcao/webchat/public/caption` `{text, final}` (token do visitante) | evento `caption` `{from:'VISITOR'}` no namespace **`/bv`**, sala da conversa — o atendente precisa ter feito `emit('conv:join', conversationId)` (como já faz para `message:new`) |
+| atendente → visitante | `POST /balcao/webchat/conversations/:id/caption` `{text, final}` (JWT do Balcão) | evento `caption` `{from:'AGENT'}` no namespace **`/bv-visitor`** (todos os sockets da sessão na conversa) |
+
+`POST /balcao/webchat/conversations/:id/caption` — permissão `conversation:reply`; só o **atendente atribuído** ou a **supervisão** (`conversation:monitor`). Corpo igual ao do visitante.
+Resposta **200 `{ delivered: boolean }`** (`delivered:false` = nenhum socket de visitante conectado na conversa). Erros: 401 · 403 `auth.forbidden` (sem `conversation:reply`) / `conversation.forbidden`
+(não atribuído e sem supervisão) · 404 `conversation.not_found` (inclusive de outro órgão) · 409 `webchat.not_webchat` (conversa de outro canal) / `conversation.closed` · 400 · 429 `webchat.rate_limited`.
+O texto é limpo (controles/bidi removidos, espaços normalizados) e limitado a 500 caracteres.
 
 O núcleo só emite no namespace `/bv` (equipe); a entrega ao visitante é feita por `delivery.ts` (`message.outbound`, `conversation.closed`) e pelo repasse do `typing` do atendente.
 O remetente do canal apenas confirma `SENT` (`channelMeta.delivery = socket|poll`); a mensagem fica disponível no polling mesmo sem socket.
@@ -153,7 +179,7 @@ Consumo: cada mensagem/anexo do visitante e cada resposta enviada conta `WEBCHAT
 
 ## 8. Testes
 
-`npx jest --runInBand src/balcao/channels/webchat` — 38 casos com app Fastify mínimo + Socket.IO local (sem rede externa): servir/ETag/CORP do script, validade do JS e checagem
+`npx jest --runInBand src/balcao/channels/webchat` — 52 casos (inclui `captions.test.ts`: relé por HTTP + Socket.IO nos dois sentidos, permissões, rate limit, "nada é gravado" e conteúdo estático do widget; `antivirus.test.ts`: clamd falso) com app Fastify mínimo + Socket.IO local (sem rede externa): servir/ETag/CORP do script, validade do JS e checagem
 estática de acessibilidade, contraste AA da cor do texto sobre qualquer cor de marca, config pública, ciclo visitante↔atendente↔polling, notas internas que não vazam, idempotência,
 identificação/merge, humano/vídeo/NPS/encerramento, anexos (bytes forjados, limite, isolamento), Origin (lista, curinga, produção), rate limit, expiração/TTL, fora do horário, token só como hash,
 isolamento entre órgãos e eventos de socket (inclusive visitante de outro órgão).
@@ -163,7 +189,12 @@ isolamento entre órgãos e eventos de socket (inclusive visitante de outro órg
 - **O widget não foi executado em navegador real** (nem em jsdom): os testes validam o JS por sintaxe (`vm.Script`), por inspeção estática do código (ARIA, foco, Esc, contraste, movimento reduzido) e por chamadas à API/Socket.IO.
   Falta teste manual/automatizado com leitor de tela (NVDA/JAWS/VoiceOver), navegação só por teclado, zoom 200%/400%, dispositivos móveis e a bateria de auditoria eMAG/WCAG (axe/Lighthouse).
 - Cliente Socket.IO embutido (Engine.IO v4 mínimo) testado contra o servidor local com a biblioteca `ws`, não em navegadores reais nem atrás de proxies/CDN que bloqueiem WebSocket (há fallback para polling).
-- VLibras (script e disponibilidade de `vlibras.gov.br`), Jitsi real (`meet.jit.si` ou instância do órgão) e legenda ao vivo: dependem de serviços externos; o botão só cria a sala e envia o link.
+- VLibras (script e disponibilidade de `vlibras.gov.br`) e Jitsi real (`meet.jit.si` ou instância do órgão): dependem de serviços externos; o botão só cria a sala e envia o link.
+- **Legendas**: `SpeechRecognition` **nunca foi executado** (nenhum navegador/DOM nos testes — só o relé servidor e a inspeção estática do widget). Qualidade do pt-BR, reinício automático após silêncio
+  (`onend`), comportamento no Safari/Firefox (sem suporte), permissão de microfone, e o fato de o áudio ir ao fornecedor do navegador (LGPD: avaliar com o órgão) estão por validar. A fala do
+  visitante dentro da sala **Jitsi** é outra mídia: o widget só capta o microfone do próprio navegador (pode competir com o microfone do Jitsi na mesma aba/dispositivo). O console do atendente precisa
+  ligar o `POST …/caption` a um reconhecimento de fala próprio (não existe no front).
+- **Antivírus**: testado com clamd falso; ClamAV real não verificado.
 - Visão do **atendente** (console React) está fora desta frente; a mensagem de vídeo e o `typing` chegam pelo núcleo.
 - O `index.ts` global aplica `@fastify/rate-limit` (150 req/min por IP) a **todas** as rotas, inclusive `/balcao/webchat/public/*`; visitantes atrás do mesmo NAT corporativo podem esbarrar nele antes do limite próprio (300/min por IP). Considere incluir `/balcao/webchat/public` no `skip` (arquivo fora desta frente).
 - Anti-bot (CAPTCHA) não existe: a proteção contra abuso é rate limit + Origin + cota. Retenção do conteúdo segue a política do núcleo/segurança (`settings.retention`).

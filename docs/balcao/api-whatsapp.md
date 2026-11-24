@@ -47,7 +47,11 @@ Perm. = permissão do núcleo (`core/permissions.ts`).
 
 - Tipos: texto, imagem, áudio, vídeo, documento, sticker (→ `IMAGE`), localização (texto + `channelMeta.wa.location`), `interactive` (botão/lista → texto = título; `channelMeta.wa.interactive {id,title}`; respostas sem título, p.ex. `nfm_reply` de Flows, viram `[Resposta interativa recebida]` — nunca corpo vazio), `button` (resposta rápida de template), contatos. **Reações e mensagens de sistema são ignoradas.**
 - `ingestInbound({channel:'WHATSAPP', channelRef: wa_id, externalId: wa_id, name: profile.name, message:{kind, body, channelMessageId: wamid, channelMeta:{wa:{…}}}})`. Idempotente por wamid. Processamento por contato é serializado (webhooks concorrentes do mesmo cidadão novo) e repete em `P2002`.
-- **Mídia**: a mensagem é ingerida imediatamente (resposta 200 rápida) e o arquivo é baixado **em segundo plano** (Graph: `GET /{mediaId}` → url → bytes; só segue hosts da Meta — anti-SSRF; confere `sha256`; limite 100 MB), gravado com `putObject` (`<orgId>/attachments/…`) e registrado em `BvMessage.attachments` (`{key,name,mime,size,sha256}`); socket `message:attachments`. Estado em `channelMeta.wa.mediaStatus` (`PENDING`→`STORED`/`FAILED`, `mediaAttempts`, `mediaError`). Falha transitória fica `PENDING` e o job `whatsapp.media_retry` (60 s, até 5 tentativas) reprocessa.
+- **Mídia**: a mensagem é ingerida imediatamente (resposta 200 rápida) e o arquivo é baixado **em segundo plano** (Graph: `GET /{mediaId}` → url → bytes; só segue hosts da Meta — anti-SSRF; confere `sha256`; limite 100 MB), gravado com `putObject` (`<orgId>/attachments/…`) e registrado em `BvMessage.attachments` (`{key,name,mime,size,sha256}`); socket `message:attachments`. Estado em `channelMeta.wa.mediaStatus` (`PENDING`→`STORED`/`FAILED`/`REJECTED`, `mediaAttempts`, `mediaError`). Falha transitória fica `PENDING` e o job `whatsapp.media_retry` (60 s, até 5 tentativas) reprocessa.
+  **Antivírus (ClamAV opcional, `BV_CLAMAV_*`):** a mídia baixada é gravada com `putObject(…, { scan: true })`. Arquivo **infectado** → descartado na hora (nada no storage),
+  `mediaStatus: 'REJECTED'` (definitivo: o job não baixa de novo), `mediaError: 'attachment.rejected'` e `channelMeta.attachmentsRejected: [{ name, reason: 'infected' }]`;
+  a mensagem (legenda/texto) segue normalmente, com `attachments: []`. Antivírus **indisponível** (fail-closed): fica `PENDING` (`mediaError: 'attachment.scan_unavailable'`) e é
+  reprocessado pelo job; esgotadas as 5 tentativas vira `REJECTED` com `reason: 'scan_unavailable'`. Falhas do antivírus entram em `BvIntegrationLog` (`media.download`).
 - **`WA_SERVICE` (item 7)**: 1 por **abertura de janela** (bloco fixo de `settings.whatsapp.windowHours`, padrão 24 h, a partir da 1ª mensagem do cidadão), marcador atômico em `conversation.metadata.whatsapp.windowOpenedAt`. Não conta por mensagem, nem em reentrega (dedupe), nem se o mesmo contato já abriu janela em outra conversa dentro do período.
 - Status (`statuses[]`) → `BvMessage.status` (`SENT→DELIVERED→READ`, nunca rebaixa) e `errorCode`; `pricing.category` fica em `channelMeta.wa.billedCategory`. Status que chega antes de o wamid ser gravado é reaplicado em segundo plano (3 tentativas). Socket `message:status {conversationId, messageId, status, errorCode}`.
 - `message_template_status_update` / `template_category_update` atualizam `BvWaTemplate` (status, `rejectedReason`, categoria).
@@ -86,6 +90,7 @@ Perm. = permissão do núcleo (`core/permissions.ts`).
 | `BV_DEV_SIMULATORS=1` | Habilita `/dev/*`, `config.mock` e `config.apiBase`. **Nunca em produção.** |
 | `BV_PUBLIC_API_URL` | Base pública exibida em `webhook.url` (padrão `https://api.zapscript.me`) |
 | `BV_STORAGE_DIR` | (núcleo) destino das mídias recebidas |
+| `BV_CLAMAV_HOST`/`PORT`/`SOCKET`/`FAIL_MODE` | (núcleo) antivírus opcional das mídias recebidas; ver §3 |
 
 Credenciais ficam só em `BvIntegration.configEnc` (cifradas). Sem novas dependências. Job registrado: `whatsapp.media_retry`. Eventos de socket: `message:status`, `message:attachments`.
 
@@ -103,4 +108,5 @@ Credenciais ficam só em `BvIntegration.configEnc` (cifradas). Sem novas depend�
 - Aprovação/qualidade/limites de mensagens do número, tier de envio, opt-in/opt-out e política comercial da Meta: contratação/operacional do órgão.
 - O `index.ts` global aplica `@fastify/rate-limit` (150 req/min por IP) a `/balcao/whatsapp/webhook` (o `skip` cobre só `/webhook/`): uma rajada da Meta pode receber 429 (a Meta reenvia; o processamento é idempotente por wamid). Convém incluir esse caminho no `skip` (arquivo fora desta frente). O HMAC depende do `rawBody` preenchido pelo parser JSON global do `index.ts` (os testes usam um parser equivalente).
 - Corridas entre instâncias: janela `WA_SERVICE` é atômica no banco; cota (`assertQuota` + `recordUsage`) não é atômica (pequena folga possível sob concorrência alta).
+- **Antivírus**: testado só com clamd falso (INSTREAM); ClamAV real não verificado. Com o clamd fora o reprocesso depende do job e da janela de 30 dias da Meta.
 - Mídias referenciadas por `id` expiram na Meta (30 dias); mídia pendente por mais de 7 dias não é reprocessada.

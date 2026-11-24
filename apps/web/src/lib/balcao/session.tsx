@@ -6,7 +6,7 @@ export interface BvUserMe {
   id: string; orgId: string; name: string; email: string; role: 'ATENDENTE' | 'SUPERVISOR' | 'ADMIN' | 'FISCAL';
   orgName?: string; orgSlug?: string; sectorId?: string | null; skills?: string[]; sipExtension?: string | null; presence?: string;
 }
-export interface MeResponse { user: BvUserMe; permissions: string[]; mustChangePassword: boolean; totpEnabled: boolean; mfaSetupRequired: boolean }
+export interface MeResponse { user: BvUserMe; permissions: string[]; mustChangePassword: boolean; totpEnabled: boolean; mfaSetupRequired: boolean; recoveryCodesRemaining?: number }
 
 export type LoginResult =
   | { kind: 'ok'; me: MeResponse }

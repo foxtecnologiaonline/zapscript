@@ -5,6 +5,7 @@ import { CHANNEL_LABEL } from '@/lib/balcao/format';
 import { Badge, Banner, Button, Card, ConfirmDialog, DataTable, Select, TextField, useToast, type Column } from '../../../_ui/ui';
 import { ErrorBox, Loading, errFull, useLoad } from '../usuarios/_shared';
 import RuleForm, { describeConditions } from './RuleForm';
+import VersionHistory from './VersionHistory';
 import { CHANNELS, type Queue, type Rule } from './types';
 
 interface SimResult { ruleId: string | null; queueId: string | null; queueName: string | null; priority: number; outsideHours: boolean }
@@ -71,6 +72,8 @@ export default function RulesTab() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [form, setForm] = useState<{ rule: Rule | null } | null>(null);
   const [del, setDel] = useState<Rule | null>(null);
+  const [hist, setHist] = useState<Rule | null>(null);
+  const closeHist = useCallback(() => setHist(null), []);
   const [hit, setHit] = useState<string | null>(null);
   const [announce, setAnnounce] = useState('');
   const focusAfter = useRef<string | null>(null);
@@ -115,6 +118,7 @@ export default function RulesTab() {
             <Button id={`rule-down-${r.id}`} size="sm" variant="secondary" disabled={i === rules.length - 1} aria-label={`Mover ${r.name} para baixo`} onClick={() => void move(i, 1)}>Descer</Button>
             <Button size="sm" variant="secondary" aria-label={`Editar regra ${r.name}`} onClick={() => setForm({ rule: r })}>Editar</Button>
             <Button size="sm" variant="secondary" aria-label={`${r.active ? 'Desativar' : 'Ativar'} regra ${r.name}`} onClick={() => void toggle(r)}>{r.active ? 'Desativar' : 'Ativar'}</Button>
+            <Button size="sm" variant="secondary" aria-label={`Histórico de versões da regra ${r.name}`} onClick={() => setHist(r)}>Histórico</Button>
             <Button size="sm" variant="secondary" aria-label={`Excluir regra ${r.name}`} onClick={() => setDel(r)}>Excluir</Button>
           </div>
         );
@@ -131,6 +135,7 @@ export default function RulesTab() {
         : <DataTable caption="Regras de roteamento em ordem de avaliação" columns={columns} rows={rules} rowKey={(r) => r.id} empty="Nenhuma regra cadastrada. Sem regras, vale o roteamento padrão." />}
       <Simulator rules={rules} onResult={setHit} />
       {form && <RuleForm key={form.rule?.id ?? 'nova'} rule={form.rule} queues={queues.data ?? []} onClose={closeForm} onSaved={rulesQ.reload} />}
+      {hist && <VersionHistory kind="rule" id={hist.id} name={hist.name} names={Object.fromEntries((queues.data ?? []).map((q) => [q.id, q.name]))} onClose={closeHist} />}
       {del && <ConfirmDialog open danger title="Excluir regra" confirmLabel="Excluir" message={`Excluir a regra "${del.name}"? As demais regras mantêm a ordem.`} onConfirm={remove} onClose={closeDel} />}
     </div>
   );

@@ -1,11 +1,12 @@
 'use client';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useBvSession } from '@/lib/balcao/session';
 import { CHANNEL_LABEL } from '@/lib/balcao/format';
 import { Banner, Button, Card, PageHeader, Select, Tabs, TextField } from '../../_ui/ui';
 import { CustomTab } from './custom';
+import { IqaTab } from './iqa';
 import { MonthlyTab } from './monthly';
-import { AgentsTab, ChannelsTab, IqaTab, NpsTab, OverviewTab, QueuesTab, ServiceDeskTab, SeriesTab, SlaTab, VoiceTab } from './tabs';
+import { AgentsTab, ChannelsTab, NpsTab, OverviewTab, QueuesTab, ServiceDeskTab, SeriesTab, SlaTab, VoiceTab } from './tabs';
 import { PERIOD_LABEL, daysBetween, fmtYmd, periodRange, toQuery, useApi, type NameMaps, type PeriodKey, type ReportFilters } from './lib';
 
 export default function RelatoriosPage() {
@@ -16,16 +17,16 @@ export default function RelatoriosPage() {
   const [period, setPeriod] = useState<PeriodKey>('30d');
   const [error, setError] = useState<string | null>(null);
 
-  // Opções de fila/atendente: derivadas dos próprios relatórios (qualquer perfil com report:read consegue, ao contrário de /queues e /agents).
-  const optQ = useApi<any>(can('report:read') ? '/reports/queues' : null, { ...periodRange('30d') });
-  const optA = useApi<any>(can('report:read') ? '/reports/agents' : null, { ...periodRange('30d') });
-  const [names, setNames] = useState<NameMaps>({ queues: {}, agents: {} });
-  useEffect(() => {
-    setNames((n) => ({
-      queues: { ...n.queues, ...Object.fromEntries((optQ.data?.queues ?? []).filter((r: any) => r.queue).map((r: any) => [r.queue, r.queueName ?? 'Fila sem nome'])) },
-      agents: { ...n.agents, ...Object.fromEntries((optA.data?.agents ?? []).filter((r: any) => r.agent).map((r: any) => [r.agent, r.agentName ?? 'Atendente sem nome'])) },
-    }));
-  }, [optQ.data, optA.data]);
+  // Opções de fila/atendente: GET /reports/filters (report:read) — todas as filas e atendentes do órgão, inclusive inativos
+  // (úteis para filtrar quem saiu), sem depender de conversation:read nem de quem atendeu nos últimos 30 dias.
+  const optF = useApi<{ queues: Array<{ id: string; name: string; active: boolean }>; agents: Array<{ id: string; name: string; active: boolean }> }>(can('report:read') ? '/reports/filters' : null, { includeInactive: true });
+  const names = useMemo<NameMaps>(() => {
+    const label = (r: { name: string; active: boolean }) => (r.active ? r.name : `${r.name} (inativo)`);
+    return {
+      queues: Object.fromEntries((optF.data?.queues ?? []).map((r) => [r.id, label(r)])),
+      agents: Object.fromEntries((optF.data?.agents ?? []).map((r) => [r.id, label(r)])),
+    };
+  }, [optF.data]);
 
   const q = useMemo(() => toQuery(applied), [applied]);
 
@@ -87,7 +88,8 @@ export default function RelatoriosPage() {
             <Button type="submit">Aplicar filtros</Button>
             <Button variant="ghost" onClick={() => { const f = { ...periodRange('30d'), channel: '', queueId: '', agentId: '' }; setDraft(f); apply(f, '30d'); }}>Limpar filtros</Button>
           </div>
-          <p className="text-xs text-bv-muted">Filas e atendentes listados são os que tiveram atendimentos nos últimos 30 dias. Os atendimentos são contados pela data de início.</p>
+          {optF.error && <Banner tone="warning" title="Lista de filas e atendentes indisponível">{optF.error} Os filtros por fila e por atendente podem estar incompletos.</Banner>}
+          <p className="text-xs text-bv-muted">Filas e atendentes listados são todos os do órgão; os inativos aparecem marcados com “(inativo)”. Os atendimentos são contados pela data de início.</p>
         </form>
       </Card>
       <Tabs label="Tipos de relatório" tabs={tabs} />

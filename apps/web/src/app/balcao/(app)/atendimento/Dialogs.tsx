@@ -1,11 +1,11 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { errMsg } from '@/lib/balcao/api';
+import { BvApiError, errMsg, errMsgDetailed } from '@/lib/balcao/api';
 import { PRESENCE_LABEL, PRIORITY_LABEL } from '@/lib/balcao/format';
 import { Badge, Banner, Button, Checkbox, Dialog, Select, Spinner, TextArea, TextField, useToast } from '../../_ui/ui';
-import { CLOSE_REASON_LABEL, buildTemplateParams, fillTemplate, summaryNote, templateInfo } from './lib';
+import { CLOSE_REASON_LABEL, buildTemplateParams, fillTemplate, normalizeShortcut, shortcutError, summaryNote, templateInfo } from './lib';
 import { api } from './service';
-import type { AgentRow, AiSummary, ConvCore, QueueRow, SectorRow, WaTemplate } from './types';
+import type { AgentRow, AiSummary, CannedResponse, ConvCore, QueueRow, SectorRow, WaTemplate } from './types';
 
 // ── Transferir ───────────────────────────────────────────────────────────────
 export function TransferDialog({ conversationId, currentQueueId, meId, canPickAgent, onClose, onDone }: {
@@ -110,6 +110,7 @@ export function TaskDialog({ conversationId, defaultTitle, canListSectors, ownSe
   const [priority, setPriority] = useState('NORMAL');
   const [kind, setKind] = useState('DEMAND');
   const [sectors, setSectors] = useState<SectorRow[] | null>(null);
+  const [sectorsErr, setSectorsErr] = useState<string | null>(null);
   const [sectorId, setSectorId] = useState(ownSectorId ?? '');
   const [notify, setNotify] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -119,7 +120,7 @@ export function TaskDialog({ conversationId, defaultTitle, canListSectors, ownSe
   useEffect(() => {
     if (!canListSectors) return;
     let alive = true;
-    api.listSectors().then((r) => { if (alive) setSectors(r.items); }).catch(() => { if (alive) setSectors([]); });
+    api.listSectors().then((r) => { if (alive) setSectors(r.items); }).catch((e) => { if (alive) { setSectors([]); setSectorsErr(errMsg(e, 'Não foi possível carregar os setores.')); } });
     return () => { alive = false; };
   }, [canListSectors]);
 
@@ -134,7 +135,7 @@ export function TaskDialog({ conversationId, defaultTitle, canListSectors, ownSe
       });
       toast.success(`Tarefa ${t.code} criada.`);
       onDone(); onClose();
-    } catch (ex) { setError(errMsg(ex)); } finally { setBusy(false); }
+    } catch (ex) { setError(errMsgDetailed(ex)); } finally { setBusy(false); }
   };
 
   return (
@@ -160,6 +161,7 @@ export function TaskDialog({ conversationId, defaultTitle, canListSectors, ownSe
             </Select>
           )
         )}
+        {sectorsErr && <Banner tone="warning" title="Setores indisponíveis">{sectorsErr} A tarefa irá para a caixa geral.</Banner>}
         <Checkbox label="Avisar o cidadão quando a tarefa for encerrada" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
         {error && <Banner tone="danger">{error}</Banner>}
       </form>
@@ -307,5 +309,110 @@ export function PreviewDialog({ name, mime, url, onClose }: { name: string; mime
         ? <img src={url} alt={`Imagem: ${name}`} className="mx-auto max-h-[70vh] max-w-full" />
         : <iframe src={url} title={`Documento: ${name}`} className="h-[70vh] w-full rounded border border-bv-border" />}
     </Dialog>
+  );
+}
+
+// ── Minhas respostas prontas (pessoais) ──────────────────────────────────────
+export function CannedDialog({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+  const toast = useToast();
+  const [items, setItems] = useState<CannedResponse[] | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [editing, setEditing] = useState<CannedResponse | 'new' | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [status, setStatus] = useState('');
+  const newBtn = React.useRef<HTMLButtonElement>(null);
+
+  const load = useCallback(() => {
+    setLoadErr(null);
+    api.listCanned().then((r) => setItems(r.items.filter((c) => c.scope === 'PERSONAL'))).catch((e) => { setLoadErr(errMsg(e, 'Não foi possível carregar suas respostas prontas.')); setItems([]); });
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const remove = async (c: CannedResponse) => {
+    try {
+      await api.deleteCanned(c.id);
+      setConfirmId(null); setStatus(`Resposta /${c.shortcut} excluída.`); toast.success(`Resposta /${c.shortcut} excluída.`);
+      load(); onChanged();
+      requestAnimationFrame(() => newBtn.current?.focus());
+    } catch (e) { toast.error(errMsg(e, 'Não foi possível excluir.')); }
+  };
+
+  return (
+    <Dialog open onClose={onClose} title="Minhas respostas prontas" size="lg" footer={<Button variant="secondary" onClick={onClose}>Fechar</Button>}>
+      <p className="mb-3 text-sm text-bv-muted">Respostas só suas, usadas digitando “/atalho” no campo de resposta. Se o atalho for igual ao de uma resposta do órgão, a sua tem prioridade para você.</p>
+      <p role="status" className="bv-sr-only">{status}</p>
+      {editing ? (
+        <CannedForm key={typeof editing === 'string' ? 'new' : editing.id} initial={editing === 'new' ? null : editing}
+          onCancel={() => { setEditing(null); requestAnimationFrame(() => newBtn.current?.focus()); }}
+          onSaved={(c, isNew) => { setEditing(null); setStatus(`Resposta /${c.shortcut} ${isNew ? 'criada' : 'atualizada'}.`); toast.success(`Resposta /${c.shortcut} ${isNew ? 'criada' : 'atualizada'}.`); load(); onChanged(); requestAnimationFrame(() => newBtn.current?.focus()); }} />
+      ) : (
+        <>
+          <div className="mb-3"><Button ref={newBtn} onClick={() => setEditing('new')}>Nova resposta pronta</Button></div>
+          {loadErr && <Banner tone="danger">{loadErr}</Banner>}
+          {items == null ? <Spinner label="Carregando respostas prontas" /> : items.length === 0 && !loadErr ? (
+            <p className="rounded-md border border-dashed border-bv-border p-4 text-center text-sm text-bv-muted">Você ainda não criou respostas prontas pessoais.</p>
+          ) : (
+            <ul aria-label="Minhas respostas prontas" className="flex flex-col gap-2">
+              {items.map((c) => (
+                <li key={c.id} className="rounded-md border border-bv-border p-3 text-sm">
+                  <p className="flex flex-wrap items-center gap-2"><span className="font-mono font-semibold">/{c.shortcut}</span><span className="font-medium">{c.title}</span><Badge tone="primary">Minha</Badge>{c.shadowsOrg && <Badge tone="warning">Substitui a do órgão</Badge>}</p>
+                  <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-bv-muted">{c.body}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {confirmId === c.id ? (
+                      <>
+                        <span role="alert" className="text-sm font-medium">Excluir a resposta /{c.shortcut}?</span>
+                        <Button size="sm" variant="danger" onClick={() => void remove(c)}>Sim, excluir<span className="bv-sr-only"> /{c.shortcut}</span></Button>
+                        <Button size="sm" variant="secondary" onClick={() => setConfirmId(null)}>Não<span className="bv-sr-only">, manter /{c.shortcut}</span></Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button size="sm" variant="secondary" onClick={() => setEditing(c)}>Editar<span className="bv-sr-only"> /{c.shortcut}</span></Button>
+                        <Button size="sm" variant="secondary" onClick={() => setConfirmId(c.id)}>Excluir<span className="bv-sr-only"> /{c.shortcut}</span></Button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </Dialog>
+  );
+}
+
+function CannedForm({ initial, onCancel, onSaved }: { initial: CannedResponse | null; onCancel: () => void; onSaved: (c: CannedResponse, isNew: boolean) => void }) {
+  const [shortcut, setShortcut] = useState(initial?.shortcut ?? '');
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [body, setBody] = useState(initial?.body ?? '');
+  const [errs, setErrs] = useState<{ shortcut?: string; title?: string; body?: string }>({});
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(null);
+    const next = { shortcut: shortcutError(shortcut) ?? undefined, title: title.trim() ? undefined : 'Informe o título.', body: body.trim() ? undefined : 'Informe o texto da resposta.' };
+    setErrs(next);
+    if (next.shortcut || next.title || next.body) { document.getElementById(next.shortcut ? 'bv-canned-shortcut' : next.title ? 'bv-canned-title' : 'bv-canned-body')?.focus(); return; }
+    setBusy(true);
+    const data = { shortcut: normalizeShortcut(shortcut), title: title.trim(), body: body.trim() };
+    try {
+      if (initial) onSaved((await api.updateCanned(initial.id, data)).item, false);
+      else onSaved((await api.createCanned({ ...data, scope: 'PERSONAL' })).item, true);
+    } catch (ex) {
+      if (ex instanceof BvApiError && ex.code === 'canned.shortcut_taken') { setErrs({ shortcut: 'Você já tem uma resposta com este atalho. Escolha outro.' }); document.getElementById('bv-canned-shortcut')?.focus(); }
+      else setError(errMsgDetailed(ex, 'Não foi possível salvar a resposta.'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-3" noValidate aria-label={initial ? `Editar resposta /${initial.shortcut}` : 'Nova resposta pronta'}>
+      <TextField id="bv-canned-shortcut" label="Atalho" required value={shortcut} maxLength={33} error={errs.shortcut} autoFocus
+        hint="Sem a barra. De 1 a 32 letras minúsculas, números, _ ou -. Exemplo: prazo." onChange={(e) => setShortcut(e.target.value)} />
+      <TextField id="bv-canned-title" label="Título" required value={title} maxLength={120} error={errs.title} onChange={(e) => setTitle(e.target.value)} />
+      <TextArea id="bv-canned-body" label="Texto da resposta" required value={body} maxLength={4096} error={errs.body} onChange={(e) => setBody(e.target.value)} />
+      {error && <Banner tone="danger">{error}</Banner>}
+      <div className="flex gap-2"><Button type="submit" loading={busy}>Salvar</Button><Button variant="secondary" onClick={onCancel}>Cancelar</Button></div>
+    </form>
   );
 }
