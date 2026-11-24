@@ -47,6 +47,11 @@ export const orgPatchSchema = z.object({
   whatsapp: z.object({ windowHours: z.number().int().min(1).max(24).optional() }).strict().optional(),
   reopenWindowSec: z.number().int().min(0).max(30 * 86400).optional(),
   security: z.object({ requireMfaRoles: z.array(z.enum(ROLES)).max(4).optional() }).strict().optional(),
+  routing: z.object({
+    categoryWeights: z.record(z.string().max(40), z.number().int().min(-100).max(100)).optional(),
+    timeoutHours: z.number().min(1).max(24 * 30).optional(),
+    overflowPriorityBoost: z.number().int().min(0).max(100).optional(),
+  }).strict().optional(),
 }).strict().refine((o) => Object.keys(o).length > 0, 'Informe ao menos um campo');
 
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use AAAA-MM-DD').refine((s) => !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s), 'Data inválida');

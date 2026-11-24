@@ -27,6 +27,8 @@ export interface BvOrgSettings {
   webchat: { allowedOrigins: string[]; title: string; primaryColor: string; offlineMessage: string };
   whatsapp: { windowHours: number };
   reopenWindowSec: number;
+  /** Opcional: ajustes do roteamento (ACD) — ver routing/config.ts. */
+  routing?: { categoryWeights?: Record<string, number>; timeoutHours?: number; overflowPriorityBoost?: number };
 }
 
 export const DEFAULT_SETTINGS: BvOrgSettings = {

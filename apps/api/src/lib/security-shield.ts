@@ -74,6 +74,10 @@ export function registerSecurityShield(app: FastifyInstance) {
   // Reforça o contador também em respostas de auth negada/rate-limit estourado
   app.addHook('onResponse', async (req, reply) => {
     if (reply.statusCode === 401 || reply.statusCode === 429) {
+      // Balcão Virtual: centenas de atendentes saem do MESMO IP (NAT do órgão) e 401 é rotina (access token de 15 min
+      // expirando antes do refresh). O Balcão tem bloqueio por conta e limite de login por IP próprios; contar 401 aqui
+      // baniria o órgão inteiro por 1 h. Sondagem de paths (isProbePath) continua contando normalmente.
+      if (req.url.startsWith('/balcao/')) return;
       registerStrike(clientIp(req)).catch(() => {});
     }
   });

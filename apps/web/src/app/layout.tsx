@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { Space_Grotesk, DM_Sans } from 'next/font/google';
 import './globals.css';
 
@@ -125,7 +126,11 @@ const webSiteSchema = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Balcão Virtual (atendimento de órgão público): sem widget de suporte do SaaS, sem toasts de marketing e SEM
+  // analytics/UTM de terceiros (Google/Meta) — privacidade dos cidadãos e foco do operador.
+  const pathname = (await headers()).get('x-pathname') ?? '';
+  const isBalcao = pathname.startsWith('/balcao');
   return (
     <html lang="pt-BR" className={`${spaceGrotesk.variable} ${dmSans.variable}`}>
       <head>
@@ -141,16 +146,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="copyright" content="© 2026 ZapScript / FOX TecnologIA. Todos os direitos reservados." />
         <meta name="author" content="ZapScript — zapscript.me" />
         {/* BreadcrumbList JSON-LD dinâmico (SSR) — renderiza com base na URL atual */}
-        <BreadcrumbServer />
+        {!isBalcao && <BreadcrumbServer />}
       </head>
       <body className="font-sans bg-brand-bg text-brand-text antialiased">
         <ThemeProvider>
           {children}
-          <SupportWidget />
-          <SocialProofToast />
+          {!isBalcao && <SupportWidget />}
+          {!isBalcao && <SocialProofToast />}
         </ThemeProvider>
-        <Analytics />
-        <UtmCapture />
+        {!isBalcao && <Analytics />}
+        {!isBalcao && <UtmCapture />}
       </body>
     </html>
   );

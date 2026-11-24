@@ -2,7 +2,7 @@
 import React, { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useBvSession, type LoginResult } from '@/lib/balcao/session';
-import { errMsg, BvApiError } from '@/lib/balcao/api';
+import { errMsg, BvApiError, API_ORIGIN } from '@/lib/balcao/api';
 import { HOME_BY_ROLE } from '@/lib/balcao/nav';
 import { A11yToolbar } from '@/lib/balcao/a11y';
 import { Banner, Button, TextField, Select } from '../_ui/ui';
@@ -14,6 +14,7 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
+  const [ssoOrg, setSsoOrg] = useState(process.env.NEXT_PUBLIC_BV_ORG_SLUG ?? '');
   const [orgs, setOrgs] = useState<Array<{ slug: string; name: string }>>([]);
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
@@ -67,6 +68,16 @@ function LoginForm() {
           <Button type="submit" loading={busy}>{mfaToken ? 'Verificar' : 'Entrar'}</Button>
           {mfaToken && <Button variant="ghost" onClick={() => { setMfaToken(null); setCode(''); setError(null); }}>Voltar</Button>}
         </form>
+        {!mfaToken && (
+          <details className="mt-4 border-t border-bv-border pt-3">
+            <summary className="cursor-pointer text-sm font-medium">Entrar com a conta institucional (TJTO)</summary>
+            <div className="mt-2 flex flex-col gap-2">
+              <TextField label="Identificador do órgão" hint="Informado pelo administrador (ex.: tjto)." value={ssoOrg} onChange={(e) => setSsoOrg(e.target.value.trim().toLowerCase())} />
+              <a className="inline-flex min-h-[40px] items-center justify-center rounded-md border border-bv-border bg-bv-surface px-4 text-base font-medium hover:bg-bv-subtle aria-disabled:pointer-events-none aria-disabled:opacity-50"
+                aria-disabled={!ssoOrg} href={ssoOrg ? `${API_ORIGIN}/balcao/integrations/oidc/login?org=${encodeURIComponent(ssoOrg)}` : undefined}>Entrar pelo provedor de identidade</a>
+            </div>
+          </details>
+        )}
       </div>
     </main>
   );

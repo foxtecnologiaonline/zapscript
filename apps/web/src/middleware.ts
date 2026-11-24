@@ -86,7 +86,7 @@ export function middleware(req: NextRequest) {
     `script-src ${scriptSrc}`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`, // estilos inline + Google Fonts
     `img-src 'self' data: blob: https:`,                            // QR codes (data:), imagens externas
-    `connect-src 'self' ${apiUrl} ${supabaseUrl} ${analyticsHosts} wss: https:`,
+    `connect-src 'self' ${apiUrl} ${supabaseUrl} ${analyticsHosts} wss: https:${isDev ? ' ws://localhost:* http://localhost:*' : ''}`,
     `font-src 'self' data: https://fonts.gstatic.com`,             // fontes locais + Google Fonts CDN
     ...(isBalcao ? [`frame-src 'self' ${jitsi} https://vlibras.gov.br`, `media-src 'self' blob: data: https:`] : []),
     `frame-ancestors 'none'`,                                    // equiv. X-Frame-Options: DENY

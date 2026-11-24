@@ -8,7 +8,11 @@ import { A11yToolbar } from '@/lib/balcao/a11y';
 import { ROLE_LABEL, PRESENCE_LABEL } from '@/lib/balcao/format';
 import { useBvSocket } from '@/lib/balcao/socket';
 import { bv } from '@/lib/balcao/api';
+import dynamic from 'next/dynamic';
 import { Spinner, cx, useToast } from '../_ui/ui';
+
+// sip.js só no navegador e só para quem tem ramal
+const Softphone = dynamic(() => import('./_softphone/Softphone'), { ssr: false });
 
 const PRESENCE: Array<'ONLINE' | 'AWAY' | 'OFFLINE'> = ['ONLINE', 'AWAY', 'OFFLINE'];
 
@@ -27,6 +31,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (me && (me.mustChangePassword || me.mfaSetupRequired) && !path.startsWith('/balcao/conta')) router.replace('/balcao/conta');
   }, [me, path, router]);
   useEffect(() => { if (me?.user.presence) setPresence(me.user.presence); }, [me]);
+  useEffect(() => {
+    const on = (e: Event) => setPresence(String((e as CustomEvent).detail));
+    window.addEventListener('bv:presence', on);
+    return () => window.removeEventListener('bv:presence', on);
+  }, []);
   // acessibilidade: ao navegar, anuncia a página e leva o foco ao conteúdo
   useEffect(() => {
     const t = setTimeout(() => {
@@ -98,6 +107,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <main id="bv-main" ref={mainRef} tabIndex={-1} className="min-w-0 flex-1 p-4 outline-none md:p-6">{children}</main>
       </div>
       <div aria-live="polite" className="bv-sr-only">{announce}</div>
+      {me.user.sipExtension && <Softphone />}
     </div>
   );
 }

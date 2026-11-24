@@ -169,12 +169,13 @@ export default function Softphone() {
       const p = cur?.presence ?? cur?.user?.presence ?? me?.user.presence ?? 'ONLINE';
       prevPresenceRef.current = p === 'BUSY' ? 'ONLINE' : p;
       await bv.put('/agents/me/presence', { presence: 'BUSY' });
+      window.dispatchEvent(new CustomEvent('bv:presence', { detail: 'BUSY' }));
     } catch { /* presença é conveniência; a chamada segue */ }
   }, [me?.user.presence]);
   const restorePresence = useCallback(async () => {
     const prev = prevPresenceRef.current; prevPresenceRef.current = null;
     if (!prev) return;
-    try { await bv.put('/agents/me/presence', { presence: prev }); } catch { /* idem */ }
+    try { await bv.put('/agents/me/presence', { presence: prev }); window.dispatchEvent(new CustomEvent('bv:presence', { detail: prev })); } catch { /* idem */ }
   }, []);
 
   // ── fim de chamada ───────────────────────────────────────────────────────────────────────────────
