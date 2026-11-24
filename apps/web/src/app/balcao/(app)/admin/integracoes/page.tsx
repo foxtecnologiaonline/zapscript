@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { bv, errMsg } from '@/lib/balcao/api';
 import { useBvSession } from '@/lib/balcao/session';
 import { fmtAgo, fmtDateTime } from '@/lib/balcao/format';
-import { Badge, Banner, Button, Card, PageHeader, Spinner, Tabs } from '../../../_ui/ui';
+import { Badge, Banner, Button, Card, PageHeader, Spinner } from '../../../_ui/ui';
 import { EmailPanel } from './Email';
 import { genericDesc, genericName, GenericPanel } from './GenericPanel';
 import { SipPanel } from './Sip';
+import { UraPanel } from './Ura';
 import { WhatsAppPanel } from './WhatsApp';
 import { WidgetPanel } from './Widget';
 import { LogsPanel, StatusBadge, type IntegrationSummary } from './_shared';
@@ -18,7 +19,7 @@ const ENTRIES: Entry[] = [
   { id: 'whatsapp', type: 'WHATSAPP', title: 'WhatsApp (API oficial da Meta)', desc: 'Conexão, webhook e templates de mensagem.', group: 'Canais de atendimento' },
   { id: 'email', type: 'EMAIL_IMAP', title: 'E-mail (IMAP/SMTP)', desc: 'Caixa de entrada, envio, resposta automática e coleta.', group: 'Canais de atendimento' },
   { id: 'sip', type: 'SIP_TRUNK', title: 'Telefonia SIP', desc: 'Tronco SIP, DIDs e estado da conexão com o Asterisk.', group: 'Canais de atendimento' },
-  { id: 'ura', type: 'URA_0800', title: 'URA 0800', desc: 'Números 0800 e fluxos da URA por voz.', group: 'Canais de atendimento' },
+  { id: 'ura', type: 'URA_0800', title: 'URA 0800', desc: 'Números 0800, fluxos da URA, cabeçalhos X-* e IPs de origem.', group: 'Canais de atendimento' },
   { id: 'widget', type: null, title: 'Chat do site (widget)', desc: 'Código de instalação e sites autorizados.', group: 'Canais de atendimento' },
   { id: 'eproc', type: 'EPROC', title: genericName('EPROC'), desc: genericDesc('EPROC'), group: 'Integrações institucionais' },
   { id: 'govbr', type: 'GOVBR', title: genericName('GOVBR'), desc: genericDesc('GOVBR'), group: 'Integrações institucionais' },
@@ -74,7 +75,7 @@ export default function IntegracoesPage() {
         {sel.id === 'whatsapp' && <WhatsAppPanel onChanged={() => void load()} />}
         {sel.id === 'email' && <EmailPanel onChanged={() => void load()} />}
         {sel.id === 'sip' && <SipPanel onChanged={() => void load()} />}
-        {sel.id === 'ura' && <UraPanel summary={sum} />}
+        {sel.id === 'ura' && <UraPanel summary={sum} onChanged={() => void load()} />}
         {sel.id === 'widget' && <WidgetPanel onStatus={onOrigins} />}
         {sel.id === 'llm' && <LlmPanel />}
         {sel.type && ['eproc', 'govbr', 'oidc', 'google', 'jira'].includes(sel.id) && <GenericPanel type={sel.type} summary={sum} onChanged={() => void load()} />}
@@ -88,6 +89,13 @@ export default function IntegracoesPage() {
       <PageHeader title="Canais e integrações" subtitle="Configure os canais de atendimento e as integrações com sistemas do tribunal. Segredos nunca são exibidos: campo em branco mantém o valor atual."
         actions={<Button variant="secondary" onClick={() => void load()}>Atualizar estado</Button>} />
       {error && <div className="mb-3"><Banner tone="warning" title="Estado indisponível">{error} Você ainda pode abrir cada item para configurar.</Banner></div>}
+      <div className="mb-4">
+        <Banner tone="primary" title="Antivírus nos anexos">
+          Os anexos enviados por cidadãos (e-mail, chat do site e WhatsApp) são verificados pelo antivírus ClamAV quando o servidor tem a variável <code>BV_CLAMAV_HOST</code> configurada.
+          No modo padrão (<em>fail-closed</em>), se o antivírus estiver fora do ar os arquivos são <strong>recusados</strong> em vez de aceitos sem varredura; arquivos infectados são sempre descartados.
+          Esta configuração é feita no servidor e não pode ser alterada por esta tela.
+        </Banner>
+      </div>
       {!list ? <div className="p-6 text-center"><Spinner /></div> : groups.map((g) => (
         <section key={g} aria-labelledby={`g-${g}`} className="mb-6">
           <h2 id={`g-${g}`} className="mb-2 text-lg font-semibold">{g}</h2>
@@ -115,28 +123,6 @@ export default function IntegracoesPage() {
         </section>
       ))}
     </div>
-  );
-}
-
-function UraPanel({ summary }: { summary?: IntegrationSummary }) {
-  return (
-    <Tabs label="URA 0800" tabs={[
-      {
-        id: 'ura-info', title: 'Visão geral', content: (
-          <div className="flex flex-col gap-3">
-            {summary && <div className="flex items-center gap-2"><StatusBadge s={summary} /></div>}
-            <Card title="Como a URA 0800 é configurada">
-              <ul className="list-disc pl-5 text-sm">
-                <li>Os <strong>números 0800/DIDs</strong> e o tronco são cadastrados em <Link className="underline" href="/balcao/admin/integracoes#sip">Telefonia SIP</Link>.</li>
-                <li>Os <strong>fluxos da URA</strong> (menus, horários, transferências) são editados em <Link className="underline" href="/balcao/admin/ura">URA (atendimento por voz)</Link>.</li>
-                <li>Esta integração não tem credenciais próprias: não há formulário de edição para o tipo “URA 0800” na API.</li>
-              </ul>
-            </Card>
-          </div>
-        ),
-      },
-      { id: 'ura-logs', title: 'Registros de chamadas', content: <LogsPanel type="URA_0800" /> },
-    ]} />
   );
 }
 

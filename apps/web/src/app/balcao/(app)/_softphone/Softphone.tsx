@@ -10,7 +10,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { Invitation, Inviter, Registerer, Session, UserAgent, Web } from 'sip.js';
-import { bv, errMsg } from '@/lib/balcao/api';
+import { bv, BvApiError, errMsg } from '@/lib/balcao/api';
 import { useBvSession } from '@/lib/balcao/session';
 import { useBvSocket } from '@/lib/balcao/socket';
 import { Badge, Banner, Button, Checkbox, TextField, cx, useToast } from '../../_ui/ui';
@@ -33,6 +33,30 @@ const clock = (sec: number) => `${String(Math.floor(sec / 60)).padStart(2, '0')}
 /** Número falado em dígitos separados para leitores de tela. */
 const spoken = (n: string) => n.replace(/[^\d*#+]/g, '').split('').join(' ');
 const pretty = (n: string) => (/^\d{12,13}$/.test(n) ? n.replace(/^(\d{2})(\d{2})(\d{4,5})(\d{4})$/, '+$1 ($2) $3-$4') : n);
+
+/** Mensagens em português para as recusas de POST /voice/calls/dial (política de discagem do órgão). */
+const DIAL_REASON: Record<string, string> = {
+  not_allowed: 'Este número não é permitido pela política de discagem do órgão (internacionais, 0800, números curtos ou fora da lista de prefixos autorizados).',
+  premium: 'Números de serviço premium ou de custo compartilhado (0900/0300) são sempre bloqueados.',
+  service_code: 'Códigos de serviço (com * ou #) não podem ser discados por esta função.',
+  permission: 'Você não tem permissão para originar ligações. Peça ao administrador do órgão.',
+  presence: 'Para ligar, sua presença precisa estar “Online” ou “Em atendimento”. Altere seu status e tente de novo.',
+};
+function dialErrorMessage(e: unknown): string {
+  if (e instanceof BvApiError) {
+    if (e.code === 'voice.dial_not_allowed') {
+      const reason = (e.details as { reason?: string } | undefined)?.reason ?? '';
+      return DIAL_REASON[reason] ?? 'Ligação não permitida pela política do órgão.';
+    }
+    if (e.code === 'voice.dial_limit') return 'Você atingiu o limite diário de ligações originadas. Tente novamente amanhã ou fale com o administrador.';
+    if (e.code === 'voice.standby') return 'Esta instância não controla a telefonia; tente novamente em instantes.';
+  }
+  return errMsg(e, 'Não foi possível iniciar a ligação.');
+}
+function transferErrorMessage(e: unknown): string {
+  if (e instanceof BvApiError && e.code === 'voice.transfer_not_allowed') return 'Destino não permitido pela política do órgão.';
+  return errMsg(e, 'Não foi possível transferir.');
+}
 
 /** Resumo legível da trilha da URA gravada em BvCall.ivrPath. */
 function uraSummary(trail: any): string[] {
@@ -456,7 +480,7 @@ export default function Softphone() {
     } catch (err) {
       if (pendingDialRef.current === mark) pendingDialRef.current = null;
       if (phaseRef.current === 'dialing') { setPhase('idle'); setCall(null); }
-      setDialErr(errMsg(err, 'Não foi possível iniciar a ligação.'));
+      setDialErr(dialErrorMessage(err));
     }
     finally { setDialBusy(false); }
   };
@@ -483,7 +507,7 @@ export default function Softphone() {
     if (!NUMBER_RE.test(n)) { toast.error('Digite um número ou ramal válido para transferir.'); return; }
     setTransferBusy(true);
     try { await bv.post(`/voice/calls/${info.callId}/transfer`, { number: n }); setPolite(`Transferência solicitada para ${spoken(n)}.`); toast.success('Transferência solicitada.'); setShowTransfer(false); setTransferTo(''); }
-    catch (err) { toast.error(errMsg(err, 'Não foi possível transferir.')); }
+    catch (err) { toast.error(transferErrorMessage(err)); }
     finally { setTransferBusy(false); }
   };
 

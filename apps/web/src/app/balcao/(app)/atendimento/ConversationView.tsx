@@ -4,6 +4,7 @@ import { BvApiError, errMsg } from '@/lib/balcao/api';
 import { fmtDateTime, STATUS_LABEL } from '@/lib/balcao/format';
 import { useBvSession } from '@/lib/balcao/session';
 import { Badge, Banner, Button, EmptyState, Spinner, useToast } from '../../_ui/ui';
+import { Captions } from './Captions';
 import { Composer } from './Composer';
 import { BackIcon } from './Icons';
 import { ChannelTag } from './Icons';
@@ -111,6 +112,8 @@ export function ConversationView(p: Props) {
       <MessageList conversationId={c.id} messages={p.detail.messages} events={p.detail.events} meId={p.meId} contactName={contact?.name ?? null} assignee={c.assignee}
         typing={p.typing} hasMore={!!p.detail.hasMore} loadingOlder={p.loadingOlder} onLoadOlder={p.onLoadOlder} onPreview={p.onPreview} onResend={(m) => void resend(m)} resendingId={resendingId}
         onOpenTemplate={canTemplate ? () => p.onAction('template') : null} />
+
+      {c.channel === 'WEBCHAT' && !closed && <Captions key={c.id} conversationId={c.id} token={p.token} canSend={canReplyPerm && p.detail.canReply} />}
 
       {closed ? (
         <div className="border-t border-bv-border p-3"><Banner tone="primary" title="Conversa encerrada">Encerrada em {fmtDateTime(c.closedAt)}. Se o cidadão escrever de novo, ela volta para a fila.</Banner></div>

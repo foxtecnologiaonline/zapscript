@@ -5,10 +5,11 @@ import { fmtDateTime } from '@/lib/balcao/format';
 import { Badge, Banner, Button, Card, Checkbox, ConfirmDialog, DataTable, Spinner, Tabs, TextArea, TextField, useToast } from '../../../_ui/ui';
 import { CopyField, fieldErrors, LogsPanel, SECRET_MASK, SecretField, StatusBadge, TestButton } from './_shared';
 
+interface OAuthView { type?: string; clientId?: string; clientSecret?: string; refreshToken?: string; user?: string; tokenUrl?: string }
 interface Conn { host?: string; port?: number; secure?: boolean; user?: string; pass?: string; accessToken?: string }
 interface EmailView {
   configured: boolean; enabled: boolean; status: string; lastError: string | null; lastCheckAt: string | null;
-  config: { imap?: Conn; smtp?: Conn; from?: { name?: string; address?: string }; mailbox?: string; autoReply?: { enabled: boolean; text: string }; pollIntervalSec?: number; inboundSecret?: string } | null;
+  config: { imap?: Conn; smtp?: Conn; auth?: OAuthView; from?: { name?: string; address?: string }; mailbox?: string; autoReply?: { enabled: boolean; text: string }; pollIntervalSec?: number; inboundSecret?: string } | null;
   webhook: { path: string; secretConfigured: boolean };
 }
 interface Mailbox { id: string; address: string; folder: string; enabled: boolean; uidValidity: string | null; lastUid: string | null; lastPolledAt: string | null; lastError: string | null }
@@ -41,18 +42,18 @@ function Connection({ onChanged }: { onChanged: () => void }) {
       {v.lastError && <Banner tone="danger" title="Último erro">{v.lastError}</Banner>}
       <EmailForm key={rev} v={v} onSaved={async () => { setRev((r) => r + 1); await load(); onChanged(); }} />
       <Card title="Testar conexão">
-        <p className="mb-2 text-sm text-bv-muted">{v.configured ? 'Testa o servidor de entrada (IMAP) e o de saída (SMTP) com a configuração salva.' : 'Salve a configuração antes de testar.'}</p>
+        <p className="mb-2 text-sm text-bv-muted">{v.configured ? 'Testa o servidor de entrada (IMAP) e o de saída (SMTP) com a configuração salva. Com OAuth2, também obtém um token de acesso no servidor do Google.' : 'Salve a configuração antes de testar.'}</p>
         <TestButton disabled={!v.configured} onDone={() => { void load(); onChanged(); }}
           run={async () => {
             const r = await bv.post<{ ok: boolean; imap: { ok: boolean; error?: string }; smtp: { ok: boolean; error?: string } }>('/email/config/test');
-            return { ok: r.ok, message: r.ok ? 'Entrada (IMAP) e saída (SMTP) responderam.' : 'Verifique host, porta, usuário e senha de app.', details: [{ label: 'Entrada (IMAP)', ok: r.imap.ok, text: r.imap.error ?? '' }, { label: 'Saída (SMTP)', ok: r.smtp.ok, text: r.smtp.error ?? '' }] };
+            return { ok: r.ok, message: r.ok ? 'Entrada (IMAP) e saída (SMTP) responderam.' : 'Verifique host, porta e credenciais (senha de app, ou client ID, client secret e refresh token do OAuth2).', details: [{ label: 'Entrada (IMAP)', ok: r.imap.ok, text: r.imap.error ?? '' }, { label: 'Saída (SMTP)', ok: r.smtp.ok, text: r.smtp.error ?? '' }] };
           }} />
       </Card>
     </div>
   );
 }
 
-function ConnFields({ id, title, c, s, set, errs }: { id: 'imap' | 'smtp'; title: string; c: Conn; s: { host: string; port: string; secure: boolean; user: string; pass: string; token: string }; set: (k: string, v: unknown) => void; errs: Record<string, string> }) {
+function ConnFields({ id, title, c, s, set, errs, oauth }: { id: 'imap' | 'smtp'; title: string; oauth: boolean; c: Conn; s: { host: string; port: string; secure: boolean; user: string; pass: string; token: string }; set: (k: string, v: unknown) => void; errs: Record<string, string> }) {
   const p = (k: string) => `${id}.${k}`;
   return (
     <fieldset className="rounded-md border border-bv-border p-3">
@@ -60,13 +61,16 @@ function ConnFields({ id, title, c, s, set, errs }: { id: 'imap' | 'smtp'; title
       <div className="grid gap-3 md:grid-cols-2">
         <TextField label="Servidor (host)" required value={s.host} onChange={(e) => set(p('host'), e.target.value)} error={errs[p('host')]} placeholder={id === 'imap' ? 'imap.exemplo.gov.br' : 'smtp.exemplo.gov.br'} />
         <TextField label="Porta" required type="number" min={1} max={65535} value={s.port} onChange={(e) => set(p('port'), e.target.value)} error={errs[p('port')]} hint={id === 'imap' ? 'Geralmente 993 (TLS).' : '465 (TLS) ou 587 (STARTTLS).'} />
-        <TextField label="Usuário" required value={s.user} onChange={(e) => set(p('user'), e.target.value)} error={errs[p('user')]} autoComplete="off" />
-        <SecretField label="Senha (senha de app)" value={s.pass} onChange={(x) => set(p('pass'), x)} isSet={c.pass === SECRET_MASK} error={errs[p('pass')]} hint="Se mudar o usuário, informe a senha novamente." />
+        {!oauth && <TextField label="Usuário" required value={s.user} onChange={(e) => set(p('user'), e.target.value)} error={errs[p('user')]} autoComplete="off" />}
+        {!oauth && <SecretField label="Senha (senha de app)" value={s.pass} onChange={(x) => set(p('pass'), x)} isSet={c.pass === SECRET_MASK} error={errs[p('pass')]} hint="Se mudar o usuário, informe a senha novamente." />}
       </div>
+      {oauth && <p className="mt-2 text-xs text-bv-muted">Com OAuth2 o usuário é o e-mail da conta informado em “Credenciais OAuth2” e não há senha neste servidor.</p>}
       <div className="mt-2"><Checkbox label="Conexão segura direta (SSL/TLS)" hint={id === 'imap' ? 'Marque para a porta 993.' : 'Marque para a porta 465; desmarque para 587 (STARTTLS).'} checked={s.secure} onChange={(e) => set(p('secure'), e.target.checked)} /></div>
-      <details className="mt-2"><summary className="cursor-pointer text-sm">OAuth2 (avançado)</summary>
-        <div className="mt-2"><SecretField label="Token OAuth2 (access token)" value={s.token} onChange={(x) => set(p('token'), x)} isSet={c.accessToken === SECRET_MASK} hint="Expira em cerca de 1 hora e não é renovado automaticamente: use só para testes." /></div>
-      </details>
+      {!oauth && (
+        <details className="mt-2"><summary className="cursor-pointer text-sm">Token de acesso estático (avançado, só para testes)</summary>
+          <div className="mt-2"><SecretField label="Token OAuth2 (access token)" value={s.token} onChange={(x) => set(p('token'), x)} isSet={c.accessToken === SECRET_MASK} hint="Expira em cerca de 1 hora e não é renovado automaticamente. Para uso contínuo, escolha “OAuth2 (Google Workspace)” em Autenticação." /></div>
+        </details>
+      )}
     </fieldset>
   );
 }
@@ -83,6 +87,11 @@ function EmailForm({ v, onSaved }: { v: EmailView; onSaved: () => void | Promise
   const [enabled, setEnabled] = useState(v.configured ? v.enabled : true);
   const [errs, setErrs] = useState<Record<string, string>>({}); const [formErr, setFormErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const [newSecret, setNewSecret] = useState<string | null>(null); const [rotate, setRotate] = useState(false);
+  const oa = c.auth?.type === 'oauth2' ? c.auth : undefined;
+  const [authType, setAuthType] = useState<'password' | 'oauth2'>(oa ? 'oauth2' : 'password');
+  const [oClientId, setOClientId] = useState(oa?.clientId ?? ''); const [oSecret, setOSecret] = useState(''); const [oRefresh, setORefresh] = useState('');
+  const [oUser, setOUser] = useState(oa?.user ?? c.smtp?.user ?? c.imap?.user ?? ''); const [oTokenUrl, setOTokenUrl] = useState(oa?.tokenUrl ?? '');
+  const oauth = authType === 'oauth2';
 
   const set = (k: string, val: unknown) => { const [g, f] = k.split('.'); (g === 'imap' ? setImap : setSmtp)((cur) => ({ ...cur, [f]: val })); };
 
@@ -92,13 +101,24 @@ function EmailForm({ v, onSaved }: { v: EmailView; onSaved: () => void | Promise
       if (!s.host.trim()) er[`${id}.host`] = 'Informe o servidor.';
       const port = Number(s.port);
       if (!Number.isInteger(port) || port < 1 || port > 65535) er[`${id}.port`] = 'Porta inválida (1 a 65535).';
+      if (oauth) return { host: s.host.trim(), port, secure: s.secure }; // usuário vem de auth.user; sem senha
       if (!s.user.trim()) er[`${id}.user`] = 'Informe o usuário.';
       const sameUser = prev?.user === s.user.trim();
       const hasPass = !!s.pass || (sameUser && prev?.pass === SECRET_MASK); const hasTok = !!s.token || (sameUser && prev?.accessToken === SECRET_MASK);
-      if (!hasPass && !hasTok) er[`${id}.pass`] = 'Informe a senha de app (ou um token OAuth2).';
+      if (!hasPass && !hasTok) er[`${id}.pass`] = 'Informe a senha de app (ou use a autenticação OAuth2).';
       return { host: s.host.trim(), port, secure: s.secure, user: s.user.trim(), ...(s.pass ? { pass: s.pass } : {}), ...(s.token ? { accessToken: s.token } : {}) };
     };
     const body: Record<string, unknown> = { imap: conn('imap', imap, c.imap), smtp: conn('smtp', smtp, c.smtp) };
+    if (oauth) {
+      const cid = oClientId.trim(); const usr = oUser.trim(); const tu = oTokenUrl.trim();
+      if (!cid) er.oClientId = 'Informe o ID do cliente OAuth.';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(usr)) er.oUser = 'Informe o e-mail da conta dona do refresh token.';
+      const sameClient = oa?.clientId === cid; const sameAccount = sameClient && oa?.user === usr;
+      if (!oSecret && !(sameClient && oa?.clientSecret === SECRET_MASK)) er.oSecret = sameClient || !oa ? 'Informe o client secret.' : 'Ao trocar o ID do cliente, informe o client secret novamente.';
+      if (!oRefresh && !(sameAccount && oa?.refreshToken === SECRET_MASK)) er.oRefresh = sameAccount || !oa ? 'Informe o refresh token.' : 'Ao trocar a conta ou o cliente, informe o refresh token novamente.';
+      if (tu && !/^https:\/\//i.test(tu)) er.oTokenUrl = 'A URL do servidor de token deve usar https://.';
+      body.auth = { type: 'oauth2', clientId: cid, user: usr, ...(oSecret ? { clientSecret: oSecret } : {}), ...(oRefresh ? { refreshToken: oRefresh } : {}), ...(tu ? { tokenUrl: tu } : {}) };
+    }
     if (!fromAddr.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromAddr.trim())) er.fromAddr = 'Informe um e-mail de remetente válido.';
     body.from = { name: fromName.trim(), address: fromAddr.trim() };
     if (mailbox.trim()) body.mailbox = mailbox.trim();
@@ -122,7 +142,11 @@ function EmailForm({ v, onSaved }: { v: EmailView; onSaved: () => void | Promise
       toast.success('Configuração de e-mail salva. Teste a conexão para validar.');
       if (!r.inboundSecret) await onSaved();
       return true;
-    } catch (err) { const fe = fieldErrors(err); setErrs(fe.map); setFormErr([errMsg(err), ...fe.list].join(' ')); return false; }
+    } catch (err) {
+      const fe = fieldErrors(err);
+      const AUTH: Record<string, string> = { 'auth.clientId': 'oClientId', 'auth.clientSecret': 'oSecret', 'auth.refreshToken': 'oRefresh', 'auth.user': 'oUser', 'auth.tokenUrl': 'oTokenUrl' };
+      setErrs(Object.fromEntries(Object.entries(fe.map).map(([k, m]) => [AUTH[k] ?? k, m]))); setFormErr([errMsg(err), ...fe.list].join(' ')); return false;
+    }
     finally { setBusy(false); }
   };
 
@@ -130,8 +154,44 @@ function EmailForm({ v, onSaved }: { v: EmailView; onSaved: () => void | Promise
   return (
     <div className="flex flex-col gap-4">
       <form onSubmit={(e) => { e.preventDefault(); void save(false); }} noValidate className="flex flex-col gap-4">
-        <ConnFields id="imap" title="Entrada de e-mails (IMAP)" c={c.imap ?? {}} s={imap} set={set} errs={errs} />
-        <ConnFields id="smtp" title="Saída de e-mails (SMTP)" c={c.smtp ?? {}} s={smtp} set={set} errs={errs} />
+        <fieldset className="rounded-md border border-bv-border p-3">
+          <legend className="px-1 text-sm font-semibold">Autenticação</legend>
+          <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+            {([['password', 'Senha de app'], ['oauth2', 'OAuth2 (Google Workspace)']] as const).map(([val, label]) => (
+              <label key={val} className="flex min-h-[40px] items-center gap-2 text-sm">
+                <input type="radio" name="email-auth" value={val} checked={authType === val} onChange={() => setAuthType(val)} className="h-5 w-5 accent-[rgb(var(--bv-primary))]" />
+                {label}
+              </label>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-bv-muted">{oauth ? 'O token de acesso é obtido e renovado automaticamente a partir do refresh token; não há senha para trocar.' : 'Mais simples: use uma senha de app da conta (exige verificação em duas etapas). Servidores que só aceitam OAuth2 precisam da outra opção.'}</p>
+        </fieldset>
+        {oauth && (
+          <fieldset className="rounded-md border border-bv-border p-3">
+            <legend className="px-1 text-sm font-semibold">Credenciais OAuth2</legend>
+            <div className="grid gap-3 md:grid-cols-2">
+              <TextField label="ID do cliente (client ID)" required value={oClientId} onChange={(e) => setOClientId(e.target.value)} error={errs.oClientId} placeholder="123456.apps.googleusercontent.com" autoComplete="off" spellCheck={false} />
+              <SecretField label="Chave secreta do cliente (client secret)" value={oSecret} onChange={setOSecret} isSet={oa?.clientSecret === SECRET_MASK} required error={errs.oSecret} hint="Ao trocar o ID do cliente, informe-a novamente." />
+              <TextField label="E-mail da conta (usuário)" required type="email" value={oUser} onChange={(e) => setOUser(e.target.value)} error={errs.oUser} autoComplete="off" hint="A conta que autorizou o acesso e dona do refresh token." />
+              <SecretField label="Refresh token" value={oRefresh} onChange={setORefresh} isSet={oa?.refreshToken === SECRET_MASK} required error={errs.oRefresh} area hint="Ao trocar a conta, informe-o novamente." />
+              <TextField label="URL do servidor de token (opcional)" value={oTokenUrl} onChange={(e) => setOTokenUrl(e.target.value)} error={errs.oTokenUrl} placeholder="https://oauth2.googleapis.com/token" autoComplete="off" spellCheck={false} className="md:col-span-2"
+                hint="Em branco usa o do Google (https://oauth2.googleapis.com/token) ou mantém o já salvo. Precisa usar https." />
+            </div>
+            <details className="mt-3 rounded-md bg-bv-subtle p-3 text-sm">
+              <summary className="cursor-pointer font-medium">Como obter o refresh token no Google Cloud</summary>
+              <ol className="mt-2 list-decimal space-y-1 pl-5">
+                <li>No <strong>Google Admin Console</strong>, habilite o acesso por IMAP para a conta (Apps &gt; Google Workspace &gt; Gmail &gt; Configurações do usuário final).</li>
+                <li>No <strong>Google Cloud Console</strong>, crie ou escolha um projeto e configure a <em>Tela de consentimento OAuth</em>. Para contas do próprio Workspace, prefira o tipo <em>Interno</em>.</li>
+                <li>Em <em>APIs e serviços &gt; Credenciais</em>, crie um <strong>ID do cliente OAuth</strong> (tipo “Aplicativo da Web” ou “App para computador”). Copie o <strong>ID do cliente</strong> e a <strong>chave secreta</strong>. Se for usar o OAuth 2.0 Playground, cadastre <code>https://developers.google.com/oauthplayground</code> como URI de redirecionamento.</li>
+                <li>Autorize o escopo <code>https://mail.google.com/</code> com a conta do Balcão, pedindo acesso <strong>offline</strong> (<code>access_type=offline</code> e <code>prompt=consent</code>). No OAuth 2.0 Playground: engrenagem &gt; “Use your own OAuth credentials” &gt; informe o ID e a chave &gt; autorize o escopo acima &gt; “Exchange authorization code for tokens”.</li>
+                <li>Copie o <strong>refresh token</strong> (costuma começar com <code>1//</code>) e cole acima. Ele é guardado cifrado e nunca é exibido de novo.</li>
+              </ol>
+              <p className="mt-2 text-bv-muted">Atenção: em aplicativos com o consentimento em modo “Teste”, o refresh token expira em 7 dias; publique o app (ou use o tipo Interno). Se o token for revogado pelo administrador, o teste de conexão mostrará “invalid_grant” e será preciso gerar outro. Microsoft 365/Exchange Online não é suportado por esta opção.</p>
+            </details>
+          </fieldset>
+        )}
+        <ConnFields id="imap" title="Entrada de e-mails (IMAP)" oauth={oauth} c={c.imap ?? {}} s={imap} set={set} errs={errs} />
+        <ConnFields id="smtp" title="Saída de e-mails (SMTP)" oauth={oauth} c={c.smtp ?? {}} s={smtp} set={set} errs={errs} />
         <fieldset className="rounded-md border border-bv-border p-3">
           <legend className="px-1 text-sm font-semibold">Remetente e coleta</legend>
           <div className="grid gap-3 md:grid-cols-2">

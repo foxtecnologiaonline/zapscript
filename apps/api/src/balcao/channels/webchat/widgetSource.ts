@@ -258,7 +258,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
   }
   function badge() {
     el.bd.textContent = unread ? String(unread) : ''; el.bd.hidden = !unread;
-    el.l.setAttribute('aria-label', T.open + (unread ? ' (' + unread + ' ' + T.newMsg + ')' : ''));
+    el.l.setAttribute('aria-label', (cfg.title || T.chat) + ': ' + T.open + (unread ? ' (' + unread + ' ' + T.newMsg + ')' : ''));
   }
   var sayT;
   function say(text, err) { clearTimeout(sayT); el.st.textContent = ''; el.er.textContent = ''; if (!text) return; var n = err ? el.er : el.st; sayT = setTimeout(function () { n.textContent = text; }, 30); }
@@ -410,14 +410,14 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
 
     el.bd = h('span', { class: 'bd', hidden: true, 'aria-hidden': 'true' });
     var ico = h('span', { 'aria-hidden': 'true' }); ico.innerHTML = '<svg viewBox="0 0 24 24" focusable="false"><path d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg>';
-    el.l = h('button', { type: 'button', class: 'l', 'aria-label': T.open, 'aria-expanded': 'false', 'aria-haspopup': 'dialog', 'aria-controls': 'bv-panel', onclick: function () { setOpen(true); } }, [ico, h('span', { text: title }), el.bd]);
+    el.l = h('button', { type: 'button', class: 'l', 'aria-label': title + ': ' + T.open, 'aria-expanded': 'false', 'aria-haspopup': 'dialog', 'aria-controls': 'bv-panel', onclick: function () { setOpen(true); } }, [ico, h('span', { text: title }), el.bd]);
 
     // cabeçalho
     el.hc = h('button', { type: 'button', class: 'ib', 'aria-label': T.contrast, 'aria-pressed': 'false', title: T.contrast, onclick: function () { prefs.hc = !prefs.hc; applyPrefs(); } });
     el.hc.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>';
     var hd = h('div', { class: 'h' }, [h('h2', { id: 'bv-t', text: title }),
-      h('button', { type: 'button', class: 'ib', 'aria-label': T.fontDown, title: T.fontDown, text: 'A-', onclick: function () { prefs.fs--; applyPrefs(); } }),
-      h('button', { type: 'button', class: 'ib', 'aria-label': T.fontUp, title: T.fontUp, text: 'A+', onclick: function () { prefs.fs++; applyPrefs(); } }), el.hc,
+      h('button', { type: 'button', class: 'ib', 'aria-label': 'A-, ' + T.fontDown, title: T.fontDown, text: 'A-', onclick: function () { prefs.fs--; applyPrefs(); } }),
+      h('button', { type: 'button', class: 'ib', 'aria-label': 'A+, ' + T.fontUp, title: T.fontUp, text: 'A+', onclick: function () { prefs.fs++; applyPrefs(); } }), el.hc,
       h('button', { type: 'button', class: 'ib', 'aria-label': T.close, title: T.close, text: '✕', onclick: function () { setOpen(false); } })]);
 
     // avisos (LGPD / IA / fora do horário)

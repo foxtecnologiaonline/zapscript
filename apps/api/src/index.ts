@@ -238,7 +238,9 @@ app.register(rateLimit, {
   redis,
   // Balcão Virtual: webhooks de provedor (Meta, e-mail por HTTP, Jira) e API pública do widget têm limitadores
   // próprios (por sessão/IP/segredo); o teto global por IP penalizaria órgãos atrás de um mesmo NAT e a Meta.
-  skip: (req: any) =>
+  // `allowList` (função) é a opção real do @fastify/rate-limit 10.x — a antiga `skip` não existe e era ignorada (webhooks e /health
+  // nunca foram isentos de fato).
+  allowList: (req: any) =>
     req.url.startsWith('/webhook/') ||
     req.url.startsWith('/balcao/whatsapp/webhook') ||
     req.url.startsWith('/balcao/webchat/public') ||

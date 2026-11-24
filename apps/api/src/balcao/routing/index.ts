@@ -28,6 +28,7 @@ export default async function plugin(app: FastifyInstance): Promise<void> {
   app.setErrorHandler((err: Error & { statusCode?: number; code?: string }, req, reply) => {
     if (err instanceof ConversationError) return sendError(reply, err.status, err.code, err.message);
     if (err.code === 'FST_REQ_FILE_TOO_LARGE') return sendError(reply, 413, 'attachment.too_large', 'Arquivo acima de 15 MB');
+    if (err.statusCode === 429) return sendError(reply, 429, 'rate.limited', 'Muitas requisições. Aguarde alguns instantes e tente novamente.');
     if (err.statusCode && err.statusCode < 500) return sendError(reply, err.statusCode, err.code?.toLowerCase().replace(/^fst_err_/, 'request.') ?? 'request.invalid', 'Requisição inválida');
     req.log.error({ err: err.message }, '[balcao/routing] erro não tratado');
     return sendError(reply, 500, 'internal', 'Erro interno');
