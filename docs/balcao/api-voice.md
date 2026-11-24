@@ -121,10 +121,9 @@ ramal (409) → ligação em curso (409) → número/permissão/presença (403) 
 número **mascarado**, ex.: `+5563*******01`): sucesso `entityId = callId`, `meta { to, outcome:'started' }`; recusa `entityId:'denied'`,
 `meta { to, outcome:'denied', code, reason }`; falha ao originar `outcome:'failed'`. Mudar `settings.voice` vale em até 30 s (cache de settings).
 
-```json
-PUT /balcao/org/settings   (ou o admin do órgão que grava org.settings)
-{ "voice": { "dialAllowPrefixes": ["+5563", "0800"], "dialMaxPerAgentPerDay": 30, "dialRequirePermission": true } }
-```
+> **Pendência (fora desta frente):** o `PATCH /admin/org` (frente iam, schema `.strict()`) **ainda não aceita a chave `voice`** — ver
+> `iam/adminOrg.ts`. Até incluí-la, `settings.voice` só pode ser gravado direto em `BvOrg.settings` (SQL/seed). Formato esperado:
+> `{ "voice": { "dialAllowPrefixes": ["+5563", "0800"], "dialMaxPerAgentPerDay": 30, "dialRequirePermission": true } }` (merge profundo; arrays substituem).
 
 ### URA (todas `ivr:manage`)
 
