@@ -12,6 +12,7 @@ import { findSessionByToken, isExpired } from './sessions';
  * validado contra settings.webchat.allowedOrigins. O visitante só entra na sala da PRÓPRIA conversa.
  *
  * Servidor → visitante:  message:new {message} · typing {from:'agent'} · csat:request {prompt} · conversation:closed {conversationId}
+ *                        · caption {conversationId, from:'AGENT', text, final} (relé efêmero do atendente; ver captions.ts)
  * Visitante → servidor:  typing
  */
 export const VISITOR_NS = '/bv-visitor';

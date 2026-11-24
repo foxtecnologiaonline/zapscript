@@ -6,6 +6,8 @@ import { listMessages } from '../../core/messages';
 import { clearBotTools, registerBotTool } from '../../core/tools';
 import { getUsage } from '../../core/usage';
 import { authHeader, makeOrg, makeUser } from '../../core/testing';
+import { updateOrgSettings } from '../../core/settings';
+import { iqaByContractMonth } from '../../reports/metrics';
 import { setLlmClient } from '../llm';
 import { resumeAfterIdentity, processInbound, startAiEngine, stopAiEngine, sweepIdleBotConversations } from '../bot';
 import { handleAgentAssist, lastSuggestion } from '../assist';
@@ -414,7 +416,7 @@ describe('balcao/ai — rotas /ai (config, teste seco, sugestão, resumo, estat�
     expect(g.json().suggestion.kind).toBe('AGENT_ASSIST');
   });
 
-  it('GET /ai/stats: contenção, escalonamentos por motivo e IQA 07 (resolvidas no 1º contato ÷ automatizáveis)', async () => {
+  it('GET /ai/stats: contenção, escalonamentos por motivo e IQA 07 pela fórmula única (padrão ALL_BOT; AUTOMATABLE por configuração)', async () => {
     const org = (await progressive()).id; const fiscal = await makeUser(org, 'FISCAL');
     await seedApproved(org, CERTIDAO);
     // 2 automatizáveis resolvidas pelo bot + 1 automatizável que escalou por baixa confiança + 1 escalada por palavra-chave
@@ -434,8 +436,23 @@ describe('balcao/ai — rotas /ai (config, teste seco, sugestão, resumo, estat�
     await assignConversation({ orgId: org, conversationId: low.id, userId: human.id });
     await closeConversation({ orgId: org, conversationId: low.id, reason: 'RESOLVED', requestCsat: false });
     const j2 = (await app.inject({ method: 'GET', url: '/balcao/ai/stats', headers: authHeader(fiscal) })).json();
-    expect(j2.iqa07).toMatchObject({ numerator: 2, denominator: 3 });
-    expect(j2.iqa07.value).toBeCloseTo(2 / 3);
+    // padrão ALL_BOT: 2 resolvidas no 1º contato ÷ 4 atendimentos via bot
+    expect(j2.iqa07).toMatchObject({ numerator: 2, denominator: 4, denominatorKind: 'ALL_BOT', valuePct: 50, perBotAttendance: 0.5 });
+    expect(j2.iqa07.value).toBeCloseTo(0.5);
+    expect(j2.iqa07.perAutomatable).toBeCloseTo(2 / 3);
+    expect(j2.iqa07.targets).toEqual([0.4, 0.6, 0.8]);
     expect(j2.usage.aiCalls).toBeGreaterThanOrEqual(3);
+
+    // trocar a base por configuração: AUTOMATABLE → 2 ÷ 3 (a escalada por palavra-chave não é automatizável)
+    await updateOrgSettings(org, { iqa: { denominator: 'AUTOMATABLE' } } as any);
+    const j3 = (await app.inject({ method: 'GET', url: '/balcao/ai/stats', headers: authHeader(fiscal) })).json();
+    expect(j3.iqa07).toMatchObject({ numerator: 2, denominator: 3, denominatorKind: 'AUTOMATABLE' });
+    expect(j3.iqa07.value).toBeCloseTo(2 / 3);
+    // MESMA função do /reports/iqa: o mês de contrato que contém "agora" dá exatamente o mesmo número
+    const now = new Date();
+    const same = await iqaByContractMonth({ orgId: org }, 'America/Araguaina', now, new Date(now.getTime() - 3 * 86400_000).toISOString().slice(0, 10));
+    const cur = same.months[0];
+    expect(cur).toMatchObject({ numerator: 2, denominator: 3, denominatorKind: 'AUTOMATABLE' });
+    expect(cur.value).toBeCloseTo(j3.iqa07.valuePct, 2);
   });
 });

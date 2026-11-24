@@ -3,10 +3,14 @@ import type { SendMailOptions } from 'nodemailer';
 /** Configuração do canal de e-mail (BvIntegration type 'EMAIL_IMAP', cifrada em repouso). */
 export interface ImapConfig { host: string; port: number; secure: boolean; user: string; pass?: string; accessToken?: string }
 export interface SmtpConfig { host: string; port: number; secure: boolean; user: string; pass?: string; accessToken?: string }
+/** OAuth2 (Google Workspace): o access token é obtido/renovado com o refresh token (ver oauth.ts) e usado em XOAUTH2 (IMAP) e OAuth2 (SMTP). */
+export interface OAuth2Auth { type: 'oauth2'; clientId: string; clientSecret: string; refreshToken: string; /** Conta (e-mail) dona do refresh token. */ user: string; /** Padrão: https://oauth2.googleapis.com/token */ tokenUrl?: string }
 export interface EmailConfig {
   imap: ImapConfig;
   smtp: SmtpConfig;
   from: { name: string; address: string };
+  /** Se `type:'oauth2'`, substitui `pass`/`accessToken` de imap e smtp. */
+  auth?: OAuth2Auth;
   mailbox: string;
   autoReply?: { enabled: boolean; text: string };
   pollIntervalSec: number;

@@ -627,3 +627,219 @@ describe('security — sugestões de IA (texto cifrado no JSON do evento)', () =
     }
   });
 });
+
+describe('security — texto de tarefas cifrado em repouso (rotação, exportação, DSR, retenção)', () => {
+  const saved = { keys: process.env.BV_FIELD_KEYS, cur: process.env.BV_FIELD_KEY_CURRENT };
+  afterEach(() => {
+    if (saved.keys === undefined) delete process.env.BV_FIELD_KEYS; else process.env.BV_FIELD_KEYS = saved.keys;
+    if (saved.cur === undefined) delete process.env.BV_FIELD_KEY_CURRENT; else process.env.BV_FIELD_KEY_CURRENT = saved.cur;
+  });
+  const DESC = 'Cidadão Maria, CPF 123.456.789-09, pede a certidão';
+
+  /** Tarefa do titular com descrição editada, comentário e conclusão com resolução (histórico de texto livre). */
+  async function seedTask(orgId: string, s: Awaited<ReturnType<typeof seedSubject>>) {
+    const { createTask, updateTask, addComment, changeStatus } = await import('../../tasks/service');
+    const { SYSTEM_ACTOR } = await import('../../tasks/model');
+    const a = SYSTEM_ACTOR(orgId);
+    const t = await createTask(orgId, a, { kind: 'DEMAND', title: 'Pedido de certidão', description: 'descrição inicial', conversationId: s.conv.id, contactId: s.contact.id });
+    await updateTask(orgId, a, t.id, { description: DESC });
+    await addComment(orgId, a, t.id, { body: 'Falei com a Maria por telefone', internal: true });
+    await changeStatus(orgId, a, t.id, 'IN_PROGRESS');
+    await changeStatus(orgId, a, t.id, 'DONE', { resolution: 'Certidão enviada por e-mail' });
+    return t.id;
+  }
+  const rawText = async (taskId: string) => ({
+    description: (await prisma.bvTask.findUniqueOrThrow({ where: { id: taskId } })).description,
+    comments: (await prisma.bvTaskComment.findMany({ where: { taskId } })).map((c) => c.body),
+    history: await prisma.bvTaskHistory.findMany({ where: { taskId, field: { in: ['description', 'resolution'] } } }),
+  });
+
+  it('rotação recifra descrição, comentários e histórico de texto livre (kid A → B); tudo legível só com B', async () => {
+    const kA = crypto.randomBytes(32).toString('hex'); const kB = crypto.randomBytes(32).toString('hex');
+    process.env.BV_FIELD_KEYS = JSON.stringify({ A: kA, B: kB }); process.env.BV_FIELD_KEY_CURRENT = 'A';
+    const org = await makeOrg(); const s = await seedSubject(org.id);
+    const id = await seedTask(org.id, s);
+    const raw = await rawText(id);
+    expect(raw.description).toMatch(/^bv1\.A\./); expect(raw.comments.every((b) => b.startsWith('bv1.A.'))).toBe(true);
+    expect(raw.history).toHaveLength(2); // description (editada) + resolution
+    for (const h of raw.history) for (const v of [h.fromValue, h.toValue]) if (v) expect(v).toMatch(/^bv1\.A\./);
+    const st = await keyStatus(org.id);
+    expect(st.usage.find((u) => u.table === 'BvTask')!.byKid).toEqual({ A: 1 });
+    expect(st.usage.find((u) => u.table === 'BvTaskComment')!.byKid).toEqual({ A: 2 }); // comentário + resolução
+
+    process.env.BV_FIELD_KEY_CURRENT = 'B';
+    const r1 = await rotateFieldKeys({ orgId: org.id });
+    expect(r1.done).toBe(true);
+    expect(r1.tables.find((t) => t.table === 'BvTask')!.rotated).toBe(1);
+    expect(r1.tables.filter((t) => t.table === 'BvTaskComment').reduce((a, t) => a + t.rotated, 0)).toBe(2);
+    expect(r1.tables.filter((t) => t.table === 'BvTaskHistory').reduce((a, t) => a + t.rotated, 0)).toBe(3); // from+to da descrição, to da resolução
+    expect((await rotateFieldKeys({ orgId: org.id })).rotated).toBe(0); // idempotente
+    const after = await keyStatus(org.id);
+    for (const u of after.usage.filter((x) => x.table.startsWith('BvTask'))) expect(Object.keys(u.byKid).filter((k) => k !== 'B')).toEqual([]);
+
+    process.env.BV_FIELD_KEYS = JSON.stringify({ B: kB }); // aposenta A
+    const { getTaskDetail } = await import('../../tasks/service'); const { SYSTEM_ACTOR } = await import('../../tasks/model');
+    const d = await getTaskDetail(org.id, SYSTEM_ACTOR(org.id), id);
+    expect(d.description).toBe(DESC);
+    expect(d.comments.map((c: any) => c.body).sort()).toEqual(['Certidão enviada por e-mail', 'Falei com a Maria por telefone']);
+    expect(d.history.find((h: any) => h.field === 'resolution')!.toValue).toBe('Certidão enviada por e-mail');
+    // o título segue em claro (busca)
+    expect((await prisma.bvTask.findUniqueOrThrow({ where: { id } })).title).toBe('Pedido de certidão');
+  });
+
+  it('exportação integral e exportação do titular saem DECIFRADAS (o banco continua cifrado)', async () => {
+    const org = await makeOrg(); const s = await seedSubject(org.id);
+    const id = await seedTask(org.id, s);
+    expect((await rawText(id)).description).toMatch(/^bv1\./);
+
+    const job = await prisma.bvExportJob.create({ data: { orgId: org.id, type: 'FULL_EXPORT', format: 'JSON', params: { includeFiles: false } as any } });
+    expect((await runFullExport(job.id))!.status).toBe('DONE');
+    const files = readTar(zlib.gunzipSync(await getObjectBuffer((await prisma.bvExportJob.findUniqueOrThrow({ where: { id: job.id } })).fileKey!)));
+    const rows = (n: string) => JSON.parse(files.get(`data/${n}.json`)!.toString());
+    expect(rows('tasks').find((t: any) => t.title === 'Pedido de certidão').description).toBe(DESC);
+    expect(rows('task_comments').map((c: any) => c.body).sort()).toEqual(['Certidão enviada por e-mail', 'Falei com a Maria por telefone']);
+    const hist = rows('task_history').filter((h: any) => h.field === 'description' || h.field === 'resolution');
+    expect(hist.find((h: any) => h.field === 'resolution').toValue).toBe('Certidão enviada por e-mail');
+    expect(hist.find((h: any) => h.field === 'description' && h.toValue === DESC)).toBeDefined();
+    expect(files.get('data/tasks.json')!.toString()).not.toContain('bv1.');
+    expect(files.get('data/task_comments.json')!.toString()).not.toContain('bv1.');
+
+    const { buildSubjectExport } = await import('../dsr');
+    expect(((await buildSubjectExport(org.id, s.contact.id))!.tasks as any[]).find((t) => t.title === 'Pedido de certidão').description).toBe(DESC);
+  });
+
+  it('anonimização (e exclusão) do titular remove o texto das tarefas dele; título e tarefas de outro titular ficam', async () => {
+    const org = await makeOrg(); const sup = await makeUser(org.id, 'SUPERVISOR');
+    const s = await seedSubject(org.id); const other = await seedSubject(org.id, { document: '987.654.321-00' });
+    const id = await seedTask(org.id, s); const otherId = await seedTask(org.id, other);
+    const dsr = (await app.inject({ method: 'POST', url: '/balcao/security/dsr', headers: H(sup), payload: { contactId: s.contact.id, type: 'ANONYMIZE' } })).json().id;
+    const res = await app.inject({ method: 'POST', url: `/balcao/security/dsr/${dsr}/process`, headers: H(sup), payload: {} });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().report.tasksScrubbed).toBeGreaterThanOrEqual(4); // descrição + 2 comentários + histórico
+    const raw = await rawText(id);
+    expect(raw.description).toMatch(/removido a pedido do titular/);
+    expect(raw.comments.every((b) => /removido a pedido do titular/.test(b))).toBe(true);
+    expect(raw.history.every((h) => h.fromValue === null && h.toValue === null)).toBe(true);
+    const t = await prisma.bvTask.findUniqueOrThrow({ where: { id } });
+    expect(t.title).toBe('Pedido de certidão'); expect(t.contactId).toBeNull();
+    // outro titular intacto (ainda cifrado e legível)
+    const o = await rawText(otherId);
+    expect(o.description).toMatch(/^bv1\./); expect(decryptField(o.description!)).toBe(DESC);
+    // idempotente
+    const dsr2 = (await app.inject({ method: 'POST', url: '/balcao/security/dsr', headers: H(sup), payload: { contactId: s.contact.id, type: 'ANONYMIZE' } })).json().id;
+    expect((await app.inject({ method: 'POST', url: `/balcao/security/dsr/${dsr2}/process`, headers: H(sup), payload: {} })).json().report.alreadyDone).toBe(true);
+
+    // exclusão: também remove o texto (a tarefa é só desvinculada)
+    const del = (await app.inject({ method: 'POST', url: '/balcao/security/dsr', headers: H(sup), payload: { contactId: other.contact.id, type: 'DELETE', justification: 'Titular pediu; sem base legal de guarda' } })).json().id;
+    const dr = await app.inject({ method: 'POST', url: `/balcao/security/dsr/${del}/process`, headers: H(sup), payload: {} });
+    expect(dr.statusCode).toBe(200); expect(dr.json().report.tasksScrubbed).toBeGreaterThanOrEqual(4);
+    const o2 = await rawText(otherId);
+    expect(o2.description).toMatch(/removido a pedido do titular/);
+  });
+
+  it('retenção: tarefas ENCERRADAS antigas perdem o texto (prazo de mensagens); abertas e recentes ficam; dry-run só conta', async () => {
+    const org = await makeOrg({ retention: { messagesDays: 100, recordingsDays: 100, auditDays: 1825, logsDays: 5 } });
+    const s = await seedSubject(org.id);
+    const oldClosed = await seedTask(org.id, s); const recentClosed = await seedTask(org.id, s);
+    const { createTask } = await import('../../tasks/service'); const { SYSTEM_ACTOR } = await import('../../tasks/model');
+    const oldOpen = (await createTask(org.id, SYSTEM_ACTOR(org.id), { kind: 'DEMAND', title: 'Aberta antiga', description: 'texto aberto', conversationId: s.conv.id, contactId: s.contact.id })).id;
+    await prisma.bvTask.updateMany({ where: { id: { in: [oldClosed, oldOpen] } }, data: { createdAt: daysAgo(200) } });
+
+    const dry = await runRetentionForOrg(org.id, { dryRun: true });
+    expect(dry.kinds.find((k) => k.kind === 'MESSAGES')!.tasks).toBe(1);
+    expect((await rawText(oldClosed)).description).not.toBeNull();
+
+    const res = await runRetentionForOrg(org.id);
+    expect(res.kinds.find((k) => k.kind === 'MESSAGES')!.tasks).toBeGreaterThanOrEqual(3);
+    const a = await rawText(oldClosed);
+    expect(a.description).toBeNull(); expect(a.comments.every((b) => /política de retenção/.test(b))).toBe(true); expect(a.history.every((h) => !h.fromValue && !h.toValue)).toBe(true);
+    expect(decryptField((await rawText(oldOpen)).description!)).toBe('texto aberto');
+    expect(decryptField((await rawText(recentClosed)).description!)).toBe(DESC);
+    expect((await runRetentionForOrg(org.id)).kinds.find((k) => k.kind === 'MESSAGES')!.tasks).toBe(0); // idempotente
+  });
+});
+
+describe('security — download da exportação por link de uso único', () => {
+  const keyOf = async (token: string) => `bv:exportlink:${(await import('../../core/crypto')).hashToken(token)}`;
+  async function doneExport(orgId: string) {
+    const job = await prisma.bvExportJob.create({ data: { orgId, type: 'FULL_EXPORT', format: 'JSON', params: { includeFiles: false } as any } });
+    expect((await runFullExport(job.id))!.status).toBe('DONE');
+    return prisma.bvExportJob.findUniqueOrThrow({ where: { id: job.id } });
+  }
+  const mkLink = async (admin: any, jobId: string) => {
+    const r = await app.inject({ method: 'POST', url: `/balcao/security/exports/${jobId}/link`, headers: H(admin) });
+    expect(r.statusCode).toBe(200);
+    const b = r.json(); const u = new URL(b.url);
+    return { ...b, path: u.pathname + u.search, token: u.searchParams.get('dl')! };
+  };
+
+  it('POST /exports/:id/link devolve {url, expiresAt}; GET ?dl= SEM Authorization baixa o arquivo íntegro; 2ª vez → 401', async () => {
+    const org = await makeOrg(); const admin = await makeUser(org.id, 'ADMIN');
+    const job = await doneExport(org.id);
+    const link = await mkLink(admin, job.id);
+    expect(Object.keys(link).sort()).toEqual(['expiresAt', 'path', 'token', 'url']);
+    expect(link.url).toContain(`/balcao/security/exports/${job.id}/download?dl=`);
+    expect(new Date(link.expiresAt).getTime() - Date.now()).toBeGreaterThan(50_000); expect(new Date(link.expiresAt).getTime() - Date.now()).toBeLessThanOrEqual(60_000);
+    const ttl = await redis.ttl(await keyOf(link.token));
+    expect(ttl).toBeGreaterThan(50); expect(ttl).toBeLessThanOrEqual(60);
+    expect(await redis.get(await keyOf(link.token))).not.toContain(link.token); // só o hash é chave; o token em si não é guardado
+
+    const dl = await app.inject({ method: 'GET', url: link.path }); // sem header Authorization
+    expect(dl.statusCode).toBe(200);
+    expect(dl.headers['content-type']).toBe('application/gzip'); expect(dl.headers['content-disposition']).toContain(`balcao-export-${job.id}.tar.gz`);
+    expect(crypto.createHash('sha256').update(dl.rawPayload).digest('hex')).toBe(job.sha256);
+    const again = await app.inject({ method: 'GET', url: link.path });
+    expect(again.statusCode).toBe(401); expect(again.json().error.code).toBe('export.link_invalid');
+
+    const audits = await prisma.bvAuditLog.findMany({ where: { orgId: org.id, action: { in: ['security.export.link', 'security.export.download'] } }, orderBy: { createdAt: 'asc' } });
+    expect(audits.map((a) => a.action)).toEqual(['security.export.link', 'security.export.download']);
+    expect((audits[1].meta as any).via).toBe('one-time-link'); expect(audits[1].actorId).toBe(admin.id);
+    expect(JSON.stringify(audits)).not.toContain(link.token); // o token nunca vai para a auditoria
+  });
+
+  it('expirado, inválido, de outra exportação e uso concorrente → 401; Range na 1ª requisição segue auditado', async () => {
+    const org = await makeOrg(); const admin = await makeUser(org.id, 'ADMIN');
+    const job = await doneExport(org.id); const job2 = await doneExport(org.id);
+    // expirado
+    const l1 = await mkLink(admin, job.id);
+    await redis.pexpire(await keyOf(l1.token), 30); await new Promise((r) => setTimeout(r, 80));
+    expect((await app.inject({ method: 'GET', url: l1.path })).statusCode).toBe(401);
+    // inválido / vazio / lixo
+    for (const q of ['dl=nao-existe-nao-existe-nao-existe', 'dl=', 'dl=a']) expect((await app.inject({ method: 'GET', url: `/balcao/security/exports/${job.id}/download?${q}` })).statusCode).toBe(401);
+    // token da exportação A não vale para a B (e é consumido ao tentar)
+    const l2 = await mkLink(admin, job.id);
+    expect((await app.inject({ method: 'GET', url: `/balcao/security/exports/${job2.id}/download?dl=${l2.token}` })).statusCode).toBe(401);
+    // concorrência: só uma das duas requisições simultâneas passa
+    const l3 = await mkLink(admin, job.id);
+    const [x, y] = await Promise.all([app.inject({ method: 'GET', url: l3.path }), app.inject({ method: 'GET', url: l3.path })]);
+    expect([x.statusCode, y.statusCode].sort()).toEqual([200, 401]);
+    // Range na 1ª requisição: 206 e auditado com o range
+    const l4 = await mkLink(admin, job.id);
+    const part = await app.inject({ method: 'GET', url: l4.path, headers: { range: 'bytes=0-9' } });
+    expect(part.statusCode).toBe(206); expect(part.rawPayload.length).toBe(10); expect(part.headers['content-range']).toMatch(/^bytes 0-9\//);
+    expect((await app.inject({ method: 'GET', url: l4.path, headers: { range: 'bytes=10-19' } })).statusCode).toBe(401);
+    const ranged = await prisma.bvAuditLog.findMany({ where: { orgId: org.id, action: 'security.export.download' } });
+    expect(ranged.some((a) => (a.meta as any).range === 'bytes=0-9' && (a.meta as any).via === 'one-time-link')).toBe(true);
+  });
+
+  it('permissão e isolamento: só security:manage emite; outra org não emite; exportação pendente → 409; caminho autenticado continua funcionando', async () => {
+    const org = await makeOrg(); const admin = await makeUser(org.id, 'ADMIN'); const sup = await makeUser(org.id, 'SUPERVISOR');
+    const job = await doneExport(org.id);
+    expect((await app.inject({ method: 'POST', url: `/balcao/security/exports/${job.id}/link`, headers: H(sup) })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: `/balcao/security/exports/${job.id}/link` })).statusCode).toBe(401);
+    const other = await makeOrg(); const otherAdmin = await makeUser(other.id, 'ADMIN');
+    expect((await app.inject({ method: 'POST', url: `/balcao/security/exports/${job.id}/link`, headers: H(otherAdmin) })).statusCode).toBe(404);
+    const pending = await prisma.bvExportJob.create({ data: { orgId: org.id, type: 'FULL_EXPORT', format: 'JSON', params: {} } });
+    const nr = await app.inject({ method: 'POST', url: `/balcao/security/exports/${pending.id}/link`, headers: H(admin) });
+    expect(nr.statusCode).toBe(409); expect(nr.json().error.code).toBe('export.not_ready');
+    // sem token e sem Authorization → 401 como antes; com Authorization → 200 (caminho antigo)
+    expect((await app.inject({ method: 'GET', url: `/balcao/security/exports/${job.id}/download` })).statusCode).toBe(401);
+    const auth = await app.inject({ method: 'GET', url: `/balcao/security/exports/${job.id}/download`, headers: H(admin) });
+    expect(auth.statusCode).toBe(200); expect(crypto.createHash('sha256').update(auth.rawPayload).digest('hex')).toBe(job.sha256);
+    expect((await app.inject({ method: 'GET', url: `/balcao/security/exports/${job.id}/download`, headers: H(sup) })).statusCode).toBe(403);
+    // token emitido para a org A não baixa exportação da org B mesmo com id da B
+    const lA = await mkLink(admin, job.id);
+    const jobB = await doneExport(other.id);
+    expect((await app.inject({ method: 'GET', url: `/balcao/security/exports/${jobB.id}/download?dl=${lA.token}` })).statusCode).toBe(401);
+  });
+});

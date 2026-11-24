@@ -8,6 +8,7 @@ import { onBalcaoStart, registerJob } from '../../core/scheduler';
 import { env } from './config';
 import { demoHtml, SLUG_RE } from './demo';
 import { wireWebchatDelivery } from './delivery';
+import { registerAgentCaptionRoutes } from './captions';
 import { registerPublicRoutes } from './public';
 import { attachVisitorNamespace } from './socket';
 import { WIDGET_JS } from './widgetSource';
@@ -20,6 +21,7 @@ export { WIDGET_JS } from './widgetSource';
  *   GET  /widget.js        script embarcável (CORP cross-site, cache com ETag)
  *   GET  /demo             página de demonstração
  *   *    /public/*         API do visitante (CORS aberto no index.ts; origem validada por órgão)
+ *   POST /conversations/:id/caption   legenda do atendente → visitante (relé efêmero; ver captions.ts)
  *   WS   /bv-visitor       namespace Socket.IO do visitante (attachVisitorNamespace)
  */
 const WIDGET_ETAG = `"${sha256Hex(WIDGET_JS).slice(0, 32)}"`;
@@ -80,4 +82,5 @@ export default async function plugin(app: FastifyInstance): Promise<void> {
   });
 
   registerPublicRoutes(app);
+  registerAgentCaptionRoutes(app);
 }

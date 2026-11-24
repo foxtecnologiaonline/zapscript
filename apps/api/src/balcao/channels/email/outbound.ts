@@ -6,6 +6,7 @@ import { listMessages } from '../../core/messages';
 import { getObjectBuffer } from '../../core/storage';
 import { recordUsage } from '../../core/usage';
 import { loadEmailConfig } from './config';
+import { isAuthFailure, isOAuth, OAuthError, resolveSmtpConfig } from './oauth';
 import { normalizeSubject } from './parse';
 import type { EmailConfig, MailTransport, MailTransportFactory, SmtpConfig } from './types';
 
@@ -74,6 +75,7 @@ async function threadIds(conversationId: string, orgId: string, currentMessageId
 }
 
 function mapSmtpError(err: any): ChannelSendError {
+  if (err instanceof OAuthError) return new ChannelSendError(`Autorização OAuth2 do e-mail falhou: ${err.message}`, err.code === 'oauth2.unreachable' ? 'email.oauth_unavailable' : 'email.oauth_failed', err.code === 'oauth2.unreachable');
   const code = String(err?.code ?? '');
   const rc = Number(err?.responseCode ?? 0);
   const rejected = Array.isArray(err?.rejected) && err.rejected.length > 0;
@@ -82,6 +84,8 @@ function mapSmtpError(err: any): ChannelSendError {
   const retryable = ['ECONNECTION', 'ETIMEDOUT', 'ESOCKET', 'ECONNRESET', 'EDNS'].includes(code) || (rc >= 400 && rc < 500);
   return new ChannelSendError(`Falha no envio SMTP: ${detail}`, 'email.smtp_failed', retryable);
 }
+
+const sendOnce = (t: MailTransport, mail: SendMailOptions) => t.sendMail(mail);
 
 // ── Remetente do canal ───────────────────────────────────────────────────────
 
@@ -139,9 +143,16 @@ export async function sendEmailOutbound(req: OutboundRequest): Promise<OutboundR
     headers: { 'X-Balcao-Protocol': req.conversation.protocol, ...(isAuto ? { 'Auto-Submitted': 'auto-replied', 'X-Auto-Response-Suppress': 'All', Precedence: 'bulk' } : {}) },
   };
 
-  const t = transport ?? createMailTransport(cfg.smtp);
+  let t: MailTransport;
+  try { t = transport ?? createMailTransport(await resolveSmtpConfig(cfg)); } catch (err) { throw mapSmtpError(err); }
   try {
-    const info = await t.sendMail(mail);
+    const info = await sendOnce(t, mail).catch(async (err) => {
+      // OAuth2: o servidor recusou o token (revogado/expirado antes do previsto) → renova uma vez e reenvia
+      if (transport || !isOAuth(cfg) || !isAuthFailure(err)) throw err;
+      try { t.close?.(); } catch { /* noop */ }
+      const t2 = createMailTransport(await resolveSmtpConfig(cfg, { force: true }));
+      try { return await sendOnce(t2, mail); } finally { try { t2.close?.(); } catch { /* noop */ } }
+    });
     if (info?.rejected && info.rejected.length > 0 && !(info.accepted && info.accepted.length > 0)) {
       throw new ChannelSendError('Destinatário recusado pelo servidor SMTP', 'email.invalid_recipient', false);
     }

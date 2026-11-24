@@ -11,9 +11,12 @@ import { setRealtime } from '../../core/realtime';
 import Fastify from 'fastify';
 import { authHeader, makeOrg, makeUser } from '../../core/testing';
 import tasksPlugin from '../index';
-import { computeSla, isValidTransition } from '../model';
+import { businessSecondsBetween, computeSla, isValidTransition, loadActor } from '../model';
+import { addBusinessSeconds, getHolidays, invalidateHolidays } from '../../core/settings';
+import { getTasksConfig } from '../model';
+import { changeStatus } from '../service';
 import { csvCell } from '../indicators';
-import { createTaskFromBot, notifyContact, registerTasksBotTool, runTasksSweep, setTaskMailer } from '../index';
+import { createTaskFromBot, encryptExistingTaskText, notifyContact, registerTasksBotTool, runTasksSweep, setTaskMailer } from '../index';
 
 type U = Awaited<ReturnType<typeof makeUser>>;
 let app: FastifyInstance;
@@ -619,5 +622,186 @@ describe('balcao/tasks — isolamento entre órgãos', () => {
     expect(await prisma.bvNotification.count({ where: { orgId: b.orgId } })).toBe(0);
     // sem token → 401
     expect((await app.inject({ method: 'GET', url: '/balcao/tasks/' })).statusCode).toBe(401);
+  });
+});
+
+describe('balcao/tasks — conteúdo cifrado em repouso', () => {
+  const raw = (id: string) => prisma.bvTask.findUniqueOrThrow({ where: { id } });
+
+  it('descrição, comentários, resolução e histórico de texto livre ficam cifrados no banco e voltam em claro pela API; título fica em claro', async () => {
+    const c = await setup();
+    const t = await mk(c.sup, { title: 'Certidão urgente', kind: 'INTERNAL', description: 'Cidadã Maria Souza, CPF 529.982.247-25' });
+    expect(t.description).toBe('Cidadã Maria Souza, CPF 529.982.247-25'); // resposta do POST já em claro
+    const row = await raw(t.id);
+    expect(row.description).toMatch(/^bv1\./); expect(row.description).not.toContain('Maria');
+    expect(row.title).toBe('Certidão urgente');
+
+    expect((await call(c.sup, 'PATCH', `/${t.id}`, { description: 'Nova descrição sigilosa' })).body.description).toBe('Nova descrição sigilosa');
+    expect((await raw(t.id)).description).toMatch(/^bv1\./);
+    const cm = await call(c.sup, 'POST', `/${t.id}/comments`, { body: 'Liguei para o 63 99999-1234' });
+    expect(cm.status).toBe(201); expect(cm.body.body).toBe('Liguei para o 63 99999-1234');
+    await call(c.sup, 'POST', `/${t.id}/status`, { status: 'IN_PROGRESS' });
+    await call(c.sup, 'POST', `/${t.id}/status`, { status: 'DONE', resolution: 'Enviado ao e-mail maria@exemplo.com' });
+
+    const comments = await prisma.bvTaskComment.findMany({ where: { taskId: t.id } });
+    expect(comments).toHaveLength(2);
+    for (const k of comments) { expect(k.body).toMatch(/^bv1\./); expect(k.body).not.toMatch(/Liguei|maria@/); }
+    const hist = await prisma.bvTaskHistory.findMany({ where: { taskId: t.id, field: { in: ['description', 'resolution'] } } });
+    expect(hist.map((h) => h.field).sort()).toEqual(['description', 'resolution']);
+    for (const h of hist) for (const v of [h.fromValue, h.toValue]) if (v) expect(v).toMatch(/^bv1\./);
+    // histórico de campos que não são texto livre continua em claro (filtros/auditoria)
+    expect((await prisma.bvTaskHistory.findMany({ where: { taskId: t.id, field: 'status' } })).map((h) => h.toValue)).toContain('DONE');
+
+    const det = (await call(c.sup, 'GET', `/${t.id}`)).body;
+    expect(det.description).toBe('Nova descrição sigilosa');
+    expect(det.comments.map((x: any) => x.body).sort()).toEqual(['Enviado ao e-mail maria@exemplo.com', 'Liguei para o 63 99999-1234']);
+    expect(det.history.find((h: any) => h.field === 'resolution').toValue).toBe('Enviado ao e-mail maria@exemplo.com');
+    expect(det.history.find((h: any) => h.field === 'description').fromValue).toBe('Cidadã Maria Souza, CPF 529.982.247-25');
+    expect((await call(c.sup, 'GET', `/${t.id}/comments`)).body.items.map((x: any) => x.body)).toContain('Liguei para o 63 99999-1234');
+    // listagem, quadro e busca por título (em claro) seguem funcionando
+    const list = (await call(c.sup, 'GET', '/?q=Certid%C3%A3o%20urgente')).body.items;
+    expect(list.map((x: any) => x.id)).toEqual([t.id]); expect(list[0].description).toBe('Nova descrição sigilosa');
+    expect((await call(c.sup, 'GET', '/board')).body.columns.find((x: any) => x.status === 'DONE').items[0].description).toBe('Nova descrição sigilosa');
+  });
+
+  it('a mensagem de encerramento ao cidadão usa a resolução decifrada', async () => {
+    const c = await setup();
+    const sent: string[] = [];
+    setTaskMailer(async (_to, _s, html) => { sent.push(html); });
+    const contact = await prisma.bvContact.create({ data: { orgId: c.orgId, name: 'Cidadão', email: 'cid@exemplo.com' } });
+    const t = (await call(c.sup, 'POST', '/', { title: 'Retorno', kind: 'DEMAND', contactId: contact.id, notifyOnClose: true, notifyChannel: 'EMAIL' })).body;
+    await call(c.sup, 'POST', `/${t.id}/status`, { status: 'IN_PROGRESS' });
+    await call(c.sup, 'POST', `/${t.id}/status`, { status: 'DONE', resolution: 'Documento emitido e disponível no portal' });
+    expect(sent.join('\n')).toContain('Documento emitido e disponível no portal');
+    expect(sent.join('\n')).not.toContain('bv1.');
+  });
+
+  it('valores antigos em claro continuam legíveis; encryptExistingTaskText cifra tudo, é idempotente e não toca em quem já está cifrado', async () => {
+    const c = await setup();
+    const t = await mk(c.sup, { title: 'Legada' });
+    await prisma.bvTask.update({ where: { id: t.id }, data: { description: 'descrição antiga em claro' } });
+    await prisma.bvTaskComment.create({ data: { taskId: t.id, userId: c.sup.id, body: 'comentário antigo em claro' } });
+    await prisma.bvTaskHistory.create({ data: { taskId: t.id, field: 'resolution', fromValue: null, toValue: 'resolução antiga' } });
+    await prisma.bvTaskHistory.create({ data: { taskId: t.id, field: 'priority', fromValue: 'LOW', toValue: 'HIGH' } });
+    const fresh = await mk(c.sup, { title: 'Nova', description: 'já cifrada' });
+    const freshBefore = (await raw(fresh.id)).description;
+
+    const det = (await call(c.sup, 'GET', `/${t.id}`)).body; // legível sem migrar
+    expect(det.description).toBe('descrição antiga em claro');
+    expect(det.comments[0].body).toBe('comentário antigo em claro');
+    expect(det.history.find((h: any) => h.field === 'resolution').toValue).toBe('resolução antiga');
+
+    const r = await encryptExistingTaskText({ orgId: c.orgId });
+    expect(r).toMatchObject({ descriptions: 1, comments: 1, history: 1, done: true });
+    expect((await raw(t.id)).description).toMatch(/^bv1\./);
+    expect((await prisma.bvTaskComment.findFirstOrThrow({ where: { taskId: t.id } })).body).toMatch(/^bv1\./);
+    expect((await prisma.bvTaskHistory.findFirstOrThrow({ where: { taskId: t.id, field: 'resolution' } })).toValue).toMatch(/^bv1\./);
+    expect((await prisma.bvTaskHistory.findFirstOrThrow({ where: { taskId: t.id, field: 'priority' } })).toValue).toBe('HIGH'); // não é texto livre
+    expect((await raw(fresh.id)).description).toBe(freshBefore); // intacta
+    expect(await encryptExistingTaskText({ orgId: c.orgId })).toMatchObject({ descriptions: 0, comments: 0, history: 0 });
+    const det2 = (await call(c.sup, 'GET', `/${t.id}`)).body;
+    expect(det2.description).toBe('descrição antiga em claro'); expect(det2.comments[0].body).toBe('comentário antigo em claro');
+  });
+
+  it('descrição do usuário que começa com "bv1." não quebra a leitura (tarefa já decifrada não é decifrada de novo)', async () => {
+    const c = await setup();
+    const t = await mk(c.sup, { title: 'Prefixo', description: 'bv1.x.y.z.w parece cifra mas é texto' });
+    expect(t.description).toBe('bv1.x.y.z.w parece cifra mas é texto');
+    expect((await call(c.sup, 'GET', `/${t.id}`)).body.description).toBe('bv1.x.y.z.w parece cifra mas é texto');
+  });
+
+  it('isolamento: a migração com orgId não toca em outro órgão', async () => {
+    const a = await setup(); const b = await setup();
+    const ta = await mk(a.sup, { title: 'Tarefa A' }); const tb = await mk(b.sup, { title: 'Tarefa B' });
+    await prisma.bvTask.update({ where: { id: ta.id }, data: { description: 'a' } });
+    await prisma.bvTask.update({ where: { id: tb.id }, data: { description: 'b' } });
+    await encryptExistingTaskText({ orgId: a.orgId });
+    expect((await raw(ta.id)).description).toMatch(/^bv1\./);
+    expect((await raw(tb.id)).description).toBe('b');
+  });
+});
+
+describe('balcao/tasks — SLA pausa em "Aguardando"', () => {
+  // Semana de teste (fuso America/Araguaina, UTC-3; horário padrão seg–sex 08–18). Segunda 07/12 é feriado do órgão.
+  const FRI_16 = new Date('2026-12-04T19:00:00Z'); // sex 16:00 local
+  const TUE_10 = new Date('2026-12-08T13:00:00Z'); // ter 10:00 local
+  const WED_12 = new Date('2026-12-09T15:00:00Z'); // qua 12:00 local
+  const WED_16 = new Date('2026-12-09T19:00:00Z'); // qua 16:00 local
+
+  it('businessSecondsBetween: janelas, fim de semana, feriado e frações de minuto', async () => {
+    const { settings } = await getTasksConfig((await setup()).orgId);
+    const hol = new Set(['2026-12-07']);
+    expect(businessSecondsBetween(settings, FRI_16, TUE_10, hol)).toBe(4 * 3600); // 2 h sexta + feriado + 2 h terça
+    expect(businessSecondsBetween(settings, FRI_16, TUE_10)).toBe((2 + 10 + 2) * 3600); // sem feriado: + segunda inteira
+    expect(businessSecondsBetween(settings, new Date('2026-12-05T15:00:00Z'), new Date('2026-12-06T20:00:00Z'))).toBe(0); // sáb–dom
+    expect(businessSecondsBetween(settings, new Date('2026-12-04T19:30:30Z'), new Date('2026-12-04T19:31:15Z'))).toBe(45);
+    expect(businessSecondsBetween(settings, new Date('2026-12-04T20:55:00Z'), new Date('2026-12-04T21:30:00Z'))).toBe(300); // cruza o fim do expediente (17:55→18:00 local)
+    expect(businessSecondsBetween(settings, TUE_10, FRI_16)).toBe(0); // intervalo invertido
+  });
+
+  it('entrar em WAITING registra o instante; sair empurra os prazos pelo tempo ÚTIL pausado (horário comercial + feriado); GET mostra slaPaused', async () => {
+    const c = await setup();
+    await prisma.bvHoliday.create({ data: { orgId: c.orgId, day: new Date('2026-12-07'), name: 'Feriado de teste' } });
+    invalidateHolidays(c.orgId);
+    const t = await mk(c.fis, { kind: 'SERVICE_REQUEST', title: 'SR com pausa', priority: 'NORMAL' });
+    const respDue = new Date('2026-12-04T20:00:00Z'); // sex 17:00 local
+    await prisma.bvTask.update({ where: { id: t.id }, data: { slaResolutionDueAt: WED_12, dueAt: WED_12, slaResponseDueAt: respDue } });
+    const sup = await loadActor({ userId: c.sup.id, orgId: c.orgId, role: 'SUPERVISOR', via: 'jwt' });
+
+    await changeStatus(c.orgId, sup, t.id, 'IN_PROGRESS', { now: new Date('2026-12-03T13:00:00Z') });
+    const paused = await changeStatus(c.orgId, sup, t.id, 'WAITING', { now: FRI_16 });
+    expect((paused.metadata as any).slaPause.since).toBe(FRI_16.toISOString());
+    expect(paused.slaResolutionDueAt!.getTime()).toBe(WED_12.getTime()); // nada muda enquanto pausada
+
+    const g = (await call(c.sup, 'GET', `/${t.id}`)).body;
+    expect(g.slaPaused).toBe(true); expect(g.slaPausedAt).toBe(FRI_16.toISOString()); expect(g.sla.paused).toBe(true);
+    expect(g.sla.resolutionBreached).toBe(false); expect(g.sla.overdue).toBe(false);
+    expect(g.sla.remainingSec).toBe(Math.round((WED_12.getTime() - FRI_16.getTime()) / 1000)); // relógio congelado na pausa
+    expect((await call(c.sup, 'GET', '/?limit=50')).body.items.find((x: any) => x.id === t.id).slaPaused).toBe(true);
+
+    const resumed = await changeStatus(c.orgId, sup, t.id, 'IN_PROGRESS', { now: TUE_10 });
+    expect(resumed.slaResolutionDueAt!.toISOString()).toBe(WED_16.toISOString()); // +4 h úteis (sexta 2 h + terça 2 h; segunda é feriado)
+    expect(resumed.dueAt!.toISOString()).toBe(WED_16.toISOString()); // dueAt acompanha o prazo de resolução
+    expect(resumed.slaResponseDueAt!.toISOString()).toBe(respDue.toISOString()); // já respondida: resposta não "volta a ser no prazo"
+    expect((resumed.metadata as any).slaPause).toBeUndefined(); expect((resumed.metadata as any).slaPausedSec).toBe(4 * 3600);
+    const g2 = (await call(c.sup, 'GET', `/${t.id}`)).body;
+    expect(g2.slaPaused).toBe(false); expect(g2.slaPausedAt).toBeNull();
+    expect(g2.history.filter((h: any) => h.field === 'sla.pause' || h.field === 'sla.resume').map((h: any) => h.field)).toEqual(['sla.pause', 'sla.resume']);
+    expect(g2.history.find((h: any) => h.field === 'sla.resume').toValue).toBe('+14400s');
+
+    // pausar de novo acumula; mudar a prioridade recalcula o SLA e devolve o tempo útil já pausado
+    const before = await prisma.bvTask.findUniqueOrThrow({ where: { id: t.id } });
+    const ch = await call(c.sup, 'PATCH', `/${t.id}`, { priority: 'HIGH' });
+    expect(ch.status).toBe(200);
+    const { settings } = await getTasksConfig(c.orgId);
+    const fresh = await computeSla(c.orgId, { ...before, priority: 'HIGH' });
+    expect(new Date(ch.body.slaResolutionDueAt).toISOString()).toBe(addBusinessSeconds(settings, fresh.slaResolutionDueAt!, 4 * 3600, await getHolidays(c.orgId)).toISOString());
+  });
+
+  it('sweep não dispara vencimento nem violação enquanto pausada; tarefa idêntica sem pausa dispara', async () => {
+    const c = await setup();
+    const past = new Date(Date.now() - 3 * 3600_000);
+    const sup = await loadActor({ userId: c.sup.id, orgId: c.orgId, role: 'SUPERVISOR', via: 'jwt' });
+    const mkSr = async (title: string, status: 'WAITING' | 'IN_PROGRESS') => {
+      const t = await mk(c.fis, { kind: 'SERVICE_REQUEST', title, priority: 'URGENT' });
+      await changeStatus(c.orgId, sup, t.id, status === 'WAITING' ? 'WAITING' : 'IN_PROGRESS');
+      await prisma.bvTask.update({ where: { id: t.id }, data: { slaResolutionDueAt: past, dueAt: past, slaResponseDueAt: past } });
+      return t.id;
+    };
+    const waiting = await mkSr('Pausada', 'WAITING'); const running = await mkSr('Correndo', 'IN_PROGRESS');
+    const r = await runTasksSweep();
+    expect(r.breaches).toBeGreaterThanOrEqual(1);
+    const marks = (id: string) => prisma.bvTaskHistory.findMany({ where: { taskId: id, field: { in: ['sla.breach', 'sys.overdue', 'sys.due1h', 'sys.due24h'] } } });
+    expect(await marks(waiting)).toEqual([]);
+    expect((await marks(running)).map((m) => m.field)).toEqual(expect.arrayContaining(['sla.breach', 'sys.overdue']));
+    // sai da pausa: o sweep volta a olhar a tarefa (aqui o prazo continua no passado → passa a vencer)
+    await changeStatus(c.orgId, sup, waiting, 'IN_PROGRESS');
+    await prisma.bvTask.update({ where: { id: waiting }, data: { slaResolutionDueAt: past, dueAt: past } });
+    await runTasksSweep();
+    expect((await marks(waiting)).map((m) => m.field)).toEqual(expect.arrayContaining(['sla.breach']));
+    // filtro "vencidas" não inclui tarefa pausada
+    const w2 = await mk(c.sup, { title: 'Pausada vencida', dueAt: past.toISOString() });
+    await changeStatus(c.orgId, sup, w2.id, 'WAITING');
+    expect((await call(c.sup, 'GET', '/?overdue=true&limit=100')).body.items.map((x: any) => x.id)).not.toContain(w2.id);
   });
 });

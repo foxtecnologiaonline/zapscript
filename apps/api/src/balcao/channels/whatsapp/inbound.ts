@@ -5,6 +5,7 @@ import { ingestInbound } from '../../core/conversations';
 import { getOrgSettings } from '../../core/settings';
 import { recordUsage } from '../../core/usage';
 import { getIntegration, logIntegration } from '../../core/integrations';
+import { AttachmentRejectedError } from '../../core/antivirus';
 import { newKey, putObject } from '../../core/storage';
 import { emitToConversation } from '../../core/realtime';
 import { sha256Hex } from '../../core/crypto';
@@ -221,16 +222,16 @@ export function trustedMediaUrl(url: string, cfg: WaConfig): boolean {
 const safeName = (n: string): string => path.basename(n).replace(/[^\w.\- ()]/g, '_').slice(0, 120) || 'arquivo';
 
 /** Baixa a mídia (media id → url → bytes), grava no storage e preenche attachments. Atualiza channelMeta.wa.mediaStatus. */
-export async function fetchInboundMedia(orgId: string, messageId: string, cfg?: WaConfig): Promise<'STORED' | 'PENDING' | 'FAILED'> {
+export async function fetchInboundMedia(orgId: string, messageId: string, cfg?: WaConfig): Promise<'STORED' | 'PENDING' | 'FAILED' | 'REJECTED'> {
   const row = await prisma.bvMessage.findFirst({ where: { id: messageId, orgId } });
   if (!row) return 'FAILED';
   const meta = (row.channelMeta ?? {}) as any;
   const wa = { ...(meta.wa ?? {}) } as Record<string, any>;
   if (wa.mediaStatus === 'STORED' || !wa.mediaId) return 'STORED';
   const config = cfg ?? (await getIntegration<WaConfig>(orgId, 'WHATSAPP'))?.config;
-  const save = (patch: Record<string, unknown>, attachments?: Attachment[]) => prisma.bvMessage.update({
+  const save = (patch: Record<string, unknown>, attachments?: Attachment[], top?: Record<string, unknown>) => prisma.bvMessage.update({
     where: { id: row.id },
-    data: { channelMeta: { ...meta, wa: { ...wa, ...patch } } as any, ...(attachments ? { attachments: attachments as any } : {}) },
+    data: { channelMeta: { ...meta, ...top, wa: { ...wa, ...patch } } as any, ...(attachments ? { attachments: attachments as any } : {}) },
   });
   const attempts = Number(wa.mediaAttempts ?? 0) + 1;
   try {
@@ -247,8 +248,18 @@ export async function fetchInboundMedia(orgId: string, messageId: string, cfg?: 
     if (/^[0-9a-f]{64}$/i.test(expected) && expected.toLowerCase() !== digest) throw new GraphError('sha256 da mídia não confere', 'whatsapp.media_error', 0, null, true);
     const mime = String(info.mime_type ?? wa.mimeType ?? 'application/octet-stream').split(';')[0].trim();
     const ext = EXT[mime] ?? (wa.filename ? path.extname(String(wa.filename)).slice(1) : '') ?? 'bin';
-    const stored = await putObject(newKey(orgId, 'attachments', ext || 'bin'), buf);
     const name = wa.filename ? safeName(String(wa.filename)) : `${String(row.kind).toLowerCase()}-${String(row.channelMessageId ?? row.id).slice(-8).replace(/[^\w]/g, '')}.${ext || 'bin'}`;
+    let stored;
+    try { stored = await putObject(newKey(orgId, 'attachments', ext || 'bin'), buf, { scan: true }); } // ClamAV (opcional)
+    catch (err) {
+      if (!(err instanceof AttachmentRejectedError)) throw err;
+      // infectado: descartado de vez. Antivírus indisponível (fail-closed): tenta de novo nos próximos ciclos e só então descarta.
+      if (err.reason === 'scan_unavailable' && attempts < MEDIA_MAX_ATTEMPTS) throw err; // o catch externo deixa PENDING (job whatsapp.media_retry)
+      await save({ mediaStatus: 'REJECTED', mediaAttempts: attempts, mediaError: 'attachment.rejected' }, undefined, { attachmentsRejected: [{ name, reason: err.reason }] });
+      logger.warn({ orgId, reason: err.reason, signature: err.signature }, '[balcao/whatsapp] mídia recusada pelo antivírus');
+      void logIntegration(orgId, 'WHATSAPP', 'media.download', false, { error: `attachment.rejected:${err.reason}` });
+      return 'REJECTED';
+    }
     const att: Attachment = { key: stored.key, name, mime, size: stored.size, sha256: stored.sha256 };
     await save({ mediaStatus: 'STORED', mediaAttempts: attempts, mimeType: mime }, [att]);
     emitToConversation(row.conversationId, 'message:attachments', { conversationId: row.conversationId, messageId: row.id, attachments: [att] });
@@ -256,7 +267,7 @@ export async function fetchInboundMedia(orgId: string, messageId: string, cfg?: 
   } catch (e: any) {
     const permanent = e instanceof GraphError ? !e.retryable : false;
     const failed = permanent || attempts >= MEDIA_MAX_ATTEMPTS;
-    const code = e instanceof GraphError ? e.errorCode : 'whatsapp.media_error';
+    const code = e instanceof GraphError ? e.errorCode : e instanceof AttachmentRejectedError ? 'attachment.scan_unavailable' : 'whatsapp.media_error';
     await save({ mediaStatus: failed ? 'FAILED' : 'PENDING', mediaAttempts: attempts, mediaError: code }).catch(() => undefined);
     void logIntegration(orgId, 'WHATSAPP', 'media.download', false, { error: code });
     if (failed) return 'FAILED';

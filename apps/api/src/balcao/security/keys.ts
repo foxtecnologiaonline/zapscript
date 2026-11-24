@@ -16,6 +16,8 @@ export interface FieldColumn {
   viaTask?: boolean;
   /** Só linhas cujo `field` está na lista (BvTaskHistory: só description/resolution carregam texto livre). */
   fieldIn?: readonly string[];
+  /** Coluna NOT NULL no schema (o Prisma recusa `not: null`). */
+  notNull?: boolean;
 }
 
 export const FIELD_COLUMNS: FieldColumn[] = [
@@ -27,7 +29,7 @@ export const FIELD_COLUMNS: FieldColumn[] = [
   { table: 'BvConversationEvent', model: 'bvConversationEvent', column: 'data', delegate: 'bvConversationEvent', json: { path: 'textEnc', type: 'AI_SUGGESTION' } },
   // tarefas: descrição, comentários e histórico de texto livre (tasks/content.ts). O título fica em claro (busca).
   { table: 'BvTask', model: 'bvTask', column: 'description', delegate: 'bvTask' },
-  { table: 'BvTaskComment', model: 'bvTaskComment', column: 'body', delegate: 'bvTaskComment', viaTask: true },
+  { table: 'BvTaskComment', model: 'bvTaskComment', column: 'body', delegate: 'bvTaskComment', viaTask: true, notNull: true },
   { table: 'BvTaskHistory', model: 'bvTaskHistory', column: 'fromValue', delegate: 'bvTaskHistory', viaTask: true, fieldIn: ENC_HISTORY_FIELDS },
   { table: 'BvTaskHistory', model: 'bvTaskHistory', column: 'toValue', delegate: 'bvTaskHistory', viaTask: true, fieldIn: ENC_HISTORY_FIELDS },
 ];
@@ -48,7 +50,7 @@ const notCurrent = (c: FieldColumn, kid: string, orgId?: string): any => c.json
     ...orgFilter(c, orgId), type: c.json.type,
     NOT: { data: { path: [c.json.path], string_starts_with: `bv1.${kid}.` } },
   }
-  : { ...orgFilter(c, orgId), ...(c.fieldIn ? { field: { in: [...c.fieldIn] } } : {}), [c.column]: { not: null }, NOT: { [c.column]: { startsWith: `bv1.${kid}.` } } };
+  : { ...orgFilter(c, orgId), ...(c.fieldIn ? { field: { in: [...c.fieldIn] } } : {}), ...(c.notNull ? {} : { [c.column]: { not: null } }), NOT: { [c.column]: { startsWith: `bv1.${kid}.` } } };
 
 /** Valor cifrado da linha (coluna texto ou chave dentro do JSON) e o `data` que o substitui. */
 const readEnc = (c: FieldColumn, row: any): string | null => { const v = c.json ? row.data?.[c.json.path] : row[c.column]; return typeof v === 'string' ? v : null; };

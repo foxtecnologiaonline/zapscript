@@ -45,7 +45,7 @@ describe('URA 0800 — unidades', () => {
     const ok = ura0800Schema.safeParse({ dids: [{ did: '08001112222', flowName: 'ura' }], headerMap: { opcao: 'X-TJTO-URA-Opcao' }, allowedSourceIps: ['203.0.113.0/24', '2001:db8::1'] });
     expect(ok.success).toBe(true);
     for (const bad of [
-      { dids: [{ did: 'abc', flowName: 'x' }] }, { dids: [{ did: '0800', flowName: 'x' }] }, { dids: [{ did: '08001112222' }] },
+      { dids: [{ did: 'abc', flowName: 'x' }] }, { dids: [{ did: 'a', flowName: 'x' }] }, { dids: [{ did: '08001112222' }] },
       { dids: [], headerMap: { opcao: 'Opcao' } }, { dids: [], headerMap: { '1x': 'X-A' } }, { dids: [], allowedSourceIps: ['999.1.1.1'] }, { dids: [], allowedSourceIps: ['10.0.0.0/33'] },
       { dids: [{ did: '08001112222', flowName: 'a' }, { did: '08001112222', flowName: 'b' }] }, { dids: [], extra: 1 },
     ]) expect([JSON.stringify(bad), ura0800Schema.safeParse(bad).success]).toEqual([JSON.stringify(bad), false]);
@@ -106,7 +106,7 @@ describe('URA 0800 — GET/PUT /voice/ura0800 e POST /voice/ura0800/test', () =>
     expect(row.configEnc).not.toContain('X-TJTO-URA-Opcao'); // cifrado em repouso
     expect((await getIntegration(w.orgId, 'URA_0800'))?.config).toMatchObject({ dids: cfg.dids });
     expect(await prisma.bvAuditLog.count({ where: { orgId: w.orgId, action: 'config.update', entityType: 'URA_0800' } })).toBe(1);
-    expect(await prisma.bvConfigVersion.count({ where: { orgId: w.orgId, kind: 'URA_0800' } })).toBe(1);
+    expect(await prisma.bvConfigVersion.count({ where: { orgId: w.orgId, entityType: 'URA_0800' } })).toBe(1);
 
     // desabilitar sem reenviar tudo não é suportado: PUT é substituição completa; enabled:false desliga
     expect((await w.put(cfg, false)).json().enabled).toBe(false);
@@ -191,7 +191,7 @@ describe('URA 0800 — INVITE com cabeçalhos X-* vira metadata da chamada/conve
     try {
       c.fake.incoming('ch-0800', { number: '63999990100', did, headers: { 'X-TJTO-URA-Opcao': '3', 'X-TJTO-Protocolo': 'TJ-77', 'X-Outro': 'nao-lido', 'X-URA-Option': '1' } });
       const call = await c.fake.waitFor(async () => { const x = await c.callOf('ch-0800'); return x?.status === 'QUEUED' ? x : null; }, 'direto para a fila (opção 3 do 0800)');
-      const conv = await prisma.bvConversation.findUniqueOrThrow({ where: { id: call.conversationId! } });
+      const conv = await c.fake.waitFor(async () => { const x = await prisma.bvConversation.findUniqueOrThrow({ where: { id: call.conversationId! } }); return x.status === 'WAITING' ? x : null; }, 'conversa na fila');
       const meta = conv.metadata as any;
       expect(meta.ivr.entryOption).toBe('3');
       expect(meta.ivr).toMatchObject({ queue: 'processos', category: 'PROCESSO', outcome: 'queue' }); // mesclado: entryOption permanece

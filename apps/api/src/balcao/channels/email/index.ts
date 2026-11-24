@@ -7,11 +7,12 @@ import { auditReq } from '../../core/audit';
 import { registerChannelSender } from '../../core/channels';
 import { recordConfigVersion } from '../../core/configVersion';
 import { guard, parse, sendError } from '../../core/http';
-import { getIntegration, logIntegration, maskSecrets, saveIntegration, setIntegrationStatus } from '../../core/integrations';
+import { getIntegration, logIntegration, saveIntegration, setIntegrationStatus } from '../../core/integrations';
 import { registerJob } from '../../core/scheduler';
-import { credentialProblems, emailConfigInput, loadEmailConfig, mergeConfig, normalizeConfig, ownAddressesOf } from './config';
+import { credentialProblems, emailConfigInput, loadEmailConfig, maskEmailConfig, mergeConfig, normalizeConfig, ownAddressesOf } from './config';
 import { ingestRawEmail } from './inbound';
 import { imapPoller, pollAllOrgs, safeError } from './imap';
+import { isAuthFailure, isOAuth, resolveSmtpConfig } from './oauth';
 import { createMailTransport, getDevOutbox, isDevSimulators, sendEmailOutbound } from './outbound';
 import { MAX_RAW_BYTES, type EmailConfig } from './types';
 
@@ -59,7 +60,7 @@ export default async function plugin(app: FastifyInstance): Promise<void> {
     const full = await prisma.bvIntegration.findUnique({ where: { orgId_type_name: { orgId, type: 'EMAIL_IMAP', name: 'default' } }, select: { lastError: true, lastCheckAt: true } });
     return {
       configured: !!row, enabled: row?.enabled ?? false, status: row?.status ?? 'UNCONFIGURED', lastError: full?.lastError ?? null, lastCheckAt: full?.lastCheckAt ?? null,
-      config: row ? maskSecrets(row.config) : null,
+      config: row ? maskEmailConfig(row.config) : null,
       webhook: { path: `/balcao/email/inbound?org=${orgId}`, secretConfigured: !!row?.config?.inboundSecret },
     };
   });
@@ -79,9 +80,9 @@ export default async function plugin(app: FastifyInstance): Promise<void> {
 
     const row = await saveIntegration(orgId, 'EMAIL_IMAP', cfg as unknown as Record<string, any>, { enabled: enabled ?? true });
     await imapPoller.ensureMailbox(orgId, cfg);
-    await recordConfigVersion(orgId, 'EMAIL_IMAP', row.id, maskSecrets(cfg as any), req.bv!.userId);
-    await auditReq(req, 'config.update', { entityType: 'integration:EMAIL_IMAP', entityId: row.id, before: before ? maskSecrets(before.config as any) : null, after: maskSecrets(cfg as any) });
-    return { ok: true, enabled: row.enabled, config: maskSecrets(cfg as any), ...(generated ? { inboundSecret: generated } : {}) };
+    await recordConfigVersion(orgId, 'EMAIL_IMAP', row.id, maskEmailConfig(cfg as any), req.bv!.userId);
+    await auditReq(req, 'config.update', { entityType: 'integration:EMAIL_IMAP', entityId: row.id, before: before ? maskEmailConfig(before.config as any) : null, after: maskEmailConfig(cfg as any) });
+    return { ok: true, enabled: row.enabled, config: maskEmailConfig(cfg as any), ...(generated ? { inboundSecret: generated } : {}) };
   });
 
   app.post('/config/test', { preHandler: guard('integration:manage') }, async (req, reply) => {
@@ -100,10 +101,14 @@ export default async function plugin(app: FastifyInstance): Promise<void> {
 
     const out: { imap: { ok: boolean; error?: string }; smtp: { ok: boolean; error?: string } } = { imap: { ok: true }, smtp: { ok: true } };
     const t0 = Date.now();
-    try { await imapPoller.testImap(cfg.imap, cfg.mailbox); } catch (err) { out.imap = { ok: false, error: safeError(err, cfg) }; }
+    try { await imapPoller.testImap(cfg); } catch (err) { out.imap = { ok: false, error: safeError(err, cfg) }; }
     try {
-      const t = createMailTransport(cfg.smtp);
-      try { await t.verify?.(); } finally { try { t.close?.(); } catch { /* noop */ } }
+      // OAuth2: obtém/renova o access token (exercita o servidor de token) e o usa no SMTP; token recusado → renova uma vez
+      const verify = async (force: boolean) => {
+        const t = createMailTransport(await resolveSmtpConfig(cfg, { force }));
+        try { await t.verify?.(); } finally { try { t.close?.(); } catch { /* noop */ } }
+      };
+      try { await verify(false); } catch (err) { if (!isOAuth(cfg) || !isAuthFailure(err)) throw err; await verify(true); }
     } catch (err) { out.smtp = { ok: false, error: safeError(err, cfg) }; }
 
     await logIntegration(orgId, 'EMAIL_IMAP', 'config.test', out.imap.ok && out.smtp.ok, { durationMs: Date.now() - t0, error: [out.imap.error, out.smtp.error].filter(Boolean).join(' | ') || undefined });

@@ -4,6 +4,7 @@ import { logger } from '../../../lib/logger';
 import { logIntegration, setIntegrationStatus } from '../../core/integrations';
 import { loadEmailConfig, ownAddressesOf } from './config';
 import { ingestRawEmail } from './inbound';
+import { isAuthFailure, isOAuth, resolveImapConfig, scrubSecrets } from './oauth';
 import { MAX_RAW_BYTES, type EmailConfig, type ImapClientFactory, type ImapConfig, type ImapRawMessage, type ImapSession } from './types';
 
 // ── Adaptador real (imapflow) ────────────────────────────────────────────────
@@ -80,10 +81,10 @@ const MAX_ATTEMPTS = 3;
 const FIRST_SYNC_DAYS = 7;
 
 /** Mensagem de erro segura para guardar/exibir (sem credenciais). */
-export function safeError(err: any, cfg?: { imap?: { pass?: string; accessToken?: string }; smtp?: { pass?: string; accessToken?: string } }): string {
+export function safeError(err: any, cfg?: { imap?: { pass?: string; accessToken?: string }; smtp?: { pass?: string; accessToken?: string }; auth?: { clientSecret?: string; refreshToken?: string } }): string {
   let m = String(err?.responseText || err?.message || err || 'erro desconhecido').replace(/\s+/g, ' ');
   for (const s of [cfg?.imap?.pass, cfg?.imap?.accessToken, cfg?.smtp?.pass, cfg?.smtp?.accessToken]) if (s && s.length >= 4) m = m.split(s).join('••••');
-  return m.slice(0, 300);
+  return scrubSecrets(m, cfg?.auth).slice(0, 300);
 }
 
 export class ImapPoller {
@@ -105,9 +106,19 @@ export class ImapPoller {
     return mb;
   }
 
-  async testImap(cfg: ImapConfig, folder: string): Promise<void> {
-    const s = await this.factory.connect(cfg);
-    try { await s.openMailbox(folder); } finally { await s.close().catch(() => undefined); }
+  /** Conecta ao IMAP. Com OAuth2: usa o access token em cache e, se o servidor o recusar, renova uma vez e tenta de novo. */
+  async connect(cfg: EmailConfig): Promise<ImapSession> {
+    const imap: ImapConfig = await resolveImapConfig(cfg);
+    try { return await this.factory.connect(imap); }
+    catch (err) {
+      if (!isOAuth(cfg) || !isAuthFailure(err)) throw err;
+      return this.factory.connect(await resolveImapConfig(cfg, { force: true }));
+    }
+  }
+
+  async testImap(cfg: EmailConfig): Promise<void> {
+    const s = await this.connect(cfg);
+    try { await s.openMailbox(cfg.mailbox); } finally { await s.close().catch(() => undefined); }
   }
 
   /** Coleta e-mails novos da caixa do órgão. `force` ignora o intervalo configurado. */
@@ -131,7 +142,7 @@ export class ImapPoller {
     const ctx = { orgId, ownAddresses: ownAddressesOf(cfg), autoReply: cfg.autoReply, source: 'imap' as const };
     let session: ImapSession | null = null;
     try {
-      session = await this.factory.connect(cfg.imap);
+      session = await this.connect(cfg);
       const box = await session.openMailbox(cfg.mailbox);
 
       let lastUid = Number(mailbox.lastUid);

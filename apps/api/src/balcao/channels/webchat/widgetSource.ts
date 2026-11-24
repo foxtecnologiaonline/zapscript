@@ -3,7 +3,7 @@
  * entrar no `tsc` sem etapa de cópia de assets — NÃO usar crases nem "${" dentro do script.
  * Servido por GET /balcao/webchat/widget.js (index.ts).
  */
-const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat) v1.0.0 | JS puro, sem dependências */
+const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat) v1.1.0 | JS puro, sem dependências */
 (function () {
   'use strict';
   var doc = document, win = window;
@@ -36,14 +36,16 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
       npsLow: '0 = nada provável', npsHigh: '10 = muito provável', npsPick: 'Selecione uma nota de 0 a 10.', npsComment: 'Comentário (opcional)', npsSend: 'Enviar avaliação',
       npsSkip: 'Agora não', thanks: 'Obrigado! Seu atendimento foi finalizado.', again: 'Novo atendimento', big: 'Arquivo muito grande (máximo {n} MB).',
       type: 'Tipo não permitido. Envie imagem (PNG, JPG, WEBP, GIF) ou PDF.', sent: 'Arquivo enviado.', proto: 'Protocolo', hint: 'Enter envia; Shift+Enter cria nova linha.',
-      newMsg: 'nova mensagem', download: 'Baixar', notice: 'Aviso de privacidade e uso de IA'
+      newMsg: 'nova mensagem', download: 'Baixar', notice: 'Aviso de privacidade e uso de IA',
+      captions: 'Legendas', capOn: 'Legendas ativadas.', capOff: 'Legendas desativadas.', capPriv: 'A captura da sua fala usa o reconhecimento de voz do navegador, que pode enviar o áudio ao fornecedor dele.',
+      capNoSupport: 'Seu navegador não captura a fala (use Chrome ou Edge). Você ainda verá as legendas do atendente.', capDenied: 'Permissão do microfone negada. Você ainda verá as legendas do atendente.'
     },
     en: {
       open: 'Open support chat', close: 'Close chat', chat: 'Support chat', start: 'Start chat', name: 'Name (optional)', email: 'E-mail (optional)', startHint: 'Name and e-mail are optional.',
       msg: 'Type your message', send: 'Send', leave: 'Leave a message', attach: 'Attach file', human: 'Talk to a human agent', video: 'Video support', end: 'End chat', confirmEnd: 'Confirm end',
       fontUp: 'Larger text', fontDown: 'Smaller text', contrast: 'High contrast', you: 'You', bot: 'Virtual assistant', agent: 'Agent', system: 'System', typing: 'The agent is typing…',
       sending: 'Sending…', sendErr: 'Could not send. Try again.', net: 'No connection to the server.', expired: 'Session expired. Start a new chat.', waiting: 'You are in the queue.',
-      active: 'You are talking to an agent.', closed: 'Chat ended.', nps: 'Rate this support', npsSend: 'Submit rating', npsSkip: 'Not now', thanks: 'Thank you! The chat is finished.', again: 'New chat'
+      captions: 'Captions', capOn: 'Captions on.', capOff: 'Captions off.', active: 'You are talking to an agent.', closed: 'Chat ended.', nps: 'Rate this support', npsSend: 'Submit rating', npsSkip: 'Not now', thanks: 'Thank you! The chat is finished.', again: 'New chat'
     }
   };
   var T = L['pt-BR'];
@@ -71,6 +73,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     '.m{max-width:88%;padding:8px 12px;border-radius:12px;border:1px solid #767676;background:#eef1f6;overflow-wrap:anywhere;white-space:pre-wrap}.m a{color:#0b4fa8}',
     '.m .w{font-size:.78em;font-weight:700;display:block;color:#333}.m-visitor{align-self:flex-end;background:var(--c);color:var(--t);border-color:var(--c)}.m-visitor .w,.m-visitor a{color:var(--t)}',
     '.m-system{align-self:center;background:#fff7d6;border-color:#8a7f3a}.m-bot{background:#e7f2ea}.m img{max-width:100%;border-radius:6px;display:block;margin-top:6px}',
+    '.sb[aria-pressed=true]{background:var(--c);color:var(--t);border-color:var(--c)}.cap{margin:0 12px 6px;padding:6px 10px;border:2px solid #595959;border-radius:8px;background:#fff;font-size:.9em;max-height:8em;overflow:auto}.cap p{margin:0 0 2px}.cap .li{font-style:italic;min-height:0}',
     '.ty{min-height:1.4em;padding:0 14px;font-size:.85em;color:#333;font-style:italic}.st{padding:4px 14px;font-size:.9em;color:#1a1a1a;min-height:1.5em}.er{padding:4px 14px;font-size:.9em;color:#9b1c13;font-weight:700}',
     '.ac{display:flex;flex-wrap:wrap;gap:6px;padding:6px 12px;border-top:1px solid #bbb}.ac .sb{flex:1 1 45%;min-width:0;font-size:.82em;min-height:36px;padding:4px 8px}',
     '.cp{display:flex;gap:6px;padding:8px 12px 12px;border-top:1px solid #bbb;align-items:flex-end}.cp textarea{resize:none;min-height:44px;max-height:120px}',
@@ -78,7 +81,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     '.ns span{display:inline-block;min-width:36px;min-height:36px;line-height:32px;text-align:center;border:2px solid #595959;border-radius:6px;background:#fff;cursor:pointer}',
     '.ns input:checked+span{background:var(--c);color:var(--t);border-color:var(--c);font-weight:700}.ns input:focus-visible+span{outline:3px solid #1a1a1a;outline-offset:2px;box-shadow:0 0 0 2px #fff}',
     '.fm{padding:14px;overflow:auto}.fm .f{margin-bottom:12px}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
-    '.hc .p,.hc .log,.hc .n,.hc summary,.hc .m,.hc .sb,.hc input[type=text],.hc input[type=email],.hc textarea,.hc .ns span{background:#000;color:#fff;border-color:#fff}',
+    '.hc .p,.hc .log,.hc .cap,.hc .n,.hc summary,.hc .m,.hc .sb,.hc input[type=text],.hc input[type=email],.hc textarea,.hc .ns span{background:#000;color:#fff;border-color:#fff}',
     '.hc .h,.hc .l,.hc .pb,.hc .m-visitor,.hc .ns input:checked+span{background:#ffeb3b;color:#000;border-color:#fff}.hc .m a{color:#ffeb3b}.hc .m-visitor a,.hc .m-visitor .w,.hc .h *{color:#000}',
     '.hc .m .w,.hc .hint,.hc .ty,.hc .st{color:#fff}.hc .er{color:#ff8a80}.hc .m{border-width:2px}',
     '@media (prefers-reduced-motion:no-preference){.p{animation:bvin .18s ease-out}@keyframes bvin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}',
@@ -117,7 +120,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
   // ── estado ───────────────────────────────────────────────────────────────────
   var cfg = null, tok = sget(KEY), seen = {}, since = null, st = /** @type {State} */ ({ status: 'none', protocol: null, csat: { requested: false, done: false, prompt: '' } });
   var isOpen = false, unread = 0, lastStatus = '', pendingId = null, busy = false, pollT = null, typT = null, lastTyping = 0, endArmed = false;
-  var ws = null, sockUp = false, sockTry = 0, el = {};
+  var ws = null, sockUp = false, sockTry = 0, el = {}, capOn = false, rec = null, lastCap = 0;
   var prefs = {}; try { prefs = JSON.parse(sget(PKEY, true) || '{}') || {}; } catch (e) { prefs = {}; }
   if (prefs.hc == null && win.matchMedia && matchMedia('(prefers-contrast: more)').matches) prefs.hc = true;
 
@@ -137,7 +140,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     if (r.status === 429) return T.rate;
     return (r.data && r.data.error && r.data.error.message) || fb;
   }
-  function expire() { tok = null; sset(KEY, null); seen = {}; since = null; st.status = 'none'; closeSock(); el.log.textContent = ''; showView('start'); say(T.expired, true); }
+  function expire() { if (capOn) capToggle(false); tok = null; sset(KEY, null); seen = {}; since = null; st.status = 'none'; closeSock(); el.log.textContent = ''; showView('start'); say(T.expired, true); }
 
   // ── Socket.IO mínimo (Engine.IO v4 sobre WebSocket) com fallback para polling ─
   function sockOpen() {
@@ -164,6 +167,51 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     if (ev === 'message:new' && d.message) addMsg(d.message);
     else if (ev === 'typing') { el.ty.textContent = T.typing; clearTimeout(typT); typT = setTimeout(function () { el.ty.textContent = ''; }, 5000); }
     else if (ev === 'csat:request' || ev === 'conversation:closed') poll();
+    else if (ev === 'caption' && d.from === 'AGENT' && typeof d.text === 'string') capLine('AGENT', d.text.slice(0, 500), !!d.final);
+  }
+
+  // ── legendas em tempo real (relé efêmero: nada é gravado; a fala é reconhecida pelo navegador — Chrome/Edge) ──
+  var SR = win.SpeechRecognition || win.webkitSpeechRecognition;
+  function capLine(from, text, final) {
+    if (!capOn || !text) return;
+    var who = from === 'AGENT' ? T.agent : T.you, live = el.capLive[from === 'AGENT' ? 'a' : 'v'];
+    if (!final) { live.textContent = who + ': ' + text; return; }
+    live.textContent = '';
+    el.capLog.appendChild(h('p', { text: who + ': ' + text }));
+    while (el.capLog.childNodes.length > 4) el.capLog.removeChild(el.capLog.firstChild);
+    el.cap.scrollTop = el.cap.scrollHeight;
+  }
+  function capSend(text, final) {
+    if (!tok || st.status === 'none' || st.status === 'closed') return;
+    var n = Date.now();
+    if (!final && n - lastCap < 400) return;
+    lastCap = n;
+    api('POST', '/caption', { text: text.slice(0, 500), final: !!final }).then(function (r) { if (r.status === 401) expire(); });
+  }
+  function recStart() {
+    if (!SR) { say(T.capNoSupport); return; }
+    var r;
+    try { r = new SR(); } catch (e) { say(T.capNoSupport); return; }
+    r.lang = 'pt-BR'; r.continuous = true; r.interimResults = true;
+    r.onresult = function (e) {
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        var x = e.results[i], t = x[0] && x[0].transcript ? String(x[0].transcript).trim() : '';
+        if (t) { capLine('VISITOR', t, x.isFinal); capSend(t, x.isFinal); }
+      }
+    };
+    r.onerror = function (e) { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { capToggle(false); say(T.capDenied, true); } };
+    r.onend = function () { if (capOn && rec === r) { try { r.start(); } catch (e) { /* reinício recusado */ } } };
+    rec = r;
+    try { r.start(); } catch (e) { rec = null; }
+  }
+  function capToggle(on) {
+    capOn = on; el.capBtn.setAttribute('aria-pressed', String(on)); el.cap.hidden = !on;
+    if (!on) {
+      var r = rec; rec = null;
+      if (r) { r.onend = null; try { r.stop(); } catch (e) { /* já parado */ } }
+      el.capLog.textContent = ''; el.capLive.a.textContent = ''; el.capLive.v.textContent = ''; say(T.capOff); return;
+    }
+    say(SR ? T.capOn + ' ' + T.capPriv : T.capOn); recStart();
   }
 
   // ── polling ──────────────────────────────────────────────────────────────────
@@ -224,6 +272,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
       lastStatus = s.status;
     }
     el.proto.textContent = s.protocol ? T.proto + ': ' + s.protocol : '';
+    if (closed && capOn) capToggle(false);
     el.cp.hidden = closed; el.ac.hidden = closed;
     el.human.disabled = live;
     var nps = closed && s.csat && s.csat.requested && cfg.features.csat;
@@ -292,6 +341,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     });
   }
   function leave(thanks) {
+    if (capOn) capToggle(false);
     api('POST', '/end', { leave: true }).then(function () {
       tok = null; sset(KEY, null); closeSock(); clearTimeout(pollT); seen = {}; since = null; lastStatus = '';
       el.log.textContent = ''; el.nps.hidden = true; el.done.hidden = true; showView('start');
@@ -390,7 +440,10 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     el.human = h('button', { type: 'button', class: 'sb', text: T.human, hidden: !cfg.features.human, onclick: function () { simple('/human', T.humanAsked); } });
     var vid = h('button', { type: 'button', class: 'sb', text: T.video, hidden: !cfg.features.video, onclick: function () { simple('/video', T.videoOk); } });
     el.end = h('button', { type: 'button', class: 'sb', text: T.end, onclick: endChat });
-    el.ac = h('div', { class: 'ac', role: 'group', 'aria-label': T.chat }, [el.human, vid, el.end]);
+    el.capBtn = h('button', { type: 'button', class: 'sb', text: T.captions, 'aria-pressed': 'false', onclick: function () { capToggle(!capOn); } });
+    el.capLog = h('div', { role: 'log', 'aria-live': 'polite', 'aria-relevant': 'additions' }); el.capLive = { a: h('p', { class: 'li' }), v: h('p', { class: 'li' }) };
+    el.cap = h('div', { class: 'cap', role: 'group', 'aria-label': T.captions, hidden: true }, [el.capLog, el.capLive.a, el.capLive.v]);
+    el.ac = h('div', { class: 'ac', role: 'group', 'aria-label': T.chat }, [el.human, vid, el.capBtn, el.end]);
     el.ta = h('textarea', { id: 'bv-m', rows: '1', maxlength: String(cfg.maxMessageChars), 'aria-describedby': 'bv-h', oninput: function () { typing(); this.style.height = 'auto'; this.style.height = Math.min(120, this.scrollHeight) + 'px'; },
       onkeydown: function (e) { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } } });
     el.file = h('input', { type: 'file', accept: cfg.attachments.types.join(','), hidden: true, tabindex: '-1', 'aria-hidden': 'true', onchange: function () { upload(this.files && this.files[0]); } });
@@ -409,7 +462,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
     el.doneT = h('p', { text: T.thanks });
     el.done = h('div', { class: 'fm', hidden: true }, [el.doneT, h('button', { type: 'button', class: 'pb', text: T.again, onclick: function () { leave(false); } })]);
 
-    el.chat = h('div', { class: 'v', hidden: true }, [nt, el.proto, el.log, el.ty, el.nps, el.done, el.ac, el.cp, hintEl]);
+    el.chat = h('div', { class: 'v', hidden: true }, [nt, el.proto, el.log, el.ty, el.cap, el.nps, el.done, el.ac, el.cp, hintEl]);
     el.p = h('section', { class: 'p', id: 'bv-panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'bv-t', hidden: true, onkeydown: trap }, [hd, off, el.start, el.chat, el.st, el.er]);
     r.appendChild(el.l); r.appendChild(el.p); root.appendChild(r); doc.body.appendChild(host);
     applyPrefs(); badge();
@@ -432,7 +485,7 @@ const SOURCE = String.raw`/*! Balcão Virtual — widget de atendimento (webchat
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', init); else init();
   /* API pública mínima para o site hospedeiro */
-  win.BalcaoVirtual = { open: function () { if (el.p) setOpen(true); }, close: function () { if (el.p) setOpen(false); }, version: '1.0.0' };
+  win.BalcaoVirtual = { open: function () { if (el.p) setOpen(true); }, close: function () { if (el.p) setOpen(false); }, version: '1.1.0' };
 })();
 `;
 

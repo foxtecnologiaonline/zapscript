@@ -11,7 +11,7 @@ import { hashToken } from '../../core/crypto';
 import { getObjectBuffer, putObject, storageRoot } from '../../core/storage';
 import { getUsage } from '../../core/usage';
 import { csvCell, toCsv, percentile, npsFromScores, projectMonthEnd, resolvePeriod, zonedToUtc, presetPeriod, nextRunAfter, previousPeriod } from '../util';
-import { iqaByContractMonth, iqaGlosa, iqaGoal } from '../metrics';
+import { aggregate, computeIqa, DEFAULT_IQA_CONFIG, getIqaConfig, iqaByContractMonth, iqaForPeriod, iqaGlosa, iqaGoal, normalizeIqaConfig } from '../metrics';
 import { runDueSchedules, setReportMailer, runQuotaAlerts, runStorageMeasure, measureOrgStorage } from '../index';
 import { monthlyRows, buildMonthly } from '../monthly';
 
@@ -75,7 +75,7 @@ describe('reports/util — funções puras', () => {
     expect(projectMonthEnd([5], 30).projected).toBe(150); // 1 ponto: proporcional
   });
   it('IQA: meta por mês de contrato e faixa de glosa', () => {
-    expect([1, 3, 4, 6, 7, 20].map(iqaGoal)).toEqual([40, 40, 60, 60, 80, 80]);
+    expect([1, 3, 4, 6, 7, 20].map((m) => iqaGoal(m))).toEqual([40, 40, 60, 60, 80, 80]);
     expect(iqaGlosa(45, 40)).toBe(0);
     expect(iqaGlosa(35, 40)).toBe(10);
     expect(iqaGlosa(65, 80)).toBe(15);
@@ -197,6 +197,98 @@ describe('reports — métricas com valores conhecidos', () => {
     const def = await iqaByContractMonth({ orgId: w.orgId }, 'America/Araguaina', new Date('2026-12-15T00:00:00Z'));
     expect(def.contract.source).toBe('first_conversation'); expect(def.contract.startDate).toBe('2026-11-10');
     await prisma.bvOrg.deleteMany({ where: { id: w2.orgId } });
+  });
+
+  it('IQA — fórmula única: computeIqa pura; base ALL_BOT (padrão) × AUTOMATABLE com dados semeados; trocar a base por configuração', async () => {
+    // função pura
+    expect(computeIqa({ numerator: 1, botInvolved: 3, automatableBase: 1 })).toEqual({ numerator: 1, denominator: 3, denominatorKind: 'ALL_BOT', value: 33.33 });
+    expect(computeIqa({ numerator: 1, botInvolved: 3, automatableBase: 1 }, 'AUTOMATABLE')).toEqual({ numerator: 1, denominator: 1, denominatorKind: 'AUTOMATABLE', value: 100 });
+    expect(computeIqa({ numerator: 0, botInvolved: 0, automatableBase: 0 }).value).toBeNull();
+    expect(computeIqa({ numerator: 2, botInvolved: 8, automatableBase: 4 }, 'AUTOMATABLE').value).toBe(50);
+
+    // cenário: 3 via chatbot (1 resolvido+1º contato+automatizável = numerador; 1 resolvido não automatizável; 1 só botHandled), 1 automatizável no total
+    const w4 = await makeWorld({ contract: { startDate: '2026-05-01' } });
+    await seedKnown(w4);
+    const period = { from: new Date('2026-11-01T00:00:00Z'), to: new Date('2026-12-01T00:00:00Z'), timezone: 'America/Araguaina' };
+    const all = await iqaForPeriod({ orgId: w4.orgId, period });
+    expect(all).toMatchObject({ numerator: 1, botInvolved: 3, automatableBase: 1, denominator: 3, denominatorKind: 'ALL_BOT', value: 33.33 });
+    expect((await aggregate({ orgId: w4.orgId, period }, [], ['iqaRate']))[0].iqaRate).toBe(33.33); // aggregate usa a MESMA função
+    const nov = (await get(w4, '/reports/iqa')).json();
+    expect(nov.denominator).toBe('ALL_BOT'); expect(nov.definition).toMatch(/÷ atendimentos via chatbot$/);
+    expect(nov.months.find((m: any) => m.from.startsWith('2026-11-01'))).toMatchObject({ numerator: 1, denominator: 3, denominatorKind: 'ALL_BOT', value: 33.33 });
+    expect((await get(w4, '/reports/overview?' + PERIOD)).json().kpis.iqaRate).toBe(33.33);
+    expect((await get(w4, '/reports/iqa?format=csv')).body).toContain('Denominador IQA');
+
+    // configuração: só ADMIN (org:manage) altera; supervisor/fiscal leem
+    expect((await send(w4, 'PUT', '/reports/iqa/config', { denominator: 'AUTOMATABLE' }, 'sup')).statusCode).toBe(403);
+    expect((await send(w4, 'PUT', '/reports/iqa/config', { denominator: 'AUTOMATABLE' }, 'fiscal')).statusCode).toBe(403);
+    expect((await send(w4, 'PUT', '/reports/iqa/config', { denominator: 'OUTRA' }, 'admin')).statusCode).toBe(400);
+    expect((await send(w4, 'PUT', '/reports/iqa/config', { glosa: [{ maxGapPp: 10, glosaPct: 5 }] }, 'admin')).statusCode).toBe(400); // sem faixa final (maxGapPp null)
+    expect((await send(w4, 'PUT', '/reports/iqa/config', { goals: [{ fromMonth: 2, goalPct: 50 }] }, 'admin')).statusCode).toBe(400); // sem meta do mês 1
+    expect((await send(w4, 'PUT', '/reports/iqa/config', { extra: 1 }, 'admin')).statusCode).toBe(400);
+    expect((await get(w4, '/reports/iqa/config', 'fiscal')).json()).toEqual(DEFAULT_IQA_CONFIG);
+    const put = await send(w4, 'PUT', '/reports/iqa/config', { denominator: 'AUTOMATABLE' }, 'admin');
+    expect(put.statusCode).toBe(200); expect(put.json().denominator).toBe('AUTOMATABLE');
+    expect(await prisma.bvAuditLog.count({ where: { orgId: w4.orgId, action: 'config.update', entityType: 'iqa.config' } })).toBe(1);
+    expect(await prisma.bvConfigVersion.count({ where: { orgId: w4.orgId, entityType: 'iqa.config' } })).toBe(1);
+
+    const auto = await iqaForPeriod({ orgId: w4.orgId, period });
+    expect(auto).toMatchObject({ numerator: 1, denominator: 1, denominatorKind: 'AUTOMATABLE', value: 100, botInvolved: 3 });
+    expect((await aggregate({ orgId: w4.orgId, period }, ['channel'], ['iqaRate', 'botInvolved'], { orderBy: { key: 'iqaRate', dir: 'desc' } })).every((r) => 'iqaRate' in r && !('iqaCount' in r))).toBe(true);
+    const nov2 = (await get(w4, '/reports/iqa')).json();
+    expect(nov2.definition).toMatch(/classificados como automatizáveis$/);
+    expect(nov2.months.find((m: any) => m.from.startsWith('2026-11-01'))).toMatchObject({ denominator: 1, denominatorKind: 'AUTOMATABLE', value: 100, reachedGoal: true });
+    expect((await get(w4, '/reports/overview?' + PERIOD)).json().kpis.iqaRate).toBe(100);
+    expect((await buildMonthly(w4.orgId, '2026-11', new Date('2026-12-15T00:00:00Z'))).indicators.iqa).toMatchObject({ value: 100, base: 1, denominatorKind: 'AUTOMATABLE', glosaPct: 0 });
+
+    // metas e faixas de glosa configuráveis (padrão = 40/60/80 e 10/15/20)
+    const custom = await send(w4, 'PUT', '/reports/iqa/config', { denominator: 'ALL_BOT', goals: [{ fromMonth: 1, goalPct: 20 }, { fromMonth: 8, goalPct: 90 }], glosa: [{ maxGapPp: 5, glosaPct: 1 }, { maxGapPp: null, glosaPct: 50 }] }, 'admin');
+    expect(custom.statusCode).toBe(200);
+    const cfg = await getIqaConfig(w4.orgId);
+    expect(cfg.goals).toEqual([{ fromMonth: 1, goalPct: 20 }, { fromMonth: 8, goalPct: 90 }]);
+    const m7 = (await iqaByContractMonth({ orgId: w4.orgId }, 'America/Araguaina', new Date('2026-12-15T00:00:00Z'))).months.find((m) => m.contractMonth === 7)!;
+    expect(m7).toMatchObject({ goal: 20, value: 33.33, reachedGoal: true, glosaPct: 0 });
+    const reset = await send(w4, 'PUT', '/reports/iqa/config', { goals: null, glosa: null }, 'admin');
+    expect(reset.json()).toEqual({ ...DEFAULT_IQA_CONFIG, denominator: 'ALL_BOT' });
+    await prisma.bvOrg.deleteMany({ where: { id: w4.orgId } });
+  });
+
+  it('IQA — configuração inválida cai no padrão; settings.contract.iqaGlosaBands (legado) vale se iqa.glosa faltar', () => {
+    expect(normalizeIqaConfig(undefined)).toEqual(DEFAULT_IQA_CONFIG);
+    expect(normalizeIqaConfig({ denominator: 'XYZ', goals: [{ fromMonth: 2, goalPct: 10 }], glosa: [{ glosaPct: 'x' }] }).denominator).toBe('ALL_BOT');
+    expect(normalizeIqaConfig({ goals: [{ fromMonth: 2, goalPct: 10 }] }).goals).toEqual(DEFAULT_IQA_CONFIG.goals);
+    expect(normalizeIqaConfig({}, [{ maxGapPp: null, glosaPct: 7 }]).glosa).toEqual([{ maxGapPp: null, glosaPct: 7 }]);
+    expect(normalizeIqaConfig({ glosa: [{ maxGapPp: null, glosaPct: 3 }] }, [{ maxGapPp: null, glosaPct: 7 }]).glosa).toEqual([{ maxGapPp: null, glosaPct: 3 }]);
+    expect(normalizeIqaConfig({ glosa: [{ maxGapPp: null, glosaPct: 20 }, { maxGapPp: 5, glosaPct: 1 }] }).glosa.map((b) => b.maxGapPp)).toEqual([5, null]); // ordenadas
+    expect(iqaGoal(5, [{ fromMonth: 1, goalPct: 10 }, { fromMonth: 6, goalPct: 70 }])).toBe(10);
+    expect(iqaGoal(6, [{ fromMonth: 1, goalPct: 10 }, { fromMonth: 6, goalPct: 70 }])).toBe(70);
+  });
+
+  it('GET /reports/filters: FISCAL (report:read) recebe filas ativas e atendentes sem e-mail; ATENDENTE não; isolado por órgão', async () => {
+    const w5 = await makeWorld();
+    const inactiveQ = await prisma.bvQueue.create({ data: { orgId: w5.orgId, name: 'Fila antiga', slug: 'antiga', active: false } });
+    const inactiveU = await makeUser(w5.orgId, 'ATENDENTE'); await prisma.bvUser.update({ where: { id: inactiveU.id }, data: { active: false } });
+    const stranger = await makeWorld(); // outro órgão com suas filas/atendentes
+    const r = await get(w5, '/reports/filters', 'fiscal');
+    expect(r.statusCode).toBe(200);
+    const b = r.json();
+    expect(Object.keys(b).sort()).toEqual(['agents', 'queues']);
+    expect(b.queues.map((q: any) => q.name)).toEqual(['Fila 1', 'Fila 2']);
+    expect(b.queues.map((q: any) => q.id).sort()).toEqual([w5.q1, w5.q2].sort());
+    expect(b.queues.map((q: any) => q.id)).not.toContain(inactiveQ.id);
+    const ids = b.agents.map((a: any) => a.id);
+    expect(ids).toEqual(expect.arrayContaining([w5.a1.id, w5.a2.id, w5.sup.id]));
+    expect(ids).not.toContain(inactiveU.id); expect(ids).not.toContain(w5.fiscal.id); expect(ids).not.toContain(w5.admin.id); // só quem atende
+    expect(ids).not.toContain(stranger.a1.id); expect(b.queues.map((q: any) => q.id)).not.toContain(stranger.q1);
+    for (const a of b.agents) { expect(Object.keys(a).sort()).toEqual(['active', 'id', 'name']); expect(JSON.stringify(a)).not.toContain('@'); }
+    expect(JSON.stringify(b)).not.toMatch(/email|passwordHash/i);
+    // supervisor também lê; inativos só com includeInactive
+    expect((await get(w5, '/reports/filters', 'sup')).statusCode).toBe(200);
+    const all = (await get(w5, '/reports/filters?includeInactive=true', 'fiscal')).json();
+    expect(all.queues.map((q: any) => q.id)).toContain(inactiveQ.id); expect(all.agents.map((a: any) => a.id)).toContain(inactiveU.id);
+    // ATENDENTE (sem report:read) e anônimo
+    expect((await app.inject({ method: 'GET', url: '/balcao/reports/filters', headers: authHeader(w5.a1) })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/balcao/reports/filters' })).statusCode).toBe(401);
   });
 
   it('fuso horário na agregação por dia: 23h locais (02:00Z) contam no dia anterior', async () => {

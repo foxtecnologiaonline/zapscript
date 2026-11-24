@@ -95,7 +95,7 @@ describe('webchat — widget.js e demo', () => {
 
   it('o script é JS válido, sem dependências externas e de tamanho contido', () => {
     expect(() => new vm.Script(WIDGET_JS)).not.toThrow();
-    expect(Buffer.byteLength(WIDGET_JS)).toBeLessThan(32 * 1024);
+    expect(Buffer.byteLength(WIDGET_JS)).toBeLessThan(40 * 1024); // 1.1.0: + legendas em tempo real (~3,5 KB)
     expect(WIDGET_JS).not.toMatch(/\bimport\s*\(|\brequire\s*\(|<script/);
     // único host externo permitido: VLibras (opt-in por data-vlibras)
     const hosts = [...WIDGET_JS.matchAll(/https?:\/\/([a-z0-9.-]+)/gi)].map((m) => m[1]).filter((h) => !/^(www\.)?w3\.org$/.test(h));

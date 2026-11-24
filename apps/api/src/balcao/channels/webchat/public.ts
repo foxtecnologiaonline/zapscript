@@ -10,6 +10,7 @@ import { resolveContact, mergeContacts } from '../../core/contacts';
 import {
   ConversationError, closeConversation, escalateToHuman, ingestInbound, openConversation, recordCsat, sendMessage,
 } from '../../core/conversations';
+import { AttachmentRejectedError } from '../../core/antivirus';
 import { createMessage, toPlain } from '../../core/messages';
 import { emitToConversation } from '../../core/realtime';
 import { assertQuota, QuotaExceededError, recordUsage } from '../../core/usage';
@@ -17,6 +18,7 @@ import { getObjectStream, newKey, putObject, statObject } from '../../core/stora
 import {
   ATTACHMENT_TYPES, DEFAULT_AI_NOTICE, DEFAULT_PRIVACY_NOTICE, WIDGET_VERSION, env, loadOrgBySlug, originAllowed, safeColor, sniffMime, webchatSettings,
 } from './config';
+import { captionBody, cleanCaption, relayVisitorCaption } from './captions';
 import { rateHit } from './ratelimit';
 import {
   createSession, findSessionByToken, setSessionConversation, touchSession, withSessionLock,
@@ -63,6 +65,7 @@ async function visitorAuth(req: FastifyRequest, reply: FastifyReply) {
 
 function handleError(reply: FastifyReply, err: any) {
   if (err instanceof ConversationError) return sendError(reply, err.status, err.code, err.message);
+  if (err instanceof AttachmentRejectedError) return sendError(reply, 422, 'attachment.rejected', 'O arquivo foi recusado pela verificação de segurança e não foi enviado.', { reason: err.reason });
   if (err instanceof QuotaExceededError) return sendError(reply, 429, 'webchat.quota_exceeded', 'Atendimento temporariamente indisponível. Tente novamente mais tarde.');
   if (err?.code === 'FST_REQ_FILE_TOO_LARGE' || err?.code === 'FST_FILES_LIMIT') return sendError(reply, 413, 'webchat.attachment_too_large', `O arquivo excede o limite de ${Math.round(env.maxAttachmentBytes() / 1048576)} MB.`);
   logger.error({ err: err?.message }, '[webchat] erro inesperado');
@@ -301,7 +304,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       }
       await assertQuota(ctx.orgId, 'WEBCHAT_MSG');
       const spec = ATTACHMENT_TYPES[real];
-      const stored = await putObject(newKey(ctx.orgId, 'attachments', spec.ext), buf);
+      const stored = await putObject(newKey(ctx.orgId, 'attachments', spec.ext), buf, { scan: true }); // ClamAV (opcional): infectado → 422 attachment.rejected
       const attachment = { key: stored.key, name: cleanFileName(part.filename || `arquivo.${spec.ext}`), mime: real, size: stored.size, sha256: stored.sha256 };
       const result = await withSessionLock(ctx.session.id, async () => {
         const id = await identity(ctx);
@@ -350,6 +353,21 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     const ctx = req.visitor!;
     if (!(await sessionGate(req, reply, 'typing', env.rl.typing()))) return reply;
     if (ctx.session.conversationId) emitToConversation(ctx.session.conversationId, 'typing', { conversationId: ctx.session.conversationId, from: 'CONTACT' });
+    return reply.code(204).send();
+  });
+
+  // ── Legendas em tempo real (relé efêmero: nada é gravado) ──────────────────
+  app.post('/public/caption', { preHandler: visitorAuth }, async (req, reply) => {
+    const ctx = req.visitor!;
+    if (!(await sessionGate(req, reply, 'caption', env.rl.caption()))) return reply;
+    const body = parse(captionBody, req.body ?? {}, reply);
+    if (!body) return reply;
+    const text = cleanCaption(body.text);
+    if (!text) return sendError(reply, 400, 'webchat.empty_message', 'Legenda vazia.');
+    const conv = await currentConversation(ctx);
+    if (!conv) return sendError(reply, 409, 'webchat.no_conversation', 'Inicie o atendimento antes de enviar legendas.');
+    if (conv.status === 'CLOSED') return sendError(reply, 409, 'webchat.conversation_closed', 'O atendimento já foi encerrado.');
+    relayVisitorCaption(conv.id, text, body.final);
     return reply.code(204).send();
   });
 

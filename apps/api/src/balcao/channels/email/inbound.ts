@@ -3,6 +3,7 @@ import { prisma } from '../../../lib/prisma';
 import { logger } from '../../../lib/logger';
 import { ingestInbound, sendMessage } from '../../core/conversations';
 import type { Attachment } from '../../core/messages';
+import { AttachmentRejectedError } from '../../core/antivirus';
 import { deleteObject, newKey, putObject } from '../../core/storage';
 import { recordUsage } from '../../core/usage';
 import { normalizeSubject, parseRawEmail } from './parse';
@@ -42,12 +43,21 @@ export async function ingestRawEmail(raw: Buffer, ctx: InboundContext): Promise<
 
   const stored: Attachment[] = [];
   const skipped: Array<{ name: string; size: number; reason: string }> = [];
+  /** Anexos recusados pelo antivírus (ClamAV): descartados, a mensagem segue. `reason`: 'infected' | 'scan_unavailable'. */
+  const rejected: Array<{ name: string; reason: string }> = [];
   try {
     for (const [i, a] of mail.attachments.entries()) {
       const name = safeName(a.filename, i);
       if (a.size > MAX_ATTACHMENT_BYTES) { skipped.push({ name, size: a.size, reason: 'too_large' }); continue; }
       const ext = path.extname(name).slice(1);
-      const obj = await putObject(newKey(ctx.orgId, 'attachments', ext), a.content);
+      let obj;
+      try { obj = await putObject(newKey(ctx.orgId, 'attachments', ext), a.content, { scan: true }); }
+      catch (err) {
+        if (!(err instanceof AttachmentRejectedError)) throw err;
+        rejected.push({ name, reason: err.reason });
+        logger.warn({ orgId: ctx.orgId, reason: err.reason, signature: err.signature, source: ctx.source }, '[balcao.email] anexo recusado pelo antivírus');
+        continue;
+      }
       stored.push({ key: obj.key, name, mime: a.contentType, size: obj.size, sha256: obj.sha256 });
     }
 
@@ -62,6 +72,7 @@ export async function ingestRawEmail(raw: Buffer, ctx: InboundContext): Promise<
           messageId: mail.messageId, inReplyTo: mail.inReplyTo, references: mail.references, subject: mail.subject,
           from: mail.from, to: mail.to, cc: mail.cc, matchedBy: thread.matchedBy, source: ctx.source,
           ...(skipped.length ? { skippedAttachments: skipped } : {}),
+          ...(rejected.length ? { attachmentsRejected: rejected } : {}),
         },
       },
     });

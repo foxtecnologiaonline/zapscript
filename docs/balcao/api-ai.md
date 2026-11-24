@@ -14,7 +14,7 @@ Código em `apps/api/src/balcao/ai`:
 | `curation.ts` | mineração/agrupamento/propostas, sugestões, métricas de curadoria |
 | `stats.ts`, `config.ts`, `routes.ts`, `index.ts` | `/ai/stats`; campos extras de `settings.ai`; HTTP; plugin + jobs |
 
-Testes: `apps/api/src/balcao/ai/__tests__/{kb,bot,curation}.test.ts` (52 casos; LLM sempre falso, nenhuma rede; cada teste cria o próprio órgão).
+Testes: `apps/api/src/balcao/ai/__tests__/{kb,bot,curation}.test.ts` (62 casos; LLM sempre falso, nenhuma rede; cada teste cria o próprio órgão).
 Autenticação: `Authorization: Bearer <JWT do Balcão>`. Erros: `{ error: { code, message } }`. Tudo é filtrado por `orgId` do token
 (artigo de outro órgão = 404 `kb.not_found`).
 
@@ -85,7 +85,7 @@ Em `NODE_ENV=test` o motor só liga com `BV_AI_AUTOSTART=on` ou chamando `startA
 2. Pedido de humano (`HUMAN_REQUEST`), palavra de escalonamento do órgão (`KEYWORD`), sentimento negativo com pontuação ≥ 2 (`NEGATIVE_SENTIMENT`) → escala **sem chamar o LLM**.
 3. `PROGRESSIVE` e `botTurns ≥ maxBotTurns` → `MAX_TURNS`.
 4. Só saudação → `PROGRESSIVE`: envia `welcomeMessage` (ou "Como posso ajudar?" se já saudou), custo zero; `ASSISTED`: escala para triagem.
-5. **Redação de PII** (`PiiRedactor`): CPF/CNPJ (com dígito verificador), e-mail, telefone, cartão, nº de processo CNJ → `[CPF_1]`, `[EMAIL_1]`, `[TELEFONE_1]`, `[CNPJ_1]`, `[CARTAO_1]`, `[PROCESSO_1]`. Mensagem e histórico (últimas 8) são redigidos **antes** de qualquer chamada ao LLM. A resposta e os parâmetros de ferramenta são **reidratados** localmente.
+5. **Redação de PII** (`PiiRedactor`, ver "Redação de PII" abaixo): CPF/CNPJ (com dígito verificador), e-mail, telefone, cartão, nº de processo CNJ **e heurísticas de texto livre** (nome, RG, CEP, endereço, nascimento, agência/conta) → `[CPF_1]`, `[EMAIL_1]`, `[NOME_1]`… Mensagem e histórico (últimas 8) são redigidos **antes** de qualquer chamada ao LLM. A resposta e os parâmetros de ferramenta são **reidratados** localmente.
 6. **Recuperação** top-K (`BV_AI_TOPK`, padrão 4) por FTS; se a mensagem tem < 4 palavras, junta a última pergunta do cidadão.
 7. **LLM** (tier `fast`), saída JSON validada com zod; 1 retry (com o erro no prompt) se a chamada falhar ou o JSON for inválido; depois disso escala (`LLM_ERROR`/`LLM_INVALID`). Cota `AI_CALLS` em modo BLOCK esgotada → `QUOTA`.
 8. Política por modo (abaixo). Ids de artigo não fornecidos ao LLM são descartados (anti-alucinação).
@@ -119,6 +119,29 @@ A frente de integrações registra ferramentas (`registerBotTool`); o prompt lis
 
 * "Obrigado/resolveu/ok…" curto e sem pergunta, logo após uma resposta do bot → envia despedida e `closeConversation(RESOLVED, resolvedByBot=true)` (que também pede CSAT); registra feedback "útil" implícito nos artigos da última resposta.
 * Job `balcao.ai.idle_sweep` (a cada 60 s): (1) última mensagem é **resposta do bot** e o cidadão ficou `idleCloseMinutes` (padrão 15) sem voltar → fecha como `RESOLVED/resolvedByBot` (**o silêncio após resposta conta como resolvido** — premissa a validar com o fiscal); (2) última mensagem é do cidadão e o bot não respondeu em `BV_AI_STALL_MINUTES` (padrão 5) → escala `BOT_STALLED` (rede de segurança).
+
+## Redação de PII (`ai/pii.ts`)
+
+`PiiRedactor` (um por chamada ao LLM) troca dado pessoal por marcadores **estáveis** (`[TIPO_n]`: o mesmo valor → o mesmo marcador; valores diferentes → marcadores
+diferentes, inclusive e-mails que só diferem em dígitos). `rehydrate()` devolve o original em texto/objetos (parâmetros de ferramenta e resposta do LLM).
+`redactPII(texto, { keep: [...] })` é o atalho sem estado; `keep` deixa tipos em claro.
+
+| Marcador | O que pega | Âncora / cuidado contra falso positivo |
+|---|---|---|
+| `[CPF_n]` `[CNPJ_n]` | 11/14 dígitos | dígito verificador (sem pontuação) |
+| `[EMAIL_n]` `[TELEFONE_n]` `[CARTAO_n]` | e-mail; telefone BR (≥ 8 dígitos); cartão 13–19 dígitos | Luhn p/ cartão |
+| `[PROCESSO_n]` | nº CNJ `0000000-00.0000.0.00.0000` | `keep: ['PROCESSO']` o mantém em claro **e o protege** das demais regras (uma ferramenta e-Proc precisa do número real) |
+| `[NOME_n]` | nome após **"meu nome é / meu nome completo é / me chamo / chamo-me / nome completo:"** (aceita minúsculas, até 3–4 palavras, para em palavra de ligação: "e", "preciso", "quero"…) e **"sou o / sou a"** (só palavras Capitalizadas; não pega papéis: "sou o advogado/Autor/Servidor…") | só o nome sai; a frase e o pedido ficam |
+| `[RG_n]` | número após "RG / identidade / registro geral / carteira de identidade" (+ órgão emissor "SSP/TO") e o formato `12.345.678-9` | sem âncora, número solto não é RG |
+| `[CEP_n]` | `77001-000`; ou 8 dígitos após "CEP" | |
+| `[ENDERECO_n]` | **rua / avenida / av. / travessa / alameda / rodovia / estrada / praça + nome + número** (+ apto/bloco/casa/lote…); siglas de Palmas em MAIÚSCULAS **ARNO, ARNE, ARSE, ARSO, ACSU, ACSE, ACNO, ASR-SE…** + número; **quadra/QD + número** (+ Norte/Sul…, lote…) | exige número; palavras de frase comum entre o logradouro e o número ("na rua principal eu **paguei** 150") anulam; sigla minúscula ("arno") não conta |
+| `[NASCIMENTO_n]` | data (`dd/mm/aaaa`, `dd de mês de aaaa`) até 40 caracteres (sem dígitos no meio) depois de "nasci / nasceu / nascido(a) / nascimento", e "nasci em 1985" | datas soltas (audiência, protocolo) ficam; "emitida/solicitada/registrada…" na frase anula ("certidão de nascimento **emitida** em 10/05/2020") |
+| `[DADOS_BANCARIOS_n]` | número após "agência / ag." (3–5 dígitos) e "conta / conta corrente / poupança / c/c" (4–12 dígitos) | mantém a palavra, troca só o número; "conta 150 reais", "a conta de luz" ficam |
+
+**Limites (não substitui NER):** é regex ancorada em palavra-chave/formato — prefere deixar passar a destruir texto comum. **Não** redige: nome sem âncora ("O João Silva ligou"), nome de
+terceiros ("o nome da minha mãe é…"), bairro/cidade/CEP escrito por extenso sem a palavra-âncora, endereço sem número ou sem logradouro reconhecido, "lote 5" sozinho, datas de
+nascimento sem "nasc…" por perto, número de benefício/matrícula/OAB, dados de saúde ou opinião em prosa, texto em imagem/áudio. `[NASCIMENTO]` também sai de "certidão de nascimento 15/03/2020"
+quando não há palavra de emissão. O curador (`curation.ts`) e a assistência ao atendente usam o mesmo redator.
 
 ## Assistência ao atendente (nunca envia ao cidadão)
 
@@ -170,12 +193,16 @@ Janela: conversas com `startedAt` nos últimos `days` e `botHandled = true`.
 * `containmentRate` = `resolvedByBot ÷ botHandled`.
 * `accuracy`: `helpful`/`unhelpful` (auditoria de feedback, inclui o implícito), `rate = helpful ÷ (helpful+unhelpful)`, CSAT médio das resolvidas pelo bot.
 * `usage`: `AI_CALLS` e `AI_TOKENS` da janela.
-* **`iqa07`** (indicador 07 do TR — % de atendimentos via chatbot resolvidos no 1º contato e classificados como automatizáveis; metas 40% → 60% → 80%):
-  * numerador = nº de conversas **`CLOSED`** com `botHandled ∧ resolvedByBot ∧ firstContactResolved ∧ automatable`;
-  * `iqa07.value` = numerador ÷ nº de conversas `CLOSED` com `botHandled ∧ automatable` (fórmula desta frente: "dos automatizáveis, quantos o bot resolveu no 1º contato");
-  * `iqa07.perBotAttendance` = numerador ÷ nº de conversas `CLOSED` com `botHandled` (leitura literal do edital: denominador = todos os atendimentos via bot).
+* **`iqa07`** (indicador 07 do TR — TR 18.1: "percentual de atendimentos via chatbot resolvidos no primeiro contato e classificados como automatizáveis"; metas 40% → 60% → 80%).
+  **Fórmula única**: `GET /ai/stats` **não calcula nada** — chama `iqaForPeriod`/`computeIqa` de `reports/metrics.ts`, a mesma função do `GET /reports/iqa` (definição completa em `api-reports.md`):
+  * numerador = atendimentos via bot (`botHandled ∨ resolvedByBot`) com `resolvedByBot ∧ firstContactResolved ∧ automatable` na janela (`startedAt` nos últimos `days`);
+  * denominador conforme **`settings.iqa.denominator`**: `ALL_BOT` (padrão) = todos os atendimentos via bot da janela (inclusive ainda abertos); `AUTOMATABLE` = só os classificados como automatizáveis;
+  * **como trocar a base**: `PUT /reports/iqa/config { "denominator": "AUTOMATABLE" }` (ADMIN, `org:manage`) — vale na hora para `/ai/stats`, `/reports/iqa`, overview e relatório mensal. Metas por mês de contrato e faixas de glosa também em `settings.iqa` (`goals`, `glosa`);
+  * formato do `iqa07` aqui (razões **0–1**, compatível com o front; `valuePct` é o mesmo número em %):
+    `{ value: number|null, valuePct: number|null, numerator, denominator, denominatorKind: 'ALL_BOT'|'AUTOMATABLE', perBotAttendance: number|null, perAutomatable: number|null, targets: [0.4,0.6,0.8], definition: string }`.
+    `value` usa a base configurada; `perBotAttendance` e `perAutomatable` são as duas leituras calculadas pela **mesma** função (informativas) — `perAutomatable` é a antiga `iqa07.value` desta frente;
   * `resolvedByBot` e `firstContactResolved` vêm de `closeConversation`: `firstContactResolved` = motivo `RESOLVED` ∧ sem outra conversa **fechada** do mesmo contato (e da mesma categoria, se houver) nos 7 dias anteriores ∧ `transferCount = 0`. `automatable` = o bot respondeu usando artigo da KB ou ferramenta.
-  * **Atenção — duas fórmulas no sistema**: o painel do fiscal (`balcao/reports/metrics.ts`) calcula `iqaRate` = numerador ÷ atendimentos "via chatbot" (`botHandled OR resolvedByBot`), sem filtrar por `CLOSED`/`automatable` no denominador — equivalente a `perBotAttendance` (salvo conversas ainda abertas). **Para glosa/atesto vale o relatório da frente reports**; `iqa07.value` daqui é indicador operacional (parcial). A decisão de qual denominador o fiscal adota deve ser formalizada.
+  * **Mudança de comportamento**: antes `iqa07.value` = numerador ÷ **encerradas** automatizáveis. Agora, no padrão, = numerador ÷ todos os atendimentos via bot (a leitura literal do edital); o valor tende a **cair** em relação ao anterior. O hint da tela de indicadores ("X de Y automatizáveis") passa a valer só com `denominatorKind = 'AUTOMATABLE'`.
 
 ## Eventos
 
@@ -230,9 +257,9 @@ Saída exigida (validada com zod; tolera cerca \`\`\`json e prosa ao redor; `con
 
 * **Qualidade do LLM real**: todos os testes usam LLM falso. Não foram medidos, com Anthropic/OpenAI/Groq/Gemini de verdade: aderência ao JSON, taxa de alucinação, calibração de `confidence` (o limiar padrão 0,75 é um chute), custo/latência por atendimento e comportamento dos modelos de reserva. `FallbackLlmClient` é só um adaptador sobre `callAiWithFallback` e nunca foi exercitado aqui (o modelo efetivo e os tokens reais não são devolvidos por essa cadeia: o uso registrado é **estimado**).
 * **Eficácia da busca FTS** com uma KB real (centenas de artigos, siglas, sinônimos jurídicos); só há testes com poucos artigos. Sem índice de similaridade/semântica (por decisão D9).
-* **Redação de PII**: regex + dígito verificador cobrem CPF/CNPJ/e-mail/telefone/cartão/processo CNJ; **nomes, endereços, datas de nascimento e dados sensíveis em texto livre não são redigidos** e podem chegar ao provedor de LLM. Falsos positivos/negativos (telefone × número qualquer) não foram medidos. A decisão jurídica sobre enviar texto (mesmo redigido) a provedores no exterior (LGPD, residência de dados) é do órgão.
+* **Redação de PII**: regex + dígito verificador (CPF/CNPJ/e-mail/telefone/cartão/processo CNJ) e heurísticas ancoradas (nome após "meu nome é/me chamo/sou o|a", RG, CEP, endereço, nascimento, agência/conta) — **não substitui NER** (ver "Redação de PII"): nomes sem âncora, nomes de terceiros, bairros/cidades por extenso, endereços sem número e dados sensíveis em prosa **continuam passando** ao provedor de LLM. Os casos de teste (positivos e falsos positivos) são sintéticos; taxa real de falso positivo/negativo em conversas do órgão não foi medida (telefone × número qualquer, "conta"/"rua" em frases comuns). A decisão jurídica sobre enviar texto (mesmo redigido) a provedores no exterior (LGPD, residência de dados) é do órgão.
 * **Detecção de sentimento/humano/resolução** é léxica (pt-BR coloquial, sem gírias regionais, ironia ou erros de digitação extremos); calibração com conversas reais pendente. "Silêncio após resposta = resolvido" infla a contenção e o IQA se o cidadão apenas desistiu.
-* **IQA**: duas fórmulas coexistem (ver acima); a oficial para glosa precisa ser confirmada com o fiscal. `automatable` é uma heurística (resposta ancorada), não uma classificação de negócio.
+* **IQA**: há uma só fórmula (`computeIqa`), mas a **base do denominador** (`ALL_BOT` padrão × `AUTOMATABLE`) e as faixas de glosa ainda precisam ser confirmadas com o fiscal — por isso são configuráveis. Conversas abertas entram no denominador `ALL_BOT`. `automatable` é uma heurística (resposta ancorada), não uma classificação de negócio; o silêncio após resposta do bot conta como resolvido (acima). Nenhuma validação com tráfego real.
 * **Curadoria**: limiares de similaridade (0,35/0,5/0,6/0,4/0,25) escolhidos nos testes sintéticos, sem ajuste em tráfego real; `curationHoursEstimated` é estimativa; carga com milhares de conversas (limites de 500/300/1000 por execução) não foi testada.
 * **Retomada pós-identidade** (`identity.verified`): testada com ferramenta falsa; não foi integrada ponta a ponta com o fluxo GOV.BR real nem com a ferramenta `eproc.*` de produção. Só retoma o último pedido pendente, em `PROGRESSIVE`.
 * **Canais**: o texto do bot é enviado pelos senders registrados (WhatsApp/webchat/e-mail); formatação e limites de tamanho por canal não foram validados. Voz não é atendida pelo bot.

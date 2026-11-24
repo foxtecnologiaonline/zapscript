@@ -53,9 +53,16 @@ Higiene/robustez: reconexão do ARI com backoff exponencial + jitter; a cada (re
 sem canal no Asterisk (`LOST_CONTROL`); job `voice.stale-calls` (5 min) encerra as vivas há > 6 h (`STALE`); gravação que termina depois
 da chamada (queda da API) é recuperada e anexada.
 
-> **Uma única instância da API deve controlar o ARI.** Duas réplicas conectadas à mesma aplicação (`balcao`) receberiam os mesmos
-> eventos e tratariam cada chamada em duplicidade. O deploy atual (Vultr, um container de API) atende; para HA use ARI por réplica
-> com aplicações Stasis distintas (`BV_ARI_APP`) ou eleição de líder — fora do MVP.
+> **Uma única instância da API controla o ARI (lock de liderança em Redis).** Duas réplicas conectadas à mesma aplicação (`balcao`) receberiam
+> os mesmos eventos e tratariam cada chamada em duplicidade. Por isso o controlador, **antes de abrir o WebSocket do ARI**, toma um lock
+> distribuído: `SET bv:voice:ari-leader:<escopo>:<app> <id-da-instância> PX 15000 NX`, onde `<escopo>` é o `orgId` dono da conexão (quando o ARI
+> vem da integração `SIP_TRUNK`) ou um hash da URL do ARI (quando vem de `BV_ARI_*`) e `<app>` é `BV_ARI_APP`. O líder renova a cada 5 s
+> (script que só renova se o valor ainda é o seu) e **libera o lock no shutdown** (`app.close()` → hook `onClose`), de modo que outra instância
+> assuma em ≤ 1 intervalo de tentativa, sem esperar o TTL. Quem não tem o lock fica em **standby** (não conecta ao ARI, não atende, tenta
+> assumir a cada 5 s). Perdeu o lock (outro dono) ou ficou > TTL sem conseguir confirmá-lo no Redis → desconecta do ARI e volta a standby.
+> **Redis indisponível no início = standby** (falha fechada: duplicar o ARI é pior que adiar). `GET /status` informa `role`. As rotas que
+> originam ligação (`POST /calls/dial`) respondem 503 `voice.standby` na instância standby. Desligar o lock (instância única de
+> desenvolvimento): `BV_VOICE_LEADER_LOCK=off` (em `NODE_ENV=test` já é desligado, exceto quando o teste o configura).
 
 ## 2. Requisitos do edital × implementação
 
@@ -82,21 +89,42 @@ Prefixo `/balcao/voice`. Erros: `{ "error": { "code", "message", "details"? } }`
 
 | Método e caminho | Permissão | Corpo / query | Resposta |
 |---|---|---|---|
-| `GET /status` | `conversation:monitor` | — | `{ enabled, connected, started, app, url, reconnects, lastEventAt, lastError, activeCalls, byState }` (`started:false` = controlador desligado) |
+| `GET /status` | `conversation:monitor` | — | `{ enabled, role, connected, started, app, url, reconnects, lastEventAt, lastError, activeCalls, byState }` — `role`: `'leader'` (esta instância controla o ARI) \| `'standby'` (aguardando o lock; `connected:false`); `started:false` = controlador desligado (`role:null`) |
 | `GET /calls` | `conversation:read` (atendente só vê as suas; `conversation:read_all` vê todas) | `from`,`to` (ISO), `number` (parte do número, dígitos), `agentUserId`, `status` (RINGING\|IVR\|QUEUED\|ACTIVE\|ENDED\|ABANDONED\|FAILED), `direction` (IN\|OUT), `protocol` (contém), `hasRecording` (true\|false), `minDuration`,`maxDuration` (s), `limit` (1–200, 50), `cursor` | `{ items: CallDto[], nextCursor }` ordenado do mais recente |
-| `GET /calls/:id` | `conversation:read` | — | `CallDto` + `voice { did, headers (X-* da URA 0800), flow, transferredTo, transferredAt, simulated, hasUraRecording }` + `ivr { lang, category, queue, outcome, vars, sensitiveCollected }` |
+| `GET /calls/:id` | `conversation:read` | — | `CallDto` + `voice { did, headers (X-* lidos do INVITE), flow, transferredTo, transferredAt, simulated, hasUraRecording }` + `ivr { lang, category, queue, outcome, vars, sensitiveCollected }`. Com a integração URA 0800 a conversa também guarda `metadata.voice.ura0800.headers` (`{ opcao, … }` por nome lógico) e `metadata.ivr.entryOption` (valor do cabeçalho mapeado em `opcao`; sem URA_0800, o legado `X-URA-Option`) |
 | `GET /calls/:id/recording` | `recording:listen` | `part=main\|ura` (padrão `main`), `download=true`, header `Range: bytes=a-b` | `audio/wav`; **200** completo ou **206** com `Content-Range`; `416` se o Range for inválido; audita `recording.listen` (`entityId`=chamada, `meta.part/range/download/protocol`). 404 `recording.not_found` |
 | `GET /calls/:id/recording/meta` | `recording:listen` | `verify=true` recalcula o sha256 do arquivo | `{ callId, format, sha256, sizeBytes, durationSec, recordedAt, integrityOk? }` (audita `recording.meta`) |
 | `GET /recording/coverage` | `report:read` (supervisor, admin, **fiscal**) | `from`,`to` | `{ total, withRecording, withoutRecording, coveragePct, recentMissing: [{id,startedAt,endReason}] }` — conta chamadas finalizadas atendidas pela plataforma (IN ENDED/ABANDONED, ou com `answeredAt`) |
 | `POST /calls/:id/transfer` | `conversation:transfer` | `{ number }` (`^\+?[0-9*#]{2,20}$`) | `202 { ok }` · 409 `call.not_active` / `call.transfer_in_progress` · 404 · 503 `voice.disabled`; audita `call.transfer` (só os 4 últimos dígitos) |
 | `POST /calls/:id/hangup` | `conversation:close` | — | `{ ok }` · 404 |
-| `POST /calls/dial` | `conversation:reply` | `{ number }` | `202 { callId, conversationId }` · 409 `voice.no_extension`/`voice.busy` · 502 `voice.originate_failed`; audita `call.dial` |
+| `POST /calls/dial` | autenticado (a permissão `conversation:reply` e a presença são exigidas pela política abaixo) | `{ number }` (`^\+?[0-9*#]{2,20}$`, sem espaços) | `202 { callId, conversationId }` · 400 `validation.failed` · **403 `voice.dial_not_allowed`** (`error.details.reason`: `not_allowed` \| `premium` \| `service_code` \| `permission` \| `presence`) · **429 `voice.dial_limit`** (`reason:'daily_limit'`) · 409 `voice.no_extension`/`voice.busy` · 502 `voice.originate_failed` · 503 `voice.disabled`/`voice.standby`; audita `call.dial` |
 | `GET /softphone` | `conversation:reply` | — | `{ wssUrl, sipUri, domain, ramal, senha, iceServers, displayName }` com `Cache-Control: no-store`; 409 `voice.no_extension`; 503 `voice.not_configured` (sem `BV_SIP_SECRET`); audita `softphone.credentials` |
 
 `CallDto`: `{ id, conversationId, protocol, direction, from, to, status, agentUserId, startedAt, answeredAt, endedAt, durationSec,
 ivrFlowId, ivrPath, recordingNotified, endReason, hasRecording, recordingSha256, recordingSizeBytes }`. `endReason` típicos:
 `CALLER_HANGUP[_IVR|_QUEUE]`, `AGENT_HANGUP[_API]`, `AGENT_NO_ANSWER`, `IVR_END`, `IVR_MAX_RETRIES`, `QUEUE_TIMEOUT`, `TRANSFERRED`,
 `TRANSFER_FAILED|TIMEOUT`, `DIAL_FAILED`, `ORIGINATE_FAILED`, `CONVERSATION_CLOSED`, `LOST_CONTROL`, `STALE`, `SIMULATED`, `ERROR`.
+
+### Discagem restrita (`POST /calls/dial`)
+
+Política **por órgão**, lida do JSON bruto `org.settings.voice` (validada no ponto de uso; campo ausente ou inválido volta ao padrão):
+
+| Campo | Padrão | Efeito |
+|---|---|---|
+| `dialAllowPrefixes` (string[]; só dígitos e `+`, espaços/pontuação são ignorados) | `[]` = **padrão nacional** | Vazio: só números **nacionais fixos/celulares do Brasil** — DDD 11–99 + `9xxxxxxxx` (celular) ou `[2-5]xxxxxxx` (fixo), com ou sem `+55`/`55`. Preenchido: **substitui** o padrão; o número digitado, seu E.164 (`+55…`) e o nacional (DDD+número) são comparados por prefixo (ex.: `["+5563","0800","+3519"]`) |
+| `dialMaxPerAgentPerDay` (int ≥ 0) | `50` | Ligações originadas por atendente por **dia no fuso do órgão** (conta todas as tentativas `OUT` do dia, inclusive as que falharam). `0` = ninguém disca |
+| `dialRequirePermission` (bool) | `true` | `true`: exige `conversation:reply` **e** presença `ONLINE` ou `BUSY` (em atendimento); `false`: dispensa as duas exigências (continuam valendo número e limite, e o usuário precisa de ramal SIP) |
+
+**Sempre bloqueados**, mesmo com prefixos: `0900`/`0300` (premium/custo compartilhado) e códigos com `*`/`#`. Por padrão também caem em
+`not_allowed`: internacionais (`+`≠55, `00…`), `0800`, curtos (`190`) e malformados. Ordem das verificações: formato (400) → standby (503) →
+ramal (409) → ligação em curso (409) → número/permissão/presença (403) → limite diário (429). Auditoria `call.dial` (`entityType: BvCall`;
+número **mascarado**, ex.: `+5563*******01`): sucesso `entityId = callId`, `meta { to, outcome:'started' }`; recusa `entityId:'denied'`,
+`meta { to, outcome:'denied', code, reason }`; falha ao originar `outcome:'failed'`. Mudar `settings.voice` vale em até 30 s (cache de settings).
+
+```json
+PUT /balcao/org/settings   (ou o admin do órgão que grava org.settings)
+{ "voice": { "dialAllowPrefixes": ["+5563", "0800"], "dialMaxPerAgentPerDay": 30, "dialRequirePermission": true } }
+```
 
 ### URA (todas `ivr:manage`)
 
@@ -138,6 +166,46 @@ PUT /balcao/voice/config
               "preserveHeaders": ["X-URA-Option", "X-URA-Id", "X-Protocolo-0800"],
               "transferRingSec": 45, "transferCallerId": "original" } }
 ```
+
+### URA 0800 (`integration:manage`)
+
+Integração `URA_0800` (cifrada em `BvIntegration`, uma por órgão). Liga o 0800 do TJTO ao Balcão: **DID → fluxo**, **cabeçalhos SIP `X-*` → metadata**
+e (opcional) **IPs de origem**. Substitui os nomes fixos (`X-URA-Option`, `X-URA-Id`, `X-Protocolo-0800`) assim que `headerMap` é preenchido.
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /ura0800` | — | `{ configured, enabled, status, config: { dids, headerMap, allowedSourceIps? }, defaults: { headerMap: { opcao:'X-URA-Option', ura:'X-URA-Id', protocolo:'X-Protocolo-0800' } } }` (sem segredos — nada a mascarar) |
+| `PUT /ura0800` | `{ enabled?, config }` — substituição completa; zod **strict** | `{ ok, enabled, config }`; 400 `validation.failed` (`details[{path,message}]`); versiona (`URA_0800`) e audita `config.update` |
+| `POST /ura0800/test` | `{ did?, headers?, sourceIp? }` (tudo opcional) | `{ ok, enabled, dids[{ did, flowName, flowFound, flowId, flowVersion }], headers { map, captured, missing[] }, sourceIp { configured, tested, allowed }, entry { option, node }, warnings[] }`; 404 `ura0800.not_configured`; 422 `ura0800.invalid_config`; grava `status` (`OK`/`ERROR`) e `BvIntegrationLog` (`test`). Não cria chamada |
+
+```json
+PUT /balcao/voice/ura0800
+{ "enabled": true,
+  "config": {
+    "dids": [ { "did": "08006320000", "flowName": "ura-0800" } ],
+    "headerMap": { "opcao": "X-TJTO-URA-Opcao", "protocolo": "X-TJTO-Protocolo" },
+    "allowedSourceIps": ["203.0.113.0/24", "198.51.100.5"] } }
+
+POST /balcao/voice/ura0800/test
+{ "did": "08006320000", "headers": { "X-TJTO-URA-Opcao": "3" }, "sourceIp": "203.0.113.50:5060" }
+→ { "ok": true, "enabled": true,
+    "dids": [ { "did": "08006320000", "flowName": "ura-0800", "flowFound": true, "flowId": "…", "flowVersion": 2 } ],
+    "headers": { "map": { "opcao": "X-TJTO-URA-Opcao", "protocolo": "X-TJTO-Protocolo" }, "captured": { "opcao": "3" }, "missing": ["protocolo"] },
+    "sourceIp": { "configured": true, "tested": "203.0.113.50:5060", "allowed": true },
+    "entry": { "option": "3", "node": "q_proc" }, "warnings": ["Cabeçalhos ausentes no INVITE de teste: protocolo"] }
+```
+
+Regras: `dids[].did` `^\+?[0-9*#]{2,20}$` (sem repetição), `flowName` = nome de um fluxo da URA; `headerMap` = `{ nomeLógico: "X-…" }` (≤ 20; nome lógico
+`^[A-Za-z][A-Za-z0-9_]{0,39}$`); `allowedSourceIps` = IPv4/IPv6 ou CIDR. **Comportamento por chamada:**
+- o **órgão** é achado também pelos `dids` desta integração (além de `definition.dids` e `SIP_TRUNK.dids`);
+- o **fluxo** do DID é o `ACTIVE` mais recente com o `flowName` mapeado; sem mapeamento (ou sem fluxo ativo com esse nome) vale a regra anterior
+  (`definition.dids` → fluxo ativo sem `dids`);
+- só os cabeçalhos do `headerMap` (+ `SIP_TRUNK.preserveHeaders` **definidos explicitamente**) são lidos do INVITE (`PJSIP_HEADER`); vão para
+  `metadata.voice.headers` (nome SIP → valor), `metadata.voice.ura0800.headers` (nome lógico → valor) e `metadata.ivr.entryOption` (cabeçalho de `opcao`);
+  o ponto de entrada da URA continua sendo decidido pelo `entryByHeader` **do fluxo** (use no fluxo o mesmo cabeçalho do `headerMap`);
+- `allowedSourceIps` vale só para os DIDs listados em `dids`: INVITE de outro IP, sem IP conhecido ou inválido é **recusado** (hangup) antes de criar
+  `BvCall`. O IP vem do dialplan (`BV_SRC_ADDR` = `${CHANNEL(pjsip,remote_addr)}` em `infra/asterisk`); defesa em profundidade além do `identify` por IP do PJSIP.
+- integração `enabled:false` é ignorada.
 
 ### Simulador (desenvolvimento)
 
@@ -257,6 +325,7 @@ Barramento interno (`core/events`): emite `call.started` e `call.ended` (`{ orgI
 | `BV_TTS_ENABLED` | — | `1` liga o TTS dos prompts de texto (OpenAI, PCM 24 kHz → `.sln24`) |
 | `BV_TTS_API_KEY` | `OPENAI_API_KEY` | chave do TTS |
 | `BV_TTS_VOICE` / `BV_TTS_MODEL` | `alloy` / `tts-1` | voz e modelo |
+| `BV_VOICE_LEADER_LOCK` | ligado | `off` desliga o lock de liderança do ARI (instância única de desenvolvimento). Em `NODE_ENV=test` já vem desligado |
 | `BV_DEV_SIMULATORS` | — | `1` libera `POST /dev/simulate-call` (**nunca em produção**) |
 
 **Asterisk** (`infra/asterisk/asterisk.env`): `BV_ARI_USER`, `BV_ARI_PASS` (obrig.), `BV_SIP_SECRET` (obrig.), `BV_EXTERNAL_IP` (obrig.),
@@ -295,15 +364,31 @@ no README da pasta.
   **volume/disco criptografado** (não há cifragem por arquivo — o Range exigiria cifra em blocos). Retenção/expurgo: frente `security`.
 - **Fase da URA**: gravada pelo canal do cidadão; a gravação "principal" é a da ponte (cidadão + atendente). Se a chamada não chega a
   atendente, a gravação da URA vira a gravação da chamada (`part=main`); quando existem as duas, a da URA fica em `part=ura`.
-- **Discagem pelo tronco**: qualquer usuário com `conversation:reply` pode usar `POST /calls/dial`/transbordo para qualquer número
-  `^\+?[0-9*#]{2,20}$`. Restrinja destinos no SBC/tronco do TJTO (plano de discagem de saída) — não há lista de permissão no MVP.
+- **Discagem pelo tronco**: `POST /calls/dial` segue a política por órgão da seção *Discagem restrita* (padrão: só nacionais BR, 50/dia, exige
+  permissão + ONLINE). **O transbordo (`POST /calls/:id/transfer`) e o nó `transfer` da URA NÃO passam por essa política** — aceitam qualquer
+  número `^\+?[0-9*#]{2,20}$`; restrinja também no SBC/tronco do TJTO (plano de discagem de saída).
 - **DID**: casamento exato com o número que o tronco entrega no INVITE (confirme com o TJTO se vem com `+55`/DDD).
 - **Chamada anônima** (`anonymous`/`unknown`): contato `anonimo:<callId>`, número gravado como `anonimo`.
-- **ARI único** (ver §1). Credenciais do ARI vindas de integração valem para a primeira integração habilitada — em instalação multi-órgão use `BV_ARI_*`.
+- **ARI único por lock em Redis** (ver §1). Credenciais do ARI vindas de integração valem para a primeira integração habilitada — em instalação multi-órgão use `BV_ARI_*`.
+  Chamadas em andamento quando a instância perde a liderança ficam sem controle (a nova líder as encerra no banco como `LOST_CONTROL` no `reconcile`).
 - O processo da API perde as sessões em memória num restart; as chamadas já conectadas no Asterisk ficam sem controle até o `reconcile`,
   que as encerra no banco (`LOST_CONTROL`) — o Asterisk derruba o canal quando a aplicação Stasis some.
 
 ## Não verificado
+
+**Itens novos (lock do ARI, discagem restrita, URA 0800):**
+
+- **Lock do ARI** testado só com o Redis local e dois controladores no mesmo processo (Node) contra o ARI simulado. Não exercitado: duas réplicas reais da
+  API, falha de rede parcial entre uma réplica e o Redis, Redis em cluster/sentinel (o `SET NX PX` + script exige uma única escrita primária; com failover
+  assíncrono o lock pode, em tese, ser concedido a duas instâncias — o `reconcile` limita o estrago) e o hook `onClose` no `SIGTERM` real do container.
+- **`CHANNEL(pjsip,remote_addr)`** (IP de origem para `allowedSourceIps`): função/opção do dialplan **não testada num Asterisk real** (depende da versão 20 expor
+  `remote_addr`; se não expuser, `BV_SRC_ADDR` chega vazio e a chamada para DID com lista de IPs é recusada — nesse caso deixe `allowedSourceIps` vazio e
+  confie no `identify` do PJSIP). Os cabeçalhos do `headerMap` são lidos com `PJSIP_HEADER(read,<nome>)` pelo ARI **depois** do `StasisStart`: não verificado no
+  Asterisk real (se vier vazio, acrescente `Set(__BV_X_<NOME>=${PJSIP_HEADER(read,<nome>)})` no `extensions.conf` e o nome em `BV_ARI_CHANNELVARS`).
+- **Nomes reais dos cabeçalhos da URA 0800 do TJTO** (`X-TJTO-*` são exemplos) e o formato do DID entregue: confirmar com o TJTO.
+- **Política de discagem**: a lista padrão (DDD 11–99, celular 9 dígitos / fixo 8 dígitos começando em 2–5) é uma regra de numeração geral do Brasil;
+  não cobre números especiais nacionais (ex.: `4004`, `3003`, `0800` — liberáveis por `dialAllowPrefixes`) nem a numeração com código de operadora (`0 + 15 + DDD…`, bloqueada).
+  O limite diário conta por usuário e por dia do fuso do órgão (sem janela deslizante); a exclusão mútua do contador é por processo (suficiente com um único líder).
 
 Tudo abaixo depende de sistema externo real e **nunca foi executado** neste repositório (os testes usam um ARI simulado em Node:
 `__tests__/fakeAri.ts`, que implementa só a parte do ARI que o controlador usa — se a API real divergir, é aqui que quebra):

@@ -28,6 +28,73 @@ describe('balcao/ai — redação de PII', () => {
   });
 });
 
+describe('balcao/ai — redação de PII: heurísticas de texto livre', () => {
+  const R = (t: string, o?: Parameters<typeof redactPII>[1]) => redactPII(t, o);
+  it('nome após "meu nome é / me chamo / sou o|a" (só o nome; a frase e o pedido ficam)', () => {
+    expect(R('Olá, meu nome é Maria da Silva Santos e preciso da certidão')).toBe('Olá, meu nome é [NOME_1] e preciso da certidão');
+    expect(R('me chamo joao pedro preciso de ajuda')).toBe('me chamo [NOME_1] preciso de ajuda');
+    expect(R('Sou o João Pereira, advogado da parte')).toBe('Sou o [NOME_1], advogado da parte');
+    expect(R('Boa tarde, sou a Ana Beatriz.')).toBe('Boa tarde, sou a [NOME_1].');
+    expect(R('Meu nome é Carlos. Quero saber do prazo')).toBe('Meu nome é [NOME_1]. Quero saber do prazo');
+  });
+  it('nome: falsos positivos — papéis, frases comuns e "me chamo" sem nome não são redigidos', () => {
+    for (const t of ['Sou o advogado da parte autora', 'Sou a Parte requerente no processo', 'sou a favor da mudança', 'Sou o Autor do processo', 'me chamo de volta?', 'meu nome é e preciso de ajuda', 'o nome do cartório é Cartório Central']) {
+      expect(R(t)).toBe(t);
+    }
+  });
+  it('RG (com âncora ou formato), CEP e data de nascimento', () => {
+    expect(R('meu RG é 1.234.567 SSP/TO e CPF 529.982.247-25')).toBe('meu RG é [RG_1] e CPF [CPF_1]');
+    expect(R('identidade nº 12.345.678-9')).toBe('identidade nº [RG_1]');
+    expect(R('CEP 77001-000 e cep: 77006123')).toBe('CEP [CEP_1] e cep: [CEP_2]');
+    expect(R('nasci em 12/05/1985')).toBe('nasci em [NASCIMENTO_1]');
+    expect(R('data de nascimento: 05/03/2015')).toBe('data de nascimento: [NASCIMENTO_1]');
+    expect(R('a data de nascimento do meu filho é 5 de março de 2015')).toBe('a data de nascimento do meu filho é [NASCIMENTO_1]');
+    expect(R('nasci em 1985, em Palmas')).toBe('nasci em [NASCIMENTO_1], em Palmas');
+  });
+  it('datas e números comuns permanecem (audiência, emissão, protocolo, lei, valor, prazo)', () => {
+    for (const t of ['A audiência é dia 10/12/2026 às 14h', 'certidão de nascimento emitida em 10/05/2020', 'nasci em Palmas', 'protocolo BV-2026-000123, prazo de 15 dias, taxa R$ 1.500,00',
+      'conforme a lei 8.069/90 e a portaria 123/2024, artigo 5', 'o RG está vencido', 'preciso do CEP do fórum', 'a conta de luz vence dia 10', 'paguei a conta 150 reais', 'a quadra de esportes está fechada']) {
+      expect(R(t)).toBe(t);
+    }
+  });
+  it('endereços: rua/avenida/travessa, quadra e siglas de Palmas (ARNO, ACSU, ASR) com número', () => {
+    expect(R('moro na Rua das Flores, 123, apto 4 - CEP 77001-000')).toBe('moro na [ENDERECO_1] - CEP [CEP_1]');
+    expect(R('Av. Teotônio Segurado 1500')).toBe('[ENDERECO_1]');
+    expect(R('travessa dos Ipês nº 45')).toBe('[ENDERECO_1]');
+    expect(R('ARNO 33 Alameda 5 lote 10')).toBe('[ENDERECO_1]');
+    expect(R('ACSU-SO 40 conjunto 2')).toBe('[ENDERECO_1]');
+    expect(R('ASR-SE 105')).toBe('[ENDERECO_1]');
+    expect(R('quadra 104 Norte, lote 5')).toBe('[ENDERECO_1]');
+    expect(R('rua 7, casa 12')).toBe('[ENDERECO_1]');
+    // frases comuns com a palavra "rua"/"quadra" sem endereço
+    expect(R('na rua principal eu paguei 150 reais')).toBe('na rua principal eu paguei 150 reais');
+    expect(R('a rua está alagada')).toBe('a rua está alagada');
+    expect(R('o arno 33 é um nome')).toBe('o arno 33 é um nome'); // sigla só em MAIÚSCULAS
+  });
+  it('dados bancários: agência e conta (mantém a palavra, troca o número)', () => {
+    expect(R('agência 1234-5 conta corrente 56789-0')).toBe('agência [DADOS_BANCARIOS_1] conta corrente [DADOS_BANCARIOS_2]');
+    expect(R('Ag. 0001 c/c 12345678')).toBe('Ag. [DADOS_BANCARIOS_1] c/c [DADOS_BANCARIOS_2]');
+  });
+  it('marcadores estáveis, mesmo valor → mesmo marcador, valores diferentes → marcadores diferentes (e-mail com dígitos inclusive)', () => {
+    const r = new PiiRedactor();
+    expect(r.redact('meu nome é Maria Souza. Maria Souza mora na Rua A, 5')).toBe('meu nome é [NOME_1]. Maria Souza mora na [ENDERECO_1]');
+    expect(r.redact('Rua B, 5')).toBe('[ENDERECO_2]'); // mesmo número, rua diferente
+    const e = new PiiRedactor();
+    expect(e.redact('ana2@x.com e bob2@x.com e ana2@x.com')).toBe('[EMAIL_1] e [EMAIL_2] e [EMAIL_1]');
+    expect(r.rehydrate('Olá [NOME_1], confirmo [ENDERECO_1]')).toBe('Olá Maria Souza, confirmo Rua A, 5');
+  });
+  it('nº de processo CNJ em claro quando a ferramenta precisa (keep) — nenhuma outra regra o corta', () => {
+    const t = R('processo 0001234-56.2024.8.27.2729, meu nome é Pedro Alves, tel (63) 99999-1234', { keep: ['PROCESSO'] });
+    expect(t).toBe('processo 0001234-56.2024.8.27.2729, meu nome é [NOME_1], tel [TELEFONE_1]');
+    expect(R('0001234-56.2024.8.27.2729')).toBe('[PROCESSO_1]');
+    expect(R('meu nome é Pedro Alves', { keep: ['NOME'] })).toBe('meu nome é Pedro Alves');
+  });
+  it('limite documentado: nomes sem âncora NÃO são redigidos (não substitui NER)', () => {
+    expect(R('O João Silva ligou ontem')).toBe('O João Silva ligou ontem');
+    expect(R('moro no bairro Plano Diretor Sul')).toBe('moro no bairro Plano Diretor Sul');
+  });
+});
+
 describe('balcao/ai — detecções determinísticas', () => {
   it('pedido de humano, palavras-chave, sentimento, saudação e resolução', () => {
     expect(wantsHuman('Quero falar com um atendente, por favor')).toBe(true);

@@ -1,10 +1,13 @@
+import { openText } from '../tasks/content';
+import { changeStatus } from '../tasks/service';
+import { SYSTEM_ACTOR, isValidTransition, type Status } from '../tasks/model';
 import crypto from 'crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { logger } from '../../lib/logger';
 import { audit, auditReq } from '../core/audit';
-import { emitBvEvent, onBvEvent } from '../core/events';
+import { onBvEvent } from '../core/events';
 import { getIntegration } from '../core/integrations';
 import { guard, parse, sendError } from '../core/http';
 import { basicAuth, httpClientFor, IntegrationError, parseJsonSafe, type HttpClient } from './http-client';
@@ -59,7 +62,7 @@ export async function createIssueForTask(orgId: string, taskId: string, opts: { 
   try {
     const key = await logged(orgId, 'JIRA', 'issue.create', async () => {
       const summary = `[${task.code}] ${task.title}`.slice(0, 250);
-      const desc = `${task.description ?? ''}\n\nOrigem: Balcão Virtual (${task.code}).`.trim();
+      const desc = `${openText(task.description) ?? ''}\n\nOrigem: Balcão Virtual (${task.code}).`.trim();
       const res = await http.request({
         method: 'POST', url: api(cfg, '/issue'), headers: authHeaders(cfg), timeoutMs: cfg.timeoutMs,
         body: JSON.stringify({ fields: {
@@ -138,12 +141,19 @@ export function registerJiraRoutes(app: FastifyInstance, deps: Deps = {}): void 
     if (!task) return { ok: true, ignored: true };
     const next = mapStatus(cfg, body.issue);
     if (!next || next === task.status) return { ok: true, ignored: true };
-    const done = next === 'DONE' || next === 'CANCELLED';
-    await prisma.bvTask.update({ where: { id: task.id }, data: { status: next, completedAt: done ? new Date() : null } });
-    await prisma.bvTaskHistory.create({ data: { taskId: task.id, field: 'status', fromValue: task.status, toValue: next } });
+    // Passa pelo serviço de tarefas (máquina de estados, histórico, pausa de SLA em WAITING, notificação ao cidadão e evento task.closed).
+    try {
+      // O Jira pode pular etapas (To Do → Done): se a transição direta não é válida, passa por IN_PROGRESS (histórico fiel).
+      let cur = task.status as Status;
+      const path: Status[] = isValidTransition(cur, next) ? [next as Status]
+        : isValidTransition(cur, 'IN_PROGRESS') && isValidTransition('IN_PROGRESS', next) ? ['IN_PROGRESS', next as Status] : [next as Status];
+      for (const step of path) { await changeStatus(org.id, SYSTEM_ACTOR(org.id), task.id, step); cur = step; }
+    } catch (err: any) {
+      await audit({ orgId: org.id, actorType: 'INTEGRATION', action: 'jira.status_sync_rejected', entityType: 'task', entityId: task.id, meta: { to: next, code: err?.code ?? 'error' } });
+      return { ok: true, ignored: true };
+    }
     await audit({ orgId: org.id, actorType: 'INTEGRATION', action: 'jira.status_sync', entityType: 'task', entityId: task.id, meta: { to: next } });
     await logged(org.id, 'JIRA', 'webhook', async () => undefined);
-    if (done) emitBvEvent('task.closed', { orgId: org.id, taskId: task.id });
     return { ok: true, status: next };
   });
 

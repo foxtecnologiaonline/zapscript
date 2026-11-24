@@ -12,7 +12,10 @@ const int = (name: string, def: number, min = 1, max = Number.MAX_SAFE_INTEGER):
   return Number.isFinite(n) && n >= min && n <= max ? Math.floor(n) : def;
 };
 
-export const WIDGET_VERSION = '1.0.0';
+export const WIDGET_VERSION = '1.1.0';
+
+/** Tamanho máximo de um trecho de legenda (relé efêmero, nunca gravado). */
+export const MAX_CAPTION_CHARS = 500;
 
 export const env = {
   /** Base do Jitsi para o atendimento por vídeo (BV_JITSI_BASE_URL). */
@@ -34,6 +37,7 @@ export const env = {
     attach: () => int('BV_WEBCHAT_RL_ATTACH', 6), // anexos/min por sessão
     poll: () => int('BV_WEBCHAT_RL_POLL', 120), // leituras/min por sessão
     typing: () => int('BV_WEBCHAT_RL_TYPING', 60),
+    caption: () => int('BV_WEBCHAT_RL_CAPTION', 240), // trechos de legenda/min por sessão (visitante) ou por atendente
     action: () => int('BV_WEBCHAT_RL_ACTION', 30), // human/csat/end/video/identify por minuto
   },
 };
